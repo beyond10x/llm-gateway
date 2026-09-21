@@ -1,1 +1,160 @@
 domain: llm.hosting
+
+# One controller owns one provider/account/ledger scope. These entities are declaration and
+# inspection records observed through the crate's public API. `Phase` is the observed runtime
+# ownership state; it is not a promise of a production event bus or an Entity Runtime store.
+types:
+  - name: llm.hosting.Phase
+    kind: enum
+    # The resolved hosting lifecycle. `Uncertain`, `StopRequired`, `Stopped` and `Cancelled`
+    # are llm.budget.Phase's words with llm.budget.Phase's meaning; the hosting-specific states
+    # are a submitted create (`Requested`), an observed live resource (`Active`) and a resource
+    # a strictly newer epoch has taken over (`Disowned`).
+    variants: [Declared, Requested, Active, Uncertain, StopRequired, Stopped, Cancelled, Disowned]
+  - name: llm.hosting.StopReason
+    kind: enum
+    # Why a stop is owed. None of these is a claim that anything stopped.
+    variants: [AmbiguousMutation, LifetimeExceeded, LeaseExpired, OperatorRequest, OwnershipLost]
+  - name: llm.hosting.Dispatch
+    kind: enum
+    # llm.catalog.Dispatch's words. `Unknown` is the case the contract exists for.
+    variants: [NotSent, Rejected, Unknown, Accepted]
+  - name: llm.hosting.ProviderState
+    kind: enum
+    variants: [Pending, Running, Terminated]
+  - name: llm.hosting.Totals
+    kind: struct
+    fields:
+      - {name: active_count, type: Integer}
+      - {name: unknown_count, type: Integer}
+      # The same obligation llm.budget.Totals.stop_required carries, seen from the hosting side.
+      - {name: stop_required, type: 'List<String>'}
+      # Obligations that moved to a newer epoch rather than being discharged. A disowned
+      # record leaves stop_required without ever attaching evidence, because nothing stopped;
+      # without this list that transfer would be a disappearance.
+      - {name: transferred, type: 'List<String>'}
+      - {name: at_capacity, type: Boolean}
+  - name: llm.hosting.TransitionFact
+    kind: struct
+    fields:
+      - {name: from, type: String}
+      - {name: to, type: String}
+  - name: llm.hosting.DeploymentFact
+    kind: struct
+    fields:
+      - {name: id, type: String}
+      - {name: phase, type: String}
+      - {name: stop_reason, type: 'Optional<String>'}
+      - {name: stop_evidence, type: 'Optional<String>'}
+      - {name: connected, type: Boolean}
+      # Requested. Always present, because the operator stated it.
+      - {name: requested_model, type: String}
+      - {name: requested_image, type: String}
+      - {name: requested_name, type: String}
+      - {name: requested_lifetime_ms, type: String}
+      - {name: request_id, type: String}
+      - {name: ledger, type: String}
+      - {name: reservation, type: String}
+      # Observed. Absent until a provider reported it, and never filled in from the request
+      # above. An unreported model is null; it is not `requested_model`.
+      - {name: observed_name, type: 'Optional<String>'}
+      - {name: observed_incarnation, type: 'Optional<String>'}
+      - {name: observed_state, type: 'Optional<String>'}
+      - {name: observed_ready, type: 'Optional<Boolean>'}
+      - {name: observed_endpoint, type: 'Optional<String>'}
+      - {name: observed_model, type: 'Optional<String>'}
+      - {name: lease_owner, type: 'Optional<String>'}
+      - {name: lease_epoch, type: 'Optional<Integer>'}
+      - {name: lease_expires_at_ms, type: 'Optional<String>'}
+entities:
+  - name: llm.hosting.Controller
+    identity: {name: id, type: String}
+    fields:
+      - {name: provider_id, type: String}
+      - {name: account_id, type: String}
+      - {name: ledger_id, type: String}
+      - {name: max_active, type: Integer}
+      - {name: max_lifetime_ms, type: String}
+      - {name: lease_ms, type: String}
+    relations:
+      # Owned resources have no meaning without the scope that owns them. No reset or
+      # scope-transfer operation is exposed while obligations are outstanding.
+      - {name: resources, kind: owns, target: llm.hosting.OwnedResource, cardinality: many, via: controller_id}
+      - {name: account, kind: references, target: llm.catalog.Account, cardinality: one, via: account_id}
+      - {name: ledger, kind: references, target: llm.budget.Ledger, cardinality: one, via: ledger_id}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  - name: llm.hosting.OwnedResource
+    identity: {name: id, type: String}
+    fields:
+      - {name: controller_id, type: String}
+      - {name: deployment_spec_id, type: String}
+      # The budget reservation this billed resource is admitted against.
+      - {name: reservation_id, type: String}
+      # The idempotency key, recorded before the create mutation was submitted.
+      - {name: request_id, type: String}
+      - {name: phase, type: llm.hosting.Phase}
+      - {name: stop_reason, type: 'Optional<llm.hosting.StopReason>'}
+      - {name: stop_evidence, type: 'Optional<String>'}
+      # The observed identity. Absent while no provider answer exists. A name alone is not an
+      # identity: a provider may hand `resource_name` to a later resource once this one is
+      # gone, so `resource_incarnation` is what distinguishes them.
+      - {name: resource_name, type: 'Optional<String>'}
+      - {name: resource_incarnation, type: 'Optional<String>'}
+    relations:
+      - {name: specification, kind: references, target: llm.catalog.DeploymentSpec, cardinality: one, via: deployment_spec_id}
+      - {name: reservation, kind: references, target: llm.budget.Reservation, cardinality: one, via: reservation_id}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+  - name: llm.hosting.OwnershipLease
+    identity: {name: id, type: String}
+    fields:
+      - {name: controller_id, type: String}
+      - {name: owner_id, type: String}
+      # Strictly monotonic per deployment, never reused, including across the owner's restart.
+      - {name: epoch, type: Integer}
+      - {name: expires_at_ms, type: String}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+  - name: llm.hosting.ExecutionObservation
+    identity: {name: observation_id, type: String}
+    fields: &execution_facts
+      - {name: valid_program, type: Boolean}
+      - {name: error_code, type: 'Optional<String>'}
+      - {name: results, type: 'List<String>'}
+      # Provider-side counters. Absent, never zero, when no provider was ever built: an
+      # unreported count is not a count of zero.
+      - {name: allocations, type: 'Optional<Integer>'}
+      - {name: submits, type: 'Optional<Integer>'}
+      - {name: stops, type: 'Optional<Integer>'}
+      - {name: lists, type: 'Optional<Integer>'}
+      - {name: concurrent_granted, type: 'List<Integer>'}
+      - {name: concurrent_errors, type: 'List<String>'}
+      - {name: controller, type: 'Optional<String>'}
+      - {name: ledger, type: 'Optional<String>'}
+      - {name: max_active, type: 'Optional<Integer>'}
+      - {name: now_ms, type: 'Optional<String>'}
+      - {name: totals, type: 'Optional<llm.hosting.Totals>'}
+      - {name: deployments, type: 'List<llm.hosting.DeploymentFact>'}
+      # The permitted transition table the library actually enforces, read from its published
+      # constant. A pair absent from this list is refused; this is the resolved lifecycle that
+      # replaces the UNMAPPED hosting transitions.
+      - {name: transitions, type: 'List<llm.hosting.TransitionFact>'}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+commands:
+  - name: llm.hosting.Exercise
+    input:
+      # A bounded fixture program drives the real controller against the real in-process fake
+      # provider, including concurrent acquisition, restarts and lost mutation answers.
+      - {name: program_json, type: String}
+    outcomes:
+      - name: observed
+        emits: [llm.hosting.Exercised]
+        summary: Observe actual phases, refusals, provider calls, leases and stop obligations.
+events:
+  # Test-adapter notification only; there is no production notification transport.
+  - name: llm.hosting.Exercised
+    fields:
+      - {name: valid_program, type: Boolean}
+views:
+  - name: llm.hosting.LastExecution
+    source: llm.hosting.ExecutionObservation
+    consistency: read_your_writes
+    fields: *execution_facts

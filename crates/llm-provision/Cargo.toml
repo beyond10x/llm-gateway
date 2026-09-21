@@ -10,3 +10,6 @@ description = "Hosting lifecycle ports and resource ownership contracts."
 
 [lints]
 workspace = true
+
+[lib]
+name = "llm_provision"

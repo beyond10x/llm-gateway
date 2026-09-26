@@ -1,0 +1,12 @@
+[package]
+name = "b10x-llm-modal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Modal provisioning adapter behind the hosting lifecycle port."
+
+[lints]
+workspace = true

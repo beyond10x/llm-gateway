@@ -8,5 +8,8 @@ repository.workspace = true
 publish.workspace = true
 description = "Authenticated single-owner gateway composition and protocol translation."
 
+[lib]
+name = "llm_gateway"
+
 [lints]
 workspace = true

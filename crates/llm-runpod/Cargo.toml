@@ -10,3 +10,9 @@ description = "Runpod provisioning adapter for vLLM."
 
 [lints]
 workspace = true
+
+[lib]
+name = "llm_runpod"
+
+[dependencies]
+llm-provision = { package = "b10x-llm-provision", path = "../llm-provision" }

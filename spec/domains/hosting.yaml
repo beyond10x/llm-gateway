@@ -147,6 +147,9 @@ commands:
     outcomes:
       - name: observed
         emits: [llm.hosting.Exercised]
+        payload:
+          llm.hosting.Exercised:
+            valid_program: {generated: true}
         summary: Observe actual phases, refusals, provider calls, leases and stop obligations.
 events:
   # Test-adapter notification only; there is no production notification transport.

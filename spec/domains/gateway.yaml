@@ -7,11 +7,15 @@ domain: llm.gateway
 # the real `Gateway` bound to a loopback socket and exercised with raw HTTP/1.1 requests; they
 # are not a production event bus.
 #
-# UNMAPPED: protocol translation and proxying a model call (story:gateway-translation) are not
-# implemented, and multi-tenant accounts and quotas are outside this milestone
-# (crates/llm-gateway/src/auth.rs:11). UNMAPPED: the constant-time comparison
-# (auth.rs:69-78) is a timing property no functional observation can decide; it is proved by
-# the crate's unit cases only.
+# DEFERRED: protocol translation and proxying a model call are not implemented; they belong to
+# story:gateway-translation. There is exactly one owner (crates/llm-gateway/src/auth.rs:11), and
+# the single-owner admission is what the credential scenarios below declare.
+# DECIDED 2026-09-27: the gateway has no multi-tenant accounts or quotas; tenancy and quotas belong
+# to the embedding platform, which runs one gateway per owner.
+# ESS-LIMIT: the owner comparison is constant-time (auth.rs:69-78). ESS 0.36 has no construct
+# for a timing or side-channel property (no non-functional or duration-distribution assertion
+# over a command); only its functional result is declared here, and the timing is proved by the
+# crate's unit cases.
 types:
   # The closed refusal set, with the wire code, status and fixed message the crate publishes
   # (crates/llm-gateway/src/error.rs:99-133).
@@ -29,13 +33,12 @@ types:
   # (inventory.rs RouteSummary::new): `inventory:route-without-target`,
   # `inventory:too-many-targets` (over 64), `inventory:non-contiguous-positions`,
   # `inventory:duplicate-target`. A snapshot (inventory.rs RouteInventory): `inventory:duplicate-alias`,
-  # `inventory:malformed-digest`.
-  # UNMAPPED: `inventory:too-many-routes` (over 4096 routes, inventory.rs:252) cannot be reached
-  # here: 4097 routes do not fit the adapter's 64 KiB program bound
-  # (checks/conformance/src/gateway.rs:30). Only the crate's unit cases cover it.
+  # `inventory:malformed-digest`, and `inventory:too-many-routes` for more than 4096 routes
+  # (inventory.rs:25, 252); exactly 4096 is composed. A program reaches that count through its
+  # inventory's `generated_routes`, which appends routes `g<i>` the program need not spell out.
   - name: llm.gateway.CompositionRefusal
     kind: enum
-    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest]
+    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes]
 entities:
   # One gateway: one owner verifier, one route inventory snapshot, one listener.
   - name: llm.gateway.Gateway

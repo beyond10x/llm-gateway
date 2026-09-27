@@ -8,10 +8,15 @@ domain: llm.runpod
 # `RunpodProvider` over the crate's in-process `EmulatedRunpod`; no socket, credential or cloud
 # resource is involved (crates/llm-runpod/src/emulated.rs:1-7).
 #
-# UNMAPPED: no production Runpod transport exists (crates/llm-runpod/src/transport.rs:5-7), so
+# DEFERRED: no production Runpod transport exists (crates/llm-runpod/src/transport.rs:5-7), so
 # the REST/GraphQL request shapes and every live control-plane assumption in docs/hosting.md are
-# not declared here. UNMAPPED: orphan terminations bypass the budget ledger
-# (docs/verification/runpod.md "J2"), recorded as open in the contract, not declared as intent.
+# not declared here. Owned by story:runpod-production-transport;
+# story:foundation-qualified needs it for live hosting evidence.
+# DEFERRED: orphan and inherited terminations bypass the controller, so no stop obligation or
+# receipt reaches the budget ledger (docs/hosting.md:316-324, docs/verification/runpod.md "J2").
+# Closing it needs llm-provision to record and discharge an obligation for a resource with no
+# deployment; owned by story:orphan-termination-obligations. It is
+# not declared as intent.
 types:
   # Refusals `RunpodPool` hands a caller (crates/llm-runpod/src/pool.rs:62-106). `hosting`
   # wraps an llm.hosting refusal; `invalid-model` wraps one of ConfigError.

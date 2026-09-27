@@ -1,0 +1,96 @@
+domain: llm.gateway
+
+# The authenticated single-owner gateway (crates/llm-gateway, docs/gateway.md). It admits one
+# owner through an injected verifier, serves a closed two-path liveness and readiness surface,
+# lets the owner read an immutable route inventory, drains and stops gracefully
+# (crates/llm-gateway/src/lib.rs:5-18). The entities are verification-adapter observations of
+# the real `Gateway` bound to a loopback socket and exercised with raw HTTP/1.1 requests; they
+# are not a production event bus.
+#
+# UNMAPPED: protocol translation and proxying a model call (story:gateway-translation) are not
+# implemented, and multi-tenant accounts and quotas are outside this milestone
+# (crates/llm-gateway/src/auth.rs:11). UNMAPPED: the constant-time comparison
+# (auth.rs:69-78) is a timing property no functional observation can decide; it is proved by
+# the crate's unit cases only.
+types:
+  # The closed refusal set, with the wire code, status and fixed message the crate publishes
+  # (crates/llm-gateway/src/error.rs:99-133).
+  - name: llm.gateway.Refusal
+    kind: enum
+    variants: [BodyNotAllowed, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, Unavailable]
+  # A header whose name is followed by whitespace before its colon is `request-malformed`
+  # (RFC 9112 section 5.1; server.rs Request::parse).
+  #
+  # Why a gateway cannot be composed, reported as `error_code` `<source>:<rule>`. Owner material
+  # (auth.rs OwnerToken::new): `token:empty`, `token:too-large` (over 4096 bytes),
+  # `token:not-printable-ascii`. The shared-secret verifier (auth.rs SharedSecretVerifier::new):
+  # `verifier:secret-too-short` (under 32 bytes). Every identifier (inventory.rs Label::new):
+  # `label:length` (empty or over 256 bytes), `label:not-printable-ascii`. A route
+  # (inventory.rs RouteSummary::new): `inventory:route-without-target`,
+  # `inventory:too-many-targets` (over 64), `inventory:non-contiguous-positions`,
+  # `inventory:duplicate-target`. A snapshot (inventory.rs RouteInventory): `inventory:duplicate-alias`,
+  # `inventory:malformed-digest`.
+  # UNMAPPED: `inventory:too-many-routes` (over 4096 routes, inventory.rs:252) cannot be reached
+  # here: 4097 routes do not fit the adapter's 64 KiB program bound
+  # (checks/conformance/src/gateway.rs:30). Only the crate's unit cases cover it.
+  - name: llm.gateway.CompositionRefusal
+    kind: enum
+    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest]
+entities:
+  # One gateway: one owner verifier, one route inventory snapshot, one listener.
+  - name: llm.gateway.Gateway
+    identity: {name: id, type: String}
+    fields:
+      - {name: max_head_bytes, type: Integer}
+      - {name: max_concurrent_requests, type: Integer}
+      - {name: read_timeout_ms, type: Integer}
+      # Ready is set once by the embedding; a drain is one way for the life of the handle
+      # (server.rs mark_ready, begin_drain).
+      - {name: ready, type: Boolean}
+      - {name: draining, type: Boolean}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  - name: llm.gateway.ExchangeObservation
+    identity: {name: observation_id, type: String}
+    fields: &exchange_facts
+      - {name: valid_program, type: Boolean}
+      # Why the gateway could not be composed: `token:<rule>`, `verifier:<rule>`,
+      # `label:<rule>` or `inventory:<rule>`.
+      - {name: error_code, type: 'Optional<String>'}
+      # One entry per step, in order. An exchange is `<status> <refusal code>` for a refusal,
+      # `<status> <probe status>` for a probe and `<status> inspected` for a served inspection.
+      - {name: results, type: 'List<String>'}
+      # The body of every exchange, in order, exactly as the gateway wrote it.
+      - {name: bodies, type: 'List<String>'}
+      # The challenge and method headers of every exchange, in order.
+      - {name: headers, type: 'List<String>'}
+      # Whether any byte the gateway wrote contains the owner secret. Absent when no gateway
+      # was composed.
+      - {name: secret_on_wire, type: 'Optional<Boolean>'}
+      # `GatewayHandle::is_ready` after the last step; absent once the gateway is stopped.
+      - {name: ready, type: 'Optional<Boolean>'}
+      # The graceful stop's report, as `accepted=<n> completed=<n>`.
+      - {name: shutdown, type: 'Optional<String>'}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+commands:
+  - name: llm.gateway.Exchange
+    input:
+      # A bounded fixture program: the owner secret, the listener bounds, an optional route
+      # inventory, and the raw requests sent to the loopback socket.
+      - {name: program_json, type: String}
+    outcomes:
+      - name: observed
+        emits: [llm.gateway.Exchanged]
+        payload:
+          llm.gateway.Exchanged:
+            valid_program: {generated: true}
+        summary: Observe the real gateway's answers to raw requests over a loopback socket.
+events:
+  # Test-adapter notification only; there is no production notification transport.
+  - name: llm.gateway.Exchanged
+    fields:
+      - {name: valid_program, type: Boolean}
+views:
+  - name: llm.gateway.LastExchange
+    source: llm.gateway.ExchangeObservation
+    consistency: read_your_writes
+    fields: *exchange_facts

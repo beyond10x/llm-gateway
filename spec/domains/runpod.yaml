@@ -1,0 +1,95 @@
+domain: llm.runpod
+
+# The Runpod adapter (crates/llm-runpod) over the llm.hosting contract. Every pod lifecycle
+# decision is llm.hosting's Controller; this domain declares what the adapter adds on top of
+# it: ordered GPU fallback, single-flight startup, readiness and crash recovery, ownership-safe
+# adoption by exact identity, and idle and orphan cleanup (crates/llm-runpod/src/lib.rs:6-28).
+# The entities are verification-adapter observations of the real `RunpodPool` driving the real
+# `RunpodProvider` over the crate's in-process `EmulatedRunpod`; no socket, credential or cloud
+# resource is involved (crates/llm-runpod/src/emulated.rs:1-7).
+#
+# UNMAPPED: no production Runpod transport exists (crates/llm-runpod/src/transport.rs:5-7), so
+# the REST/GraphQL request shapes and every live control-plane assumption in docs/hosting.md are
+# not declared here. UNMAPPED: orphan terminations bypass the budget ledger
+# (docs/verification/runpod.md "J2"), recorded as open in the contract, not declared as intent.
+types:
+  # Refusals `RunpodPool` hands a caller (crates/llm-runpod/src/pool.rs:62-106). `hosting`
+  # wraps an llm.hosting refusal; `invalid-model` wraps one of ConfigError.
+  - name: llm.runpod.PoolRefusal
+    kind: enum
+    variants: [UnknownModel, InvalidModel, Starting, Stopping, NoCapacity, CrashLoop, CredentialRefused, StartupDeadline, PodExited, StoppedServing, Hosting]
+  # Why a model declaration is refused (crates/llm-runpod/src/config.rs:88-126).
+  - name: llm.runpod.ConfigRefusal
+    kind: enum
+    variants: [NoGpu, GpuUtilization, ZeroSetting, SecretReference, UnsafeText]
+entities:
+  # One pool: one `llm.hosting.Controller` scope, one slot per declared model alias.
+  - name: llm.runpod.Pool
+    identity: {name: id, type: String}
+    fields:
+      - {name: controller_id, type: String}
+      - {name: provider_id, type: String}
+      - {name: account_id, type: String}
+    relations:
+      - {name: controller, kind: references, target: llm.hosting.Controller, cardinality: one, via: controller_id}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  - name: llm.runpod.ExecutionObservation
+    identity: {name: observation_id, type: String}
+    fields: &execution_facts
+      - {name: valid_program, type: Boolean}
+      # Why the pool could not be constructed or restored, e.g. `invalid-model:no-gpu`.
+      - {name: error_code, type: 'Optional<String>'}
+      # One entry per step, in order: `ok`, `ready`, or `err:<pool refusal code>`.
+      - {name: results, type: 'List<String>'}
+      # Control-plane counters read from the emulator. Absent, never zero, when no emulator
+      # was ever built.
+      - {name: create_calls, type: 'Optional<Integer>'}
+      - {name: lists, type: 'Optional<Integer>'}
+      # The GPU type of every create request submitted, in order.
+      - {name: requested_gpus, type: 'List<String>'}
+      # Pod ids the emulator terminated, in order.
+      - {name: terminations, type: 'List<String>'}
+      # Pods that still exist, as `<id>:<name>:<status>`.
+      - {name: pods, type: 'List<String>'}
+      # Every ready lease handed out, as `<endpoint or none> <served model or unreported>`.
+      - {name: leases, type: 'List<String>'}
+      # Every cleanup pass, as `idle=[..] retired=[..] replaced=[..] orphans=[..]`.
+      - {name: cleanups, type: 'List<String>'}
+      # The controller's records after the last step, as `<deployment>:<phase>`.
+      - {name: phases, type: 'List<String>'}
+      # What each record last observed, as `<deployment> ready=<..> served=<..> endpoint=<..>`;
+      # a fact the provider did not report is `unreported`, never the requested value.
+      - {name: observed, type: 'List<String>'}
+      # llm.hosting.Totals, read from the pool's view after the last step.
+      - {name: stop_required, type: 'List<String>'}
+      - {name: transferred, type: 'List<String>'}
+      # The last create request: its placement fields, its vLLM entrypoint, and its environment
+      # as `KEY=value`. The request tag is reported as `recorded` when it is exactly the request
+      # id the controller's record holds, and `unrecorded` otherwise, because its value carries
+      # a per-process nonce (pool.rs request_id).
+      - {name: last_request, type: 'Optional<String>'}
+      - {name: last_entrypoint, type: 'List<String>'}
+      - {name: last_env, type: 'List<String>'}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+commands:
+  - name: llm.runpod.Exercise
+    input:
+      # A bounded fixture program: model declarations, emulator arrangements and pool calls.
+      - {name: program_json, type: String}
+    outcomes:
+      - name: observed
+        emits: [llm.runpod.Exercised]
+        payload:
+          llm.runpod.Exercised:
+            valid_program: {generated: true}
+        summary: Observe the real pool's answers, pod calls, leases and cleanup over the emulator.
+events:
+  # Test-adapter notification only; there is no production notification transport.
+  - name: llm.runpod.Exercised
+    fields:
+      - {name: valid_program, type: Boolean}
+views:
+  - name: llm.runpod.LastExecution
+    source: llm.runpod.ExecutionObservation
+    consistency: read_your_writes
+    fields: *execution_facts

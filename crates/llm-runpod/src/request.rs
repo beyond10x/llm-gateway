@@ -35,9 +35,10 @@ pub fn pod_name(resource_name: &str) -> String {
     format!("{POD_NAME_PREFIX}{resource_name}")
 }
 
-/// Whether a pod name is inside this adapter's namespace. llmgw's never is.
+/// Whether a pod name is inside this adapter's namespace. llmgw's never is: the two prefixes are
+/// disjoint, which `the_orphan_sweep_never_selects_a_legacy_llmgw_pod` asserts.
 pub fn in_namespace(name: &str) -> bool {
-    name.starts_with(POD_NAME_PREFIX) && !name.starts_with(LEGACY_POD_NAME_PREFIX)
+    name.starts_with(POD_NAME_PREFIX)
 }
 
 /// The vLLM serve arguments: the closed base set, the thinking and sampling knobs, then the

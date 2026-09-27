@@ -328,10 +328,12 @@ impl<'a> Request<'a> {
                 return Err(RefusalCode::RequestMalformed);
             }
             let (name, value) = line.split_once(':').ok_or(RefusalCode::RequestMalformed)?;
-            let name = name.trim_end().to_ascii_lowercase();
-            if name.is_empty() || name.contains(' ') {
+            // RFC 9112 section 5.1: no whitespace is allowed between a field name and its colon,
+            // and a server must reject such a request with 400.
+            if name != name.trim_end() || name.is_empty() || name.contains(' ') {
                 return Err(RefusalCode::RequestMalformed);
             }
+            let name = name.to_ascii_lowercase();
             if headers.iter().any(|(seen, _)| *seen == name) {
                 // A repeated credential is ambiguous, and an ambiguous credential is refused.
                 return Err(if name == "authorization" {

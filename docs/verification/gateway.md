@@ -6,14 +6,16 @@ checkpoint makes no model, provider or hosting call, resolves no secret and crea
 
 ## Counted coverage
 
-`cargo test -p b10x-llm-gateway --locked` runs **42** cases across the six sources this lane
-table covers, and 50 in the whole crate once `src/server.rs` and `tests/adversary_pass_2.rs` are
-included. **All 50 pass**, and the whole-crate command exits 0.
+`cargo test -p b10x-llm-gateway --locked` runs **44** cases across the six sources this lane
+table covers, and 52 in the whole crate once `src/server.rs` and `tests/adversary_pass_2.rs` are
+included. **All 52 pass**, and the whole-crate command exits 0. story:gateway-binary added two of
+them to `tests/gateway.rs`: a request head is read, and a response written, under one deadline
+each.
 
 | Lane | Base | Now | Result |
 | --- | --- | --- | --- |
 | `unittests src/lib.rs` | 0 passed | 17 passed | ok |
-| `tests/gateway.rs` | did not exist | 19 passed | ok |
+| `tests/gateway.rs` | did not exist | 21 passed | ok |
 | `tests/dependency_boundary.rs` | did not exist | 3 passed | ok |
 | `tests/adversary.rs` | did not exist | 2 passed | ok |
 | `tests/adversary_pass_2.rs` | did not exist | 7 passed | ok |

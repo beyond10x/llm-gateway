@@ -16,7 +16,7 @@ use std::{
         Arc,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const OWNER_SECRET: &str = "owner-token-0123456789abcdef0123456789abcdef";
@@ -935,6 +935,100 @@ fn a_stalled_head_is_refused_when_the_read_timeout_expires() {
         raw.contains("request-malformed"),
         "a head that never arrives must be refused, not held: {raw}"
     );
+}
+
+/// The read timeout is one deadline for the whole head. A peer that sends a byte every 50 ms
+/// never lets a single read time out, so a timeout applied per read would hold the connection,
+/// and a graceful stop with it, for as long as the peer keeps trickling.
+#[test]
+fn a_trickled_head_is_refused_when_the_read_timeout_expires() {
+    let gateway = Fixture::configured(true, OWNER_SECRET, |config| {
+        config.read_timeout = Duration::from_millis(300);
+    });
+    let mut stream = TcpStream::connect(gateway.addr).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    stream.write_all(b"GET /v1/routes HTTP/1.1\r\n").unwrap();
+    let mut trickler = stream.try_clone().unwrap();
+    let trickle = std::thread::spawn(move || {
+        for _ in 0..100 {
+            std::thread::sleep(Duration::from_millis(50));
+            if trickler.write_all(b"x").is_err() {
+                return;
+            }
+        }
+    });
+    let started = Instant::now();
+    let mut raw = Vec::new();
+    drop(stream.read_to_end(&mut raw));
+    let elapsed = started.elapsed();
+    drop(trickle.join());
+    let raw = String::from_utf8_lossy(&raw).into_owned();
+    assert!(
+        raw.contains("request-malformed"),
+        "a head still trickling at the deadline must be refused: {raw}"
+    );
+    assert!(
+        elapsed < Duration::from_secs(3),
+        "the head was held for {elapsed:?}, past its 300 ms deadline"
+    );
+}
+
+/// The response is written under its own deadline. A peer that asks for a large inventory and
+/// never reads it fills both socket buffers; without the deadline the connection, and the
+/// graceful stop that joins it, would wait for the peer forever.
+#[test]
+fn a_peer_that_never_reads_its_answer_cannot_hold_the_stop() {
+    let long = |prefix: &str, index: usize| label(&format!("{prefix}{index}-{}", "x".repeat(240)));
+    // 4096 routes of four targets with six 250-byte labels each: tens of megabytes, more than
+    // the loopback socket buffers hold.
+    let routes = (0..4096)
+        .map(|index| {
+            let targets = (0..4)
+                .map(|position| TargetSummary {
+                    target_id: long("t", position),
+                    position,
+                    provenance: TargetProvenance {
+                        protocol: long("p", index),
+                        provider: long("v", index),
+                        account: long("c", index),
+                        endpoint: long("e", index),
+                        model: long("m", index),
+                        binding_revision: long("b", index),
+                    },
+                    auth_kind: AuthKind::Bearer,
+                    billing_kind: BillingKind::Metered,
+                    limits: TargetLimits::default(),
+                })
+                .collect();
+            RouteSummary::new(long("r", index), long("a", index), false, targets).unwrap()
+        })
+        .collect();
+    let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
+    config.read_timeout = Duration::from_millis(300);
+    let verifier =
+        Arc::new(SharedSecretVerifier::new(OwnerToken::new(OWNER_SECRET.into()).unwrap()).unwrap());
+    let handle = Gateway::bind(config, verifier, RouteInventory::new(routes).unwrap()).unwrap();
+    handle.mark_ready();
+    let mut stream = TcpStream::connect(handle.local_addr()).unwrap();
+    stream
+        .write_all(
+            format!("GET /v1/routes HTTP/1.1\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n")
+                .as_bytes(),
+        )
+        .unwrap();
+    // Let the gateway start writing into buffers nobody drains.
+    std::thread::sleep(Duration::from_millis(200));
+    let (sender, receiver) = std::sync::mpsc::channel();
+    // The send fails only once the receiver gave up, which the expect below reports.
+    std::thread::spawn(move || sender.send(handle.shutdown()));
+    let report = receiver
+        .recv_timeout(Duration::from_secs(10))
+        .expect("a peer that never reads its answer held the graceful stop");
+    assert_eq!(report.accepted, 1);
+    assert_eq!(report.completed, 1);
+    drop(stream);
 }
 
 /// A bound asserted against its own constant asserts nothing: lowering the constant moves the

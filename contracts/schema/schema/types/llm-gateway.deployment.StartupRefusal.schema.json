@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.StartupRefusal",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
+    "contract_digest": "slice-sha256/2:5096fba192d25045c9f7fffaa7ebc11512ef869b0d382dca8bd173b7e6f92d39",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.StartupRefusal": {
+      "title": "StartupRefusal",
+      "x-ess-name": "llm-gateway.deployment.StartupRefusal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "ConfigUnreadable",
+        "ConfigSymlink",
+        "ConfigNotRegular",
+        "ConfigUntrustedOwner",
+        "ConfigUnsafeMode",
+        "ConfigTooLarge",
+        "ConfigNotUtf8",
+        "ConfigSchema",
+        "ConfigValue",
+        "OwnerSecretUnreadable",
+        "OwnerSecretSymlink",
+        "OwnerSecretNotRegular",
+        "OwnerSecretUntrustedOwner",
+        "OwnerSecretUnsafeMode",
+        "OwnerSecretTooLarge",
+        "OwnerSecretNotUtf8",
+        "OwnerSecretNotAToken",
+        "OwnerSecretTooShort",
+        "ListenBind",
+        "SignalInstall"
+      ]
+    }
+  }
+}

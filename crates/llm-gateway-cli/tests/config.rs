@@ -1,0 +1,480 @@
+//! Row K29 through the loader the binary uses: the closed document's defaults, every range
+//! boundary on both sides, and every key outside the closed document. The defaults and ranges
+//! are llmgw's (`src/config.rs:138-160` and `src/config.rs:221-343` at 048ebd8).
+//!
+//! The loaded settings map onto the types llm-gateway already has: `listen` onto
+//! `GatewayConfig::bind` (K1), `cloud_type` onto `llm_runpod::CloudType` (K8), the vLLM keys onto
+//! `llm_runpod::VllmSettings` (K16-K22) and the volume keys onto `llm_runpod::NetworkVolume`
+//! (K24-K25).
+
+mod support;
+
+use llm_gateway_cli::load;
+use llm_runpod::{CloudType, NetworkVolume, Thinking};
+use std::net::SocketAddr;
+use support::{Fixture, document, mutate};
+
+fn base(fixture: &Fixture) -> String {
+    document("127.0.0.1:0", &fixture.owner_secret())
+}
+
+/// Appends `lines` to the `[models.small]` table, which is the document's last table.
+fn with_model_keys(text: &str, lines: &str) -> String {
+    mutate(
+        text,
+        "max_model_len = 1024\n",
+        &format!("max_model_len = 1024\n{lines}"),
+    )
+}
+
+#[test]
+fn k29_the_base_document_is_accepted() {
+    // The control every refusal below is measured against.
+    let fixture = Fixture::new("k29-base");
+    let config = fixture.config(&base(&fixture));
+    let deployment = load(&config).unwrap();
+    assert_eq!(
+        deployment.gateway.bind,
+        "127.0.0.1:0".parse::<SocketAddr>().unwrap()
+    );
+    assert_eq!(deployment.owner_secret_file, fixture.path("owner-secret"));
+    assert_eq!(deployment.models.len(), 1);
+    assert_eq!(deployment.models["small"].provider, "runpod");
+    assert_eq!(deployment.models["small"].context_window, 65536);
+    assert_eq!(deployment.models["small"].vllm.max_model_len, 1024);
+}
+
+#[test]
+fn k29_the_llmgw_defaults_apply() {
+    let fixture = Fixture::new("k29-defaults");
+    let deployment = load(&fixture.config(&base(&fixture))).unwrap();
+    assert_eq!(deployment.providers["runpod"].cloud_type, CloudType::Secure);
+    let model = &deployment.models["small"];
+    assert_eq!(model.vllm.max_num_seqs, 8);
+    assert!((model.vllm.gpu_memory_utilization - 0.90).abs() < f64::EPSILON);
+    assert_eq!(model.vllm.thinking, Thinking::Off);
+    assert_eq!(model.vllm.reasoning_effort, None);
+    assert_eq!(model.vllm.sampling, None);
+    assert!(model.vllm.extra_args.is_empty());
+    assert_eq!(model.disk_gb, 80);
+    assert_eq!(model.cache, None);
+    assert!(model.data_center_ids.is_empty());
+    assert_eq!(model.idle_timeout_minutes, 30);
+    assert_eq!(model.start_wait_seconds, 600);
+}
+
+#[test]
+fn k29_explicit_values_replace_the_defaults() {
+    // Proves the defaults are defaults, not constants: every defaulted key set to another value.
+    let fixture = Fixture::new("k29-explicit");
+    let text = mutate(
+        &base(&fixture),
+        "kind = \"runpod-vllm\"\n",
+        "kind = \"runpod-vllm\"\ncloud_type = \"COMMUNITY\"\n",
+    );
+    let text = with_model_keys(
+        &text,
+        "max_num_seqs = 16\ngpu_util = 0.5\ndisk_gb = 100\nthinking = \"on\"\n\
+         reasoning_effort = \"xhigh\"\nsampling = \"{\\\"temperature\\\": 0.6}\"\n\
+         extra_vllm_args = [\"--kv-cache-dtype\", \"fp8\"]\nnetwork_volume_id = \"vol123\"\n\
+         volume_mount_path = \"/models\"\ndata_center_ids = [\"EU-RO-1\"]\n\
+         idle_timeout_minutes = 0\nstart_wait_seconds = 10\n",
+    );
+    let deployment = load(&fixture.config(&text)).unwrap();
+    assert_eq!(
+        deployment.providers["runpod"].cloud_type,
+        CloudType::Community
+    );
+    let model = &deployment.models["small"];
+    assert_eq!(model.vllm.max_num_seqs, 16);
+    assert!((model.vllm.gpu_memory_utilization - 0.5).abs() < f64::EPSILON);
+    assert_eq!(model.vllm.thinking, Thinking::On);
+    assert_eq!(model.vllm.reasoning_effort.as_deref(), Some("xhigh"));
+    assert_eq!(
+        model.vllm.sampling.as_deref(),
+        Some("{\"temperature\": 0.6}")
+    );
+    assert_eq!(model.vllm.extra_args, ["--kv-cache-dtype", "fp8"]);
+    assert_eq!(model.disk_gb, 100);
+    assert_eq!(
+        model.cache,
+        Some(NetworkVolume {
+            volume_id: "vol123".to_string(),
+            mount_path: "/models".to_string(),
+        })
+    );
+    assert_eq!(model.data_center_ids, ["EU-RO-1"]);
+    assert_eq!(model.idle_timeout_minutes, 0);
+    assert_eq!(model.start_wait_seconds, 10);
+}
+
+#[test]
+fn k29_a_network_volume_mounts_at_workspace_by_default() {
+    let fixture = Fixture::new("k29-volume");
+    let text = with_model_keys(
+        &base(&fixture),
+        "network_volume_id = \"vol123\"\ndata_center_ids = [\"EU-RO-1\"]\n",
+    );
+    let deployment = load(&fixture.config(&text)).unwrap();
+    assert_eq!(
+        deployment.models["small"].cache,
+        Some(NetworkVolume {
+            volume_id: "vol123".to_string(),
+            mount_path: "/workspace".to_string(),
+        })
+    );
+}
+
+/// `(case, find, replace)`: a mutation of the base document.
+type Case = (&'static str, &'static str, &'static str);
+
+/// Every range edge llmgw accepts, each on its own.
+const BOUNDARIES: &[Case] = &[
+    (
+        "context_window at 4096",
+        "context_window = 65536",
+        "context_window = 4096",
+    ),
+    (
+        "context_window at 2000000",
+        "context_window = 65536",
+        "context_window = 2000000",
+    ),
+    (
+        "max_model_len at context_window",
+        "max_model_len = 1024\n",
+        "max_model_len = 65536\n",
+    ),
+    (
+        "max_num_seqs at 1",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nmax_num_seqs = 1\n",
+    ),
+    (
+        "max_num_seqs at 1024",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nmax_num_seqs = 1024\n",
+    ),
+    (
+        "gpu_util at 0.1",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ngpu_util = 0.1\n",
+    ),
+    (
+        "gpu_util at 1.0",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ngpu_util = 1.0\n",
+    ),
+    (
+        "disk_gb at 10",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ndisk_gb = 10\n",
+    ),
+    (
+        "disk_gb at 2000",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ndisk_gb = 2000\n",
+    ),
+    (
+        "idle_timeout_minutes at 1440",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nidle_timeout_minutes = 1440\n",
+    ),
+    (
+        "start_wait_seconds at 3600",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nstart_wait_seconds = 3600\n",
+    ),
+    (
+        "a 64-byte alias",
+        "[models.small]",
+        "[models.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]",
+    ),
+    (
+        "sixteen gpu_types",
+        "gpu_types = [\"NVIDIA L40S\"]",
+        "gpu_types = [\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\"]",
+    ),
+];
+
+#[test]
+fn k29_every_range_boundary_is_accepted() {
+    let fixture = Fixture::new("k29-boundaries");
+    let text = base(&fixture);
+    for (case, find, replace) in BOUNDARIES {
+        let config = fixture.config(&mutate(&text, find, replace));
+        if let Err(refusal) = load(&config) {
+            panic!("{case}: refused as {}", refusal.code());
+        }
+    }
+}
+
+/// Each breaks exactly one llmgw rule; the base document breaks none.
+const OUT_OF_RULE: &[Case] = &[
+    (
+        "context_window under 4096",
+        "context_window = 65536",
+        "context_window = 4095",
+    ),
+    (
+        "context_window over 2000000",
+        "context_window = 65536",
+        "context_window = 2000001",
+    ),
+    (
+        "max_model_len under 1024",
+        "max_model_len = 1024\n",
+        "max_model_len = 1023\n",
+    ),
+    (
+        "max_model_len over context_window",
+        "max_model_len = 1024\n",
+        "max_model_len = 65537\n",
+    ),
+    (
+        "max_num_seqs 0",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nmax_num_seqs = 0\n",
+    ),
+    (
+        "max_num_seqs over 1024",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nmax_num_seqs = 1025\n",
+    ),
+    (
+        "gpu_util under 0.1",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ngpu_util = 0.09\n",
+    ),
+    (
+        "gpu_util over 1.0",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ngpu_util = 1.01\n",
+    ),
+    (
+        "disk_gb under 10",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ndisk_gb = 9\n",
+    ),
+    (
+        "disk_gb over 2000",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ndisk_gb = 2001\n",
+    ),
+    (
+        "idle_timeout_minutes over 1440",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nidle_timeout_minutes = 1441\n",
+    ),
+    (
+        "start_wait_seconds under 10",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nstart_wait_seconds = 9\n",
+    ),
+    (
+        "start_wait_seconds over 3600",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nstart_wait_seconds = 3601\n",
+    ),
+    ("no wire", "wires = [\"chat\", \"responses\"]", "wires = []"),
+    (
+        "a repeated wire",
+        "wires = [\"chat\", \"responses\"]",
+        "wires = [\"chat\", \"chat\"]",
+    ),
+    (
+        "no gpu type",
+        "gpu_types = [\"NVIDIA L40S\"]",
+        "gpu_types = []",
+    ),
+    (
+        "seventeen gpu types",
+        "gpu_types = [\"NVIDIA L40S\"]",
+        "gpu_types = [\"a\",\"b\",\"c\",\"d\",\"e\",\"f\",\"g\",\"h\",\"i\",\"j\",\"k\",\"l\",\"m\",\"n\",\"o\",\"p\",\"q\"]",
+    ),
+    (
+        "an empty hf_model",
+        "hf_model = \"example/small-model\"",
+        "hf_model = \"\"",
+    ),
+    (
+        "an unprintable image",
+        "image = \"vllm/vllm-openai:v0.27.1\"",
+        "image = \"vllm\\u0007\"",
+    ),
+    (
+        "an unknown reasoning effort",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nreasoning_effort = \"extreme\"\n",
+    ),
+    (
+        "sampling that is not an object",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nsampling = \"[1,2]\"\n",
+    ),
+    (
+        "sampling that is not JSON",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nsampling = \"{\"\n",
+    ),
+    (
+        "a network volume without a data center",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nnetwork_volume_id = \"vol123\"\n",
+    ),
+    (
+        "a non-alphanumeric network volume",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nnetwork_volume_id = \"vol-123\"\ndata_center_ids = [\"EU-RO-1\"]\n",
+    ),
+    (
+        "a lowercase data center",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\ndata_center_ids = [\"eu-ro-1\"]\n",
+    ),
+    (
+        "a relative volume mount path",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nvolume_mount_path = \"workspace\"\n",
+    ),
+    (
+        "a volume mount path with a trailing slash",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nvolume_mount_path = \"/workspace/\"\n",
+    ),
+    (
+        "a model naming an undeclared provider",
+        "provider = \"runpod\"",
+        "provider = \"missing\"",
+    ),
+    (
+        "a slashed model alias",
+        "[models.small]",
+        "[models.\"small/one\"]",
+    ),
+    (
+        "a 65-byte model alias",
+        "[models.small]",
+        "[models.aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa]",
+    ),
+    (
+        "an upper-case provider name",
+        "[providers.runpod]",
+        "[providers.Runpod]",
+    ),
+];
+
+#[test]
+fn k29_every_value_outside_its_rule_is_refused() {
+    let fixture = Fixture::new("k29-out-of-rule");
+    let text = base(&fixture);
+    assert!(
+        load(&fixture.config(&text)).is_ok(),
+        "the control is refused"
+    );
+    for (case, find, replace) in OUT_OF_RULE {
+        let config = fixture.config(&mutate(&text, find, replace));
+        match load(&config) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:value", "{case}"),
+        }
+    }
+}
+
+#[test]
+fn k29_a_document_without_models_is_refused_as_a_value() {
+    let fixture = Fixture::new("k29-no-models");
+    let secret = fixture.owner_secret();
+    let text = format!(
+        "listen = \"127.0.0.1:0\"\nowner_secret_file = \"{}\"\n",
+        secret.display()
+    );
+    let refusal = load(&fixture.config(&text)).unwrap_err();
+    assert_eq!(refusal.code(), "config:value");
+}
+
+/// Each leaves the closed document: an unknown key at every level, a section llmgw had and this
+/// document does not, a missing required key, a value of the wrong type, and a closed-set value
+/// outside its set.
+const OUTSIDE_THE_SCHEMA: &[Case] = &[
+    (
+        "an unknown top-level key",
+        "listen = ",
+        "listn = \"127.0.0.1:0\"\nlisten = ",
+    ),
+    (
+        "an unknown provider key",
+        "kind = \"runpod-vllm\"\n",
+        "kind = \"runpod-vllm\"\nregion = \"eu\"\n",
+    ),
+    (
+        "an unknown model key",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nstart_wait_secnds = 600\n",
+    ),
+    (
+        "an [identity] section",
+        "[providers.runpod]",
+        "[identity]\norigin = \"https://identity.example\"\ntenant = \"t\"\n\n[providers.runpod]",
+    ),
+    (
+        "a runpod_api_key_file",
+        "kind = \"runpod-vllm\"\n",
+        "kind = \"runpod-vllm\"\nrunpod_api_key_file = \"/run/key\"\n",
+    ),
+    ("no listen", "listen = \"127.0.0.1:0\"\n", ""),
+    (
+        "a listen that is not an address",
+        "listen = \"127.0.0.1:0\"",
+        "listen = \"localhost\"",
+    ),
+    (
+        "no owner_secret_file",
+        "owner_secret_file = ",
+        "unused_secret_file = ",
+    ),
+    (
+        "a string context_window",
+        "context_window = 65536",
+        "context_window = \"big\"",
+    ),
+    (
+        "a negative context_window",
+        "context_window = 65536",
+        "context_window = -1",
+    ),
+    (
+        "an unknown provider kind",
+        "kind = \"runpod-vllm\"",
+        "kind = \"modal\"",
+    ),
+    (
+        "an unknown cloud type",
+        "kind = \"runpod-vllm\"\n",
+        "kind = \"runpod-vllm\"\ncloud_type = \"SPOT\"\n",
+    ),
+    ("an unknown wire", "\"responses\"", "\"grpc\""),
+    (
+        "an unknown thinking value",
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nthinking = \"maybe\"\n",
+    ),
+    ("not TOML", "[models.small]", "[models.small"),
+];
+
+#[test]
+fn k29_every_key_outside_the_closed_document_is_refused() {
+    let fixture = Fixture::new("k29-schema");
+    let text = base(&fixture);
+    assert!(
+        load(&fixture.config(&text)).is_ok(),
+        "the control is refused"
+    );
+    for (case, find, replace) in OUTSIDE_THE_SCHEMA {
+        let config = fixture.config(&mutate(&text, find, replace));
+        match load(&config) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:schema", "{case}"),
+        }
+    }
+}

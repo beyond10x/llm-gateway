@@ -7,13 +7,15 @@ below is `covered` or `not needed`.
 ## How to read it
 
 - **llmgw** cites `path:line` in llmgw at `048ebd8`. **llm-gateway** cites `path:line` in this
-  repository at `be722b4`, or says `none`.
-- **covered**: llm-gateway's library code does the same job, with tests, even where the mechanism
+  repository at `be722b4`, or says `none`. Rows C1, C2, C4, C5, K29, K30 and D2 cite the tree
+  story:gateway-binary landed, and name the tests that close them.
+- **covered**: llm-gateway's code does the same job, with tests, even where the mechanism
   differs (the note says how). **partial**: a building block exists and something llmgw does is
   missing. **gap**: nothing in llm-gateway does it. **not needed**: the note gives the reason.
-- Nothing in llm-gateway runs yet: the workspace is libraries plus the conformance runner, with
-  no gateway binary (C1). A `covered` row is library behaviour. It is not deployable until the
-  C and D rows close.
+- The `b10x-llm-gateway` binary (`crates/llm-gateway-cli`, C1) runs the gateway from one
+  deployment document: probes, the owner's route inventory and a graceful stop. Other `covered`
+  rows are library behaviour the binary does not drive yet: it relays no model call (W rows) and
+  provisions no pod (B and L rows).
 - Configuration rows compare settings, not file formats: a key is `covered` when a typed setting
   with the same meaning exists. The file format is its own row (K29).
 - Registry rows are the `models` keys (K9–K28) and `GET /v1/models` (R5). Authentication rows are
@@ -25,14 +27,14 @@ below is `covered` or `not needed`.
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | R | Routes | 8 | 2 | 1 | 5 | 0 | the 8 `.route` calls in `router()`, `src/lib.rs:125-137` |
 | W | Wire relay | 7 | 0 | 2 | 5 | 0 | no source table: the proxy path `src/lib.rs:510-699` and README `README.md:63-98` |
-| C | CLI | 5 | 0 | 0 | 4 | 1 | the built binary's `--help`: 4 options, no subcommand, plus the command |
-| K | Configuration | 30 | 22 | 3 | 2 | 3 | the 28 fields of the four serde structs in `src/config.rs:20-136`, plus 2 file-handling rows |
+| C | CLI | 5 | 4 | 0 | 0 | 1 | the built binary's `--help`: 4 options, no subcommand, plus the command |
+| K | Configuration | 30 | 24 | 2 | 1 | 3 | the 28 fields of the four serde structs in `src/config.rs:20-136`, plus 2 file-handling rows |
 | B | Backends | 9 | 2 | 6 | 1 | 0 | `ProviderKind` (1 variant, `src/config.rs:50-54`), the 5 `RunpodApi` calls, the pod URL, the inference call and the vLLM key |
 | L | Scale-to-zero and pod lifecycle | 15 | 12 | 2 | 1 | 0 | no source table: `PodManager` in `src/runpod.rs:286-695` and `src/main.rs:62-65` |
 | O | Observability | 3 | 0 | 0 | 3 | 0 | the 13 `# HELP` series in `src/lib.rs:144-180` and the log setup in `src/main.rs:29-33` |
-| D | Deployment and operation | 6 | 2 | 1 | 2 | 1 | the files at the root, `scripts/` and `docs/` of llmgw |
+| D | Deployment and operation | 6 | 3 | 0 | 2 | 1 | the files at the root, `scripts/` and `docs/` of llmgw |
 
-Total: 83 rows. 40 covered, 15 partial, 23 gap, 5 not needed.
+Total: 83 rows. 47 covered, 13 partial, 18 gap, 5 not needed.
 
 ## Routes
 
@@ -67,11 +69,11 @@ The built `llmgw` binary's `--help` lists four options and no subcommand: `--con
 
 | ID | llmgw capability | llmgw | llm-gateway | Status | Note |
 | --- | --- | --- | --- | --- | --- |
-| C1 | `llmgw`: one binary, no subcommands; it reads config, refuses an unauthenticated posture, sweeps orphans, starts the reaper and serves | `src/main.rs:14-16` `src/main.rs:27-75` | `Cargo.toml:3-9` | gap | The workspace members are four libraries and the conformance runner. No gateway binary exists. |
-| C2 | `--config <CONFIG>`: path to the closed TOML deployment file | `src/main.rs:17-19` `src/main.rs:35` | none | gap | |
+| C1 | `llmgw`: one binary, no subcommands; it reads config, refuses an unauthenticated posture, sweeps orphans, starts the reaper and serves | `src/main.rs:14-16` `src/main.rs:27-75` | `crates/llm-gateway-cli/Cargo.toml:14-16` `crates/llm-gateway-cli/src/main.rs:28-46` `crates/llm-gateway-cli/src/serve.rs:160-170` | covered | `b10x-llm-gateway` reads the document, reads the owner secret, composes the gateway, marks it ready and serves. A refused start prints `refused <source>:<rule>` and exits 1. There is no unauthenticated posture to refuse (C3). The orphan sweep and the reaper are rows L15 and L13. Tests: `c1_*` in `crates/llm-gateway-cli/tests/binary.rs`. |
+| C2 | `--config <CONFIG>`: path to the closed TOML deployment file | `src/main.rs:17-19` `src/main.rs:35` | `crates/llm-gateway-cli/src/main.rs:15-20` `crates/llm-gateway-cli/src/config.rs:193-196` | covered | Required. Tests: `c2_config_flag_loads_a_closed_toml`, `c2_the_config_flag_is_required`. |
 | C3 | `--insecure`: required explicit no-auth posture; startup refuses without it | `src/main.rs:20-24` `src/main.rs:42-48` | `crates/llm-gateway/src/server.rs:400-405` | not needed | llm-gateway authenticates every request outside the two probes and has no unauthenticated posture to opt into. Clients need the owner token, where llmgw's instructions say any value works. |
-| C4 | `--help`, `-h` (clap) | `src/main.rs:14-15` | none | gap | |
-| C5 | `--version`, `-V` (clap `version`) | `src/main.rs:15` | none | gap | |
+| C4 | `--help`, `-h` (clap) | `src/main.rs:14-15` | `crates/llm-gateway-cli/src/main.rs:13-20` | covered | clap derive. Lists `--config <CONFIG>`, `-h, --help` and `-V, --version`, and no `--insecure` (C3). Test: `c4_help_lists_exactly_the_closed_command_line`. |
+| C5 | `--version`, `-V` (clap `version`) | `src/main.rs:15` | `crates/llm-gateway-cli/src/main.rs:15` | covered | Prints `b10x-llm-gateway 0.1.0`. Test: `c5_version_prints_the_binary_name_and_package_version`. |
 
 ## Configuration
 
@@ -107,10 +109,10 @@ below. The llm-gateway column mostly cites `RunpodModel` in `crates/llm-runpod/s
 | K24 | `models.<alias>.network_volume_id`: needs `data_center_ids` | `src/config.rs:121-125` `src/config.rs:298-309` | `crates/llm-runpod/src/config.rs:37-40` `crates/llm-runpod/src/config.rs:69` | covered | `NetworkVolume::volume_id`. The volume-needs-data-center rule is documented, not enforced: `crates/llm-runpod/src/config.rs:34-36`. |
 | K25 | `models.<alias>.volume_mount_path`, default `/workspace` | `src/config.rs:126-127` `src/config.rs:154-156` | `crates/llm-runpod/src/config.rs:40` | covered | `NetworkVolume::mount_path`. |
 | K26 | `models.<alias>.data_center_ids`: at most 16 | `src/config.rs:128-131` `src/config.rs:320-332` | `crates/llm-runpod/src/config.rs:70` | covered | |
-| K27 | `models.<alias>.idle_timeout_minutes`, default 30 | `src/config.rs:132-133` `src/config.rs:158-160` | `crates/llm-runpod/src/config.rs:78-79` | covered | `idle_timeout_ms`; must not be zero, where llmgw allows 0. |
+| K27 | `models.<alias>.idle_timeout_minutes`, default 30 | `src/config.rs:132-133` `src/config.rs:158-160` | `crates/llm-runpod/src/config.rs:78-79` | covered | `idle_timeout_ms`; must not be zero, where llmgw allows 0. The deployment document accepts 0, as llmgw (K29), and `RunpodModel` would refuse the zero `idle_timeout_ms` it maps to; the story that composes a pool from the document decides what 0 means. |
 | K28 | `models.<alias>.start_wait_seconds`, default 600: per-request hold budget and pod readiness deadline | `src/config.rs:134-135` `src/runpod.rs:386-387` `src/runpod.rs:520-521` | `crates/llm-runpod/src/config.rs:76-77` | partial | `startup_deadline_ms` bounds the pod. No setting bounds how long a request waits. |
-| K29 | The closed TOML file: unknown fields refused, defaults, range validation, 256 KiB bound | `src/config.rs:16` `src/config.rs:20-22` `src/config.rs:172-178` `src/config.rs:221-343` | `crates/llm-runpod/src/config.rs:151-199` | partial | `RunpodModel::validate` checks a Rust value. There is no file format, no loader and no defaults, and its ranges differ from llmgw's. |
-| K30 | Config and secret files read through a same-handle trusted-file reader: no symlink, owner or root, not group- or world-writable, size bound | `src/trusted.rs:21-42` `src/config.rs:173` `src/config.rs:187-195` | none | gap | |
+| K29 | The closed TOML file: unknown fields refused, defaults, range validation, 256 KiB bound | `src/config.rs:16` `src/config.rs:20-22` `src/config.rs:172-178` `src/config.rs:221-343` | `crates/llm-gateway-cli/src/config.rs:26-121` `crates/llm-gateway-cli/src/config.rs:219-469` `crates/llm-gateway-cli/src/trusted.rs:29-33` | covered | llmgw's keys, defaults and ranges, every table `deny_unknown_fields`. The values map onto `GatewayConfig`, `CloudType`, `VllmSettings` and `NetworkVolume`. The document adds the required `owner_secret_file`. It has no `[identity]` (K2–K4) and no `runpod_api_key_file` (K7), so it refuses both. `idle_timeout_minutes = 0` is accepted, as llmgw; see K27. Refusals are `config:schema` and `config:value`. Tests: `k29_*` in `crates/llm-gateway-cli/tests/config.rs` and `tests/binary.rs`. |
+| K30 | Config and secret files read through a same-handle trusted-file reader: no symlink, owner or root, not group- or world-writable, size bound | `src/trusted.rs:21-42` `src/config.rs:173` `src/config.rs:187-195` | `crates/llm-gateway-cli/src/trusted.rs:29-119` `crates/llm-gateway-cli/src/serve.rs:47-68` | covered | One `O_NOFOLLOW` open, and every check reads that handle. The owner must be this user or root, and the size bound also holds for the bytes read. The config is 256 KiB at most and refused when group- or world-writable, as llmgw. The owner secret is a token of at most 4096 bytes after its trailing newline or CRLF is trimmed, in a file of at most 4098 bytes (llmgw bounds the file at 4096), and is refused with any group or world bit, stricter than llmgw. The owner rule is tested inside a user namespace that maps this user to another uid; the case is skipped where the host refuses unprivileged user namespaces. Tests: `k30_*` in `crates/llm-gateway-cli/tests/binary.rs` and `adv_k30_*` in `tests/adversary.rs`. |
 
 ## Backends
 
@@ -161,7 +163,7 @@ below. The llm-gateway column mostly cites `RunpodModel` in `crates/llm-runpod/s
 | ID | llmgw capability | llmgw | llm-gateway | Status | Note |
 | --- | --- | --- | --- | --- | --- |
 | D1 | Container image: distroless, non-root, port 8080, `ENTRYPOINT llmgw`, source revision label | `Dockerfile:1-18` | none | gap | |
-| D2 | Graceful shutdown on Ctrl-C and SIGTERM | `src/main.rs:71-73` `src/main.rs:77-96` | `crates/llm-gateway/src/server.rs:140-171` | partial | `begin_drain` and `shutdown` exist, with a report. No signal reaches them. |
+| D2 | Graceful shutdown on Ctrl-C and SIGTERM | `src/main.rs:71-73` `src/main.rs:77-96` | `crates/llm-gateway-cli/src/serve.rs:132-151` `crates/llm-gateway-cli/src/serve.rs:160-170` `crates/llm-gateway/src/server.rs:140-171` `crates/llm-gateway/src/server.rs:238-290` `crates/llm-gateway/src/server.rs:509-523` | covered | The handlers are installed before the listener is bound. A signal drains the gateway and stops it gracefully: a request in flight is answered, then the process exits 0 with `stopped by <signal> accepted=<n> completed=<n>`. The stop takes at most twice `read_timeout` (20 s by default): a request head is read, and a response written, under one deadline each, so a client that trickles its head or never reads cannot hold the stop. A second signal during the stop is not acted on. Exit statuses hold when standard error is gone. Tests: `d2_*` in `crates/llm-gateway-cli/tests/binary.rs`, `adv_d2_*` and `adv_c1_*` in `tests/adversary.rs`, and `a_trickled_head_is_refused_when_the_read_timeout_expires` and `a_peer_that_never_reads_its_answer_cannot_hold_the_stop` in `crates/llm-gateway/tests/gateway.rs`. |
 | D3 | Two proven model profiles (48 GB default, H100 with MTP speculative decoding) and the weight-cache block | `docs/model-profiles.md:8-42` `docs/model-profiles.md:44-86` `docs/model-profiles.md:88-103` | none | gap | Their measured vLLM flags and GPU lists exist nowhere as `RunpodModel` declarations. |
 | D4 | Repository gate: tests, Clippy, format | `scripts/gate.sh:1-14` | `Taskfile.yml:2-17` | covered | `task check` also validates the spec and runs conformance. |
 | D5 | Shared source gates workflow | `.github/workflows/shared-gates.yml:1-18` | `.github/workflows/shared-gates.yml:1-18` | covered | |
@@ -184,15 +186,9 @@ One line per gap or partial row, written as a story title.
 - The relay passes upstream bytes and event streams through unchanged (W5)
 - A cold start past its hold budget answers 503 with `Retry-After` (W6)
 - A request that fails against a dead endpoint drops it so the next request starts a replacement (W7)
-- llm-gateway ships a runnable gateway binary (C1)
-- The gateway binary takes its deployment file from `--config <path>` (C2)
-- The gateway binary prints its options with `--help` (C4)
-- The gateway binary prints its version with `--version` (C5)
 - A production Runpod transport reads its API key from a trusted file (K7)
 - A model declares the wires it serves, and the gateway refuses the others (K11)
 - A model declares its request hold budget separately from its startup deadline (K28)
-- The gateway loads a closed TOML deployment file that refuses unknown fields (K29)
-- Configuration and secret files are read through a bounded trusted-file reader (K30)
 - A production Runpod transport lists pods over the REST API (B2)
 - A production Runpod transport creates pods over the REST API (B3)
 - A production Runpod transport terminates pods over the REST API (B4)
@@ -207,7 +203,6 @@ One line per gap or partial row, written as a story title.
 - The gateway exports per-model, per-wire counters pre-registered at zero (O2)
 - The gateway writes structured logs at a level set by `RUST_LOG` (O3)
 - llm-gateway builds a distroless, non-root container image (D1)
-- The gateway binary drains and stops on SIGINT and SIGTERM (D2)
 - The proven model profiles and the weight-cache block exist as llm-gateway model declarations (D3)
 
 ## Not established

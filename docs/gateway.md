@@ -156,7 +156,8 @@ the report counts as completed was refused *because of the stop*, so the serving
 after the accepted connections are joined, never before. `completed` counts every accepted
 connection, including ones refused on their own merits — an absent credential, an unknown path —
 which the stop has nothing to do with. How long that can take is
-bounded by `read_timeout`. Dropping the handle without a shutdown still stops the listener, but
+bounded by twice `read_timeout`: one deadline covers the whole request head and another the whole
+response, so a peer that trickles its head or stops reading its answer cannot hold the stop. Dropping the handle without a shutdown still stops the listener, but
 reports nothing.
 
 ## Bounds
@@ -192,9 +193,12 @@ exact length. The last two rows are `GatewayConfig` defaults an embedding may ov
 measured by enforcement over a real socket rather than by reading the default field.
 
 The delivery of a request head is bounded separately by `GatewayConfig::read_timeout`, a timeout
-rather than a size bound, so it is not in this table. It defaults to ten seconds, and its
-enforcement is measured with a short configured value by
-`a_stalled_head_is_refused_when_the_read_timeout_expires`.
+rather than a size bound, so it is not in this table. It is one deadline for the whole head, not a
+timeout per read, and the response is written under a second deadline of the same length. It
+defaults to ten seconds, and its enforcement is measured with a short configured value by
+`a_stalled_head_is_refused_when_the_read_timeout_expires`,
+`a_trickled_head_is_refused_when_the_read_timeout_expires` and
+`a_peer_that_never_reads_its_answer_cannot_hold_the_stop`.
 
 ## Verification
 

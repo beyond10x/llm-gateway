@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.ProviderDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
+    "contract_digest": "slice-sha256/2:d874b243bc9f3f6f3f65ec78ccb1e4ae1de4d64fa4f70eb9af9704ffd4791462",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.CloudType": {
+      "title": "CloudType",
+      "x-ess-name": "llm-gateway.deployment.CloudType",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Secure",
+        "Community"
+      ]
+    },
+    "llm-gateway.deployment.ProviderDeclaration": {
+      "title": "ProviderDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ProviderDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/llm-gateway.deployment.ProviderKind"
+        },
+        "cloud_type": {
+          "$ref": "#/$defs/llm-gateway.deployment.CloudType"
+        }
+      },
+      "required": [
+        "kind",
+        "cloud_type"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.ProviderKind": {
+      "title": "ProviderKind",
+      "x-ess-name": "llm-gateway.deployment.ProviderKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "RunpodVllm"
+      ]
+    }
+  }
+}

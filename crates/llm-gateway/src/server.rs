@@ -14,7 +14,7 @@ use std::{
         atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const ACCEPT_POLL: Duration = Duration::from_millis(2);
@@ -236,24 +236,34 @@ enum Outcome {
 }
 
 fn serve(mut stream: TcpStream, shared: &Shared) {
+    // One deadline for the whole head and one for the whole response, never a timeout per
+    // read or write: a peer that trickles a byte at a time would otherwise hold the connection,
+    // and with it a graceful stop, for as long as it likes.
     let timeout = shared.config.read_timeout;
-    if stream.set_read_timeout(Some(timeout)).is_err() {
-        return;
-    }
+    let head_deadline = Instant::now() + timeout;
     // Load is shed inside `decide`, after the liveness and readiness paths have been matched:
     // a liveness probe that fails under load restarts the process, which turns shedding into a
     // restart loop. Reading a bounded head under a timeout is the cheapest way to know whether
     // a request is a probe, so it happens first.
-    let decision = match read_head(&mut stream, shared.config.max_head_bytes) {
+    let decision = match read_head(&mut stream, shared.config.max_head_bytes, head_deadline) {
         Ok(head) => dispatch(&head, shared),
         Err(code) => Decision::refused(code),
     };
-    write_outcome(&mut stream, &decision.outcome, decision.head_only);
+    write_outcome(
+        &mut stream,
+        &decision.outcome,
+        decision.head_only,
+        Instant::now() + timeout,
+    );
     drop(stream.shutdown(Shutdown::Both));
 }
 
-/// Reads exactly the request head, bounded and without ever reading a body.
-fn read_head(stream: &mut TcpStream, limit: usize) -> Result<String, RefusalCode> {
+/// Reads exactly the request head, bounded in size and in time, and without ever reading a body.
+fn read_head(
+    stream: &mut TcpStream,
+    limit: usize,
+    deadline: Instant,
+) -> Result<String, RefusalCode> {
     let mut buffer: Vec<u8> = Vec::new();
     let mut chunk = [0_u8; READ_CHUNK];
     loop {
@@ -265,6 +275,11 @@ fn read_head(stream: &mut TcpStream, limit: usize) -> Result<String, RefusalCode
         let room = limit.saturating_sub(buffer.len()).min(READ_CHUNK);
         if room == 0 {
             return Err(RefusalCode::RequestTooLarge);
+        }
+        // Each read waits only for what is left of the deadline, so the head as a whole is bounded.
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            return Err(RefusalCode::RequestMalformed);
         }
         match stream.read(&mut chunk[..room]) {
             // A peer that stops early, times out or resets never delivered a head.
@@ -459,7 +474,7 @@ fn status_body(status: &str) -> String {
     writer.finish()
 }
 
-fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool) {
+fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, deadline: Instant) {
     let (status, body, code) = match outcome {
         Outcome::Served(body) => (200, body.clone(), None),
         Outcome::Probe(status, body) => (*status, body.clone(), None),
@@ -481,13 +496,30 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool) {
         head.push_str("allow: GET, HEAD\r\n");
     }
     head.push_str("\r\n");
-    if stream.write_all(head.as_bytes()).is_err() {
+    if !write_by(stream, head.as_bytes(), deadline) {
         return;
     }
     if !head_only {
-        drop(stream.write_all(body.as_bytes()));
+        write_by(stream, body.as_bytes(), deadline);
     }
-    drop(stream.flush());
+}
+
+/// Writes all of `bytes` before `deadline`, or gives up. A peer that stops reading cannot hold
+/// the connection past the deadline, so it cannot hold a graceful stop either.
+fn write_by(stream: &mut TcpStream, mut bytes: &[u8], deadline: Instant) -> bool {
+    while !bytes.is_empty() {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_write_timeout(Some(left)).is_err() {
+            return false;
+        }
+        match stream.write(bytes) {
+            Ok(0) => return false,
+            Ok(written) => bytes = &bytes[written..],
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(_) => return false,
+        }
+    }
+    true
 }
 
 fn refusal_body(code: RefusalCode) -> String {

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.Thinking",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
+    "contract_digest": "slice-sha256/2:fa1f9aa9606455f509cff28c68bd6c10ed520372ca5e0a53909c725da6956174",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.Thinking": {
+      "title": "Thinking",
+      "x-ess-name": "llm-gateway.deployment.Thinking",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "On",
+        "Off"
+      ]
+    }
+  }
+}

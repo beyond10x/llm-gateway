@@ -2,12 +2,30 @@
 format: aep.planning-md/3
 id: story:wire-relay
 kind: story
-status: draft
+status: active
 title: llm-gateway relays the chat, responses and messages wires as llmgw does
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-revision: 1
+scope:
+- confidence: inferred
+  path: README.md
+- confidence: inferred
+  path: checks/conformance
+- confidence: inferred
+  path: contracts
+- confidence: inferred
+  path: crates/llm-gateway
+- confidence: inferred
+  path: crates/llm-gateway-cli
+- confidence: inferred
+  path: docs
+- confidence: inferred
+  path: spec
+revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-05T13:11:10Z", actor: "human:timo", revision: 2}
+- {from: "proposed", to: "active", at: "2026-10-05T13:11:11Z", actor: "human:timo", revision: 3}
 ---
 ## Outcome
 

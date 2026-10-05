@@ -1,21 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$ref": "#/$defs/llm-gateway.runpod.ExecutionObservation.State",
+  "$ref": "#/$defs/llm-gateway.deployment.CloudType",
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
     "source_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
-    "contract_digest": "slice-sha256/2:6512a68c52596495a75d98ef3acabd03448e63b1a2015d715e8006c6362b0818",
+    "contract_digest": "slice-sha256/2:11af451c09c13e2d8e1e8fd2e080b65ff7214bddae9ae86484819a5ebab3f6bf",
     "regenerate": "ess generate"
   },
   "$defs": {
-    "llm-gateway.runpod.ExecutionObservation.State": {
-      "title": "State",
-      "x-ess-name": "llm-gateway.runpod.ExecutionObservation.State",
+    "llm-gateway.deployment.CloudType": {
+      "title": "CloudType",
+      "x-ess-name": "llm-gateway.deployment.CloudType",
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Observed"
+        "Secure",
+        "Community"
       ]
     }
   }

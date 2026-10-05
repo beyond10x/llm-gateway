@@ -1,21 +1,22 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$ref": "#/$defs/llm-gateway.runpod.ExecutionObservation.State",
+  "$ref": "#/$defs/llm-gateway.deployment.StopSignal",
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
     "source_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
-    "contract_digest": "slice-sha256/2:6512a68c52596495a75d98ef3acabd03448e63b1a2015d715e8006c6362b0818",
+    "contract_digest": "slice-sha256/2:2f847a6967abaf69a12ea30bf3f3f8c87c3bbb87f6512aa569312d3eea1762ca",
     "regenerate": "ess generate"
   },
   "$defs": {
-    "llm-gateway.runpod.ExecutionObservation.State": {
-      "title": "State",
-      "x-ess-name": "llm-gateway.runpod.ExecutionObservation.State",
+    "llm-gateway.deployment.StopSignal": {
+      "title": "StopSignal",
+      "x-ess-name": "llm-gateway.deployment.StopSignal",
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Observed"
+        "Sigint",
+        "Sigterm"
       ]
     }
   }

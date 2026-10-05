@@ -1,0 +1,298 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "GatewayProcess",
+  "x-ess-name": "llm-gateway.deployment.GatewayProcess",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "process_id": {
+      "type": "string"
+    },
+    "configuration": {
+      "$ref": "#/$defs/llm-gateway.deployment.DeploymentConfiguration"
+    },
+    "configuration_digest": {
+      "type": "string"
+    },
+    "refusal": {
+      "$ref": "#/$defs/llm-gateway.deployment.StartupRefusal"
+    },
+    "listening": {
+      "type": "string"
+    },
+    "stopped_by": {
+      "$ref": "#/$defs/llm-gateway.deployment.StopSignal"
+    },
+    "shutdown": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.deployment.GatewayProcess.State"
+    }
+  },
+  "required": [
+    "process_id",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
+    "contract_digest": "slice-sha256/2:bee2f1602ebf78138743a0c2b4ca27b6abead740e0cc6fcda8036f8b826fc53f",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.CloudType": {
+      "title": "CloudType",
+      "x-ess-name": "llm-gateway.deployment.CloudType",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Secure",
+        "Community"
+      ]
+    },
+    "llm-gateway.deployment.DeploymentConfiguration": {
+      "title": "DeploymentConfiguration",
+      "x-ess-name": "llm-gateway.deployment.DeploymentConfiguration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "listen": {
+          "type": "string"
+        },
+        "owner_secret_file": {
+          "type": "string"
+        },
+        "providers": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.ProviderDeclaration"
+          },
+          "x-ess-map-key": "String"
+        },
+        "models": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.ModelDeclaration"
+          },
+          "x-ess-map-key": "String"
+        }
+      },
+      "required": [
+        "listen",
+        "owner_secret_file",
+        "providers",
+        "models"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.GatewayProcess.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.deployment.GatewayProcess.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    },
+    "llm-gateway.deployment.ModelDeclaration": {
+      "title": "ModelDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ModelDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "wires": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/llm-gateway.deployment.Wire"
+          }
+        },
+        "context_window": {
+          "type": "integer"
+        },
+        "hf_model": {
+          "type": "string"
+        },
+        "image": {
+          "type": "string"
+        },
+        "gpu_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_model_len": {
+          "type": "integer"
+        },
+        "max_num_seqs": {
+          "type": "integer"
+        },
+        "gpu_util": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "disk_gb": {
+          "type": "integer"
+        },
+        "thinking": {
+          "$ref": "#/$defs/llm-gateway.deployment.Thinking"
+        },
+        "reasoning_effort": {
+          "$ref": "#/$defs/llm-gateway.deployment.ReasoningEffort"
+        },
+        "sampling": {
+          "type": "string"
+        },
+        "extra_vllm_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "network_volume_id": {
+          "type": "string"
+        },
+        "volume_mount_path": {
+          "type": "string"
+        },
+        "data_center_ids": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "idle_timeout_minutes": {
+          "type": "integer"
+        },
+        "start_wait_seconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "provider",
+        "wires",
+        "context_window",
+        "hf_model",
+        "image",
+        "gpu_types",
+        "max_model_len",
+        "max_num_seqs",
+        "gpu_util",
+        "disk_gb",
+        "thinking",
+        "extra_vllm_args",
+        "volume_mount_path",
+        "data_center_ids",
+        "idle_timeout_minutes",
+        "start_wait_seconds"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.ProviderDeclaration": {
+      "title": "ProviderDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ProviderDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "kind": {
+          "$ref": "#/$defs/llm-gateway.deployment.ProviderKind"
+        },
+        "cloud_type": {
+          "$ref": "#/$defs/llm-gateway.deployment.CloudType"
+        }
+      },
+      "required": [
+        "kind",
+        "cloud_type"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.ProviderKind": {
+      "title": "ProviderKind",
+      "x-ess-name": "llm-gateway.deployment.ProviderKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "RunpodVllm"
+      ]
+    },
+    "llm-gateway.deployment.ReasoningEffort": {
+      "title": "ReasoningEffort",
+      "x-ess-name": "llm-gateway.deployment.ReasoningEffort",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Low",
+        "Medium",
+        "High",
+        "Xhigh"
+      ]
+    },
+    "llm-gateway.deployment.StartupRefusal": {
+      "title": "StartupRefusal",
+      "x-ess-name": "llm-gateway.deployment.StartupRefusal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "ConfigUnreadable",
+        "ConfigSymlink",
+        "ConfigNotRegular",
+        "ConfigUntrustedOwner",
+        "ConfigUnsafeMode",
+        "ConfigTooLarge",
+        "ConfigNotUtf8",
+        "ConfigSchema",
+        "ConfigValue",
+        "OwnerSecretUnreadable",
+        "OwnerSecretSymlink",
+        "OwnerSecretNotRegular",
+        "OwnerSecretUntrustedOwner",
+        "OwnerSecretUnsafeMode",
+        "OwnerSecretTooLarge",
+        "OwnerSecretNotUtf8",
+        "OwnerSecretNotAToken",
+        "OwnerSecretTooShort",
+        "ListenBind",
+        "SignalInstall"
+      ]
+    },
+    "llm-gateway.deployment.StopSignal": {
+      "title": "StopSignal",
+      "x-ess-name": "llm-gateway.deployment.StopSignal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Sigint",
+        "Sigterm"
+      ]
+    },
+    "llm-gateway.deployment.Thinking": {
+      "title": "Thinking",
+      "x-ess-name": "llm-gateway.deployment.Thinking",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "On",
+        "Off"
+      ]
+    },
+    "llm-gateway.deployment.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.deployment.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    }
+  }
+}

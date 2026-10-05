@@ -1,0 +1,160 @@
+domain: llm-gateway.deployment
+
+# The `b10x-llm-gateway` binary (crates/llm-gateway-cli): one process that reads one closed TOML
+# deployment document through a trusted-file reader, composes the llm-gateway.gateway `Gateway`
+# from it, serves, and stops gracefully on SIGINT or SIGTERM. It replaces llmgw's `llmgw` binary
+# (llmgw `src/main.rs:14-96` at 048ebd8; docs/llmgw-capability-matrix.md rows C1, C2, C4, C5,
+# K29, K30, D2).
+#
+# The command line is closed: `--config <CONFIG>`, `-h`/`--help`, `-V`/`--version`, no
+# subcommand and no positional argument. llmgw's `--insecure` (C3) has no counterpart: the gateway
+# authenticates every request outside its two probes, so the document names the owner secret
+# instead.
+#
+# What the process writes to standard error, one line each:
+#   `b10x-llm-gateway: listening on <address>` once the gateway is bound and marked ready;
+#   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
+#   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
+#   stop (exit status 0). A command-line error is clap's (exit status 2).
+#
+# DEFERRED: the document carries no `runpod_api_key_file` (row K7) and no `[identity]` (rows
+# K2-K4, not needed); the closed document refuses both until the story that reads a provider key
+# lands. Nothing in the binary provisions a pod or relays a model call yet (rows B, L and W).
+# ESS-LIMIT: the binary is observed by the crate's row-named process tests
+# (crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/config.rs), not by a
+# conformance command: a signal, a file mode and a symlink are process-environment facts the
+# fixture-program targets in checks/conformance do not model.
+types:
+  # Why startup is refused, reported as `<source>:<rule>`. Sources are `config` (the deployment
+  # document), `owner-secret` (the file `owner_secret_file` names), `listen` and `signal`.
+  #
+  # The trusted-file rules apply to both files (llmgw `src/trusted.rs:21-42`): the file is opened
+  # once without following a final symlink and every check reads that handle.
+  #   `<source>:unreadable`     the file cannot be opened (absent, no permission)
+  #   `<source>:symlink`        the final path component is a symbolic link
+  #   `<source>:not-regular`    the handle is not a regular file
+  #   `<source>:untrusted-owner` owned by neither the effective user nor root
+  #   `<source>:unsafe-mode`    `config`: group- or world-writable (mode & 0o022, as llmgw);
+  #                             `owner-secret`: any group or world permission (mode & 0o077),
+  #                             because it is a credential
+  #   `<source>:too-large`      `config` over 262144 bytes (256 KiB, llmgw `src/config.rs:16`),
+  #                             `owner-secret` over 4096 bytes (llmgw `src/config.rs:17`); the
+  #                             bound is also enforced on the bytes read, so a file that grows
+  #                             after the check is refused
+  #   `<source>:not-utf8`       the bytes are not UTF-8
+  # Document rules:
+  #   `config:schema`  not TOML, or not the closed DeploymentConfiguration: an unknown key at
+  #                    any level, a missing required key, or a value of the wrong type
+  #   `config:value`   a value outside its rule (the ranges on the types below)
+  # Owner secret rules, after trailing whitespace is trimmed:
+  #   `owner-secret:not-a-token`  empty, or not one printable ASCII token (`token:<rule>` of
+  #                               llm-gateway.gateway.CompositionRefusal)
+  #   `owner-secret:too-short`    under 32 bytes (`verifier:secret-too-short`)
+  # Process rules:
+  #   `listen:bind`     the listen address cannot be bound
+  #   `signal:install`  SIGINT and SIGTERM handlers cannot be installed
+  - name: llm-gateway.deployment.StartupRefusal
+    kind: enum
+    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, ListenBind, SignalInstall]
+  # The signal that ended a served process.
+  - name: llm-gateway.deployment.StopSignal
+    kind: enum
+    variants: [Sigint, Sigterm]
+  # `providers.<name>.kind`: only `runpod-vllm` (llmgw `src/config.rs:50-54`).
+  - name: llm-gateway.deployment.ProviderKind
+    kind: enum
+    variants: [RunpodVllm]
+  # `cloud_type`: `SECURE` or `COMMUNITY`, default `SECURE`; maps onto llm_runpod::CloudType.
+  - name: llm-gateway.deployment.CloudType
+    kind: enum
+    variants: [Secure, Community]
+  # `wires` entries: `chat`, `responses`, `messages` (llmgw `src/config.rs:56-64`).
+  - name: llm-gateway.deployment.Wire
+    kind: enum
+    variants: [Chat, Responses, Messages]
+  # `thinking`: `on` or `off`, default `off`; maps onto llm_runpod::Thinking.
+  - name: llm-gateway.deployment.Thinking
+    kind: enum
+    variants: [On, Off]
+  # `reasoning_effort`: the closed set llmgw accepts (llmgw `src/config.rs:18`).
+  - name: llm-gateway.deployment.ReasoningEffort
+    kind: enum
+    variants: [Low, Medium, High, Xhigh]
+  # `[providers.<name>]`. The name is 1..=64 of `a-z 0-9 - _ .` without a leading dash
+  # (`config:value`).
+  - name: llm-gateway.deployment.ProviderDeclaration
+    kind: struct
+    fields:
+      - {name: kind, type: llm-gateway.deployment.ProviderKind}
+      - {name: cloud_type, type: llm-gateway.deployment.CloudType}
+  # `[models.<alias>]`, llmgw `ModelConfig` (`src/config.rs:95-136`) and its rules
+  # (`src/config.rs:244-342`), every one `config:value`. The alias follows the provider-name rule.
+  # ESS-LIMIT: the ranges are not struct invariants: synthesis refuses an invariant no view can
+  # observe (ESS-SYNTH-013), and no entity publishes a ModelDeclaration outside a Map. The crate
+  # tests named `k29_*` prove them.
+  #   provider              names a declared provider
+  #   wires                 non-empty, no repeat
+  #   context_window        4096..=2000000
+  #   hf_model, image       1..=200 printable ASCII
+  #   gpu_types             1..=16 entries, each 1..=64 printable ASCII, tried in order
+  #   max_model_len         1024..=context_window
+  #   max_num_seqs          1..=1024, default 8
+  #   gpu_util              0.1..=1.0, default 0.90
+  #   disk_gb               10..=2000, default 80
+  #   thinking              default off
+  #   sampling              a JSON object, as text
+  #   extra_vllm_args       at most 64, each 1..=256 printable ASCII
+  #   network_volume_id     1..=64 ASCII alphanumerics; requires data_center_ids
+  #   volume_mount_path     absolute, no trailing slash, at most 128 of `A-Za-z0-9 / - _`,
+  #                         default `/workspace`
+  #   data_center_ids       at most 16, each 2..=32 of `A-Z 0-9 -`
+  #   idle_timeout_minutes  0..=1440, default 30
+  #   start_wait_seconds    10..=3600, default 600
+  - name: llm-gateway.deployment.ModelDeclaration
+    kind: struct
+    fields:
+      - {name: provider, type: String}
+      - {name: wires, type: 'List<llm-gateway.deployment.Wire>'}
+      - {name: context_window, type: Integer}
+      - {name: hf_model, type: String}
+      - {name: image, type: String}
+      - {name: gpu_types, type: 'List<String>'}
+      - {name: max_model_len, type: Integer}
+      - {name: max_num_seqs, type: Integer}
+      - {name: gpu_util, type: Decimal}
+      - {name: disk_gb, type: Integer}
+      - {name: thinking, type: llm-gateway.deployment.Thinking}
+      - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.ReasoningEffort>'}
+      - {name: sampling, type: 'Optional<String>'}
+      - {name: extra_vllm_args, type: 'List<String>'}
+      - {name: network_volume_id, type: 'Optional<String>'}
+      - {name: volume_mount_path, type: String}
+      - {name: data_center_ids, type: 'List<String>'}
+      - {name: idle_timeout_minutes, type: Integer}
+      - {name: start_wait_seconds, type: Integer}
+  # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
+  # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
+  # becomes the gateway's shared-secret owner verifier; at least one model is required. Each
+  # model alias is served as one route of the inspection inventory, one target per wire, whose
+  # `config_digest` is the SHA-256 of the exact document bytes read.
+  - name: llm-gateway.deployment.DeploymentConfiguration
+    kind: struct
+    fields:
+      - {name: listen, type: String}
+      - {name: owner_secret_file, type: String}
+      - {name: providers, type: 'Map<String, llm-gateway.deployment.ProviderDeclaration>'}
+      - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
+entities:
+  # One run of the binary. A refused start has a `refusal` and no `listening`; a served run has
+  # `listening`, and `stopped_by` once a signal ended it.
+  - name: llm-gateway.deployment.GatewayProcess
+    identity: {name: process_id, type: String}
+    fields:
+      - {name: configuration, type: 'Optional<llm-gateway.deployment.DeploymentConfiguration>'}
+      - {name: configuration_digest, type: 'Optional<String>'}
+      - {name: refusal, type: 'Optional<llm-gateway.deployment.StartupRefusal>'}
+      - {name: listening, type: 'Optional<String>'}
+      - {name: stopped_by, type: 'Optional<llm-gateway.deployment.StopSignal>'}
+      # The graceful stop's report, as `accepted=<n> completed=<n>`.
+      - {name: shutdown, type: 'Optional<String>'}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}

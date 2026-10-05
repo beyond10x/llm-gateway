@@ -5,6 +5,7 @@ members = [
     "crates/llm-runpod",
     "crates/llm-modal",
     "crates/llm-gateway",
+    "crates/llm-gateway-cli",
     "checks/conformance",
 ]
 

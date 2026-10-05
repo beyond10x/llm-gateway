@@ -1,0 +1,23 @@
+[package]
+name = "b10x-llm-gateway-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "The b10x-llm-gateway binary: one closed TOML deployment document, one gateway, a clean stop."
+
+[lib]
+name = "llm_gateway_cli"
+
+[lints]
+workspace = true
+
+[dependencies]
+llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
+llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
+
+[dev-dependencies]
+rustix = { version = "1.1", features = ["process"] }
+sha2.workspace = true

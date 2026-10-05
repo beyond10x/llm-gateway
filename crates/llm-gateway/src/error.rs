@@ -100,6 +100,10 @@ refusal_codes! {
     /// A relayed request body over its byte bound, declared or decoded.
     BodyTooLarge => "body-too-large", 413,
         "the request body exceeds its byte bound";
+    /// A relayed request body that ended, or stalled past the read timeout, before it was
+    /// complete.
+    BodyIncomplete => "body-incomplete", 400,
+        "the request body ended or stalled before it was complete";
     /// A relayed request body that is not one JSON object.
     BodyNotJson => "body-not-json", 400,
         "the request body is not one JSON object";
@@ -124,9 +128,10 @@ refusal_codes! {
     /// No such resource on this gateway.
     PathUnknown => "path-unknown", 404,
         "no such gateway resource";
-    /// The request head is not HTTP this gateway parses.
+    /// The request is not HTTP this gateway parses: its head, or the chunked framing of a relayed
+    /// body.
     RequestMalformed => "request-malformed", 400,
-        "the request head is not well-formed";
+        "the request is not well-formed HTTP";
     /// The request head exceeds its configured bound.
     RequestTooLarge => "request-too-large", 431,
         "the request head exceeds its byte bound";

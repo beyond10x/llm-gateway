@@ -544,6 +544,13 @@ fn provoke(code: RefusalCode) -> Provocation {
             ),
             ..relayed(chat, "")
         },
+        // Two of the 64 declared bytes, then nothing: the body stalls past the read timeout.
+        RefusalCode::BodyIncomplete => Provocation {
+            raw: format!(
+                "POST {chat} HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\ncontent-length: 64\r\n\r\n{{}}"
+            ),
+            ..relayed(chat, "")
+        },
         RefusalCode::BodyNotJson => relayed(chat, "nope"),
         RefusalCode::ModelAbsent => relayed(chat, "{}"),
         RefusalCode::ModelUnknown => relayed(chat, "{\"model\":\"other\"}"),

@@ -56,6 +56,7 @@
       "llm-gateway.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods",
       "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread",
       "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed",
+      "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete",
       "llm-gateway.gateway/authored/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes",
       "llm-gateway.gateway/authored/w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused",
       "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged",
@@ -451,6 +452,11 @@
         "digest": "sha256:5ac8e1b6f81a90f931f0d863a571865da33a47cdd67a2807d5741720e7135a7c",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed"
+      },
+      "gateway/scenarios/w1-a-body-shorter-than-its-declared-length-is-incomplete.yaml": {
+        "digest": "sha256:7f83911cb3637b59130511184b6dc1c1ea52abde0f08282086923f49ed7514e9",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete"
       },
       "gateway/scenarios/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes.yaml": {
         "digest": "sha256:10483fc1659ebe1c34a5c3390d44334fb0fdf6c1f21962ed10346847644b8e09",
@@ -1049,7 +1055,7 @@
       }
     },
     "counts": {
-      "authored": 174,
+      "authored": 175,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1074,8 +1080,8 @@
     }
   },
   "provenance": {
-    "contract_digest": "4bf0b5deaecc432bcfd7c3b587ff04ddc003525f0da1c4c6ecde04b90c845519",
-    "spec_digest": "6f09c0516be3301fd5c5e44262d29644c94919fb8f31edbe7e776f46a0ff6bcc",
+    "contract_digest": "03d8cf5a8220020adce40ad9622fa1d4d58a0aebdf445702bb2bd2e6e11f18e4",
+    "spec_digest": "59ceae264b5525b1ca40921d23433c7fedb00bf63c1c73ae81026850e99e8243",
     "specification_version": "v1",
     "suite_version": "ess-conformance/5",
     "system": "llm-gateway"
@@ -5790,6 +5796,102 @@
                 "value": [
                   "pod-1 POST /v1/chat/completions 33554439 bytes"
                 ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete": {
+      "purpose": "a body that ends before its declared content-length is body-incomplete, not a malformed head, and no target is asked for",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"\",\"declare_bytes\":64},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"\",\"declare_bytes\":1}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"body-incomplete\",\"message\":\"the request body ended or stalled before it was complete\"}}",
+                  "{\"error\":{\"code\":\"body-incomplete\",\"message\":\"the request body ended or stalled before it was complete\"}}"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 body-incomplete",
+                  "400 body-incomplete"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
               },
               "valid_program": {
                 "kind": "literal",

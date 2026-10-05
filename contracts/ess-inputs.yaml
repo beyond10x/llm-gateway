@@ -175,3 +175,4 @@ scenarios:
 - gateway/scenarios/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint.yaml
 - gateway/scenarios/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement.yaml
 - gateway/scenarios/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502.yaml
+- gateway/scenarios/w1-a-body-shorter-than-its-declared-length-is-incomplete.yaml

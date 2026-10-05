@@ -131,8 +131,13 @@ A request to a wire path is decided in this order:
 2. `POST` only (`method-not-allowed`, `allow: POST`), and `unavailable` before `mark_ready`.
 3. The body: `content-length` or `transfer-encoding: chunked`, nothing else
    (`request-malformed`). A declared length over `request-body-bytes` is `body-too-large` before a
-   byte is read; a chunked body is refused the moment its decoded size would pass the bound. The
-   whole body is read under one `read_timeout` deadline. `expect: 100-continue` is answered.
+   byte is read; a chunked body is refused the moment its decoded size would pass the bound. A
+   chunk size is `1*HEXDIG` and an optional extension after `;`, as RFC 9112 section 7.1 has it;
+   anything else is `request-malformed`. The trailer section of a chunked body counts against
+   `request-head-bytes` and is `request-too-large` past it. The whole body is read under one
+   `read_timeout` deadline, and a body that ends or stalls before it is complete is
+   `body-incomplete`. `expect: 100-continue` is answered for HTTP/1.1. A head holding a CR, LF
+   or NUL anywhere but its line ends is `request-malformed` (RFC 9110 section 5.5).
 4. One well-formed UTF-8 JSON object (`body-not-json`), with exactly one top-level `model`
    string (`model-absent`; a second top-level `model` is `body-not-json`, because the target
    could read the other), naming a relayed model after unescaping (`model-unknown`).
@@ -152,8 +157,12 @@ A request to a wire path is decided in this order:
    the model's own answer and is relayed.
 9. The target's status, its `content-type` and its decoded body bytes are relayed as they
    arrive, as `transfer-encoding: chunked` with `cache-control: no-store`; an answer cut short
-   on either side ends without its last chunk, so the client sees it cut. The target is held
-   until the last byte is relayed, then released.
+   on either side ends without its last chunk, so the client sees it cut. An HTTP/1.0 client
+   may not be sent a chunked answer (RFC 9112 section 6.1), so it gets the bytes unframed and
+   the end of the answer is the end of the connection. The target is held until the last byte
+   is relayed, then released. Every head the target sends, interim `1xx` heads included, comes
+   out of one `request-head-bytes` budget, and so does its trailer section, so a target cannot
+   grow the gateway's memory.
 
 A refused relay closes gracefully: the refusal is written, the write side closed, and what the
 client still sends is read and discarded (up to `request-body-bytes`, within `read_timeout`), so
@@ -171,6 +180,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 
 | Code | Status | Message |
 | --- | --- | --- |
+| `body-incomplete` | 400 | the request body ended or stalled before it was complete |
 | `body-not-allowed` | 400 | the inspection surface accepts no request body |
 | `credential-absent` | 401 | no owner credential was presented |
 | `credential-malformed` | 401 | the owner credential is not a bearer token |
@@ -182,7 +192,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `model-unknown` | 404 | no such model |
 | `overloaded` | 503 | the gateway is already serving its maximum concurrent requests |
 | `path-unknown` | 404 | no such gateway resource |
-| `request-malformed` | 400 | the request head is not well-formed |
+| `request-malformed` | 400 | the request is not well-formed HTTP |
 | `request-too-large` | 431 | the request head exceeds its byte bound |
 | `route-unknown` | 404 | no such route alias |
 | `target-unavailable` | 503 | no model target is available |

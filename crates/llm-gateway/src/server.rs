@@ -392,11 +392,21 @@ impl Decision {
 struct Request<'a> {
     method: &'a str,
     path: &'a str,
+    /// `HTTP/1.0`, which takes neither a chunked answer nor an interim `100 Continue`.
+    http_1_0: bool,
     headers: Vec<(String, &'a str)>,
 }
 
 impl<'a> Request<'a> {
     fn parse(head: &'a str) -> Result<Self, RefusalCode> {
+        // RFC 9110 section 5.5: CR, LF and NUL are never part of a field. Once the head is split
+        // at its CRLFs, any that remain would let another reader see a line this one does not.
+        if head
+            .split("\r\n")
+            .any(|line| line.bytes().any(|byte| matches!(byte, b'\r' | b'\n' | 0)))
+        {
+            return Err(RefusalCode::RequestMalformed);
+        }
         let mut lines = head.split("\r\n");
         let start = lines.next().ok_or(RefusalCode::RequestMalformed)?;
         let mut parts = start.split(' ');
@@ -442,6 +452,7 @@ impl<'a> Request<'a> {
         Ok(Self {
             method,
             path,
+            http_1_0: version == "HTTP/1.0",
             headers,
         })
     }
@@ -524,9 +535,11 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
         Ok(framing) => Outcome::Relay(Admitted {
             wire,
             framing,
-            expects_continue: request
-                .header("expect")
-                .is_some_and(|value| value.eq_ignore_ascii_case("100-continue")),
+            expects_continue: !request.http_1_0
+                && request
+                    .header("expect")
+                    .is_some_and(|value| value.eq_ignore_ascii_case("100-continue")),
+            chunked_answer: !request.http_1_0,
         }),
         Err(code) => Outcome::Refused(code),
     }
@@ -691,8 +704,28 @@ pub(crate) fn relayed_phrase(status: u16) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{UNKNOWN_PHRASE, reason_phrase};
+    use super::{Request, UNKNOWN_PHRASE, reason_phrase};
     use crate::error::RefusalCode;
+
+    /// RFC 9110 section 5.5: a CR, LF or NUL left inside a line once the head is split at its
+    /// CRLFs is refused wherever it sits, so no other reader can see a line this one does not.
+    #[test]
+    fn a_cr_lf_or_nul_inside_a_head_line_is_malformed() {
+        assert!(Request::parse("POST /v1/messages HTTP/1.1\r\nx-note: a").is_ok());
+        for head in [
+            "POST /v1/messages HTTP/1.1\r\nx-note: a\ntransfer-encoding: chunked",
+            "POST /v1/messages HTTP/1.1\r\nx-note: a\rb",
+            "POST /v1/messages HTTP/1.1\r\nx-note: a\0b",
+            "POST /v1/messages\n HTTP/1.1\r\nx-note: a",
+            "POST /v1/messages HTTP/1.1\r\nx-n\note: a",
+        ] {
+            assert_eq!(
+                Request::parse(head).err(),
+                Some(RefusalCode::RequestMalformed),
+                "{head:?}"
+            );
+        }
+    }
 
     /// The reason phrase is the one property of a refusal the `refusal_codes!` macro does not
     /// generate, because it belongs to the status rather than to the code. A variant added with

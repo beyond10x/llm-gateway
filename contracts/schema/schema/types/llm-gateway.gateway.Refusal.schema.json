@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "6f09c0516be3301fd5c5e44262d29644c94919fb8f31edbe7e776f46a0ff6bcc",
-    "contract_digest": "slice-sha256/2:0320234335281fcf7e6d4d4056ecdf2c0bb5e72d404712f895fa7b30ec6392cc",
+    "source_digest": "59ceae264b5525b1ca40921d23433c7fedb00bf63c1c73ae81026850e99e8243",
+    "contract_digest": "slice-sha256/2:065b85d79df51251157da40c78c6d9d9bc546ea4ba34899e8cd9ff61eaf25dac",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -15,6 +15,7 @@
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
+        "BodyIncomplete",
         "BodyNotAllowed",
         "BodyNotJson",
         "BodyTooLarge",

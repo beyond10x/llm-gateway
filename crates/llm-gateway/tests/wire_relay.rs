@@ -700,7 +700,7 @@ fn relays_on(path: &str, request_body: &str, rewritten: &str, events: &[&str]) {
         );
     }
     assert_eq!(source.acquired(), vec!["code", "code"]);
-    assert!(source.invalidated().is_empty());
+    assert_eq!(source.invalidated(), Vec::<(String, String)>::new());
     assert!(source.released_reaches(2));
 }
 
@@ -771,8 +771,8 @@ fn r6_a_relay_needs_the_owner_credential_and_asks_for_no_target_without_it() {
             "{path}"
         );
     }
-    assert!(source.acquired().is_empty());
-    assert!(pod.seen().is_empty());
+    assert_eq!(source.acquired(), Vec::<String>::new());
+    assert_eq!(pod.seen().len(), 0);
 }
 
 #[test]
@@ -796,8 +796,8 @@ fn r6_a_relay_before_readiness_is_unavailable_and_another_method_is_not_allowed(
         );
         assert_eq!(other.header("allow"), Some("POST"), "{method}");
     }
-    assert!(source.acquired().is_empty());
-    assert!(pod.seen().is_empty());
+    assert_eq!(source.acquired(), Vec::<String>::new());
+    assert_eq!(pod.seen().len(), 0);
 }
 
 #[test]
@@ -857,8 +857,8 @@ fn w1_a_body_declared_one_byte_over_32_mib_is_refused_before_it_is_read() {
             "{\"error\":{\"code\":\"body-too-large\",\"message\":\"the request body exceeds its byte bound\"}}"
         );
     }
-    assert!(source.acquired().is_empty());
-    assert!(pod.seen().is_empty());
+    assert_eq!(source.acquired(), Vec::<String>::new());
+    assert_eq!(pod.seen().len(), 0);
 }
 
 #[test]
@@ -911,8 +911,8 @@ fn w1_a_chunked_body_is_refused_the_moment_it_passes_32_mib() {
 
     let answer = send(gateway.addr, &raw);
     assert_eq!(answer.refused(), (413, Some("body-too-large".into())));
-    assert!(source.acquired().is_empty());
-    assert!(pod.seen().is_empty());
+    assert_eq!(source.acquired(), Vec::<String>::new());
+    assert_eq!(pod.seen().len(), 0);
 }
 
 // --- W2: the model rewrite -------------------------------------------------------------------
@@ -993,11 +993,12 @@ fn refuses_all(bodies: &[&[u8]], status: u16, code: &str, message: &str) {
             assert_eq!(answer.header("cache-control"), Some("no-store"));
         }
     }
-    assert!(
-        source.acquired().is_empty(),
+    assert_eq!(
+        source.acquired(),
+        Vec::<String>::new(),
         "a refused request woke a target"
     );
-    assert!(pod.seen().is_empty());
+    assert_eq!(pod.seen().len(), 0);
 }
 
 #[test]
@@ -1396,7 +1397,7 @@ fn w7_a_model_error_is_relayed_with_its_body_and_keeps_the_endpoint() {
         assert_eq!(answer.status, status);
         assert_eq!(answer.text(), body);
     }
-    assert!(source.invalidated().is_empty());
+    assert_eq!(source.invalidated(), Vec::<(String, String)>::new());
     assert_eq!(pod.seen().len(), 4);
 }
 
@@ -1435,8 +1436,9 @@ fn k11_a_wire_the_model_does_not_declare_is_refused_without_asking_for_a_target(
             "{\"error\":{\"code\":\"wire-not-served\",\"message\":\"the model is not served on this wire\"}}"
         );
     }
-    assert!(
-        source.acquired().is_empty(),
+    assert_eq!(
+        source.acquired(),
+        Vec::<String>::new(),
         "an undeclared wire woke a target"
     );
 

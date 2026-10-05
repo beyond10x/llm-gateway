@@ -22,8 +22,11 @@ types:
   # The closed refusal set, with the wire code, status and fixed message the crate publishes
   # (crates/llm-gateway/src/error.rs:99-133).
   #
-  # The relay adds seven (rows W1, W3, W7, K11), each `{"error":{"code":..,"message":..}}` like
+  # The relay adds eight (rows W1, W3, W7, K11), each `{"error":{"code":..,"message":..}}` like
   # every other refusal, with this fixed message:
+  #   body-incomplete     400  a body that ended, or stalled past the read timeout, before it was
+  #                            complete: "the request body ended or stalled before it was
+  #                            complete"
   #   body-too-large      413  a request body over 33554432 bytes (32 MiB), declared or decoded:
   #                            "the request body exceeds its byte bound"
   #   body-not-json       400  the body is not one JSON object:
@@ -43,7 +46,7 @@ types:
   # its own published refusal shape and codes, so a client reads `error.code`, not `error.type`.
   - name: llm-gateway.gateway.Refusal
     kind: enum
-    variants: [BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
+    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
   # A wire the gateway relays, each on its own path, to the same path at the target (rows R6-R8):
   # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
   # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
@@ -121,7 +124,11 @@ entities:
   #   3. W1: the body is bounded at 33554432 bytes (32 MiB; llmgw src/lib.rs:35). A
   #      `content-length` over the bound is `body-too-large` before a byte is read; a chunked
   #      body is decoded and refused the moment its decoded size passes the bound. Exactly
-  #      33554432 bytes are relayed.
+  #      33554432 bytes are relayed. A chunk size is `1*HEXDIG` with an optional extension after
+  #      `;` (RFC 9112 section 7.1), else `request-malformed`, which also names a head holding a
+  #      CR, LF or NUL inside a line (RFC 9110 section 5.5). A chunked body's trailer section
+  #      counts against the head bound (`request-too-large`). A body that ends or stalls before
+  #      it is complete is `body-incomplete`.
   #   4. W3: the body must be one well-formed UTF-8 JSON object (`body-not-json`) with exactly
   #      one top-level `model` key whose value is a string (`model-absent`; a second top-level
   #      `model` is `body-not-json`, because the target could read the other one), naming a
@@ -146,7 +153,10 @@ entities:
   #      status, 500 and 4xx included, is relayed and the target is kept.
   #   9. W5: the target's status, its `content-type` and its decoded body bytes reach the client
   #      unchanged and as they arrive, event streams included, with `cache-control: no-store`.
-  #      The target is held until the last byte is relayed (row L12), then released.
+  #      The target is held until the last byte is relayed (row L12), then released. An HTTP/1.0
+  #      client is not sent a chunked answer (RFC 9112 section 6.1): it gets the bytes unframed,
+  #      ended by closing the connection. Every head the target sends, interim 1xx heads
+  #      included, and its trailer section share one head-sized budget.
   - name: llm-gateway.gateway.RelayObservation
     identity: {name: observation_id, type: String}
     fields: &relay_facts

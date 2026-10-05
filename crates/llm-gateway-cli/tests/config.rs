@@ -55,10 +55,10 @@ fn k29_the_llmgw_defaults_apply() {
     assert_eq!(model.vllm.thinking, Thinking::Off);
     assert_eq!(model.vllm.reasoning_effort, None);
     assert_eq!(model.vllm.sampling, None);
-    assert!(model.vllm.extra_args.is_empty());
+    assert_eq!(model.vllm.extra_args, Vec::<String>::new());
     assert_eq!(model.disk_gb, 80);
     assert_eq!(model.cache, None);
-    assert!(model.data_center_ids.is_empty());
+    assert_eq!(model.data_center_ids, Vec::<String>::new());
     assert_eq!(model.idle_timeout_minutes, 30);
     assert_eq!(model.start_wait_seconds, 600);
 }

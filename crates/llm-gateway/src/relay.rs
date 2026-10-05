@@ -185,6 +185,9 @@ pub(crate) struct Admitted {
     pub(crate) wire: Wire,
     pub(crate) framing: Framing,
     pub(crate) expects_continue: bool,
+    /// The client asked in HTTP/1.1 or later, so its answer may be chunked. An HTTP/1.0 client
+    /// is sent the answer unframed, ended by closing the connection (RFC 9112 section 6.1).
+    pub(crate) chunked_answer: bool,
 }
 
 /// Decides the body framing from the head (row W1).
@@ -230,10 +233,11 @@ impl Buffered<'_> {
         &self.buffer[self.start..]
     }
 
-    /// Reads more. `Ok(false)` is the end of the stream.
+    /// Reads more. `Ok(false)` is the end of the stream. Bytes already consumed are dropped
+    /// first, so the buffer never holds more than what is unread plus one read.
     fn fill(&mut self) -> io::Result<bool> {
-        if self.start == self.buffer.len() {
-            self.buffer.clear();
+        if self.start > 0 {
+            self.buffer.drain(..self.start);
             self.start = 0;
         }
         let mut chunk = [0_u8; RELAY_CHUNK];
@@ -263,7 +267,8 @@ impl Buffered<'_> {
         Ok(taken)
     }
 
-    /// One line without its CRLF, of at most `limit` bytes.
+    /// One line without its CRLF, of at most `limit` bytes. A longer line is `FileTooLarge`, one
+    /// that is not UTF-8 is `InvalidData`, and a stream that ends first is `UnexpectedEof`.
     fn line(&mut self, limit: usize) -> io::Result<String> {
         loop {
             if let Some(end) = self.available().windows(2).position(|pair| pair == b"\r\n") {
@@ -272,8 +277,11 @@ impl Buffered<'_> {
                 self.start += end + 2;
                 return Ok(line);
             }
-            if self.available().len() >= limit + 2 || !self.fill()? {
-                return Err(io::ErrorKind::InvalidData.into());
+            if self.available().len() >= limit + 2 {
+                return Err(io::ErrorKind::FileTooLarge.into());
+            }
+            if !self.fill()? {
+                return Err(io::ErrorKind::UnexpectedEof.into());
             }
         }
     }
@@ -287,22 +295,69 @@ impl Buffered<'_> {
     }
 }
 
-/// A chunk-size line: hex digits and an ignored extension.
+/// A chunk-size line (RFC 9112 section 7.1): `1*HEXDIG`, then nothing or an ignored chunk
+/// extension after optional whitespace and `;`. A size past `u64` reads as `u64::MAX`, which
+/// every bound refuses.
 fn chunk_size(line: &str) -> io::Result<u64> {
-    let digits = line.split(';').next().unwrap_or_default().trim();
-    if digits.is_empty() || digits.len() > 16 {
-        return Err(io::ErrorKind::InvalidData.into());
+    let invalid = || io::Error::from(io::ErrorKind::InvalidData);
+    let end = line
+        .bytes()
+        .position(|byte| !byte.is_ascii_hexdigit())
+        .unwrap_or(line.len());
+    let (digits, rest) = line.split_at(end);
+    // Whitespace is allowed only before the `;` of an extension (BWS), never alone.
+    let extension = rest.trim_start_matches([' ', '\t']);
+    if digits.is_empty() || !(rest.is_empty() || extension.starts_with(';')) {
+        return Err(invalid());
     }
-    u64::from_str_radix(digits, 16).map_err(|_| io::ErrorKind::InvalidData.into())
+    let significant = digits.trim_start_matches('0');
+    if significant.len() > 16 {
+        return Ok(u64::MAX);
+    }
+    if significant.is_empty() {
+        return Ok(0);
+    }
+    u64::from_str_radix(significant, 16).map_err(|_| invalid())
+}
+
+/// Why a client body could not be read: framing that is not HTTP is `request-malformed`; a body
+/// that ended or stalled before it was complete is `body-incomplete`.
+fn body_refusal(error: &io::Error) -> RefusalCode {
+    match error.kind() {
+        io::ErrorKind::InvalidData | io::ErrorKind::FileTooLarge => RefusalCode::RequestMalformed,
+        _ => RefusalCode::BodyIncomplete,
+    }
+}
+
+/// Reads trailer lines up to the empty line, all of them within `budget` bytes, CRLFs included.
+/// They are discarded; the budget is what keeps a trailer section from being unbounded.
+/// `Ok(false)` is a section past the budget.
+fn skip_trailers(input: &mut Buffered<'_>, budget: usize) -> io::Result<bool> {
+    let mut used = 0_usize;
+    loop {
+        let left = budget.saturating_sub(used);
+        if left < 2 {
+            return Ok(false);
+        }
+        let line = match input.line(left - 2) {
+            Err(error) if error.kind() == io::ErrorKind::FileTooLarge => return Ok(false),
+            other => other?,
+        };
+        used += line.len() + 2;
+        if line.is_empty() {
+            return Ok(true);
+        }
+    }
 }
 
 /// Reads the whole client body under one deadline, refusing it the moment it passes the bound.
+/// The trailer section of a chunked body counts against the head bound (`request-too-large`).
 fn read_body(
     input: &mut Buffered<'_>,
     framing: Framing,
     line_limit: usize,
 ) -> Result<Vec<u8>, RefusalCode> {
-    let malformed = |_| RefusalCode::RequestMalformed;
+    let malformed = |error: io::Error| body_refusal(&error);
     let mut body = Vec::new();
     match framing {
         Framing::Length(length) => {
@@ -310,7 +365,7 @@ fn read_body(
             while body.len() < length {
                 let piece = input.take(length - body.len()).map_err(malformed)?;
                 if piece.is_empty() {
-                    return Err(RefusalCode::RequestMalformed);
+                    return Err(RefusalCode::BodyIncomplete);
                 }
                 body.extend_from_slice(&piece);
             }
@@ -319,8 +374,9 @@ fn read_body(
             let size =
                 chunk_size(&input.line(line_limit).map_err(malformed)?).map_err(malformed)?;
             if size == 0 {
-                // Trailer fields are read and discarded up to the empty line.
-                while !input.line(line_limit).map_err(malformed)?.is_empty() {}
+                if !skip_trailers(input, line_limit).map_err(malformed)? {
+                    return Err(RefusalCode::RequestTooLarge);
+                }
                 break;
             }
             let total = u64::try_from(body.len()).unwrap_or(u64::MAX);
@@ -332,7 +388,7 @@ fn read_body(
             while left > 0 {
                 let piece = input.take(left).map_err(malformed)?;
                 if piece.is_empty() {
-                    return Err(RefusalCode::RequestMalformed);
+                    return Err(RefusalCode::BodyIncomplete);
                 }
                 left -= piece.len();
                 body.extend_from_slice(&piece);
@@ -358,10 +414,22 @@ struct Head {
     framing: Answer,
 }
 
+/// Reads the target's answer head. Every head it sends, interim `1xx` heads included, comes out
+/// of one `limit`-byte budget, so a target cannot grow memory by sending heads without end.
 fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> {
     let invalid = || io::Error::from(io::ErrorKind::InvalidData);
+    let mut used = 0_usize;
+    let mut next_line = |input: &mut Buffered<'_>| {
+        let left = limit.saturating_sub(used);
+        if left < 2 {
+            return Err(invalid());
+        }
+        let line = input.line(left - 2)?;
+        used += line.len() + 2;
+        Ok(line)
+    };
     loop {
-        let start = input.line(limit)?;
+        let start = next_line(input)?;
         let mut parts = start.splitn(3, ' ');
         let version = parts.next().unwrap_or_default();
         let status = parts.next().unwrap_or_default();
@@ -375,13 +443,8 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
         let mut content_type = None;
         let mut length = None;
         let mut chunked = false;
-        let mut used = start.len();
         loop {
-            let line = input.line(limit)?;
-            used += line.len() + 2;
-            if used > limit {
-                return Err(invalid());
-            }
+            let line = next_line(input)?;
             if line.is_empty() {
                 break;
             }
@@ -441,7 +504,10 @@ fn next_piece(
                 *started = true;
                 *left = chunk_size(&input.line(line_limit)?)?;
                 if *left == 0 {
-                    while !input.line(line_limit)?.is_empty() {}
+                    // The target's trailers are bounded like a head, and discarded.
+                    if !skip_trailers(input, line_limit)? {
+                        return Err(io::ErrorKind::FileTooLarge.into());
+                    }
                     *framing = Answer::Length(0);
                     return Ok(None);
                 }
@@ -540,7 +606,13 @@ pub(crate) fn serve(
     if matches!(head.status, 502..=504) {
         return Err(failed());
     }
-    stream_answer(stream, &mut input, &mut head, limits);
+    stream_answer(
+        stream,
+        &mut input,
+        &mut head,
+        limits,
+        admitted.chunked_answer,
+    );
     // The target is released only now, after the last byte: row L12's hold.
     drop(input);
     drop(connection);
@@ -548,21 +620,28 @@ pub(crate) fn serve(
     Ok(())
 }
 
-/// Writes the answer's head, then each decoded piece as one chunk as it arrives. A failure on
-/// either side ends the answer without its last chunk, so the client sees it cut short.
+/// Writes the answer's head, then each decoded piece as it arrives: as one chunk each when
+/// `chunked`, so a failure on either side ends the answer without its last chunk and the client
+/// sees it cut short; unframed for an HTTP/1.0 client, ended by closing the connection.
 fn stream_answer(
     stream: &mut TcpStream,
     input: &mut Buffered<'_>,
     head: &mut Head,
     limits: &Limits,
+    chunked: bool,
 ) {
     let phrase = crate::server::relayed_phrase(head.status);
     let content_type = head
         .content_type
         .as_ref()
         .map_or(String::new(), |value| format!("content-type: {value}\r\n"));
+    let framing = if chunked {
+        "transfer-encoding: chunked\r\n"
+    } else {
+        ""
+    };
     let start = format!(
-        "HTTP/1.1 {} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\ntransfer-encoding: chunked\r\n\r\n",
+        "HTTP/1.1 {} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
         head.status
     );
     if !crate::server::write_by(stream, start.as_bytes(), Instant::now() + limits.timeout) {
@@ -571,9 +650,14 @@ fn stream_answer(
     loop {
         match next_piece(input, &mut head.framing, limits.line_bytes) {
             Ok(Some(piece)) => {
-                let mut framed = format!("{:x}\r\n", piece.len()).into_bytes();
-                framed.extend_from_slice(&piece);
-                framed.extend_from_slice(b"\r\n");
+                let framed = if chunked {
+                    let mut framed = format!("{:x}\r\n", piece.len()).into_bytes();
+                    framed.extend_from_slice(&piece);
+                    framed.extend_from_slice(b"\r\n");
+                    framed
+                } else {
+                    piece
+                };
                 // Each write has its own deadline: a stream may last as long as the model
                 // talks, but a client that stops reading cannot hold the connection.
                 if !crate::server::write_by(stream, &framed, Instant::now() + limits.timeout) {
@@ -581,7 +665,9 @@ fn stream_answer(
                 }
             }
             Ok(None) => {
-                crate::server::write_by(stream, b"0\r\n\r\n", Instant::now() + limits.timeout);
+                if chunked {
+                    crate::server::write_by(stream, b"0\r\n\r\n", Instant::now() + limits.timeout);
+                }
                 return;
             }
             Err(_) => return,
@@ -631,6 +717,84 @@ mod tests {
                 .unwrap_err(),
             };
             assert_eq!(observed, *expected);
+        }
+    }
+
+    /// Serves a repeating pattern: one byte first, then reads of `read_size`. With `read_size`
+    /// equal to the pattern's period, every read after the first ends one byte into a line, so
+    /// the buffer is never fully consumed when it is refilled.
+    struct Misaligned {
+        pattern: &'static [u8],
+        offset: usize,
+        read_size: usize,
+    }
+
+    impl std::io::Read for Misaligned {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            let wanted = if self.offset == 0 { 1 } else { self.read_size };
+            let count = wanted.min(buffer.len());
+            for byte in &mut buffer[..count] {
+                *byte = self.pattern[self.offset % self.pattern.len()];
+                self.offset += 1;
+            }
+            Ok(count)
+        }
+    }
+
+    impl std::io::Write for Misaligned {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// The buffer holds what is unread plus one read, however the reads fall across lines: a
+    /// buffer that is emptied only when every byte has been consumed grows with everything read.
+    #[test]
+    fn the_read_buffer_drops_consumed_bytes_whatever_the_read_boundaries() {
+        let mut stream = Misaligned {
+            pattern: b"1\r\na\r\n",
+            offset: 0,
+            read_size: 6,
+        };
+        let mut input = super::Buffered {
+            source: super::Source::Target(&mut stream),
+            buffer: Vec::new(),
+            start: 0,
+        };
+        for _ in 0..10_000 {
+            assert_eq!(input.line(64).unwrap(), "1");
+            assert_eq!(input.take(1).unwrap(), b"a");
+            input.expect_crlf().unwrap();
+            assert!(
+                input.buffer.len() <= 12,
+                "the buffer holds {} bytes",
+                input.buffer.len()
+            );
+        }
+    }
+
+    #[test]
+    fn a_chunk_size_is_hex_digits_and_an_optional_extension_only() {
+        for (line, size) in [
+            ("10", 16),
+            ("0", 0),
+            ("00000000000000000010", 16),
+            ("aF;name=value", 0xaf),
+            ("1 ;ext", 1),
+            ("1\t;ext", 1),
+            ("ffffffffffffffff", u64::MAX),
+            ("10000000000000000", u64::MAX),
+        ] {
+            assert_eq!(super::chunk_size(line).ok(), Some(size), "{line:?}");
+        }
+        for line in [
+            "", "+10", " 10", "-1", "0x10", "10 ", "1 2", "g", "10x", ";ext",
+        ] {
+            assert!(super::chunk_size(line).is_err(), "{line:?}");
         }
     }
 

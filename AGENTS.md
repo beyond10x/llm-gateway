@@ -34,7 +34,7 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 178 of at least 178 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 179 of at least 179 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
 | No test makes a paid call or provisions an external resource | no production transport exists; adding one is `story:runpod-production-transport` and must keep its tests on the emulator |
 
@@ -52,8 +52,8 @@ at all.
 Each step runs alone with the command shown. CI (`.github/workflows/gate.yml`) runs the same steps
 on Rust 1.98.0 and uploads `target/conformance` as `serving-conformance`; the repository has no
 `rust-toolchain.toml`. Run the gate on that toolchain (`RUSTUP_TOOLCHAIN=1.98.0 task check`): a
-newer Clippy adds lints CI does not have, and on 1.99.0 `assert_is_empty` fails
-`crates/llm-gateway-cli/tests/config.rs`. `.github/workflows/shared-gates.yml` runs the common
+newer Clippy can add lints CI does not have. The tree also lints clean on 1.99.0 (stable on
+2026-10-05). `.github/workflows/shared-gates.yml` runs the common
 Gates checks against the `B10X_GATES_POLICY` secret.
 
 Build into a shared directory, not the worktree:

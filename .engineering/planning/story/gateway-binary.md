@@ -2,12 +2,14 @@
 format: aep.planning-md/3
 id: story:gateway-binary
 kind: story
-status: active
+status: implemented
 title: llm-gateway runs as one configured binary with a clean shutdown
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
 scope:
+- confidence: inferred
+  path: AGENTS.md
 - confidence: inferred
   path: Cargo.lock
 - confidence: inferred
@@ -15,13 +17,20 @@ scope:
 - confidence: inferred
   path: README.md
 - confidence: inferred
+  path: contracts
+- confidence: inferred
   path: crates/llm-gateway
 - confidence: inferred
+  path: crates/llm-gateway-cli
+- confidence: inferred
   path: docs
-revision: 8
+- confidence: inferred
+  path: spec
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-05T10:33:47Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-05T10:33:47Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-05T11:14:34Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"review_outcome":1,"verification":1}}}
 ---
 ## Outcome
 

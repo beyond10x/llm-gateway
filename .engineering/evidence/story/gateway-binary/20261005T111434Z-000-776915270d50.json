@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T11:14:34Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-binary",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "phase 1: 24 binary cases red (no b10x-llm-gateway binary) and 8 config cases not compiling; 10 implementor mutants each killed; adversary pass 1: 4 red cases, fixed, each defect reintroduced as a mutant and caught",
+    "reference": "llm-gateway-gateway-binary/scratch/{phase1-red.log,phase2-gate.log,round2-gate.log}"
+  }
+}

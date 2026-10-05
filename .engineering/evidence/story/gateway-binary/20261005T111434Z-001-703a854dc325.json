@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T11:14:34Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-binary",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "w42 gate: fmt 0, clippy +1.98.0 0, cargo test --workspace 248 passed 0 failed (adversary.rs included), ess validate 0, conformance 159/159 x3, aep validate 0; wave tree equals unit tree (main a6756de)",
+    "reference": "wave/2026-10-05-w42"
+  }
+}

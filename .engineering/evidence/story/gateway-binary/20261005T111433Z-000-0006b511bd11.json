@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-05T11:14:33Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-binary",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-w42-llm-gateway-gateway-binary-pass-1",
+    "review": "review-result:adversary-w42-llm-gateway-gateway-binary-pass-1",
+    "outcome": "fixed"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T10:32:44Z",
+  "actor": "human:timo",
+  "artifact": "story:llmgw-capability-matrix",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "acceptance check red before the page existed (exit 1), green after (83 rows; per-area counts against llmgw router(), config structs, built --help, 13 metric names; every citation path exists and line in range); 38 Gaps lines for 38 gap/partial rows",
+    "reference": "~/.cache/ga-wave-2026-10-05-w41/scratch"
+  }
+}

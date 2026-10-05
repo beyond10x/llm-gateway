@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T10:32:45Z",
+  "actor": "human:timo",
+  "artifact": "story:llmgw-capability-matrix",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "relative links resolve; table column counts consistent; aep plan artifact validate 0; no Rust changed",
+    "reference": "wave/2026-10-05-w41"
+  }
+}

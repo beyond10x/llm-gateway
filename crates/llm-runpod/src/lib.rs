@@ -1,0 +1,47 @@
+#![forbid(unsafe_code)]
+
+//! Runpod provisioning adapter for vLLM.
+//!
+//! Ported, with attribution, from llmgw `src/runpod.rs` (pod lifecycle), the Runpod part of
+//! llmgw `src/config.rs` (the per-model settings) and the mock lifecycle tests in llmgw
+//! `src/lib.rs`. The mechanics are llmgw's: ordered GPU fallback, one starter per cold model,
+//! readiness polling with crash-loop detection by decreasing container uptime, an idle reaper
+//! whose limit never drops below the measured cold start, in-flight leases that keep a streaming
+//! pod alive, and an orphan sweep. What is new is that every one of them now runs under the
+//! `llm_provision` hosting contract:
+//!
+//! * [`RunpodProvider`] is a `llm_provision::HostingProvider`. A pod is a resource key whose
+//!   incarnation is its Runpod pod id; owner, epoch and request id travel in the pod's
+//!   environment ([`TAG_OWNER`], [`TAG_EPOCH`], [`TAG_REQUEST`]). Runpod takes no idempotency key,
+//!   so a lost create is never retried — not even on the next GPU — and is resolved only by a
+//!   listing that finds its request id.
+//! * [`RunpodPool`] drives an `llm_provision::Controller`. Adoption after a restart is by the
+//!   durable record's exact identity, never by name, so a pod that reused the name, or one
+//!   labelled for another owner, is not taken over.
+//! * Pod names start with [`POD_NAME_PREFIX`], which is not llmgw's [`LEGACY_POD_NAME_PREFIX`].
+//!   Nothing here ever selects, adopts or terminates an llmgw pod.
+//!
+//! Runpod-specific settings — GPU choices, mounted caches, startup deadlines, vLLM arguments —
+//! live in [`RunpodModel`], not in `DeploymentSpec`. Every Runpod call goes through
+//! [`RunpodTransport`]; [`EmulatedRunpod`] is the in-process control plane the tests drive. This
+//! crate opens no connection and reads no credential: the vLLM key reaches a pod as a Runpod
+//! secret reference, never as a value.
+
+mod config;
+mod emulated;
+mod pool;
+mod provider;
+mod request;
+mod transport;
+
+pub use config::{CloudType, ConfigError, NetworkVolume, RunpodModel, Thinking, VllmSettings};
+pub use emulated::EmulatedRunpod;
+pub use pool::{CleanupReport, Clock, ManualClock, PoolError, RunpodPool, StreamLease};
+pub use provider::{RunpodProvider, Unserviceable};
+pub use request::{
+    LEGACY_POD_NAME_PREFIX, NON_THINKING_SAMPLING, POD_NAME_PREFIX, TAG_EPOCH, TAG_OWNER,
+    TAG_REQUEST, Tags, in_namespace, pod_name, pod_request, vllm_entrypoint,
+};
+pub use transport::{
+    CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, RunpodTransport, TerminateAnswer,
+};

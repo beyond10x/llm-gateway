@@ -1,0 +1,15 @@
+[package]
+name = "b10x-llm-gateway"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Authenticated single-owner gateway composition and protocol translation."
+
+[lib]
+name = "llm_gateway"
+
+[lints]
+workspace = true

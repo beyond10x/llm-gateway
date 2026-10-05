@@ -1,0 +1,18 @@
+[package]
+name = "b10x-llm-runpod"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+description = "Runpod provisioning adapter for vLLM."
+
+[lints]
+workspace = true
+
+[lib]
+name = "llm_runpod"
+
+[dependencies]
+llm-provision = { package = "b10x-llm-provision", path = "../llm-provision" }

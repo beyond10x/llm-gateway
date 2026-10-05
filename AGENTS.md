@@ -15,11 +15,12 @@ turn, protocol projections, credentials, routing and cost) stays in
 | Path | What it is |
 | --- | --- |
 | `crates/llm-gateway` | `b10x-llm-gateway`. Its manifest declares no dependency, and `tests/dependency_boundary.rs` keeps it that way |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML deployment document, the trusted-file reader and the signal-driven stop. It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract; no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`; only `EmulatedRunpod` exists |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
-| `spec/` | The ESS system `llm-gateway`: domains `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod` |
+| `spec/` | The ESS system `llm-gateway`: domains `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment` |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
 | `docs/` | The gateway and hosting contracts, which the crate tests read, and the verification records |
 

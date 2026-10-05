@@ -11,12 +11,23 @@ description = "The b10x-llm-gateway binary: one closed TOML deployment document,
 [lib]
 name = "llm_gateway_cli"
 
+[[bin]]
+name = "b10x-llm-gateway"
+path = "src/main.rs"
+
 [lints]
 workspace = true
 
 [dependencies]
+clap = { version = "4.5", features = ["derive"] }
 llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
 llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
+rustix = { version = "1.1", features = ["fs", "process"] }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+signal-hook = "0.4"
+toml = "1"
 
 [dev-dependencies]
 rustix = { version = "1.1", features = ["process"] }

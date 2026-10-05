@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged
+summary: the effort mapping is scoped by wire, so high reaches the target as high on chat and responses, even in the fields the messages wire maps
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"reasoning_effort\":\"high\",\"output_config\":{\"effort\":\"high\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"code\",\"reasoning\":{\"effort\":\"high\"},\"output_config\":{\"effort\":\"high\"}}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code","reasoning_effort":"high","output_config":{"effort":"high"},"chat_template_kwargs":{"reasoning_effort":"high"}}'
+    - 'pod-1 POST /v1/responses {"model":"served-code","reasoning":{"effort":"high"},"output_config":{"effort":"high"}}'

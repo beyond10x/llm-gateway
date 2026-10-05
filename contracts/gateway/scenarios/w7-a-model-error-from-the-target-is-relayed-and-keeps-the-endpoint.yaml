@@ -1,0 +1,34 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint
+summary: a 500 or a 400 from the pod is the model's own answer, relayed with its body, and the pod stays current
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":500,"content_type":"application/json","chunks":["{\"type\":\"error\",\"error\":{\"type\":\"internal_error\"}}"]},{"status":400,"content_type":"application/json","chunks":["{\"error\":{\"message\":\"bad effort\"}}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"same-pod\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 500 relayed
+    - 400 relayed
+    - 200 relayed
+    bodies:
+    - '{"type":"error","error":{"type":"internal_error"}}'
+    - '{"error":{"message":"bad effort"}}'
+    - '{"id":"same-pod"}'
+    upstream:
+    - 'pod-1 POST /v1/messages {"model":"served-code"}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    acquired: 3
+    invalidated: []
+    released: 3

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Relay input",
+  "x-ess-name": "llm-gateway.gateway.Relay",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "program_json": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "program_json"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "6f09c0516be3301fd5c5e44262d29644c94919fb8f31edbe7e776f46a0ff6bcc",
+    "contract_digest": "slice-sha256/2:c9b82167fce60bd9ded69d19eb803530be6a9b512f23d8bf3d21f997bdfc5ec0",
+    "regenerate": "ess generate"
+  }
+}

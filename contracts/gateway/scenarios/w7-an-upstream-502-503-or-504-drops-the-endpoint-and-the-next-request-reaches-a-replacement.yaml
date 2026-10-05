@@ -1,0 +1,35 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement
+summary: a gateway status from the pod is answered upstream-failed and reported against that pod, so each next request reaches the replacement
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":502,"content_type":"text/plain","chunks":["bad gateway"]}],[{"status":503,"content_type":"text/plain","chunks":["unavailable"]}],[{"status":504,"content_type":"text/plain","chunks":["timeout"]}],[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"replacement\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 502 upstream-failed
+    - 502 upstream-failed
+    - 502 upstream-failed
+    - 200 relayed
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    - 'pod-2 POST /v1/responses {"model":"served-code"}'
+    - 'pod-3 POST /v1/messages {"model":"served-code"}'
+    - 'pod-4 POST /v1/chat/completions {"model":"served-code"}'
+    acquired: 4
+    invalidated:
+    - pod-1
+    - pod-2
+    - pod-3
+    released: 4

@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExecutionObservation",
+  "x-ess-name": "llm-gateway.runpod.ExecutionObservation",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "observation_id": {
+      "type": "string"
+    },
+    "valid_program": {
+      "type": "boolean"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "create_calls": {
+      "type": "integer"
+    },
+    "lists": {
+      "type": "integer"
+    },
+    "requested_gpus": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "terminations": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "pods": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "leases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cleanups": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "phases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "observed": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "stop_required": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "transferred": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_request": {
+      "type": "string"
+    },
+    "last_entrypoint": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "last_env": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.runpod.ExecutionObservation.State"
+    }
+  },
+  "required": [
+    "observation_id",
+    "valid_program",
+    "results",
+    "requested_gpus",
+    "terminations",
+    "pods",
+    "leases",
+    "cleanups",
+    "phases",
+    "observed",
+    "stop_required",
+    "transferred",
+    "last_entrypoint",
+    "last_env",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:440a45f4b72646303fc056abe71abb210a2a2869f3011c09834f9cb3fd331445",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.ExecutionObservation.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.runpod.ExecutionObservation.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

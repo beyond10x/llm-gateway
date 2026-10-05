@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.ExecutionObservation.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:6512a68c52596495a75d98ef3acabd03448e63b1a2015d715e8006c6362b0818",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.ExecutionObservation.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.runpod.ExecutionObservation.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

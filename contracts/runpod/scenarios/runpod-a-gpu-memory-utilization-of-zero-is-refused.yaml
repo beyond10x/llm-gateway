@@ -1,0 +1,19 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: adversary-w2-a-gpu-memory-utilization-of-zero-is-refused
+summary: the utilization interval (0, 1] is open at zero (config.rs:162); the authored pair measures only its closed upper end
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"vllm":{"gpu_memory_utilization":0.0}}},"steps":[]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    error_code: invalid-model:gpu-utilization
+    create_calls: 0

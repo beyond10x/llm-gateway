@@ -1,0 +1,29 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: an-unrunnable-program-reports-absent-counts-not-zero-counts
+summary: an unrunnable program reports absent counts not zero counts
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a"'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: false
+    error_code: null
+    results: []
+    allocations: null
+    submits: null
+    stops: null
+    lists: null
+    controller: null
+    ledger: null
+    max_active: null
+    now_ms: null
+    totals: null
+    deployments: []

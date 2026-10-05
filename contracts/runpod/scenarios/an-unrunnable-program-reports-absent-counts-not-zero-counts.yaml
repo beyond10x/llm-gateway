@@ -1,0 +1,34 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: an-unrunnable-program-reports-absent-counts-not-zero-counts
+summary: a program that cannot be read builds no emulator, so its counters are absent rather than zero
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    valid_program: false
+    error_code: null
+    results: []
+    create_calls: null
+    lists: null
+    requested_gpus: []
+    terminations: []
+    pods: []
+    leases: []
+    cleanups: []
+    phases: []
+    observed: []
+    stop_required: []
+    transferred: []
+    last_request: null
+    last_entrypoint: []
+    last_env: []

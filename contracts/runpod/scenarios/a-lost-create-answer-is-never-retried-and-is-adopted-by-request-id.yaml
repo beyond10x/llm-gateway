@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id
+summary: a create whose answer was lost is not retried on another GPU and is resolved by the listing that finds its request id
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"lose_next_create","allocates":true},{"step":"ensure","alias":"qwen"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - err:starting
+    - ready
+    create_calls: 1
+    requested_gpus:
+    - NVIDIA L40S
+    leases:
+    - https://pod-1-8000.proxy.runpod.net qwen

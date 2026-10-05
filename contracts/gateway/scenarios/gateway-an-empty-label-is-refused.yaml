@@ -1,0 +1,18 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: adversary-w2-an-empty-label-is-refused
+summary: an empty route identifier is refused as label:length (inventory.rs:44-46)
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","inventory":{"routes":[{"route_id":"","alias":"a0","fallback_enabled":false,"targets":[{"target_id":"t0","position":0}]}]},"steps":[]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    error_code: label:length

@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: authentication-comes-before-the-path-is-decided
+summary: an unknown path is path-unknown to the owner and credential-absent to anybody else
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /v1/other HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"send","raw":"GET /v1/other HTTP/1.1\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 404 path-unknown
+    - 401 credential-absent
+    bodies:
+    - '{"error":{"code":"path-unknown","message":"no such gateway resource"}}'
+    - '{"error":{"code":"credential-absent","message":"no owner credential was presented"}}'

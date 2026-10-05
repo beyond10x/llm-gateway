@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan
+summary: a request id protects a pod only while its record holds no exact key yet
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"insert_pod","name":"b10x-llm-qwen","env":{"B10X_LLM_OWNER":"controller-a","B10X_LLM_EPOCH":"1"},"request_of":"qwen-1"},{"step":"reap"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - inserted:pod-2
+    - ok
+    cleanups:
+    - idle=[] retired=[] replaced=[] orphans=[pod-2]
+    pods:
+    - pod-1:b10x-llm-qwen:running

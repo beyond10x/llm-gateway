@@ -1,0 +1,22 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: an-inventory-of-exactly-4096-routes-is-composed
+summary: the snapshot route bound admits its own count, and the last route is inspectable by its alias (inventory.rs RouteInventory::new)
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","inventory":{"routes":[],"generated_routes":4096},"steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /v1/routes/g4095 HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 inspected

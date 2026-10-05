@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: an-inventory-of-4097-routes-is-refused
+summary: one route past the snapshot bound is refused as inventory:too-many-routes and composes no gateway (inventory.rs RouteInventory::new)
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","inventory":{"routes":[],"generated_routes":4097},"steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    valid_program: true
+    error_code: inventory:too-many-routes
+    results: []
+    secret_on_wire: null

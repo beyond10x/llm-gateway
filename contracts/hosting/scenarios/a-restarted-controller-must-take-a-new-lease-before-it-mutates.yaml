@@ -1,0 +1,54 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-restarted-controller-must-take-a-new-lease-before-it-mutates
+summary: a restarted controller must take a new lease before it mutates
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":2,"max_lifetime_ms":10000,"lease_ms":1000},"steps":[{"step":"declare","at_ms":1,"spec":{"id":"d1","provider":"fake","account":"account-1","model":"requested-model","image":"requested-image","resource_name":"pool-slot","requested_lifetime_ms":5000},"request_id":"request-d1","authorization":{"ledger":"scope","reservation":"reservation-a"}},{"step":"acquire","at_ms":1,"deployment":"d1"},{"step":"provision","at_ms":1,"deployment":"d1"},{"step":"restart","at_ms":3},{"step":"stop","at_ms":3,"deployment":"d1"},{"step":"acquire","at_ms":3,"deployment":"d1"},{"step":"stop","at_ms":3,"deployment":"d1"}]}'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - ok
+    - ok
+    - ok
+    - err:lease-lost
+    - ok
+    - ok
+    stops: 1
+    deployments:
+    - id: d1
+      phase: stopped
+      stop_reason: null
+      stop_evidence: fake-stop-1
+      connected: false
+      requested_model: requested-model
+      requested_image: requested-image
+      requested_name: pool-slot
+      requested_lifetime_ms: '5000'
+      request_id: request-d1
+      ledger: scope
+      reservation: reservation-a
+      observed_name: pool-slot
+      observed_incarnation: fake-incarnation-1
+      observed_state: null
+      observed_ready: null
+      observed_endpoint: null
+      observed_model: null
+      lease_owner: controller-a
+      lease_epoch: 2
+      lease_expires_at_ms: '1003'
+    totals:
+      active_count: 0
+      unknown_count: 0
+      stop_required: []
+      transferred: []
+      at_capacity: false

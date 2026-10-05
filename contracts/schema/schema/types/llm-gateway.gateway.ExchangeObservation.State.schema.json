@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.ExchangeObservation.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:edaff4f1a29296af6ee0572b063e77c78d0de87da042bc920e5c7757be05d045",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.ExchangeObservation.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.ExchangeObservation.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

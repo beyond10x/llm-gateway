@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: restarts-inside-the-crash-window-are-a-crash-loop
+summary: two restarts exactly one crash window apart are a crash loop, the window end inclusive
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"uptimes","script":[100,50,10]},{"step":"until_ready","alias":"qwen"},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"},{"step":"advance","ms":600000},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ready
+    - ok
+    - ready
+    - ok
+    - err:crash-loop
+    terminations:
+    - pod-1

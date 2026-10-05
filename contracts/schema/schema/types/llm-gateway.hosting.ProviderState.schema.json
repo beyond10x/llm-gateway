@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.ProviderState",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:baf8bffadcdbae3aa8c4cf0d9e5231acfd4c002e9f79fcc0bb91122408887e4f",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.ProviderState": {
+      "title": "ProviderState",
+      "x-ess-name": "llm-gateway.hosting.ProviderState",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Pending",
+        "Running",
+        "Terminated"
+      ]
+    }
+  }
+}

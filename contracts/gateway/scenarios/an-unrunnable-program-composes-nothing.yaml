@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: an-unrunnable-program-composes-nothing
+summary: a program that cannot be read binds no listener and reports no wire fact
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    valid_program: false
+    error_code: null
+    results: []
+    bodies: []
+    headers: []
+    secret_on_wire: null
+    ready: null
+    shutdown: null

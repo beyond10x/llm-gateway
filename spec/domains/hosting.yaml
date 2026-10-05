@@ -1,28 +1,28 @@
-domain: llm.hosting
+domain: llm-gateway.hosting
 
 # One controller owns one provider/account/ledger scope. These entities are declaration and
 # inspection records observed through the crate's public API. `Phase` is the observed runtime
 # ownership state; it is not a promise of a production event bus or an Entity Runtime store.
 types:
-  - name: llm.hosting.Phase
+  - name: llm-gateway.hosting.Phase
     kind: enum
     # The resolved hosting lifecycle. `Uncertain`, `StopRequired`, `Stopped` and `Cancelled`
     # are llm.budget.Phase's words with llm.budget.Phase's meaning; the hosting-specific states
     # are a submitted create (`Requested`), an observed live resource (`Active`) and a resource
     # a strictly newer epoch has taken over (`Disowned`).
     variants: [Declared, Requested, Active, Uncertain, StopRequired, Stopped, Cancelled, Disowned]
-  - name: llm.hosting.StopReason
+  - name: llm-gateway.hosting.StopReason
     kind: enum
     # Why a stop is owed. None of these is a claim that anything stopped.
     variants: [AmbiguousMutation, LifetimeExceeded, LeaseExpired, OperatorRequest, OwnershipLost]
-  - name: llm.hosting.Dispatch
+  - name: llm-gateway.hosting.Dispatch
     kind: enum
     # llm.catalog.Dispatch's words. `Unknown` is the case the contract exists for.
     variants: [NotSent, Rejected, Unknown, Accepted]
-  - name: llm.hosting.ProviderState
+  - name: llm-gateway.hosting.ProviderState
     kind: enum
     variants: [Pending, Running, Terminated]
-  - name: llm.hosting.Totals
+  - name: llm-gateway.hosting.Totals
     kind: struct
     fields:
       - {name: active_count, type: Integer}
@@ -34,12 +34,12 @@ types:
       # without this list that transfer would be a disappearance.
       - {name: transferred, type: 'List<String>'}
       - {name: at_capacity, type: Boolean}
-  - name: llm.hosting.TransitionFact
+  - name: llm-gateway.hosting.TransitionFact
     kind: struct
     fields:
       - {name: from, type: String}
       - {name: to, type: String}
-  - name: llm.hosting.DeploymentFact
+  - name: llm-gateway.hosting.DeploymentFact
     kind: struct
     fields:
       - {name: id, type: String}
@@ -67,7 +67,7 @@ types:
       - {name: lease_epoch, type: 'Optional<Integer>'}
       - {name: lease_expires_at_ms, type: 'Optional<String>'}
 entities:
-  - name: llm.hosting.Controller
+  - name: llm-gateway.hosting.Controller
     identity: {name: id, type: String}
     fields:
       - {name: provider_id, type: String}
@@ -79,11 +79,15 @@ entities:
     relations:
       # Owned resources have no meaning without the scope that owns them. No reset or
       # scope-transfer operation is exposed while obligations are outstanding.
-      - {name: resources, kind: owns, target: llm.hosting.OwnedResource, cardinality: many, via: controller_id}
-      - {name: account, kind: references, target: llm.catalog.Account, cardinality: one, via: account_id}
-      - {name: ledger, kind: references, target: llm.budget.Ledger, cardinality: one, via: ledger_id}
+      - {name: resources, kind: owns, target: llm-gateway.hosting.OwnedResource, cardinality: many, via: controller_id}
+      # BOUNDARY: `account_id` names an llm.catalog.Account and `ledger_id` an llm.budget.Ledger.
+      # Both entities belong to the system `llm` (beyond10x/llm, spec/domains/catalog.yaml and
+      # budget.yaml), which this system only calls. ESS-LIMIT: ESS 0.52 resolves a relation only
+      # to an entity of the same specification and has no cross-system reference, so these two
+      # `references` edges (cardinality one, via account_id and ledger_id) were declared while
+      # this domain lived in llm and are recorded here instead of copying llm's domains in.
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
-  - name: llm.hosting.OwnedResource
+  - name: llm-gateway.hosting.OwnedResource
     identity: {name: id, type: String}
     fields:
       - {name: controller_id, type: String}
@@ -92,19 +96,21 @@ entities:
       - {name: reservation_id, type: String}
       # The idempotency key, recorded before the create mutation was submitted.
       - {name: request_id, type: String}
-      - {name: phase, type: llm.hosting.Phase}
-      - {name: stop_reason, type: 'Optional<llm.hosting.StopReason>'}
+      - {name: phase, type: llm-gateway.hosting.Phase}
+      - {name: stop_reason, type: 'Optional<llm-gateway.hosting.StopReason>'}
       - {name: stop_evidence, type: 'Optional<String>'}
       # The observed identity. Absent while no provider answer exists. A name alone is not an
       # identity: a provider may hand `resource_name` to a later resource once this one is
       # gone, so `resource_incarnation` is what distinguishes them.
       - {name: resource_name, type: 'Optional<String>'}
       - {name: resource_incarnation, type: 'Optional<String>'}
-    relations:
-      - {name: specification, kind: references, target: llm.catalog.DeploymentSpec, cardinality: one, via: deployment_spec_id}
-      - {name: reservation, kind: references, target: llm.budget.Reservation, cardinality: one, via: reservation_id}
+    # BOUNDARY: `deployment_spec_id` names an llm.catalog.DeploymentSpec and `reservation_id` an
+    # llm.budget.Reservation, both entities of the system `llm` (beyond10x/llm). ESS-LIMIT: as
+    # for the controller above, the two `references` edges (cardinality one, via
+    # deployment_spec_id and reservation_id) cannot resolve across systems in ESS 0.52 and are
+    # recorded here rather than declared.
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
-  - name: llm.hosting.OwnershipLease
+  - name: llm-gateway.hosting.OwnershipLease
     identity: {name: id, type: String}
     fields:
       - {name: controller_id, type: String}
@@ -113,7 +119,7 @@ entities:
       - {name: epoch, type: Integer}
       - {name: expires_at_ms, type: String}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
-  - name: llm.hosting.ExecutionObservation
+  - name: llm-gateway.hosting.ExecutionObservation
     identity: {name: observation_id, type: String}
     fields: &execution_facts
       - {name: valid_program, type: Boolean}
@@ -131,33 +137,33 @@ entities:
       - {name: ledger, type: 'Optional<String>'}
       - {name: max_active, type: 'Optional<Integer>'}
       - {name: now_ms, type: 'Optional<String>'}
-      - {name: totals, type: 'Optional<llm.hosting.Totals>'}
-      - {name: deployments, type: 'List<llm.hosting.DeploymentFact>'}
+      - {name: totals, type: 'Optional<llm-gateway.hosting.Totals>'}
+      - {name: deployments, type: 'List<llm-gateway.hosting.DeploymentFact>'}
       # The permitted transition table the library actually enforces, read from its published
       # constant. A pair absent from this list is refused; this is the lifecycle that
       # resolves the formerly open hosting transitions (docs/design.md:82-83).
-      - {name: transitions, type: 'List<llm.hosting.TransitionFact>'}
+      - {name: transitions, type: 'List<llm-gateway.hosting.TransitionFact>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
-  - name: llm.hosting.Exercise
+  - name: llm-gateway.hosting.Exercise
     input:
       # A bounded fixture program drives the real controller against the real in-process fake
       # provider, including concurrent acquisition, restarts and lost mutation answers.
       - {name: program_json, type: String}
     outcomes:
       - name: observed
-        emits: [llm.hosting.Exercised]
+        emits: [llm-gateway.hosting.Exercised]
         payload:
-          llm.hosting.Exercised:
+          llm-gateway.hosting.Exercised:
             valid_program: {generated: true}
         summary: Observe actual phases, refusals, provider calls, leases and stop obligations.
 events:
   # Test-adapter notification only; there is no production notification transport.
-  - name: llm.hosting.Exercised
+  - name: llm-gateway.hosting.Exercised
     fields:
       - {name: valid_program, type: Boolean}
 views:
-  - name: llm.hosting.LastExecution
-    source: llm.hosting.ExecutionObservation
+  - name: llm-gateway.hosting.LastExecution
+    source: llm-gateway.hosting.ExecutionObservation
     consistency: read_your_writes
     fields: *execution_facts

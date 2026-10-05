@@ -1,0 +1,22 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: the-probe-surface-is-two-literal-paths-and-two-methods
+summary: a write to a probe path, or a path beside one, reaches authentication rather than a probe
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"POST /health HTTP/1.1\r\ncontent-length: 0\r\n\r\n"},{"step":"send","raw":"GET /healthz HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /ready/ HTTP/1.1\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 401 credential-absent
+    - 401 credential-absent
+    - 401 credential-absent

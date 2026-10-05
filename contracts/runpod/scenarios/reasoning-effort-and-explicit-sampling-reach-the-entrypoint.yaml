@@ -1,0 +1,43 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: reasoning-effort-and-explicit-sampling-reach-the-entrypoint
+summary: a thinking model carries its reasoning effort and its explicit sampling, and no enable_thinking switch
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"vllm":{"thinking":"on","reasoning_effort":"medium","sampling":"{\"temperature\":0.2}"}}},"steps":[{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    last_entrypoint:
+    - vllm
+    - serve
+    - Qwen/Qwen3.8-27B-FP8
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --served-model-name
+    - qwen
+    - --max-model-len
+    - '65536'
+    - --max-num-seqs
+    - '8'
+    - --gpu-memory-utilization
+    - '0.9'
+    - --generation-config
+    - vllm
+    - --default-chat-template-kwargs
+    - '{"reasoning_effort":"medium"}'
+    - --override-generation-config
+    - '{"temperature":0.2}'
+    - --kv-cache-dtype
+    - fp8

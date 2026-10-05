@@ -1,0 +1,597 @@
+[
+  {
+    "mutation": "placement-refusal-ends-the-fallthrough",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "CreateAnswer::Refused => {}",
+    "after": "CreateAnswer::Refused => break,",
+    "named_failure": "llm.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 61,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order",
+      "llm.runpod/authored/every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "a-lost-create-is-retried-on-the-next-gpu",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "CreateAnswer::Refused => {}",
+    "after": "CreateAnswer::Refused | CreateAnswer::Lost => {}",
+    "named_failure": "llm.runpod/authored/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 61,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id",
+      "llm.runpod/authored/an-unresolved-lost-create-blocks-a-second-pod-until-it-is-resolved"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "an-exited-pod-reads-as-terminated",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "PodStatus::Created | PodStatus::Exited => ProviderState::Pending,",
+    "after": "PodStatus::Created => ProviderState::Pending, PodStatus::Exited => ProviderState::Terminated,",
+    "named_failure": "llm.runpod/authored/an-exited-pod-is-terminated-and-replaced",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/an-exited-pod-is-terminated-and-replaced"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "an-unanswered-probe-reads-as-not-ready",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "Some(Probe::Unreachable) | None => (None, None),",
+    "after": "Some(Probe::Unreachable) | None => (Some(false), None),",
+    "named_failure": "llm.runpod/authored/an-unreported-readiness-or-served-model-stays-unknown",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 61,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-pod-that-is-not-running-reports-no-endpoint",
+      "llm.runpod/authored/an-unreported-readiness-or-served-model-stays-unknown"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "any-pod-reports-an-endpoint",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "endpoint: (pod.status == PodStatus::Running)",
+    "after": "endpoint: true",
+    "named_failure": "llm.runpod/authored/a-pod-that-is-not-running-reports-no-endpoint",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-pod-that-is-not-running-reports-no-endpoint"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "the-crash-window-end-is-exclusive",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "now_ms.saturating_sub(at) > window_ms",
+    "after": "now_ms.saturating_sub(at) >= window_ms",
+    "named_failure": "llm.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "the-crash-limit-needs-one-more-restart",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "(health.restarts.len() >= model.crash_restart_limit as usize)",
+    "after": "(health.restarts.len() > model.crash_restart_limit as usize)",
+    "named_failure": "llm.runpod/authored/the-crash-restart-limit-is-reached-at-exactly-its-count",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 61,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
+      "llm.runpod/authored/the-crash-restart-limit-is-reached-at-exactly-its-count"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "the-startup-deadline-is-exclusive",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "now.saturating_sub(slot.deadline_from_ms) > deadline_ms",
+    "after": "now.saturating_sub(slot.deadline_from_ms) >= deadline_ms",
+    "named_failure": "llm.runpod/authored/a-pod-that-misses-its-startup-deadline-is-terminated",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-pod-that-misses-its-startup-deadline-is-terminated"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "a-pod-that-stopped-serving-is-never-retired",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "return (definitely_unready && now.saturating_sub(last_ready) > deadline_ms)",
+    "after": "return (false && now.saturating_sub(last_ready) > deadline_ms)",
+    "named_failure": "llm.runpod/authored/a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "the-idle-limit-ignores-the-measured-cold-start",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": ".max(self.measured_start_ms.unwrap_or(0))",
+    "after": ".max(0)",
+    "named_failure": "llm.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "the-idle-limit-is-exclusive",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "now.saturating_sub(last_used) >= slot.idle_limit_ms(model)",
+    "after": "now.saturating_sub(last_used) > slot.idle_limit_ms(model)",
+    "named_failure": "llm.runpod/authored/an-idle-pod-is-reaped-and-the-next-request-cold-starts-again",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 4,
+      "passed": 59,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped",
+      "llm.runpod/authored/an-idle-pod-is-reaped-and-the-next-request-cold-starts-again",
+      "llm.runpod/authored/an-open-stream-lease-keeps-the-pod-from-being-reaped",
+      "llm.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "an-open-lease-does-not-hold-the-pod",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "let quiet = slot.usage.in_flight.load(Ordering::SeqCst) == 0;",
+    "after": "let quiet = true;",
+    "named_failure": "llm.runpod/authored/an-open-stream-lease-keeps-the-pod-from-being-reaped",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/an-open-stream-lease-keeps-the-pod-from-being-reaped"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "the-sweep-takes-another-owners-pod",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "|| !ours",
+    "after": "|| false",
+    "named_failure": "llm.runpod/authored/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 61,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated",
+      "llm.runpod/authored/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "a-request-id-protects-a-keyed-record",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": ".filter(|record| record.observed.is_none())",
+    "after": ".filter(|_| true)",
+    "named_failure": "llm.runpod/authored/a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "a-legacy-pod-is-in-the-namespace",
+    "source": "crates/llm-runpod/src/request.rs",
+    "before": "name.starts_with(POD_NAME_PREFIX) && !name.starts_with(LEGACY_POD_NAME_PREFIX)",
+    "after": "name.starts_with(POD_NAME_PREFIX) || name.starts_with(LEGACY_POD_NAME_PREFIX)",
+    "named_failure": "llm.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0",
+    "source_restored_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0"
+  },
+  {
+    "mutation": "the-vllm-key-travels-as-a-value",
+    "source": "crates/llm-runpod/src/request.rs",
+    "before": "format!(\"{{{{ RUNPOD_SECRET_{} }}}}\", model.api_key_secret),",
+    "after": "model.api_key_secret.clone(),",
+    "named_failure": "llm.runpod/authored/the-create-request-carries-the-declared-vllm-settings",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 61,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override",
+      "llm.runpod/authored/the-create-request-carries-the-declared-vllm-settings"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0",
+    "source_restored_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0"
+  },
+  {
+    "mutation": "a-model-without-a-gpu-is-admitted",
+    "source": "crates/llm-runpod/src/config.rs",
+    "before": "if self.gpu_types.is_empty() {",
+    "after": "if self.gpu_types.is_empty() && false {",
+    "named_failure": "llm.runpod/authored/a-model-without-a-gpu-type-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-model-without-a-gpu-type-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a",
+    "source_restored_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a"
+  },
+  {
+    "mutation": "the-utilization-bound-is-open-at-one",
+    "source": "crates/llm-runpod/src/config.rs",
+    "before": "utilization > 1.0",
+    "after": "utilization >= 1.0",
+    "named_failure": "llm.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a",
+    "source_restored_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a"
+  },
+  {
+    "mutation": "no-capacity-is-reported-as-starting",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "if receipt.phase == Some(Phase::Cancelled) {",
+    "after": "if false {",
+    "named_failure": "llm.runpod/authored/every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "an-unconfigured-model-is-kept",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "return Some(Retire::Unconfigured);",
+    "after": "return None;",
+    "named_failure": "llm.runpod/authored/a-model-removed-from-the-registry-has-its-pod-stopped-after-restart",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 62,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-model-removed-from-the-registry-has-its-pod-stopped-after-restart"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "the-crash-limit-is-reached-one-restart-early",
+    "source": "crates/llm-runpod/src/provider.rs",
+    "before": "(health.restarts.len() >= model.crash_restart_limit as usize)",
+    "after": "(health.restarts.len() + 1 >= model.crash_restart_limit as usize)",
+    "named_failure": "llm.runpod/authored/one-restart-below-the-crash-limit-is-not-a-crash-loop",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 3,
+      "passed": 60,
+      "skipped": 0,
+      "total": 63,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/one-restart-below-the-crash-limit-is-not-a-crash-loop",
+      "llm.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
+      "llm.runpod/authored/restarts-spread-over-more-than-the-crash-window-are-not-a-crash-loop"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "mutation": "a-legacy-pod-is-in-the-namespace",
+    "source": "crates/llm-runpod/src/request.rs",
+    "before": "    name.starts_with(POD_NAME_PREFIX)\n}",
+    "after": "    name.starts_with(POD_NAME_PREFIX) || name.starts_with(LEGACY_POD_NAME_PREFIX)\n}",
+    "named_failure": "llm.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 66,
+      "skipped": 0,
+      "total": 67,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "8fb006d61d383eba1783907bdae749062c16b9936c990396e37060bfa9d5f306",
+    "source_restored_sha256": "8fb006d61d383eba1783907bdae749062c16b9936c990396e37060bfa9d5f306"
+  },
+  {
+    "mutation": "a-ready-pod-is-never-served-at-once",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "Phase::Requested | Phase::Active if ready_now(&record, now) =>",
+    "after": "Phase::Requested | Phase::Active if ready_now(&record, now) && false =>",
+    "named_failure": "llm.runpod/authored/concurrent-first-requests-create-exactly-one-pod",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 25,
+      "passed": 42,
+      "skipped": 0,
+      "total": 67,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one",
+      "llm.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted",
+      "llm.runpod/authored/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id",
+      "llm.runpod/authored/a-lost-create-that-allocated-nothing-is-discharged-and-starts-afresh",
+      "llm.runpod/authored/a-model-removed-from-the-registry-has-its-pod-stopped-after-restart",
+      "llm.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override",
+      "llm.runpod/authored/a-partial-listing-neither-discharges-nor-replaces-a-running-pod",
+      "llm.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order",
+      "llm.runpod/authored/a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline",
+      "llm.runpod/authored/a-pod-that-vanishes-out-of-band-is-replaced-on-the-next-request",
+      "llm.runpod/authored/a-request-while-the-pod-starts-waits-on-it-instead-of-creating-another",
+      "llm.runpod/authored/a-restarted-pool-adopts-its-own-pod-by-exact-identity-without-creating",
+      "llm.runpod/authored/a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name",
+      "llm.runpod/authored/a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan",
+      "llm.runpod/authored/an-exited-pod-is-terminated-and-replaced",
+      "llm.runpod/authored/an-idle-pod-is-reaped-and-the-next-request-cold-starts-again",
+      "llm.runpod/authored/an-open-stream-lease-keeps-the-pod-from-being-reaped",
+      "llm.runpod/authored/concurrent-first-requests-create-exactly-one-pod",
+      "llm.runpod/authored/reasoning-effort-and-explicit-sampling-reach-the-entrypoint",
+      "llm.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
+      "llm.runpod/authored/restarts-spread-over-more-than-the-crash-window-are-not-a-crash-loop",
+      "llm.runpod/authored/the-create-request-carries-the-declared-vllm-settings",
+      "llm.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start",
+      "llm.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod",
+      "llm.runpod/authored/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "mutation": "every-caller-creates",
+    "source": "crates/llm-runpod/src/pool.rs",
+    "before": "        let Some(deployment) = current else {\n            return inner.start(now, alias, authorization);\n        };",
+    "after": "        let Some(deployment) = current else {\n            return inner.start(now, alias, authorization);\n        };\n        if inner.slots.len() < 100 {\n            return inner.start(now, alias, authorization);\n        }",
+    "named_failure": "llm.runpod/authored/concurrent-callers-of-a-slow-pod-all-wait-on-one-create",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 33,
+      "passed": 34,
+      "skipped": 0,
+      "total": 67,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.runpod/authored/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one",
+      "llm.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted",
+      "llm.runpod/authored/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id",
+      "llm.runpod/authored/a-lost-create-that-allocated-nothing-is-discharged-and-starts-afresh",
+      "llm.runpod/authored/a-model-removed-from-the-registry-has-its-pod-stopped-after-restart",
+      "llm.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override",
+      "llm.runpod/authored/a-partial-listing-neither-discharges-nor-replaces-a-running-pod",
+      "llm.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order",
+      "llm.runpod/authored/a-pod-that-is-not-running-reports-no-endpoint",
+      "llm.runpod/authored/a-pod-that-misses-its-startup-deadline-is-terminated",
+      "llm.runpod/authored/a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline",
+      "llm.runpod/authored/a-pod-that-vanishes-out-of-band-is-replaced-on-the-next-request",
+      "llm.runpod/authored/a-request-while-the-pod-starts-waits-on-it-instead-of-creating-another",
+      "llm.runpod/authored/a-restarted-pool-adopts-its-own-pod-by-exact-identity-without-creating",
+      "llm.runpod/authored/a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name",
+      "llm.runpod/authored/a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan",
+      "llm.runpod/authored/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped",
+      "llm.runpod/authored/an-exited-pod-is-terminated-and-replaced",
+      "llm.runpod/authored/an-idle-pod-is-reaped-and-the-next-request-cold-starts-again",
+      "llm.runpod/authored/an-open-stream-lease-keeps-the-pod-from-being-reaped",
+      "llm.runpod/authored/an-unreported-readiness-or-served-model-stays-unknown",
+      "llm.runpod/authored/an-unresolved-lost-create-blocks-a-second-pod-until-it-is-resolved",
+      "llm.runpod/authored/concurrent-callers-of-a-slow-pod-all-wait-on-one-create",
+      "llm.runpod/authored/concurrent-first-requests-create-exactly-one-pod",
+      "llm.runpod/authored/one-restart-below-the-crash-limit-is-not-a-crash-loop",
+      "llm.runpod/authored/reasoning-effort-and-explicit-sampling-reach-the-entrypoint",
+      "llm.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
+      "llm.runpod/authored/restarts-spread-over-more-than-the-crash-window-are-not-a-crash-loop",
+      "llm.runpod/authored/the-crash-restart-limit-is-reached-at-exactly-its-count",
+      "llm.runpod/authored/the-create-request-carries-the-declared-vllm-settings",
+      "llm.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start",
+      "llm.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod",
+      "llm.runpod/authored/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  }
+]

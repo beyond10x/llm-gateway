@@ -1,0 +1,19 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-model-value-that-is-not-printable-is-refused
+summary: a value reaching the pod command line that is not printable is refused at construction
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"hf_model":"bad\nmodel"}},"steps":[]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    error_code: invalid-model:unsafe-text
+    create_calls: 0

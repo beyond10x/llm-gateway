@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.StopReason",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:1f9731d02ff041a4431d395a5d5cd8b41736d1460688ad84212cec616c1571c2",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.StopReason": {
+      "title": "StopReason",
+      "x-ess-name": "llm-gateway.hosting.StopReason",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "AmbiguousMutation",
+        "LifetimeExceeded",
+        "LeaseExpired",
+        "OperatorRequest",
+        "OwnershipLost"
+      ]
+    }
+  }
+}

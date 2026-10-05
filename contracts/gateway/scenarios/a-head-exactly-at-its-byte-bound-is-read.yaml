@@ -1,0 +1,19 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-head-exactly-at-its-byte-bound-is-read
+summary: a 1024-byte head against a 1024-byte bound is parsed; the bound includes the terminator
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","max_head_bytes":1024,"steps":[{"step":"send","raw":"GET /health HTTP/1.1\r\n\r\n","pad_bytes":991}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - 200 live

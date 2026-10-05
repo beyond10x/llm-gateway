@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-request-head-that-is-not-http-is-malformed
+summary: a request line without a version, another protocol version, a relative target and a folded header are each request-malformed
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /health\r\n\r\n"},{"step":"send","raw":"GET /health HTTP/2.0\r\n\r\n"},{"step":"send","raw":"GET health HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nx-note: one\r\n two\r\n\r\n"},{"step":"send","raw":"GET /health HTTP/1.1\r\nno-colon-here\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 400 request-malformed
+    - 400 request-malformed
+    - 400 request-malformed
+    - 400 request-malformed
+    - 400 request-malformed

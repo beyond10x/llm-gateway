@@ -1,0 +1,18 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-config-digest-that-is-not-lowercase-hex-is-refused
+summary: a digest of 64 uppercase hex characters is malformed
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","inventory":{"config_digest":"0123456789ABCDEFaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0123456789abcdef","routes":[]},"steps":[]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    error_code: inventory:malformed-digest

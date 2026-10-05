@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: an-unauthenticated-inspection-is-refused-and-discloses-no-route
+summary: an inspection without a credential is refused as credential-absent with a bearer challenge
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nhost: 127.0.0.1\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 401 credential-absent
+    bodies:
+    - '{"error":{"code":"credential-absent","message":"no owner credential was presented"}}'
+    headers:
+    - www-authenticate=Bearer allow=absent
+    secret_on_wire: false

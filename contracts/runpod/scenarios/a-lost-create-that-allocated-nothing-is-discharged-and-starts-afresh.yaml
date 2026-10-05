@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-lost-create-that-allocated-nothing-is-discharged-and-starts-afresh
+summary: a lost create a complete listing rules out is discharged and the next request creates once more
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"lose_next_create","allocates":false},{"step":"ensure","alias":"qwen"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - err:starting
+    - ready
+    create_calls: 2
+    pods:
+    - pod-1:b10x-llm-qwen:running

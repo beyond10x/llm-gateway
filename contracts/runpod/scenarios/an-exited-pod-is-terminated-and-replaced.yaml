@@ -1,0 +1,28 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: an-exited-pod-is-terminated-and-replaced
+summary: an exited pod still exists and bills, so it is terminated and the next request starts a fresh one
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"set_status","pod":"pod-1","status":"Exited"},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - ok
+    - err:pod-exited
+    - ready
+    terminations:
+    - pod-1
+    leases:
+    - https://pod-1-8000.proxy.runpod.net qwen
+    - https://pod-2-8000.proxy.runpod.net qwen

@@ -1,0 +1,23 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: an-unreported-readiness-or-served-model-stays-unknown
+summary: an unanswered probe is not `false`, and the requested model is not a served model
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"probe_unreachable","unreachable":true},{"step":"ensure","alias":"qwen"},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - err:starting
+    - err:starting
+    observed:
+    - qwen-1 ready=unreported served=unreported endpoint=https://pod-1-8000.proxy.runpod.net

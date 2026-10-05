@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-drain-reports-unready-keeps-serving-and-cannot-be-undone
+summary: a draining gateway answers unready to probes, still serves inspection, and marking it ready again does not end the drain
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"drain"},{"step":"send","raw":"GET /ready HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /v1/routes/code HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"mark_ready"},{"step":"send","raw":"GET /ready HTTP/1.1\r\n\r\n"},{"step":"is_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - ok
+    - 503 unready
+    - 200 inspected
+    - ok
+    - 503 unready
+    - ready=false
+    ready: false

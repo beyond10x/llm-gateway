@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-pod-that-vanishes-out-of-band-is-replaced-on-the-next-request
+summary: absence from a complete listing discharges the record and the next request creates a new pod, terminating nothing
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"vanish","pod":"pod-1"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - ready
+    create_calls: 2
+    terminations: []
+    leases:
+    - https://pod-1-8000.proxy.runpod.net qwen
+    - https://pod-2-8000.proxy.runpod.net qwen

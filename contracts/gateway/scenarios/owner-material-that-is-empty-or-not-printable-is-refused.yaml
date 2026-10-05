@@ -1,0 +1,18 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: owner-material-that-is-empty-or-not-printable-is-refused
+summary: an empty owner secret is refused as a token before a verifier is composed
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"","steps":[]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    error_code: token:empty

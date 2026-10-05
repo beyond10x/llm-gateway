@@ -1,4 +1,4 @@
-domain: llm.gateway
+domain: llm-gateway.gateway
 
 # The authenticated single-owner gateway (crates/llm-gateway, docs/gateway.md). It admits one
 # owner through an injected verifier, serves a closed two-path liveness and readiness surface,
@@ -19,7 +19,7 @@ domain: llm.gateway
 types:
   # The closed refusal set, with the wire code, status and fixed message the crate publishes
   # (crates/llm-gateway/src/error.rs:99-133).
-  - name: llm.gateway.Refusal
+  - name: llm-gateway.gateway.Refusal
     kind: enum
     variants: [BodyNotAllowed, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, Unavailable]
   # A header whose name is followed by whitespace before its colon is `request-malformed`
@@ -36,12 +36,12 @@ types:
   # `inventory:malformed-digest`, and `inventory:too-many-routes` for more than 4096 routes
   # (inventory.rs:25, 252); exactly 4096 is composed. A program reaches that count through its
   # inventory's `generated_routes`, which appends routes `g<i>` the program need not spell out.
-  - name: llm.gateway.CompositionRefusal
+  - name: llm-gateway.gateway.CompositionRefusal
     kind: enum
     variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes]
 entities:
   # One gateway: one owner verifier, one route inventory snapshot, one listener.
-  - name: llm.gateway.Gateway
+  - name: llm-gateway.gateway.Gateway
     identity: {name: id, type: String}
     fields:
       - {name: max_head_bytes, type: Integer}
@@ -52,7 +52,7 @@ entities:
       - {name: ready, type: Boolean}
       - {name: draining, type: Boolean}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
-  - name: llm.gateway.ExchangeObservation
+  - name: llm-gateway.gateway.ExchangeObservation
     identity: {name: observation_id, type: String}
     fields: &exchange_facts
       - {name: valid_program, type: Boolean}
@@ -75,25 +75,25 @@ entities:
       - {name: shutdown, type: 'Optional<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
-  - name: llm.gateway.Exchange
+  - name: llm-gateway.gateway.Exchange
     input:
       # A bounded fixture program: the owner secret, the listener bounds, an optional route
       # inventory, and the raw requests sent to the loopback socket.
       - {name: program_json, type: String}
     outcomes:
       - name: observed
-        emits: [llm.gateway.Exchanged]
+        emits: [llm-gateway.gateway.Exchanged]
         payload:
-          llm.gateway.Exchanged:
+          llm-gateway.gateway.Exchanged:
             valid_program: {generated: true}
         summary: Observe the real gateway's answers to raw requests over a loopback socket.
 events:
   # Test-adapter notification only; there is no production notification transport.
-  - name: llm.gateway.Exchanged
+  - name: llm-gateway.gateway.Exchanged
     fields:
       - {name: valid_program, type: Boolean}
 views:
-  - name: llm.gateway.LastExchange
-    source: llm.gateway.ExchangeObservation
+  - name: llm-gateway.gateway.LastExchange
+    source: llm-gateway.gateway.ExchangeObservation
     consistency: read_your_writes
     fields: *exchange_facts

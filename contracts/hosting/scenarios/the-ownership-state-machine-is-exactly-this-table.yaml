@@ -1,0 +1,62 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: the-ownership-state-machine-is-exactly-this-table
+summary: the ownership state machine is exactly this table
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":2,"max_lifetime_ms":10000,"lease_ms":1000},"steps":[]}'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: true
+    error_code: null
+    results: []
+    transitions:
+    - from: declared
+      to: requested
+    - from: declared
+      to: uncertain
+    - from: declared
+      to: cancelled
+    - from: requested
+      to: requested
+    - from: requested
+      to: active
+    - from: requested
+      to: stop-required
+    - from: requested
+      to: stopped
+    - from: requested
+      to: disowned
+    - from: active
+      to: active
+    - from: active
+      to: stop-required
+    - from: active
+      to: stopped
+    - from: active
+      to: disowned
+    - from: uncertain
+      to: uncertain
+    - from: uncertain
+      to: requested
+    - from: uncertain
+      to: active
+    - from: uncertain
+      to: stop-required
+    - from: uncertain
+      to: stopped
+    - from: uncertain
+      to: disowned
+    - from: stop-required
+      to: stop-required
+    - from: stop-required
+      to: stopped
+    - from: stop-required
+      to: disowned

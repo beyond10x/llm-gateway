@@ -1,0 +1,18 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: adversary-w2-a-route-repeating-a-target-is-refused
+summary: one target identifier twice on one route is refused as inventory:duplicate-target (inventory.rs:157-159); no authored scenario reaches duplicate-target, too-many-targets or any label refusal
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","inventory":{"routes":[{"route_id":"r0","alias":"a0","fallback_enabled":false,"targets":[{"target_id":"t0","position":0},{"target_id":"t0","position":1}]}]},"steps":[]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    error_code: inventory:duplicate-target

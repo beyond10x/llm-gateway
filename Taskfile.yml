@@ -1,0 +1,17 @@
+version: '3'
+tasks:
+  check:
+    desc: Check the implementation and the specification, and run conformance
+    cmds:
+      - task: rust
+      - ess specify validate --path spec
+      - task: conformance
+  conformance:
+    desc: Check ESS projection drift and run behavioral conformance three times
+    cmds:
+      - cargo run --locked -p b10x-llm-gateway-conformance -- check
+  rust:
+    cmds:
+      - cargo test --workspace --locked
+      - cargo fmt --all --check
+      - cargo clippy --workspace --all-targets --all-features --locked -- -D warnings

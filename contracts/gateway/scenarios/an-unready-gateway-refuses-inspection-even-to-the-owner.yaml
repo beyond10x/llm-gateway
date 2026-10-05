@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: an-unready-gateway-refuses-inspection-even-to-the-owner
+summary: before the embedding marks it ready, an authenticated inspection is unavailable
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - 503 unavailable
+    bodies:
+    - '{"error":{"code":"unavailable","message":"the gateway is not ready to serve inspection"}}'

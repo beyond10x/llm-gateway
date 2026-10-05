@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-ready-gateway-reports-ready
+summary: once the embedding marks it ready the readiness probe answers ready
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /ready HTTP/1.1\r\n\r\n"},{"step":"send","raw":"HEAD /ready HTTP/1.1\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 200 ready
+    - 200 no-body
+    bodies:
+    - '{"status":"ready"}'
+    - ''
+    ready: true

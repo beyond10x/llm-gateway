@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: concurrent-callers-of-a-slow-pod-all-wait-on-one-create
+summary: ten callers racing a model whose pod is not ready yet are all told starting and cause exactly one create
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"ready_after","probes":100},{"step":"concurrent","alias":"qwen","callers":10}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - concurrent:served=0 starting=10 other=0
+    create_calls: 1

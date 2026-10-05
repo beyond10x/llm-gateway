@@ -1,0 +1,689 @@
+[
+  {
+    "after": "let Some(deployment) = current.filter(|_| false) else {",
+    "before": "let Some(deployment) = current else {",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "every-caller-starts-its-own-pod",
+    "named_rust_failure": "concurrent_first_requests_create_exactly_one_pod",
+    "rust_failed": [
+      "a_crash_looping_pod_is_terminated_and_the_next_request_starts_a_fresh_one",
+      "a_leftover_pod_of_ours_is_swept_even_when_a_fresh_pool_reuses_its_request_id",
+      "a_lost_create_answer_is_never_retried_on_another_gpu_and_is_adopted_by_request_id",
+      "a_lost_create_is_not_resolved_against_another_controllers_pod_with_the_same_alias",
+      "a_lost_create_that_allocated_nothing_is_discharged_and_the_next_request_starts_afresh",
+      "a_model_removed_from_the_registry_has_its_pod_stopped_after_restart",
+      "a_model_without_a_volume_carries_no_placement_or_cache_override",
+      "a_partial_listing_neither_discharges_nor_replaces_a_running_pod",
+      "a_placement_refusal_falls_through_to_the_next_declared_gpu_in_order",
+      "a_pod_inherited_through_a_lease_takeover_is_served_or_stopped_by_its_new_owner",
+      "a_pod_retagged_by_a_newer_owner_is_handed_over_and_never_terminated",
+      "a_pod_that_is_not_running_reports_no_endpoint",
+      "a_pod_that_misses_its_startup_deadline_is_terminated",
+      "a_pod_that_stops_serving_after_it_served_is_retired_within_its_startup_deadline",
+      "a_pod_that_vanishes_out_of_band_is_replaced_on_the_next_request",
+      "a_pod_whose_readiness_is_unknown_after_serving_is_not_retired_by_the_deadline",
+      "a_request_while_the_pod_starts_waits_on_it_instead_of_creating_another",
+      "a_restarted_pool_adopts_its_own_pod_by_exact_identity_without_creating",
+      "a_restarted_pool_does_not_adopt_a_pod_that_reused_its_name",
+      "a_second_pod_carrying_a_recorded_request_id_under_another_key_is_an_orphan",
+      "a_stream_on_a_retired_pod_does_not_keep_its_replacement_from_being_reaped",
+      "a_takeover_never_terminates_a_pod_a_third_controller_has_retagged",
+      "an_exited_pod_is_terminated_and_replaced",
+      "an_exited_pod_is_terminated_rather_than_recorded_as_stopped",
+      "an_idle_pod_is_reaped_and_the_next_request_cold_starts_again",
+      "an_llmgw_pod_does_not_keep_a_lost_create_unresolved",
+      "an_open_stream_lease_keeps_the_pod_from_being_reaped",
+      "an_unresolved_lost_create_blocks_a_second_pod_until_it_is_resolved",
+      "concurrent_first_requests_create_exactly_one_pod",
+      "every_create_carries_a_request_id_naming_this_controller_and_unique_to_it",
+      "reasoning_effort_and_explicit_sampling_reach_the_entrypoint",
+      "restarts_inside_the_crash_window_are_a_crash_loop",
+      "restarts_spread_over_more_than_the_crash_window_are_not_a_crash_loop",
+      "the_crash_restart_limit_is_reached_at_exactly_its_count",
+      "the_create_request_carries_the_declared_vllm_settings",
+      "the_idle_limit_is_never_below_the_measured_cold_start",
+      "the_orphan_sweep_never_selects_a_legacy_llmgw_pod",
+      "the_orphan_sweep_terminates_only_this_controllers_unrecorded_pods"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "                CreateAnswer::Refused => break,",
+    "before": "                CreateAnswer::Refused => {}",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "a-placement-refusal-ends-the-gpu-fallback",
+    "named_rust_failure": "a_placement_refusal_falls_through_to_the_next_declared_gpu_in_order",
+    "rust_failed": [
+      "a_placement_refusal_falls_through_to_the_next_declared_gpu_in_order"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "                CreateAnswer::Lost => {}",
+    "before": "                CreateAnswer::Lost => {\n                    return CreateOutcome {\n                        dispatch: Dispatch::Unknown,\n                        resource: None,\n                    };\n                }",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "a-lost-create-tries-the-next-gpu",
+    "named_rust_failure": "a_lost_create_answer_is_never_retried_on_another_gpu_and_is_adopted_by_request_id",
+    "rust_failed": [
+      "a_lost_create_answer_is_never_retried_on_another_gpu_and_is_adopted_by_request_id",
+      "a_lost_create_is_not_resolved_against_another_controllers_pod_with_the_same_alias",
+      "an_unresolved_lost_create_blocks_a_second_pod_until_it_is_resolved"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "            && now < before && false",
+    "before": "            && now < before",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "a-container-restart-is-not-counted",
+    "named_rust_failure": "a_crash_looping_pod_is_terminated_and_the_next_request_starts_a_fresh_one",
+    "rust_failed": [
+      "a_crash_looping_pod_is_terminated_and_the_next_request_starts_a_fresh_one",
+      "restarts_inside_the_crash_window_are_a_crash_loop",
+      "the_crash_restart_limit_is_reached_at_exactly_its_count"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "        if false {",
+    "before": "        if probe == Probe::Refused {",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "a-refused-credential-is-ignored",
+    "named_rust_failure": "a_pod_that_refuses_its_credential_is_terminated",
+    "rust_failed": [
+      "a_pod_that_refuses_its_credential_is_terminated"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "now.saturating_sub(slot.deadline_from_ms) >= deadline_ms)",
+    "before": "now.saturating_sub(slot.deadline_from_ms) > deadline_ms)",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-startup-deadline-is-exclusive",
+    "named_rust_failure": "a_pod_that_misses_its_startup_deadline_is_terminated",
+    "rust_failed": [
+      "a_pod_that_misses_its_startup_deadline_is_terminated"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "        if false && let Some(slot) = self.slots.get_mut(alias) {",
+    "before": "        if terminal && let Some(slot) = self.slots.get_mut(alias) {",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "a-stopped-deployment-is-never-forgotten",
+    "named_rust_failure": "a_pod_that_vanishes_out_of_band_is_replaced_on_the_next_request",
+    "rust_failed": [
+      "a_crash_looping_pod_is_terminated_and_the_next_request_starts_a_fresh_one",
+      "a_lost_create_that_allocated_nothing_is_discharged_and_the_next_request_starts_afresh",
+      "a_pod_that_vanishes_out_of_band_is_replaced_on_the_next_request",
+      "a_restarted_pool_does_not_adopt_a_pod_that_reused_its_name",
+      "a_stream_on_a_retired_pod_does_not_keep_its_replacement_from_being_reaped",
+      "an_exited_pod_is_terminated_and_replaced",
+      "an_idle_pod_is_reaped_and_the_next_request_cold_starts_again",
+      "an_llmgw_pod_does_not_keep_a_lost_create_unresolved",
+      "every_create_carries_a_request_id_naming_this_controller_and_unique_to_it"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "            Some(Probe::Unreachable) | None => (Some(false), None),",
+    "before": "            Some(Probe::Unreachable) | None => (None, None),",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "an-unanswered-probe-reads-as-not-ready",
+    "named_rust_failure": "an_unreported_readiness_or_served_model_stays_unknown",
+    "rust_failed": [
+      "a_pod_whose_readiness_is_unknown_after_serving_is_not_retired_by_the_deadline",
+      "an_unreported_readiness_or_served_model_stays_unknown"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "            owner: None,",
+    "before": "            owner: pod\n                .env\n                .get(TAG_OWNER)\n                .and_then(|owner| Identifier::new(owner.clone()).ok()),",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-owner-tag-is-not-read-back",
+    "named_rust_failure": "a_pod_retagged_by_a_newer_owner_is_handed_over_and_never_terminated",
+    "rust_failed": [
+      "a_leftover_pod_of_ours_is_swept_even_when_a_fresh_pool_reuses_its_request_id",
+      "a_pod_retagged_by_a_newer_owner_is_handed_over_and_never_terminated",
+      "a_second_pod_carrying_a_recorded_request_id_under_another_key_is_an_orphan",
+      "the_orphan_sweep_terminates_only_this_controllers_unrecorded_pods"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "let quiet = true;",
+    "before": "let quiet = slot.usage.in_flight.load(Ordering::SeqCst) == 0;",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "an-open-stream-does-not-hold-the-pod",
+    "named_rust_failure": "an_open_stream_lease_keeps_the_pod_from_being_reaped",
+    "rust_failed": [
+      "an_open_stream_lease_keeps_the_pod_from_being_reaped"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": ".max(0)",
+    "before": ".max(self.measured_start_ms.unwrap_or(0))",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-idle-limit-ignores-the-measured-start",
+    "named_rust_failure": "the_idle_limit_is_never_below_the_measured_cold_start",
+    "rust_failed": [
+      "the_idle_limit_is_never_below_the_measured_cold_start"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "let ours = true;",
+    "before": "let ours = resource.owner.as_ref() == Some(&self.policy.controller);",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-sweep-ignores-the-owner-tag",
+    "named_rust_failure": "the_orphan_sweep_terminates_only_this_controllers_unrecorded_pods",
+    "rust_failed": [
+      "a_pod_retagged_by_a_newer_owner_is_handed_over_and_never_terminated",
+      "the_orphan_sweep_terminates_only_this_controllers_unrecorded_pods"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "    !name.is_empty()",
+    "before": "    name.starts_with(POD_NAME_PREFIX) && !name.starts_with(LEGACY_POD_NAME_PREFIX)",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-namespace-admits-every-name",
+    "named_rust_failure": "the_orphan_sweep_never_selects_a_legacy_llmgw_pod",
+    "rust_failed": [
+      "an_llmgw_pod_does_not_keep_a_lost_create_unresolved",
+      "the_orphan_sweep_never_selects_a_legacy_llmgw_pod",
+      "the_orphan_sweep_terminates_only_this_controllers_unrecorded_pods"
+    ],
+    "source": "crates/llm-runpod/src/request.rs",
+    "source_before_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0",
+    "source_restored_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0"
+  },
+  {
+    "after": "pub const POD_NAME_PREFIX: &str = \"llmgw-\";",
+    "before": "pub const POD_NAME_PREFIX: &str = \"b10x-llm-\";",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-pod-prefix-is-llmgws",
+    "named_rust_failure": "the_orphan_sweep_never_selects_a_legacy_llmgw_pod",
+    "rust_failed": [
+      "a_crash_looping_pod_is_terminated_and_the_next_request_starts_a_fresh_one",
+      "a_leftover_pod_of_ours_is_swept_even_when_a_fresh_pool_reuses_its_request_id",
+      "a_lost_create_answer_is_never_retried_on_another_gpu_and_is_adopted_by_request_id",
+      "a_lost_create_is_not_resolved_against_another_controllers_pod_with_the_same_alias",
+      "a_lost_create_that_allocated_nothing_is_discharged_and_the_next_request_starts_afresh",
+      "a_model_removed_from_the_registry_has_its_pod_stopped_after_restart",
+      "a_model_without_a_volume_carries_no_placement_or_cache_override",
+      "a_partial_listing_neither_discharges_nor_replaces_a_running_pod",
+      "a_placement_refusal_falls_through_to_the_next_declared_gpu_in_order",
+      "a_pod_inherited_through_a_lease_takeover_is_served_or_stopped_by_its_new_owner",
+      "a_pod_retagged_by_a_newer_owner_is_handed_over_and_never_terminated",
+      "a_pod_that_is_not_running_reports_no_endpoint",
+      "a_pod_that_misses_its_startup_deadline_is_terminated",
+      "a_pod_that_refuses_its_credential_is_terminated",
+      "a_pod_that_stops_serving_after_it_served_is_retired_within_its_startup_deadline",
+      "a_pod_that_vanishes_out_of_band_is_replaced_on_the_next_request",
+      "a_pod_whose_readiness_is_unknown_after_serving_is_not_retired_by_the_deadline",
+      "a_request_while_the_pod_starts_waits_on_it_instead_of_creating_another",
+      "a_restarted_pool_adopts_its_own_pod_by_exact_identity_without_creating",
+      "a_restarted_pool_does_not_adopt_a_pod_that_reused_its_name",
+      "a_second_pod_carrying_a_recorded_request_id_under_another_key_is_an_orphan",
+      "a_stream_on_a_retired_pod_does_not_keep_its_replacement_from_being_reaped",
+      "a_takeover_never_terminates_a_pod_a_third_controller_has_retagged",
+      "an_exited_pod_is_terminated_and_replaced",
+      "an_exited_pod_is_terminated_rather_than_recorded_as_stopped",
+      "an_idle_pod_is_reaped_and_the_next_request_cold_starts_again",
+      "an_llmgw_pod_does_not_keep_a_lost_create_unresolved",
+      "an_open_stream_lease_keeps_the_pod_from_being_reaped",
+      "an_unresolved_lost_create_blocks_a_second_pod_until_it_is_resolved",
+      "concurrent_first_requests_create_exactly_one_pod",
+      "every_create_carries_a_request_id_naming_this_controller_and_unique_to_it",
+      "reasoning_effort_and_explicit_sampling_reach_the_entrypoint",
+      "restarts_inside_the_crash_window_are_a_crash_loop",
+      "restarts_spread_over_more_than_the_crash_window_are_not_a_crash_loop",
+      "the_crash_restart_limit_is_reached_at_exactly_its_count",
+      "the_create_request_carries_the_declared_vllm_settings",
+      "the_idle_limit_is_never_below_the_measured_cold_start",
+      "the_orphan_sweep_never_selects_a_legacy_llmgw_pod",
+      "the_orphan_sweep_terminates_only_this_controllers_unrecorded_pods",
+      "the_resource_ceiling_refuses_a_second_model_before_anything_is_submitted"
+    ],
+    "source": "crates/llm-runpod/src/request.rs",
+    "source_before_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0",
+    "source_restored_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0"
+  },
+  {
+    "after": "            return None;",
+    "before": "            return Some(Retire::Unconfigured);",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "a-removed-model-keeps-its-pod",
+    "named_rust_failure": "a_model_removed_from_the_registry_has_its_pod_stopped_after_restart",
+    "rust_failed": [
+      "a_model_removed_from_the_registry_has_its_pod_stopped_after_restart"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "if matches!(record.phase, Phase::Declared) {",
+    "before": "if matches!(record.phase, Phase::Declared | Phase::StopRequired) {",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "an-owed-stop-is-retired-again",
+    "named_rust_failure": "an_unresolved_lost_create_blocks_a_second_pod_until_it_is_resolved",
+    "rust_failed": [
+      "an_unresolved_lost_create_blocks_a_second_pod_until_it_is_resolved"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "        \"--served-model\",",
+    "before": "        \"--served-model-name\",",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-served-model-name-is-not-declared",
+    "named_rust_failure": "the_create_request_carries_the_declared_vllm_settings",
+    "rust_failed": [
+      "a_request_while_the_pod_starts_waits_on_it_instead_of_creating_another",
+      "the_create_request_carries_the_declared_vllm_settings"
+    ],
+    "source": "crates/llm-runpod/src/request.rs",
+    "source_before_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0",
+    "source_restored_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0"
+  },
+  {
+    "after": "            model.api_key_secret.clone(),",
+    "before": "            format!(\"{{{{ RUNPOD_SECRET_{} }}}}\", model.api_key_secret),",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "the-vllm-key-is-a-value-not-a-reference",
+    "named_rust_failure": "the_create_request_carries_the_declared_vllm_settings",
+    "rust_failed": [
+      "the_create_request_carries_the_declared_vllm_settings"
+    ],
+    "source": "crates/llm-runpod/src/request.rs",
+    "source_before_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0",
+    "source_restored_sha256": "3c7ae67d566354f262b728df424d64b5889fb556491d2b6c6bc87f18aed415c0"
+  },
+  {
+    "after": "    fn honours_idempotency_key(&self) -> bool {\n        true",
+    "before": "    fn honours_idempotency_key(&self) -> bool {\n        false",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "runpod-claims-idempotent-creates",
+    "named_rust_failure": "runpod_does_not_promise_idempotent_creates",
+    "rust_failed": [
+      "runpod_does_not_promise_idempotent_creates"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "            .filter(|_| true)",
+    "before": "            .filter(|record| record.observed.is_none())",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F2-a-request-id-protects-a-record-that-already-holds-a-key",
+    "named_rust_failure": "a_second_pod_carrying_a_recorded_request_id_under_another_key_is_an_orphan",
+    "rust_failed": [
+      "a_second_pod_carrying_a_recorded_request_id_under_another_key_is_an_orphan"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "            PodStatus::Created => ProviderState::Pending,\n            PodStatus::Running => ProviderState::Running,\n            PodStatus::Exited | PodStatus::Terminated => ProviderState::Terminated,",
+    "before": "            PodStatus::Created | PodStatus::Exited => ProviderState::Pending,\n            PodStatus::Running => ProviderState::Running,\n            PodStatus::Terminated => ProviderState::Terminated,",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F3-exited-reads-as-terminated",
+    "named_rust_failure": "an_exited_pod_is_terminated_rather_than_recorded_as_stopped",
+    "rust_failed": [
+      "an_exited_pod_is_terminated_and_replaced",
+      "an_exited_pod_is_terminated_rather_than_recorded_as_stopped"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "        if false {",
+    "before": "        if health.exited {",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F3-an-exited-pod-is-not-retired",
+    "named_rust_failure": "an_exited_pod_is_terminated_and_replaced",
+    "rust_failed": [
+      "an_exited_pod_is_terminated_and_replaced"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "utilization < 0.0",
+    "before": "utilization <= 0.0",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F5-zero-gpu-utilization-is-accepted",
+    "named_rust_failure": "every_refused_setting_is_refused_on_its_own",
+    "rust_failed": [
+      "every_refused_setting_is_refused_on_its_own"
+    ],
+    "source": "crates/llm-runpod/src/config.rs",
+    "source_before_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a",
+    "source_restored_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a"
+  },
+  {
+    "after": "",
+    "before": "            || self.vllm.max_num_seqs == 0\n",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F5-zero-max-num-seqs-is-accepted",
+    "named_rust_failure": "every_refused_setting_is_refused_on_its_own",
+    "rust_failed": [
+      "every_refused_setting_is_refused_on_its_own"
+    ],
+    "source": "crates/llm-runpod/src/config.rs",
+    "source_before_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a",
+    "source_restored_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a"
+  },
+  {
+    "after": "        if false",
+    "before": "        if self.api_key_secret.is_empty()",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F5-an-empty-secret-name-is-accepted",
+    "named_rust_failure": "every_refused_setting_is_refused_on_its_own",
+    "rust_failed": [
+      "every_refused_setting_is_refused_on_its_own"
+    ],
+    "source": "crates/llm-runpod/src/config.rs",
+    "source_before_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a",
+    "source_restored_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a"
+  },
+  {
+    "after": "",
+    "before": "            || self.crash_window_ms == 0\n",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F5-a-zero-crash-window-is-accepted",
+    "named_rust_failure": "a_model_declaration_without_a_usable_setting_is_refused",
+    "rust_failed": [
+      "a_model_declaration_without_a_usable_setting_is_refused"
+    ],
+    "source": "crates/llm-runpod/src/config.rs",
+    "source_before_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a",
+    "source_restored_sha256": "d7747c5eb3de7bfa99d1dc254295a17f9ab9dcf76f397f83a56f083c05448d5a"
+  },
+  {
+    "after": "listing.pods.iter().filter(|_| true)",
+    "before": "listing.pods.iter().filter(|pod| in_namespace(&pod.name))",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F6-the-inventory-lists-every-namespace",
+    "named_rust_failure": "an_llmgw_pod_does_not_keep_a_lost_create_unresolved",
+    "rust_failed": [
+      "an_llmgw_pod_does_not_keep_a_lost_create_unresolved"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "            endpoint: (pod.status != PodStatus::Terminated)",
+    "before": "            endpoint: (pod.status == PodStatus::Running)",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "J3-an-endpoint-for-a-pod-that-is-not-running",
+    "named_rust_failure": "a_pod_that_is_not_running_reports_no_endpoint",
+    "rust_failed": [
+      "a_pod_that_is_not_running_reports_no_endpoint"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "            drop(usage);",
+    "before": "            slot.usage = Arc::new(usage);",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "J4-in-flight-accounting-is-per-alias",
+    "named_rust_failure": "a_stream_on_a_retired_pod_does_not_keep_its_replacement_from_being_reaped",
+    "rust_failed": [
+      "a_stream_on_a_retired_pod_does_not_keep_its_replacement_from_being_reaped"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "        hasher.write(alias.as_bytes());",
+    "before": "        hasher.write(encoding.as_bytes());",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F1-the-digest-covers-the-alias-only",
+    "named_rust_failure": "every_create_carries_a_request_id_naming_this_controller_and_unique_to_it",
+    "rust_failed": [
+      "every_create_carries_a_request_id_naming_this_controller_and_unique_to_it",
+      "pool::tests::request_ids_differ_across_controller_and_alias_splits"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "        \"{controller}-{alias}-{generation}-{now}-{nonce}\"\n",
+    "before": "        \"{}:{controller}{}:{alias}{generation}:{now}:{nonce}\",\n        controller.len(),\n        alias.len()\n",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "J5-the-encoding-is-dash-joined",
+    "named_rust_failure": "pool::tests::request_ids_differ_across_controller_and_alias_splits",
+    "rust_failed": [
+      "pool::tests::request_ids_differ_across_controller_and_alias_splits"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "",
+    "before": "    readable.truncate(READABLE_PREFIX_BYTES);\n",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F9-the-readable-prefix-is-not-cut",
+    "named_rust_failure": "a_pool_that_accepts_its_controller_and_alias_can_start_a_pod",
+    "rust_failed": [
+      "a_pool_that_accepts_its_controller_and_alias_can_start_a_pod",
+      "pool::tests::a_request_id_always_fits_the_identifier_limit"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "(health.restarts.len() > model.crash_restart_limit as usize)",
+    "before": "(health.restarts.len() >= model.crash_restart_limit as usize)",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F4-the-crash-limit-needs-one-more-restart",
+    "named_rust_failure": "the_crash_restart_limit_is_reached_at_exactly_its_count",
+    "rust_failed": [
+      "restarts_inside_the_crash_window_are_a_crash_loop",
+      "the_crash_restart_limit_is_reached_at_exactly_its_count"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "        break;",
+    "before": "        restarts.pop_front();",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "J6-restarts-are-never-pruned",
+    "named_rust_failure": "restarts_spread_over_more_than_the_crash_window_are_not_a_crash_loop",
+    "rust_failed": [
+      "provider::tests::restarts_outside_the_window_are_dropped_and_its_end_is_kept",
+      "restarts_spread_over_more_than_the_crash_window_are_not_a_crash_loop"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": ".is_some_and(|&at| now_ms.saturating_sub(at) >= window_ms)",
+    "before": ".is_some_and(|&at| now_ms.saturating_sub(at) > window_ms)",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "J1-the-crash-window-end-is-exclusive",
+    "named_rust_failure": "restarts_inside_the_crash_window_are_a_crash_loop",
+    "rust_failed": [
+      "provider::tests::restarts_outside_the_window_are_dropped_and_its_end_is_kept",
+      "restarts_inside_the_crash_window_are_a_crash_loop"
+    ],
+    "source": "crates/llm-runpod/src/provider.rs",
+    "source_before_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53",
+    "source_restored_sha256": "74ccb8a1028b496e8a1bb256b908f889f882afcf28133f56e791a416e10a1c53"
+  },
+  {
+    "after": "",
+    "before": "        self.stop_inherited();\n",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F7-an-inherited-pod-is-never-stopped",
+    "named_rust_failure": "a_pod_inherited_through_a_lease_takeover_is_served_or_stopped_by_its_new_owner",
+    "rust_failed": [
+      "a_pod_inherited_through_a_lease_takeover_is_served_or_stopped_by_its_new_owner"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": ".is_some();",
+    "before": ".is_some_and(|resource| resource.owner.as_ref() == Some(&owner));",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F7-any-label-counts-as-inherited",
+    "named_rust_failure": "a_takeover_never_terminates_a_pod_a_third_controller_has_retagged",
+    "rust_failed": [
+      "a_takeover_never_terminates_a_pod_a_third_controller_has_retagged"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "return (false && now.saturating_sub(last_ready) > deadline_ms)",
+    "before": "return (definitely_unready && now.saturating_sub(last_ready) > deadline_ms)",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F8-a-pod-that-stopped-serving-is-kept",
+    "named_rust_failure": "a_pod_that_stops_serving_after_it_served_is_retired_within_its_startup_deadline",
+    "rust_failed": [
+      "a_pod_that_stops_serving_after_it_served_is_retired_within_its_startup_deadline"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  },
+  {
+    "after": "observed.observed_at_ms == now && observed.ready != Some(true)",
+    "before": "observed.observed_at_ms == now && observed.ready == Some(false)",
+    "compiled": true,
+    "exit": 101,
+    "killed": true,
+    "mutation": "F8-unknown-readiness-counts-as-not-ready",
+    "named_rust_failure": "a_pod_whose_readiness_is_unknown_after_serving_is_not_retired_by_the_deadline",
+    "rust_failed": [
+      "a_pod_whose_readiness_is_unknown_after_serving_is_not_retired_by_the_deadline"
+    ],
+    "source": "crates/llm-runpod/src/pool.rs",
+    "source_before_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63",
+    "source_restored_sha256": "93d3a6b70780e41506dec0b877da29fe2d2c473ce7eaf38dc78536f132cdbc63"
+  }
+]

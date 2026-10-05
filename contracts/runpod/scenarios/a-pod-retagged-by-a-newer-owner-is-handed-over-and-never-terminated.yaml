@@ -1,0 +1,20 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated
+summary: a newer epoch's owner tag transfers the obligation rather than letting this pool stop the pod
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"retag","pod":"pod-1","owner":"controller-b","epoch":99},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"},{"step":"reap"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    terminations: []
+    transferred:
+    - qwen-1

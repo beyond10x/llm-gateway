@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-pod-that-is-not-running-reports-no-endpoint
+summary: a created pod that is not running has no endpoint and no readiness, and is not replaced
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"ensure","alias":"qwen"},{"step":"set_status","pod":"pod-1","status":"Created"},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - err:starting
+    - ok
+    - ok
+    - err:starting
+    observed:
+    - qwen-1 ready=unreported served=unreported endpoint=unreported
+    create_calls: 1

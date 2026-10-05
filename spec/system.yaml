@@ -1,0 +1,7 @@
+format: ess/14
+system: llm-gateway
+version: v1
+domains:
+  - llm-gateway.hosting
+  - llm-gateway.runpod
+  - llm-gateway.gateway

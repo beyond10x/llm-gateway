@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: concurrent-first-requests-create-exactly-one-pod
+summary: ten callers racing a cold model cause exactly one create; the caller that created is told starting and the nine after it are served that pod (pool.rs ensure, single-flight)
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"concurrent","alias":"qwen","callers":10},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - concurrent:served=9 starting=1 other=0
+    - ready
+    create_calls: 1
+    leases:
+    - https://pod-1-8000.proxy.runpod.net qwen

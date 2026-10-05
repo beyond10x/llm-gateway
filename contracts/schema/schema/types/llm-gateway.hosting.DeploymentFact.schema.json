@@ -1,0 +1,97 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.DeploymentFact",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:163e7c5ea9b2071623c393b8428f963ade1a5ac864c5d48a6e01436b7caf223d",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.DeploymentFact": {
+      "title": "DeploymentFact",
+      "x-ess-name": "llm-gateway.hosting.DeploymentFact",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "phase": {
+          "type": "string"
+        },
+        "stop_reason": {
+          "type": "string"
+        },
+        "stop_evidence": {
+          "type": "string"
+        },
+        "connected": {
+          "type": "boolean"
+        },
+        "requested_model": {
+          "type": "string"
+        },
+        "requested_image": {
+          "type": "string"
+        },
+        "requested_name": {
+          "type": "string"
+        },
+        "requested_lifetime_ms": {
+          "type": "string"
+        },
+        "request_id": {
+          "type": "string"
+        },
+        "ledger": {
+          "type": "string"
+        },
+        "reservation": {
+          "type": "string"
+        },
+        "observed_name": {
+          "type": "string"
+        },
+        "observed_incarnation": {
+          "type": "string"
+        },
+        "observed_state": {
+          "type": "string"
+        },
+        "observed_ready": {
+          "type": "boolean"
+        },
+        "observed_endpoint": {
+          "type": "string"
+        },
+        "observed_model": {
+          "type": "string"
+        },
+        "lease_owner": {
+          "type": "string"
+        },
+        "lease_epoch": {
+          "type": "integer"
+        },
+        "lease_expires_at_ms": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "phase",
+        "connected",
+        "requested_model",
+        "requested_image",
+        "requested_name",
+        "requested_lifetime_ms",
+        "request_id",
+        "ledger",
+        "reservation"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

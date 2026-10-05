@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: the-bearer-scheme-is-matched-without-regard-to-case
+summary: the scheme word is case-insensitive; the credential is not
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /v1/routes/code HTTP/1.1\r\nAUTHORIZATION: bEaReR owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"send","raw":"GET /v1/routes/code HTTP/1.1\r\nauthorization: Bearer OWNER-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 200 inspected
+    - 401 credential-rejected

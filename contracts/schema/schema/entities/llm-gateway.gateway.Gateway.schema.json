@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Gateway",
+  "x-ess-name": "llm-gateway.gateway.Gateway",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "max_head_bytes": {
+      "type": "integer"
+    },
+    "max_concurrent_requests": {
+      "type": "integer"
+    },
+    "read_timeout_ms": {
+      "type": "integer"
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "draining": {
+      "type": "boolean"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.gateway.Gateway.State"
+    }
+  },
+  "required": [
+    "id",
+    "max_head_bytes",
+    "max_concurrent_requests",
+    "read_timeout_ms",
+    "ready",
+    "draining",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:f59dcb2ce78022f283df62fc6e98fb719c3ee4f90f4e53a0179efb1fb48790b1",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.Gateway.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.Gateway.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

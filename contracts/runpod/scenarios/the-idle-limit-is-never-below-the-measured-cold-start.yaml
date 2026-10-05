@@ -1,0 +1,20 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: the-idle-limit-is-never-below-the-measured-cold-start
+summary: a pod whose cold start took longer than its idle timeout is kept for at least that start
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"idle_timeout_ms":60000}},"steps":[{"step":"ready_after","probes":240},{"step":"until_ready","alias":"qwen","max_attempts":1000},{"step":"advance","ms":60000},{"step":"reap"},{"step":"advance","ms":181000},{"step":"reap"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    cleanups:
+    - idle=[] retired=[] replaced=[] orphans=[]
+    - idle=[qwen-1] retired=[] replaced=[] orphans=[]

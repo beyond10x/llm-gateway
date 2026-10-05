@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Exchanged payload",
+  "x-ess-name": "llm-gateway.gateway.Exchanged",
+  "x-ess-kind": "event-payload",
+  "type": "object",
+  "properties": {
+    "valid_program": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "valid_program"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:64a5ae229b23e39f1b76097dde8c8811855c0d7dfd0c9b1476304882735b4772",
+    "regenerate": "ess generate"
+  }
+}

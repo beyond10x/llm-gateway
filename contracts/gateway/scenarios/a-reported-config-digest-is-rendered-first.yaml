@@ -1,0 +1,23 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-reported-config-digest-is-rendered-first
+summary: a snapshot that carries a configuration digest renders it ahead of the routes
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","inventory":{"config_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","routes":[{"route_id":"r0","alias":"a0","fallback_enabled":true,"targets":[{"target_id":"t0","position":0,"auth_kind":"anonymous","billing_kind":"self-hosted"}]}]},"steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    error_code: null
+    results:
+    - ok
+    - 200 inspected
+    bodies:
+    - '{"config_digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","route_count":1,"routes":[{"route_id":"r0","alias":"a0","fallback_enabled":true,"target_count":1,"targets":[{"target_id":"t0","position":0,"protocol":"chat-completions","provider":"my-lab","account":"remote","endpoint":"remote-models","model":"large","binding_revision":"rev-1","auth_kind":"anonymous","billing_kind":"self-hosted"}]}]}'

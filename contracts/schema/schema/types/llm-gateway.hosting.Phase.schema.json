@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.Phase",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:4a2c84ff1273ae7e3891b2f23d3cd20cae1ff22ea48330d2cc26e90535df04e0",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.Phase": {
+      "title": "Phase",
+      "x-ess-name": "llm-gateway.hosting.Phase",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared",
+        "Requested",
+        "Active",
+        "Uncertain",
+        "StopRequired",
+        "Stopped",
+        "Cancelled",
+        "Disowned"
+      ]
+    }
+  }
+}

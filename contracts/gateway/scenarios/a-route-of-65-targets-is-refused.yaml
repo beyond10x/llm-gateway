@@ -1,0 +1,18 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-route-of-65-targets-is-refused
+summary: one target past the per-route bound is refused as inventory:too-many-targets
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","inventory":{"routes":[{"route_id":"r0","alias":"a0","fallback_enabled":true,"targets":[{"target_id":"t0","position":0},{"target_id":"t1","position":1},{"target_id":"t2","position":2},{"target_id":"t3","position":3},{"target_id":"t4","position":4},{"target_id":"t5","position":5},{"target_id":"t6","position":6},{"target_id":"t7","position":7},{"target_id":"t8","position":8},{"target_id":"t9","position":9},{"target_id":"t10","position":10},{"target_id":"t11","position":11},{"target_id":"t12","position":12},{"target_id":"t13","position":13},{"target_id":"t14","position":14},{"target_id":"t15","position":15},{"target_id":"t16","position":16},{"target_id":"t17","position":17},{"target_id":"t18","position":18},{"target_id":"t19","position":19},{"target_id":"t20","position":20},{"target_id":"t21","position":21},{"target_id":"t22","position":22},{"target_id":"t23","position":23},{"target_id":"t24","position":24},{"target_id":"t25","position":25},{"target_id":"t26","position":26},{"target_id":"t27","position":27},{"target_id":"t28","position":28},{"target_id":"t29","position":29},{"target_id":"t30","position":30},{"target_id":"t31","position":31},{"target_id":"t32","position":32},{"target_id":"t33","position":33},{"target_id":"t34","position":34},{"target_id":"t35","position":35},{"target_id":"t36","position":36},{"target_id":"t37","position":37},{"target_id":"t38","position":38},{"target_id":"t39","position":39},{"target_id":"t40","position":40},{"target_id":"t41","position":41},{"target_id":"t42","position":42},{"target_id":"t43","position":43},{"target_id":"t44","position":44},{"target_id":"t45","position":45},{"target_id":"t46","position":46},{"target_id":"t47","position":47},{"target_id":"t48","position":48},{"target_id":"t49","position":49},{"target_id":"t50","position":50},{"target_id":"t51","position":51},{"target_id":"t52","position":52},{"target_id":"t53","position":53},{"target_id":"t54","position":54},{"target_id":"t55","position":55},{"target_id":"t56","position":56},{"target_id":"t57","position":57},{"target_id":"t58","position":58},{"target_id":"t59","position":59},{"target_id":"t60","position":60},{"target_id":"t61","position":61},{"target_id":"t62","position":62},{"target_id":"t63","position":63},{"target_id":"t64","position":64}]}]},"steps":[]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    error_code: inventory:too-many-targets

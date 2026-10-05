@@ -1,0 +1,27 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: an-unresolved-lost-create-blocks-a-second-pod-until-it-is-resolved
+summary: an untagged pod in the namespace means no listing rules the lost create out, so the owed stop blocks a second create
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"insert_pod","name":"b10x-llm-untagged","env":{}},{"step":"lose_next_create","allocates":false},{"step":"ensure","alias":"qwen"},{"step":"advance","ms":600001},{"step":"ensure","alias":"qwen"},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - inserted:pod-1
+    - ok
+    - err:starting
+    - ok
+    - err:startup-deadline
+    - err:stopping
+    create_calls: 1
+    stop_required:
+    - qwen-1

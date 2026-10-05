@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.Dispatch",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:6e837cf2495598878d9bdce7b8fb1474ac400f995664f43844359d31cd44e0cc",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.Dispatch": {
+      "title": "Dispatch",
+      "x-ess-name": "llm-gateway.hosting.Dispatch",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "NotSent",
+        "Rejected",
+        "Unknown",
+        "Accepted"
+      ]
+    }
+  }
+}

@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: an-invalid-policy-reports-zero-calls-because-the-provider-exists
+summary: an invalid policy reports zero calls because the provider exists
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":0,"max_lifetime_ms":10000,"lease_ms":1000},"steps":[]}'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: true
+    error_code: invalid-policy
+    allocations: 0
+    submits: 0
+    stops: 0
+    lists: 0
+    totals: null
+    deployments: []

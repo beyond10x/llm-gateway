@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline
+summary: a pod answering a definite not-ready for longer than its startup deadline since it last served is retired as stopped-serving
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"wedge","pod":"pod-1"},{"step":"advance","ms":600000},{"step":"ensure","alias":"qwen"},{"step":"advance","ms":1},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - ok
+    - err:starting
+    - ok
+    - err:stopped-serving
+    terminations:
+    - pod-1

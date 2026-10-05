@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: a-graceful-stop-completes-every-accepted-connection
+summary: shutdown reports as many connections completed as were accepted, and the stopped gateway is not ready
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /health HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"shutdown"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 200 live
+    - 401 credential-absent
+    - 200 inspected
+    - accepted=3 completed=3
+    shutdown: accepted=3 completed=3
+    ready: null

@@ -1,0 +1,21 @@
+[package]
+name = "b10x-llm-gateway-conformance"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+llm-gateway = { package = "b10x-llm-gateway", path = "../../crates/llm-gateway" }
+llm-provision = { package = "b10x-llm-provision", path = "../../crates/llm-provision" }
+llm-runpod = { package = "b10x-llm-runpod", path = "../../crates/llm-runpod" }
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+ess-conformance = { git = "https://github.com/beyond10x/ess.git", rev = "be44a3365eb273cb3d447b74cd5b0e75181d284e" }
+ess-primitives = { git = "https://github.com/beyond10x/ess.git", rev = "be44a3365eb273cb3d447b74cd5b0e75181d284e" }

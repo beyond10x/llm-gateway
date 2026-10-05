@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "OwnedResource",
+  "x-ess-name": "llm-gateway.hosting.OwnedResource",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "controller_id": {
+      "type": "string",
+      "x-ess-relation": {
+        "name": "resources",
+        "kind": "owns",
+        "source": "llm-gateway.hosting.Controller",
+        "target": "llm-gateway.hosting.OwnedResource",
+        "cardinality": "many",
+        "via": "controller_id"
+      }
+    },
+    "deployment_spec_id": {
+      "type": "string"
+    },
+    "reservation_id": {
+      "type": "string"
+    },
+    "request_id": {
+      "type": "string"
+    },
+    "phase": {
+      "$ref": "#/$defs/llm-gateway.hosting.Phase"
+    },
+    "stop_reason": {
+      "$ref": "#/$defs/llm-gateway.hosting.StopReason"
+    },
+    "stop_evidence": {
+      "type": "string"
+    },
+    "resource_name": {
+      "type": "string"
+    },
+    "resource_incarnation": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.hosting.OwnedResource.State"
+    }
+  },
+  "required": [
+    "id",
+    "controller_id",
+    "deployment_spec_id",
+    "reservation_id",
+    "request_id",
+    "phase",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:116a6d59c5a1c4e616049c68d51607c5f6178774ce3f03695ccab5a81896635c",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.OwnedResource.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.hosting.OwnedResource.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    },
+    "llm-gateway.hosting.Phase": {
+      "title": "Phase",
+      "x-ess-name": "llm-gateway.hosting.Phase",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared",
+        "Requested",
+        "Active",
+        "Uncertain",
+        "StopRequired",
+        "Stopped",
+        "Cancelled",
+        "Disowned"
+      ]
+    },
+    "llm-gateway.hosting.StopReason": {
+      "title": "StopReason",
+      "x-ess-name": "llm-gateway.hosting.StopReason",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "AmbiguousMutation",
+        "LifetimeExceeded",
+        "LeaseExpired",
+        "OperatorRequest",
+        "OwnershipLost"
+      ]
+    }
+  }
+}

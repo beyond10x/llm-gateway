@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Pool",
+  "x-ess-name": "llm-gateway.runpod.Pool",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "controller_id": {
+      "type": "string",
+      "x-ess-relation": {
+        "name": "controller",
+        "kind": "references",
+        "source": "llm-gateway.runpod.Pool",
+        "target": "llm-gateway.hosting.Controller",
+        "cardinality": "one",
+        "via": "controller_id"
+      }
+    },
+    "provider_id": {
+      "type": "string"
+    },
+    "account_id": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.runpod.Pool.State"
+    }
+  },
+  "required": [
+    "id",
+    "controller_id",
+    "provider_id",
+    "account_id",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:8e5491fd7a9bb5962dca628bc0d860e232b4d73a6abdedf6d5013df534bdfdfa",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.Pool.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.runpod.Pool.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

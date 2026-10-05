@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.Pool.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:c07f6e180260c548cb0fc6488f5b5b3ff01bd7e203594cdaad0eb9f5a7666c95",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.Pool.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.runpod.Pool.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

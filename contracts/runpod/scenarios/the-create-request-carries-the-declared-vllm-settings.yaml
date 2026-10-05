@@ -1,0 +1,53 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: the-create-request-carries-the-declared-vllm-settings
+summary: the pod is created with the declared image, GPU, cache, placement and vLLM arguments, and the vLLM key only as a secret reference (request.rs pod_request)
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"cache":{"volume_id":"volume-1","mount_path":"/workspace"},"data_center_ids":["US-CA-2"]}},"steps":[{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    requested_gpus:
+    - NVIDIA L40S
+    last_request: name=b10x-llm-qwen image=vllm/vllm-openai:v0.27.1 gpu=NVIDIA L40S count=1 cloud=SECURE disk=80 ports=8000/http interruptible=false volume=volume-1 mount=/workspace dcs=US-CA-2
+    last_entrypoint:
+    - vllm
+    - serve
+    - Qwen/Qwen3.8-27B-FP8
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --served-model-name
+    - qwen
+    - --max-model-len
+    - '65536'
+    - --max-num-seqs
+    - '8'
+    - --gpu-memory-utilization
+    - '0.9'
+    - --generation-config
+    - vllm
+    - --default-chat-template-kwargs
+    - '{"enable_thinking":false}'
+    - --override-generation-config
+    - '{"temperature":0.7,"top_p":0.8,"top_k":20,"presence_penalty":1.5}'
+    - --kv-cache-dtype
+    - fp8
+    last_env:
+    - B10X_LLM_EPOCH=1
+    - B10X_LLM_OWNER=controller-a
+    - B10X_LLM_REQUEST=recorded
+    - HF_HOME=/workspace/huggingface
+    - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    - VLLM_API_KEY={{ RUNPOD_SECRET_qwen_vllm_key }}

@@ -1,0 +1,925 @@
+[
+  {
+    "mutation": "an-absent-credential-reads-as-malformed",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": ".ok_or(RefusalCode::CredentialAbsent)?;",
+    "after": ".ok_or(RefusalCode::CredentialMalformed)?;",
+    "named_failure": "llm.gateway/authored/an-unauthenticated-inspection-is-refused-and-discloses-no-route",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 5,
+      "passed": 48,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-graceful-stop-completes-every-accepted-connection",
+      "llm.gateway/authored/a-write-method-is-refused-only-after-authentication",
+      "llm.gateway/authored/an-unauthenticated-inspection-is-refused-and-discloses-no-route",
+      "llm.gateway/authored/authentication-comes-before-the-path-is-decided",
+      "llm.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "any-scheme-is-a-bearer",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if !scheme.eq_ignore_ascii_case(\"Bearer\") {",
+    "after": "if false {",
+    "named_failure": "llm.gateway/authored/a-credential-that-is-not-a-bearer-token-is-malformed",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-credential-that-is-not-a-bearer-token-is-malformed"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "the-scheme-is-case-sensitive",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if !scheme.eq_ignore_ascii_case(\"Bearer\") {",
+    "after": "if scheme != \"Bearer\" {",
+    "named_failure": "llm.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-rejected-credential-reads-as-malformed",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": ".ok_or(RefusalCode::CredentialRejected)",
+    "after": ".ok_or(RefusalCode::CredentialMalformed)",
+    "named_failure": "llm.gateway/authored/a-credential-that-is-not-the-owners-is-rejected",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 51,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-credential-that-is-not-the-owners-is-rejected",
+      "llm.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-repeated-credential-is-a-malformed-request",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "return Err(if name == \"authorization\" {",
+    "after": "return Err(if false {",
+    "named_failure": "llm.gateway/authored/a-credential-that-is-not-a-bearer-token-is-malformed",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-credential-that-is-not-a-bearer-token-is-malformed"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-write-is-served",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "    if !request.is_read() {",
+    "after": "    if false {",
+    "named_failure": "llm.gateway/authored/a-write-method-is-refused-only-after-authentication",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-write-method-is-refused-only-after-authentication"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "the-probe-surface-admits-any-method",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "    if request.is_read() {",
+    "after": "    if true {",
+    "named_failure": "llm.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-zero-content-length-is-a-body",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": ".is_some_and(|value| value != \"0\");",
+    "after": ".is_some();",
+    "named_failure": "llm.gateway/authored/a-request-that-declares-a-body-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-request-that-declares-a-body-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-transfer-encoding-is-not-a-body",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "let declares_body = request.header(\"transfer-encoding\").is_some()",
+    "after": "let declares_body = false",
+    "named_failure": "llm.gateway/authored/a-request-that-declares-a-body-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-request-that-declares-a-body-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "an-unready-gateway-serves-inspection",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if !serves_inspection(shared) {",
+    "after": "if false {",
+    "named_failure": "llm.gateway/authored/an-unready-gateway-refuses-inspection-even-to-the-owner",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/an-unready-gateway-refuses-inspection-even-to-the-owner"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-drain-stops-serving",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "    shared.ready.load(Ordering::SeqCst)",
+    "after": "    shared.ready.load(Ordering::SeqCst) && !shared.draining.load(Ordering::SeqCst)",
+    "named_failure": "llm.gateway/authored/a-drain-reports-unready-keeps-serving-and-cannot-be-undone",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-drain-reports-unready-keeps-serving-and-cannot-be-undone"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "marking-ready-ends-a-drain",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "self.shared.ready.store(true, Ordering::SeqCst);",
+    "after": "self.shared.ready.store(true, Ordering::SeqCst); self.shared.draining.store(false, Ordering::SeqCst);",
+    "named_failure": "llm.gateway/authored/a-drain-reports-unready-keeps-serving-and-cannot-be-undone",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-drain-reports-unready-keeps-serving-and-cannot-be-undone"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-draining-gateway-reports-ready",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "serves_inspection(shared) && !shared.draining.load(Ordering::SeqCst)",
+    "after": "serves_inspection(shared)",
+    "named_failure": "llm.gateway/authored/a-drain-reports-unready-keeps-serving-and-cannot-be-undone",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-drain-reports-unready-keeps-serving-and-cannot-be-undone"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "the-head-bound-admits-one-byte-more",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "let room = limit.saturating_sub(buffer.len()).min(READ_CHUNK);",
+    "after": "let room = (limit + 1).saturating_sub(buffer.len()).min(READ_CHUNK);",
+    "named_failure": "llm.gateway/authored/a-head-one-byte-over-its-bound-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-head-one-byte-over-its-bound-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "the-head-bound-refuses-its-own-size",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "let room = limit.saturating_sub(buffer.len()).min(READ_CHUNK);",
+    "after": "let room = (limit - 1).saturating_sub(buffer.len()).min(READ_CHUNK);",
+    "named_failure": "llm.gateway/authored/a-head-exactly-at-its-byte-bound-is-read",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-head-exactly-at-its-byte-bound-is-read"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "nothing-is-shed",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if shared.in_flight.load(Ordering::SeqCst) > shared.config.max_concurrent_requests {",
+    "after": "if false {",
+    "named_failure": "llm.gateway/authored/an-overloaded-gateway-sheds-inspection-but-still-answers-probes",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/an-overloaded-gateway-sheds-inspection-but-still-answers-probes"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "the-concurrency-bound-refuses-its-own-count",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if shared.in_flight.load(Ordering::SeqCst) > shared.config.max_concurrent_requests {",
+    "after": "if shared.in_flight.load(Ordering::SeqCst) >= shared.config.max_concurrent_requests {",
+    "named_failure": "llm.gateway/authored/the-concurrency-bound-admits-its-own-count",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/the-concurrency-bound-admits-its-own-count"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "head-writes-a-body",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if !head_only {",
+    "after": "if true {",
+    "named_failure": "llm.gateway/authored/head-inspection-answers-without-a-body",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 51,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-ready-gateway-reports-ready",
+      "llm.gateway/authored/head-inspection-answers-without-a-body"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "no-bearer-challenge",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if status == 401 {",
+    "after": "if false {",
+    "named_failure": "llm.gateway/authored/an-unauthenticated-inspection-is-refused-and-discloses-no-route",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 3,
+      "passed": 50,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-credential-that-is-not-the-owners-is-rejected",
+      "llm.gateway/authored/a-write-method-is-refused-only-after-authentication",
+      "llm.gateway/authored/an-unauthenticated-inspection-is-refused-and-discloses-no-route"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "no-allow-header",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if code == Some(RefusalCode::MethodNotAllowed) {",
+    "after": "if false {",
+    "named_failure": "llm.gateway/authored/a-write-method-is-refused-only-after-authentication",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-write-method-is-refused-only-after-authentication"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "a-query-string-is-part-of-the-path",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "let path = target.split('?').next().unwrap_or(target);",
+    "after": "let path = target;",
+    "named_failure": "llm.gateway/authored/head-inspection-answers-without-a-body",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/head-inspection-answers-without-a-body"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "any-version-is-http",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if !version.starts_with(\"HTTP/1.\") || method.is_empty() {",
+    "after": "if version.is_empty() || method.is_empty() {",
+    "named_failure": "llm.gateway/authored/a-request-head-that-is-not-http-is-malformed",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-request-head-that-is-not-http-is-malformed"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "an-unknown-alias-is-an-unknown-path",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": ".map_or(Outcome::Refused(RefusalCode::RouteUnknown), Outcome::Served);",
+    "after": ".map_or(Outcome::Refused(RefusalCode::PathUnknown), Outcome::Served);",
+    "named_failure": "llm.gateway/authored/an-undeclared-alias-is-refused-as-route-unknown",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/an-undeclared-alias-is-refused-as-route-unknown"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d",
+    "source_restored_sha256": "7d9464d62b43f8c06b8c49a5398c12086038f6db5fd3c2dbd9b9f0440a0d0d8d"
+  },
+  {
+    "mutation": "the-secret-bound-refuses-its-own-size",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "if expected.len() < MIN_SHARED_SECRET_BYTES {",
+    "after": "if expected.len() <= MIN_SHARED_SECRET_BYTES {",
+    "named_failure": "llm.gateway/authored/a-shared-secret-of-exactly-32-bytes-is-admitted",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-shared-secret-of-exactly-32-bytes-is-admitted"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "8cae69a45d1ac65e3b6574f388b807f9f7a7eff0f2ef162e533e97b7d0dc151f",
+    "source_restored_sha256": "8cae69a45d1ac65e3b6574f388b807f9f7a7eff0f2ef162e533e97b7d0dc151f"
+  },
+  {
+    "mutation": "the-secret-bound-admits-one-byte-less",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "if expected.len() < MIN_SHARED_SECRET_BYTES {",
+    "after": "if expected.len() < MIN_SHARED_SECRET_BYTES - 1 {",
+    "named_failure": "llm.gateway/authored/a-shared-secret-shorter-than-32-bytes-is-refused-at-composition",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-shared-secret-shorter-than-32-bytes-is-refused-at-composition"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "8cae69a45d1ac65e3b6574f388b807f9f7a7eff0f2ef162e533e97b7d0dc151f",
+    "source_restored_sha256": "8cae69a45d1ac65e3b6574f388b807f9f7a7eff0f2ef162e533e97b7d0dc151f"
+  },
+  {
+    "mutation": "an-empty-token-is-admitted",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "if token.0.is_empty() {",
+    "after": "if false {",
+    "named_failure": "llm.gateway/authored/owner-material-that-is-empty-or-not-printable-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/owner-material-that-is-empty-or-not-printable-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "8cae69a45d1ac65e3b6574f388b807f9f7a7eff0f2ef162e533e97b7d0dc151f",
+    "source_restored_sha256": "8cae69a45d1ac65e3b6574f388b807f9f7a7eff0f2ef162e533e97b7d0dc151f"
+  },
+  {
+    "mutation": "an-uppercase-digest-is-admitted",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": ".all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f'))",
+    "after": ".all(|byte| byte.is_ascii_hexdigit())",
+    "named_failure": "llm.gateway/authored/a-config-digest-that-is-not-lowercase-hex-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-config-digest-that-is-not-lowercase-hex-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "a-repeated-alias-replaces-the-first",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "return Err(InventoryError::DuplicateAlias);",
+    "after": "continue;",
+    "named_failure": "llm.gateway/authored/an-inventory-with-a-repeated-alias-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 52,
+      "skipped": 0,
+      "total": 53,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/an-inventory-with-a-repeated-alias-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "whitespace-before-the-colon-is-trimmed",
+    "source": "crates/llm-gateway/src/server.rs",
+    "before": "if name != name.trim_end() || name.is_empty()",
+    "after": "if name.is_empty()",
+    "named_failure": "llm.gateway/authored/adversary-w2-a-header-name-followed-by-whitespace-is-malformed",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/adversary-w2-a-header-name-followed-by-whitespace-is-malformed"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "900be2fd9f44c307eedfc148bc347440aae8a035be665532c92f2673456fa139",
+    "source_restored_sha256": "900be2fd9f44c307eedfc148bc347440aae8a035be665532c92f2673456fa139"
+  },
+  {
+    "mutation": "the-token-bound-refuses-its-own-size",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "if token.0.len() > MAX_TOKEN_BYTES {",
+    "after": "if token.0.len() >= MAX_TOKEN_BYTES {",
+    "named_failure": "llm.gateway/authored/an-owner-secret-of-exactly-4096-bytes-is-composed",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/an-owner-secret-of-exactly-4096-bytes-is-composed"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "e02e083fcce8123c10460e849238e03f551a876aaec135552520569c4ef491fa",
+    "source_restored_sha256": "e02e083fcce8123c10460e849238e03f551a876aaec135552520569c4ef491fa"
+  },
+  {
+    "mutation": "the-token-bound-admits-one-byte-more",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "if token.0.len() > MAX_TOKEN_BYTES {",
+    "after": "if token.0.len() > MAX_TOKEN_BYTES + 1 {",
+    "named_failure": "llm.gateway/authored/adversary-w2-an-owner-secret-over-4096-bytes-is-refused-at-composition",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/adversary-w2-an-owner-secret-over-4096-bytes-is-refused-at-composition"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "e02e083fcce8123c10460e849238e03f551a876aaec135552520569c4ef491fa",
+    "source_restored_sha256": "e02e083fcce8123c10460e849238e03f551a876aaec135552520569c4ef491fa"
+  },
+  {
+    "mutation": "the-label-bound-refuses-its-own-size",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "value.len() > MAX_LABEL_BYTES",
+    "after": "value.len() >= MAX_LABEL_BYTES",
+    "named_failure": "llm.gateway/authored/a-label-of-exactly-256-bytes-is-composed",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-label-of-exactly-256-bytes-is-composed"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "the-label-bound-admits-one-byte-more",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "value.len() > MAX_LABEL_BYTES",
+    "after": "value.len() > MAX_LABEL_BYTES + 1",
+    "named_failure": "llm.gateway/authored/a-label-of-257-bytes-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-label-of-257-bytes-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "an-empty-label-is-admitted",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "if value.is_empty() || value.len() > MAX_LABEL_BYTES {",
+    "after": "if value.len() > MAX_LABEL_BYTES {",
+    "named_failure": "llm.gateway/authored/adversary-w2-an-empty-label-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/adversary-w2-an-empty-label-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "a-label-with-a-space-is-admitted",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "if !value.bytes().all(|byte| byte.is_ascii_graphic()) {",
+    "after": "if false {",
+    "named_failure": "llm.gateway/authored/a-label-with-a-space-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-label-with-a-space-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "the-target-bound-refuses-its-own-count",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "if targets.len() > MAX_TARGETS_PER_ROUTE {",
+    "after": "if targets.len() >= MAX_TARGETS_PER_ROUTE {",
+    "named_failure": "llm.gateway/authored/a-route-of-exactly-64-targets-is-composed",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-route-of-exactly-64-targets-is-composed"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "the-target-bound-admits-one-more",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "if targets.len() > MAX_TARGETS_PER_ROUTE {",
+    "after": "if targets.len() > MAX_TARGETS_PER_ROUTE + 1 {",
+    "named_failure": "llm.gateway/authored/a-route-of-65-targets-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/a-route-of-65-targets-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "a-repeated-target-is-admitted",
+    "source": "crates/llm-gateway/src/inventory.rs",
+    "before": "if seen.insert(target.target_id.clone(), index).is_some() {",
+    "after": "if seen.insert(target.target_id.clone(), index).is_some() && false {",
+    "named_failure": "llm.gateway/authored/adversary-w2-a-route-repeating-a-target-is-refused",
+    "killed": true,
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.gateway/authored/adversary-w2-a-route-repeating-a-target-is-refused"
+    ],
+    "lane_exit": 1,
+    "source_before_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841",
+    "source_restored_sha256": "f3426456b90c39109525391443120d6992e0690eaba75528da1765b3f76c4841"
+  },
+  {
+    "mutation": "a-round-rotation-is-wrong",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "let sum1 = e.rotate_right(6)",
+    "after": "let sum1 = e.rotate_right(7)",
+    "lane": "cargo test -p b10x-llm-gateway --lib",
+    "named_failure": "auth::tests::the_digest_is_sha_256",
+    "killed": true,
+    "failed": [
+      "auth::tests::the_digest_is_sha_256"
+    ],
+    "lane_exit": 101,
+    "source_before_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b",
+    "source_restored_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b"
+  },
+  {
+    "mutation": "the-padding-boundary-is-wrong",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "while padded.len() % 64 != 56 {",
+    "after": "while padded.len() % 64 != 55 {",
+    "lane": "cargo test -p b10x-llm-gateway --lib",
+    "named_failure": "auth::tests::the_digest_is_sha_256",
+    "killed": true,
+    "failed": [
+      "auth::tests::only_the_exact_owner_secret_is_accepted",
+      "auth::tests::the_digest_is_sha_256",
+      "auth::tests::the_owner_comparison_covers_secrets_of_every_length"
+    ],
+    "lane_exit": 101,
+    "source_before_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b",
+    "source_restored_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b"
+  },
+  {
+    "mutation": "the-length-is-counted-in-bytes",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "wrapping_mul(8)",
+    "after": "wrapping_mul(1)",
+    "lane": "cargo test -p b10x-llm-gateway --lib",
+    "named_failure": "auth::tests::the_digest_is_sha_256",
+    "killed": true,
+    "failed": [
+      "auth::tests::the_digest_is_sha_256"
+    ],
+    "lane_exit": 101,
+    "source_before_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b",
+    "source_restored_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b"
+  },
+  {
+    "mutation": "every-presented-value-is-the-owner",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "if constant_time_eq(&self.expected, &presented.digest()) {",
+    "after": "if true {",
+    "lane": "cargo test -p b10x-llm-gateway --lib",
+    "named_failure": "auth::tests::the_owner_comparison_covers_secrets_of_every_length",
+    "killed": true,
+    "failed": [
+      "auth::tests::only_the_exact_owner_secret_is_accepted",
+      "auth::tests::the_owner_comparison_covers_secrets_of_every_length"
+    ],
+    "lane_exit": 101,
+    "source_before_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b",
+    "source_restored_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b"
+  },
+  {
+    "mutation": "the-digest-ignores-its-input",
+    "source": "crates/llm-gateway/src/auth.rs",
+    "before": "        sha256(&self.0)\n    }",
+    "after": "        sha256(&[])\n    }",
+    "lane": "cargo test -p b10x-llm-gateway --lib",
+    "named_failure": "auth::tests::the_owner_comparison_covers_secrets_of_every_length",
+    "killed": true,
+    "failed": [
+      "auth::tests::only_the_exact_owner_secret_is_accepted",
+      "auth::tests::the_owner_comparison_covers_secrets_of_every_length"
+    ],
+    "lane_exit": 101,
+    "source_before_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b",
+    "source_restored_sha256": "7ae133f923d147f06b8ffc8e9ff1268df92a87107dfbd3a7e6a1c2eceededa7b"
+  }
+]

@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.CompositionRefusal",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:3be9cb696fa9942684f68ddd308593037304c0dfe091396e44110bbea29af595",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.CompositionRefusal": {
+      "title": "CompositionRefusal",
+      "x-ess-name": "llm-gateway.gateway.CompositionRefusal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "TokenEmpty",
+        "TokenTooLarge",
+        "TokenNotPrintableAscii",
+        "VerifierSecretTooShort",
+        "LabelLength",
+        "LabelNotPrintableAscii",
+        "InventoryRouteWithoutTarget",
+        "InventoryTooManyTargets",
+        "InventoryNonContiguousPositions",
+        "InventoryDuplicateTarget",
+        "InventoryDuplicateAlias",
+        "InventoryMalformedDigest",
+        "InventoryTooManyRoutes"
+      ]
+    }
+  }
+}

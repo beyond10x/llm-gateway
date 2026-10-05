@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ExchangeObservation",
+  "x-ess-name": "llm-gateway.gateway.ExchangeObservation",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "observation_id": {
+      "type": "string"
+    },
+    "valid_program": {
+      "type": "boolean"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bodies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "headers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "secret_on_wire": {
+      "type": "boolean"
+    },
+    "ready": {
+      "type": "boolean"
+    },
+    "shutdown": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.gateway.ExchangeObservation.State"
+    }
+  },
+  "required": [
+    "observation_id",
+    "valid_program",
+    "results",
+    "bodies",
+    "headers",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:1f5f5defb58f1d0437738036e3d4cdbdae934492ce5226fcfe224f29d27b5a70",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.ExchangeObservation.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.ExchangeObservation.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

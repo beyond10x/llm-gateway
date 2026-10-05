@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.OwnershipLease.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:a2a9658b0ae1bf709468b4671bb388b4f486897f9e4b38d8026760cf1d86791d",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.OwnershipLease.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.hosting.OwnershipLease.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

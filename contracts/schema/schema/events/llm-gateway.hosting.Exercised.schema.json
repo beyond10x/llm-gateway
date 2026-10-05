@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Exercised payload",
+  "x-ess-name": "llm-gateway.hosting.Exercised",
+  "x-ess-kind": "event-payload",
+  "type": "object",
+  "properties": {
+    "valid_program": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "valid_program"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:f6ad548460ce3eccb51721c7961a7fa6926ec75b39a1bd9b5e047eac4f665c91",
+    "regenerate": "ess generate"
+  }
+}

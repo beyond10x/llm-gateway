@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-request-while-the-pod-starts-waits-on-it-instead-of-creating-another
+summary: a caller told `starting` asks again and never causes a second pod
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"ready_after","probes":3},{"step":"ensure","alias":"qwen"},{"step":"ensure","alias":"qwen"},{"step":"ensure","alias":"qwen"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - err:starting
+    - err:starting
+    - err:starting
+    - ready
+    create_calls: 1
+    leases:
+    - https://pod-1-8000.proxy.runpod.net qwen

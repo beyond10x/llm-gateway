@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: restarts-spread-over-more-than-the-crash-window-are-not-a-crash-loop
+summary: a restart that left the crash window before the next one no longer counts
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"uptimes","script":[100,50,10]},{"step":"until_ready","alias":"qwen"},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"},{"step":"advance","ms":600001},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ready
+    - ok
+    - ready
+    - ok
+    - ready
+    terminations: []

@@ -6,14 +6,15 @@
 //!
 //! 1. The crate's declared dependency list, read from `cargo metadata --no-deps` by matching the
 //!    dependency array to its closing bracket. The control reads a workspace package that really
-//!    declares eighteen dependencies and asserts the forbidden ones among them are found.
+//!    declares several dependencies and asserts the forbidden ones among them are found.
 //! 2. The transitive closure, read from `cargo tree`, which cargo computes rather than this
-//!    file. The control reads `llm-routing` — the crate `docs/gateway.md` names as the natural
-//!    next dependency — and asserts the closure really does surface forbidden crates there.
+//!    file. The control reads the conformance runner, which links the hosting crates, and
+//!    asserts the closure really does surface forbidden crates there and crates it never declared.
 //!
 //! An earlier version of this file split the metadata at the first `]`, which closes the first
 //! dependency's own `features` array; it examined one dependency of eighteen, and it examined no
-//! transitive edge at all.
+//! transitive edge at all. Until this crate moved out of beyond10x/llm, the two controls read
+//! llm's conformance runner and `llm-routing`, neither of which is in this workspace.
 
 use std::{path::Path, process::Command};
 
@@ -121,12 +122,17 @@ fn the_declared_dependency_scan_reads_the_whole_array() {
     // Positive control: a real workspace package that declares many dependencies, with two
     // forbidden names that are not the first entry. A scan that stops at the first `]` finds
     // neither.
-    let control = declared_dependencies(&metadata, "b10x-llm-conformance");
+    let control = declared_dependencies(&metadata, "b10x-llm-gateway-conformance");
     assert!(
         control.len() > 1,
         "the control package no longer declares several dependencies: {control:?}"
     );
-    for forbidden in ["keyring-core", "tokio"] {
+    for forbidden in ["b10x-llm-provision", "b10x-llm-runpod"] {
+        assert!(
+            control.first().is_some_and(|first| first != forbidden),
+            "{forbidden} is the control package's first dependency, so finding it would not \
+             prove the scan reads past the first entry: {control:?}"
+        );
         assert!(
             control.iter().any(|name| name == forbidden),
             "the control package no longer declares {forbidden}, so this case would no longer \
@@ -150,20 +156,32 @@ fn the_declared_dependency_scan_reads_the_whole_array() {
 
 #[test]
 fn the_transitive_closure_contains_nothing_that_can_resolve_a_secret_or_provision() {
-    // Positive control: the crate docs/gateway.md names as the natural next dependency really
-    // does drag forbidden crates in, two edges away. If this ever stops holding, the control has
-    // stopped proving that the closure walk sees past the first edge.
-    let control = transitive_closure("b10x-llm-routing");
+    // Positive control: the conformance runner links the hosting crates, so its closure really
+    // does surface forbidden crates, and it reaches crates it never declares itself. If either
+    // stops holding, the control has stopped proving that the closure walk finds offenders and
+    // sees past the first edge.
+    let control = transitive_closure("b10x-llm-gateway-conformance");
     let control_offenders: Vec<&String> = control
         .iter()
         .filter(|name| FORBIDDEN.contains(&name.as_str()))
         .collect();
     assert!(
-        control_offenders.iter().any(|name| *name == "tokio")
+        control_offenders
+            .iter()
+            .any(|name| *name == "b10x-llm-provision")
             && control_offenders
                 .iter()
-                .any(|name| *name == "b10x-llm-credentials"),
-        "llm-routing's closure no longer reaches the crates this control needs: {control:?}"
+                .any(|name| *name == "b10x-llm-runpod"),
+        "the conformance runner's closure no longer reaches the crates this control needs: \
+         {control:?}"
+    );
+    let declared = declared_dependencies(&metadata(), "b10x-llm-gateway-conformance");
+    assert!(
+        control
+            .iter()
+            .any(|name| name != "b10x-llm-gateway-conformance" && !declared.contains(name)),
+        "the conformance runner's closure holds only what it declares, so this control no \
+         longer proves the walk sees past the first edge: {control:?}"
     );
 
     let closure = transitive_closure("b10x-llm-gateway");

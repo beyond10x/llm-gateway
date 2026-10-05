@@ -1,0 +1,19 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-deployment-identifier-of-the-maximum-length-is-declared
+summary: a deployment identifier of exactly 256 printable bytes is declared
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":2,"max_lifetime_ms":10000,"lease_ms":1000},"steps":[{"step":"declare","at_ms":1,"spec":{"id":"dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd","provider":"fake","account":"account-1","model":"requested-model","image":"requested-image","resource_name":"pool-slot","requested_lifetime_ms":5000},"request_id":"request-d1","authorization":{"ledger":"scope","reservation":"reservation-a"}}]}'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: true
+    results:
+    - ok

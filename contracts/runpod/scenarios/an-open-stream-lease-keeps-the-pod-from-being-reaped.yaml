@@ -1,0 +1,30 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: an-open-stream-lease-keeps-the-pod-from-being-reaped
+summary: an in-flight lease keeps its pod alive, and the idle window starts when the lease ends
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"hold","alias":"qwen"},{"step":"advance","ms":3000000},{"step":"reap"},{"step":"release"},{"step":"advance","ms":1799999},{"step":"reap"},{"step":"advance","ms":1},{"step":"reap"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - ok
+    - ok
+    - ok
+    - ok
+    - ok
+    - ok
+    cleanups:
+    - idle=[] retired=[] replaced=[] orphans=[]
+    - idle=[] retired=[] replaced=[] orphans=[]
+    - idle=[qwen-1] retired=[] replaced=[] orphans=[]

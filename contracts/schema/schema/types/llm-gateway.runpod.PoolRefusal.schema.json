@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.PoolRefusal",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:f05167ea56786bf84fef2c6b8b8c8510e081150fca5dac86996eae354e55eee8",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.PoolRefusal": {
+      "title": "PoolRefusal",
+      "x-ess-name": "llm-gateway.runpod.PoolRefusal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "UnknownModel",
+        "InvalidModel",
+        "Starting",
+        "Stopping",
+        "NoCapacity",
+        "CrashLoop",
+        "CredentialRefused",
+        "StartupDeadline",
+        "PodExited",
+        "StoppedServing",
+        "Hosting"
+      ]
+    }
+  }
+}

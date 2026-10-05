@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-model-without-a-volume-carries-no-placement-or-cache-override
+summary: no declared volume means no volume, mount, data center or HF_HOME on the create
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    last_request: name=b10x-llm-qwen image=vllm/vllm-openai:v0.27.1 gpu=NVIDIA L40S count=1 cloud=SECURE disk=80 ports=8000/http interruptible=false volume=none mount=none dcs=
+    last_env:
+    - B10X_LLM_EPOCH=1
+    - B10X_LLM_OWNER=controller-a
+    - B10X_LLM_REQUEST=recorded
+    - PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
+    - VLLM_API_KEY={{ RUNPOD_SECRET_qwen_vllm_key }}

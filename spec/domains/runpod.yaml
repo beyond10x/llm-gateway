@@ -1,7 +1,7 @@
-domain: llm.runpod
+domain: llm-gateway.runpod
 
-# The Runpod adapter (crates/llm-runpod) over the llm.hosting contract. Every pod lifecycle
-# decision is llm.hosting's Controller; this domain declares what the adapter adds on top of
+# The Runpod adapter (crates/llm-runpod) over the llm-gateway.hosting contract. Every pod lifecycle
+# decision is llm-gateway.hosting's Controller; this domain declares what the adapter adds on top of
 # it: ordered GPU fallback, single-flight startup, readiness and crash recovery, ownership-safe
 # adoption by exact identity, and idle and orphan cleanup (crates/llm-runpod/src/lib.rs:6-28).
 # The entities are verification-adapter observations of the real `RunpodPool` driving the real
@@ -19,26 +19,26 @@ domain: llm.runpod
 # not declared as intent.
 types:
   # Refusals `RunpodPool` hands a caller (crates/llm-runpod/src/pool.rs:62-106). `hosting`
-  # wraps an llm.hosting refusal; `invalid-model` wraps one of ConfigError.
-  - name: llm.runpod.PoolRefusal
+  # wraps an llm-gateway.hosting refusal; `invalid-model` wraps one of ConfigError.
+  - name: llm-gateway.runpod.PoolRefusal
     kind: enum
     variants: [UnknownModel, InvalidModel, Starting, Stopping, NoCapacity, CrashLoop, CredentialRefused, StartupDeadline, PodExited, StoppedServing, Hosting]
   # Why a model declaration is refused (crates/llm-runpod/src/config.rs:88-126).
-  - name: llm.runpod.ConfigRefusal
+  - name: llm-gateway.runpod.ConfigRefusal
     kind: enum
     variants: [NoGpu, GpuUtilization, ZeroSetting, SecretReference, UnsafeText]
 entities:
-  # One pool: one `llm.hosting.Controller` scope, one slot per declared model alias.
-  - name: llm.runpod.Pool
+  # One pool: one `llm-gateway.hosting.Controller` scope, one slot per declared model alias.
+  - name: llm-gateway.runpod.Pool
     identity: {name: id, type: String}
     fields:
       - {name: controller_id, type: String}
       - {name: provider_id, type: String}
       - {name: account_id, type: String}
     relations:
-      - {name: controller, kind: references, target: llm.hosting.Controller, cardinality: one, via: controller_id}
+      - {name: controller, kind: references, target: llm-gateway.hosting.Controller, cardinality: one, via: controller_id}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
-  - name: llm.runpod.ExecutionObservation
+  - name: llm-gateway.runpod.ExecutionObservation
     identity: {name: observation_id, type: String}
     fields: &execution_facts
       - {name: valid_program, type: Boolean}
@@ -65,7 +65,7 @@ entities:
       # What each record last observed, as `<deployment> ready=<..> served=<..> endpoint=<..>`;
       # a fact the provider did not report is `unreported`, never the requested value.
       - {name: observed, type: 'List<String>'}
-      # llm.hosting.Totals, read from the pool's view after the last step.
+      # llm-gateway.hosting.Totals, read from the pool's view after the last step.
       - {name: stop_required, type: 'List<String>'}
       - {name: transferred, type: 'List<String>'}
       # The last create request: its placement fields, its vLLM entrypoint, and its environment
@@ -77,24 +77,24 @@ entities:
       - {name: last_env, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
-  - name: llm.runpod.Exercise
+  - name: llm-gateway.runpod.Exercise
     input:
       # A bounded fixture program: model declarations, emulator arrangements and pool calls.
       - {name: program_json, type: String}
     outcomes:
       - name: observed
-        emits: [llm.runpod.Exercised]
+        emits: [llm-gateway.runpod.Exercised]
         payload:
-          llm.runpod.Exercised:
+          llm-gateway.runpod.Exercised:
             valid_program: {generated: true}
         summary: Observe the real pool's answers, pod calls, leases and cleanup over the emulator.
 events:
   # Test-adapter notification only; there is no production notification transport.
-  - name: llm.runpod.Exercised
+  - name: llm-gateway.runpod.Exercised
     fields:
       - {name: valid_program, type: Boolean}
 views:
-  - name: llm.runpod.LastExecution
-    source: llm.runpod.ExecutionObservation
+  - name: llm-gateway.runpod.LastExecution
+    source: llm-gateway.runpod.ExecutionObservation
     consistency: read_your_writes
     fields: *execution_facts

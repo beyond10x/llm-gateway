@@ -1,0 +1,32 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: validating-and-listing-allocate-nothing
+summary: validating and listing allocate nothing
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":2,"max_lifetime_ms":10000,"lease_ms":1000},"steps":[{"step":"validate","at_ms":1,"spec":{"id":"d1","provider":"fake","account":"account-1","model":"requested-model","image":"requested-image","resource_name":"pool-slot","requested_lifetime_ms":5000}},{"step":"observe","at_ms":1}]}'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - ok
+    allocations: 0
+    submits: 0
+    stops: 0
+    lists: 1
+    deployments: []
+    totals:
+      active_count: 0
+      unknown_count: 0
+      stop_required: []
+      transferred: []
+      at_capacity: false

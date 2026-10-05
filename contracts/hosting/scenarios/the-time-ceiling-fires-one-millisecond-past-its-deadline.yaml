@@ -1,0 +1,47 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: the-time-ceiling-fires-one-millisecond-past-its-deadline
+summary: the time ceiling fires one millisecond past its deadline
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":2,"max_lifetime_ms":10000,"lease_ms":1000000},"steps":[{"step":"declare","at_ms":1,"spec":{"id":"d1","provider":"fake","account":"account-1","model":"requested-model","image":"requested-image","resource_name":"pool-slot","requested_lifetime_ms":5000},"request_id":"request-d1","authorization":{"ledger":"scope","reservation":"reservation-a"}},{"step":"acquire","at_ms":1,"deployment":"d1"},{"step":"provision","at_ms":1,"deployment":"d1"},{"step":"tick","at_ms":5002}]}'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: true
+    stops: 0
+    deployments:
+    - id: d1
+      phase: stop-required
+      stop_reason: lifetime-exceeded
+      stop_evidence: null
+      connected: false
+      requested_model: requested-model
+      requested_image: requested-image
+      requested_name: pool-slot
+      requested_lifetime_ms: '5000'
+      request_id: request-d1
+      ledger: scope
+      reservation: reservation-a
+      observed_name: pool-slot
+      observed_incarnation: fake-incarnation-1
+      observed_state: running
+      observed_ready: true
+      observed_endpoint: http://fake.invalid/fake-incarnation-1
+      observed_model: fake-served-model
+      lease_owner: controller-a
+      lease_epoch: 1
+      lease_expires_at_ms: '1000001'
+    totals:
+      active_count: 1
+      unknown_count: 0
+      stop_required:
+      - d1
+      transferred: []
+      at_capacity: false

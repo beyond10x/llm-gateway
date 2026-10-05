@@ -1,0 +1,31 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: the-orphan-sweep-never-selects-a-legacy-llmgw-pod
+summary: a legacy-prefixed pod is neither adopted nor swept, even tagged exactly as this controller tags its own
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"insert_pod","name":"llmgw-qwen","env":{"B10X_LLM_OWNER":"controller-a","B10X_LLM_EPOCH":"1","B10X_LLM_REQUEST":"request-qwen-1"}},{"step":"reap"},{"step":"until_ready","alias":"qwen"},{"step":"advance","ms":3000000},{"step":"reap"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - inserted:pod-1
+    - ok
+    - ready
+    - ok
+    - ok
+    create_calls: 1
+    cleanups:
+    - idle=[] retired=[] replaced=[] orphans=[]
+    - idle=[qwen-1] retired=[] replaced=[] orphans=[]
+    terminations:
+    - pod-2
+    pods:
+    - pod-1:llmgw-qwen:running

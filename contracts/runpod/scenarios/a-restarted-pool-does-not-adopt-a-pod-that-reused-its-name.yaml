@@ -1,0 +1,28 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name
+summary: the same name on a different pod is a different resource; it is neither adopted nor terminated
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"vanish","pod":"pod-1"},{"step":"insert_pod","name":"b10x-llm-qwen","env":{"B10X_LLM_OWNER":"controller-b","B10X_LLM_EPOCH":"7","B10X_LLM_REQUEST":"their-request"}},{"step":"restart"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - inserted:pod-2
+    - ok
+    - ready
+    create_calls: 2
+    terminations: []
+    leases:
+    - https://pod-1-8000.proxy.runpod.net qwen
+    - https://pod-3-8000.proxy.runpod.net qwen

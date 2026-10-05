@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: adversary-w2-a-header-name-followed-by-whitespace-is-malformed
+summary: whitespace between a field name and its colon is refused as request-malformed (RFC 9112 section 5.1 MUST reject with 400); server.rs:331 trims it away and authenticates the credential instead
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nauthorization : Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nauthorization\t: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 400 request-malformed
+    - 400 request-malformed

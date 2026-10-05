@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-model-removed-from-the-registry-has-its-pod-stopped-after-restart
+summary: a restored record whose model is no longer declared is retired and its pod terminated
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"restart","models":{}},{"step":"reap"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - ok
+    cleanups:
+    - idle=[] retired=[qwen-1] replaced=[] orphans=[]
+    terminations:
+    - pod-1
+    stop_required: []

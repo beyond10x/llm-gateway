@@ -1,0 +1,29 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one
+summary: decreasing container uptime reaching the restart limit terminates the pod as crash-loop
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"ready_after","probes":4294967295},{"step":"uptimes","script":[30,5,40,2,50,1]},{"step":"until_ready","alias":"qwen"},{"step":"ready_after","probes":0},{"step":"uptimes","script":[]},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ok
+    - err:crash-loop
+    - ok
+    - ok
+    - ready
+    terminations:
+    - pod-1
+    create_calls: 2
+    leases:
+    - https://pod-2-8000.proxy.runpod.net qwen

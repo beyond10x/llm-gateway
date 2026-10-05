@@ -1,0 +1,22 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: an-overloaded-gateway-sheds-inspection-but-still-answers-probes
+summary: past its concurrency bound the gateway refuses inspection as overloaded before verifying, while liveness still answers
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","max_concurrent_requests":0,"steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /health HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 200 live
+    - 503 overloaded
+    - 503 overloaded

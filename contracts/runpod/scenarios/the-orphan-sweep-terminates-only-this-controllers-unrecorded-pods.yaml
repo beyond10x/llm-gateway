@@ -1,0 +1,33 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods
+summary: only a pod in this namespace, tagged for this controller and held by no live record, is swept
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"insert_pod","name":"b10x-llm-removed","env":{"B10X_LLM_OWNER":"controller-a","B10X_LLM_EPOCH":"1","B10X_LLM_REQUEST":"request-removed-1"}},{"step":"insert_pod","name":"b10x-llm-theirs","env":{"B10X_LLM_OWNER":"controller-b"}},{"step":"insert_pod","name":"b10x-llm-untagged","env":{}},{"step":"insert_pod","name":"someone-elses-pod","env":{"B10X_LLM_OWNER":"controller-a","B10X_LLM_EPOCH":"1","B10X_LLM_REQUEST":"x"}},{"step":"reap"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - inserted:pod-2
+    - inserted:pod-3
+    - inserted:pod-4
+    - inserted:pod-5
+    - ok
+    cleanups:
+    - idle=[] retired=[] replaced=[] orphans=[pod-2]
+    terminations:
+    - pod-2
+    pods:
+    - pod-1:b10x-llm-qwen:running
+    - pod-3:b10x-llm-theirs:running
+    - pod-4:b10x-llm-untagged:running
+    - pod-5:someone-elses-pod:running

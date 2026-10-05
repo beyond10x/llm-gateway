@@ -1,0 +1,62 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Controller",
+  "x-ess-name": "llm-gateway.hosting.Controller",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "provider_id": {
+      "type": "string"
+    },
+    "account_id": {
+      "type": "string"
+    },
+    "ledger_id": {
+      "type": "string"
+    },
+    "max_active": {
+      "type": "integer"
+    },
+    "max_lifetime_ms": {
+      "type": "string"
+    },
+    "lease_ms": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.hosting.Controller.State"
+    }
+  },
+  "required": [
+    "id",
+    "provider_id",
+    "account_id",
+    "ledger_id",
+    "max_active",
+    "max_lifetime_ms",
+    "lease_ms",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:116a6d59c5a1c4e616049c68d51607c5f6178774ce3f03695ccab5a81896635c",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.Controller.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.hosting.Controller.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

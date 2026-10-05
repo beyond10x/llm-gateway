@@ -1,0 +1,23 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: the-crash-restart-limit-is-reached-at-exactly-its-count
+summary: the second restart inside the window is the crash loop when the declared limit is two
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"crash_restart_limit":2}},"steps":[{"step":"ready_after","probes":4294967295},{"step":"uptimes","script":[30,5,40,2]},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ok
+    - err:crash-loop
+    terminations:
+    - pod-1

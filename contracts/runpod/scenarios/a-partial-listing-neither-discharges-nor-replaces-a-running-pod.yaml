@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-partial-listing-neither-discharges-nor-replaces-a-running-pod
+summary: absence from an incomplete listing says nothing, so no replacement is created
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"partial_listing","partial":true},{"step":"vanish","pod":"pod-1"},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - ok
+    - ok
+    - err:starting
+    create_calls: 1

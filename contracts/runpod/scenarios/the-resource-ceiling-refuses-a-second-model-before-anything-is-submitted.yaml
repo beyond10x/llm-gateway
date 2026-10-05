@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: the-resource-ceiling-refuses-a-second-model-before-anything-is-submitted
+summary: the hosting ceiling refuses a second deployment, which is withdrawn owing nothing, while the first stays active
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"max_active":1,"models":{"qwen":{},"other":{}},"steps":[{"step":"ensure","alias":"qwen"},{"step":"ensure","alias":"other"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - err:starting
+    - err:hosting:capacity-exceeded
+    create_calls: 1
+    phases:
+    - other-1:cancelled
+    - qwen-1:active

@@ -1,0 +1,1426 @@
+[
+  {
+    "after": "        if false {",
+    "before": "        if record.stop_reason == Some(StopReason::OwnershipLost) {",
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 62,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-foreign-owner-tag-without-a-newer-epoch-obliges-a-stop",
+      "llm.hosting/authored/adversary-a-retag-that-is-not-a-newer-epoch-is-ignored"
+    ],
+    "mutation": "a-disputed-resource-may-still-be-stopped",
+    "named_failure": "llm.hosting/authored/a-foreign-owner-tag-without-a-newer-epoch-obliges-a-stop",
+    "named_rust_failure": "a_foreign_owner_tag_without_a_newer_epoch_obliges_a_stop",
+    "rust_failed": [
+      "a_create_answer_outside_this_scope_is_not_adopted_and_nothing_is_addressed_to_it",
+      "a_foreign_owner_tag_without_a_newer_epoch_obliges_a_stop_rather_than_nothing",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "the_controller_must_not_stop_a_resource_the_provider_says_is_another_owners"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "        } else if record.phase.may_become(Phase::Uncertain) {\n            record.phase = Phase::Uncertain;\n        }",
+    "before": "        } else {\n            require_stop(record, StopReason::OwnershipLost);\n        }",
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 62,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-foreign-owner-tag-without-a-newer-epoch-obliges-a-stop",
+      "llm.hosting/authored/adversary-a-retag-that-is-not-a-newer-epoch-is-ignored"
+    ],
+    "mutation": "a-foreign-owner-tag-without-a-newer-epoch-is-ignored",
+    "named_failure": "llm.hosting/authored/a-foreign-owner-tag-without-a-newer-epoch-obliges-a-stop",
+    "named_rust_failure": "a_foreign_owner_tag_without_a_newer_epoch_obliges_a_stop",
+    "rust_failed": [
+      "a_foreign_owner_tag_without_a_newer_epoch_obliges_a_stop_rather_than_nothing",
+      "a_resource_retagged_for_another_owner_must_not_stay_active_and_unobliged",
+      "a_retag_at_an_epoch_that_is_not_newer_must_not_be_ignored",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "every_published_stop_reason_is_opened_by_some_real_sequence_of_calls",
+      "the_controller_must_not_stop_a_resource_the_provider_says_is_another_owners"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "    if false && resource.state == ProviderState::Terminated {",
+    "before": "    if resource.state == ProviderState::Terminated {",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-provider-reported-termination-is-evidence-that-the-resource-stopped"
+    ],
+    "mutation": "a-provider-termination-is-ignored",
+    "named_failure": "llm.hosting/authored/a-provider-reported-termination-is-evidence-that-the-resource-stopped",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_provider_reported_termination_is_evidence_that_the_resource_stopped"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "        held.expires_at_ms = now_ms.saturating_add(lease_ms);\n        held.epoch = held.epoch.saturating_add(1);\n",
+    "before": "        held.expires_at_ms = now_ms.saturating_add(lease_ms);\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/the-time-ceiling-obliges-a-stop-rather-than-performing-one"
+    ],
+    "mutation": "a-renewal-raises-the-lease-above-the-registrys-epoch",
+    "named_failure": null,
+    "named_rust_failure": "lease::tests::a_held_lease_always_carries_the_registrys_current_epoch_and_its_grantee",
+    "note": "violates the invariant that replaced fence's two untrippable disjuncts",
+    "round": "correction 2",
+    "rust_failed": [
+      "lease::tests::a_held_lease_always_carries_the_registrys_current_epoch_and_its_grantee"
+    ],
+    "source": "crates/llm-provision/src/lease.rs",
+    "source_before_sha256": "71f8f09568b7734d854f0746481a7a48a38974676d40fed6663dd50a186b0cdc",
+    "source_restored_sha256": "71f8f09568b7734d854f0746481a7a48a38974676d40fed6663dd50a186b0cdc"
+  },
+  {
+    "after": "",
+    "before": "            if now_ms < witnessed(&record) {\n                return Err(HostingError::ClockReversed);\n            }\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-restart-cannot-reopen-the-controller-at-an-earlier-instant"
+    ],
+    "mutation": "a-restart-may-reopen-at-an-earlier-instant",
+    "named_failure": "llm.hosting/authored/a-restart-cannot-reopen-the-controller-at-an-earlier-instant",
+    "named_rust_failure": "a_restart_cannot_reopen_a_controller_at_an_earlier_instant",
+    "rust_failed": [
+      "a_restart_cannot_reopen_a_controller_at_an_earlier_instant"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "",
+    "before": "            if let Some(observed) = &record.observed\n                && !key_in_scope(&observed.key, &policy)\n            {\n                return Err(HostingError::ForeignResource);\n            }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "a-restored-record-may-claim-another-scope",
+    "named_failure": null,
+    "named_rust_failure": "a_restored_record_claiming_another_scopes_resource_is_refused",
+    "rust_failed": [
+      "a_restored_record_claiming_another_scopes_resource_is_refused"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "            entry.epoch = entry.epoch;",
+    "before": "            return Err(HostingError::LeaseHeld);",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/concurrent-acquisition-grants-exactly-one-lease"
+    ],
+    "mutation": "a-second-owner-is-admitted",
+    "named_failure": "llm.hosting/authored/concurrent-acquisition-grants-exactly-one-lease",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_lease_is_live_at_its_expiry_instant_and_expired_one_millisecond_later",
+      "concurrent_acquisition_grants_exactly_one_lease",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "hosting::tests::the_concurrency_bound_runs_at_32_and_refuses_33",
+      "lease::tests::a_second_owner_is_refused_while_the_claim_is_live",
+      "lease::tests::an_expired_claim_can_be_taken_over"
+    ],
+    "source": "crates/llm-provision/src/lease.rs",
+    "source_before_sha256": "7629b9247f85d111124c639a81261406cc8eca5f6ffda87c951e68a974826de8",
+    "source_restored_sha256": "7629b9247f85d111124c639a81261406cc8eca5f6ffda87c951e68a974826de8"
+  },
+  {
+    "after": "        if false {",
+    "before": "        if resource.epoch.is_some_and(|epoch| epoch > held_epoch) {",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it"
+    ],
+    "mutation": "a-superseded-record-is-still-treated-as-ours",
+    "named_failure": "llm.hosting/authored/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_disowned_record_reports_its_obligation_as_transferred_rather_than_vanished",
+      "a_higher_epoch_owner_disowns_our_record_and_we_stop_mutating_it"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "                    .filter(|_| false)",
+    "before": "                    .filter(|record| record.phase == Phase::Disowned)",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it"
+    ],
+    "mutation": "a-transferred-obligation-vanishes",
+    "named_failure": "llm.hosting/authored/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it",
+    "named_rust_failure": "a_disowned_record_reports_its_obligation_as_transferred_rather_than_vanished",
+    "rust_failed": [
+      "a_disowned_record_reports_its_obligation_as_transferred_rather_than_vanished"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "",
+    "before": "            || self.lease_ms == 0\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "a-zero-lease-is-admitted",
+    "named_failure": null,
+    "named_rust_failure": "a_zero_time_ceiling_or_lease_is_refused_and_one_millisecond_is_admitted",
+    "rust_failed": [
+      "a_zero_time_ceiling_or_lease_is_refused_and_one_millisecond_is_admitted"
+    ],
+    "source": "crates/llm-provision/src/spec.rs",
+    "source_before_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487",
+    "source_restored_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487"
+  },
+  {
+    "after": "",
+    "before": "            || self.requested_lifetime_ms == 0\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-zero-requested-lifetime-is-refused"
+    ],
+    "mutation": "a-zero-requested-lifetime-is-admitted",
+    "named_failure": "llm.hosting/authored/a-zero-requested-lifetime-is-refused",
+    "named_rust_failure": "a_requested_lifetime_is_admitted_at_the_ceiling_and_refused_one_past_it",
+    "rust_failed": [
+      "a_requested_lifetime_is_admitted_at_the_ceiling_and_refused_one_past_it"
+    ],
+    "source": "crates/llm-provision/src/spec.rs",
+    "source_before_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487",
+    "source_restored_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487"
+  },
+  {
+    "after": "if owners.len() > MAX_CONCURRENT + 1),",
+    "before": "if owners.len() > MAX_CONCURRENT),",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "adapter-concurrency-bound-off-by-one",
+    "named_failure": null,
+    "named_rust_failure": "the_concurrency_bound_runs_at_32_and_refuses_33",
+    "rust_failed": [
+      "hosting::tests::the_concurrency_bound_runs_at_32_and_refuses_33"
+    ],
+    "source": "checks/conformance/src/hosting.rs",
+    "source_before_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69",
+    "source_restored_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69"
+  },
+  {
+    "after": "    program_json.len() <= MAX_PROGRAM_BYTES + 1",
+    "before": "    program_json.len() <= MAX_PROGRAM_BYTES",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "adapter-document-bound-off-by-one",
+    "named_failure": null,
+    "named_rust_failure": "the_document_bound_admits_65536_bytes_and_refuses_65537",
+    "rust_failed": [
+      "hosting::tests::the_document_bound_admits_65536_bytes_and_refuses_65537"
+    ],
+    "source": "checks/conformance/src/hosting.rs",
+    "source_before_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69",
+    "source_restored_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69"
+  },
+  {
+    "after": "    if program.steps.len() > MAX_STEPS + 1",
+    "before": "    if program.steps.len() > MAX_STEPS",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "adapter-step-bound-off-by-one",
+    "named_failure": null,
+    "named_rust_failure": "the_step_bound_runs_at_128_and_refuses_129",
+    "rust_failed": [
+      "hosting::tests::the_step_bound_runs_at_128_and_refuses_129"
+    ],
+    "source": "checks/conformance/src/hosting.rs",
+    "source_before_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69",
+    "source_restored_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69"
+  },
+  {
+    "after": "    if false {\n",
+    "before": "    if !key_in_scope(&resource.key, policy) {\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "adopts-scope-guard-deleted",
+    "named_failure": null,
+    "named_rust_failure": "a_resource_in_another_scope_carrying_our_request_id_is_never_adopted",
+    "note": "controller.rs:773",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_resource_in_another_scope_carrying_our_request_id_is_never_adopted"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "\"allocations\": 0, \"submits\": 0, \"stops\": 0, \"lists\": 0,",
+    "before": "\"allocations\": null, \"submits\": null, \"stops\": null, \"lists\": null,",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/an-unrunnable-program-reports-absent-counts-not-zero-counts"
+    ],
+    "mutation": "an-absent-count-is-reported-as-zero",
+    "named_failure": "llm.hosting/authored/an-unrunnable-program-reports-absent-counts-not-zero-counts",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "hosting::tests::a_program_that_cannot_run_reports_no_counts_at_all",
+      "hosting::tests::the_step_bound_runs_at_128_and_refuses_129"
+    ],
+    "source": "checks/conformance/src/hosting.rs",
+    "source_before_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69",
+    "source_restored_sha256": "6c8b505c286789d140b2926b14a58bc12f4e27212d5d76e2977287abd0eb0a69"
+  },
+  {
+    "after": "        (Dispatch::NotSent | Dispatch::Rejected | Dispatch::Unknown, _) => {",
+    "before": "        (Dispatch::NotSent | Dispatch::Rejected, _) => {",
+    "counts": {
+      "error": 0,
+      "failed": 7,
+      "passed": 57,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create",
+      "llm.hosting/authored/an-ambiguous-create-holds-an-open-stop-obligation",
+      "llm.hosting/authored/an-ambiguous-create-is-resolved-by-adopting-what-it-left-behind",
+      "llm.hosting/authored/an-ambiguous-create-that-allocated-nothing-settles-against-a-complete-inventory",
+      "llm.hosting/authored/an-idempotent-retry-reuses-the-request-id-and-allocates-once",
+      "llm.hosting/authored/an-unanswerable-listing-leaves-the-obligation-exactly-where-it-was",
+      "llm.hosting/authored/an-unsupported-retry-is-refused-rather-than-simulated"
+    ],
+    "mutation": "an-ambiguous-create-is-treated-as-a-no-op",
+    "named_failure": "llm.hosting/authored/an-ambiguous-create-holds-an-open-stop-obligation",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_complete_listing_is_not_enough_to_settle_an_unresolved_create",
+      "a_complete_listing_that_echoes_no_request_id_must_not_discharge_an_ambiguous_create",
+      "a_provider_that_honours_the_request_id_may_be_retried_without_allocating_twice",
+      "an_ambiguous_create_is_resolved_by_adopting_the_resource_it_left_behind",
+      "an_ambiguous_create_keeps_an_open_obligation_and_never_retries_blindly",
+      "an_ambiguous_create_that_allocated_nothing_settles_against_a_complete_inventory",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "every_published_stop_reason_is_opened_by_some_real_sequence_of_calls"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "",
+    "before": "    if !record.phase.may_become(Phase::Stopped) {\n        return false;\n    }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "an-obligation-can-be-closed-from-any-phase",
+    "named_failure": null,
+    "named_rust_failure": "controller::tests::closing_an_obligation_is_refused_and_reported_outside_the_four_live_phases",
+    "note": "discharge's own refusal, now the one ConfirmStopped trips",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_command_whose_only_phase_change_is_forbidden_is_refused_rather_than_reported_done",
+      "controller::tests::closing_an_obligation_is_refused_and_reported_outside_the_four_live_phases"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "",
+    "before": "    if !record.phase.may_become(Phase::StopRequired) {\n        return false;\n    }\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it"
+    ],
+    "mutation": "an-obligation-can-be-opened-from-any-phase",
+    "named_failure": null,
+    "named_rust_failure": "controller::tests::opening_an_obligation_is_refused_and_reported_outside_the_four_live_phases",
+    "note": "require_stop's own refusal, which is what made elapse's terminal skip decide nothing",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_command_whose_only_phase_change_is_forbidden_is_refused_rather_than_reported_done",
+      "a_stop_requested_on_a_declared_deployment_must_not_be_reported_as_done",
+      "controller::tests::opening_an_obligation_is_refused_and_reported_outside_the_four_live_phases"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "            if false =>",
+    "before": "            if !key_in_scope(&resource.key, policy) || !owner_is_ours(resource, policy) =>",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "an-out-of-scope-create-answer-is-adopted",
+    "named_failure": null,
+    "named_rust_failure": "a_create_answer_outside_this_scope_is_not_adopted_and_nothing_is_addressed_to_it",
+    "rust_failed": [
+      "a_create_answer_outside_this_scope_is_not_adopted_and_nothing_is_addressed_to_it",
+      "a_stop_must_never_be_addressed_to_another_accounts_resource"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "            (_, evidence) => discharge(\n                record,\n                evidence.unwrap_or_else(|| Identifier::generated(\"fake-stop-1\")),\n            ),\n            #[allow(unreachable_patterns)]\n            (Dispatch::Accepted, Some(evidence)) => discharge(record, evidence),",
+    "before": "            (Dispatch::Accepted, Some(evidence)) => discharge(record, evidence),",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-stop-whose-outcome-is-unknown-keeps-the-obligation-open"
+    ],
+    "mutation": "an-unknown-stop-is-treated-as-stopped",
+    "named_failure": "llm.hosting/authored/a-stop-whose-outcome-is-unknown-keeps-the-obligation-open",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_refused_stop_keeps_the_obligation_open"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "    (Phase::Requested, Phase::Requested),\n    (Phase::Requested, Phase::Cancelled),",
+    "before": "    (Phase::Requested, Phase::Requested),",
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 62,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/cancellation-cannot-discharge-a-submitted-create",
+      "llm.hosting/authored/the-ownership-state-machine-is-exactly-this-table"
+    ],
+    "mutation": "cancellation-discharges-a-submitted-create",
+    "named_failure": "llm.hosting/authored/cancellation-cannot-discharge-a-submitted-create",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "cancellation_only_releases_a_deployment_that_was_never_provisioned",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "every_unmapped_transition_is_refused"
+    ],
+    "source": "crates/llm-provision/src/machine.rs",
+    "source_before_sha256": "65f292ebf79a1ec1cfb573e8b5fad4c394f423cb7420c372f11e2f775e370484",
+    "source_restored_sha256": "65f292ebf79a1ec1cfb573e8b5fad4c394f423cb7420c372f11e2f775e370484"
+  },
+  {
+    "after": "                    None if inventory.complete() => discharge(",
+    "before": "                    None if inventory.answers_request_identity() => discharge(",
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 62,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create",
+      "llm.hosting/authored/an-unanswerable-listing-leaves-the-obligation-exactly-where-it-was"
+    ],
+    "mutation": "completeness-alone-settles-an-ambiguous-create",
+    "named_failure": "llm.hosting/authored/an-unanswerable-listing-leaves-the-obligation-exactly-where-it-was",
+    "named_rust_failure": "a_complete_listing_is_not_enough_to_settle_an_unresolved_create",
+    "rust_failed": [
+      "a_complete_listing_is_not_enough_to_settle_an_unresolved_create",
+      "a_complete_listing_that_echoes_no_request_id_must_not_discharge_an_ambiguous_create"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "        discharge(record, evidence);\n",
+    "before": "        if !discharge(record, evidence) {\n            return Err(HostingError::WrongPhase);\n        }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "confirm-stopped-reports-a-forbidden-write-as-done",
+    "named_failure": null,
+    "named_rust_failure": "a_command_whose_only_phase_change_is_forbidden_is_refused_rather_than_reported_done",
+    "note": "the same symptom on the closing half",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_command_whose_only_phase_change_is_forbidden_is_refused_rather_than_reported_done"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "        record.connected = connected;\n        if !connected {\n            discharge(record, Identifier::generated(\"client-disconnected\"));\n        }\n",
+    "before": "        record.connected = connected;\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/disconnecting-a-client-is-not-shutdown"
+    ],
+    "mutation": "disconnecting-a-client-is-shutdown",
+    "named_failure": "llm.hosting/authored/disconnecting-a-client-is-not-shutdown",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "disconnecting_a_client_is_not_shutdown"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "        self.requested_lifetime_ms.max(policy.max_lifetime_ms)",
+    "before": "        self.requested_lifetime_ms.min(policy.max_lifetime_ms)",
+    "counts": {
+      "error": 0,
+      "failed": 3,
+      "passed": 61,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-fires-at-the-lower-deadline",
+      "llm.hosting/authored/the-time-ceiling-fires-one-millisecond-past-its-deadline",
+      "llm.hosting/authored/the-time-ceiling-obliges-a-stop-rather-than-performing-one"
+    ],
+    "mutation": "effective-lifetime-takes-the-maximum",
+    "named_failure": "llm.hosting/authored/a-policy-tightened-across-a-restart-fires-at-the-lower-deadline",
+    "named_rust_failure": "a_policy_tightened_across_a_restart_lowers_the_deadline_to_the_tighter_ceiling",
+    "rust_failed": [
+      "a_policy_tightened_across_a_restart_lowers_the_deadline_to_the_tighter_ceiling",
+      "every_published_stop_reason_is_opened_by_some_real_sequence_of_calls",
+      "the_time_ceiling_does_not_fire_at_its_deadline_and_does_fire_one_millisecond_later",
+      "the_time_ceiling_requires_a_stop_rather_than_declaring_one"
+    ],
+    "source": "crates/llm-provision/src/spec.rs",
+    "source_before_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487",
+    "source_restored_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487"
+  },
+  {
+    "after": "",
+    "before": "        if !current.live_at(self.now_ms) {\n            return Err(HostingError::LeaseLost);\n        }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "fences-liveness-check-deleted",
+    "named_failure": null,
+    "named_rust_failure": "a_claim_that_merely_expired_still_refuses_every_provider_mutation",
+    "note": "controller.rs:464",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_claim_that_merely_expired_still_refuses_every_provider_mutation"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "                discharge(record, Identifier::generated(\"lease-expired\"));",
+    "before": "                require_stop(record, StopReason::LeaseExpired);",
+    "counts": {
+      "error": 0,
+      "failed": 3,
+      "passed": 61,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it",
+      "llm.hosting/authored/a-stale-epoch-is-refused-before-the-provider-is-called",
+      "llm.hosting/authored/an-expired-lease-is-not-evidence-that-the-resource-stopped"
+    ],
+    "mutation": "lease-expiry-is-shutdown",
+    "named_failure": "llm.hosting/authored/an-expired-lease-is-not-evidence-that-the-resource-stopped",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_disowned_record_reports_its_obligation_as_transferred_rather_than_vanished",
+      "a_higher_epoch_owner_disowns_our_record_and_we_stop_mutating_it",
+      "an_expired_lease_is_not_evidence_that_the_resource_stopped",
+      "every_published_stop_reason_is_opened_by_some_real_sequence_of_calls"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "            || self.requested_lifetime_ms > policy.max_lifetime_ms.saturating_add(1)",
+    "before": "            || self.requested_lifetime_ms > policy.max_lifetime_ms",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-lifetime-above-the-ceiling-is-refused-without-a-provider-call"
+    ],
+    "mutation": "lifetime-ceiling-admits-one-past-itself",
+    "named_failure": "llm.hosting/authored/a-lifetime-above-the-ceiling-is-refused-without-a-provider-call",
+    "named_rust_failure": "a_requested_lifetime_is_admitted_at_the_ceiling_and_refused_one_past_it",
+    "rust_failed": [
+      "a_requested_lifetime_is_admitted_at_the_ceiling_and_refused_one_past_it",
+      "validation_refuses_a_lifetime_above_the_ceiling_without_calling_the_provider"
+    ],
+    "source": "crates/llm-provision/src/spec.rs",
+    "source_before_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487",
+    "source_restored_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487"
+  },
+  {
+    "after": "            || self.requested_lifetime_ms >= policy.max_lifetime_ms",
+    "before": "            || self.requested_lifetime_ms > policy.max_lifetime_ms",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-requested-lifetime-exactly-at-the-ceiling-is-admitted"
+    ],
+    "mutation": "lifetime-ceiling-refuses-its-own-value",
+    "named_failure": "llm.hosting/authored/a-requested-lifetime-exactly-at-the-ceiling-is-admitted",
+    "named_rust_failure": "a_requested_lifetime_is_admitted_at_the_ceiling_and_refused_one_past_it",
+    "rust_failed": [
+      "a_requested_lifetime_is_admitted_at_the_ceiling_and_refused_one_past_it"
+    ],
+    "source": "crates/llm-provision/src/spec.rs",
+    "source_before_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487",
+    "source_restored_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487"
+  },
+  {
+    "after": "self.resources.iter().find(|resource| resource.key.same_name(key))",
+    "before": "self.resources.iter().find(|resource| &resource.key == key)",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-reused-name-with-a-new-incarnation-is-not-the-resource-we-owned"
+    ],
+    "mutation": "name-alone-fences-ownership",
+    "named_failure": "llm.hosting/authored/a-reused-name-with-a-new-incarnation-is-not-the-resource-we-owned",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_reused_name_with_a_new_incarnation_is_not_our_resource",
+      "observation::tests::an_exact_match_requires_the_incarnation_too"
+    ],
+    "source": "crates/llm-provision/src/observation.rs",
+    "source_before_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a",
+    "source_restored_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a"
+  },
+  {
+    "after": "    let mut echoed = ProvisionedDeployment::from_observation(resource, now_ms);\n    echoed.served_model = echoed\n        .served_model\n        .or_else(|| Some(record.requested.model.clone()));\n    record.observed = Some(echoed);\n    if resource.state == ProviderState::Terminated {",
+    "before": "    record.observed = Some(ProvisionedDeployment::from_observation(resource, now_ms));\n    if resource.state == ProviderState::Terminated {",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/an-observed-deployment-never-echoes-the-requested-specification"
+    ],
+    "mutation": "observed-model-echoes-the-request",
+    "named_failure": "llm.hosting/authored/an-observed-deployment-never-echoes-the-requested-specification",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "an_observed_deployment_never_echoes_the_requested_specification"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "    if record.stop_reason.is_none() {\n",
+    "before": "    if record.stop_reason.is_none() || reason == StopReason::OwnershipLost {\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 64,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag"
+    ],
+    "mutation": "ownership-lost-does-not-displace-an-open-reason",
+    "named_failure": "llm.hosting/authored/adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag",
+    "named_rust_failure": "an_operator_requested_stop_must_not_hide_a_later_foreign_owner_tag",
+    "note": "the pass-2 blocker exactly: first-writer-wins with no exception for ownership-lost",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_resource_in_another_scope_carrying_our_request_id_is_never_adopted",
+      "an_expired_lease_must_not_hide_a_later_foreign_owner_tag",
+      "an_operator_requested_stop_must_not_hide_a_later_foreign_owner_tag",
+      "controller::tests::the_first_reason_is_kept_except_that_ownership_lost_always_wins",
+      "stopping_after_a_hidden_foreign_owner_tag_destroys_the_other_owners_compute"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "        true\n",
+    "before": "        self.completeness == Completeness::Complete\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/an-incomplete-inventory-is-not-evidence-of-absence"
+    ],
+    "mutation": "partial-inventory-concludes-absence",
+    "named_failure": "llm.hosting/authored/an-incomplete-inventory-is-not-evidence-of-absence",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "an_incomplete_inventory_is_not_evidence_of_absence",
+      "observation::tests::a_complete_listing_without_request_identifiers_cannot_rule_a_request_out",
+      "observation::tests::a_partial_inventory_may_not_be_used_to_conclude_absence"
+    ],
+    "source": "crates/llm-provision/src/observation.rs",
+    "source_before_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a",
+    "source_restored_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a"
+  },
+  {
+    "after": "",
+    "before": "        if record.phase != Phase::Declared {\n            return Err(HostingError::WrongPhase);\n        }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "provisions-phase-guard-deleted",
+    "named_failure": null,
+    "named_rust_failure": "a_second_provision_on_one_authorization_is_refused_before_a_second_resource_is_billed",
+    "note": "controller.rs:478",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_second_provision_on_one_authorization_is_refused_before_a_second_resource_is_billed",
+      "provisioning_is_refused_from_every_phase_that_already_submitted_a_create"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "        require_stop(record, StopReason::OperatorRequest);\n",
+    "before": "        if !require_stop(record, StopReason::OperatorRequest) {\n            return Err(HostingError::WrongPhase);\n        }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "request-stop-reports-a-forbidden-write-as-done",
+    "named_failure": null,
+    "named_rust_failure": "a_stop_requested_on_a_declared_deployment_must_not_be_reported_as_done",
+    "note": "machine.rs:134's symptom: RequestStop answering Ok for a change the table refused",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_command_whose_only_phase_change_is_forbidden_is_refused_rather_than_reported_done",
+      "a_stop_requested_on_a_declared_deployment_must_not_be_reported_as_done"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "",
+    "before": "            || self.max_active > MAX_ACTIVE_CEILING\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-one-past-the-published-resource-ceiling-is-refused"
+    ],
+    "mutation": "resource-ceiling-guard-deleted",
+    "named_failure": "llm.hosting/authored/a-policy-one-past-the-published-resource-ceiling-is-refused",
+    "named_rust_failure": "the_published_resource_ceiling_is_four_thousand_and_ninety_six",
+    "rust_failed": [
+      "the_published_resource_ceiling_is_four_thousand_and_ninety_six"
+    ],
+    "source": "crates/llm-provision/src/spec.rs",
+    "source_before_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487",
+    "source_restored_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487"
+  },
+  {
+    "after": "            || self.max_active > MAX_ACTIVE_CEILING * 10\n",
+    "before": "            || self.max_active > MAX_ACTIVE_CEILING\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-one-past-the-published-resource-ceiling-is-refused"
+    ],
+    "mutation": "resource-ceiling-multiplied-by-ten",
+    "named_failure": "llm.hosting/authored/a-policy-one-past-the-published-resource-ceiling-is-refused",
+    "named_rust_failure": "the_published_resource_ceiling_is_four_thousand_and_ninety_six",
+    "rust_failed": [
+      "the_published_resource_ceiling_is_four_thousand_and_ninety_six"
+    ],
+    "source": "crates/llm-provision/src/spec.rs",
+    "source_before_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487",
+    "source_restored_sha256": "3179da815f4e198af2362300e7c95ac3f2cdc481e46d683b0834888a05f78487"
+  },
+  {
+    "after": "at_capacity: active_count >= 1,",
+    "before": "at_capacity: active_count >= self.policy.max_active as usize,",
+    "counts": {
+      "error": 0,
+      "failed": 23,
+      "passed": 41,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create",
+      "llm.hosting/authored/a-foreign-owner-tag-without-a-newer-epoch-obliges-a-stop",
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-fires-at-the-lower-deadline",
+      "llm.hosting/authored/a-restart-keeps-identity-and-forgets-liveness",
+      "llm.hosting/authored/a-stale-epoch-is-refused-before-the-provider-is-called",
+      "llm.hosting/authored/a-stop-whose-outcome-is-unknown-keeps-the-obligation-open",
+      "llm.hosting/authored/an-accepted-create-records-the-provider-assigned-identity",
+      "llm.hosting/authored/an-ambiguous-create-holds-an-open-stop-obligation",
+      "llm.hosting/authored/an-ambiguous-create-is-resolved-by-adopting-what-it-left-behind",
+      "llm.hosting/authored/an-expired-lease-is-not-evidence-that-the-resource-stopped",
+      "llm.hosting/authored/an-idempotent-retry-reuses-the-request-id-and-allocates-once",
+      "llm.hosting/authored/an-incomplete-inventory-is-not-evidence-of-absence",
+      "llm.hosting/authored/an-observed-ready-resource-reports-its-address",
+      "llm.hosting/authored/an-unanswerable-listing-leaves-the-obligation-exactly-where-it-was",
+      "llm.hosting/authored/an-unsupported-retry-is-refused-rather-than-simulated",
+      "llm.hosting/authored/cancellation-cannot-discharge-a-submitted-create",
+      "llm.hosting/authored/disconnecting-a-client-is-not-shutdown",
+      "llm.hosting/authored/releasing-a-lease-is-not-shutdown",
+      "llm.hosting/authored/the-last-slot-under-the-resource-ceiling-is-admitted",
+      "llm.hosting/authored/the-resource-ceiling-refuses-before-anything-is-allocated",
+      "llm.hosting/authored/the-time-ceiling-does-not-fire-at-its-own-deadline",
+      "llm.hosting/authored/the-time-ceiling-fires-one-millisecond-past-its-deadline",
+      "llm.hosting/authored/the-time-ceiling-obliges-a-stop-rather-than-performing-one"
+    ],
+    "mutation": "resource-ceiling-reached-at-the-first-slot",
+    "named_failure": "llm.hosting/authored/the-last-slot-under-the-resource-ceiling-is-admitted",
+    "named_rust_failure": "the_last_slot_under_the_resource_ceiling_is_admitted",
+    "rust_failed": [
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "the_last_slot_under_the_resource_ceiling_is_admitted",
+      "the_resource_ceiling_refuses_before_anything_is_allocated"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "            record.connected = false;",
+    "before": "            record.lease = None;\n            record.connected = false;",
+    "counts": {
+      "error": 0,
+      "failed": 4,
+      "passed": 60,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-fires-at-the-lower-deadline",
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-lowers-the-deadline",
+      "llm.hosting/authored/a-restart-keeps-identity-and-forgets-liveness",
+      "llm.hosting/authored/a-restarted-controller-must-take-a-new-lease-before-it-mutates"
+    ],
+    "mutation": "restart-keeps-the-lease",
+    "named_failure": "llm.hosting/authored/a-restarted-controller-must-take-a-new-lease-before-it-mutates",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_restarted_controller_must_take_a_new_lease_before_it_mutates"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "            state: self.state,\n            ready: self.ready,\n            endpoint: self.endpoint.clone(),\n            served_model: self.served_model.clone(),\n            observed_at_ms: self.observed_at_ms,\n",
+    "before": "            state: None,\n            ready: None,\n            endpoint: None,\n            served_model: None,\n            observed_at_ms: self.observed_at_ms,\n",
+    "counts": {
+      "error": 0,
+      "failed": 4,
+      "passed": 60,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-fires-at-the-lower-deadline",
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-lowers-the-deadline",
+      "llm.hosting/authored/a-restart-keeps-identity-and-forgets-liveness",
+      "llm.hosting/authored/a-restarted-controller-must-take-a-new-lease-before-it-mutates"
+    ],
+    "mutation": "restart-trusts-stale-liveness",
+    "named_failure": "llm.hosting/authored/a-restart-keeps-identity-and-forgets-liveness",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_restart_keeps_identity_and_obligations_but_forgets_liveness",
+      "observation::tests::a_restart_keeps_identity_and_forgets_liveness"
+    ],
+    "source": "crates/llm-provision/src/observation.rs",
+    "source_before_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a",
+    "source_restored_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a"
+  },
+  {
+    "after": "",
+    "before": "            if record.requested.provider != policy.provider\n                || record.requested.account != policy.account\n            {\n                return Err(HostingError::InvalidSpec);\n            }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "restores-requested-scope-check-deleted",
+    "named_failure": null,
+    "named_rust_failure": "a_restored_record_requested_for_another_scope_is_refused",
+    "note": "controller.rs:189",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_restored_record_requested_for_another_scope_is_refused"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "            if !key_in_scope(&resource.key, policy) =>",
+    "before": "            if !key_in_scope(&resource.key, policy) || !owner_is_ours(resource, policy) =>",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "settle-creates-owner-disjunct-neutralised",
+    "named_failure": null,
+    "named_rust_failure": "a_create_answer_labelled_for_another_controller_is_not_adopted",
+    "note": "controller.rs:726",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_create_answer_labelled_for_another_controller_is_not_adopted"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "        if false {",
+    "before": "        if authorization.ledger != self.policy.ledger {",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/an-authorization-from-another-ledger-is-refused"
+    ],
+    "mutation": "the-budget-authorization-is-not-checked",
+    "named_failure": "llm.hosting/authored/an-authorization-from-another-ledger-is-refused",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "an_authorization_from_another_ledger_is_refused",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "        if false {\n            return Err(HostingError::ClockReversed);\n        }",
+    "before": "        if now_ms < self.now_ms {\n            return Err(HostingError::ClockReversed);\n        }",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/the-clock-cannot-move-backwards"
+    ],
+    "mutation": "the-clock-may-move-backwards",
+    "named_failure": "llm.hosting/authored/the-clock-cannot-move-backwards",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "the_clock_cannot_move_backwards"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "",
+    "before": "        (Phase::Declared, Phase::StopRequired, false),\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "the-declared-stop-required-row-is-dropped",
+    "named_failure": null,
+    "named_rust_failure": "machine::tests::the_three_unconditional_writers_are_enumerated_from_every_phase",
+    "note": "machine.rs:134: the row that was missing, removed again",
+    "round": "correction 2",
+    "rust_failed": [
+      "machine::tests::the_three_unconditional_writers_are_enumerated_from_every_phase"
+    ],
+    "source": "crates/llm-provision/src/machine.rs",
+    "source_before_sha256": "2518d1de279abbe2545ed89d2b23dc875d717f066d2e8d3f77efe9aa0b0ef581",
+    "source_restored_sha256": "2518d1de279abbe2545ed89d2b23dc875d717f066d2e8d3f77efe9aa0b0ef581"
+  },
+  {
+    "after": "        if false {\n            return Err(HostingError::StaleEpoch);\n        }",
+    "before": "        if self.leases.epoch(deployment) > held.epoch {\n            return Err(HostingError::StaleEpoch);\n        }",
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 62,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it",
+      "llm.hosting/authored/a-stale-epoch-is-refused-before-the-provider-is-called"
+    ],
+    "mutation": "the-fencing-epoch-is-not-checked",
+    "named_failure": "llm.hosting/authored/a-stale-epoch-is-refused-before-the-provider-is-called",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_higher_epoch_owner_disowns_our_record_and_we_stop_mutating_it",
+      "a_stale_epoch_is_refused_before_the_provider_is_called",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "    record.stop_reason = Some(reason);\n",
+    "before": "    if record.stop_reason.is_none() || reason == StopReason::OwnershipLost {\n        record.stop_reason = Some(reason);\n    }\n",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 65,
+      "skipped": 0,
+      "total": 65,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "the-reason-slot-is-last-writer-wins",
+    "named_failure": null,
+    "named_rust_failure": "controller::tests::the_first_reason_is_kept_except_that_ownership_lost_always_wins",
+    "note": "controller.rs:845 as the adversary deleted it: the is_none wrapper gone",
+    "round": "correction 2",
+    "rust_failed": [
+      "a_stop_must_never_be_addressed_to_another_accounts_resource",
+      "controller::tests::the_first_reason_is_kept_except_that_ownership_lost_always_wins",
+      "the_reason_that_opened_an_obligation_is_the_one_kept"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc",
+    "source_restored_sha256": "84c757a88cc130dc4fa053ed206c5c29d9298a94d133de5f3888f2176e37ecfc"
+  },
+  {
+    "after": "at_capacity: active_count > self.policy.max_active as usize,",
+    "before": "at_capacity: active_count >= self.policy.max_active as usize,",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/the-resource-ceiling-refuses-before-anything-is-allocated"
+    ],
+    "mutation": "the-resource-ceiling-is-off-by-one",
+    "named_failure": "llm.hosting/authored/the-resource-ceiling-refuses-before-anything-is-allocated",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls",
+      "the_last_slot_under_the_resource_ceiling_is_admitted",
+      "the_resource_ceiling_refuses_before_anything_is_allocated"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "    variants: [Declared, Requested, Active, Uncertain, StopRequired, Stopped, Cancelled]",
+    "before": "    variants: [Declared, Requested, Active, Uncertain, StopRequired, Stopped, Cancelled, Disowned]",
+    "counts": {
+      "error": 0,
+      "failed": 0,
+      "passed": 64,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [],
+    "mutation": "the-specification-drops-a-published-phase",
+    "named_failure": null,
+    "named_rust_failure": "every_vocabulary_is_declared_identically_in_rust_and_in_the_specification",
+    "rust_failed": [
+      "hosting::tests::every_vocabulary_is_declared_identically_in_rust_and_in_the_specification"
+    ],
+    "source": "spec/domains/hosting.yaml",
+    "source_before_sha256": "de22c11bd13f349898f852f9f910933aec38ea7ddd8a4b9972cfee570a9552be",
+    "source_restored_sha256": "de22c11bd13f349898f852f9f910933aec38ea7ddd8a4b9972cfee570a9552be"
+  },
+  {
+    "after": "                if now_ms >= deadline {",
+    "before": "                if now_ms > deadline {",
+    "counts": {
+      "error": 0,
+      "failed": 2,
+      "passed": 62,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-lowers-the-deadline",
+      "llm.hosting/authored/the-time-ceiling-does-not-fire-at-its-own-deadline"
+    ],
+    "mutation": "time-ceiling-fires-a-millisecond-early",
+    "named_failure": "llm.hosting/authored/the-time-ceiling-does-not-fire-at-its-own-deadline",
+    "named_rust_failure": "the_time_ceiling_does_not_fire_at_its_deadline_and_does_fire_one_millisecond_later",
+    "rust_failed": [
+      "a_policy_tightened_across_a_restart_lowers_the_deadline_to_the_tighter_ceiling",
+      "the_time_ceiling_does_not_fire_at_its_deadline_and_does_fire_one_millisecond_later"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "                if now_ms > deadline.saturating_add(1) {",
+    "before": "                if now_ms > deadline {",
+    "counts": {
+      "error": 0,
+      "failed": 3,
+      "passed": 61,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-fires-at-the-lower-deadline",
+      "llm.hosting/authored/the-time-ceiling-fires-one-millisecond-past-its-deadline",
+      "llm.hosting/authored/the-time-ceiling-obliges-a-stop-rather-than-performing-one"
+    ],
+    "mutation": "time-ceiling-fires-a-millisecond-late",
+    "named_failure": "llm.hosting/authored/the-time-ceiling-fires-one-millisecond-past-its-deadline",
+    "named_rust_failure": "the_time_ceiling_does_not_fire_at_its_deadline_and_does_fire_one_millisecond_later",
+    "rust_failed": [
+      "a_policy_tightened_across_a_restart_lowers_the_deadline_to_the_tighter_ceiling",
+      "every_published_stop_reason_is_opened_by_some_real_sequence_of_calls",
+      "the_time_ceiling_does_not_fire_at_its_deadline_and_does_fire_one_millisecond_later",
+      "the_time_ceiling_requires_a_stop_rather_than_declaring_one"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "                if false {\n                    require_stop(record, StopReason::LifetimeExceeded);\n                    continue;\n                }\n                let _ = deadline;",
+    "before": "                if now_ms > deadline {\n                    require_stop(record, StopReason::LifetimeExceeded);\n                    continue;\n                }",
+    "counts": {
+      "error": 0,
+      "failed": 3,
+      "passed": 61,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/a-policy-tightened-across-a-restart-fires-at-the-lower-deadline",
+      "llm.hosting/authored/the-time-ceiling-fires-one-millisecond-past-its-deadline",
+      "llm.hosting/authored/the-time-ceiling-obliges-a-stop-rather-than-performing-one"
+    ],
+    "mutation": "time-ceiling-is-ignored",
+    "named_failure": "llm.hosting/authored/the-time-ceiling-obliges-a-stop-rather-than-performing-one",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "a_policy_tightened_across_a_restart_lowers_the_deadline_to_the_tighter_ceiling",
+      "every_published_stop_reason_is_opened_by_some_real_sequence_of_calls",
+      "the_time_ceiling_does_not_fire_at_its_deadline_and_does_fire_one_millisecond_later",
+      "the_time_ceiling_requires_a_stop_rather_than_declaring_one"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  },
+  {
+    "after": "            ready: resource.ready.or(Some(true)),\n",
+    "before": "            ready: resource.ready,\n",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/unreported-readiness-is-unknown-and-never-ready"
+    ],
+    "mutation": "unreported-readiness-becomes-ready",
+    "named_failure": "llm.hosting/authored/unreported-readiness-is-unknown-and-never-ready",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "unreported_readiness_is_unknown_and_never_ready"
+    ],
+    "source": "crates/llm-provision/src/observation.rs",
+    "source_before_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a",
+    "source_restored_sha256": "cd41ee63a7b6342c3b9279c759dbf72bf225342192574567f146c2307bd9d57a"
+  },
+  {
+    "after": "        if false {",
+    "before": "        if !provider.honours_idempotency_key() {",
+    "counts": {
+      "error": 0,
+      "failed": 1,
+      "passed": 63,
+      "skipped": 0,
+      "total": 64,
+      "unsupported": 0
+    },
+    "failed": [
+      "llm.hosting/authored/an-unsupported-retry-is-refused-rather-than-simulated"
+    ],
+    "mutation": "unsupported-idempotency-is-simulated",
+    "named_failure": "llm.hosting/authored/an-unsupported-retry-is-refused-rather-than-simulated",
+    "named_rust_failure": null,
+    "rust_failed": [
+      "an_ambiguous_create_keeps_an_open_obligation_and_never_retries_blindly",
+      "every_published_refusal_is_emitted_by_some_real_sequence_of_calls"
+    ],
+    "source": "crates/llm-provision/src/controller.rs",
+    "source_before_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd",
+    "source_restored_sha256": "6f44247446e82c4d7cf0c14b10869184273eddc2fc9c9210f533374159acbcbd"
+  }
+]

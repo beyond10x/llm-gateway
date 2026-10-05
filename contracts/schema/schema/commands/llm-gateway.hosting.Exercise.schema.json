@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Exercise input",
+  "x-ess-name": "llm-gateway.hosting.Exercise",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "program_json": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "program_json"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56bffdb322903724478f233ec7ffc20f6e12d2fa75552c6629df1eed494fe659",
+    "contract_digest": "slice-sha256/2:f68096552970ba68e42796b543162a5cf0fdc4ad2a8d5c4e1fe419e07f89031c",
+    "regenerate": "ess generate"
+  }
+}

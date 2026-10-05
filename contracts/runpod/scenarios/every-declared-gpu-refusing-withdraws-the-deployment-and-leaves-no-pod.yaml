@@ -1,0 +1,28 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod
+summary: when every GPU is refused the deployment is cancelled and nothing is owed
+timeline:
+- at: '2026-09-27T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"refuse_gpu","gpu":"NVIDIA L40S"},{"step":"refuse_gpu","gpu":"NVIDIA H100 NVL"},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ok
+    - err:no-capacity
+    requested_gpus:
+    - NVIDIA L40S
+    - NVIDIA H100 NVL
+    pods: []
+    phases:
+    - qwen-1:cancelled
+    stop_required: []

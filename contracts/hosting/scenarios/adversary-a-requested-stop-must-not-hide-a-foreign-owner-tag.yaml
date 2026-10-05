@@ -1,0 +1,34 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag
+summary: an already-open stop obligation must not hide a later foreign owner tag
+# docs/hosting.md:107-110 says a foreign owner tag that is not a strictly newer epoch calls
+# require_stop with ownership-lost and that Stop then refuses the record with foreign-resource.
+# The sibling scenario a-foreign-owner-tag-without-a-newer-epoch-obliges-a-stop reaches the
+# retag from `active`, where stop_reason is null. require_stop is documented as never
+# overwriting the reason that opened the obligation, so here — where the operator asked for the
+# stop first — the ownership-lost fact is never recorded, Stop's guard is keyed on that reason
+# and nothing else, and controller-b's resource is destroyed.
+timeline:
+- at: '2026-09-21T12:00:00Z'
+  command: llm-gateway.hosting.Exercise
+  input:
+    program_json: '{"policy":{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":2,"max_lifetime_ms":10000,"lease_ms":1000},"steps":[{"step":"declare","at_ms":1,"spec":{"id":"d1","provider":"fake","account":"account-1","model":"requested-model","image":"requested-image","resource_name":"pool-slot","requested_lifetime_ms":5000},"request_id":"request-d1","authorization":{"ledger":"scope","reservation":"reservation-a"}},{"step":"acquire","at_ms":1,"deployment":"d1"},{"step":"provision","at_ms":1,"deployment":"d1"},{"step":"observe","at_ms":2},{"step":"request-stop","at_ms":3,"deployment":"d1"},{"step":"retag","name":"pool-slot","owner":"controller-b","epoch":1},{"step":"observe","at_ms":4},{"step":"stop","at_ms":5,"deployment":"d1"}]}'
+assert:
+- view: llm-gateway.hosting.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.LastExecution
+  contains:
+    valid_program: true
+    stops: 0
+    results:
+    - ok
+    - ok
+    - ok
+    - ok
+    - ok
+    - fixture-ready
+    - ok
+    - err:foreign-resource

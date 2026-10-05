@@ -54,8 +54,10 @@ max_model_len = 65536
 The keys, defaults and ranges are llmgw's; `spec/domains/deployment.yaml` lists every rule.
 Both files are read through a trusted-file reader. Each must be a regular file, not a symlink,
 owned by you or root. The document must be at most 256 KiB and not group- or world-writable. The
-owner secret must be one printable token of 32 to 4096 bytes, readable by the owner only (`chmod
-600`). Clients send it as `Authorization: Bearer <secret>`.
+owner secret must be one printable token of 32 to 4096 bytes (a trailing newline or CRLF is
+trimmed), readable by the owner only (`chmod 600`). Clients send it as
+`Authorization: Bearer <secret>`. A signal stops the gateway within twice its 10-second read
+timeout, however slowly a client sends or reads.
 
 The gateway answers `GET /health` and `GET /ready` without a credential. The owner can read
 `GET /v1/routes` and `GET /v1/routes/<alias>`. It does not relay model calls or start pods yet

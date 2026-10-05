@@ -9,6 +9,7 @@ use crate::{
 use llm_gateway::{
     AuthKind, BillingKind, Gateway, GatewayHandle, Label, OwnerToken, RouteInventory, RouteSummary,
     SharedSecretVerifier, ShutdownReport, TargetLimits, TargetProvenance, TargetSummary,
+    TokenError,
 };
 use signal_hook::{
     consts::{SIGINT, SIGTERM},
@@ -45,9 +46,16 @@ pub struct Stopped {
 /// An `owner-secret:*` [`Refusal`].
 pub fn owner_verifier(deployment: &Deployment) -> Result<SharedSecretVerifier, Refusal> {
     let text = trusted::read(&deployment.owner_secret_file, &trusted::OWNER_SECRET)?;
-    let token = OwnerToken::new(text.trim_end().as_bytes().to_vec()).map_err(|error| {
+    // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
+    let material = text.trim_end_matches(|character: char| character.is_ascii_whitespace());
+    let token = OwnerToken::new(material.as_bytes().to_vec()).map_err(|error| {
         Refusal::new(
-            StartupRefusal::OwnerSecretNotAToken,
+            // The token bound is applied here, after trimming; the file bound is the reader's.
+            if error == TokenError::TooLarge {
+                StartupRefusal::OwnerSecretTooLarge
+            } else {
+                StartupRefusal::OwnerSecretNotAToken
+            },
             format!("{}: {error}", deployment.owner_secret_file.display()),
         )
     })?;

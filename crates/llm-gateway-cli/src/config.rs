@@ -199,7 +199,11 @@ fn schema_refusal(text: &str, error: &toml::de::Error) -> Refusal {
     let message = error.message();
     match error.span() {
         Some(span) => {
-            let line = text[..span.start.min(text.len())].matches('\n').count() + 1;
+            // Counted over bytes: the span is a byte offset, which need not fall on a character
+            // boundary of multi-byte text.
+            let end = span.start.min(text.len());
+            // n newlines split the bytes into n + 1 pieces, which is the 1-based line number.
+            let line = text.as_bytes()[..end].split(|byte| *byte == b'\n').count();
             Refusal::new(
                 StartupRefusal::ConfigSchema,
                 format!("line {line}: {message}"),

@@ -38,15 +38,17 @@ types:
   #                             `owner-secret`: any group or world permission (mode & 0o077),
   #                             because it is a credential
   #   `<source>:too-large`      `config` over 262144 bytes (256 KiB, llmgw `src/config.rs:16`),
-  #                             `owner-secret` over 4096 bytes (llmgw `src/config.rs:17`); the
-  #                             bound is also enforced on the bytes read, so a file that grows
-  #                             after the check is refused
+  #                             `owner-secret` over 4098 bytes: a 4096-byte token and its CRLF
+  #                             (llmgw bounds the file at 4096, `src/config.rs:17`); the bound
+  #                             is also enforced on the bytes read, so a file that grows after
+  #                             the check is refused
   #   `<source>:not-utf8`       the bytes are not UTF-8
   # Document rules:
   #   `config:schema`  not TOML, or not the closed DeploymentConfiguration: an unknown key at
   #                    any level, a missing required key, or a value of the wrong type
   #   `config:value`   a value outside its rule (the ranges on the types below)
-  # Owner secret rules, after trailing whitespace is trimmed:
+  # Owner secret rules, after trailing ASCII whitespace is trimmed:
+  #   `owner-secret:too-large`    a token over 4096 bytes (`token:too-large`)
   #   `owner-secret:not-a-token`  empty, or not one printable ASCII token (`token:<rule>` of
   #                               llm-gateway.gateway.CompositionRefusal)
   #   `owner-secret:too-short`    under 32 bytes (`verifier:secret-too-short`)

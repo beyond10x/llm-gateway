@@ -32,11 +32,13 @@ pub(crate) const CONFIG: Policy = Policy {
     unsafe_mode: 0o022,
 };
 
-/// The owner secret: 4 KiB, refused with any group or world permission, because it is a
+/// The owner secret: a token of at most 4096 bytes plus the trailing CRLF or newline an editor
+/// or a shell adds, so the file is at most 4098 bytes; the token bound itself is applied after
+/// trailing whitespace is trimmed. Refused with any group or world permission, because it is a
 /// credential.
 pub(crate) const OWNER_SECRET: Policy = Policy {
     source: Source::OwnerSecret,
-    limit: 4 * 1024,
+    limit: 4 * 1024 + 2,
     unsafe_mode: 0o077,
 };
 

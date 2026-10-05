@@ -1,0 +1,218 @@
+# llmgw capability matrix
+
+Every capability of [llmgw](https://github.com/beyond10x/llmgw) at `main` commit `048ebd8`,
+mapped against this repository at commit `be722b4`. No llmgw deployment moves until every row
+below is `covered` or `not needed`.
+
+## How to read it
+
+- **llmgw** cites `path:line` in llmgw at `048ebd8`. **llm-gateway** cites `path:line` in this
+  repository at `be722b4`, or says `none`.
+- **covered**: llm-gateway's library code does the same job, with tests, even where the mechanism
+  differs (the note says how). **partial**: a building block exists and something llmgw does is
+  missing. **gap**: nothing in llm-gateway does it. **not needed**: the note gives the reason.
+- Nothing in llm-gateway runs yet: the workspace is libraries plus the conformance runner, with
+  no gateway binary (C1). A `covered` row is library behaviour. It is not deployable until the
+  C and D rows close.
+- Configuration rows compare settings, not file formats: a key is `covered` when a typed setting
+  with the same meaning exists. The file format is its own row (K29).
+- Registry rows are the `models` keys (K9–K28) and `GET /v1/models` (R5). Authentication rows are
+  `--insecure` (C3) and `[identity]` (K2–K4).
+
+## Summary
+
+| Area | Name | Rows | Covered | Partial | Gap | Not needed | Row count checked against |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| R | Routes | 8 | 2 | 1 | 5 | 0 | the 8 `.route` calls in `router()`, `src/lib.rs:125-137` |
+| W | Wire relay | 7 | 0 | 2 | 5 | 0 | no source table: the proxy path `src/lib.rs:510-699` and README `README.md:63-98` |
+| C | CLI | 5 | 0 | 0 | 4 | 1 | the built binary's `--help`: 4 options, no subcommand, plus the command |
+| K | Configuration | 30 | 22 | 3 | 2 | 3 | the 28 fields of the four serde structs in `src/config.rs:20-136`, plus 2 file-handling rows |
+| B | Backends | 9 | 2 | 6 | 1 | 0 | `ProviderKind` (1 variant, `src/config.rs:50-54`), the 5 `RunpodApi` calls, the pod URL, the inference call and the vLLM key |
+| L | Scale-to-zero and pod lifecycle | 15 | 12 | 2 | 1 | 0 | no source table: `PodManager` in `src/runpod.rs:286-695` and `src/main.rs:62-65` |
+| O | Observability | 3 | 0 | 0 | 3 | 0 | the 13 `# HELP` series in `src/lib.rs:144-180` and the log setup in `src/main.rs:29-33` |
+| D | Deployment and operation | 6 | 2 | 1 | 2 | 1 | the files at the root, `scripts/` and `docs/` of llmgw |
+
+Total: 83 rows. 40 covered, 15 partial, 23 gap, 5 not needed.
+
+## Routes
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| R1 | `GET /`: setup instructions chosen by `User-Agent` (Codex profile, Claude Code variables, HTML page, plain text); never wakes a pod | `src/lib.rs:127` `src/lib.rs:231-265` | none | gap | |
+| R2 | `GET /livez`: liveness, `ok` | `src/lib.rs:128` `src/lib.rs:139-141` | `crates/llm-gateway/src/server.rs:384` | covered | Served as `GET /health`, so the probe path in the deployment changes. |
+| R3 | `GET /readyz`: readiness, the same handler as liveness | `src/lib.rs:129` `src/lib.rs:139-141` | `crates/llm-gateway/src/server.rs:385-391` | covered | Served as `GET /ready`, which is stronger: `503` before `mark_ready` and while draining. |
+| R4 | `GET /metrics`: Prometheus text | `src/lib.rs:130` `src/lib.rs:143-219` | none | gap | The series are rows O1 and O2. |
+| R5 | `GET /v1/models`: OpenAI-shaped registry listing with `max_model_len` and `wires`; unauthenticated; never wakes a pod | `src/lib.rs:131` `src/lib.rs:441-457` | `crates/llm-gateway/src/server.rs:441-443` `crates/llm-gateway/src/inventory.rs:306` | partial | `GET /v1/routes` lists routes with `context_window` and contacts nothing, but needs the owner credential, is not the OpenAI list shape and carries no wires. |
+| R6 | `POST /v1/chat/completions`: OpenAI chat completions, streaming and not | `src/lib.rs:132` `src/lib.rs:459-461` | none | gap | The crate states it proxies no model call: `crates/llm-gateway/src/lib.rs:20-21`. |
+| R7 | `POST /v1/responses`: the Codex wire | `src/lib.rs:133` `src/lib.rs:463-465` | none | gap | |
+| R8 | `POST /v1/messages`: Anthropic messages, for Claude Code | `src/lib.rs:134` `src/lib.rs:467-469` | none | gap | |
+
+## Wire relay
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| W1 | Request body bounded at 32 MiB | `src/lib.rs:35` `src/lib.rs:135` | none | gap | llm-gateway reads no request body and refuses one that is declared: `crates/llm-gateway/src/server.rs:431-437`. |
+| W2 | `model` read and rewritten to the upstream model name on every wire | `src/lib.rs:522-539` `src/lib.rs:553` | none | gap | |
+| W3 | Typed refusals: non-JSON body or missing `model` 400, unknown model 404 `model_not_found`, undeclared wire 400 | `src/lib.rs:515-552` `src/lib.rs:686-691` | none | gap | llm-gateway's refusal codes cover only its inspection surface. |
+| W4 | Messages wire only: reasoning effort `high` relayed as `xhigh`, in `output_config.effort` and `chat_template_kwargs.reasoning_effort` | `src/lib.rs:490-504` `src/lib.rs:554-556` | none | gap | |
+| W5 | Upstream bytes relayed unchanged, server-sent events included; upstream content type kept; `cache-control: no-store` | `src/lib.rs:644-671` | none | gap | The pod-holding part is covered by L12; the relay that would hold it does not exist. |
+| W6 | Cold start past the hold budget answers 503 `model_cold_start` with `Retry-After: 30` | `src/lib.rs:567-576` `src/lib.rs:693-699` | `crates/llm-runpod/src/pool.rs:69-70` `crates/llm-runpod/src/pool.rs:458` | partial | The pool reports `starting`; no HTTP answer is mapped from it. |
+| W7 | A transport failure or a proxy 502, 503 or 504 drops that endpoint (only if it is still current) and answers 502; the next request starts a replacement | `src/lib.rs:598-643` `src/runpod.rs:582-606` | `crates/llm-runpod/tests/runpod.rs:441` | partial | A pod that vanishes is replaced once a listing shows it gone. Nothing reacts to a failed request, because there is no relay. |
+
+## CLI
+
+The built `llmgw` binary's `--help` lists four options and no subcommand: `--config <CONFIG>`,
+`--insecure`, `-h, --help` and `-V, --version` (binary built from `048ebd8` on 2026-10-05).
+`--version` printed `llmgw 0.1.0`.
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| C1 | `llmgw`: one binary, no subcommands; it reads config, refuses an unauthenticated posture, sweeps orphans, starts the reaper and serves | `src/main.rs:14-16` `src/main.rs:27-75` | `Cargo.toml:3-9` | gap | The workspace members are four libraries and the conformance runner. No gateway binary exists. |
+| C2 | `--config <CONFIG>`: path to the closed TOML deployment file | `src/main.rs:17-19` `src/main.rs:35` | none | gap | |
+| C3 | `--insecure`: required explicit no-auth posture; startup refuses without it | `src/main.rs:20-24` `src/main.rs:42-48` | `crates/llm-gateway/src/server.rs:400-405` | not needed | llm-gateway authenticates every request outside the two probes and has no unauthenticated posture to opt into. Clients need the owner token, where llmgw's instructions say any value works. |
+| C4 | `--help`, `-h` (clap) | `src/main.rs:14-15` | none | gap | |
+| C5 | `--version`, `-V` (clap `version`) | `src/main.rs:15` | none | gap | |
+
+## Configuration
+
+llmgw's schema is four serde structs with `deny_unknown_fields`: `Config` (4 fields),
+`IdentityConfig` (2), `ProviderConfig` (3) and `ModelConfig` (19). That is 28 keys, all of them
+below. The llm-gateway column mostly cites `RunpodModel` in `crates/llm-runpod/src/config.rs`.
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| K1 | `listen`: socket address to bind | `src/config.rs:23` `src/main.rs:67-69` | `crates/llm-gateway/src/server.rs:37` | covered | `GatewayConfig::bind`. |
+| K2 | `identity`: section parsed so that startup can refuse it | `src/config.rs:24-27` `src/main.rs:36-41` | `crates/llm-gateway/src/auth.rs:255-258` | not needed | llmgw has no identity-backed auth; the section exists only to fail startup. llm-gateway's seam for it is `OwnerVerifier`. |
+| K3 | `identity.origin` | `src/config.rs:37` | `crates/llm-gateway/src/auth.rs:255-258` | not needed | As K2. |
+| K4 | `identity.tenant` | `src/config.rs:38` | `crates/llm-gateway/src/auth.rs:255-258` | not needed | As K2. |
+| K5 | `providers`: named backend providers | `src/config.rs:28-29` `src/config.rs:224-231` | `crates/llm-runpod/src/provider.rs:74-80` `crates/llm-provision/src/spec.rs:15-16` | covered | One `RunpodProvider` per provider and account; `HostingPolicy` names them. |
+| K6 | `providers.<name>.kind`: only `runpod-vllm` | `src/config.rs:44` `src/config.rs:50-54` | `crates/llm-runpod/src/provider.rs:48` | covered | The kind is the adapter type. See B1. |
+| K7 | `providers.<name>.runpod_api_key_file`: Runpod API key file, read at startup | `src/config.rs:45` `src/main.rs:49-55` | `crates/llm-runpod/src/lib.rs:26-28` | gap | llm-gateway reads no credential. A production transport (B2–B5) needs this key. |
+| K8 | `providers.<name>.cloud_type`, default `SECURE` | `src/config.rs:46-47` `src/config.rs:138-140` | `crates/llm-runpod/src/config.rs:10-23` `crates/llm-runpod/src/config.rs:67` | covered | Per model, not per provider; a closed enum, not free text. |
+| K9 | `models`: the registry, keyed by alias; at least one; alias is 1–64 lowercase URL-safe characters | `src/config.rs:30-31` `src/config.rs:198-210` `src/config.rs:223` | `crates/llm-runpod/src/pool.rs:330-336` | covered | Keyed by `Identifier`. |
+| K10 | `models.<alias>.provider`: must name a configured provider | `src/config.rs:98` `src/config.rs:235-239` | `crates/llm-runpod/src/pool.rs:330-336` | covered | A model belongs to the pool it is declared in, and a pool has one provider. |
+| K11 | `models.<alias>.wires`: non-empty, unique set of `chat`, `responses`, `messages` | `src/config.rs:99` `src/config.rs:247-249` | `crates/llm-gateway/src/inventory.rs:97` | partial | A route target names one `protocol` label. There is no wire set per model and nothing enforces one. |
+| K12 | `models.<alias>.context_window`: 4096–2000000, listed as `max_model_len` | `src/config.rs:100` `src/config.rs:250-253` | `crates/llm-gateway/src/inventory.rs:109` | covered | `TargetLimits::context_window`. |
+| K13 | `models.<alias>.hf_model` | `src/config.rs:101` | `crates/llm-runpod/src/config.rs:63` | covered | |
+| K14 | `models.<alias>.image` | `src/config.rs:102` | `crates/llm-runpod/src/config.rs:64` | covered | A create whose image differs from the declared one is not sent: `crates/llm-runpod/src/provider.rs:214-216`. |
+| K15 | `models.<alias>.gpu_types`: 1–16, tried in order | `src/config.rs:103` `src/config.rs:273-279` | `crates/llm-runpod/src/config.rs:65-66` | covered | |
+| K16 | `models.<alias>.max_model_len` | `src/config.rs:104` | `crates/llm-runpod/src/config.rs:46` | covered | |
+| K17 | `models.<alias>.max_num_seqs`, default 8 | `src/config.rs:105-106` | `crates/llm-runpod/src/config.rs:47` | covered | No default in llm-gateway. |
+| K18 | `models.<alias>.gpu_util`, default 0.90 | `src/config.rs:107-108` | `crates/llm-runpod/src/config.rs:48-49` | covered | `gpu_memory_utilization`. |
+| K19 | `models.<alias>.disk_gb`, default 80 | `src/config.rs:109-110` | `crates/llm-runpod/src/config.rs:68` | covered | `container_disk_gb`. |
+| K20 | `models.<alias>.thinking`: `on` or `off`, default `off` | `src/config.rs:86-93` `src/config.rs:111-112` | `crates/llm-runpod/src/config.rs:26-30` `crates/llm-runpod/src/config.rs:50` | covered | |
+| K21 | `models.<alias>.reasoning_effort`: `low`, `medium`, `high` or `xhigh` | `src/config.rs:113-114` `src/config.rs:280-285` | `crates/llm-runpod/src/config.rs:51` | covered | llm-gateway accepts any alphanumeric token, not llmgw's closed set of four. |
+| K22 | `models.<alias>.sampling`: JSON object for `--override-generation-config` | `src/config.rs:115-118` `src/config.rs:286-290` | `crates/llm-runpod/src/config.rs:52-54` | covered | llm-gateway checks printable text, not that the value is a JSON object. |
+| K23 | `models.<alias>.extra_vllm_args`: at most 64 | `src/config.rs:119-120` `src/config.rs:291-297` | `crates/llm-runpod/src/config.rs:55-56` | covered | |
+| K24 | `models.<alias>.network_volume_id`: needs `data_center_ids` | `src/config.rs:121-125` `src/config.rs:298-309` | `crates/llm-runpod/src/config.rs:37-40` `crates/llm-runpod/src/config.rs:69` | covered | `NetworkVolume::volume_id`. The volume-needs-data-center rule is documented, not enforced: `crates/llm-runpod/src/config.rs:34-36`. |
+| K25 | `models.<alias>.volume_mount_path`, default `/workspace` | `src/config.rs:126-127` `src/config.rs:154-156` | `crates/llm-runpod/src/config.rs:40` | covered | `NetworkVolume::mount_path`. |
+| K26 | `models.<alias>.data_center_ids`: at most 16 | `src/config.rs:128-131` `src/config.rs:320-332` | `crates/llm-runpod/src/config.rs:70` | covered | |
+| K27 | `models.<alias>.idle_timeout_minutes`, default 30 | `src/config.rs:132-133` `src/config.rs:158-160` | `crates/llm-runpod/src/config.rs:78-79` | covered | `idle_timeout_ms`; must not be zero, where llmgw allows 0. |
+| K28 | `models.<alias>.start_wait_seconds`, default 600: per-request hold budget and pod readiness deadline | `src/config.rs:134-135` `src/runpod.rs:386-387` `src/runpod.rs:520-521` | `crates/llm-runpod/src/config.rs:76-77` | partial | `startup_deadline_ms` bounds the pod. No setting bounds how long a request waits. |
+| K29 | The closed TOML file: unknown fields refused, defaults, range validation, 256 KiB bound | `src/config.rs:16` `src/config.rs:20-22` `src/config.rs:172-178` `src/config.rs:221-343` | `crates/llm-runpod/src/config.rs:151-199` | partial | `RunpodModel::validate` checks a Rust value. There is no file format, no loader and no defaults, and its ranges differ from llmgw's. |
+| K30 | Config and secret files read through a same-handle trusted-file reader: no symlink, owner or root, not group- or world-writable, size bound | `src/trusted.rs:21-42` `src/config.rs:173` `src/config.rs:187-195` | none | gap | |
+
+## Backends
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| B1 | Provider kind `runpod-vllm`: one vLLM pod per model on Runpod | `src/config.rs:50-54` | `crates/llm-runpod/src/provider.rs:48` | covered | `RunpodProvider` behind the `llm-provision` hosting contract. |
+| B2 | Runpod REST `GET /pods`: list pods (bare array or `{"pods": [...]}`) | `src/runpod.rs:57-65` `src/runpod.rs:95-123` | `crates/llm-runpod/src/transport.rs:102` `crates/llm-runpod/src/emulated.rs:178` | partial | The transport contract exists. The only implementation is the in-process `EmulatedRunpod`. |
+| B3 | Runpod REST `POST /pods`: create a pod | `src/runpod.rs:125-144` | `crates/llm-runpod/src/transport.rs:104` `crates/llm-runpod/src/emulated.rs:187` | partial | As B2. |
+| B4 | Runpod REST `DELETE /pods/{id}`: terminate a pod | `src/runpod.rs:146-156` | `crates/llm-runpod/src/transport.rs:106` `crates/llm-runpod/src/emulated.rs:220` | partial | As B2. |
+| B5 | Runpod GraphQL `uptimeInSeconds`: container uptime, for restart detection | `src/runpod.rs:158-179` | `crates/llm-runpod/src/transport.rs:111` `crates/llm-runpod/src/emulated.rs:251` | partial | As B2. |
+| B6 | vLLM readiness: `GET <pod>/v1/models` with the vLLM key; 401 or 403 means the key is refused | `src/runpod.rs:181-193` | `crates/llm-runpod/src/transport.rs:108` `crates/llm-runpod/src/emulated.rs:231` | partial | As B2. |
+| B7 | Pod base URL `https://{pod}-8000.proxy.runpod.net` | `src/runpod.rs:62` `src/runpod.rs:87-93` | `crates/llm-runpod/src/provider.rs:146-148` | covered | Reported only for a running pod. Neither side has checked the URL against the live control plane: `docs/hosting.md:326-328`. |
+| B8 | Inference call: `POST <pod>/v1/<wire path>` with the vLLM key as bearer, connect timeout only so streams are never cut | `src/lib.rs:585-597` `src/config.rs:66-74` `src/runpod.rs:317-320` | none | gap | |
+| B9 | vLLM API key: derived per model from the Runpod key (SHA-256), passed as `--api-key` | `src/runpod.rs:697-709` `src/runpod.rs:725-726` | `crates/llm-runpod/src/request.rs:115-118` `crates/llm-runpod/src/config.rs:72-75` | partial | The pod gets the key through a Runpod secret reference in `VLLM_API_KEY`. The gateway has no source for the value it must present (B6, B8). |
+
+## Scale-to-zero and pod lifecycle
+
+`docs/hosting.md:293-306` already compares these mechanisms with llmgw. Rows here cite code.
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| L1 | Pod identity is the name `llmgw-<alias>`; a restarted gateway adopts any pod with that name | `src/runpod.rs:21` `src/runpod.rs:472-482` | `crates/llm-runpod/src/request.rs:17-20` `crates/llm-runpod/src/pool.rs:340-350` `crates/llm-runpod/tests/runpod.rs:496` | covered | Adoption is by exact resource key or request id under `b10x-llm-`. A `llmgw-` pod is never listed, adopted, swept or terminated (`crates/llm-runpod/tests/runpod.rs:672`), so llmgw's own pods are not handed over at cutover. |
+| L2 | Create with ordered GPU fallback: each refusal tries the next type | `src/runpod.rs:484-513` | `crates/llm-runpod/src/provider.rs:222-255` `crates/llm-runpod/tests/runpod.rs:301` | covered | A lost create answer is not retried on the next GPU, because Runpod takes no idempotency key. |
+| L3 | vLLM entrypoint: fixed base arguments, thinking and effort template kwargs, non-thinking sampling default, extra args last | `src/runpod.rs:22-23` `src/runpod.rs:711-760` | `crates/llm-runpod/src/request.rs:29-31` `crates/llm-runpod/src/request.rs:44-93` | covered | `--api-key` is gone; see B9. |
+| L4 | Create body: image, one GPU, container disk, port `8000/http`, cloud type, not interruptible, `PYTORCH_CUDA_ALLOC_CONF`, network volume with `HF_HOME` on it, data-center pinning | `src/runpod.rs:762-804` | `crates/llm-runpod/src/request.rs:102-146` | covered | Also carries owner, epoch and request-id tags. |
+| L5 | One starter per cold model: an atomic phase flip; every other request waits on it | `src/runpod.rs:379-417` | `crates/llm-runpod/src/pool.rs:410-460` `crates/llm-runpod/tests/runpod.rs:147` | covered | One mutex per pool step; later callers are told `starting`. |
+| L6 | A request is held until the pod serves, within `start_wait_seconds` | `src/runpod.rs:386-438` | `crates/llm-runpod/src/pool.rs:410-414` | gap | `ensure` returns `starting` at once and the caller asks again. Nothing holds a request. |
+| L7 | Readiness polling with crash-loop detection: two decreasing container uptimes terminate the pod | `src/runpod.rs:520-560` | `crates/llm-runpod/src/provider.rs:100-113` `crates/llm-runpod/src/provider.rs:166-190` `crates/llm-runpod/tests/runpod.rs:375` | covered | Counts restarts inside `crash_window_ms` only, with a configurable limit. |
+| L8 | A pod refusing the vLLM key is terminated so the next attempt creates a clean pod | `src/runpod.rs:532-544` | `crates/llm-runpod/src/pool.rs:77-78` `crates/llm-runpod/tests/runpod.rs:403` | covered | |
+| L9 | A pod not serving by its deadline is left starting for the next attempt | `src/runpod.rs:561-565` | `crates/llm-runpod/src/pool.rs:79-80` `crates/llm-runpod/tests/runpod.rs:419` | covered | Changed on purpose: llm-gateway terminates the pod at its deadline, because it bills while serving nobody (`docs/hosting.md:301`). |
+| L10 | Idle reaper: idle past the timeout, never below the measured cold start, never with a request in flight | `src/runpod.rs:219-233` `src/runpod.rs:608-656` | `crates/llm-runpod/src/pool.rs:228-234` `crates/llm-runpod/src/pool.rs:704-740` `crates/llm-runpod/tests/runpod.rs:610` | covered | |
+| L11 | Only a served request moves the idle clock | `src/runpod.rs:244-277` | `crates/llm-runpod/src/pool.rs:445-457` `crates/llm-runpod/src/pool.rs:189-195` | covered | Usage is touched only when a ready lease is handed out and when it drops. |
+| L12 | A response stream holds the pod against the reaper until it ends | `src/runpod.rs:279-284` `src/lib.rs:650-651` | `crates/llm-runpod/src/pool.rs:153-196` `crates/llm-runpod/tests/runpod.rs:590` | covered | `StreamLease`; in-flight accounting is per deployment. |
+| L13 | Reaper and orphan sweep run every 60 seconds | `src/main.rs:65` `src/runpod.rs:682-694` | `crates/llm-runpod/src/pool.rs:462-490` | partial | `RunpodPool::reap` does one pass. Nothing schedules it, and the pool must be stepped more often than `lease_ms` (`docs/hosting.md:313-314`). |
+| L14 | Orphan sweep: terminate `llmgw-*` pods whose alias left the registry | `src/runpod.rs:658-680` | `crates/llm-runpod/src/pool.rs:743-787` `crates/llm-runpod/tests/runpod.rs:638` `crates/llm-runpod/tests/runpod.rs:704` | covered | Only pods carrying this controller's owner tag. Orphan terminations bypass the budget ledger: `docs/hosting.md:316-324`. |
+| L15 | One orphan sweep at startup, before serving | `src/main.rs:62-64` | `crates/llm-runpod/src/pool.rs:340-350` | partial | `restore` reopens over durable records, and the next `reap` sweeps. Nothing runs that at startup. |
+
+## Observability
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| O1 | Process-wide counters, prefix `llmgw_`: `inference_requests_total`, `upstream_failures_total`, `instruction_views_total`, `pod_starts_total`, `pod_start_failures_total`, `pod_reaps_total`, `endpoint_invalidations_total`, `cold_start_wait_seconds_total` | `src/lib.rs:144-192` `src/runpod.rs:292-296` | `crates/llm-runpod/src/pool.rs:134-145` | gap | `CleanupReport` describes one reap pass. Nothing counts or exports. |
+| O2 | Per-model, per-wire counters, pre-registered at zero: `route_requests_total`, `route_refusals_total`, `route_upstream_status_failures_total`, `route_cold_start_holds_total`, `route_response_bytes_total` | `src/lib.rs:53-89` `src/lib.rs:170-179` `src/lib.rs:193-210` | none | gap | |
+| O3 | Structured logs through `tracing`, level from `RUST_LOG` (default `info`) | `src/main.rs:29-33` `src/runpod.rs:459` | none | gap | No crate in llm-gateway logs. |
+
+## Deployment and operation
+
+| ID | llmgw capability | llmgw | llm-gateway | Status | Note |
+| --- | --- | --- | --- | --- | --- |
+| D1 | Container image: distroless, non-root, port 8080, `ENTRYPOINT llmgw`, source revision label | `Dockerfile:1-18` | none | gap | |
+| D2 | Graceful shutdown on Ctrl-C and SIGTERM | `src/main.rs:71-73` `src/main.rs:77-96` | `crates/llm-gateway/src/server.rs:140-171` | partial | `begin_drain` and `shutdown` exist, with a report. No signal reaches them. |
+| D3 | Two proven model profiles (48 GB default, H100 with MTP speculative decoding) and the weight-cache block | `docs/model-profiles.md:8-42` `docs/model-profiles.md:44-86` `docs/model-profiles.md:88-103` | none | gap | Their measured vLLM flags and GPU lists exist nowhere as `RunpodModel` declarations. |
+| D4 | Repository gate: tests, Clippy, format | `scripts/gate.sh:1-14` | `Taskfile.yml:2-17` | covered | `task check` also validates the spec and runs conformance. |
+| D5 | Shared source gates workflow | `.github/workflows/shared-gates.yml:1-18` | `.github/workflows/shared-gates.yml:1-18` | covered | |
+| D6 | Bot identity helpers: `as-bot.sh`, `bot-token.sh`, `check-bot-files.py` | `scripts/as-bot.sh:1-24` `scripts/bot-token.sh:1-38` `scripts/check-bot-files.py:1-39` | `AGENTS.md:59-60` | not needed | llm-gateway commits and writes through `b10x-gates bot` and `b10x-gates api`. |
+
+## Gaps
+
+One line per gap or partial row, written as a story title.
+
+- llm-gateway answers `GET /` with setup instructions for the client that asks (R1)
+- llm-gateway serves Prometheus metrics at `GET /metrics` (R4)
+- llm-gateway lists its models in the OpenAI `/v1/models` shape, with their wires, without waking a pod (R5)
+- llm-gateway relays the OpenAI chat completions wire (R6)
+- llm-gateway relays the OpenAI responses wire (R7)
+- llm-gateway relays the Anthropic messages wire (R8)
+- A relayed request body is bounded at 32 MiB (W1)
+- The relay rewrites `model` to the upstream model name (W2)
+- The relay refuses a malformed body, a missing or unknown model and an undeclared wire with typed errors (W3)
+- On the messages wire, reasoning effort `high` reaches the pod as `xhigh` (W4)
+- The relay passes upstream bytes and event streams through unchanged (W5)
+- A cold start past its hold budget answers 503 with `Retry-After` (W6)
+- A request that fails against a dead endpoint drops it so the next request starts a replacement (W7)
+- llm-gateway ships a runnable gateway binary (C1)
+- The gateway binary takes its deployment file from `--config <path>` (C2)
+- The gateway binary prints its options with `--help` (C4)
+- The gateway binary prints its version with `--version` (C5)
+- A production Runpod transport reads its API key from a trusted file (K7)
+- A model declares the wires it serves, and the gateway refuses the others (K11)
+- A model declares its request hold budget separately from its startup deadline (K28)
+- The gateway loads a closed TOML deployment file that refuses unknown fields (K29)
+- Configuration and secret files are read through a bounded trusted-file reader (K30)
+- A production Runpod transport lists pods over the REST API (B2)
+- A production Runpod transport creates pods over the REST API (B3)
+- A production Runpod transport terminates pods over the REST API (B4)
+- A production Runpod transport reads container uptime over GraphQL (B5)
+- A production Runpod transport probes vLLM readiness at the pod (B6)
+- The gateway sends inference requests to the pod's vLLM endpoint (B8)
+- The gateway presents each pod's vLLM key from a source it can resolve (B9)
+- A request for a cold model is held until the pod serves, instead of being told to retry (L6)
+- A running gateway steps the reaper and orphan sweep on a fixed interval (L13)
+- The gateway sweeps orphaned pods once at startup (L15)
+- The gateway exports process-wide request and pod counters (O1)
+- The gateway exports per-model, per-wire counters pre-registered at zero (O2)
+- The gateway writes structured logs at a level set by `RUST_LOG` (O3)
+- llm-gateway builds a distroless, non-root container image (D1)
+- The gateway binary drains and stops on SIGINT and SIGTERM (D2)
+- The proven model profiles and the weight-cache block exist as llm-gateway model declarations (D3)
+
+## Not established
+
+- The values of llmgw's live deployment configuration, and where its Helm chart and
+  ServiceMonitor live (`README.md:118-120` names them; neither is in the llmgw tree).
+- llmgw's README names `scripts/check-brand.sh` (`README.md:41`, `README.md:132`). That file is
+  not in the tree at `048ebd8`; `AGENTS.md:101` says the brand check moved to atlas.

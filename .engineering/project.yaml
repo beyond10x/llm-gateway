@@ -1,0 +1,14 @@
+version: aep.project/5
+
+# Written by `aep plan reverse init`. It points; it does not duplicate — a rule restated
+# here would be a second copy with no way to say which one is in force. Principles and
+# profiles of this project's own go under `principles/` and `profiles/` beside this file.
+protocol: adp/1
+profile: development.standard
+protocols: git+https://github.com/beyond10x/aep#b6213e1fc28df03c11ec99f5c015e8cf6302f3f7
+planning_scope: "llm-gateway-w38-import"
+store:
+  git: {}
+
+summary: >-
+  Serving side of llm: gateway, hosting and provisioning.

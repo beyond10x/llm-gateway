@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T10:16:56Z",
+  "actor": "human:timo",
+  "artifact": "story:hosting-contract",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "implemented in beyond10x/llm before the move; its evidence records stay at llm .engineering/evidence/story/hosting-contract/ (llm f04701bd)",
+    "reference": "beyond10x/llm@f04701bd:.engineering/evidence/story/hosting-contract"
+  }
+}

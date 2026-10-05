@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T10:17:01Z",
+  "actor": "human:timo",
+  "artifact": "story:ess-gateway",
+  "kind": "story",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "llm-gateway gate after the move (story:serving-extraction, w38): 202 tests passed, conformance 159/159 x3, ess validate 0, fmt 0, clippy 0",
+    "reference": "~/.cache/ga-wave-2026-10-05-w38/llm-serving-extraction/scratch/gate-gw"
+  }
+}

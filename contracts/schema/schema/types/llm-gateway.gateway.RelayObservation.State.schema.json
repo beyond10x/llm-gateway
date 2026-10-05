@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.RelayObservation.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "59ceae264b5525b1ca40921d23433c7fedb00bf63c1c73ae81026850e99e8243",
+    "contract_digest": "slice-sha256/2:e090e4de083a4d9b3ef5c9ed43c2062841061267667fb7110a186c052494a451",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.RelayObservation.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.RelayObservation.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

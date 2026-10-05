@@ -1,0 +1,30 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method
+summary: an unready gateway, an absent owner credential and a GET on a wire path are refused, and none of them asks for a target
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}","credential":false},{"step":"request","method":"GET","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - 503 unavailable
+    - ok
+    - 401 credential-absent
+    - 405 method-not-allowed
+    headers:
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=POST
+    upstream: []
+    acquired: 0
+    invalidated: []

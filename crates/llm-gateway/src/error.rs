@@ -93,18 +93,45 @@ refusal_codes! {
     /// A well-formed bearer token that is not the owner's.
     CredentialRejected => "credential-rejected", 401,
         "the presented owner credential was rejected";
-    /// A write method on a read-only surface.
+    /// A method the path does not take: a write on the read-only inspection surface, or
+    /// anything but `POST` on a relayed wire. The `allow` header names what it takes.
     MethodNotAllowed => "method-not-allowed", 405,
-        "the inspection surface is read-only";
+        "this path does not accept that method";
+    /// A relayed request body over its byte bound, declared or decoded.
+    BodyTooLarge => "body-too-large", 413,
+        "the request body exceeds its byte bound";
+    /// A relayed request body that ended, or stalled past the read timeout, before it was
+    /// complete.
+    BodyIncomplete => "body-incomplete", 400,
+        "the request body ended or stalled before it was complete";
+    /// A relayed request body that is not one JSON object.
+    BodyNotJson => "body-not-json", 400,
+        "the request body is not one JSON object";
+    /// A relayed request body with no top-level `model` string.
+    ModelAbsent => "model-absent", 400,
+        "the request body names no model";
+    /// No relayed model has the alias the body names.
+    ModelUnknown => "model-unknown", 404,
+        "no such model";
+    /// The model does not declare the wire of the path it was sent to.
+    WireNotServed => "wire-not-served", 400,
+        "the model is not served on this wire";
+    /// The embedding handed out no target for the model.
+    TargetUnavailable => "target-unavailable", 503,
+        "no model target is available";
+    /// The target could not be reached, closed without an answer, or answered 502, 503 or 504.
+    UpstreamFailed => "upstream-failed", 502,
+        "the model target could not be reached or failed; the next request asks for a replacement";
     /// More work arrived at once than the gateway admits.
     Overloaded => "overloaded", 503,
         "the gateway is already serving its maximum concurrent requests";
     /// No such resource on this gateway.
     PathUnknown => "path-unknown", 404,
         "no such gateway resource";
-    /// The request head is not HTTP this gateway parses.
+    /// The request is not HTTP this gateway parses: its head, or the chunked framing of a relayed
+    /// body.
     RequestMalformed => "request-malformed", 400,
-        "the request head is not well-formed";
+        "the request is not well-formed HTTP";
     /// The request head exceeds its configured bound.
     RequestTooLarge => "request-too-large", 431,
         "the request head exceeds its byte bound";
@@ -171,5 +198,17 @@ closed_enum! {
         DuplicateAlias => "two routes declare the same alias";
         /// A configuration digest that is not 64 lowercase hexadecimal characters.
         MalformedDigest => "a configuration digest must be 64 lowercase hex characters";
+    }
+}
+
+closed_enum! {
+    /// Why relayed models cannot be composed (row K11).
+    RelayError {
+        /// A model that declares no wire.
+        NoWire => "a relayed model must declare at least one wire";
+        /// A model that names one wire twice.
+        RepeatedWire => "a relayed model names one wire twice";
+        /// Two models with one alias.
+        DuplicateModel => "two relayed models declare the same alias";
     }
 }

@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
-    "contract_digest": "slice-sha256/2:40cb098f3c750d8ec1bca46d5ad457db7999698460b8fd42d484132442c5b3fc",
+    "source_digest": "59ceae264b5525b1ca40921d23433c7fedb00bf63c1c73ae81026850e99e8243",
+    "contract_digest": "slice-sha256/2:065b85d79df51251157da40c78c6d9d9bc546ea4ba34899e8cd9ff61eaf25dac",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -15,17 +15,25 @@
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
+        "BodyIncomplete",
         "BodyNotAllowed",
+        "BodyNotJson",
+        "BodyTooLarge",
         "CredentialAbsent",
         "CredentialMalformed",
         "CredentialRejected",
         "MethodNotAllowed",
+        "ModelAbsent",
+        "ModelUnknown",
         "Overloaded",
         "PathUnknown",
         "RequestMalformed",
         "RequestTooLarge",
         "RouteUnknown",
-        "Unavailable"
+        "TargetUnavailable",
+        "Unavailable",
+        "UpstreamFailed",
+        "WireNotServed"
       ]
     }
   }

@@ -1,0 +1,32 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path
+summary: POST /v1/chat/completions reaches the target's /v1/chat/completions, streaming and not, and its answers reach the client unchanged
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\",\"object\":\"chat.completion\"}"]},{"status":200,"content_type":"text/event-stream","framing":"chunked","chunks":["data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\n","data: [DONE]\n\n"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    bodies:
+    - '{"id":"chat-1","object":"chat.completion"}'
+    - "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n"
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code","messages":[{"role":"user","content":"hi"}]}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code","stream":true,"messages":[{"role":"user","content":"hi"}]}'
+    acquired: 2
+    invalidated: []
+    released: 2

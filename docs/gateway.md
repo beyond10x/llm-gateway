@@ -2,13 +2,14 @@
 
 `llm-gateway` admits exactly one authenticated owner and lets that owner read the routes a
 deployment serves. This milestone is authentication, liveness, readiness, graceful shutdown and
-read-only route inspection. Protocol translation, proxying a model call, multi-tenant accounts
-and quotas are not in it, and the crate contains nothing that could do them.
+read-only route inspection, and the relay of three model-call wires to a target the embedding
+hands out ([below](#the-relay)). Protocol translation between wires, multi-tenant accounts and
+quotas are not in it, and the crate contains nothing that could do them.
 
 ## What the crate cannot do, structurally
 
-Nothing in the crate's build resolves a credential, speaks to an upstream or creates a billed
-resource — not `llm-credentials`, `llm-http`, `llm-provision`, `llm-runpod`, `llm-modal`,
+Nothing in the crate's build resolves a credential, opens a connection to an upstream or creates
+a billed resource — the relay speaks only over connections its injected targets open — not `llm-credentials`, `llm-http`, `llm-provision`, `llm-runpod`, `llm-modal`,
 `reqwest`, `hyper`, `axum`, `keyring-core` or `tokio`. `crates/llm-gateway/tests/dependency_boundary.rs`
 asserts that over the **transitive closure** cargo itself resolves (`cargo tree`), not only over
 the crate's declared list, and each of its two mechanisms carries a positive control that fails
@@ -82,8 +83,9 @@ digest, rather than an empty string.
 
 ## The HTTP surface
 
-Every response is `application/json`, `cache-control: no-store` and `connection: close`. The
-gateway serves one request per connection; keep-alive is not in this milestone.
+Every response is `cache-control: no-store` and `connection: close`, and every response the
+gateway writes itself is `application/json`; a relayed answer keeps its target's content type.
+The gateway serves one request per connection; keep-alive is not in this milestone.
 
 | Method | Path | Credential | Meaning |
 | --- | --- | --- | --- |
@@ -91,25 +93,86 @@ gateway serves one request per connection; keep-alive is not in this milestone.
 | `GET`, `HEAD` | `/ready` | none | Readiness. `200 {"status":"ready"}`, or `503 {"status":"unready"}` before `mark_ready` and while draining. |
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the snapshot. |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
+| `POST` | `/v1/chat/completions` | owner | The `chat` wire, relayed ([the relay](#the-relay)). |
+| `POST` | `/v1/responses` | owner | The `responses` wire, relayed. |
+| `POST` | `/v1/messages` | owner | The `messages` wire, relayed. |
 
 The unauthenticated surface is a closed set of two literal paths with two literal methods,
 matched before anything else — including before load is shed — so that a liveness probe never
 carries the owner credential and never fails because the gateway is busy. A liveness probe that
 fails under load restarts the process, which would turn shedding into a restart loop. Reading a
 bounded request head under a timeout is the cheapest way to know whether a request is a probe,
-so that happens first and nothing beyond the head is ever read.
+so that happens first and nothing beyond the head is read before the request is authenticated.
 
 Load is shed immediately after the probe match and **before** authentication, as `overloaded`:
 shedding has to be cheaper than the work it sheds. Shedding is not decoding.
 **Every other request is authenticated before any further decoding**: an unauthenticated `POST`
 to an unknown path is refused as `credential-absent`, not as `method-not-allowed` or
 `path-unknown`, so the surface cannot be enumerated without the credential. A query string is
-discarded; this milestone decodes no request parameter. No request body is ever read.
+discarded; this milestone decodes no request parameter. Only a relay reads a request body, and
+only after the owner is authenticated and the head has admitted it.
+
+## The relay
+
+`Gateway::bind_with_relay` composes the gateway with a `Relay`: the relayed models and an injected
+`RelayTargets`. A `RelayModel` is an alias, the model name its target expects and a non-empty set
+of distinct `Wire`s (`relay:no-wire`, `relay:repeated-wire`; two models with one alias are
+`relay:duplicate-model`). The embedding implements `RelayTargets` over its pool: `acquire` hands
+out the `RelayTarget` serving an alias, and `invalidate` is told when a request through one
+failed. A `RelayTarget` opens its own connection (`connect`), so the transport, TLS included,
+and its timeouts are the embedding's; this crate opens none. The specification is the `Relay`
+command of `spec/domains/gateway.yaml`, and `crates/llm-gateway/tests/wire_relay.rs` names each
+case after the row of the [capability matrix](llmgw-capability-matrix.md) it closes.
+
+A request to a wire path is decided in this order:
+
+1. Probes, shedding and owner authentication, exactly as for inspection. llmgw serves its wires
+   without authentication; llm-gateway admits only its owner's bearer credential.
+2. `POST` only (`method-not-allowed`, `allow: POST`), and `unavailable` before `mark_ready`.
+3. The body: `content-length` or `transfer-encoding: chunked`, nothing else
+   (`request-malformed`). A declared length over `request-body-bytes` is `body-too-large` before a
+   byte is read; a chunked body is refused the moment its decoded size would pass the bound. A
+   chunk size is `1*HEXDIG` and an optional extension after `;`, as RFC 9112 section 7.1 has it;
+   anything else is `request-malformed`. The trailer section of a chunked body counts against
+   `request-head-bytes` and is `request-too-large` past it. The whole body is read under one
+   `read_timeout` deadline, and a body that ends or stalls before it is complete is
+   `body-incomplete`. `expect: 100-continue` is answered for HTTP/1.1. A head holding a CR, LF
+   or NUL anywhere but its line ends is `request-malformed` (RFC 9110 section 5.5).
+4. One well-formed UTF-8 JSON object (`body-not-json`), with exactly one top-level `model`
+   string (`model-absent`; a second top-level `model` is `body-not-json`, because the target
+   could read the other), naming a relayed model after unescaping (`model-unknown`).
+5. The model must declare the path's wire (`wire-not-served`). Nothing so far asks for a target,
+   so a refused request never wakes a pod.
+6. The top-level `model` value becomes the upstream name, written as a JSON string. On the
+   messages wire only, `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal
+   to `high` become `xhigh`, because the served chat template rejects `high` (llmgw
+   `src/lib.rs:470-504`). Every other byte reaches the target unchanged: llmgw re-serialises the
+   document with sorted keys, llm-gateway replaces those values in place.
+7. `acquire` (`target-unavailable` when it hands out none), then `POST` to the same path at the
+   target with `host` set to the target's authority and a `content-length`.
+8. A connection that fails, a request that cannot be written, an answer head that never arrives
+   or is malformed, and a `502`, `503` or `504` answer each report the target to `invalidate` by
+   its authority and answer `upstream-failed` (502). Naming the authority lets the pool drop the
+   endpoint only if it is still the current one. Any other status, `500` and `4xx` included, is
+   the model's own answer and is relayed.
+9. The target's status, its `content-type` and its decoded body bytes are relayed as they
+   arrive, as `transfer-encoding: chunked` with `cache-control: no-store`; an answer cut short
+   on either side ends without its last chunk, so the client sees it cut. An HTTP/1.0 client
+   may not be sent a chunked answer (RFC 9112 section 6.1), so it gets the bytes unframed and
+   the end of the answer is the end of the connection. The target is held until the last byte
+   is relayed, then released. Every head the target sends, interim `1xx` heads included, comes
+   out of one `request-head-bytes` budget, and so does its trailer section, so a target cannot
+   grow the gateway's memory.
+
+A refused relay closes gracefully: the refusal is written, the write side closed, and what the
+client still sends is read and discarded (up to `request-body-bytes`, within `read_timeout`), so
+a reset cannot destroy the refusal before the client reads it.
 
 ## Refusals
 
 A refusal names its own stable code and a message this crate wrote. It quotes nothing the caller
-sent: a rejected credential is never echoed back, and no upstream response text exists to leak.
+sent: a rejected credential is never echoed back, and no upstream response text reaches a
+refusal. A target's own answer is relayed, not refused, and is the target's text.
 
 ```json
 {"error":{"code":"credential-absent","message":"no owner credential was presented"}}
@@ -117,17 +180,25 @@ sent: a rejected credential is never echoed back, and no upstream response text 
 
 | Code | Status | Message |
 | --- | --- | --- |
+| `body-incomplete` | 400 | the request body ended or stalled before it was complete |
 | `body-not-allowed` | 400 | the inspection surface accepts no request body |
 | `credential-absent` | 401 | no owner credential was presented |
 | `credential-malformed` | 401 | the owner credential is not a bearer token |
 | `credential-rejected` | 401 | the presented owner credential was rejected |
-| `method-not-allowed` | 405 | the inspection surface is read-only |
+| `body-not-json` | 400 | the request body is not one JSON object |
+| `body-too-large` | 413 | the request body exceeds its byte bound |
+| `method-not-allowed` | 405 | this path does not accept that method |
+| `model-absent` | 400 | the request body names no model |
+| `model-unknown` | 404 | no such model |
 | `overloaded` | 503 | the gateway is already serving its maximum concurrent requests |
 | `path-unknown` | 404 | no such gateway resource |
-| `request-malformed` | 400 | the request head is not well-formed |
+| `request-malformed` | 400 | the request is not well-formed HTTP |
 | `request-too-large` | 431 | the request head exceeds its byte bound |
 | `route-unknown` | 404 | no such route alias |
+| `target-unavailable` | 503 | no model target is available |
 | `unavailable` | 503 | the gateway is not ready to serve inspection |
+| `upstream-failed` | 502 | the model target could not be reached or failed; the next request asks for a replacement |
+| `wire-not-served` | 400 | the model is not served on this wire |
 
 This table is the published contract, and it is checked rather than maintained by hand.
 `RefusalCode`, `RefusalCode::ALL`, `wire`, `status` and `reason` are generated from a single
@@ -155,9 +226,13 @@ what was still running when the stop was signalled. Readiness flips to unready a
 the report counts as completed was refused *because of the stop*, so the serving flag is cleared
 after the accepted connections are joined, never before. `completed` counts every accepted
 connection, including ones refused on their own merits — an absent credential, an unknown path —
-which the stop has nothing to do with. How long that can take is
+which the stop has nothing to do with. For inspection, how long that can take is
 bounded by twice `read_timeout`: one deadline covers the whole request head and another the whole
-response, so a peer that trickles its head or stops reading its answer cannot hold the stop. Dropping the handle without a shutdown still stops the listener, but
+response, so a peer that trickles its head or stops reading its answer cannot hold the stop. A
+relay is not bounded that way, because a stream lasts as long as the model talks: its head and its
+body each have one `read_timeout` deadline, each chunk written to the client has its own, and
+reading the target is bounded by the timeouts of the connection the target opened. A stop waits
+for a relayed stream to end. Dropping the handle without a shutdown still stops the listener, but
 reports nothing.
 
 ## Bounds
@@ -176,6 +251,7 @@ list written by hand.
 | `digest-characters` | `DIGEST_CHARACTERS` | 64 |
 | `request-head-bytes` | `DEFAULT_MAX_HEAD_BYTES` | 8192 |
 | `concurrent-requests` | `DEFAULT_MAX_CONCURRENT_REQUESTS` | 64 |
+| `request-body-bytes` | `MAX_REQUEST_BODY_BYTES` | 33554432 |
 
 Three checks, and the third is the one that was missing: the table's **constant** column is
 compared against every numeric constant the crate's own source declares, so a bound that exists
@@ -187,10 +263,11 @@ one past it, through the public API or over a socket, never by reading a configu
 not a bound has to be named in the exemption list in `tests/gateway.rs` with a reason, rather
 than being invisible.
 
-`owner-credential-bytes`, `label-bytes`, `targets-per-route`, `routes`, `request-head-bytes` and
-`concurrent-requests` are maxima; `shared-secret-bytes` is a minimum; `digest-characters` is an
-exact length. The last two rows are `GatewayConfig` defaults an embedding may override, and are
-measured by enforcement over a real socket rather than by reading the default field.
+`owner-credential-bytes`, `label-bytes`, `targets-per-route`, `routes`, `request-head-bytes`,
+`concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
+`digest-characters` is an exact length. `request-head-bytes` and `concurrent-requests` are
+`GatewayConfig` defaults an embedding may override; they and `request-body-bytes` (32 MiB, as
+llmgw) are measured by enforcement over a real socket rather than by reading a field.
 
 The delivery of a request head is bounded separately by `GatewayConfig::read_timeout`, a timeout
 rather than a size bound, so it is not in this table. It is one deadline for the whole head, not a

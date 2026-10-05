@@ -1,0 +1,20 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: k11-a-model-repeating-a-wire-is-refused-at-composition
+summary: a wire set is a set, so a wire named twice composes no gateway
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","messages","chat"]}],"pods":[],"steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: relay:repeated-wire
+    results: []

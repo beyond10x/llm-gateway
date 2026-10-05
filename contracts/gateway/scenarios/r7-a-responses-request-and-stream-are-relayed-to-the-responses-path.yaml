@@ -1,0 +1,31 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r7-a-responses-request-and-stream-are-relayed-to-the-responses-path
+summary: POST /v1/responses, the Codex wire, reaches the target's /v1/responses, streaming and not
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"resp-1\",\"object\":\"response\"}"]},{"status":200,"content_type":"text/event-stream","framing":"chunked","chunks":["event: response.created\ndata: {\"type\":\"response.created\"}\n\n","event: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"code\",\"input\":\"hi\"}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"code\",\"input\":\"hi\",\"stream\":true}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    bodies:
+    - '{"id":"resp-1","object":"response"}'
+    - "event: response.created\ndata: {\"type\":\"response.created\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"
+    upstream:
+    - 'pod-1 POST /v1/responses {"model":"served-code","input":"hi"}'
+    - 'pod-1 POST /v1/responses {"model":"served-code","input":"hi","stream":true}'
+    acquired: 2
+    invalidated: []
+    released: 2

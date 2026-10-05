@@ -1,0 +1,95 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "RelayObservation",
+  "x-ess-name": "llm-gateway.gateway.RelayObservation",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "observation_id": {
+      "type": "string"
+    },
+    "valid_program": {
+      "type": "boolean"
+    },
+    "error_code": {
+      "type": "string"
+    },
+    "results": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "bodies": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "headers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "arrivals": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "upstream": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "acquired": {
+      "type": "integer"
+    },
+    "invalidated": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "released": {
+      "type": "integer"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.gateway.RelayObservation.State"
+    }
+  },
+  "required": [
+    "observation_id",
+    "valid_program",
+    "results",
+    "bodies",
+    "headers",
+    "arrivals",
+    "upstream",
+    "acquired",
+    "invalidated",
+    "released",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "59ceae264b5525b1ca40921d23433c7fedb00bf63c1c73ae81026850e99e8243",
+    "contract_digest": "slice-sha256/2:18255a3c36aef379de9a6ba3b767704d18b17caf9b6f9a15093f0005f625064a",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.RelayObservation.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.RelayObservation.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

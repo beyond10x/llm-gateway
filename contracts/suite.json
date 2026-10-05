@@ -38,14 +38,33 @@
       "llm-gateway.gateway/authored/an-unrunnable-program-composes-nothing",
       "llm-gateway.gateway/authored/authentication-comes-before-the-path-is-decided",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
+      "llm-gateway.gateway/authored/k11-a-model-repeating-a-wire-is-refused-at-composition",
+      "llm-gateway.gateway/authored/k11-a-model-with-no-wire-is-refused-at-composition",
+      "llm-gateway.gateway/authored/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target",
+      "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition",
       "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready",
       "llm-gateway.gateway/authored/owner-material-that-is-empty-or-not-printable-is-refused",
       "llm-gateway.gateway/authored/owner-material-with-a-space-is-refused",
+      "llm-gateway.gateway/authored/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path",
+      "llm-gateway.gateway/authored/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method",
+      "llm-gateway.gateway/authored/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path",
+      "llm-gateway.gateway/authored/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path",
       "llm-gateway.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case",
       "llm-gateway.gateway/authored/the-concurrency-bound-admits-its-own-count",
       "llm-gateway.gateway/authored/the-owner-inspects-every-route-and-unreported-limits-stay-absent",
       "llm-gateway.gateway/authored/the-owner-inspects-one-route-by-its-alias",
       "llm-gateway.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods",
+      "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread",
+      "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed",
+      "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete",
+      "llm-gateway.gateway/authored/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes",
+      "llm-gateway.gateway/authored/w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused",
+      "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged",
+      "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh",
+      "llm-gateway.gateway/authored/w5-an-event-stream-is-relayed-unchanged-as-it-arrives",
+      "llm-gateway.gateway/authored/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint",
+      "llm-gateway.gateway/authored/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502",
+      "llm-gateway.gateway/authored/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement",
       "llm-gateway.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create",
       "llm-gateway.hosting/authored/a-create-that-never-left-the-process-allocates-nothing",
       "llm-gateway.hosting/authored/a-create-the-provider-refused-allocates-nothing",
@@ -344,6 +363,26 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/head-inspection-answers-without-a-body"
       },
+      "gateway/scenarios/k11-a-model-repeating-a-wire-is-refused-at-composition.yaml": {
+        "digest": "sha256:e664f4900e4cf3073e290424fe461529aca8dd4e0666a023a4ed276cfe94ef7e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/k11-a-model-repeating-a-wire-is-refused-at-composition"
+      },
+      "gateway/scenarios/k11-a-model-with-no-wire-is-refused-at-composition.yaml": {
+        "digest": "sha256:b771205afe6298ee6eb36cc17845b786cfb5bb0371d0744debc8a2162c952f98",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/k11-a-model-with-no-wire-is-refused-at-composition"
+      },
+      "gateway/scenarios/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target.yaml": {
+        "digest": "sha256:e891be3c24a114970ded58848fe2908c5444a141865d84db7d51b6078e5f59e9",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target"
+      },
+      "gateway/scenarios/k11-two-models-with-one-alias-are-refused-at-composition.yaml": {
+        "digest": "sha256:645deeb4068f89bd7ae3e6b21a339ca8422fff70ba6e3753083e6286858d09ec",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition"
+      },
       "gateway/scenarios/liveness-is-served-without-a-credential-and-readiness-starts-unready.yaml": {
         "digest": "sha256:51a85b84f5e76b26ac8853b011864239e79e4720a64e6ceb3df73e6dae938a44",
         "disposition": "accepted",
@@ -358,6 +397,26 @@
         "digest": "sha256:0c8c8c8fe941522d96c5e56bdbccd90bacfd7b81ac362a5d283c1c531a00246a",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/owner-material-with-a-space-is-refused"
+      },
+      "gateway/scenarios/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path.yaml": {
+        "digest": "sha256:1536ceb3587988ed7ea0d7c51fd2d1d6374976bf11471d5de8a898df8f6eed48",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path"
+      },
+      "gateway/scenarios/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method.yaml": {
+        "digest": "sha256:faeffa6bc3f3966a8d8675d7e43563bd69126c65e932ef094f9467347ef72016",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method"
+      },
+      "gateway/scenarios/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path.yaml": {
+        "digest": "sha256:4420a929abcc9793472d66b4d5fa6724ed80ed6aaeccad07e8d0275fb1418363",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path"
+      },
+      "gateway/scenarios/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path.yaml": {
+        "digest": "sha256:860fe577569cb005b46d195a08108bad3d5f95a02bfb3d616e995f91fece81a4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path"
       },
       "gateway/scenarios/the-bearer-scheme-is-matched-without-regard-to-case.yaml": {
         "digest": "sha256:8874b79daa1859670eeb718758c3446e6205a1aeed1270c4b5afea55afde7ce7",
@@ -383,6 +442,61 @@
         "digest": "sha256:7cb54e853128a27f6f4d62705761ce8be1185b65e003a392d51190a090397210",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods"
+      },
+      "gateway/scenarios/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread.yaml": {
+        "digest": "sha256:9d1666bcd8103702b2dcaa5fa64bab30d5b32586c6b4243bc72c562126b73c38",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread"
+      },
+      "gateway/scenarios/w1-a-body-of-exactly-32-mib-is-relayed.yaml": {
+        "digest": "sha256:5ac8e1b6f81a90f931f0d863a571865da33a47cdd67a2807d5741720e7135a7c",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed"
+      },
+      "gateway/scenarios/w1-a-body-shorter-than-its-declared-length-is-incomplete.yaml": {
+        "digest": "sha256:7f83911cb3637b59130511184b6dc1c1ea52abde0f08282086923f49ed7514e9",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete"
+      },
+      "gateway/scenarios/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes.yaml": {
+        "digest": "sha256:10483fc1659ebe1c34a5c3390d44334fb0fdf6c1f21962ed10346847644b8e09",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes"
+      },
+      "gateway/scenarios/w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused.yaml": {
+        "digest": "sha256:34ef8a2b9565c6c4add618f046df376597af0373ed097dceeafc13983374ef8a",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused"
+      },
+      "gateway/scenarios/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged.yaml": {
+        "digest": "sha256:417e31ff70ef7868b21ee684ec8ae166ae2a7d4f6ecc129423bba60e674df74c",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged"
+      },
+      "gateway/scenarios/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh.yaml": {
+        "digest": "sha256:6d95d855cdfe5a88b5f37e821f02633dffeb28292d4e5ca55af1b08feca78326",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh"
+      },
+      "gateway/scenarios/w5-an-event-stream-is-relayed-unchanged-as-it-arrives.yaml": {
+        "digest": "sha256:28386d7976f22e3c75f9336cf0cbbb5ee50f1ab71e62e015d45cd8657a96b8a8",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w5-an-event-stream-is-relayed-unchanged-as-it-arrives"
+      },
+      "gateway/scenarios/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint.yaml": {
+        "digest": "sha256:9b30519f5ed6bf2078e866c36cc98e729597bfffd70131e3709fd2c21837c1b1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint"
+      },
+      "gateway/scenarios/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502.yaml": {
+        "digest": "sha256:cc732f554825fd7dd8285b2d7f640079788fd01d9752fa6c293f140f96a9e940",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502"
+      },
+      "gateway/scenarios/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement.yaml": {
+        "digest": "sha256:1ddd5d82986e435764cd8f9f372246c877bdbfcef486cc0c18790619a9bf10a8",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement"
       },
       "hosting/scenarios/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create.yaml": {
         "digest": "sha256:549f141aa28732dd000fe453ce6721a549db813b798748285df8ad5552fb7382",
@@ -941,13 +1055,14 @@
       }
     },
     "counts": {
-      "authored": 156,
-      "generated": 3,
+      "authored": 175,
+      "generated": 4,
       "outside": 0,
       "refused": 0
     },
     "generated": [
       "llm-gateway.gateway.Exchange/outcome/observed",
+      "llm-gateway.gateway.Relay/outcome/observed",
       "llm-gateway.hosting.Exercise/outcome/observed",
       "llm-gateway.runpod.Exercise/outcome/observed"
     ],
@@ -965,8 +1080,8 @@
     }
   },
   "provenance": {
-    "contract_digest": "692d957c2154b91cd1e0286e505da06baef1dc1a2b8c1d19eca012b7964db977",
-    "spec_digest": "9c7c9e02b759f528f51ecccfbbf95c5d842799fedefed6e392b26077c7d20927",
+    "contract_digest": "03d8cf5a8220020adce40ad9622fa1d4d58a0aebdf445702bb2bd2e6e11f18e4",
+    "spec_digest": "59ceae264b5525b1ca40921d23433c7fedb00bf63c1c73ae81026850e99e8243",
     "specification_version": "v1",
     "suite_version": "ess-conformance/5",
     "system": "llm-gateway"
@@ -989,6 +1104,10 @@
         {
           "kind": "event",
           "name": "llm-gateway.gateway.Exchanged"
+        },
+        {
+          "kind": "event",
+          "name": "llm-gateway.gateway.Relayed"
         },
         {
           "kind": "event",
@@ -1026,6 +1145,83 @@
             }
           },
           "step": "expect_event"
+        },
+        {
+          "event": "llm-gateway.gateway.Relayed",
+          "step": "expect_no_event"
+        },
+        {
+          "event": "llm-gateway.hosting.Exercised",
+          "step": "expect_no_event"
+        },
+        {
+          "event": "llm-gateway.runpod.Exercised",
+          "step": "expect_no_event"
+        }
+      ]
+    },
+    "llm-gateway.gateway.Relay/outcome/observed": {
+      "purpose": "`llm-gateway.gateway.Relay` answers `observed` for an input no other branch's guard claims",
+      "source": [
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "event",
+          "name": "llm-gateway.gateway.Exchanged"
+        },
+        {
+          "kind": "event",
+          "name": "llm-gateway.gateway.Relayed"
+        },
+        {
+          "kind": "event",
+          "name": "llm-gateway.hosting.Exercised"
+        },
+        {
+          "kind": "event",
+          "name": "llm-gateway.runpod.Exercised"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "program_json"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "event": "llm-gateway.gateway.Relayed",
+          "shape": {
+            "valid_program": {
+              "holds": "primitive",
+              "kind": "boolean"
+            }
+          },
+          "step": "expect_event"
+        },
+        {
+          "event": "llm-gateway.gateway.Exchanged",
+          "step": "expect_no_event"
         },
         {
           "event": "llm-gateway.hosting.Exercised",
@@ -4006,6 +4202,346 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/k11-a-model-repeating-a-wire-is-refused-at-composition": {
+      "purpose": "a wire set is a set, so a wire named twice composes no gateway",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\",\"chat\"]}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "relay:repeated-wire"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/k11-a-model-with-no-wire-is-refused-at-composition": {
+      "purpose": "a relayed model must declare at least one wire, so an empty set composes no gateway",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[]}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "relay:no-wire"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target": {
+      "purpose": "a model declared for chat only refuses the responses and messages wires as wire-not-served, asks for no target for them, and still serves chat",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"chat-only\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\",\"responses\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"chat-only\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"chat-only\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"chat-only\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 wire-not-served",
+                  "400 wire-not-served",
+                  "400 wire-not-served",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-chat\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition": {
+      "purpose": "an alias names one model, so a second model under the same alias composes no gateway",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"]},{\"alias\":\"code\",\"upstream_model\":\"other-code\",\"wires\":[\"messages\"]}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "relay:duplicate-model"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready": {
       "purpose": "the two probe paths answer without a credential, and a gateway starts not ready (server.rs Gateway::bind, decide)",
       "source": [
@@ -4252,6 +4788,433 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path": {
+      "purpose": "POST /v1/chat/completions reaches the target's /v1/chat/completions, streaming and not, and its answers reach the client unchanged",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\",\\\"object\\\":\\\"chat.completion\\\"}\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"data: {\\\"id\\\":\\\"chat-2\\\",\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"hi\\\"}}]}\\n\\n\",\"data: [DONE]\\n\\n\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"stream\\\":true,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"chat-1\",\"object\":\"chat.completion\"}",
+                  "data: {\"id\":\"chat-2\",\"choices\":[{\"delta\":{\"content\":\"hi\"}}]}\n\ndata: [DONE]\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method": {
+      "purpose": "an unready gateway, an absent owner credential and a GET on a wire path are refused, and none of them asks for a target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"credential\":false},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=POST"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "503 unavailable",
+                  "ok",
+                  "401 credential-absent",
+                  "405 method-not-allowed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path": {
+      "purpose": "POST /v1/responses, the Codex wire, reaches the target's /v1/responses, streaming and not",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"resp-1\\\",\\\"object\\\":\\\"response\\\"}\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"event: response.created\\ndata: {\\\"type\\\":\\\"response.created\\\"}\\n\\n\",\"event: response.completed\\ndata: {\\\"type\\\":\\\"response.completed\\\"}\\n\\n\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"input\\\":\\\"hi\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"input\\\":\\\"hi\\\",\\\"stream\\\":true}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"resp-1\",\"object\":\"response\"}",
+                  "event: response.created\ndata: {\"type\":\"response.created\"}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\"}\n\n"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/responses {\"model\":\"served-code\",\"input\":\"hi\"}",
+                  "pod-1 POST /v1/responses {\"model\":\"served-code\",\"input\":\"hi\",\"stream\":true}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path": {
+      "purpose": "POST /v1/messages, the Anthropic wire, reaches the target's /v1/messages, streaming and not",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"msg-1\\\",\\\"type\\\":\\\"message\\\"}\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"event: message_start\\ndata: {\\\"type\\\":\\\"message_start\\\"}\\n\\n\",\"event: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":16,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":16,\\\"stream\\\":true,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"msg-1\",\"type\":\"message\"}",
+                  "event: message_start\ndata: {\"type\":\"message_start\"}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":16,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },
@@ -4660,6 +5623,1090 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread": {
+      "purpose": "a content-length of 33554433 is body-too-large from the head alone, and no target is asked for",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"\",\"declare_bytes\":33554433},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"\",\"declare_bytes\":33554433}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "413 body-too-large",
+                  "413 body-too-large"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed": {
+      "purpose": "a 33554432-byte body is read and relayed whole; the rewritten model makes it 7 bytes longer at the target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"big\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"pad_to_bytes\":33554432}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"big\"}"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions 33554439 bytes"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete": {
+      "purpose": "a body that ends before its declared content-length is body-incomplete, not a malformed head, and no target is asked for",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"\",\"declare_bytes\":64},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"\",\"declare_bytes\":1}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"body-incomplete\",\"message\":\"the request body ended or stalled before it was complete\"}}",
+                  "{\"error\":{\"code\":\"body-incomplete\",\"message\":\"the request body ended or stalled before it was complete\"}}"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 body-incomplete",
+                  "400 body-incomplete"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes": {
+      "purpose": "only the top-level model value becomes the upstream name, on all three wires; nested model keys, spacing and key order reach the target as sent",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"model\\\"}],\\\"model\\\":\\\"code\\\",\\\"metadata\\\":{\\\"model\\\":\\\"code\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{ \\\"input\\\" : \\\"x\\\" ,\\n  \\\"model\\\" : \\\"code\\\" }\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"system\\\":\\\"the model is code\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"messages\":[{\"role\":\"user\",\"content\":\"model\"}],\"model\":\"served-code\",\"metadata\":{\"model\":\"code\"}}",
+                  "pod-1 POST /v1/responses { \"input\" : \"x\" ,\n  \"model\" : \"served-code\" }",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"system\":\"the model is code\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused": {
+      "purpose": "a body that is not one JSON object is body-not-json, an object without a model string is model-absent, an alias nobody serves is model-unknown, and none asks for a target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"not json\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"[{\\\"model\\\":\\\"code\\\"}]\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"input\\\":\\\"hi\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":7}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"other\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 body-not-json",
+                  "400 body-not-json",
+                  "400 body-not-json",
+                  "400 model-absent",
+                  "400 model-absent",
+                  "404 model-unknown"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged": {
+      "purpose": "the effort mapping is scoped by wire, so high reaches the target as high on chat and responses, even in the fields the messages wire maps",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"reasoning_effort\\\":\\\"high\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"high\\\"},\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"high\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"reasoning\\\":{\\\"effort\\\":\\\"high\\\"},\\\"output_config\\\":{\\\"effort\\\":\\\"high\\\"}}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"reasoning_effort\":\"high\",\"output_config\":{\"effort\":\"high\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}",
+                  "pod-1 POST /v1/responses {\"model\":\"served-code\",\"reasoning\":{\"effort\":\"high\"},\"output_config\":{\"effort\":\"high\"}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh": {
+      "purpose": "output_config.effort and chat_template_kwargs.reasoning_effort equal to high become xhigh on the messages wire; any other value passes unchanged",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"high\\\"},\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"high\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"medium\\\"},\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"HIGH\\\"},\\\"effort\\\":\\\"high\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"xhigh\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"medium\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"HIGH\"},\"effort\":\"high\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w5-an-event-stream-is-relayed-unchanged-as-it-arrives": {
+      "purpose": "each event reaches the client before the pod sends the next, the pod's content type is kept, every answer is no-store, and the target is released once the stream ends",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"text/event-stream; charset=utf-8\",\"framing\":\"chunked\",\"chunks\":[\"data: {\\\"n\\\":1}\\n\\n\",\"data: {\\\"n\\\":2}\\n\\n\",\"data: {\\\"n\\\":3}\\n\\n\",\"data: [DONE]\\n\\n\"]},{\"status\":200,\"content_type\":\"application/json; charset=utf-8\",\"chunks\":[\"{\\\"id\\\":\",\"\\\"split\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"stream\\\":true}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "arrivals": {
+                "kind": "literal",
+                "value": [
+                  "streamed",
+                  "streamed"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "data: {\"n\":1}\n\ndata: {\"n\":2}\n\ndata: {\"n\":3}\n\ndata: [DONE]\n\n",
+                  "{\"id\":\"split\"}"
+                ]
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=text/event-stream; charset=utf-8 cache-control=no-store allow=absent",
+                  "content-type=application/json; charset=utf-8 cache-control=no-store allow=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint": {
+      "purpose": "a 500 or a 400 from the pod is the model's own answer, relayed with its body, and the pod stays current",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":500,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"type\\\":\\\"error\\\",\\\"error\\\":{\\\"type\\\":\\\"internal_error\\\"}}\"]},{\"status\":400,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"error\\\":{\\\"message\\\":\\\"bad effort\\\"}}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"same-pod\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"type\":\"error\",\"error\":{\"type\":\"internal_error\"}}",
+                  "{\"error\":{\"message\":\"bad effort\"}}",
+                  "{\"id\":\"same-pod\"}"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "500 relayed",
+                  "400 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\"}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\"}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502": {
+      "purpose": "a refused connection and a connection closed without an answer are transport failures, answered upstream-failed and reported against that pod",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"transport\":\"refused\"}],[{\"transport\":\"closed\"}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"replacement\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
+                  "{\"id\":\"replacement\"}"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": [
+                  "pod-1",
+                  "pod-2"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "502 upstream-failed",
+                  "502 upstream-failed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-2 POST /v1/chat/completions {\"model\":\"served-code\"}",
+                  "pod-3 POST /v1/chat/completions {\"model\":\"served-code\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement": {
+      "purpose": "a gateway status from the pod is answered upstream-failed and reported against that pod, so each next request reaches the replacement",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":502,\"content_type\":\"text/plain\",\"chunks\":[\"bad gateway\"]}],[{\"status\":503,\"content_type\":\"text/plain\",\"chunks\":[\"unavailable\"]}],[{\"status\":504,\"content_type\":\"text/plain\",\"chunks\":[\"timeout\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"replacement\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": [
+                  "pod-1",
+                  "pod-2",
+                  "pod-3"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "502 upstream-failed",
+                  "502 upstream-failed",
+                  "502 upstream-failed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\"}",
+                  "pod-2 POST /v1/responses {\"model\":\"served-code\"}",
+                  "pod-3 POST /v1/messages {\"model\":\"served-code\"}",
+                  "pod-4 POST /v1/chat/completions {\"model\":\"served-code\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.hosting.Exercise/outcome/observed": {
       "purpose": "`llm-gateway.hosting.Exercise` answers `observed` for an input no other branch's guard claims",
       "source": [
@@ -4677,6 +6724,10 @@
         {
           "kind": "event",
           "name": "llm-gateway.gateway.Exchanged"
+        },
+        {
+          "kind": "event",
+          "name": "llm-gateway.gateway.Relayed"
         },
         {
           "kind": "event",
@@ -4717,6 +6768,10 @@
         },
         {
           "event": "llm-gateway.gateway.Exchanged",
+          "step": "expect_no_event"
+        },
+        {
+          "event": "llm-gateway.gateway.Relayed",
           "step": "expect_no_event"
         },
         {
@@ -11688,6 +13743,10 @@
         },
         {
           "kind": "event",
+          "name": "llm-gateway.gateway.Relayed"
+        },
+        {
+          "kind": "event",
           "name": "llm-gateway.hosting.Exercised"
         },
         {
@@ -11725,6 +13784,10 @@
         },
         {
           "event": "llm-gateway.gateway.Exchanged",
+          "step": "expect_no_event"
+        },
+        {
+          "event": "llm-gateway.gateway.Relayed",
           "step": "expect_no_event"
         },
         {

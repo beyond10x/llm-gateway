@@ -8,14 +8,18 @@ below is `covered` or `not needed`.
 
 - **llmgw** cites `path:line` in llmgw at `048ebd8`. **llm-gateway** cites `path:line` in this
   repository at `be722b4`, or says `none`. Rows C1, C2, C4, C5, K29, K30 and D2 cite the tree
-  story:gateway-binary landed, and name the tests that close them.
+  story:gateway-binary landed, and name the tests that close them. Rows R6, R7, R8, W1, W2, W3,
+  W4, W5, W7 and K11 cite the tree story:wire-relay landed; each is closed by the cases of
+  `crates/llm-gateway/tests/wire_relay.rs` whose names start with its row id, and by the
+  `Relay` scenarios of `contracts/gateway/scenarios/` prefixed the same way.
 - **covered**: llm-gateway's code does the same job, with tests, even where the mechanism
   differs (the note says how). **partial**: a building block exists and something llmgw does is
   missing. **gap**: nothing in llm-gateway does it. **not needed**: the note gives the reason.
 - The `b10x-llm-gateway` binary (`crates/llm-gateway-cli`, C1) runs the gateway from one
   deployment document: probes, the owner's route inventory and a graceful stop. Other `covered`
-  rows are library behaviour the binary does not drive yet: it relays no model call (W rows) and
-  provisions no pod (B and L rows).
+  rows are library behaviour the binary does not drive yet: the gateway library relays the three
+  wires to any target its embedding hands out (R6–R8, W rows), but no production transport
+  reaches a pod (B8), and nothing provisions one (B and L rows).
 - Configuration rows compare settings, not file formats: a key is `covered` when a typed setting
   with the same meaning exists. The file format is its own row (K29).
 - Registry rows are the `models` keys (K9–K28) and `GET /v1/models` (R5). Authentication rows are
@@ -25,16 +29,16 @@ below is `covered` or `not needed`.
 
 | Area | Name | Rows | Covered | Partial | Gap | Not needed | Row count checked against |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| R | Routes | 8 | 2 | 1 | 5 | 0 | the 8 `.route` calls in `router()`, `src/lib.rs:125-137` |
-| W | Wire relay | 7 | 0 | 2 | 5 | 0 | no source table: the proxy path `src/lib.rs:510-699` and README `README.md:63-98` |
+| R | Routes | 8 | 5 | 1 | 2 | 0 | the 8 `.route` calls in `router()`, `src/lib.rs:125-137` |
+| W | Wire relay | 7 | 6 | 1 | 0 | 0 | no source table: the proxy path `src/lib.rs:510-699` and README `README.md:63-98` |
 | C | CLI | 5 | 4 | 0 | 0 | 1 | the built binary's `--help`: 4 options, no subcommand, plus the command |
-| K | Configuration | 30 | 24 | 2 | 1 | 3 | the 28 fields of the four serde structs in `src/config.rs:20-136`, plus 2 file-handling rows |
-| B | Backends | 9 | 2 | 6 | 1 | 0 | `ProviderKind` (1 variant, `src/config.rs:50-54`), the 5 `RunpodApi` calls, the pod URL, the inference call and the vLLM key |
+| K | Configuration | 30 | 25 | 1 | 1 | 3 | the 28 fields of the four serde structs in `src/config.rs:20-136`, plus 2 file-handling rows |
+| B | Backends | 9 | 2 | 7 | 0 | 0 | `ProviderKind` (1 variant, `src/config.rs:50-54`), the 5 `RunpodApi` calls, the pod URL, the inference call and the vLLM key |
 | L | Scale-to-zero and pod lifecycle | 15 | 12 | 2 | 1 | 0 | no source table: `PodManager` in `src/runpod.rs:286-695` and `src/main.rs:62-65` |
 | O | Observability | 3 | 0 | 0 | 3 | 0 | the 13 `# HELP` series in `src/lib.rs:144-180` and the log setup in `src/main.rs:29-33` |
 | D | Deployment and operation | 6 | 3 | 0 | 2 | 1 | the files at the root, `scripts/` and `docs/` of llmgw |
 
-Total: 83 rows. 47 covered, 13 partial, 18 gap, 5 not needed.
+Total: 83 rows. 57 covered, 12 partial, 9 gap, 5 not needed.
 
 ## Routes
 
@@ -45,21 +49,21 @@ Total: 83 rows. 47 covered, 13 partial, 18 gap, 5 not needed.
 | R3 | `GET /readyz`: readiness, the same handler as liveness | `src/lib.rs:129` `src/lib.rs:139-141` | `crates/llm-gateway/src/server.rs:385-391` | covered | Served as `GET /ready`, which is stronger: `503` before `mark_ready` and while draining. |
 | R4 | `GET /metrics`: Prometheus text | `src/lib.rs:130` `src/lib.rs:143-219` | none | gap | The series are rows O1 and O2. |
 | R5 | `GET /v1/models`: OpenAI-shaped registry listing with `max_model_len` and `wires`; unauthenticated; never wakes a pod | `src/lib.rs:131` `src/lib.rs:441-457` | `crates/llm-gateway/src/server.rs:441-443` `crates/llm-gateway/src/inventory.rs:306` | partial | `GET /v1/routes` lists routes with `context_window` and contacts nothing, but needs the owner credential, is not the OpenAI list shape and carries no wires. |
-| R6 | `POST /v1/chat/completions`: OpenAI chat completions, streaming and not | `src/lib.rs:132` `src/lib.rs:459-461` | none | gap | The crate states it proxies no model call: `crates/llm-gateway/src/lib.rs:20-21`. |
-| R7 | `POST /v1/responses`: the Codex wire | `src/lib.rs:133` `src/lib.rs:463-465` | none | gap | |
-| R8 | `POST /v1/messages`: Anthropic messages, for Claude Code | `src/lib.rs:134` `src/lib.rs:467-469` | none | gap | |
+| R6 | `POST /v1/chat/completions`: OpenAI chat completions, streaming and not | `src/lib.rs:132` `src/lib.rs:459-461` | `crates/llm-gateway/src/relay.rs:31-51` `crates/llm-gateway/src/server.rs:516-546` `crates/llm-gateway/tests/wire_relay.rs:708` | covered | Library behaviour (`Gateway::bind_with_relay`), relayed to the same path at the target. llmgw serves it unauthenticated; llm-gateway asks for the owner's bearer credential (`wire_relay.rs:747`) and refuses another method with `allow: POST` (`wire_relay.rs:779`). |
+| R7 | `POST /v1/responses`: the Codex wire | `src/lib.rs:133` `src/lib.rs:463-465` | `crates/llm-gateway/src/relay.rs:31-51` `crates/llm-gateway/tests/wire_relay.rs:721` | covered | As R6. |
+| R8 | `POST /v1/messages`: Anthropic messages, for Claude Code | `src/lib.rs:134` `src/lib.rs:467-469` | `crates/llm-gateway/src/relay.rs:31-51` `crates/llm-gateway/tests/wire_relay.rs:734` | covered | As R6; the effort mapping is W4. |
 
 ## Wire relay
 
 | ID | llmgw capability | llmgw | llm-gateway | Status | Note |
 | --- | --- | --- | --- | --- | --- |
-| W1 | Request body bounded at 32 MiB | `src/lib.rs:35` `src/lib.rs:135` | none | gap | llm-gateway reads no request body and refuses one that is declared: `crates/llm-gateway/src/server.rs:431-437`. |
-| W2 | `model` read and rewritten to the upstream model name on every wire | `src/lib.rs:522-539` `src/lib.rs:553` | none | gap | |
-| W3 | Typed refusals: non-JSON body or missing `model` 400, unknown model 404 `model_not_found`, undeclared wire 400 | `src/lib.rs:515-552` `src/lib.rs:686-691` | none | gap | llm-gateway's refusal codes cover only its inspection surface. |
-| W4 | Messages wire only: reasoning effort `high` relayed as `xhigh`, in `output_config.effort` and `chat_template_kwargs.reasoning_effort` | `src/lib.rs:490-504` `src/lib.rs:554-556` | none | gap | |
-| W5 | Upstream bytes relayed unchanged, server-sent events included; upstream content type kept; `cache-control: no-store` | `src/lib.rs:644-671` | none | gap | The pod-holding part is covered by L12; the relay that would hold it does not exist. |
+| W1 | Request body bounded at 32 MiB | `src/lib.rs:35` `src/lib.rs:135` | `crates/llm-gateway/src/relay.rs:25` `crates/llm-gateway/src/relay.rs:198-214` `crates/llm-gateway/src/relay.rs:355-400` `crates/llm-gateway/tests/wire_relay.rs:819` `crates/llm-gateway/tests/wire_relay.rs:839` | covered | `body-too-large` (413). A declared length over the bound is refused from the head before a byte is read; a chunked body is refused the moment its decoded size would pass it (`wire_relay.rs:865`, `wire_relay.rs:899`). Published as `request-body-bytes` in `docs/gateway.md` and measured at 33554432 and 33554433 over a socket. A body that ends or stalls early is `body-incomplete`; a chunked body's trailer section counts against `request-head-bytes`. |
+| W2 | `model` read and rewritten to the upstream model name on every wire | `src/lib.rs:522-539` `src/lib.rs:553` | `crates/llm-gateway/src/body.rs:35-57` `crates/llm-gateway/src/relay.rs:566-570` `crates/llm-gateway/tests/wire_relay.rs:921` | covered | llmgw re-serialises the parsed body with sorted keys; llm-gateway replaces the top-level `model` value in place, so every other byte reaches the target as sent. The upstream name is written as an escaped JSON string (`wire_relay.rs:960`). |
+| W3 | Typed refusals: non-JSON body or missing `model` 400, unknown model 404 `model_not_found`, undeclared wire 400 | `src/lib.rs:515-552` `src/lib.rs:686-691` | `crates/llm-gateway/src/error.rs:101-124` `crates/llm-gateway/src/body.rs:147-242` `crates/llm-gateway/src/relay.rs:558-565` `crates/llm-gateway/tests/wire_relay.rs:1005` `crates/llm-gateway/tests/wire_relay.rs:1025` `crates/llm-gateway/tests/wire_relay.rs:1042` | covered | Same statuses, in llm-gateway's own refusal shape `{"error":{"code","message"}}` rather than llmgw's `error.type`: `body-not-json` and `model-absent` (400), `model-unknown` (404), `wire-not-served` (400, K11). A second top-level `model` is `body-not-json`; llmgw takes the last. |
+| W4 | Messages wire only: reasoning effort `high` relayed as `xhigh`, in `output_config.effort` and `chat_template_kwargs.reasoning_effort` | `src/lib.rs:490-504` `src/lib.rs:554-556` | `crates/llm-gateway/src/body.rs:16-18` `crates/llm-gateway/src/body.rs:85` `crates/llm-gateway/src/body.rs:133` `crates/llm-gateway/src/relay.rs:569` `crates/llm-gateway/tests/wire_relay.rs:1072` | covered | Only those two fields, only an exact `high`, only on the messages wire (`wire_relay.rs:1093`, `wire_relay.rs:1118`). |
+| W5 | Upstream bytes relayed unchanged, server-sent events included; upstream content type kept; `cache-control: no-store` | `src/lib.rs:644-671` | `crates/llm-gateway/src/relay.rs:626-676` `crates/llm-gateway/src/relay.rs:609-619` `crates/llm-gateway/tests/wire_relay.rs:1145` `crates/llm-gateway/tests/wire_relay.rs:1202` | covered | The target's status, content type and decoded body bytes are relayed as they arrive, re-framed as `transfer-encoding: chunked` (unframed and ended by the close for an HTTP/1.0 client); each event reaches the client before the target sends the next. The target is held until the last byte and released after it, which is what L12's `StreamLease` needs from a relay. |
 | W6 | Cold start past the hold budget answers 503 `model_cold_start` with `Retry-After: 30` | `src/lib.rs:567-576` `src/lib.rs:693-699` | `crates/llm-runpod/src/pool.rs:69-70` `crates/llm-runpod/src/pool.rs:458` | partial | The pool reports `starting`; no HTTP answer is mapped from it. |
-| W7 | A transport failure or a proxy 502, 503 or 504 drops that endpoint (only if it is still current) and answers 502; the next request starts a replacement | `src/lib.rs:598-643` `src/runpod.rs:582-606` | `crates/llm-runpod/tests/runpod.rs:441` | partial | A pod that vanishes is replaced once a listing shows it gone. Nothing reacts to a failed request, because there is no relay. |
+| W7 | A transport failure or a proxy 502, 503 or 504 drops that endpoint (only if it is still current) and answers 502; the next request starts a replacement | `src/lib.rs:598-643` `src/runpod.rs:582-606` | `crates/llm-gateway/src/relay.rs:86-94` `crates/llm-gateway/src/relay.rs:577-608` `crates/llm-gateway/tests/wire_relay.rs:1252` `crates/llm-gateway/tests/wire_relay.rs:1294` `crates/llm-gateway/tests/wire_relay.rs:1330` | covered | `upstream-failed` (502). The gateway reports the failed target to `RelayTargets::invalidate` by its own authority, so the source drops it only if it is still current (`wire_relay.rs:1330`); the next request asks the source again. A 500 or 4xx is relayed and keeps the endpoint (`wire_relay.rs:1369`). No `RunpodPool` implements `RelayTargets` yet: that is B8. |
 
 ## CLI
 
@@ -93,7 +97,7 @@ below. The llm-gateway column mostly cites `RunpodModel` in `crates/llm-runpod/s
 | K8 | `providers.<name>.cloud_type`, default `SECURE` | `src/config.rs:46-47` `src/config.rs:138-140` | `crates/llm-runpod/src/config.rs:10-23` `crates/llm-runpod/src/config.rs:67` | covered | Per model, not per provider; a closed enum, not free text. |
 | K9 | `models`: the registry, keyed by alias; at least one; alias is 1–64 lowercase URL-safe characters | `src/config.rs:30-31` `src/config.rs:198-210` `src/config.rs:223` | `crates/llm-runpod/src/pool.rs:330-336` | covered | Keyed by `Identifier`. |
 | K10 | `models.<alias>.provider`: must name a configured provider | `src/config.rs:98` `src/config.rs:235-239` | `crates/llm-runpod/src/pool.rs:330-336` | covered | A model belongs to the pool it is declared in, and a pool has one provider. |
-| K11 | `models.<alias>.wires`: non-empty, unique set of `chat`, `responses`, `messages` | `src/config.rs:99` `src/config.rs:247-249` | `crates/llm-gateway/src/inventory.rs:97` | partial | A route target names one `protocol` label. There is no wire set per model and nothing enforces one. |
+| K11 | `models.<alias>.wires`: non-empty, unique set of `chat`, `responses`, `messages` | `src/config.rs:99` `src/config.rs:247-249` | `crates/llm-gateway-cli/src/config.rs:315-323` `crates/llm-gateway/src/relay.rs:108-122` `crates/llm-gateway/src/relay.rs:563-565` `crates/llm-gateway/tests/wire_relay.rs:1407` `crates/llm-gateway/tests/wire_relay.rs:1461` | covered | The deployment document refuses an empty or repeated set (`crates/llm-gateway-cli/tests/config.rs:279`); `RelayModel::new` refuses the same, and the relay refuses an undeclared wire as `wire-not-served` without asking for a target. |
 | K12 | `models.<alias>.context_window`: 4096–2000000, listed as `max_model_len` | `src/config.rs:100` `src/config.rs:250-253` | `crates/llm-gateway/src/inventory.rs:109` | covered | `TargetLimits::context_window`. |
 | K13 | `models.<alias>.hf_model` | `src/config.rs:101` | `crates/llm-runpod/src/config.rs:63` | covered | |
 | K14 | `models.<alias>.image` | `src/config.rs:102` | `crates/llm-runpod/src/config.rs:64` | covered | A create whose image differs from the declared one is not sent: `crates/llm-runpod/src/provider.rs:214-216`. |
@@ -125,7 +129,7 @@ below. The llm-gateway column mostly cites `RunpodModel` in `crates/llm-runpod/s
 | B5 | Runpod GraphQL `uptimeInSeconds`: container uptime, for restart detection | `src/runpod.rs:158-179` | `crates/llm-runpod/src/transport.rs:111` `crates/llm-runpod/src/emulated.rs:251` | partial | As B2. |
 | B6 | vLLM readiness: `GET <pod>/v1/models` with the vLLM key; 401 or 403 means the key is refused | `src/runpod.rs:181-193` | `crates/llm-runpod/src/transport.rs:108` `crates/llm-runpod/src/emulated.rs:231` | partial | As B2. |
 | B7 | Pod base URL `https://{pod}-8000.proxy.runpod.net` | `src/runpod.rs:62` `src/runpod.rs:87-93` | `crates/llm-runpod/src/provider.rs:146-148` | covered | Reported only for a running pod. Neither side has checked the URL against the live control plane: `docs/hosting.md:326-328`. |
-| B8 | Inference call: `POST <pod>/v1/<wire path>` with the vLLM key as bearer, connect timeout only so streams are never cut | `src/lib.rs:585-597` `src/config.rs:66-74` `src/runpod.rs:317-320` | none | gap | |
+| B8 | Inference call: `POST <pod>/v1/<wire path>` with the vLLM key as bearer, connect timeout only so streams are never cut | `src/lib.rs:585-597` `src/config.rs:66-74` `src/runpod.rs:317-320` | `crates/llm-gateway/src/relay.rs:581-595` | partial | The relay sends `POST` to the wire's path over a connection its `RelayTarget` opens, with that connection's timeouts. No vLLM key is sent, and no production transport or `RunpodPool` adapter implements `RelayTargets`, so the binary relays nothing. |
 | B9 | vLLM API key: derived per model from the Runpod key (SHA-256), passed as `--api-key` | `src/runpod.rs:697-709` `src/runpod.rs:725-726` | `crates/llm-runpod/src/request.rs:115-118` `crates/llm-runpod/src/config.rs:72-75` | partial | The pod gets the key through a Runpod secret reference in `VLLM_API_KEY`. The gateway has no source for the value it must present (B6, B8). |
 
 ## Scale-to-zero and pod lifecycle
@@ -176,18 +180,8 @@ One line per gap or partial row, written as a story title.
 - llm-gateway answers `GET /` with setup instructions for the client that asks (R1)
 - llm-gateway serves Prometheus metrics at `GET /metrics` (R4)
 - llm-gateway lists its models in the OpenAI `/v1/models` shape, with their wires, without waking a pod (R5)
-- llm-gateway relays the OpenAI chat completions wire (R6)
-- llm-gateway relays the OpenAI responses wire (R7)
-- llm-gateway relays the Anthropic messages wire (R8)
-- A relayed request body is bounded at 32 MiB (W1)
-- The relay rewrites `model` to the upstream model name (W2)
-- The relay refuses a malformed body, a missing or unknown model and an undeclared wire with typed errors (W3)
-- On the messages wire, reasoning effort `high` reaches the pod as `xhigh` (W4)
-- The relay passes upstream bytes and event streams through unchanged (W5)
 - A cold start past its hold budget answers 503 with `Retry-After` (W6)
-- A request that fails against a dead endpoint drops it so the next request starts a replacement (W7)
 - A production Runpod transport reads its API key from a trusted file (K7)
-- A model declares the wires it serves, and the gateway refuses the others (K11)
 - A model declares its request hold budget separately from its startup deadline (K28)
 - A production Runpod transport lists pods over the REST API (B2)
 - A production Runpod transport creates pods over the REST API (B3)

@@ -5,6 +5,7 @@ use crate::{
     auth::{Authenticated, OwnerToken, OwnerVerifier},
     error::RefusalCode,
     inventory::RouteInventory,
+    relay::{self, Admitted, Relay, Wire},
 };
 use std::{
     io::{self, Read, Write},
@@ -69,6 +70,7 @@ struct Shared {
     config: GatewayConfig,
     verifier: Arc<dyn OwnerVerifier>,
     inventory: RouteInventory,
+    relay: Option<Relay>,
     running: AtomicBool,
     ready: AtomicBool,
     draining: AtomicBool,
@@ -92,6 +94,29 @@ impl Gateway {
         verifier: Arc<dyn OwnerVerifier>,
         inventory: RouteInventory,
     ) -> io::Result<GatewayHandle> {
+        Self::compose(config, verifier, inventory, None)
+    }
+
+    /// Binds like [`Gateway::bind`], and also relays the three model-call wires to the targets
+    /// `relay` hands out (story:wire-relay). Without a relay the wire paths are not served.
+    ///
+    /// # Errors
+    /// As [`Gateway::bind`].
+    pub fn bind_with_relay(
+        config: GatewayConfig,
+        verifier: Arc<dyn OwnerVerifier>,
+        inventory: RouteInventory,
+        relay: Relay,
+    ) -> io::Result<GatewayHandle> {
+        Self::compose(config, verifier, inventory, Some(relay))
+    }
+
+    fn compose(
+        config: GatewayConfig,
+        verifier: Arc<dyn OwnerVerifier>,
+        inventory: RouteInventory,
+        relay: Option<Relay>,
+    ) -> io::Result<GatewayHandle> {
         let listener = TcpListener::bind(config.bind)?;
         listener.set_nonblocking(true)?;
         let local_addr = listener.local_addr()?;
@@ -99,6 +124,7 @@ impl Gateway {
             config,
             verifier,
             inventory,
+            relay,
             running: AtomicBool::new(true),
             ready: AtomicBool::new(false),
             draining: AtomicBool::new(false),
@@ -233,6 +259,10 @@ enum Outcome {
     Served(String),
     Probe(u16, String),
     Refused(RefusalCode),
+    /// `method-not-allowed`, with the methods the path does take.
+    NotAllowed(&'static str),
+    /// A relay the head admitted; its body has not been read yet.
+    Relay(Admitted),
 }
 
 fn serve(mut stream: TcpStream, shared: &Shared) {
@@ -245,30 +275,76 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
     // a liveness probe that fails under load restarts the process, which turns shedding into a
     // restart loop. Reading a bounded head under a timeout is the cheapest way to know whether
     // a request is a probe, so it happens first.
-    let decision = match read_head(&mut stream, shared.config.max_head_bytes, head_deadline) {
-        Ok(head) => dispatch(&head, shared),
-        Err(code) => Decision::refused(code),
+    let (decision, leftover) =
+        match read_head(&mut stream, shared.config.max_head_bytes, head_deadline) {
+            Ok((head, leftover)) => (dispatch(&head, shared), leftover),
+            Err(code) => (Decision::refused(code), Vec::new()),
+        };
+    let outcome = match (decision.outcome, &shared.relay) {
+        (Outcome::Relay(admitted), Some(relay)) => {
+            let limits = relay::Limits {
+                line_bytes: shared.config.max_head_bytes,
+                timeout,
+            };
+            match relay::serve(&mut stream, leftover, admitted, relay, &limits) {
+                Ok(()) => {
+                    drop(stream.shutdown(Shutdown::Both));
+                    return;
+                }
+                Err(code) => Outcome::Refused(code),
+            }
+        }
+        (Outcome::Relay(_), None) => Outcome::Refused(RefusalCode::PathUnknown),
+        (outcome, _) => outcome,
     };
     write_outcome(
         &mut stream,
-        &decision.outcome,
+        &outcome,
         decision.head_only,
         Instant::now() + timeout,
     );
+    if decision.linger {
+        linger(&mut stream, Instant::now() + timeout);
+    } else {
+        drop(stream.shutdown(Shutdown::Both));
+    }
+}
+
+/// Closes a relay connection that was refused gracefully: the answer is already written, so
+/// the write side is closed and what the client still sends is read and discarded until it
+/// closes, the deadline passes or the body bound is reached. Closing with unread bytes would
+/// reset the connection, and a reset can destroy the refusal before the client reads it.
+fn linger(stream: &mut TcpStream, deadline: Instant) {
+    drop(stream.shutdown(Shutdown::Write));
+    let mut chunk = [0_u8; READ_CHUNK];
+    let mut discarded: u64 = 0;
+    while discarded <= relay::MAX_REQUEST_BODY_BYTES {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+            break;
+        }
+        match stream.read(&mut chunk) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => discarded += u64::try_from(read).unwrap_or(u64::MAX),
+        }
+    }
     drop(stream.shutdown(Shutdown::Both));
 }
 
-/// Reads exactly the request head, bounded in size and in time, and without ever reading a body.
+/// Reads exactly the request head, bounded in size and in time, and returns it with whatever
+/// arrived after it. Only a relay reads further; every other path ignores those bytes.
 fn read_head(
     stream: &mut TcpStream,
     limit: usize,
     deadline: Instant,
-) -> Result<String, RefusalCode> {
+) -> Result<(String, Vec<u8>), RefusalCode> {
     let mut buffer: Vec<u8> = Vec::new();
     let mut chunk = [0_u8; READ_CHUNK];
     loop {
         if let Some(end) = find_terminator(&buffer) {
+            let leftover = buffer[end + 4..].to_vec();
             return String::from_utf8(buffer[..end].to_vec())
+                .map(|head| (head, leftover))
                 .map_err(|_| RefusalCode::RequestMalformed);
         }
         // Never read past the bound, so an oversized head is refused rather than buffered.
@@ -297,6 +373,9 @@ fn find_terminator(buffer: &[u8]) -> Option<usize> {
 struct Decision {
     outcome: Outcome,
     head_only: bool,
+    /// Whether the connection is closed gracefully after a refusal: a request to a relayed
+    /// wire may still be sending a body the gateway never read.
+    linger: bool,
 }
 
 impl Decision {
@@ -304,6 +383,7 @@ impl Decision {
         Self {
             outcome: Outcome::Refused(code),
             head_only: false,
+            linger: false,
         }
     }
 }
@@ -312,11 +392,21 @@ impl Decision {
 struct Request<'a> {
     method: &'a str,
     path: &'a str,
+    /// `HTTP/1.0`, which takes neither a chunked answer nor an interim `100 Continue`.
+    http_1_0: bool,
     headers: Vec<(String, &'a str)>,
 }
 
 impl<'a> Request<'a> {
     fn parse(head: &'a str) -> Result<Self, RefusalCode> {
+        // RFC 9110 section 5.5: CR, LF and NUL are never part of a field. Once the head is split
+        // at its CRLFs, any that remain would let another reader see a line this one does not.
+        if head
+            .split("\r\n")
+            .any(|line| line.bytes().any(|byte| matches!(byte, b'\r' | b'\n' | 0)))
+        {
+            return Err(RefusalCode::RequestMalformed);
+        }
         let mut lines = head.split("\r\n");
         let start = lines.next().ok_or(RefusalCode::RequestMalformed)?;
         let mut parts = start.split(' ');
@@ -362,6 +452,7 @@ impl<'a> Request<'a> {
         Ok(Self {
             method,
             path,
+            http_1_0: version == "HTTP/1.0",
             headers,
         })
     }
@@ -388,8 +479,13 @@ fn dispatch(head: &str, shared: &Shared) -> Decision {
         Err(code) => return Decision::refused(code),
     };
     let head_only = request.head_only();
+    let linger = shared.relay.is_some() && Wire::from_path(request.path).is_some();
     let outcome = decide(&request, shared);
-    Decision { outcome, head_only }
+    Decision {
+        outcome,
+        head_only,
+        linger,
+    }
 }
 
 fn decide(request: &Request<'_>, shared: &Shared) -> Outcome {
@@ -417,7 +513,36 @@ fn decide(request: &Request<'_>, shared: &Shared) -> Outcome {
         Ok(owner) => owner,
         Err(code) => return Outcome::Refused(code),
     };
+    if let (Some(wire), Some(_)) = (Wire::from_path(request.path), &shared.relay) {
+        return admit(request, shared, wire);
+    }
     inspect(request, shared, &owner)
+}
+
+/// Decides from the head alone whether a relay may read its body: the method, readiness, and
+/// the body framing and its declared size (rows R6-R8 and W1).
+fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
+    if request.method != "POST" {
+        return Outcome::NotAllowed("POST");
+    }
+    if !serves_inspection(shared) {
+        return Outcome::Refused(RefusalCode::Unavailable);
+    }
+    match relay::framing(
+        request.header("content-length"),
+        request.header("transfer-encoding"),
+    ) {
+        Ok(framing) => Outcome::Relay(Admitted {
+            wire,
+            framing,
+            expects_continue: !request.http_1_0
+                && request
+                    .header("expect")
+                    .is_some_and(|value| value.eq_ignore_ascii_case("100-continue")),
+            chunked_answer: !request.http_1_0,
+        }),
+        Err(code) => Outcome::Refused(code),
+    }
 }
 
 fn authenticate(request: &Request<'_>, shared: &Shared) -> Result<Authenticated, RefusalCode> {
@@ -441,7 +566,7 @@ fn authenticate(request: &Request<'_>, shared: &Shared) -> Result<Authenticated,
 
 fn inspect(request: &Request<'_>, shared: &Shared, owner: &Authenticated) -> Outcome {
     if !request.is_read() {
-        return Outcome::Refused(RefusalCode::MethodNotAllowed);
+        return Outcome::NotAllowed("GET, HEAD");
     }
     let declares_body = request.header("transfer-encoding").is_some()
         || request
@@ -475,10 +600,18 @@ fn status_body(status: &str) -> String {
 }
 
 fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, deadline: Instant) {
-    let (status, body, code) = match outcome {
+    let refused = |code: RefusalCode| (code.status(), refusal_body(code), None);
+    let (status, body, allow) = match outcome {
         Outcome::Served(body) => (200, body.clone(), None),
         Outcome::Probe(status, body) => (*status, body.clone(), None),
-        Outcome::Refused(code) => (code.status(), refusal_body(*code), Some(*code)),
+        Outcome::Refused(code) => refused(*code),
+        Outcome::NotAllowed(allow) => {
+            let code = RefusalCode::MethodNotAllowed;
+            (code.status(), refusal_body(code), Some(*allow))
+        }
+        // `serve` relays an admitted request before anything is written; one that reaches
+        // here had no relay to go to.
+        Outcome::Relay(_) => refused(RefusalCode::PathUnknown),
     };
     let mut head = String::new();
     head.push_str("HTTP/1.1 ");
@@ -492,8 +625,10 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
     if status == 401 {
         head.push_str("www-authenticate: Bearer\r\n");
     }
-    if code == Some(RefusalCode::MethodNotAllowed) {
-        head.push_str("allow: GET, HEAD\r\n");
+    if let Some(allow) = allow {
+        head.push_str("allow: ");
+        head.push_str(allow);
+        head.push_str("\r\n");
     }
     head.push_str("\r\n");
     if !write_by(stream, head.as_bytes(), deadline) {
@@ -506,7 +641,7 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
 
 /// Writes all of `bytes` before `deadline`, or gives up. A peer that stops reading cannot hold
 /// the connection past the deadline, so it cannot hold a graceful stop either.
-fn write_by(stream: &mut TcpStream, mut bytes: &[u8], deadline: Instant) -> bool {
+pub(crate) fn write_by(stream: &mut TcpStream, mut bytes: &[u8], deadline: Instant) -> bool {
     while !bytes.is_empty() {
         let left = deadline.saturating_duration_since(Instant::now());
         if left.is_zero() || stream.set_write_timeout(Some(left)).is_err() {
@@ -543,16 +678,54 @@ fn reason_phrase(status: u16) -> &'static str {
         401 => "Unauthorized",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        413 => "Content Too Large",
         431 => "Request Header Fields Too Large",
+        502 => "Bad Gateway",
         503 => "Service Unavailable",
         _ => UNKNOWN_PHRASE,
     }
 }
 
+/// The reason phrase of a relayed status. A target may answer with any status; one this
+/// gateway has no phrase for is relayed with an empty one, which HTTP/1.1 allows.
+pub(crate) fn relayed_phrase(status: u16) -> &'static str {
+    match status {
+        201 => "Created",
+        202 => "Accepted",
+        422 => "Unprocessable Content",
+        429 => "Too Many Requests",
+        500 => "Internal Server Error",
+        _ => match reason_phrase(status) {
+            UNKNOWN_PHRASE => "",
+            phrase => phrase,
+        },
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{UNKNOWN_PHRASE, reason_phrase};
+    use super::{Request, UNKNOWN_PHRASE, reason_phrase};
     use crate::error::RefusalCode;
+
+    /// RFC 9110 section 5.5: a CR, LF or NUL left inside a line once the head is split at its
+    /// CRLFs is refused wherever it sits, so no other reader can see a line this one does not.
+    #[test]
+    fn a_cr_lf_or_nul_inside_a_head_line_is_malformed() {
+        assert!(Request::parse("POST /v1/messages HTTP/1.1\r\nx-note: a").is_ok());
+        for head in [
+            "POST /v1/messages HTTP/1.1\r\nx-note: a\ntransfer-encoding: chunked",
+            "POST /v1/messages HTTP/1.1\r\nx-note: a\rb",
+            "POST /v1/messages HTTP/1.1\r\nx-note: a\0b",
+            "POST /v1/messages\n HTTP/1.1\r\nx-note: a",
+            "POST /v1/messages HTTP/1.1\r\nx-n\note: a",
+        ] {
+            assert_eq!(
+                Request::parse(head).err(),
+                Some(RefusalCode::RequestMalformed),
+                "{head:?}"
+            );
+        }
+    }
 
     /// The reason phrase is the one property of a refusal the `refusal_codes!` macro does not
     /// generate, because it belongs to the status rather than to the code. A variant added with

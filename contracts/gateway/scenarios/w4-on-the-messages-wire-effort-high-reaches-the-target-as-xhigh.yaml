@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh
+summary: output_config.effort and chat_template_kwargs.reasoning_effort equal to high become xhigh on the messages wire; any other value passes unchanged
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"output_config\":{\"effort\":\"high\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"output_config\":{\"effort\":\"medium\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"HIGH\"},\"effort\":\"high\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    upstream:
+    - 'pod-1 POST /v1/messages {"model":"served-code","output_config":{"effort":"xhigh"},"chat_template_kwargs":{"reasoning_effort":"xhigh"}}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","output_config":{"effort":"medium"},"chat_template_kwargs":{"reasoning_effort":"HIGH"},"effort":"high"}'

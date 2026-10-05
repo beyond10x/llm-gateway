@@ -1,0 +1,33 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w5-an-event-stream-is-relayed-unchanged-as-it-arrives
+summary: each event reaches the client before the pod sends the next, the pod's content type is kept, every answer is no-store, and the target is released once the stream ends
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"text/event-stream; charset=utf-8","framing":"chunked","chunks":["data: {\"n\":1}\n\n","data: {\"n\":2}\n\n","data: {\"n\":3}\n\n","data: [DONE]\n\n"]},{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"id\":","\"split\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"stream\":true}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    bodies:
+    - "data: {\"n\":1}\n\ndata: {\"n\":2}\n\ndata: {\"n\":3}\n\ndata: [DONE]\n\n"
+    - '{"id":"split"}'
+    headers:
+    - content-type=text/event-stream; charset=utf-8 cache-control=no-store allow=absent
+    - content-type=application/json; charset=utf-8 cache-control=no-store allow=absent
+    arrivals:
+    - streamed
+    - streamed
+    acquired: 2
+    released: 2

@@ -7,7 +7,9 @@ domain: llm-gateway.gateway
 # the real `Gateway` bound to a loopback socket and exercised with raw HTTP/1.1 requests; they
 # are not a production event bus.
 #
-# DEFERRED: protocol translation and proxying a model call are not implemented; they belong to
+# The gateway also relays three model-call wires to a target the embedding selects, without
+# translating between them (story:wire-relay; the `Relay` command below).
+# DEFERRED: protocol translation between wires is not implemented; it belongs to
 # story:gateway-translation. There is exactly one owner (crates/llm-gateway/src/auth.rs:11), and
 # the single-owner admission is what the credential scenarios below declare.
 # DECIDED 2026-09-27: the gateway has no multi-tenant accounts or quotas; tenancy and quotas belong
@@ -19,9 +21,38 @@ domain: llm-gateway.gateway
 types:
   # The closed refusal set, with the wire code, status and fixed message the crate publishes
   # (crates/llm-gateway/src/error.rs:99-133).
+  #
+  # The relay adds eight (rows W1, W3, W7, K11), each `{"error":{"code":..,"message":..}}` like
+  # every other refusal, with this fixed message:
+  #   body-incomplete     400  a body that ended, or stalled past the read timeout, before it was
+  #                            complete: "the request body ended or stalled before it was
+  #                            complete"
+  #   body-too-large      413  a request body over 33554432 bytes (32 MiB), declared or decoded:
+  #                            "the request body exceeds its byte bound"
+  #   body-not-json       400  the body is not one JSON object:
+  #                            "the request body is not one JSON object"
+  #   model-absent        400  the object has no top-level `model` string:
+  #                            "the request body names no model"
+  #   model-unknown       404  no relayed model has that alias: "no such model"
+  #   wire-not-served     400  the model does not declare the wire of the path it was sent to:
+  #                            "the model is not served on this wire"
+  #   target-unavailable  503  the embedding handed out no target for the model:
+  #                            "no model target is available"
+  #   upstream-failed     502  the target could not be reached, closed without an answer, or
+  #                            answered 502, 503 or 504: "the model target could not be reached
+  #                            or failed; the next request asks for a replacement"
+  # DECIDED: llmgw answers `{"error":{"type":..,"message":..}}` with `invalid_request_error`,
+  # `model_not_found` and `upstream_error` (llmgw src/lib.rs:515-552, 686-691); llm-gateway keeps
+  # its own published refusal shape and codes, so a client reads `error.code`, not `error.type`.
   - name: llm-gateway.gateway.Refusal
     kind: enum
-    variants: [BodyNotAllowed, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, Unavailable]
+    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
+  # A wire the gateway relays, each on its own path, to the same path at the target (rows R6-R8):
+  # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
+  # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
+  - name: llm-gateway.gateway.Wire
+    kind: enum
+    variants: [Chat, Responses, Messages]
   # A header whose name is followed by whitespace before its colon is `request-malformed`
   # (RFC 9112 section 5.1; server.rs Request::parse).
   #
@@ -36,9 +67,13 @@ types:
   # `inventory:malformed-digest`, and `inventory:too-many-routes` for more than 4096 routes
   # (inventory.rs:25, 252); exactly 4096 is composed. A program reaches that count through its
   # inventory's `generated_routes`, which appends routes `g<i>` the program need not spell out.
+  #
+  # A relayed model (row K11; relay.rs RelayModel::new, Relay::new): `relay:no-wire` for an empty
+  # wire set, `relay:repeated-wire` for a wire named twice, `relay:duplicate-model` for two models
+  # with one alias.
   - name: llm-gateway.gateway.CompositionRefusal
     kind: enum
-    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes]
+    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel]
 entities:
   # One gateway: one owner verifier, one route inventory snapshot, one listener.
   - name: llm-gateway.gateway.Gateway
@@ -74,6 +109,83 @@ entities:
       # The graceful stop's report, as `accepted=<n> completed=<n>`.
       - {name: shutdown, type: 'Optional<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+  # One run of the relay (story:wire-relay), observed over loopback: the real gateway composed
+  # with relayed models and a target source whose targets are loopback fixture pods. Nothing
+  # leaves the machine.
+  #
+  # The relay, in the order the gateway decides (each step is the row it answers):
+  #   1. Probes, shedding and owner authentication come first, exactly as for inspection: an
+  #      unauthenticated relay is refused before any byte of its body is read. DECIDED: llmgw
+  #      serves its wires without authentication (`--insecure`, llmgw README.md:28); llm-gateway
+  #      admits only its owner's bearer credential.
+  #   2. A wire path takes `POST` only; another method is `method-not-allowed` with
+  #      `allow: POST`. A gateway composed without a relay keeps its inspection-only answers.
+  #      Before `mark_ready` and once stopped, a relay is `unavailable`, like inspection.
+  #   3. W1: the body is bounded at 33554432 bytes (32 MiB; llmgw src/lib.rs:35). A
+  #      `content-length` over the bound is `body-too-large` before a byte is read; a chunked
+  #      body is decoded and refused the moment its decoded size passes the bound. Exactly
+  #      33554432 bytes are relayed. A chunk size is `1*HEXDIG` with an optional extension after
+  #      `;` (RFC 9112 section 7.1), else `request-malformed`, which also names a head holding a
+  #      CR, LF or NUL inside a line (RFC 9110 section 5.5). A chunked body's trailer section
+  #      counts against the head bound (`request-too-large`). A body that ends or stalls before
+  #      it is complete is `body-incomplete`.
+  #   4. W3: the body must be one well-formed UTF-8 JSON object (`body-not-json`) with exactly
+  #      one top-level `model` key whose value is a string (`model-absent`; a second top-level
+  #      `model` is `body-not-json`, because the target could read the other one), naming a
+  #      relayed model after JSON unescaping (`model-unknown`, 404).
+  #   5. K11: the model must declare the path's wire (`wire-not-served`). Steps 3-5 hand out no
+  #      target, so a refused request never wakes a pod.
+  #   6. W2: the top-level `model` value is rewritten to the model's upstream name on every wire,
+  #      written as a JSON string (a `"` or `\` in the name is escaped).
+  #      W4: on the messages wire only, `output_config.effort` and
+  #      `chat_template_kwargs.reasoning_effort` equal to `high` become `xhigh`; any other value,
+  #      and these fields on the chat and responses wires, pass unchanged (llmgw
+  #      src/lib.rs:470-504). Every other byte of the body reaches the target unchanged.
+  #      DECIDED: llmgw re-serialises the parsed document (sorted keys, compact); llm-gateway
+  #      rewrites only those string values in place.
+  #   7. The embedding's target source hands out the target serving the model; none is
+  #      `target-unavailable`. The request goes to the same path at the target, with a
+  #      `content-length`.
+  #   8. W7: a target that cannot be connected to, closes without an answer, or answers 502,
+  #      503 or 504 is reported failed to the target source by the endpoint that served it (so
+  #      the source drops it only if it is still current), and the client gets `upstream-failed`
+  #      (502). The next request asks the source again and so reaches a replacement. Any other
+  #      status, 500 and 4xx included, is relayed and the target is kept.
+  #   9. W5: the target's status, its `content-type` and its decoded body bytes reach the client
+  #      unchanged and as they arrive, event streams included, with `cache-control: no-store`.
+  #      The target is held until the last byte is relayed (row L12), then released. An HTTP/1.0
+  #      client is not sent a chunked answer (RFC 9112 section 6.1): it gets the bytes unframed,
+  #      ended by closing the connection. Every head the target sends, interim 1xx heads
+  #      included, and its trailer section share one head-sized budget.
+  - name: llm-gateway.gateway.RelayObservation
+    identity: {name: observation_id, type: String}
+    fields: &relay_facts
+      - {name: valid_program, type: Boolean}
+      # Why the gateway could not be composed: `token:<rule>`, `verifier:<rule>`,
+      # `label:<rule>` or `relay:<rule>`.
+      - {name: error_code, type: 'Optional<String>'}
+      # One entry per step, in order: `ok` for `mark_ready`, and for a request
+      # `<status> <refusal code>` for a refusal or `<status> relayed` for a relayed answer.
+      - {name: results, type: 'List<String>'}
+      # The body each request received, decoded from its HTTP framing, in order.
+      - {name: bodies, type: 'List<String>'}
+      # Per request, `content-type=<value> cache-control=<value> allow=<value>`, `absent` for a
+      # header that was not sent.
+      - {name: headers, type: 'List<String>'}
+      # Per request, `streamed` when every chunk a pod released reached the client before the
+      # pod released the next, `held` when one did not, `none` when no pod answered it.
+      - {name: arrivals, type: 'List<String>'}
+      # Every request a fixture pod received, in order, as `<pod> <method> <path> <body>`; the
+      # pods are `pod-1`, `pod-2`, … in the order the target source hands them out. A body over
+      # 4096 bytes is written `<n> bytes`.
+      - {name: upstream, type: 'List<String>'}
+      # How many times the gateway asked the target source for a target.
+      - {name: acquired, type: Integer}
+      # Every pod the gateway reported failed, in order.
+      - {name: invalidated, type: 'List<String>'}
+      # How many targets the gateway had released when the run ended.
+      - {name: released, type: Integer}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   - name: llm-gateway.gateway.Exchange
     input:
@@ -87,9 +199,41 @@ commands:
           llm-gateway.gateway.Exchanged:
             valid_program: {generated: true}
         summary: Observe the real gateway's answers to raw requests over a loopback socket.
+  - name: llm-gateway.gateway.Relay
+    input:
+      # A bounded fixture program:
+      #   secret  the owner secret
+      #   models  `[{alias, upstream_model, wires}]`, the relayed models; `wires` names
+      #           `chat`, `responses`, `messages`
+      #   pods    one script per fixture pod, `pod-1` first. The target source hands out the
+      #           current pod; once the gateway reports it failed, the next pod is current. A
+      #           pod answers its connections with its script in order, and refuses a
+      #           connection past its script. An answer is
+      #           `{status, content_type, chunks, framing}` (`framing` is `length`, the
+      #           default, or `chunked`; each chunk is released only after the client received
+      #           the one before it, or after two seconds), or `{transport: refused}` (the
+      #           connection is refused) or `{transport: closed}` (the request is read and the
+      #           connection closed without an answer)
+      #   steps   in order: `{step: mark_ready}`, or `{step: request, path, body}` with
+      #           optional `method` (default `POST`), `credential` (default true: the owner's
+      #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
+      #           `}` to exactly that many bytes) and `declare_bytes` (only a head declaring
+      #           that `content-length` is sent, never a body)
+      - {name: program_json, type: String}
+    outcomes:
+      - name: observed
+        emits: [llm-gateway.gateway.Relayed]
+        payload:
+          llm-gateway.gateway.Relayed:
+            valid_program: {generated: true}
+        summary: Observe the real gateway relaying requests to loopback fixture pods.
 events:
   # Test-adapter notification only; there is no production notification transport.
   - name: llm-gateway.gateway.Exchanged
+    fields:
+      - {name: valid_program, type: Boolean}
+  # Test-adapter notification only; there is no production notification transport.
+  - name: llm-gateway.gateway.Relayed
     fields:
       - {name: valid_program, type: Boolean}
 views:
@@ -97,3 +241,7 @@ views:
     source: llm-gateway.gateway.ExchangeObservation
     consistency: read_your_writes
     fields: *exchange_facts
+  - name: llm-gateway.gateway.LastRelay
+    source: llm-gateway.gateway.RelayObservation
+    consistency: read_your_writes
+    fields: *relay_facts

@@ -1,0 +1,29 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused
+summary: a body that is not one JSON object is body-not-json, an object without a model string is model-absent, an alias nobody serves is model-unknown, and none asks for a target
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"not json"},{"step":"request","path":"/v1/chat/completions","body":"[{\"model\":\"code\"}]"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\""},{"step":"request","path":"/v1/responses","body":"{\"input\":\"hi\"}"},{"step":"request","path":"/v1/responses","body":"{\"model\":7}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"other\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 400 body-not-json
+    - 400 body-not-json
+    - 400 body-not-json
+    - 400 model-absent
+    - 400 model-absent
+    - 404 model-unknown
+    upstream: []
+    acquired: 0
+    invalidated: []

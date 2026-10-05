@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T14:17:12Z",
+  "actor": "human:timo",
+  "artifact": "story:wire-relay",
+  "kind": "story",
+  "revision": 11,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "phase 1: 27 tests and 19 conformance cases red (no relay); 20 implementor mutants killed; adversary pass 1: five red cases (trailer bound, buffer growth, chunk-size syntax, HTTP/1.0 chunking, bare LF) fixed with five further mutants killed; matrix rows R6-R8, W1-W5, W7, K11 covered",
+    "reference": "wave/2026-10-05-w50"
+  }
+}

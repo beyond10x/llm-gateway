@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T14:17:12Z",
+  "actor": "human:timo",
+  "artifact": "story:wire-relay",
+  "kind": "story",
+  "revision": 11,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "unit gate: fmt, clippy on 1.98.0 and stable 1.99, cargo test --workspace 294 passed 0 failed, ess validate, conformance 179/179 x3, aep validate all exit 0; wave tree equals unit tree (main 3d33444)",
+    "reference": "wave/2026-10-05-w50"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-05T11:51:08Z",
+  "actor": "human:timo",
+  "artifact": "story:ess-latest",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "w46 gate on ESS 0.52.0: fmt, clippy +1.98.0, cargo test --workspace, ess validate, conformance x3, aep validate all exit 0 (see scratch/gw-gate/summary)",
+    "reference": "wave/2026-10-05-w46"
+  }
+}

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:ess-latest
 kind: story
-status: active
+status: implemented
 title: llm-gateway runs on ESS 0.52.0
 relations:
 - serves: vision:portable-model-inference
@@ -10,17 +10,26 @@ scope:
 - confidence: inferred
   path: .github/workflows
 - confidence: inferred
+  path: AGENTS.md
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
   path: Cargo.lock
 - confidence: inferred
   path: checks/conformance
 - confidence: inferred
   path: contracts
 - confidence: inferred
+  path: docs
+- confidence: inferred
   path: spec
-revision: 8
+- confidence: inferred
+  path: website
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-05T11:36:46Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-05T11:36:46Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-05T11:51:08Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 ## Outcome
 

@@ -110,7 +110,10 @@ fn validating_and_listing_allocate_nothing() {
     assert_eq!(fake.submits(), 0);
     assert_eq!(fake.stops(), 0);
     assert_eq!(fake.lists(), 1);
-    assert!(controller.view().deployments.is_empty());
+    assert_eq!(
+        controller.view().deployments,
+        [] as [llm_provision::DeploymentRecord; 0]
+    );
 }
 
 #[test]
@@ -393,7 +396,10 @@ fn absence_from_a_complete_inventory_discharges_the_obligation() {
     let record = state(&controller, "d1");
     assert_eq!(record.phase, Phase::Stopped);
     assert_eq!(record.stop_evidence, Some(id("inventory-complete-absent")));
-    assert!(controller.view().totals.stop_required.is_empty());
+    assert_eq!(
+        controller.view().totals.stop_required,
+        [] as [llm_provision::Identifier; 0]
+    );
 }
 
 #[test]
@@ -774,7 +780,10 @@ fn an_explicit_confirmation_carries_its_own_evidence() {
     let record = state(&controller, "d1");
     assert_eq!(record.phase, Phase::Stopped);
     assert_eq!(record.stop_evidence, Some(id("invoice-line-7")));
-    assert!(controller.view().totals.stop_required.is_empty());
+    assert_eq!(
+        controller.view().totals.stop_required,
+        [] as [llm_provision::Identifier; 0]
+    );
 }
 
 #[test]
@@ -796,7 +805,10 @@ fn a_higher_epoch_owner_disowns_our_record_and_we_stop_mutating_it() {
         .expect("inventory");
     let record = state(&controller, "d1");
     assert_eq!(record.phase, Phase::Disowned);
-    assert!(controller.view().totals.stop_required.is_empty());
+    assert_eq!(
+        controller.view().totals.stop_required,
+        [] as [llm_provision::Identifier; 0]
+    );
     assert_eq!(
         controller.apply(
             2_002,
@@ -921,7 +933,10 @@ fn the_fake_provider_reports_its_own_identity_and_never_allocates_while_listing(
     let mut fake = provider();
     let inventory = fake.inventory();
     assert!(inventory.complete());
-    assert!(inventory.resources.is_empty());
+    assert_eq!(
+        inventory.resources,
+        [] as [llm_provision::ObservedResource; 0]
+    );
     assert_eq!(fake.allocations(), 0);
     assert!(fake.honours_idempotency_key());
 }
@@ -945,7 +960,10 @@ fn an_authorization_from_another_ledger_is_refused() {
         ),
         Err(HostingError::Unauthorized)
     );
-    assert!(controller.view().deployments.is_empty());
+    assert_eq!(
+        controller.view().deployments,
+        [] as [llm_provision::DeploymentRecord; 0]
+    );
     assert_eq!(fake.submits(), 0);
 }
 
@@ -1232,7 +1250,7 @@ fn a_disowned_record_reports_its_obligation_as_transferred_rather_than_vanished(
         record.stop_evidence, None,
         "nothing stopped, so nothing is evidence that anything stopped"
     );
-    assert!(totals.stop_required.is_empty());
+    assert_eq!(totals.stop_required, [] as [llm_provision::Identifier; 0]);
     assert_eq!(
         totals.transferred,
         vec![id("d1")],
@@ -1946,7 +1964,10 @@ fn a_command_whose_only_phase_change_is_forbidden_is_refused_rather_than_reporte
         assert_eq!(record.phase, Phase::Declared);
         assert_eq!(record.stop_reason, None);
         assert_eq!(record.stop_evidence, None);
-        assert!(controller.view().totals.stop_required.is_empty());
+        assert_eq!(
+            controller.view().totals.stop_required,
+            [] as [llm_provision::Identifier; 0]
+        );
     }
     // Cancel is the mirror: from `Declared` it is the one that is permitted.
     controller

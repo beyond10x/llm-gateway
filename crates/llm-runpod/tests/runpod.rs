@@ -279,7 +279,7 @@ fn a_model_without_a_volume_carries_no_placement_or_cache_override() {
     let request = &stack.runpod.requests()[0];
     assert_eq!(request.network_volume_id, None);
     assert_eq!(request.volume_mount_path, None);
-    assert!(request.data_center_ids.is_empty());
+    assert_eq!(request.data_center_ids, [] as [String; 0]);
     assert!(!request.env.contains_key("HF_HOME"));
 }
 
@@ -324,7 +324,7 @@ fn every_declared_gpu_refusing_withdraws_the_deployment_and_leaves_no_pod() {
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
         Some(PoolError::NoCapacity)
     );
-    assert!(stack.runpod.pods().is_empty());
+    assert_eq!(stack.runpod.pods(), [] as [llm_runpod::Pod; 0]);
     let phases: Vec<_> = stack
         .pool
         .view()
@@ -388,7 +388,7 @@ fn a_crash_looping_pod_is_terminated_and_the_next_request_starts_a_fresh_one() {
     }
     assert_eq!(refusal, Some(Err(PoolError::CrashLoop)));
     assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
-    assert!(stack.runpod.pods().is_empty());
+    assert_eq!(stack.runpod.pods(), [] as [llm_runpod::Pod; 0]);
     stack.runpod.ready_after(0);
     stack.runpod.uptimes(Vec::new());
     let lease = ready(&stack);
@@ -505,7 +505,7 @@ fn a_restarted_pool_adopts_its_own_pod_by_exact_identity_without_creating() {
         Some("https://pod-1-8000.proxy.runpod.net")
     );
     assert_eq!(stack.runpod.create_calls(), 1, "adoption creates nothing");
-    assert!(stack.runpod.terminations().is_empty());
+    assert_eq!(stack.runpod.terminations(), [] as [String; 0]);
 }
 
 #[test]
@@ -552,7 +552,7 @@ fn a_pod_retagged_by_a_newer_owner_is_handed_over_and_never_terminated() {
     stack.clock.advance(1_000);
     let _ = stack.pool.ensure(&id(ALIAS), &authorization());
     let report = stack.pool.reap().expect("reap");
-    assert!(report.orphans.is_empty());
+    assert_eq!(report.orphans, [] as [llm_provision::Identifier; 0]);
     assert!(
         !stack.runpod.terminations().contains(&"pod-1".to_owned()),
         "the newer owner's pod is not ours to stop"
@@ -570,8 +570,11 @@ fn an_idle_pod_is_reaped_and_the_next_request_cold_starts_again() {
     let stack = stack();
     drop(ready(&stack));
     stack.clock.advance(1_799_999);
-    assert!(stack.pool.reap().expect("reap").idle.is_empty());
-    assert!(stack.runpod.terminations().is_empty());
+    assert_eq!(
+        stack.pool.reap().expect("reap").idle,
+        [] as [llm_provision::Identifier; 0]
+    );
+    assert_eq!(stack.runpod.terminations(), [] as [String; 0]);
     stack.clock.advance(1);
     let report = stack.pool.reap().expect("reap");
     assert_eq!(report.idle, vec![id("qwen-1")]);
@@ -588,8 +591,11 @@ fn an_open_stream_lease_keeps_the_pod_from_being_reaped() {
     let stack = stack();
     let lease = ready(&stack);
     stack.clock.advance(3_000_000);
-    assert!(stack.pool.reap().expect("reap").idle.is_empty());
-    assert!(stack.runpod.terminations().is_empty());
+    assert_eq!(
+        stack.pool.reap().expect("reap").idle,
+        [] as [llm_provision::Identifier; 0]
+    );
+    assert_eq!(stack.runpod.terminations(), [] as [String; 0]);
     drop(lease);
     stack.clock.advance(1_799_999);
     assert!(
@@ -609,7 +615,10 @@ fn the_idle_limit_is_never_below_the_measured_cold_start() {
     drop(ready_slowly(&stack, 1_000));
     // The start took about 240 s, so one idle minute is not worth paying that again.
     stack.clock.advance(60_000);
-    assert!(stack.pool.reap().expect("reap").idle.is_empty());
+    assert_eq!(
+        stack.pool.reap().expect("reap").idle,
+        [] as [llm_provision::Identifier; 0]
+    );
     stack.clock.advance(181_000);
     assert_eq!(stack.pool.reap().expect("reap").idle, vec![id("qwen-1")]);
 }
@@ -675,7 +684,7 @@ fn the_orphan_sweep_never_selects_a_legacy_llmgw_pod() {
         ]),
     );
     let report = stack.pool.reap().expect("reap");
-    assert!(report.orphans.is_empty());
+    assert_eq!(report.orphans, [] as [llm_provision::Identifier; 0]);
     drop(ready(&stack));
     assert_eq!(
         stack.runpod.create_calls(),
@@ -699,7 +708,10 @@ fn a_model_removed_from_the_registry_has_its_pod_stopped_after_restart() {
     let report = restarted.reap().expect("reap");
     assert_eq!(report.retired, vec![id("qwen-1")]);
     assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
-    assert!(restarted.view().totals.stop_required.is_empty());
+    assert_eq!(
+        restarted.view().totals.stop_required,
+        [] as [llm_provision::Identifier; 0]
+    );
 }
 
 #[test]
@@ -720,7 +732,7 @@ fn listing_through_the_provider_allocates_and_terminates_nothing() {
         .expect("observe");
     assert_eq!(runpod.lists(), 1);
     assert_eq!(runpod.create_calls(), 0);
-    assert!(runpod.terminations().is_empty());
+    assert_eq!(runpod.terminations(), [] as [String; 0]);
 }
 
 #[test]
@@ -946,7 +958,7 @@ fn restarts_spread_over_more_than_the_crash_window_are_not_a_crash_loop() {
         stack.pool.ensure(&id(ALIAS), &authorization()).is_ok(),
         "the first restart left the window before the second one happened"
     );
-    assert!(stack.runpod.terminations().is_empty());
+    assert_eq!(stack.runpod.terminations(), [] as [String; 0]);
 }
 
 /// J1, the other side of the window: two restarts inside it still are one.

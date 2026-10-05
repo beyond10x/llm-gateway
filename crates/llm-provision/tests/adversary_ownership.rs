@@ -589,5 +589,5 @@ fn a_create_answer_labelled_for_another_controller_is_not_adopted() {
         },
     );
     assert_eq!(outcome, Err(HostingError::ForeignResource));
-    assert!(provider.stopped_keys.is_empty());
+    assert_eq!(provider.stopped_keys, [] as [llm_provision::ResourceKey; 0]);
 }

@@ -17,8 +17,10 @@ qualified.**
 ## What it is not
 
 It is not a model client: the neutral turn, the protocol clients, credentials, routing and cost
-are llm's. The gateway does not yet relay a model call or translate a protocol; it serves health
-and readiness probes and a read-only route inventory. The hosting contract opens no socket and
+are llm's. The gateway library relays the owner's chat, responses and messages requests to a target
+its embedding hands out, and serves health and readiness probes and a read-only route inventory;
+it translates no protocol, and the binary does not relay yet, because no production transport
+reaches a pod. The hosting contract opens no socket and
 allocates nothing. The Runpod adapter has no production transport and runs only against the
 in-process `EmulatedRunpod`, and the Modal adapter exports nothing. No test makes a paid call or
 provisions a resource.

@@ -5,12 +5,13 @@
 
 use llm_gateway::{
     AuthKind, BillingKind, Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, RefusalCode,
-    RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, TargetLimits,
-    TargetProvenance, TargetSummary, Verdict,
+    Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, RouteSummary,
+    SharedSecretVerifier, ShutdownReport, TargetLimits, TargetProvenance, TargetSummary, Verdict,
+    Wire,
 };
 use std::{
     collections::BTreeSet,
-    io::{Read, Write},
+    io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{
         Arc,
@@ -25,9 +26,11 @@ const CONTRACT: &str = include_str!("../../../docs/gateway.md");
 const SOURCES: &[&str] = &[
     include_str!("../src/lib.rs"),
     include_str!("../src/auth.rs"),
+    include_str!("../src/body.rs"),
     include_str!("../src/error.rs"),
     include_str!("../src/inventory.rs"),
     include_str!("../src/json.rs"),
+    include_str!("../src/relay.rs"),
     include_str!("../src/server.rs"),
 ];
 const OTHER_SECRET: &str = "other-token-0123456789abcdef0123456789abcdef";
@@ -136,13 +139,26 @@ impl Fixture {
     }
 
     fn configured(ready: bool, secret: &str, adjust: impl FnOnce(&mut GatewayConfig)) -> Self {
+        Self::composed(ready, secret, None, adjust)
+    }
+
+    fn composed(
+        ready: bool,
+        secret: &str,
+        relay: Option<Relay>,
+        adjust: impl FnOnce(&mut GatewayConfig),
+    ) -> Self {
         let source = CountingSecretSource::new(secret);
         let token = OwnerToken::new(source.resolve()).unwrap();
         let verifier = Arc::new(SharedSecretVerifier::new(token).unwrap());
         let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
         config.read_timeout = Duration::from_secs(5);
         adjust(&mut config);
-        let handle = Gateway::bind(config, verifier, inventory()).unwrap();
+        let handle = match relay {
+            Some(relay) => Gateway::bind_with_relay(config, verifier, inventory(), relay),
+            None => Gateway::bind(config, verifier, inventory()),
+        }
+        .unwrap();
         if ready {
             handle.mark_ready();
         }
@@ -452,6 +468,50 @@ struct Provocation {
     max_head_bytes: usize,
     max_concurrent_requests: u64,
     raw: String,
+    /// Whether the gateway is composed with [`provoking_relay`].
+    relayed: bool,
+}
+
+/// A target nothing can connect to.
+struct Unreachable;
+
+impl RelayTarget for Unreachable {
+    fn authority(&self) -> &'static str {
+        "unreachable.invalid:8000"
+    }
+
+    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
+        Err(io::ErrorKind::ConnectionRefused.into())
+    }
+}
+
+/// Hands out an unreachable target for `down` and none for anything else.
+struct ProvokingTargets;
+
+impl RelayTargets for ProvokingTargets {
+    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
+        (alias == "down").then(|| Box::new(Unreachable) as Box<dyn RelayTarget>)
+    }
+
+    fn invalidate(&self, _alias: &str, _authority: &str) {}
+}
+
+/// Two chat-only models: `down`, whose target cannot be reached, and `none`, which has none.
+fn provoking_relay() -> Relay {
+    let model = |alias: &str| RelayModel::new(label(alias), label("served"), vec![Wire::Chat]);
+    Relay::new(
+        vec![model("down").unwrap(), model("none").unwrap()],
+        Arc::new(ProvokingTargets),
+    )
+    .unwrap()
+}
+
+/// An authenticated relay of `body` on `path`.
+fn relay_request(path: &str, body: &str) -> String {
+    format!(
+        "POST {path} HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    )
 }
 
 fn provoke(code: RefusalCode) -> Provocation {
@@ -460,14 +520,36 @@ fn provoke(code: RefusalCode) -> Provocation {
         max_head_bytes: 8192,
         max_concurrent_requests: 64,
         raw: raw.to_string(),
+        relayed: false,
     };
     let owned = |raw: String| Provocation {
         ready: true,
         max_head_bytes: 8192,
         max_concurrent_requests: 64,
         raw,
+        relayed: false,
     };
+    let relayed = |path: &str, body: &str| Provocation {
+        ready: true,
+        max_head_bytes: 8192,
+        max_concurrent_requests: 64,
+        raw: relay_request(path, body),
+        relayed: true,
+    };
+    let chat = "/v1/chat/completions";
     match code {
+        RefusalCode::BodyTooLarge => Provocation {
+            raw: format!(
+                "POST {chat} HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\ncontent-length: 33554433\r\n\r\n"
+            ),
+            ..relayed(chat, "")
+        },
+        RefusalCode::BodyNotJson => relayed(chat, "nope"),
+        RefusalCode::ModelAbsent => relayed(chat, "{}"),
+        RefusalCode::ModelUnknown => relayed(chat, "{\"model\":\"other\"}"),
+        RefusalCode::WireNotServed => relayed("/v1/messages", "{\"model\":\"none\"}"),
+        RefusalCode::TargetUnavailable => relayed(chat, "{\"model\":\"none\"}"),
+        RefusalCode::UpstreamFailed => relayed(chat, "{\"model\":\"down\"}"),
         RefusalCode::CredentialAbsent => plain("GET /v1/routes HTTP/1.1\r\nhost: h\r\n\r\n"),
         RefusalCode::CredentialRejected => owned(format!(
             "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OTHER_SECRET}\r\n\r\n"
@@ -496,6 +578,7 @@ fn provoke(code: RefusalCode) -> Provocation {
                 "GET /v1/routes HTTP/1.1\r\nhost: h\r\nx-pad: {}\r\n\r\n",
                 "p".repeat(2048)
             ),
+            relayed: false,
         },
         // A bound of zero makes every connection one too many: the overload path, without a race.
         RefusalCode::Overloaded => Provocation {
@@ -505,6 +588,7 @@ fn provoke(code: RefusalCode) -> Provocation {
             raw: format!(
                 "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
             ),
+            relayed: false,
         },
         RefusalCode::Unavailable => Provocation {
             ready: false,
@@ -513,6 +597,7 @@ fn provoke(code: RefusalCode) -> Provocation {
             raw: format!(
                 "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
             ),
+            relayed: false,
         },
     }
 }
@@ -521,7 +606,8 @@ fn provoke(code: RefusalCode) -> Provocation {
 fn every_refusal_code_has_a_request_that_provokes_it() {
     for &code in RefusalCode::ALL {
         let provocation = provoke(code);
-        let gateway = Fixture::configured(provocation.ready, OWNER_SECRET, |config| {
+        let relay = provocation.relayed.then(provoking_relay);
+        let gateway = Fixture::composed(provocation.ready, OWNER_SECRET, relay, |config| {
             config.max_head_bytes = provocation.max_head_bytes;
             config.max_concurrent_requests = provocation.max_concurrent_requests;
         });
@@ -705,8 +791,11 @@ fn numeric_constants_in_the_source() -> Vec<(String, u64)> {
     for source in SOURCES {
         for line in source.lines() {
             let line = line.trim();
+            // Every visibility a constant can be declared with: a `pub(crate)` bound is as real
+            // as a private one, and a scan that skipped it would never ask for its row.
             let Some(rest) = line
                 .strip_prefix("pub const ")
+                .or_else(|| line.strip_prefix("pub(crate) const "))
                 .or_else(|| line.strip_prefix("const "))
             else {
                 continue;
@@ -720,7 +809,8 @@ fn numeric_constants_in_the_source() -> Vec<(String, u64)> {
             if kind != "usize" && kind != "u64" {
                 continue;
             }
-            if let Ok(value) = value.trim_end_matches(';').parse() {
+            // Digit separators are part of the literal: `33_554_432` is a bound like `4096`.
+            if let Ok(value) = value.trim_end_matches(';').replace('_', "").parse() {
                 found.push((name.to_string(), value));
             }
         }
@@ -734,6 +824,10 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
     (
         "READ_CHUNK",
         "the size of one internal read, not a limit on any request",
+    ),
+    (
+        "RELAY_CHUNK",
+        "the size of one internal read while relaying, not a limit on any request or answer",
     ),
     (
         "DEFAULT_READ_TIMEOUT_SECONDS",
@@ -869,7 +963,29 @@ fn enforced_bounds() -> Vec<Bound> {
             direction: Direction::Maximum,
             admits: Box::new(|n| the_nth_concurrent_connection(usize::try_from(n).unwrap()) == 200),
         },
+        // Over a real socket, with the whole body sent: what is measured is the relay reading
+        // it, not the declared length alone.
+        Bound {
+            name: "request-body-bytes",
+            value: 33_554_432,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| a_relayed_body_of_exactly(usize::try_from(n).unwrap()).is_none()),
+        },
     ]
+}
+
+/// Sends an authenticated relay whose body is exactly `total` bytes and returns the refusal it
+/// was answered with if that refusal is `body-too-large`. A body within the bound is read and
+/// then refused as not JSON, which is the other answer.
+fn a_relayed_body_of_exactly(total: usize) -> Option<String> {
+    let gateway = Fixture::composed(true, OWNER_SECRET, Some(provoking_relay()), |_| {});
+    let raw = relay_request("/v1/chat/completions", &"a".repeat(total));
+    let code = gateway.send(&raw).code();
+    assert!(
+        matches!(code.as_deref(), Some("body-too-large" | "body-not-json")),
+        "{code:?}"
+    );
+    code.filter(|code| code == "body-too-large")
 }
 
 /// Sends a request head of exactly `total` bytes to a default-configured gateway and returns the

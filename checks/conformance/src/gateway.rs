@@ -25,7 +25,10 @@ use serde_json::{Value, json};
 use crate::target::Observed;
 
 /// Every view name this domain answers through `query_view`.
-pub const VIEWS: &[&str] = &["llm-gateway.gateway.LastExchange"];
+pub const VIEWS: &[&str] = &[
+    "llm-gateway.gateway.LastExchange",
+    "llm-gateway.gateway.LastRelay",
+];
 
 const MAX_PROGRAM_BYTES: usize = 64 * 1024;
 const MAX_STEPS: usize = 64;
@@ -37,10 +40,11 @@ const CLIENT_TIMEOUT: Duration = Duration::from_secs(10);
 
 /// Observe one command of this domain, or `None` when the command belongs to another.
 pub fn observe(command: &str, input: &Value) -> Option<Result<Observed, TargetError>> {
-    if command != "llm-gateway.gateway.Exchange" {
-        return None;
+    match command {
+        "llm-gateway.gateway.Exchange" => Some(exercise(input)),
+        "llm-gateway.gateway.Relay" => Some(relay::exercise(input)),
+        _ => None,
     }
-    Some(exercise(input))
 }
 
 fn unavailable(error: impl std::fmt::Display) -> TargetError {
@@ -459,4 +463,740 @@ fn run(program_json: &str) -> Value {
         live.shutdown();
     }
     facts
+}
+
+/// The `Relay` command: the real gateway composed with relayed models and a target source whose
+/// targets are loopback fixture pods in this process. Nothing leaves the machine.
+mod relay {
+    use super::{Observed, label, token_code, unavailable, verifier_code};
+    use ess_conformance::target::TargetError;
+    use llm_gateway::{
+        Gateway, GatewayConfig, GatewayHandle, OwnerToken, Relay, RelayError, RelayModel,
+        RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, Wire,
+    };
+    use serde::Deserialize;
+    use serde_json::{Value, json};
+    use std::{
+        collections::VecDeque,
+        io::{self, Read, Write},
+        net::{Shutdown, SocketAddr, TcpListener, TcpStream},
+        sync::{
+            Arc, Condvar, Mutex,
+            atomic::{AtomicBool, AtomicUsize, Ordering},
+        },
+        thread::{self, JoinHandle},
+        time::{Duration, Instant},
+    };
+
+    const MAX_PROGRAM_BYTES: usize = 64 * 1024;
+    const MAX_STEPS: usize = 64;
+    const MAX_PODS: usize = 16;
+    const MAX_ANSWERS: usize = 64;
+    /// Twice the relay's body bound, so a fixture can step past it and no further.
+    const MAX_PAD_BYTES: usize = 64 * 1024 * 1024;
+    /// A recorded upstream body longer than this is written as its length.
+    const RECORDED_BODY_BYTES: usize = 4096;
+    /// How long a pod waits for the client to receive one chunk before it releases the next.
+    const CHUNK_HOLD: Duration = Duration::from_secs(2);
+    /// How long either side waits for the other. Far above any relay this program makes.
+    const WAIT: Duration = Duration::from_secs(10);
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Command {
+        program_json: String,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct Program {
+        secret: String,
+        models: Vec<ModelInput>,
+        pods: Vec<Vec<AnswerInput>>,
+        steps: Vec<Step>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct ModelInput {
+        alias: String,
+        upstream_model: String,
+        wires: Vec<String>,
+    }
+
+    /// One scripted answer: a reply, or a transport failure.
+    #[derive(Deserialize, Clone)]
+    #[serde(deny_unknown_fields)]
+    struct AnswerInput {
+        #[serde(default)]
+        status: Option<u16>,
+        #[serde(default)]
+        content_type: Option<String>,
+        #[serde(default)]
+        chunks: Vec<String>,
+        #[serde(default)]
+        framing: Option<String>,
+        #[serde(default)]
+        transport: Option<String>,
+    }
+
+    #[derive(Deserialize)]
+    #[serde(tag = "step", rename_all = "snake_case", deny_unknown_fields)]
+    enum Step {
+        MarkReady,
+        Request {
+            path: String,
+            body: String,
+            #[serde(default)]
+            method: Option<String>,
+            #[serde(default)]
+            credential: Option<bool>,
+            #[serde(default)]
+            pad_to_bytes: Option<usize>,
+            #[serde(default)]
+            declare_bytes: Option<u64>,
+        },
+    }
+
+    impl AnswerInput {
+        fn valid(&self) -> bool {
+            match (&self.transport, self.status) {
+                (Some(transport), None) => {
+                    matches!(transport.as_str(), "refused" | "closed")
+                        && self.chunks.is_empty()
+                        && self.content_type.is_none()
+                        && self.framing.is_none()
+                }
+                (None, Some(status)) => {
+                    (200..=599).contains(&status)
+                        && matches!(self.framing.as_deref(), None | Some("length" | "chunked"))
+                }
+                _ => false,
+            }
+        }
+    }
+
+    /// How far the client has read the answer to the current request.
+    #[derive(Default)]
+    struct Progress {
+        received: Mutex<usize>,
+        arrived: Condvar,
+        /// A pod answered this request with a reply.
+        replied: Mutex<Option<(u16, Vec<u8>)>>,
+        /// A pod had to release a chunk before the client received the one before it.
+        held: AtomicBool,
+    }
+
+    impl Progress {
+        fn set_received(&self, count: usize) {
+            if let Ok(mut received) = self.received.lock() {
+                *received = count;
+            }
+            self.arrived.notify_all();
+        }
+
+        /// Waits until the client has received `count` body bytes; false if it did not in time.
+        fn wait_for(&self, count: usize) -> bool {
+            let deadline = Instant::now() + CHUNK_HOLD;
+            let Ok(mut received) = self.received.lock() else {
+                return false;
+            };
+            while *received < count {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    return false;
+                }
+                match self.arrived.wait_timeout(received, left) {
+                    Ok((next, _)) => received = next,
+                    Err(_) => return false,
+                }
+            }
+            true
+        }
+    }
+
+    /// What every pod and the target source share with the run.
+    #[derive(Default)]
+    struct Shared {
+        upstream: Mutex<Vec<String>>,
+        progress: Mutex<Arc<Progress>>,
+        stopping: AtomicBool,
+    }
+
+    struct Pod {
+        name: String,
+        authority: String,
+        script: Arc<Mutex<VecDeque<AnswerInput>>>,
+        thread: Option<JoinHandle<()>>,
+    }
+
+    impl Pod {
+        fn start(index: usize, script: Vec<AnswerInput>, shared: &Arc<Shared>) -> io::Result<Self> {
+            let listener = TcpListener::bind("127.0.0.1:0")?;
+            let authority = listener.local_addr()?.to_string();
+            let name = format!("pod-{}", index + 1);
+            let script = Arc::new(Mutex::new(VecDeque::from(script)));
+            let (serving, recording, pod) = (Arc::clone(&script), Arc::clone(shared), name.clone());
+            let thread = thread::spawn(move || {
+                while let Ok((connection, _)) = listener.accept() {
+                    if recording.stopping.load(Ordering::SeqCst) {
+                        return;
+                    }
+                    let answer = serving
+                        .lock()
+                        .ok()
+                        .and_then(|mut script| script.pop_front());
+                    answer_one(connection, answer, &pod, &recording);
+                }
+            });
+            Ok(Self {
+                name,
+                authority,
+                script,
+                thread: Some(thread),
+            })
+        }
+    }
+
+    /// Reads one request, records it, and answers it as scripted.
+    fn answer_one(
+        mut connection: TcpStream,
+        answer: Option<AnswerInput>,
+        pod: &str,
+        shared: &Shared,
+    ) {
+        let _timeouts = connection
+            .set_read_timeout(Some(WAIT))
+            .and_then(|()| connection.set_write_timeout(Some(WAIT)));
+        let Some(answer) = answer else {
+            return;
+        };
+        if let Some(seen) = read_request(&mut connection)
+            && let Ok(mut upstream) = shared.upstream.lock()
+        {
+            upstream.push(format!("{pod} {seen}"));
+        }
+        let Some(status) = answer.status else {
+            // `closed`: the request was read, and no byte of answer follows.
+            let _closed = connection.shutdown(Shutdown::Both);
+            return;
+        };
+        let progress = shared
+            .progress
+            .lock()
+            .map(|progress| Arc::clone(&progress))
+            .unwrap_or_default();
+        let body: Vec<u8> = answer.chunks.concat().into_bytes();
+        if let Ok(mut replied) = progress.replied.lock() {
+            *replied = Some((status, body.clone()));
+        }
+        let chunked = answer.framing.as_deref() == Some("chunked");
+        let framing = if chunked {
+            "transfer-encoding: chunked\r\n".to_string()
+        } else {
+            format!("content-length: {}\r\n", body.len())
+        };
+        let content_type = answer
+            .content_type
+            .as_ref()
+            .map_or(String::new(), |value| format!("content-type: {value}\r\n"));
+        let head = format!(
+            "HTTP/1.1 {status} Fixture\r\n{content_type}{framing}connection: close\r\n\r\n"
+        );
+        if connection.write_all(head.as_bytes()).is_err() {
+            return;
+        }
+        let mut sent = 0;
+        for (index, chunk) in answer.chunks.iter().enumerate() {
+            if index > 0 && !progress.wait_for(sent) {
+                progress.held.store(true, Ordering::SeqCst);
+            }
+            let mut framed = Vec::new();
+            if chunked {
+                framed.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
+            }
+            framed.extend_from_slice(chunk.as_bytes());
+            if chunked {
+                framed.extend_from_slice(b"\r\n");
+            }
+            if connection
+                .write_all(&framed)
+                .and_then(|()| connection.flush())
+                .is_err()
+            {
+                return;
+            }
+            sent += chunk.len();
+        }
+        if chunked {
+            let _end = connection.write_all(b"0\r\n\r\n");
+        }
+        let _closed = connection.shutdown(Shutdown::Both);
+    }
+
+    /// One request as `<method> <path> <body>`, reading a `content-length` body.
+    fn read_request(connection: &mut TcpStream) -> Option<String> {
+        let mut buffer = Vec::new();
+        let mut chunk = [0_u8; 16_384];
+        let end = loop {
+            if let Some(end) = find(&buffer, b"\r\n\r\n") {
+                break end;
+            }
+            let read = connection.read(&mut chunk).ok()?;
+            if read == 0 {
+                return None;
+            }
+            buffer.extend_from_slice(&chunk[..read]);
+        };
+        let head = String::from_utf8_lossy(&buffer[..end]).into_owned();
+        let length: usize = head
+            .split("\r\n")
+            .filter_map(|line| line.split_once(':'))
+            .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
+            .and_then(|(_, value)| value.trim().parse().ok())
+            .unwrap_or(0);
+        let mut body = buffer[end + 4..].to_vec();
+        while body.len() < length {
+            let read = connection.read(&mut chunk).ok()?;
+            if read == 0 {
+                break;
+            }
+            body.extend_from_slice(&chunk[..read]);
+        }
+        let mut start = head.split("\r\n").next()?.split(' ');
+        let (method, path) = (start.next()?, start.next()?);
+        let body = if body.len() > RECORDED_BODY_BYTES {
+            format!("{} bytes", body.len())
+        } else {
+            String::from_utf8_lossy(&body).into_owned()
+        };
+        Some(format!("{method} {path} {body}"))
+    }
+
+    fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+        haystack
+            .windows(needle.len())
+            .position(|window| window == needle)
+    }
+
+    /// The target source: hands out the current pod, and moves to the next once the gateway
+    /// reports the current one failed.
+    /// A pod as the source knows it: its name, its authority and its script.
+    type PodSlot = (String, String, Arc<Mutex<VecDeque<AnswerInput>>>);
+
+    struct Source {
+        pods: Vec<PodSlot>,
+        current: Mutex<usize>,
+        acquired: AtomicUsize,
+        released: Arc<AtomicUsize>,
+        invalidated: Mutex<Vec<String>>,
+    }
+
+    struct Target {
+        authority: String,
+        script: Arc<Mutex<VecDeque<AnswerInput>>>,
+        released: Arc<AtomicUsize>,
+    }
+
+    impl RelayTargets for Source {
+        fn acquire(&self, _alias: &str) -> Option<Box<dyn RelayTarget>> {
+            self.acquired.fetch_add(1, Ordering::SeqCst);
+            let current = *self.current.lock().ok()?;
+            let (_, authority, script) = self.pods.get(current)?;
+            Some(Box::new(Target {
+                authority: authority.clone(),
+                script: Arc::clone(script),
+                released: Arc::clone(&self.released),
+            }))
+        }
+
+        fn invalidate(&self, _alias: &str, authority: &str) {
+            let named = self.pods.iter().position(|(_, pod, _)| pod == authority);
+            if let Ok(mut invalidated) = self.invalidated.lock() {
+                invalidated.push(
+                    named.map_or_else(|| authority.to_string(), |index| self.pods[index].0.clone()),
+                );
+            }
+            if let Ok(mut current) = self.current.lock()
+                && named == Some(*current)
+            {
+                *current += 1;
+            }
+        }
+    }
+
+    impl RelayTarget for Target {
+        fn authority(&self) -> &str {
+            &self.authority
+        }
+
+        fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
+            let refused = || io::Error::from(io::ErrorKind::ConnectionRefused);
+            let mut script = self.script.lock().map_err(|_| refused())?;
+            // A `refused` answer, or a connection past the script, never reaches the pod.
+            match script.front() {
+                None => return Err(refused()),
+                Some(answer) if answer.transport.as_deref() == Some("refused") => {
+                    script.pop_front();
+                    return Err(refused());
+                }
+                Some(_) => {}
+            }
+            drop(script);
+            let stream = TcpStream::connect(&self.authority)?;
+            stream.set_read_timeout(Some(WAIT))?;
+            stream.set_write_timeout(Some(WAIT))?;
+            Ok(Box::new(stream))
+        }
+    }
+
+    impl Drop for Target {
+        fn drop(&mut self) {
+            self.released.fetch_add(1, Ordering::SeqCst);
+        }
+    }
+
+    pub(super) fn exercise(input: &Value) -> Result<Observed, TargetError> {
+        let command: Command = serde_json::from_value(input.clone()).map_err(unavailable)?;
+        Ok(Observed {
+            facts: run(&command.program_json),
+            view: "llm-gateway.gateway.LastRelay",
+            event: "llm-gateway.gateway.Relayed",
+            field: "valid_program",
+        })
+    }
+
+    fn wire(name: &str) -> Result<Wire, String> {
+        Wire::ALL
+            .into_iter()
+            .find(|wire| wire.label() == name)
+            .ok_or_else(|| "fixture:unknown-wire".to_string())
+    }
+
+    fn relay_code(error: RelayError) -> &'static str {
+        match error {
+            RelayError::NoWire => "no-wire",
+            RelayError::RepeatedWire => "repeated-wire",
+            RelayError::DuplicateModel => "duplicate-model",
+        }
+    }
+
+    fn compose(program: &Program, source: Arc<Source>) -> Result<GatewayHandle, String> {
+        let token = OwnerToken::new(program.secret.as_bytes().to_vec())
+            .map_err(|error| format!("token:{}", token_code(error)))?;
+        let verifier = SharedSecretVerifier::new(token)
+            .map_err(|error| format!("verifier:{}", verifier_code(error)))?;
+        let relay_error = |error| format!("relay:{}", relay_code(error));
+        let mut models = Vec::new();
+        for model in &program.models {
+            let wires = model
+                .wires
+                .iter()
+                .map(|name| wire(name))
+                .collect::<Result<Vec<_>, _>>()?;
+            models.push(
+                RelayModel::new(label(&model.alias)?, label(&model.upstream_model)?, wires)
+                    .map_err(relay_error)?,
+            );
+        }
+        let relay = Relay::new(models, source).map_err(relay_error)?;
+        let inventory =
+            RouteInventory::new(Vec::new()).map_err(|_| "fixture:inventory".to_owned())?;
+        let bind = "127.0.0.1:0"
+            .parse()
+            .map_err(|_| "fixture:bind-address".to_owned())?;
+        let mut config = GatewayConfig::new(bind);
+        config.read_timeout = WAIT;
+        Gateway::bind_with_relay(config, Arc::new(verifier), inventory, relay)
+            .map_err(|_| "bind:refused".to_owned())
+    }
+
+    /// The request a step sends, or `None` for a step the program cannot express.
+    fn request_bytes(secret: &str, step: &Step) -> Option<Vec<u8>> {
+        let Step::Request {
+            path,
+            body,
+            method,
+            credential,
+            pad_to_bytes,
+            declare_bytes,
+        } = step
+        else {
+            return None;
+        };
+        let mut body = body.clone().into_bytes();
+        if let Some(total) = *pad_to_bytes {
+            let prefix = body.strip_suffix(b"}")?;
+            let opening = [prefix, b",\"pad\":\""].concat();
+            let fill = total.checked_sub(opening.len() + 2)?;
+            body = [opening, vec![b'a'; fill], b"\"}".to_vec()].concat();
+        }
+        let auth = if credential.unwrap_or(true) {
+            format!("authorization: Bearer {secret}\r\n")
+        } else {
+            String::new()
+        };
+        let length = declare_bytes.unwrap_or(u64::try_from(body.len()).ok()?);
+        let mut raw = format!(
+            "{} {path} HTTP/1.1\r\nhost: gateway\r\n{auth}content-type: application/json\r\ncontent-length: {length}\r\n\r\n",
+            method.as_deref().unwrap_or("POST")
+        )
+        .into_bytes();
+        if declare_bytes.is_none() {
+            raw.extend_from_slice(&body);
+        }
+        Some(raw)
+    }
+
+    /// What the client received for one request.
+    struct Received {
+        status: Option<u16>,
+        headers: Vec<(String, String)>,
+        body: Vec<u8>,
+    }
+
+    impl Received {
+        fn header(&self, name: &str) -> &str {
+            self.headers
+                .iter()
+                .find(|(key, _)| key == name)
+                .map_or("absent", |(_, value)| value.as_str())
+        }
+    }
+
+    /// Splits off the head, and decodes as much of the body as has arrived.
+    fn decode(raw: &[u8]) -> Option<Received> {
+        let end = find(raw, b"\r\n\r\n")?;
+        let head = String::from_utf8_lossy(&raw[..end]).into_owned();
+        let mut lines = head.split("\r\n");
+        let status = lines
+            .next()
+            .and_then(|line| line.split(' ').nth(1))
+            .and_then(|status| status.parse().ok());
+        let headers: Vec<(String, String)> = lines
+            .filter_map(|line| line.split_once(':'))
+            .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
+            .collect();
+        let rest = &raw[end + 4..];
+        let chunked = headers.iter().any(|(name, value)| {
+            name == "transfer-encoding" && value.eq_ignore_ascii_case("chunked")
+        });
+        let body = if chunked {
+            dechunk(rest)
+        } else {
+            rest.to_vec()
+        };
+        Some(Received {
+            status,
+            headers,
+            body,
+        })
+    }
+
+    fn dechunk(mut rest: &[u8]) -> Vec<u8> {
+        let mut body = Vec::new();
+        while let Some(line_end) = find(rest, b"\r\n") {
+            let size = String::from_utf8_lossy(&rest[..line_end]);
+            let Ok(size) = usize::from_str_radix(size.split(';').next().unwrap_or("").trim(), 16)
+            else {
+                break;
+            };
+            rest = &rest[line_end + 2..];
+            if size == 0 {
+                break;
+            }
+            let available = size.min(rest.len());
+            body.extend_from_slice(&rest[..available]);
+            if rest.len() < size + 2 {
+                break;
+            }
+            rest = &rest[size + 2..];
+        }
+        body
+    }
+
+    /// Sends one request and reads its answer while it arrives, telling the pod how far the
+    /// client has got.
+    fn exchange(addr: SocketAddr, request: &[u8], progress: &Progress) -> Option<Received> {
+        let mut stream = TcpStream::connect(addr).ok()?;
+        stream.set_read_timeout(Some(WAIT)).ok()?;
+        stream.set_write_timeout(Some(WAIT)).ok()?;
+        // A write the gateway cut short is not a lost answer: whatever arrived is read.
+        let _written = stream.write_all(request).and_then(|()| stream.flush());
+        let _half = stream.shutdown(Shutdown::Write);
+        let mut raw = Vec::new();
+        let mut chunk = [0_u8; 16_384];
+        loop {
+            match stream.read(&mut chunk) {
+                Ok(0) | Err(_) => break,
+                Ok(read) => {
+                    raw.extend_from_slice(&chunk[..read]);
+                    if let Some(received) = decode(&raw) {
+                        progress.set_received(received.body.len());
+                    }
+                }
+            }
+        }
+        decode(&raw)
+    }
+
+    fn summary(received: &Received, progress: &Progress) -> String {
+        let Some(status) = received.status else {
+            return "no-response".to_owned();
+        };
+        let replied = progress
+            .replied
+            .lock()
+            .ok()
+            .and_then(|replied| replied.clone());
+        if replied.as_ref() == Some(&(status, received.body.clone())) {
+            return format!("{status} relayed");
+        }
+        let word = serde_json::from_slice::<Value>(&received.body)
+            .ok()
+            .and_then(|value| value["error"]["code"].as_str().map(str::to_owned))
+            .unwrap_or_else(|| "unparsed".to_owned());
+        format!("{status} {word}")
+    }
+
+    fn valid(program: &Program) -> bool {
+        program.steps.len() <= MAX_STEPS
+            && program.pods.len() <= MAX_PODS
+            && program
+                .pods
+                .iter()
+                .all(|pod| pod.len() <= MAX_ANSWERS && pod.iter().all(AnswerInput::valid))
+            && program.steps.iter().all(|step| match step {
+                Step::MarkReady => true,
+                Step::Request { pad_to_bytes, .. } => {
+                    pad_to_bytes.is_none_or(|bytes| bytes <= MAX_PAD_BYTES)
+                }
+            })
+    }
+
+    fn run(program_json: &str) -> Value {
+        let mut facts = json!({
+            "valid_program": false, "error_code": null, "results": [], "bodies": [],
+            "headers": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
+            "released": 0
+        });
+        if program_json.len() > MAX_PROGRAM_BYTES {
+            return facts;
+        }
+        let Ok(program) = serde_json::from_str::<Program>(program_json) else {
+            return facts;
+        };
+        if !valid(&program) {
+            return facts;
+        }
+        facts["valid_program"] = json!(true);
+        let shared = Arc::new(Shared::default());
+        let mut pods = Vec::new();
+        for (index, script) in program.pods.iter().enumerate() {
+            let Ok(pod) = Pod::start(index, script.clone(), &shared) else {
+                facts["error_code"] = json!("fixture:pod");
+                stop(&shared, pods);
+                return facts;
+            };
+            pods.push(pod);
+        }
+        let source = Arc::new(Source {
+            pods: pods
+                .iter()
+                .map(|pod| {
+                    (
+                        pod.name.clone(),
+                        pod.authority.clone(),
+                        Arc::clone(&pod.script),
+                    )
+                })
+                .collect(),
+            current: Mutex::new(0),
+            acquired: AtomicUsize::new(0),
+            released: Arc::new(AtomicUsize::new(0)),
+            invalidated: Mutex::new(Vec::new()),
+        });
+        match compose(&program, Arc::clone(&source)) {
+            Ok(handle) => {
+                steps(&program, &handle, &shared, &mut facts);
+                handle.shutdown();
+            }
+            Err(code) => {
+                facts["error_code"] = json!(code);
+            }
+        }
+        stop(&shared, pods);
+        facts["upstream"] = json!(
+            shared
+                .upstream
+                .lock()
+                .map(|seen| seen.clone())
+                .unwrap_or_default()
+        );
+        facts["acquired"] = json!(source.acquired.load(Ordering::SeqCst));
+        facts["invalidated"] = json!(
+            source
+                .invalidated
+                .lock()
+                .map(|seen| seen.clone())
+                .unwrap_or_default()
+        );
+        facts["released"] = json!(source.released.load(Ordering::SeqCst));
+        facts
+    }
+
+    fn steps(program: &Program, handle: &GatewayHandle, shared: &Shared, facts: &mut Value) {
+        let addr = handle.local_addr();
+        let (mut results, mut bodies, mut headers, mut arrivals) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        for step in &program.steps {
+            if matches!(step, Step::MarkReady) {
+                handle.mark_ready();
+                results.push("ok".to_owned());
+                continue;
+            }
+            let progress = Arc::new(Progress::default());
+            if let Ok(mut current) = shared.progress.lock() {
+                *current = Arc::clone(&progress);
+            }
+            let received = request_bytes(&program.secret, step)
+                .and_then(|raw| exchange(addr, &raw, &progress));
+            let Some(received) = received else {
+                results.push("no-response".to_owned());
+                continue;
+            };
+            results.push(summary(&received, &progress));
+            bodies.push(String::from_utf8_lossy(&received.body).into_owned());
+            headers.push(format!(
+                "content-type={} cache-control={} allow={}",
+                received.header("content-type"),
+                received.header("cache-control"),
+                received.header("allow")
+            ));
+            let replied = progress
+                .replied
+                .lock()
+                .is_ok_and(|replied| replied.is_some());
+            arrivals.push(match (replied, progress.held.load(Ordering::SeqCst)) {
+                (false, _) => "none",
+                (true, false) => "streamed",
+                (true, true) => "held",
+            });
+        }
+        facts["results"] = json!(results);
+        facts["bodies"] = json!(bodies);
+        facts["headers"] = json!(headers);
+        facts["arrivals"] = json!(arrivals);
+    }
+
+    fn stop(shared: &Shared, pods: Vec<Pod>) {
+        shared.stopping.store(true, Ordering::SeqCst);
+        for mut pod in pods {
+            // Unblocks the pod's `accept`, which then sees `stopping`.
+            let _wake = TcpStream::connect(&pod.authority);
+            if let Some(thread) = pod.thread.take() {
+                let _joined = thread.join();
+            }
+        }
+    }
 }

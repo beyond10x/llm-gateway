@@ -34,7 +34,7 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 159 of at least 159 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 178 of at least 178 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
 | No test makes a paid call or provisions an external resource | no production transport exists; adding one is `story:runpod-production-transport` and must keep its tests on the emulator |
 
@@ -98,7 +98,8 @@ A crate that needs an llm client crate takes it by tag,
 `docs/gateway.md` and `docs/hosting.md` are contracts: a behaviour change updates them in the same
 commit, and the gateway tests fail if `docs/gateway.md` drifts from the code. The capability matrix
 cites llmgw and this repository at fixed commits; `story:gateway-binary` re-cited the rows it
-closed (C1, C2, C4, C5, K29, K30, D2) at its own tree. `docs/verification/*` are dated records made
+closed (C1, C2, C4, C5, K29, K30, D2) at its own tree, and `story:wire-relay` the rows it closed
+(R6, R7, R8, W1, W2, W3, W4, W5, W7, K11) at its own. `docs/verification/*` are dated records made
 in beyond10x/llm before the move, some under the old `llm.*` domain names; leave them as written and
 add a new record instead.
 

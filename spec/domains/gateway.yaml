@@ -12,7 +12,7 @@ domain: llm-gateway.gateway
 # the single-owner admission is what the credential scenarios below declare.
 # DECIDED 2026-09-27: the gateway has no multi-tenant accounts or quotas; tenancy and quotas belong
 # to the embedding platform, which runs one gateway per owner.
-# ESS-LIMIT: the owner comparison is constant-time (auth.rs:69-78). ESS 0.36 has no construct
+# ESS-LIMIT: the owner comparison is constant-time (auth.rs:69-78). ESS 0.52 has no construct
 # for a timing or side-channel property (no non-functional or duration-distribution assertion
 # over a command); only its functional result is declared here, and the timing is proved by the
 # crate's unit cases.

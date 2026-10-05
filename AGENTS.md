@@ -69,10 +69,11 @@ Never edit these by hand; change `spec/` or the scenarios and regenerate:
 | `contracts/suite.json` | `ess verify conform synthesize --path spec --suite-format 5 --target ir --scenarios contracts --out contracts/suite.json` |
 | `contracts/schema/schema/` | `ess generate --path spec --kind schema --out contracts/schema` |
 
-`ess` on `PATH` is what `task check` uses. CI installs `ess-cli` from ESS at rev
-`be44a3365eb273cb3d447b74cd5b0e75181d284e`, and `checks/conformance/Cargo.toml` pins
-`ess-conformance` and `ess-primitives` to the same rev. Move all three together, to the newest ESS
-release (workspace rule), and regenerate both files in the same commit.
+`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.52.0 release asset, checked
+against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
+`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.52.0`. Move
+all three together, to the newest ESS release (workspace rule), and regenerate both files in the
+same commit.
 
 A new scenario goes into `contracts/ess-inputs.yaml` as well as onto disk. The run fails when the
 answered or total count falls below its floor in `contracts/baseline.json`, or skipped rises above

@@ -755,7 +755,7 @@ fn every_numeric_bound_in_the_source_is_published() {
     let published = published_bounds();
     for (name, value) in &declared {
         if let Some((_, reason)) = NOT_A_BOUND.iter().find(|(exempt, _)| exempt == name) {
-            assert!(!reason.is_empty());
+            assert_ne!(*reason, "");
             continue;
         }
         let row = published

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.upstream.AttemptResult",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:bd6a09941fc20b8587087c68f56f2530fa5e8867b2807a8a7bcff436fd9c5524",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.upstream.AttemptResult": {
+      "title": "AttemptResult",
+      "x-ess-name": "llm-gateway.upstream.AttemptResult",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Relayed",
+        "Failed",
+        "NotTried"
+      ]
+    }
+  }
+}

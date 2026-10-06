@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "UsageRecord",
+  "x-ess-name": "llm-gateway.telemetry.UsageRecord",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "record_id": {
+      "type": "string"
+    },
+    "model": {
+      "type": "string"
+    },
+    "wire": {
+      "$ref": "#/$defs/llm-gateway.gateway.Wire"
+    },
+    "disposition": {
+      "$ref": "#/$defs/llm-gateway.telemetry.Disposition"
+    },
+    "refusal": {
+      "$ref": "#/$defs/llm-gateway.gateway.Refusal"
+    },
+    "status": {
+      "type": "integer"
+    },
+    "reported_model": {
+      "type": "string"
+    },
+    "input_tokens": {
+      "type": "integer"
+    },
+    "output_tokens": {
+      "type": "integer"
+    },
+    "cached_input_tokens": {
+      "type": "integer"
+    },
+    "cache_creation_input_tokens": {
+      "type": "integer"
+    },
+    "reasoning_output_tokens": {
+      "type": "integer"
+    },
+    "response_bytes": {
+      "type": "integer"
+    },
+    "duration_ms": {
+      "type": "integer"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.telemetry.UsageRecord.State"
+    }
+  },
+  "required": [
+    "record_id",
+    "wire",
+    "disposition",
+    "status",
+    "response_bytes",
+    "duration_ms",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:86a85b3d64eb1c730783d96818e6edfea017a2b203a41898a9510510d6d7ff1d",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.Refusal": {
+      "title": "Refusal",
+      "x-ess-name": "llm-gateway.gateway.Refusal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "BodyIncomplete",
+        "BodyNotAllowed",
+        "BodyNotJson",
+        "BodyTooLarge",
+        "CredentialAbsent",
+        "CredentialMalformed",
+        "CredentialRejected",
+        "MethodNotAllowed",
+        "ModelAbsent",
+        "ModelUnknown",
+        "Overloaded",
+        "PathUnknown",
+        "RequestMalformed",
+        "RequestTooLarge",
+        "RouteUnknown",
+        "TargetUnavailable",
+        "Unavailable",
+        "UpstreamFailed",
+        "WireNotServed"
+      ]
+    },
+    "llm-gateway.gateway.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.gateway.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    },
+    "llm-gateway.telemetry.Disposition": {
+      "title": "Disposition",
+      "x-ess-name": "llm-gateway.telemetry.Disposition",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Relayed",
+        "Refused",
+        "UpstreamFailed"
+      ]
+    },
+    "llm-gateway.telemetry.UsageRecord.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.telemetry.UsageRecord.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Recorded"
+      ]
+    }
+  }
+}

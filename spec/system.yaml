@@ -6,3 +6,5 @@ domains:
   - llm-gateway.runpod
   - llm-gateway.gateway
   - llm-gateway.deployment
+  - llm-gateway.telemetry
+  - llm-gateway.upstream

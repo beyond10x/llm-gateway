@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.upstream.AuthKind",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:d39a9fe9c3d7b5fb5589967a35fcd12282d9b4afe4f71da8e4de0e8e0e7456e8",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.upstream.AuthKind": {
+      "title": "AuthKind",
+      "x-ess-name": "llm-gateway.upstream.AuthKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Anonymous",
+        "Bearer",
+        "ApiKey"
+      ]
+    }
+  }
+}

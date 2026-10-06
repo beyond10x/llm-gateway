@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.UsageRecord.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:f130f5ba3c91f31ccda60b840481c4f0d304756d6ab1109d14ee80cc59ca3402",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.UsageRecord.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.telemetry.UsageRecord.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Recorded"
+      ]
+    }
+  }
+}

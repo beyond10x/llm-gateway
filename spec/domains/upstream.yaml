@@ -1,0 +1,108 @@
+domain: llm-gateway.upstream
+
+# PLANNED: no code implements this domain yet, and checks/conformance observes none of it. It is
+# the typed home of the nouns story:hosted-endpoints and story:target-fallback introduce. Each
+# story adds the observation entity and the scenarios that hold its implementation to these
+# declarations.
+#
+# Today a relayed model is served by whatever single target the embedding's target source hands
+# out, and the only provider kind the deployment document admits is `runpod-vllm`
+# (llm-gateway.deployment.ProviderKind; llm-gateway.gateway RelayObservation, steps 7-8). The
+# route inventory the owner reads already describes more: an ordered target list per route,
+# positions contiguous from zero, a `fallback_enabled` flag, and per target the authentication
+# and billing kinds below (crates/llm-gateway/src/inventory.rs:58-138). Nothing acts on a
+# position after 0.
+#
+# BOUNDARY: llm owns the client side of both nouns: protocol clients, credentials and ordered
+# fallback (beyond10x/llm spec/domains/routing.yaml at ee2ae428, `llm.routing.FallbackRun`).
+# Its rule is the one a gateway fallback needs: a failure falls back to the next declared target
+# only while no output of the failed attempt reached the caller; an attempt that showed any
+# output is final. A crate here that needs that code takes it by tag (AGENTS.md "Dependencies on
+# llm"), and the gateway crate cannot take it at all: llm-routing pulls llm-credentials and
+# tokio into a closure crates/llm-gateway/tests/dependency_boundary.rs keeps empty
+# (docs/gateway.md "What the crate cannot do, structurally").
+types:
+  # How a target authenticates upstream (inventory.rs:58-64, wire names `anonymous`, `bearer`,
+  # `api-key`). The kind is inspectable; the material is never in the inventory.
+  - name: llm-gateway.upstream.AuthKind
+    kind: enum
+    variants: [Anonymous, Bearer, ApiKey]
+  # How a target is billed (inventory.rs:77-82, wire names `metered`, `subscription`,
+  # `self-hosted`). A Runpod pod is `SelfHosted`.
+  - name: llm-gateway.upstream.BillingKind
+    kind: enum
+    variants: [Metered, Subscription, SelfHosted]
+  # What became of one position of a route for one request. `NotTried`: an earlier position
+  # answered, or fallback is disabled for the route.
+  - name: llm-gateway.upstream.AttemptResult
+    kind: enum
+    variants: [Relayed, Failed, NotTried]
+  # Why an attempt moved on. The first five are row W7's failures, which also report the target
+  # failed to the target source. `RateLimited` is a 429 while a later position remains untried:
+  # the target is kept, as W7 keeps it, and the request moves on. A 429 from the last position
+  # reaches the client unchanged, as it does today.
+  # DECIDED 2026-10-06: a 429 falls back, following llm's routing, which falls back on a
+  # rate-limited failure (beyond10x/llm spec/domains/routing.yaml at ee2ae428).
+  - name: llm-gateway.upstream.AttemptFailure
+    kind: enum
+    variants: [Unreachable, ClosedWithoutAnswer, Status502, Status503, Status504, RateLimited]
+entities:
+  # A model endpoint the gateway reaches over the network that no hosting controller owns: a
+  # vendor API or an OpenAI-compatible server somebody else runs. Nothing is provisioned or
+  # stopped for it, so it has no llm-gateway.hosting record.
+  - name: llm-gateway.upstream.HostedEndpoint
+    identity: {name: endpoint_id, type: String}
+    fields:
+      # The one wire the endpoint speaks. The gateway relays without translating (story
+      # gateway-translation is deferred), so a model is served on this wire only.
+      - {name: wire, type: llm-gateway.gateway.Wire}
+      # Where requests go, `http` or `https`. An `https` endpoint is reached over TLS with its
+      # certificate verified. Never rendered by the route inventory, which carries
+      # `endpoint_id` (docs/gateway.md "The route inventory").
+      - {name: base_url, type: String}
+      - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
+      # The file holding the credential, read once through the trusted-file reader as
+      # `owner_secret_file` is (llm-gateway.deployment.StartupRefusal). Absent exactly when
+      # `auth_kind` is `Anonymous`.
+      - {name: credential_file, type: 'Optional<String>'}
+      # The request header that carries the credential when `auth_kind` is `ApiKey`, whose
+      # value is the credential itself. Present exactly when `auth_kind` is `ApiKey`. A `Bearer`
+      # endpoint gets `authorization: Bearer <credential>`. The owner's own credential is never
+      # sent to any endpoint.
+      # DECIDED 2026-10-06: the header is declared because vendors disagree on its name; no
+      # source here fixes one.
+      - {name: credential_header, type: 'Optional<String>'}
+      - {name: billing_kind, type: llm-gateway.upstream.BillingKind}
+    # DECIDED 2026-10-06: any endpoint that speaks one of the three wires is in scope, with no
+    # vendor-specific code: the relay does not translate, so an endpoint is described by its
+    # wire, its base URL and how it authenticates. A vendor that needs more than that is a
+    # translation question (story:gateway-translation).
+    # UNMAPPED: how the closed deployment document declares an endpoint: a provider kind beside
+    # `runpod-vllm`, or a section of its own. The document refuses both today. Owner:
+    # story:hosted-endpoints.
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  # One position of one route, tried or not, for one request.
+  #
+  # UNMAPPED: how the deployment document declares a model's ordered targets and its fallback
+  # flag. Today the binary builds one target per wire, numbers positions by wire rather than by
+  # alternative, and sets `fallback_enabled` false (crates/llm-gateway-cli/src/serve.rs:91,
+  # 112). Owner: story:target-fallback.
+  - name: llm-gateway.upstream.TargetAttempt
+    identity: {name: attempt_id, type: String}
+    fields:
+      - {name: route_alias, type: String}
+      # The target's position in the route, from 0 (inventory.rs RouteSummary).
+      - {name: position, type: Integer}
+      - {name: target_id, type: String}
+      - {name: result, type: llm-gateway.upstream.AttemptResult}
+      # Present exactly when `result` is `Failed`.
+      - {name: failure, type: 'Optional<llm-gateway.upstream.AttemptFailure>'}
+      # Whether any byte of the request reached the target. A failed attempt that was sent may
+      # have been billed; it is recorded, never assumed free (llm's FallbackRun keeps the same
+      # fact as its dispatch).
+      # DECIDED 2026-10-06: recorded, as llm records it.
+      - {name: request_sent, type: Boolean}
+      # Whether any byte of this attempt's answer reached the client. An attempt with this true
+      # is final: nothing after it is tried.
+      - {name: output_visible, type: Boolean}
+    lifecycle: {initial: Recorded, states: [Recorded], terminal: [Recorded]}

@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-06T11:14:37Z",
+  "actor": "human:timo",
+  "artifact": "epic:gateway-features",
+  "kind": "epic",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "round-2 revision: done-when names conformance and crate tests",
+    "review": "review-result:gateway-features-acceptance-round-2",
+    "outcome": "fixed"
+  }
+}

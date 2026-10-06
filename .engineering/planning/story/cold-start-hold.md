@@ -7,6 +7,7 @@ title: A request for a cold model waits for its pod within a hold budget
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
+- depends_on: story:gateway-deployment
 revision: 1
 ---
 ## Outcome

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.MetricSeries.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:d0ab9a517f1846af2961445e43cd8992419958075d37a3394ed312457a3d381b",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.MetricSeries.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.telemetry.MetricSeries.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

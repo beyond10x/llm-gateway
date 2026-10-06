@@ -1,0 +1,90 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "TargetAttempt",
+  "x-ess-name": "llm-gateway.upstream.TargetAttempt",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "attempt_id": {
+      "type": "string"
+    },
+    "route_alias": {
+      "type": "string"
+    },
+    "position": {
+      "type": "integer"
+    },
+    "target_id": {
+      "type": "string"
+    },
+    "result": {
+      "$ref": "#/$defs/llm-gateway.upstream.AttemptResult"
+    },
+    "failure": {
+      "$ref": "#/$defs/llm-gateway.upstream.AttemptFailure"
+    },
+    "request_sent": {
+      "type": "boolean"
+    },
+    "output_visible": {
+      "type": "boolean"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.upstream.TargetAttempt.State"
+    }
+  },
+  "required": [
+    "attempt_id",
+    "route_alias",
+    "position",
+    "target_id",
+    "result",
+    "request_sent",
+    "output_visible",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:228c6108dedaa65430c103e87d8eefd99dcd4f0dfa26b68a904c642cb44abe62",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.upstream.AttemptFailure": {
+      "title": "AttemptFailure",
+      "x-ess-name": "llm-gateway.upstream.AttemptFailure",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Unreachable",
+        "ClosedWithoutAnswer",
+        "Status502",
+        "Status503",
+        "Status504",
+        "RateLimited"
+      ]
+    },
+    "llm-gateway.upstream.AttemptResult": {
+      "title": "AttemptResult",
+      "x-ess-name": "llm-gateway.upstream.AttemptResult",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Relayed",
+        "Failed",
+        "NotTried"
+      ]
+    },
+    "llm-gateway.upstream.TargetAttempt.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.upstream.TargetAttempt.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Recorded"
+      ]
+    }
+  }
+}

@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "MetricSeries",
+  "x-ess-name": "llm-gateway.telemetry.MetricSeries",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string"
+    },
+    "help": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/llm-gateway.telemetry.SeriesKind"
+    },
+    "scope": {
+      "$ref": "#/$defs/llm-gateway.telemetry.SeriesScope"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.telemetry.MetricSeries.State"
+    }
+  },
+  "required": [
+    "name",
+    "help",
+    "kind",
+    "scope",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:aa1924b2a02d994f1da7d433df7c83a945fc37dc6c4878c12b57335f470c14e3",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.MetricSeries.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.telemetry.MetricSeries.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    },
+    "llm-gateway.telemetry.SeriesKind": {
+      "title": "SeriesKind",
+      "x-ess-name": "llm-gateway.telemetry.SeriesKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Counter"
+      ]
+    },
+    "llm-gateway.telemetry.SeriesScope": {
+      "title": "SeriesScope",
+      "x-ess-name": "llm-gateway.telemetry.SeriesScope",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Process",
+        "ModelWire"
+      ]
+    }
+  }
+}

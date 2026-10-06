@@ -1,0 +1,83 @@
+domain: llm-gateway.telemetry
+
+# PLANNED: no code implements this domain yet, and checks/conformance observes none of it. It is
+# the typed home of the nouns story:gateway-observability (docs/llmgw-capability-matrix.md rows
+# R4, O1, O2, O3) and story:usage-records introduce. Each story adds the observation entity and
+# the scenarios that hold its implementation to these declarations.
+#
+# Series. llmgw serves 13 Prometheus counters at `GET /metrics`, all prefixed `llmgw_`
+# (llmgw src/lib.rs:144-180 at 048ebd8; llmgw README.md "Metrics"): eight process-wide and five
+# per model and wire, labelled `model` and `wire`. The per-route series are registered from the
+# configured registry before the first request, so an uncalled route reports zero instead of
+# being absent. llm-gateway relays the same three wires (llm-gateway.gateway.Wire).
+# UNMAPPED: the series names llm-gateway exports. llmgw's `llmgw_` names, a prefix of this
+# repository's own, and the OpenTelemetry GenAI metric names (`gen_ai.client.token.usage`,
+# `gen_ai.client.operation.duration`) are all candidates; no source here names a consumer that
+# reads them, so nothing settles which. Owner: story:gateway-observability.
+#
+# Usage. A usage record is what the gateway learned about one model call it was asked to relay.
+# The token counters are llm's (beyond10x/llm spec/domains/chat.yaml at ee2ae428, its usage
+# scenarios): a counter the upstream did not report stays absent, and a reported zero is a
+# report. The record never fills an absent counter from an estimate, and never puts the alias
+# where the upstream's own model name belongs.
+# UNMAPPED: whether the gateway reads usage out of the response at all. Today the relay passes
+# the target's status, content type and body to the client unchanged and interprets none of it
+# (llm-gateway.gateway RelayObservation, step 9). Reading usage means parsing the copy of every
+# answer, event streams included, on each of the three wires; llm's protocol crates already do
+# that parse on the client side and would be taken by tag (AGENTS.md "Dependencies on llm").
+# Owner: decision-blocker:usage-from-responses. The token counters and `reported_model` are
+# story:usage-records'; `disposition`, `refusal`, `status`, `response_bytes` and `duration_ms`
+# need no parsing and are story:gateway-observability's.
+# UNMAPPED: where a record goes once made: a structured line on standard error, an
+# OpenTelemetry exporter, or only the counters above. No source names a reader. Owner:
+# story:gateway-observability. Tests read a record from the conformance observation the owning
+# story adds, whatever its destination.
+types:
+  # `Process`: one series per gateway. `ModelWire`: one series per declared (model, wire) pair,
+  # labelled `model` and `wire` (llmgw src/lib.rs:170-178).
+  - name: llm-gateway.telemetry.SeriesScope
+    kind: enum
+    variants: [Process, ModelWire]
+  # llmgw declares each of its 13 series `# TYPE <name> counter` (llmgw src/lib.rs:147-179).
+  - name: llm-gateway.telemetry.SeriesKind
+    kind: enum
+    variants: [Counter]
+  # How one call ended, from the gateway's side: relayed to the client with the target's answer
+  # (a 4xx or 500 from the target included, row W7), refused by the gateway before any target
+  # was asked, or ended `upstream-failed` (502).
+  - name: llm-gateway.telemetry.Disposition
+    kind: enum
+    variants: [Relayed, Refused, UpstreamFailed]
+entities:
+  - name: llm-gateway.telemetry.MetricSeries
+    identity: {name: name, type: String}
+    fields:
+      - {name: help, type: String}
+      - {name: kind, type: llm-gateway.telemetry.SeriesKind}
+      - {name: scope, type: llm-gateway.telemetry.SeriesScope}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  - name: llm-gateway.telemetry.UsageRecord
+    identity: {name: record_id, type: String}
+    fields:
+      # The relayed model's alias, as the client named it in the body's top-level `model`.
+      # Absent when the body named none (`model-absent`).
+      - {name: model, type: 'Optional<String>'}
+      - {name: wire, type: llm-gateway.gateway.Wire}
+      - {name: disposition, type: llm-gateway.telemetry.Disposition}
+      # Present exactly when `disposition` is `Refused` or `UpstreamFailed`.
+      - {name: refusal, type: 'Optional<llm-gateway.gateway.Refusal>'}
+      # The status line the client received.
+      - {name: status, type: Integer}
+      # The model name the target reported in its answer. Absent when it reported none; it is
+      # never the alias and never the upstream name the gateway rewrote the request to (row W2).
+      - {name: reported_model, type: 'Optional<String>'}
+      - {name: input_tokens, type: 'Optional<Integer>'}
+      - {name: output_tokens, type: 'Optional<Integer>'}
+      - {name: cached_input_tokens, type: 'Optional<Integer>'}
+      - {name: cache_creation_input_tokens, type: 'Optional<Integer>'}
+      - {name: reasoning_output_tokens, type: 'Optional<Integer>'}
+      # Body bytes relayed to the client (llmgw `route_response_bytes_total`).
+      - {name: response_bytes, type: Integer}
+      # From the end of the request head to the last byte relayed or the refusal written.
+      - {name: duration_ms, type: Integer}
+    lifecycle: {initial: Recorded, states: [Recorded], terminal: [Recorded]}

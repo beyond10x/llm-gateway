@@ -1,0 +1,93 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HostedEndpoint",
+  "x-ess-name": "llm-gateway.upstream.HostedEndpoint",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "endpoint_id": {
+      "type": "string"
+    },
+    "wire": {
+      "$ref": "#/$defs/llm-gateway.gateway.Wire"
+    },
+    "base_url": {
+      "type": "string"
+    },
+    "auth_kind": {
+      "$ref": "#/$defs/llm-gateway.upstream.AuthKind"
+    },
+    "credential_file": {
+      "type": "string"
+    },
+    "credential_header": {
+      "type": "string"
+    },
+    "billing_kind": {
+      "$ref": "#/$defs/llm-gateway.upstream.BillingKind"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.upstream.HostedEndpoint.State"
+    }
+  },
+  "required": [
+    "endpoint_id",
+    "wire",
+    "base_url",
+    "auth_kind",
+    "billing_kind",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "00a370a9da1d683083054c2bc2ce1bff333371e4e9b01e021ca39f77cf3a866b",
+    "contract_digest": "slice-sha256/2:7ecbc4eb6959e00c1dd2d65c47fcb020e96317ab395bbb324a7fee3b3b7474ef",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.gateway.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    },
+    "llm-gateway.upstream.AuthKind": {
+      "title": "AuthKind",
+      "x-ess-name": "llm-gateway.upstream.AuthKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Anonymous",
+        "Bearer",
+        "ApiKey"
+      ]
+    },
+    "llm-gateway.upstream.BillingKind": {
+      "title": "BillingKind",
+      "x-ess-name": "llm-gateway.upstream.BillingKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Metered",
+        "Subscription",
+        "SelfHosted"
+      ]
+    },
+    "llm-gateway.upstream.HostedEndpoint.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.upstream.HostedEndpoint.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

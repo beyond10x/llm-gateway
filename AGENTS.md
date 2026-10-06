@@ -18,7 +18,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`; `EmulatedRunpod` is the only transport |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
-| `spec/` | The ESS system `llm-gateway` with four domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment` |
+| `spec/` | The ESS system `llm-gateway` with six domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, and the `PLANNED` `llm-gateway.telemetry` and `llm-gateway.upstream`, which no code implements and no scenario observes yet |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
 | `docs/` | The gateway and hosting contracts, the llmgw capability matrix, and dated verification records |
 | `.engineering/` | The AEP planning store and per-story evidence |

@@ -10,7 +10,40 @@ relations:
 - depends_on: story:gateway-deployment
 - depends_on: story:cold-start-hold
 - depends_on: story:gateway-observability
-revision: 4
+scope:
+- confidence: inferred
+  path: checks/conformance/Cargo.toml
+- confidence: cited
+  path: checks/conformance/src/gateway.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/Cargo.toml
+- confidence: cited
+  path: crates/llm-gateway-cli/src/config.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/src/lib.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/refusal.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/serve.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/trusted.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/tests/binary.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/tests/config.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/tests/support/mod.rs
+- confidence: inferred
+  path: crates/llm-gateway/src/relay.rs
+- confidence: inferred
+  path: docs/gateway.md
+- confidence: cited
+  path: spec/domains/deployment.yaml
+- confidence: inferred
+  path: spec/domains/gateway.yaml
+- confidence: cited
+  path: spec/domains/upstream.yaml
+revision: 23
 ---
 ## Outcome
 
@@ -61,7 +94,7 @@ conformance targets do not model files or processes (`spec/domains/deployment.ya
 
 ## Depends on
 
-- `story:gateway-deployment`. It adds the relay's upstream credential header (rows B8, B9: the
+- `story:gateway-deployment`. It adds the relay's upstream credential header (row B8: the
   vLLM key sent to the pod). This story reuses that header for hosted endpoints rather than adding
   a second one. Both stories change `crates/llm-gateway-cli/src/config.rs` (`ProviderKind`,
   `Provider`) and `crates/llm-gateway-cli/src/serve.rs` (the target source).
@@ -73,7 +106,38 @@ conformance targets do not model files or processes (`spec/domains/deployment.ya
 
 ## Scope (inferred)
 
-`crates/llm-gateway-cli/src/config.rs`, `crates/llm-gateway-cli/src/serve.rs`, the relay's
-connection setup in `crates/llm-gateway-cli`, `spec/domains/deployment.yaml`,
-`spec/domains/upstream.yaml`, `contracts/gateway/scenarios`, `checks/conformance`,
-`docs/gateway.md`, `README.md`.
+Superseded by `## Scope`, which `story-scoper` derived on 2026-10-06. The typed entries are in the
+frontmatter `scope`.
+
+## Scope
+
+Derived 2026-10-06 by `story-scoper`. Every line is **cited** (read from the story or the tree) or
+**inferred** (a reading that could be wrong).
+
+- **Primary surface:** `crates/llm-gateway-cli`: the deployment document, the trusted-file reader, startup refusals, and the target source that opens each endpoint's connection, TLS included. Cited (story "Depends on"; `crates/llm-gateway/src/relay.rs:5-7`)
+- **File:** `crates/llm-gateway-cli/src/config.rs`. Cited: `ProviderKind` `:127-130`, `Provider` `:155`. `ModelDocument` `:63-97` requires `hf_model`, `image`, `gpu_types` and `max_model_len`, none of which a hosted model has
+- **File:** `crates/llm-gateway-cli/src/serve.rs`. Cited: `inventory` hard-codes `AuthKind::Bearer` and `BillingKind::SelfHosted` at `:104-105`; `start` binds without a relay at `:166`
+- **File:** `crates/llm-gateway-cli/src/refusal.rs`. Cited: case 5's `endpoint-credential:<rule>` needs a new `Source` (`:7-10`) and new variants. The test at `:165` admits only four sources, and the test at `:142-150` fails unless the variants equal `deployment.yaml`'s
+- **File:** `crates/llm-gateway-cli/src/trusted.rs`. Cited: a third `Policy` beside `CONFIG` `:29` and `OWNER_SECRET` `:39`
+- **File:** `spec/domains/upstream.yaml`. Cited: `HostedEndpoint` `:53-83` and its `UNMAPPED` marker `:80-82`
+- **File:** `spec/domains/deployment.yaml`. Cited: `StartupRefusal` `:58-60`, `ProviderKind` `:66-68`
+- **File:** `checks/conformance/src/gateway.rs`. Cited: the `Relay` program `:512-516` declares no endpoint, `Target::connect` opens plain TCP at `:846`, and fixture pods record no request header
+- **File:** `contracts/ess-inputs.yaml`, `contracts/suite.json`, `contracts/schema/schema/types/llm-gateway.deployment.StartupRefusal.schema.json`. Cited: new scenarios and regeneration
+- **File:** `crates/llm-gateway-cli/Cargo.toml`. Inferred: the TLS client crate goes here; `Cargo.lock` holds no TLS crate today
+- **File:** `Cargo.lock`. Inferred: follows the TLS dependency
+- **File:** `crates/llm-gateway-cli/src/lib.rs`. Inferred: registers and exports the hosted target-source module
+- **File:** `crates/llm-gateway/src/relay.rs`. Inferred: the request head at `:582-587` has no credential line. An `api-key` header name, or a base URL with a path prefix, needs a change here unless `story:gateway-deployment`'s header already carries a name and a value
+- **File:** `crates/llm-gateway-cli/tests/binary.rs`. Inferred: case 5 goes beside the `k30_*` owner-secret refusals `:507-575`
+- **File:** `crates/llm-gateway-cli/tests/config.rs`. Inferred: case 6 goes beside `k29_every_value_outside_its_rule_is_refused` `:368`
+- **File:** `crates/llm-gateway-cli/tests/support/mod.rs`. Inferred: the fixture document writer `document` `:70`
+- **File:** `checks/conformance/Cargo.toml`. Inferred: a TLS fixture server for case 4, or a dependency on `b10x-llm-gateway-cli` so the scenarios drive the binary's own target source
+- **File:** `spec/domains/gateway.yaml`. Inferred: the `Relay` program grammar `:202-222` and `RelayObservation` `:160-188` carry no endpoint and no received header, unless the new observation entity sits wholly in `upstream.yaml`
+- **File:** `contracts/baseline.json`, `contracts/schema/schema/entities/llm-gateway.upstream.HostedEndpoint.schema.json`. Inferred: floors and regeneration
+- **Symbols:** `ProviderKind`, `Provider`, `ModelDocument`, `StartupRefusal`, `Source`, `trusted::Policy`, `RelayTarget::connect`, `llm-gateway.upstream.HostedEndpoint`. Cited
+- **Not touched:** `crates/llm-gateway/src/inventory.rs`. Cited: `AuthKind` `:60-64` and `BillingKind` `:78-82` already have every variant case 1 reports
+- **Documents:** `README.md` (cited: `:100` "Both files go through a trusted-file reader", and the credential file makes three); `docs/gateway.md` (inferred: the relay contract `:115-124` changes if the request head gains a credential header); `AGENTS.md` (inferred: its `spec/` row says no code implements `llm-gateway.upstream`)
+- **Confidence:** medium. The CLI, spec and refusal files come from the story and the tree. The TLS crate, the conformance harness shape, `relay.rs` and the new file names depend on decisions nobody has made yet
+- **Would collide with:** any unit on the CLI deployment document or target source (`config.rs`, `serve.rs`); any unit that adds a startup refusal (`refusal.rs`, `deployment.yaml`); any unit on the relay request head or the `RelayTarget`/`RelayTargets` port (`relay.rs:67-94`, `:581-595`); any unit on the `Relay` conformance program or observation (`checks/conformance/src/gateway.rs`); any unit that adds scenarios or regenerates `contracts/`; any unit that adds a dependency (`Cargo.lock`)
+- **Safety fact:** TLS and the endpoint credential can stay out of the gateway crate's dependency closure. `RelayTarget::connect` returns any `Read + Write + Send` stream (`relay.rs:67-83`), and `dependency_boundary.rs` holds that crate to zero declared dependencies and a closure of itself. Also, `relay.rs:581-591` writes no request byte until `connect` returns `Ok`, so a handshake done inside `connect` meets case 4's "no request byte reaches it". Step 2, unproven
+
+Not established: which TLS crate (`rustls` with ring or aws-lc-rs, or `native-tls`); how case 4's fixture gets a trusted root (`HostedEndpoint` has no CA field, so a CA file in the document or a test-only root); whether the `Relay` scenarios drive the binary's own target source; the `UNMAPPED` declaration shape.

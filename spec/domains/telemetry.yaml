@@ -20,14 +20,14 @@ domain: llm-gateway.telemetry
 # scenarios): a counter the upstream did not report stays absent, and a reported zero is a
 # report. The record never fills an absent counter from an estimate, and never puts the alias
 # where the upstream's own model name belongs.
-# UNMAPPED: whether the gateway reads usage out of the response at all. Today the relay passes
-# the target's status, content type and body to the client unchanged and interprets none of it
-# (llm-gateway.gateway RelayObservation, step 9). Reading usage means parsing the copy of every
-# answer, event streams included, on each of the three wires; llm's protocol crates already do
-# that parse on the client side and would be taken by tag (AGENTS.md "Dependencies on llm").
-# Owner: decision-blocker:usage-from-responses. The token counters and `reported_model` are
-# story:usage-records'; `disposition`, `refusal`, `status`, `response_bytes` and `duration_ms`
-# need no parsing and are story:gateway-observability's.
+# DECIDED 2026-10-06 (operator, option A of decision-blocker:usage-from-responses): the gateway
+# reads usage out of a copy of every answer, event streams included, on each of the three wires.
+# The client still receives the target's status, content type and body unchanged (llm-gateway.
+# gateway RelayObservation, step 9). The parse uses llm's protocol crates, taken by tag (AGENTS.md
+# "Dependencies on llm"), behind a port the binary implements, so the gateway crate's dependency
+# closure stays empty (crates/llm-gateway/tests/dependency_boundary.rs). The token counters and
+# `reported_model` are story:usage-records'; `disposition`, `refusal`, `status`,
+# `response_bytes` and `duration_ms` need no parsing and are story:gateway-observability's.
 # UNMAPPED: where a record goes once made: a structured line on standard error, an
 # OpenTelemetry exporter, or only the counters above. No source names a reader. Owner:
 # story:gateway-observability. Tests read a record from the conformance observation the owning

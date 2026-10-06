@@ -8,7 +8,32 @@ relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
 - depends_on: story:hosted-endpoints
-revision: 2
+scope:
+- confidence: cited
+  path: checks/conformance/src/gateway.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/serve.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/tests/config.rs
+- confidence: cited
+  path: crates/llm-gateway/src/relay.rs
+- confidence: inferred
+  path: crates/llm-gateway/tests/adversary_relay.rs
+- confidence: inferred
+  path: crates/llm-gateway/tests/gateway.rs
+- confidence: inferred
+  path: crates/llm-gateway/tests/wire_relay.rs
+- confidence: inferred
+  path: docs/gateway.md
+- confidence: cited
+  path: spec/domains/deployment.yaml
+- confidence: inferred
+  path: spec/domains/gateway.yaml
+- confidence: cited
+  path: spec/domains/upstream.yaml
+revision: 16
 ---
 ## Outcome
 
@@ -72,7 +97,31 @@ The rule it implements is llm's, cited in `spec/domains/upstream.yaml`.
 
 ## Scope (inferred)
 
-`crates/llm-gateway/src/relay.rs` (`RelayTargets`, `relay::serve`),
-`crates/llm-gateway-cli/src/config.rs`, `crates/llm-gateway-cli/src/serve.rs`,
-`spec/domains/upstream.yaml`, `spec/domains/deployment.yaml`, `contracts/gateway/scenarios`,
-`checks/conformance`, `docs/gateway.md`.
+Superseded by `## Scope`, which `story-scoper` derived on 2026-10-06. The typed entries are in the
+frontmatter `scope`.
+
+## Scope
+
+Derived 2026-10-06 by `story-scoper`. Every line is **cited** (read from the story or the tree) or
+**inferred** (a reading that could be wrong).
+
+- **Primary surface:** `crates/llm-gateway/src/relay.rs`: the `RelayTargets` port (`:86-94`), `RelayModel`'s single `upstream_model` (`:97-130`), and the acquire/send/head/502-504 path in `relay::serve` (`:573-608`) — cited
+- **Files:** `crates/llm-gateway-cli/src/serve.rs` at `:91` (positions numbered by wire) and `:112` (`fallback_enabled` hard-coded `false`) — cited
+- **Files:** `crates/llm-gateway-cli/src/config.rs`: the outcome needs new keys in the closed document, and `ModelDocument` (`:64-65`) is `deny_unknown_fields` — cited
+- **Files:** `spec/domains/upstream.yaml` (`:86-108`, `TargetAttempt` and the UNMAPPED marker this story settles) — cited
+- **Files:** `spec/domains/deployment.yaml`: the marker names the deployment document, which is specified as `ModelDeclaration` (`:115`) and `DeploymentConfiguration` (`:142`) — cited
+- **Files:** `checks/conformance/src/gateway.rs`: the `Relay` command driver (`:468`) and the only non-test `RelayTargets` implementor (`:801`) — cited
+- **Files:** `contracts/ess-inputs.yaml`: every new scenario must be listed (`every_authored_scenario_is_declared`, `checks/conformance/src/gate.rs`) — cited
+- **Files:** `contracts/suite.json`: regenerated whenever `spec/` or the scenarios change (AGENTS.md "Generated files") — cited
+- **New files only:** 8 new `Relay` scenarios under `contracts/gateway/scenarios/`, names not yet known; the 3 existing `w7-*.yaml` stay as they are (acceptance 5) — cited
+- **Also likely:** `spec/domains/gateway.yaml`: the `Relay` program has one `upstream_model` per model and one pod sequence (`:206-208`), and `RelayObservation` (`:160-188`) has no per-position field, so acceptance 8 and the attempt list probably land here — inferred
+- **Also likely:** `crates/llm-gateway/tests/wire_relay.rs`, `crates/llm-gateway/tests/adversary_relay.rs`, `crates/llm-gateway/tests/gateway.rs`: they implement `RelayTargets` (`:368`, `:170`, `:491`) and must change if the port's signature does — inferred
+- **Also likely:** `crates/llm-gateway-cli/tests/config.rs`: new document keys get their own config tests — inferred
+- **Also likely:** `contracts/baseline.json`: the floors equal today's count (179); raising them is the convention, nothing enforces it — inferred
+- **Also likely:** `contracts/schema/schema/types/llm-gateway.deployment.ModelDeclaration.schema.json` and `contracts/schema/schema/entities/llm-gateway.gateway.RelayObservation.schema.json`, regenerated if those spec types change — inferred
+- **Documents:** `docs/gateway.md` "The relay", steps 7-8 (`:150-158`), which say a failed target answers `upstream-failed` — inferred
+- **Confidence:** medium. The story names `relay.rs`, `serve.rs` and `upstream.yaml` by line, but the document and fixture-program shape is the UNMAPPED decision this story makes — inferred
+- **Would collide with:** any unit touching `relay::serve` (`relay.rs:537-620`), the `RelayTargets` port or any of its implementors, the closed deployment document (`config.rs` `ModelDocument`, `deployment.yaml` `ModelDeclaration`), `serve.rs` `inventory()`, or any regeneration of `contracts/suite.json` or `contracts/schema/` — cited
+- **Safety fact:** every `upstream-failed` return in `relay::serve` (`relay.rs:581`, `:594`, `:602`, `:607`) comes before `stream_answer` (`:609`), whose first client write is `:647`. The only earlier client write is the `100 Continue` interim (`:546`). So a fallback loop over `:573-608` cannot retry after an answer byte has reached the client. Also, `body` is dropped at `:571` and `rewritten` at `:592`, so a retry with another upstream name must keep the body. Step 2, unproven — inferred
+
+Not established: the document shape (ordered targets under `[models.<alias>]` or a section of its own); whether the port change breaks all four `RelayTargets` implementors or adds a defaulted method; whether the attempt list extends `RelayObservation` or becomes a new `upstream.yaml` entity. `serve.rs` lines will shift when story:gateway-deployment wires the relay.

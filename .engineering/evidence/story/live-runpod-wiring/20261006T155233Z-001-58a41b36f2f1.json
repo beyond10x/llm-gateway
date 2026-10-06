@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-06T15:52:33Z",
+  "actor": "human:timo",
+  "artifact": "story:live-runpod-wiring",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "replan r2 acc 5: api_base_url points at the fixture",
+    "review": "review-result:replan-acceptance-round-2",
+    "outcome": "fixed"
+  }
+}

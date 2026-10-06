@@ -141,7 +141,7 @@ entities:
       - {name: deployments, type: 'List<llm-gateway.hosting.DeploymentFact>'}
       # The permitted transition table the library actually enforces, read from its published
       # constant. A pair absent from this list is refused; this is the lifecycle that
-      # resolves the formerly open hosting transitions (docs/design.md:82-83).
+      # resolves the formerly open hosting transitions (docs/hosting.md "The resolved lifecycle").
       - {name: transitions, type: 'List<llm-gateway.hosting.TransitionFact>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:

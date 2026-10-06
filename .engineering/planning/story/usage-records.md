@@ -9,7 +9,32 @@ relations:
 - serves: vision:portable-model-inference
 - depends_on: story:gateway-observability
 - depends_on: story:target-fallback
-revision: 4
+scope:
+- confidence: inferred
+  path: checks/conformance/Cargo.toml
+- confidence: inferred
+  path: checks/conformance/src/gateway.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/Cargo.toml
+- confidence: inferred
+  path: crates/llm-gateway-cli/src/lib.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/src/serve.rs
+- confidence: inferred
+  path: crates/llm-gateway-cli/src/usage.rs
+- confidence: inferred
+  path: crates/llm-gateway/src/lib.rs
+- confidence: cited
+  path: crates/llm-gateway/src/relay.rs
+- confidence: inferred
+  path: crates/llm-gateway/tests/dependency_boundary.rs
+- confidence: inferred
+  path: docs/gateway.md
+- confidence: inferred
+  path: spec/domains/gateway.yaml
+- confidence: cited
+  path: spec/domains/telemetry.yaml
+revision: 19
 ---
 ## Outcome
 
@@ -27,9 +52,9 @@ sees their calls. Envoy, Kong, LiteLLM and Cloudflare all record token usage per
 
 ## Blocked
 
-This story waits on `decision-blocker:usage-from-responses`, because reading usage requires
-parsing the target's answers, which the relay does not do today. If the blocker is cleared with
-option B or C, this story is archived.
+`decision-blocker:usage-from-responses` was cleared on 2026-10-06 with option A: the gateway parses a copy
+of every answer, using llm's protocol crates taken by tag, behind a port the binary implements
+(`spec/domains/telemetry.yaml`, `DECIDED 2026-10-06`).
 
 ## ESS first
 
@@ -65,6 +90,35 @@ from the observation. None makes a paid call.
 
 ## Scope (inferred)
 
-`crates/llm-gateway/src/relay.rs` (the answer path in `relay::serve`), a parsing port that
-`crates/llm-gateway-cli` implements, `spec/domains/telemetry.yaml`, `contracts/gateway/scenarios`,
-`checks/conformance`, `docs/gateway.md`.
+Superseded by `## Scope`, which `story-scoper` derived on 2026-10-06. The typed entries are in the
+frontmatter `scope`.
+
+## Scope
+
+Derived 2026-10-06 by `story-scoper`. Every line is **cited** (read from the story or the tree) or
+**inferred** (a reading that could be wrong).
+
+- **Primary surface:** `crates/llm-gateway/src/relay.rs`: the answer path in `relay::serve` (`:537`) — cited
+- **Files:** `crates/llm-gateway/src/relay.rs:537` (`serve`), where one record per call is closed, `upstream-failed` included — cited
+- **Files:** `crates/llm-gateway/src/relay.rs:626-675` (`stream_answer`), where each decoded piece is copied to the port after its `write_by` — inferred
+- **Files:** `spec/domains/telemetry.yaml:59-78` (`UsageRecord`, token fields `:73-78`) plus one token `MetricSeries` per counter (`:52`) — cited
+- **Files:** `contracts/ess-inputs.yaml`, which lists every new scenario (AGENTS.md "Generated files") — cited
+- **Files:** `contracts/suite.json`, regenerated from the spec and the scenarios — cited
+- **Files:** `crates/llm-gateway-cli/Cargo.toml`, which takes llm's protocol crates by tag (decision A, AGENTS.md "Dependencies on llm") — cited
+- **Files:** `Cargo.lock`, which a by-tag git dependency changes under the `--locked` gate — cited
+- **Files:** `crates/llm-gateway-cli/src/usage.rs` (new), the binary's implementation of the parsing port — inferred
+- **Files:** `crates/llm-gateway-cli/src/lib.rs`, its `mod` line — inferred
+- **Files:** `crates/llm-gateway-cli/src/serve.rs:166`, where the binary would compose the relay with the port (today it binds without a `Relay`) — inferred
+- **Files:** `crates/llm-gateway/src/lib.rs:43`, the re-export of the port trait — inferred
+- **Files:** `checks/conformance/src/gateway.rs`: `Relay::new` at `:902`, fixture pods `answer_one` at `:662` that must report usage, the `LastRelay` view at `:863` — inferred
+- **Files:** `checks/conformance/Cargo.toml`, because the runner needs a port implementation, either the CLI lib or llm by tag — inferred
+- **Symbols:** `relay::serve`, `llm-gateway.telemetry.UsageRecord`, `reported_model` — cited
+- **Also likely:** `contracts/baseline.json`, floors 179/179 raised for the new scenarios — inferred
+- **Also likely:** `docs/gateway.md`, the contract text on what the relay reads — inferred
+- **Also likely:** `crates/llm-gateway/tests/dependency_boundary.rs:22-33`, adding `b10x-llm-chat`/`-messages`/`-responses`/`-core` to `FORBIDDEN` — inferred
+- **Also likely:** `spec/domains/gateway.yaml:160` (`RelayObservation`), if the record's observation lives there — inferred
+- **Confidence:** medium — the story cites `relay.rs` and `telemetry.yaml`, but where the port goes and how the CLI and conformance are wired is inferred, and the binary composes no relay until `story:gateway-deployment` lands
+- **Would collide with:** `relay.rs` (`serve`, `RelayTargets`); `spec/domains/telemetry.yaml`; `crates/llm-gateway-cli/src/serve.rs`; `checks/conformance/src/gateway.rs`; `contracts/ess-inputs.yaml`, `contracts/suite.json`, `contracts/baseline.json`; `Cargo.lock` and `checks/conformance/Cargo.toml` (any dependency or ESS-pin move) — cited for the first two through the story's own `depends_on` edges, inferred for the rest
+- **Safety fact:** the client's bytes cannot change: the port sees only a copy taken after each `write_by` in `stream_answer` (`relay.rs:650-675`), and a parse error or panic there must not reach that loop's `return` paths. This is design, not code yet (level 1, unproven). Also level 2, unproven: llm 0.2.0's protocol crates pull `b10x-llm-http`, `tokio` and `reqwest`, all in `FORBIDDEN` (`dependency_boundary.rs:22-33`), so linking them into the gateway crate fails that test.
+
+Not established, and decisive for when this story can run: at llm 0.2.0, chat's `usage_of` is private (`incoming.rs:426`), messages' `Snapshot` is `pub(crate)` (`usage.rs:7`), and `b10x-llm-responses` exports only `decode_stream(binding, &[Value])`, which needs `stream: true` (`request.rs:168`) and the whole stream as one slice. Acceptance case 1 on the responses wire may need a change in beyond10x/llm first. All three protocol crates also pull `b10x-llm-credentials`, `b10x-llm-http`, `reqwest` and `tokio` into the binary.

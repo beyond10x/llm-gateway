@@ -101,8 +101,9 @@ directory. `spec/domains/deployment.yaml` holds every key, default and range.
 
 Both files go through a trusted-file reader. Each must be a regular file, not a symlink, owned by
 you or root. The document must be at most 256 KiB and not group- or world-writable. The owner
-secret must be one printable token of 32 to 4096 bytes (a trailing newline or CRLF is trimmed),
-readable by the owner only. Clients send it as `Authorization: Bearer <secret>`.
+secret must be one printable token of 32 to 4096 bytes (trailing ASCII whitespace is trimmed),
+with no group or world permission at all (mode & 0o077 is 0). Clients send it as
+`Authorization: Bearer <secret>`.
 
 The gateway answers `GET /health` and `GET /ready` without a credential; the owner can read
 `GET /v1/routes` and `GET /v1/routes/<alias>`. [docs/gateway.md](docs/gateway.md) has the full

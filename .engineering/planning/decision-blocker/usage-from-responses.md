@@ -2,11 +2,13 @@
 format: aep.planning-md/3
 id: decision-blocker:usage-from-responses
 kind: decision-blocker
-status: open
+status: cleared
 title: Does the gateway parse target answers to read token usage?
 relations:
 - blocks: story:usage-records
-revision: 2
+revision: 4
+transitions:
+- {from: "open", to: "cleared", at: "2026-10-06T11:20:05Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"review_outcome":1}}}
 ---
 ## Question
 
@@ -38,3 +40,10 @@ artifact's body through `aep plan artifact body --section Decision`, naming who 
 The `UNMAPPED` marker on reading usage in `spec/domains/telemetry.yaml` is rewritten as `DECIDED`
 with the same answer in the same commit. Then `aep plan artifact move
 decision-blocker:usage-from-responses --to cleared`.
+
+## Decision
+
+A, the operator, 2026-10-06 ("A", in reply to the option table of this blocker). The gateway
+parses a copy of every answer with llm's protocol crates, taken by tag, behind a port the binary
+implements. The client's bytes stay unchanged. `spec/domains/telemetry.yaml` carries the same
+answer as `DECIDED 2026-10-06`.

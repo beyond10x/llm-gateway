@@ -31,9 +31,10 @@ ever filled in from the first. An unreported served model, address, runtime stat
 becomes the requested value. `ProvisionedDeployment::is_ready` is `ready == Some(true)`, so a
 provider that stops reporting readiness stops being ready to every reader at once.
 
-The same split runs through `spec/domains/catalog.yaml`, where `llm.catalog.DeploymentSpec`
-carries the requested name and lifetime and `llm.catalog.ProvisionedDeployment` carries the
-observed incarnation and four optional observations.
+The same split runs through llm's `spec/domains/catalog.yaml` (beyond10x/llm), where
+`llm.catalog.DeploymentSpec` carries the requested name and lifetime and
+`llm.catalog.ProvisionedDeployment` carries the observed incarnation and four optional
+observations.
 
 ## Nothing but evidence discharges a stop obligation
 
@@ -271,7 +272,7 @@ check on the observed identity. Both now have one.
 ## Verification and limits
 
 [Hosting verification](verification/hosting.md) records the authored scenarios, the deliberate
-defects and the counts. The ESS domain `llm.hosting` describes adapter observations of real
+defects and the counts. The ESS domain `llm-gateway.hosting` describes adapter observations of real
 library calls; its notification and execution-record entities are verification plumbing, not a
 claim that production publishes an event bus or uses an Entity Runtime store.
 

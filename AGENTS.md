@@ -117,6 +117,15 @@ A wave opens with a `plan: open wave <date>-w<NN> (<story>)` commit, implements 
 `impl/<story>` (the failing test first, `test: … (red)`, then `feat:` and `fix:`), merges it into
 `wave/<date>-w<NN>`, and closes with `plan: close wave …`. `main` moves to the wave head.
 
+A story's typed scope (`aep plan artifact scope`, read by `aep plan artifact waves`) lists the
+authored files it changes. It leaves out the integration files almost every story touches:
+`contracts/suite.json`, `contracts/schema/`, `contracts/baseline.json`,
+`contracts/ess-inputs.yaml`, `Cargo.lock`, `docs/llmgw-capability-matrix.md`, `README.md` and
+this file. Whoever merges a wave owns those: it regenerates the generated ones from the merged
+`spec/` and scenarios, and merges the rest by hand. A story whose purpose is one of those files
+(`story:ess-0-53`) lists it. Its wave holds no other story that edits the specification, adds a
+scenario or a dependency, or changes the gate.
+
 ## Releases
 
 None yet: the workspace version is 0.1.0, every crate is `publish = false`, there is no tag and no

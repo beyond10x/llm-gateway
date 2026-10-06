@@ -11,7 +11,7 @@ domain: llm-gateway.gateway
 # translating between them (story:wire-relay; the `Relay` command below).
 # DEFERRED: protocol translation between wires is not implemented; it belongs to
 # story:gateway-translation. There is exactly one owner (crates/llm-gateway/src/auth.rs:11), and
-# the single-owner admission is what the credential scenarios below declare.
+# the single-owner admission is what the credential scenarios in contracts/gateway/scenarios/ declare.
 # DECIDED 2026-09-27: the gateway has no multi-tenant accounts or quotas; tenancy and quotas belong
 # to the embedding platform, which runs one gateway per owner.
 # ESS-LIMIT: the owner comparison is constant-time (auth.rs:69-78). ESS 0.52 has no construct

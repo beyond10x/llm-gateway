@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T22:29:17Z",
+  "actor": "human:timo",
+  "artifact": "story:docs-site",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "Stage D curl checks against https://beyond10x.github.io/llm-gateway/",
+    "reference": "https://github.com/beyond10x/llm-gateway/actions/runs/37853186554"
+  }
+}

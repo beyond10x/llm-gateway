@@ -5,14 +5,14 @@ llm-gateway is the serving side of [llm](https://beyond10x.github.io/llm/)
 contract with Runpod and Modal adapters for provisioning model endpoints. llm's client crates call a
 model; this repository answers them and, later, starts the pods they reach.
 
-**Documentation:** the documentation site is built from [`website/`](website/) and is not
-published yet. Read its pages in this tree: [overview](website/docs/index.md),
-[getting started](website/docs/getting-started.md),
-[set up a client](website/docs/guides/set-up-a-client.md),
-[CLI reference](website/docs/reference/cli.md),
-[deployment document](website/docs/reference/deployment-document.md),
-[crates](website/docs/reference/crates.md) and [status](website/docs/status.mdx).
-The contracts live in this tree too:
+**Documentation:** <https://beyond10x.github.io/llm-gateway/>, built from
+[`website/`](website/): [getting started](https://beyond10x.github.io/llm-gateway/docs/getting-started/),
+[set up a client](https://beyond10x.github.io/llm-gateway/docs/guides/set-up-a-client/),
+[CLI reference](https://beyond10x.github.io/llm-gateway/docs/reference/cli/),
+[deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/),
+[crates](https://beyond10x.github.io/llm-gateway/docs/reference/crates/) and
+[status](https://beyond10x.github.io/llm-gateway/docs/status/).
+The contracts live in this tree:
 [docs/gateway.md](docs/gateway.md) (the gateway's HTTP surface, refusals, lifecycle and bounds),
 [docs/hosting.md](docs/hosting.md) (the owned-resource hosting lifecycle) and
 [docs/llmgw-capability-matrix.md](docs/llmgw-capability-matrix.md) (what is still missing before

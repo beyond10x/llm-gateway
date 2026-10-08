@@ -19,7 +19,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
 | `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
-| `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served under `/llm-gateway/` of the organisation Pages host once the `Documentation site` workflow has deployed it |
+| `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served at `https://beyond10x.github.io/llm-gateway/`, deployed by the `Documentation site` workflow |
 | `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters and the usage record; its token fields are `PLANNED`), and the `PLANNED` `llm-gateway.upstream` and `llm-gateway.clients`, which no code implements and no scenario observes yet |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
 | `docs/` | The gateway and hosting contracts, the llmgw capability matrix, dated verification records, and designs under `docs/design/` |
@@ -138,8 +138,8 @@ The documentation site lives in `website/` and follows the `docs` skill kept in 
 (`.agents/skills/docs/SKILL.md`). Its pages are public: no story id, internal name or `/home/`
 path in them, and every command on a page is run before its output is pasted. A change to a
 command, crate or rule updates README.md, this file and the site in the same commit, and
-`CHANGELOG.md` gains a line under **Unreleased**. Until the site answers at its address, README
-links the pages in the tree rather than the site URL.
+`CHANGELOG.md` gains a line under **Unreleased**. README links the published site
+(`https://beyond10x.github.io/llm-gateway/`), not the pages in the tree.
 
 ## Planning and waves
 

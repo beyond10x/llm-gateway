@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:docs-site
 kind: story
-status: active
+status: implemented
 title: llm-gateway has its own documentation site in the shared look and feel
 relations:
 - decomposes: epic:gateway
@@ -35,10 +35,11 @@ scope:
   path: crates/llm-gateway/Cargo.toml
 - confidence: cited
   path: website
-revision: 13
+revision: 15
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 11}
 - {from: "proposed", to: "active", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 12}
+- {from: "active", to: "implemented", at: "2026-10-08T22:30:02Z", actor: "human:timo", revision: 15, decided_on: {"recorded":{"test_result":2,"verification":1}}}
 ---
 ## Outcome
 
@@ -86,3 +87,15 @@ are not part of this story.
 
 - `story:public-model-listing`: the site documents the routes it adds, and both change
   `README.md` and `AGENTS.md`.
+
+## Stage D
+
+Acceptance 6, read 2026-10-08T22:29:17Z (`date -u`) after the merge of https://github.com/beyond10x/llm-gateway/pull/11 (83d12c2):
+
+- `Documentation validation` run 37852922598 and `Documentation site` run 37853186554 on 83d12c2: success (`gh run list -b main`).
+- `curl https://beyond10x.github.io/llm-gateway/`: 200, title `llm-gateway — One owner, one credential. Every refusal published. | llm-gateway`.
+- `curl https://beyond10x.github.io/llm-gateway/docs/reference/cli/`: 200, title `b10x-llm-gateway command line | llm-gateway`.
+- `curl https://beyond10x.github.io/llm-gateway/.well-known/b10x-routes.json`: 200.
+- `gh repo view --json homepageUrl`: `https://beyond10x.github.io/llm-gateway/`.
+
+Acceptance 5: README links the site on its first screen, and every page it links answered 200 at the same reading.

@@ -4,6 +4,11 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- The documentation site is published at <https://beyond10x.github.io/llm-gateway/>; README
+  links it instead of the pages in the tree.
+
 ## 0.6.0 (2026-10-08)
 
 - `GET /v1/models` and `GET /` answer without a credential and wake no pod. The listing is the

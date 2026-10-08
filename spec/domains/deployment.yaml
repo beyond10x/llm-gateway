@@ -43,13 +43,31 @@ domain: llm-gateway.deployment
 #                         count, one pod per model
 #   RunpodModel           from `[models.<alias>]`: hf_model, image, gpu_types, disk_gb, cache,
 #                         data_center_ids, the vLLM settings, cloud_type from the model's
-#                         provider, startup_deadline_ms = start_wait_seconds x 1000 (also how
-#                         long a request waits for its pod), idle_timeout_ms from
-#                         idle_timeout_minutes. Fixed: crash_restart_limit 2, crash_window_ms
-#                         600000, and api_key_secret `vllm_<alias>` with every `-` and `.` of the
-#                         alias written `_` (the Runpod secret the operator stores the key in)
-# The pool is stepped by one cleanup pass (`reap`) before the gateway is marked ready and then
-# every 60 seconds until the stop, well inside lease_ms.
+#                         provider, startup_deadline_ms = start_wait_seconds x 1000,
+#                         idle_timeout_ms from idle_timeout_minutes. Fixed:
+#                         crash_restart_limit 2, crash_window_ms 600000, and api_key_secret
+#                         `vllm_<alias>` with every `-` and `.` of the alias written `_` (the
+#                         Runpod secret the operator stores the key in)
+# The pool is stepped by one cleanup pass (`reap`) before the gateway is marked ready, which
+# sweeps the pods a previous run of this controller left (row L15), and then every 60 seconds
+# until the stop, well inside lease_ms, as llmgw's reaper (row L13). Proved by `l15_*` and
+# `l13_*` in crates/llm-gateway-cli/tests/relaying.rs.
+# DECIDED (row K28): a request's hold budget is its own setting, `request_hold_seconds`, separate
+# from the pod's startup deadline, `start_wait_seconds`. llmgw uses one value for both. They bound
+# different things: the deadline bounds how long a pod may take to serve before it is terminated,
+# and the hold bounds how long one client request waits for it. A client with a short timeout of
+# its own needs a short hold while the pod keeps its long deadline. The hold defaults to
+# `start_wait_seconds`, so a document that does not name it behaves as llmgw. It is at most
+# `start_wait_seconds`, because a request still waiting past the deadline would wait for a pod
+# that has been terminated. 0 asks the pool once (starting the pod if none is live) and does not
+# wait.
+# DECIDED (row L6): a request for a model whose pod is not ready is held: the relay asks the pool
+# again every 500 ms until the pod is ready, the hold budget passes, or the gateway starts to
+# stop. Each ask takes the pool's lock for one step and waits outside it, so a held request never
+# starts a second pod.
+# DECIDED (row W6): a request whose model is still starting, or whose pod is still being stopped
+# for a replacement, when its hold budget passes is answered `model-cold-start` (503) with
+# `retry-after: 30`; any other pool refusal is `target-unavailable`.
 # DECIDED: `idle_timeout_minutes = 0` (row K27) means no idle grace: the pod is stopped by the
 # first cleanup pass that finds it with no request in flight, and never sooner than its measured
 # cold start, which is the floor every idle limit has. `RunpodModel` takes no zero window, so 0 is
@@ -161,7 +179,9 @@ types:
   #                         default `/workspace`
   #   data_center_ids       at most 16, each 2..=32 of `A-Z 0-9 -`
   #   idle_timeout_minutes  0..=1440, default 30
-  #   start_wait_seconds    10..=3600, default 600
+  #   start_wait_seconds    10..=3600, default 600: the pod's startup deadline
+  #   request_hold_seconds  0..=start_wait_seconds, default start_wait_seconds: how long one
+  #                         request waits for the pod (row K28)
   #   vllm_api_key_file     optional; the file holding the key the model's pod's vLLM server
   #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
   - name: llm-gateway.deployment.ModelDeclaration
@@ -186,6 +206,7 @@ types:
       - {name: data_center_ids, type: 'List<String>'}
       - {name: idle_timeout_minutes, type: Integer}
       - {name: start_wait_seconds, type: Integer}
+      - {name: request_hold_seconds, type: Integer}
       - {name: vllm_api_key_file, type: 'Optional<String>'}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and

@@ -6,8 +6,8 @@
 use llm_gateway::{
     AuthKind, BillingKind, Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, RefusalCode,
     Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, RouteSummary,
-    SharedSecretVerifier, ShutdownReport, TargetLimits, TargetProvenance, TargetSummary, Verdict,
-    Wire,
+    SharedSecretVerifier, ShutdownReport, TargetLimits, TargetProvenance, TargetRefusal,
+    TargetSummary, Verdict, Wire,
 };
 use std::{
     collections::BTreeSet,
@@ -485,22 +485,32 @@ impl RelayTarget for Unreachable {
     }
 }
 
-/// Hands out an unreachable target for `down` and none for anything else.
+/// Hands out an unreachable target for `down`, reports `cold` still starting, and has none for
+/// anything else.
 struct ProvokingTargets;
 
 impl RelayTargets for ProvokingTargets {
-    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
-        (alias == "down").then(|| Box::new(Unreachable) as Box<dyn RelayTarget>)
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        match alias {
+            "down" => Ok(Box::new(Unreachable)),
+            "cold" => Err(TargetRefusal::ColdStart),
+            _ => Err(TargetRefusal::Unavailable),
+        }
     }
 
     fn invalidate(&self, _alias: &str, _authority: &str) {}
 }
 
-/// Two chat-only models: `down`, whose target cannot be reached, and `none`, which has none.
+/// Three chat-only models: `down`, whose target cannot be reached, `cold`, whose target is
+/// still starting, and `none`, which has none.
 fn provoking_relay() -> Relay {
     let model = |alias: &str| RelayModel::new(label(alias), label("served"), vec![Wire::Chat]);
     Relay::new(
-        vec![model("down").unwrap(), model("none").unwrap()],
+        vec![
+            model("down").unwrap(),
+            model("cold").unwrap(),
+            model("none").unwrap(),
+        ],
         Arc::new(ProvokingTargets),
     )
     .unwrap()
@@ -556,6 +566,7 @@ fn provoke(code: RefusalCode) -> Provocation {
         RefusalCode::ModelUnknown => relayed(chat, "{\"model\":\"other\"}"),
         RefusalCode::WireNotServed => relayed("/v1/messages", "{\"model\":\"none\"}"),
         RefusalCode::TargetUnavailable => relayed(chat, "{\"model\":\"none\"}"),
+        RefusalCode::ModelColdStart => relayed(chat, "{\"model\":\"cold\"}"),
         RefusalCode::UpstreamFailed => relayed(chat, "{\"model\":\"down\"}"),
         RefusalCode::CredentialAbsent => plain("GET /v1/routes HTTP/1.1\r\nhost: h\r\n\r\n"),
         RefusalCode::CredentialRejected => owned(format!(
@@ -628,6 +639,14 @@ fn every_refusal_code_has_a_request_that_provokes_it() {
         );
         assert_eq!(response.status, code.status(), "{}", response.raw);
         assert_eq!(response.header("cache-control"), Some("no-store"));
+        // Only a cold start tells the client when to come back (row W6).
+        let retry_after = (code == RefusalCode::ModelColdStart).then_some("30");
+        assert_eq!(
+            response.header("retry-after"),
+            retry_after,
+            "{code:?}: {}",
+            response.raw
+        );
         assert!(
             response.body.contains(code.reason()),
             "the fixed diagnostic is missing: {}",
@@ -840,6 +859,12 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
         "DEFAULT_READ_TIMEOUT_SECONDS",
         "a timeout rather than a size bound; enforcement is measured by \
          a_stalled_head_is_refused_when_the_read_timeout_expires",
+    ),
+    (
+        "COLD_START_RETRY_AFTER_SECONDS",
+        "the delay a model-cold-start refusal asks the client to wait (row W6), a hint rather \
+         than a limit; its header is measured by \
+         w6_a_model_still_starting_past_its_hold_budget_is_model_cold_start_with_retry_after_30",
     ),
 ];
 

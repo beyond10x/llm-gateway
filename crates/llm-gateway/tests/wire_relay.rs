@@ -1,6 +1,6 @@
 //! The relay of the three model-call wires (story:wire-relay), one test per behaviour, each
 //! named after the row of `docs/llmgw-capability-matrix.md` it closes: R6, R7, R8, W1, W2, W3,
-//! W4, W5, W7, K11 and B8. The specification is the `Relay` command of
+//! W4, W5, W6, W7, K11 and B8. The specification is the `Relay` command of
 //! `spec/domains/gateway.yaml`.
 //!
 //! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
@@ -11,7 +11,7 @@
 use llm_gateway::{
     Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay, RelayError, RelayModel,
     RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
-    TokenError, Wire,
+    TargetRefusal, TokenError, Wire,
 };
 use std::{
     io::{self, Read, Write},
@@ -306,23 +306,30 @@ struct Slot {
 }
 
 /// The fake target source: hands out the current slot, and moves to the next one when the
-/// gateway reports the current one failed.
+/// gateway reports the current one failed. Its first `cold` acquisitions report the model still
+/// starting past the hold budget (row W6), as a pool whose pod has not served yet does.
 struct Source {
     slots: Vec<Slot>,
     current: Mutex<usize>,
     acquired: Mutex<Vec<String>>,
     invalidated: Mutex<Vec<(String, String)>>,
     released: Arc<AtomicUsize>,
+    cold: AtomicUsize,
 }
 
 impl Source {
     fn new(slots: Vec<Slot>) -> Arc<Self> {
+        Self::cold(slots, 0)
+    }
+
+    fn cold(slots: Vec<Slot>, cold: usize) -> Arc<Self> {
         Arc::new(Self {
             slots,
             current: Mutex::new(0),
             acquired: Mutex::new(Vec::new()),
             invalidated: Mutex::new(Vec::new()),
             released: Arc::new(AtomicUsize::new(0)),
+            cold: AtomicUsize::new(cold),
         })
     }
 
@@ -376,10 +383,21 @@ fn refusing(name: &str) -> Slot {
 }
 
 impl RelayTargets for Source {
-    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         self.acquired.lock().unwrap().push(alias.to_string());
-        let slot = self.slots.get(*self.current.lock().unwrap())?.clone();
-        Some(Box::new(Target {
+        if self
+            .cold
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| left.checked_sub(1))
+            .is_ok()
+        {
+            return Err(TargetRefusal::ColdStart);
+        }
+        let slot = self
+            .slots
+            .get(*self.current.lock().unwrap())
+            .ok_or(TargetRefusal::Unavailable)?
+            .clone();
+        Ok(Box::new(Target {
             slot,
             released: Arc::clone(&self.released),
         }))
@@ -825,6 +843,49 @@ fn r6_a_model_the_source_has_no_target_for_is_target_unavailable() {
         "{\"error\":{\"code\":\"target-unavailable\",\"message\":\"no model target is available\"}}"
     );
     assert_eq!(source.acquired(), vec!["code"]);
+}
+
+// --- W6: a cold start past the hold budget ---------------------------------------------------------
+
+const COLD_START: &str = "{\"error\":{\"code\":\"model-cold-start\",\"message\":\"the model is still starting; ask again after the retry-after delay\"}}";
+
+#[test]
+fn w6_a_model_still_starting_past_its_hold_budget_is_model_cold_start_with_retry_after_30() {
+    let pod = Pod::start(vec![ok_json("{\"id\":\"warm\"}")]);
+    let source = Source::cold(vec![listening(&pod)], 1);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let cold = gateway.post_text("/v1/chat/completions", "{\"model\":\"code\"}");
+    assert_eq!(cold.refused(), (503, Some("model-cold-start".into())));
+    assert_eq!(cold.text(), COLD_START);
+    assert_eq!(cold.header("retry-after"), Some("30"));
+    assert_eq!(cold.header("cache-control"), Some("no-store"));
+    // The pod serves now: the next request reaches it, and its answer carries no retry-after.
+    let warm = gateway.post_text("/v1/responses", "{\"model\":\"code\"}");
+    assert_eq!(warm.status, 200, "{}", warm.text());
+    assert_eq!(warm.text(), "{\"id\":\"warm\"}");
+    assert_eq!(warm.header("retry-after"), None);
+    assert_eq!(source.acquired(), vec!["code", "code"]);
+    assert!(source.invalidated().is_empty(), "a cold start is no failure");
+    assert_eq!(pod.seen().len(), 1);
+}
+
+#[test]
+fn w6_only_a_cold_start_carries_retry_after() {
+    // No target at all is `target-unavailable`: the model is down, not starting, so the client
+    // is not told when to come back.
+    let source = Source::new(Vec::new());
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let answer = gateway.post_text("/v1/chat/completions", "{\"model\":\"code\"}");
+    assert_eq!(answer.refused(), (503, Some("target-unavailable".into())));
+    assert_eq!(answer.header("retry-after"), None);
+    // A request refused before a target is asked for never reports a cold start, even from a
+    // source that would.
+    let cold = Source::cold(Vec::new(), 1);
+    let gateway = Relayed::start(vec![code_model()], &cold);
+    let unknown = gateway.post_text("/v1/chat/completions", "{\"model\":\"other\"}");
+    assert_eq!(unknown.refused(), (404, Some("model-unknown".into())));
+    assert_eq!(unknown.header("retry-after"), None);
+    assert!(cold.acquired().is_empty());
 }
 
 // --- W1: the body bound ----------------------------------------------------------------------

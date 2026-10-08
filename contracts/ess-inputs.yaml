@@ -178,3 +178,5 @@ scenarios:
 - gateway/scenarios/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement.yaml
 - gateway/scenarios/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502.yaml
 - gateway/scenarios/w1-a-body-shorter-than-its-declared-length-is-incomplete.yaml
+- gateway/scenarios/w6-a-model-still-starting-past-its-hold-budget-is-model-cold-start-with-retry-after-30.yaml
+- gateway/scenarios/w6-a-model-with-no-target-is-target-unavailable-without-retry-after.yaml

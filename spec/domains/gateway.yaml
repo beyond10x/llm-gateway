@@ -22,7 +22,7 @@ types:
   # The closed refusal set, with the wire code, status and fixed message the crate publishes
   # (crates/llm-gateway/src/error.rs:99-133).
   #
-  # The relay adds eight (rows W1, W3, W7, K11), each `{"error":{"code":..,"message":..}}` like
+  # The relay adds nine (rows W1, W3, W6, W7, K11), each `{"error":{"code":..,"message":..}}` like
   # every other refusal, with this fixed message:
   #   body-incomplete     400  a body that ended, or stalled past the read timeout, before it was
   #                            complete: "the request body ended or stalled before it was
@@ -38,15 +38,22 @@ types:
   #                            "the model is not served on this wire"
   #   target-unavailable  503  the embedding handed out no target for the model:
   #                            "no model target is available"
+  #   model-cold-start    503  the embedding reports the model's target still starting when the
+  #                            request's hold budget passed (row W6), with `retry-after: 30`:
+  #                            "the model is still starting; ask again after the retry-after
+  #                            delay"
   #   upstream-failed     502  the target could not be reached, closed without an answer, or
   #                            answered 502, 503 or 504: "the model target could not be reached
   #                            or failed; the next request asks for a replacement"
   # DECIDED: llmgw answers `{"error":{"type":..,"message":..}}` with `invalid_request_error`,
   # `model_not_found` and `upstream_error` (llmgw src/lib.rs:515-552, 686-691); llm-gateway keeps
   # its own published refusal shape and codes, so a client reads `error.code`, not `error.type`.
+  # DECIDED: llmgw's `model_cold_start` (llmgw src/lib.rs:567-576, 693-699) is `model-cold-start`,
+  # kebab-case like every other code here, with the same 503 and `retry-after: 30`. It is the only
+  # refusal that carries `retry-after`.
   - name: llm-gateway.gateway.Refusal
     kind: enum
-    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
+    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelColdStart, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
   # A wire the gateway relays, each on its own path, to the same path at the target (rows R6-R8):
   # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
   # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
@@ -148,8 +155,13 @@ entities:
   #      src/lib.rs:470-504). Every other byte of the body reaches the target unchanged.
   #      DECIDED: llmgw re-serialises the parsed document (sorted keys, compact); llm-gateway
   #      rewrites only those string values in place.
-  #   7. The embedding's target source hands out the target serving the model; none is
-  #      `target-unavailable`. The request goes to the same path at the target, with a
+  #   7. The embedding's target source hands out the target serving the model, or says why it
+  #      hands out none: none can be had is `target-unavailable` (503); W6: the model's target
+  #      is still starting and the request's hold budget has passed is `model-cold-start` (503)
+  #      with `retry-after: 30`, so the client asks again later rather than treating the model
+  #      as down. How long a request is held for its target, and what a stop does to a held
+  #      request, are the embedding's (llm-gateway.deployment, rows L6 and K28); the gateway
+  #      holds nothing itself. The request goes to the same path at the target, with a
   #      `content-length`.
   #      B8: a target that carries a bearer (the model's vLLM key, which the embedding reads)
   #      is sent `authorization: Bearer <key>`; a target without one is sent no
@@ -182,6 +194,9 @@ entities:
       # Per request, `content-type=<value> cache-control=<value> allow=<value>`, `absent` for a
       # header that was not sent.
       - {name: headers, type: 'List<String>'}
+      # Per request, the value of the `retry-after` header the client received, or `absent`
+      # when none was sent (row W6).
+      - {name: retry_after, type: 'List<String>'}
       # Per request, `streamed` when every chunk a pod released reached the client before the
       # pod released the next, `held` when one did not, `none` when no pod answered it.
       - {name: arrivals, type: 'List<String>'}
@@ -230,7 +245,10 @@ commands:
       #           the one before it, or after two seconds), or `{transport: refused}` (the
       #           connection is refused) or `{transport: closed}` (the request is read and the
       #           connection closed without an answer)
-      #   steps   in order: `{step: mark_ready}`, or `{step: request, path, body}` with
+      #   cold_starts  optional, default 0: the target source answers its first `cold_starts`
+      #           acquisitions with the model still starting past the request's hold budget
+      #           (row W6), and hands out the current pod after that
+      #   steps  in order: `{step: mark_ready}`, or `{step: request, path, body}` with
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
       #           `}` to exactly that many bytes) and `declare_bytes` (only a head declaring

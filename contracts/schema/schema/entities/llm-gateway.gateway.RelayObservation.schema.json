@@ -32,6 +32,12 @@
         "type": "string"
       }
     },
+    "retry_after": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "arrivals": {
       "type": "array",
       "items": {
@@ -75,6 +81,7 @@
     "results",
     "bodies",
     "headers",
+    "retry_after",
     "arrivals",
     "upstream",
     "acquired",
@@ -88,8 +95,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "65376af2dfc735bf9f87fe036535c7a25219e829862c90d87c321ed9da49366e",
-    "contract_digest": "slice-sha256/2:b07bcbf0b0abd9d37be5009079be5b388a637a56b88af7753094dd234b56796a",
+    "source_digest": "c3ce02b8b57c76fe5c53ffd48bb877ace971911aa2e24391646d280cfda5be38",
+    "contract_digest": "slice-sha256/2:525939438901f4d4de743687278d58c859b1127ed5e6d06c3e6496599794afd3",
     "regenerate": "ess generate"
   },
   "$defs": {

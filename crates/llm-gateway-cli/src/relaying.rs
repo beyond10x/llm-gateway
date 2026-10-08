@@ -534,7 +534,46 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use super::{authority, idle_timeout_ms, secret_name};
+    use super::{Cleanup, authority, idle_timeout_ms, secret_name};
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        thread,
+        time::{Duration, Instant},
+    };
+
+    /// Row L13 on the timer itself, at a 50 ms interval instead of 60 s: no pass before the
+    /// first interval, one per interval after it, and none once stopped. The stop does not wait
+    /// for the next interval.
+    #[test]
+    fn l13_the_cleanup_pass_runs_on_its_interval_until_it_is_stopped() {
+        let passes = Arc::new(AtomicUsize::new(0));
+        let counting = Arc::clone(&passes);
+        let cleanup = Cleanup::start(Duration::from_millis(50), move || {
+            counting.fetch_add(1, Ordering::SeqCst);
+        });
+        thread::sleep(Duration::from_millis(20));
+        assert_eq!(
+            passes.load(Ordering::SeqCst),
+            0,
+            "a pass ran before its interval"
+        );
+        thread::sleep(Duration::from_millis(400));
+        let ran = passes.load(Ordering::SeqCst);
+        assert!(ran >= 2, "{ran} passes in 420 ms at a 50 ms interval");
+        let stopping = Instant::now();
+        cleanup.stop();
+        assert!(
+            stopping.elapsed() < Duration::from_millis(45),
+            "the stop waited {:?} for the next interval",
+            stopping.elapsed()
+        );
+        let stopped = passes.load(Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(150));
+        assert_eq!(passes.load(Ordering::SeqCst), stopped, "a pass ran after the stop");
+    }
 
     #[test]
     fn the_authority_is_the_endpoints_host_and_port() {

@@ -20,6 +20,9 @@ domain: llm-gateway.runpod
 types:
   # Refusals `RunpodPool` hands a caller (crates/llm-runpod/src/pool.rs:62-106). `hosting`
   # wraps an llm-gateway.hosting refusal; `invalid-model` wraps one of ConfigError.
+  # `starting` is answered at once; the pool holds no caller. The pod's `startup_deadline_ms`
+  # bounds the pod, not a caller: how long a request waits on `starting` is the embedding's own
+  # hold budget (llm-gateway.deployment `request_hold_seconds`, row K28).
   - name: llm-gateway.runpod.PoolRefusal
     kind: enum
     variants: [UnknownModel, InvalidModel, Starting, Stopping, NoCapacity, CrashLoop, CredentialRefused, StartupDeadline, PodExited, StoppedServing, Hosting]

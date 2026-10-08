@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.ProbeAnswer",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "8e882b8982412b7561017fcd6bea168c19cc7a1ce5fd35e27bf9c1c8c7f198ec",
+    "contract_digest": "slice-sha256/2:b6e95b1a9196da11e5f19157d24f40596bcac9b4c59da0253300ce722fcd4780",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.ProbeAnswer": {
+      "title": "ProbeAnswer",
+      "x-ess-name": "llm-gateway.runpod.ProbeAnswer",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Ready",
+        "NotReady",
+        "Refused",
+        "Unreachable"
+      ]
+    }
+  }
+}

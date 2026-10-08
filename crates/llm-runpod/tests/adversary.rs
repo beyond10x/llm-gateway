@@ -9,8 +9,9 @@ use std::{
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry, Phase};
 use llm_runpod::{
     CloudType, CreateAnswer, EmulatedRunpod, LEGACY_POD_NAME_PREFIX, ManualClock, NetworkVolume,
-    POD_NAME_PREFIX, PodListing, PodRequest, PodStatus, PoolError, Probe, RunpodModel, RunpodPool,
-    RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
+    POD_NAME_PREFIX, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel,
+    RunpodPool, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer, Thinking,
+    VllmSettings,
 };
 
 const ALIAS: &str = "qwen";
@@ -195,11 +196,11 @@ impl RunpodTransport for Exiting {
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
         self.inner.terminate_pod(pod_id)
     }
-    fn probe_ready(&mut self, pod_id: &str) -> Probe {
-        self.inner.probe_ready(pod_id)
+    fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe {
+        self.inner.probe_ready(target)
     }
-    fn container_uptime(&mut self, pod_id: &str) -> Option<u64> {
-        self.inner.container_uptime(pod_id)
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
+        self.inner.container_started_at(pod_id)
     }
 }
 

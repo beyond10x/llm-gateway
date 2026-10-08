@@ -1,4 +1,4 @@
-//! A fixture of the `connectors` CLI (beyond10x/connectors v0.36.0) for `tests/transport.rs`.
+//! A fixture of the `connectors` CLI (beyond10x/connectors v0.37.0) for `tests/transport.rs`.
 //!
 //! It is reached through a symlink named `connectors` in a per-test directory, and keeps all its
 //! state there: `script.json` holds the canned answers, `calls.jsonl` gets one line per
@@ -6,7 +6,9 @@
 //! `approvals prepare` and `approvals issue` by default, and `operations invoke` only from the
 //! script. An issued proof records the exact input it was issued for, and an invoke of a write
 //! whose proof was issued for another input, or that names no proof, is refused the way
-//! connectors refuses it, and recorded as `proof_mismatch`. Every answer goes out in connectors'
+//! connectors refuses it, and recorded as `proof_mismatch`. A `pod.create` body carrying a key
+//! outside connectors v0.37.0's `body_keys` is refused `invalid_input` before any request, and
+//! recorded as `body_keys_refused`. Every answer goes out in connectors'
 //! published framing (`succeed`, `fail`): a script may write the bare `result` or `error`, and
 //! the fixture frames it; `raw` is printed as given. It opens no socket and reads no key.
 
@@ -25,6 +27,25 @@ use serde_json::{Value, json};
 
 const WRITES: [&str; 2] = ["pod.create", "pod.terminate"];
 const CONNECTION_REVISION: &str = "conn-rev-3";
+/// connectors v0.37.0 `adapters/catalog/providers/runpod/operations.json`, `pod.create`
+/// `body_keys`: the only keys a `pod.create` `body` may carry.
+const POD_CREATE_BODY_KEYS: [&str; 15] = [
+    "name",
+    "imageName",
+    "gpuTypeIds",
+    "gpuCount",
+    "containerDiskInGb",
+    "volumeInGb",
+    "volumeMountPath",
+    "ports",
+    "env",
+    "cloudType",
+    "dataCenterIds",
+    "interruptible",
+    "dockerStartCmd",
+    "dockerEntrypoint",
+    "networkVolumeId",
+];
 
 fn option<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -39,7 +60,7 @@ fn subject(input: &str) -> String {
     format!("{:016x}{:016x}", hasher.finish(), input.len())
 }
 
-/// connectors' failure framing (v0.36.0 `contracts/cli/v1alpha1/semantics.md:178-181`): stdout
+/// connectors' failure framing (v0.37.0 `contracts/cli/v1alpha1/semantics.md:178-181`): stdout
 /// stays empty and stderr gets one `{"ok":false,"error":{"code":"failure","data":…}}` envelope,
 /// whose `data` is the `Failure` (`code`, `stage`, `next_action`, `mutation`). A script
 /// writes a failure as `{"error":{"code":…,"data":…}}`; this is where it is framed.
@@ -141,6 +162,12 @@ fn main() -> ExitCode {
             if WRITES.contains(&operation.as_str()) && !proof_matches(&args, input.as_deref()) {
                 record["proof_mismatch"] = json!(true);
             }
+            if operation == "pod.create" {
+                let refused = unadmitted_body_keys(input.as_deref());
+                if !refused.is_empty() {
+                    record["body_keys_refused"] = json!(refused);
+                }
+            }
             None
         }
         _ => None,
@@ -160,6 +187,18 @@ fn main() -> ExitCode {
         return fail(
             2,
             &json!({"error": {"code": "not_granted", "data": {"kind": "approval", "code": "proof_mismatch"}}}),
+        );
+    }
+    // connectors v0.37.0 docs/catalog-runpod.md:88-89: "A body carrying any other key … is
+    // refused as `invalid_input` before any request."
+    if record.get("body_keys_refused").is_some() {
+        return fail(
+            2,
+            &json!({"error": {"code": "failure", "data": {
+                "kind": "usage", "code": "invalid_input", "stage": "arguments",
+                "next_action": "retry_explicitly",
+                "mutation": {"classification": "not_attempted", "replayed": false},
+            }}}),
         );
     }
     if let Some(answer) = scripted(&dir, &key, seen) {
@@ -207,7 +246,7 @@ fn play(answer: &Value) -> ExitCode {
         }
         succeed(stdout);
     }
-    // connectors v0.36.0 `contracts/cli/v1alpha1/semantics.md`: a failure leaves stdout empty
+    // connectors v0.37.0 `contracts/cli/v1alpha1/semantics.md`: a failure leaves stdout empty
     // and writes its `{"ok":false,"error":…}` envelope to stderr.
     if let Some(stderr) = answer.get("stderr") {
         eprintln!("{stderr}");
@@ -250,4 +289,19 @@ fn proof_matches(args: &[String], input: Option<&str>) -> bool {
     };
     option(args, "--idempotency-key").is_some_and(|key| !key.is_empty())
         && proof["evidence"]["input"].as_str() == input
+}
+
+/// The keys of a `pod.create` input's `body` that connectors v0.37.0 does not admit, in order.
+/// An input that is not an object with an object `body` is refused as a whole.
+fn unadmitted_body_keys(input: Option<&str>) -> Vec<String> {
+    let body = input
+        .and_then(|text| serde_json::from_str::<Value>(text).ok())
+        .and_then(|document| document.get("body").cloned());
+    let Some(Value::Object(body)) = body else {
+        return vec!["<body>".to_owned()];
+    };
+    body.keys()
+        .filter(|key| !POD_CREATE_BODY_KEYS.contains(&key.as_str()))
+        .cloned()
+        .collect()
 }

@@ -1,13 +1,13 @@
 //! The production transport, `ConnectorsRunpod`, against a fixture of the `connectors` CLI
 //! (`tests/fixture/connectors.rs`) and a loopback HTTP fixture of a pod's vLLM server.
 //!
-//! The interface is connectors v0.36.0's: `docs/catalog-runpod.md` (operations, classification,
+//! The interface is connectors v0.37.0's: `docs/catalog-runpod.md` (operations, classification,
 //! body keys, invoke lines), `docs/local-approvals.md` (prepare → issue → invoke with the proof)
 //! and `ess/domains/cli.yaml` (the JSON each command prints). No test runs the real `connectors`,
 //! opens a socket beyond loopback, or reads a key.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     io::{Read, Write},
     net::TcpListener,
@@ -219,6 +219,10 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
     let _ = transport.create_pod(&request("NVIDIA A40"));
 
     let invoke = &fixture.calls_of("operations invoke pod.create")[0];
+    assert!(
+        invoke.get("body_keys_refused").is_none(),
+        "connectors v0.37.0 admits every key sent: {invoke}"
+    );
     let document = input(invoke);
     let body = document["body"].as_object().expect("body object");
     assert_eq!(
@@ -237,9 +241,9 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
     assert_eq!(body["env"], json!({"B10X_LLM_REQUEST": "req-1"}));
     assert_eq!(body["dataCenterIds"], json!(["EU-RO-1"]));
     assert_eq!(body["volumeMountPath"], "/workspace");
-    // As llmgw (src/runpod.rs:792-793 at 048ebd8): the vLLM argv is the entrypoint, and the
-    // image CMD is cleared so `vllm serve` does not run twice. Known gap, pending upstream:
-    // v0.36.0's body_keys admit none of these three, and they are not dropped.
+    // As llmgw (src/runpod.rs:792-793 at 048ebd8): the vLLM argv is the entrypoint and
+    // `dockerStartCmd` is `[]`, which "keeps the image's" start command (connectors v0.37.0
+    // docs/catalog-runpod.md:84). All three keys are in v0.37.0's `body_keys`.
     assert_eq!(
         body["dockerEntrypoint"],
         json!(["vllm", "serve", "Qwen/Qwen3"])
@@ -253,7 +257,7 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
         );
     }
 
-    // An optional value that is absent is left out, never sent empty; the cleared CMD stays.
+    // An optional value that is absent is left out, never sent empty; `dockerStartCmd: []` stays.
     let fixture = Fixture::new("create_body_minimal");
     fixture.script(&json!({"operations invoke pod.create": [failed("refused", "invalid_input")]}));
     let mut minimal = request("NVIDIA A40");
@@ -291,6 +295,34 @@ fn the_body_key_constant_is_the_specified_pod_create_body() {
     constant.sort_unstable();
     declared_sorted.sort_unstable();
     assert_eq!(constant, declared_sorted);
+}
+
+/// The constant is connectors v0.37.0's `pod.create` `body_keys`
+/// (`adapters/catalog/providers/runpod/operations.json` at `v0.37.0`), as a set.
+#[test]
+fn the_body_key_constant_is_connectors_v0_37_0_body_keys() {
+    let v0_37_0: BTreeSet<&str> = [
+        "name",
+        "imageName",
+        "gpuTypeIds",
+        "gpuCount",
+        "containerDiskInGb",
+        "volumeInGb",
+        "volumeMountPath",
+        "ports",
+        "env",
+        "cloudType",
+        "dataCenterIds",
+        "interruptible",
+        "dockerStartCmd",
+        "dockerEntrypoint",
+        "networkVolumeId",
+    ]
+    .into_iter()
+    .collect();
+    let constant: BTreeSet<&str> = POD_CREATE_BODY_KEYS.iter().copied().collect();
+    assert_eq!(constant.len(), POD_CREATE_BODY_KEYS.len(), "no key twice");
+    assert_eq!(constant, v0_37_0);
 }
 
 #[test]
@@ -770,7 +802,7 @@ fn a_last_started_at_moving_forward_counts_as_a_restart() {
 
 // ---- connectors' connection evidence expires: revalidate once, repeat once ----
 //
-// connectors v0.36.0 docs/local-catalog-provider.md:479-486: evidence lasts
+// connectors v0.37.0 docs/local-catalog-provider.md:479-486: evidence lasts
 // `evidence_lifetime_ms` (60 s when omitted, at most 300 000 ms); then an invoke is refused
 // `not_granted` at `admission` with `next_action: revalidate_connection` until
 // `connections revalidate` renews it, and "The invoke does not revalidate on its own".
@@ -886,7 +918,7 @@ fn a_write_refused_after_admission_or_classified_otherwise_is_never_repeated() {
 
 // ---- connectors' published framing, and a stale descriptor ----
 //
-// connectors v0.36.0 `contracts/cli/v1alpha1/semantics.md:178-181`: a success is one
+// connectors v0.37.0 `contracts/cli/v1alpha1/semantics.md:178-181`: a success is one
 // `{"ok":true,"result":…}` envelope on stdout; a failure leaves stdout empty and writes one
 // `{"ok":false,"error":{"code":"failure","data":…}}` envelope to stderr. The fixture frames the
 // bare answers the cases above script; these cases script the frames themselves.

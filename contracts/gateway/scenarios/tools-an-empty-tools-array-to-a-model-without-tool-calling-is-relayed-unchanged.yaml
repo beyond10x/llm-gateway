@@ -1,0 +1,27 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged
+summary: a body whose top-level tools is an empty array, for a model declaring tool calling absent, offers no tool and reaches the fixture pod with only its model rewritten
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"text","upstream_model":"served-text","wires":["chat"],"tool_calling":"absent"}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"empty\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"text\",\"messages\":[],\"tools\": [ ]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    bodies:
+    - '{"id":"empty"}'
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-text","messages":[],"tools": [ ]}'
+    acquired: 1
+    invalidated: []

@@ -8,3 +8,4 @@ domains:
   - llm-gateway.deployment
   - llm-gateway.telemetry
   - llm-gateway.upstream
+  - llm-gateway.clients

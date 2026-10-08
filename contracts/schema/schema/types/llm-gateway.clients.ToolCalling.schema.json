@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.clients.ToolCalling",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "7250cc93b5f67c9acd4cf005309fe2064c918b1011dd5991b11b37d3467b2d0f",
+    "contract_digest": "slice-sha256/2:c835f881a3de284acb5615cdd6bb1730b5d4c3bea320f8bf53185b3044b0262d",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.clients.ToolCalling": {
+      "title": "ToolCalling",
+      "x-ess-name": "llm-gateway.clients.ToolCalling",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Parsed",
+        "Absent"
+      ]
+    }
+  }
+}

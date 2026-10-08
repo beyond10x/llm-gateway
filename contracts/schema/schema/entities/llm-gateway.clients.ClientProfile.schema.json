@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ClientProfile",
+  "x-ess-name": "llm-gateway.clients.ClientProfile",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "profile_id": {
+      "type": "string"
+    },
+    "client": {
+      "$ref": "#/$defs/llm-gateway.clients.ClientKind"
+    },
+    "wire": {
+      "$ref": "#/$defs/llm-gateway.gateway.Wire"
+    },
+    "base_path": {
+      "type": "string"
+    },
+    "credential_setting": {
+      "type": "string"
+    },
+    "model_settings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "context_setting": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.clients.ClientProfile.State"
+    }
+  },
+  "required": [
+    "profile_id",
+    "client",
+    "wire",
+    "base_path",
+    "credential_setting",
+    "model_settings",
+    "context_setting",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "7250cc93b5f67c9acd4cf005309fe2064c918b1011dd5991b11b37d3467b2d0f",
+    "contract_digest": "slice-sha256/2:498e3fa99ad0eaa726d434ef974d7c25c70ffca4893a63477a8e8d9cb792cd57",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.clients.ClientKind": {
+      "title": "ClientKind",
+      "x-ess-name": "llm-gateway.clients.ClientKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "ClaudeCode",
+        "Codex",
+        "Loom"
+      ]
+    },
+    "llm-gateway.clients.ClientProfile.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.clients.ClientProfile.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    },
+    "llm-gateway.gateway.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.gateway.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    }
+  }
+}

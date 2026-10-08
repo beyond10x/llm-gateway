@@ -9,6 +9,8 @@ relations:
 - serves: vision:portable-model-inference
 - depends_on: story:gateway-spec-declarations
 - depends_on: story:provider-key-files
+- informed_by: epic:client-access
+- depends_on: story:model-tool-calling
 scope:
 - confidence: inferred
   path: checks/conformance/src/gateway.rs
@@ -22,9 +24,11 @@ scope:
   path: crates/llm-gateway/tests/gateway.rs
 - confidence: cited
   path: docs/gateway.md
+- confidence: cited
+  path: spec/domains/clients.yaml
 - confidence: inferred
   path: spec/domains/gateway.yaml
-revision: 10
+revision: 14
 ---
 ## Outcome
 
@@ -83,3 +87,25 @@ methods before any code.
 `crates/llm-gateway/src/server.rs`, `crates/llm-gateway/src/inventory.rs`,
 `crates/llm-gateway-cli/src/serve.rs`, `docs/gateway.md`, `crates/llm-gateway/tests/gateway.rs`,
 `spec/domains/gateway.yaml`, `checks/conformance/src/gateway.rs`.
+
+## Client profiles
+
+Added 2026-10-08 for `epic:client-access` (`docs/design/runpod-clients.md` § 4, § 5). These are
+acceptance criteria, numbered on from the list above.
+
+9. The Codex and Claude Code answers of `GET /` (criterion 2) carry, per model, the settings of
+   that client's `llm-gateway.clients.ClientProfile` (`spec/domains/clients.yaml`), with the
+   model's alias and `context_window` as their values. A row-named test reads each setting name
+   and each value out of the answer for a document with two models.
+10. The plain-text and HTML answers carry the Loom profile: the llm catalog lines of design § 5
+    step 7, per model, for the `chat` wire, with alias and `context_window` filled in. A test reads
+    them out of the plain-text answer, and a second test out of the HTML answer.
+11. A model that does not declare the client's wire, or whose tool calling is `Absent`, gets no
+    profile for that client. Two tests, one per condition, find the model's alias absent from that
+    client's profile.
+12. The `UNMAPPED` marker on `ClientProfile` in `spec/domains/clients.yaml` is replaced by a
+    `DECIDED` line, and `ess specify validate --path spec` passes.
+
+Depends on `story:model-tool-calling`, which declares the tool calling criterion 11 reads; both
+change `docs/gateway.md`, `spec/domains/clients.yaml`, `crates/llm-gateway-cli/src/serve.rs` and
+`crates/llm-gateway/tests/gateway.rs`.

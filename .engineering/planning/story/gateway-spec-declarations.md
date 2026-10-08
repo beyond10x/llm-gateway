@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:gateway-spec-declarations
 kind: story
-status: draft
+status: active
 title: gateway.yaml and deployment.yaml declare every rule docs/gateway.md and README promise
 relations:
 - decomposes: epic:spec-hardening
@@ -19,7 +19,10 @@ scope:
   path: spec/domains/deployment.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
-revision: 8
+revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T20:01:23Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "proposed", to: "active", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"review_outcome":3}}}
 ---
 ## Outcome
 

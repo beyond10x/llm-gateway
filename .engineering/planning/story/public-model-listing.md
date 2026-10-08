@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:public-model-listing
 kind: story
-status: draft
+status: active
 title: GET /v1/models and GET / answer without a credential and wake no pod
 relations:
 - decomposes: epic:gateway
@@ -28,7 +28,10 @@ scope:
   path: spec/domains/clients.yaml
 - confidence: inferred
   path: spec/domains/gateway.yaml
-revision: 14
+revision: 16
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 15, decided_on: {"recorded":{"review_outcome":12}}}
+- {from: "proposed", to: "active", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 16, decided_on: {"recorded":{"review_outcome":12}}}
 ---
 ## Outcome
 

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.ConnectorsBinding",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "8a2e960bc51248f6b3d51e6fef9ae17e692775a3fd4a2f1294ad42b994b4815e",
+    "contract_digest": "slice-sha256/2:78e08622a392f55e26850555514b106302ef367b521fd8ec025c60ee47377e1f",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.ConnectorsBinding": {
+      "title": "ConnectorsBinding",
+      "x-ess-name": "llm-gateway.runpod.ConnectorsBinding",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "executable": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "work_directory": {
+          "type": "string"
+        },
+        "timeout_ms": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "executable",
+        "adapter",
+        "connection",
+        "work_directory",
+        "timeout_ms"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

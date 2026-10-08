@@ -120,8 +120,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
-    "contract_digest": "slice-sha256/2:440a45f4b72646303fc056abe71abb210a2a2869f3011c09834f9cb3fd331445",
+    "source_digest": "8a2e960bc51248f6b3d51e6fef9ae17e692775a3fd4a2f1294ad42b994b4815e",
+    "contract_digest": "slice-sha256/2:38fd68babdb254022a39cdee9ca22ff82d4e8841497a66d19cfa04f4f9223ee0",
     "regenerate": "ess generate"
   },
   "$defs": {

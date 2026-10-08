@@ -1,0 +1,91 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.PodCreateBody",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "8a2e960bc51248f6b3d51e6fef9ae17e692775a3fd4a2f1294ad42b994b4815e",
+    "contract_digest": "slice-sha256/2:8407c6ef86d282b1c00d1a447277eec561378e78b8dd7d10ea158366fbea1fb7",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.PodCreateBody": {
+      "title": "PodCreateBody",
+      "x-ess-name": "llm-gateway.runpod.PodCreateBody",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "imageName": {
+          "type": "string"
+        },
+        "gpuTypeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gpuCount": {
+          "type": "integer"
+        },
+        "containerDiskInGb": {
+          "type": "integer"
+        },
+        "volumeInGb": {
+          "type": "integer"
+        },
+        "volumeMountPath": {
+          "type": "string"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-ess-map-key": "String"
+        },
+        "cloudType": {
+          "type": "string"
+        },
+        "dataCenterIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interruptible": {
+          "type": "boolean"
+        },
+        "dockerStartCmd": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "networkVolumeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "imageName",
+        "gpuTypeIds",
+        "gpuCount",
+        "containerDiskInGb",
+        "ports",
+        "env",
+        "cloudType",
+        "interruptible"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

@@ -1,21 +1,23 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$ref": "#/$defs/llm-gateway.telemetry.UsageRecord.State",
+  "$ref": "#/$defs/llm-gateway.runpod.TerminateAnswer",
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
     "source_digest": "8a2e960bc51248f6b3d51e6fef9ae17e692775a3fd4a2f1294ad42b994b4815e",
-    "contract_digest": "slice-sha256/2:f130f5ba3c91f31ccda60b840481c4f0d304756d6ab1109d14ee80cc59ca3402",
+    "contract_digest": "slice-sha256/2:c2b88a3ce194742a0d201be3999261b137d440940d05cf3b6e88579c0766784a",
     "regenerate": "ess generate"
   },
   "$defs": {
-    "llm-gateway.telemetry.UsageRecord.State": {
-      "title": "State",
-      "x-ess-name": "llm-gateway.telemetry.UsageRecord.State",
+    "llm-gateway.runpod.TerminateAnswer": {
+      "title": "TerminateAnswer",
+      "x-ess-name": "llm-gateway.runpod.TerminateAnswer",
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Recorded"
+        "Terminated",
+        "Refused",
+        "Lost"
       ]
     }
   }

@@ -1,0 +1,98 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.PodCreateBody",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "8e882b8982412b7561017fcd6bea168c19cc7a1ce5fd35e27bf9c1c8c7f198ec",
+    "contract_digest": "slice-sha256/2:99ab9a2a1c174fb8290a5af69f5747325456f546551e685182994ed5ae470525",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.PodCreateBody": {
+      "title": "PodCreateBody",
+      "x-ess-name": "llm-gateway.runpod.PodCreateBody",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "imageName": {
+          "type": "string"
+        },
+        "gpuTypeIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "gpuCount": {
+          "type": "integer"
+        },
+        "containerDiskInGb": {
+          "type": "integer"
+        },
+        "volumeInGb": {
+          "type": "integer"
+        },
+        "volumeMountPath": {
+          "type": "string"
+        },
+        "ports": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "env": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-ess-map-key": "String"
+        },
+        "cloudType": {
+          "type": "string"
+        },
+        "dataCenterIds": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "interruptible": {
+          "type": "boolean"
+        },
+        "dockerEntrypoint": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "dockerStartCmd": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "networkVolumeId": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "imageName",
+        "gpuTypeIds",
+        "gpuCount",
+        "containerDiskInGb",
+        "ports",
+        "env",
+        "cloudType",
+        "interruptible",
+        "dockerStartCmd"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

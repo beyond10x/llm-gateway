@@ -13,8 +13,13 @@ use std::{
 };
 
 use crate::{
-    CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, RunpodTransport, TerminateAnswer,
+    CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget, RunpodTransport,
+    TerminateAnswer,
 };
+
+/// The instant every emulated container start is counted back from: a pod scripted with uptime
+/// `u` reports [`RunpodTransport::container_started_at`] as this minus `u`.
+const EMULATED_START_ORIGIN_MS: u64 = 1 << 52;
 
 #[derive(Debug)]
 struct Emulated {
@@ -101,7 +106,10 @@ impl EmulatedRunpod {
     pub fn ready_after(&self, probes: u32) {
         self.state().ready_after = probes;
     }
-    /// Pods created from now on report these container uptimes, one per poll.
+    /// Pods created from now on report these container uptimes, one per poll. The emulator's
+    /// clock stands still between polls, so a container up for `u` started at
+    /// a fixed origin minus `u`: a falling uptime is a start time moving forward, which
+    /// is how Runpod's `lastStartedAt` reports a restart.
     pub fn uptimes(&self, script: Vec<u64>) {
         self.state().uptimes = script;
     }
@@ -230,7 +238,8 @@ impl RunpodTransport for EmulatedRunpod {
         TerminateAnswer::Terminated
     }
 
-    fn probe_ready(&mut self, pod_id: &str) -> Probe {
+    fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe {
+        let pod_id = target.pod_id;
         let mut state = self.state();
         if state.unreachable {
             return Probe::Unreachable;
@@ -250,12 +259,13 @@ impl RunpodTransport for EmulatedRunpod {
         }
     }
 
-    fn container_uptime(&mut self, pod_id: &str) -> Option<u64> {
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         let mut state = self.state();
         state
             .pods
             .iter_mut()
             .find(|pod| pod.pod.id == pod_id)
             .and_then(|pod| pod.uptimes.pop_front())
+            .map(|uptime| EMULATED_START_ORIGIN_MS.saturating_sub(uptime))
     }
 }

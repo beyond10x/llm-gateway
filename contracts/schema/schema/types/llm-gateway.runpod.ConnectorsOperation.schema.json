@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.ConnectorsOperation",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "8e882b8982412b7561017fcd6bea168c19cc7a1ce5fd35e27bf9c1c8c7f198ec",
+    "contract_digest": "slice-sha256/2:c624892ddbb159bc1d2b0b23c2c062dd8f612560b152240433ddba257c17f000",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.ConnectorsOperation": {
+      "title": "ConnectorsOperation",
+      "x-ess-name": "llm-gateway.runpod.ConnectorsOperation",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "PodCreate",
+        "PodsList",
+        "PodTerminate"
+      ]
+    }
+  }
+}

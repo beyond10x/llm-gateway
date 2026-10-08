@@ -2,12 +2,14 @@
 format: aep.planning-md/3
 id: decision-blocker:runpod-control-plane
 kind: decision-blocker
-status: open
+status: cleared
 title: Where Runpod is described and how its API is reached is not decided (design choice D1)
 relations:
 - blocks: story:runpod-production-transport
 - blocks: story:provider-key-files
-revision: 1
+revision: 3
+transitions:
+- {from: "open", to: "cleared", at: "2026-10-08T10:03:41Z", actor: "human:timo", revision: 3}
 ---
 ## Question
 
@@ -17,7 +19,15 @@ through beyond10x/connectors. B: an own client here with keys from beyond10x/sec
 client with keys from trusted files, as `story:runpod-production-transport` and
 `story:provider-key-files` are written today. Recommended: A.
 
+## Decided 2026-10-08: A
+
+The operator chose A. Runpod is a provider description in beyond10x/llm `crates/llm-providers`; its
+control plane (create, list, terminate a pod) is reached through beyond10x/connectors with a Runpod
+OpenAPI bundle; this gateway holds only each model's vLLM key. The Runpod description and the
+OpenAPI bundle are requested from those two repositories.
+
 ## Cleared when
 
-The choice is recorded. With A, the two blocked stories are rewritten before they start and
-depend on the llm and connectors releases that carry the Runpod description and bundle.
+The choice is recorded (done above). `story:runpod-production-transport` and
+`story:provider-key-files` are rewritten for A before either starts, and then depend on the llm and
+connectors releases that carry the Runpod description and bundle.

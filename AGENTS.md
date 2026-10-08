@@ -23,6 +23,15 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | `docs/` | The gateway and hosting contracts, the llmgw capability matrix, dated verification records, and designs under `docs/design/` |
 | `.engineering/` | The AEP planning store and per-story evidence |
 
+## Serves
+
+- **O1 — governed reach.** The gateway is a single-owner, authenticated relay whose refusal codes
+  and bounds are published in `docs/gateway.md`, and hosting runs only behind the lease contract
+  with stop obligations in `docs/hosting.md`.
+- **O5 — the generic agent platform.** It serves the model endpoints that agent clients (Claude
+  Code, Codex, Loom) reach, starting with a Runpod-hosted model, as `docs/design/runpod-clients.md`
+  proposes.
+
 ## Invariants
 
 Each claim below fails a named check when broken. Change the claim and its check together, or not
@@ -56,9 +65,9 @@ newer Clippy can add lints CI does not have. The tree also lints clean on 1.99.0
 2026-10-05). `.github/workflows/shared-gates.yml` runs the common
 Gates checks against the `B10X_GATES_POLICY` secret.
 
-Build into a shared directory, not the worktree:
-`CARGO_TARGET_DIR=~/.cache/b10x-target/llm-gateway CARGO_INCREMENTAL=0`. Check `df -h /` before a
-full gate, and delete the worktree's `target/conformance` when the work is reported.
+Every build writes the worktree's own `target/`; never set `CARGO_TARGET_DIR`. Check `df -h /`
+before a full gate. End a tree with `worktree finish --discard-cache --archive <tree>`, which
+removes the build cache it recognises, instead of deleting `target/` by hand.
 
 ## Generated files
 
@@ -128,8 +137,17 @@ scenario or a dependency, or changes the gate.
 
 ## Releases
 
-None yet: the workspace version is 0.1.0, every crate is `publish = false`, there is no tag and no
-release workflow. The first release defines its process here before it is cut.
+Versions are workspace-wide (`[workspace.package] version`) and tags are bare (`0.1.0`); every
+crate is `publish = false`, so a release is a source release with no assets. There is no release
+workflow. The first release is 0.1.0, the version the workspace already carries.
+
+1. On the wave's integration branch, one commit `release: llm-gateway <version>` that sets the
+   workspace version (and `Cargo.lock`) and moves README.md's status line.
+2. The wave pull request, green `Gate` and `Shared source gates`, merged through the bot App.
+3. Tag `<version>` on the merge commit and publish the GitHub Release `llm-gateway <version>`, both
+   as the bot (`b10x-gates bot -- tag` and `push`, `b10x-gates api` `POST /releases`).
+4. Verify the tag's commit, `Gate` and `Shared source gates` on it, and the Release; only then
+   report it released.
 
 ## Publishing
 

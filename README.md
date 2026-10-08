@@ -11,8 +11,8 @@ model; this repository answers them and, later, starts the pods they reach.
 [docs/llmgw-capability-matrix.md](docs/llmgw-capability-matrix.md) (what is still missing before
 it can replace llmgw, row by row).
 
-**Status: 0.1.0, unreleased, tested against in-process fakes and loopback; nothing is deployed or
-qualified.**
+**Status: 0.1.0, released 2026-10-08 as a source release; tested against in-process fakes and
+loopback; nothing is deployed or qualified.**
 
 ## What it is not
 
@@ -38,8 +38,8 @@ in service until the capability matrix has no open gap and a cutover has been qu
 | `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract, with the in-process `EmulatedRunpod` |
 | `b10x-llm-modal` | A Modal adapter; it exports nothing yet |
 
-No tag has been cut and the crates are not published, so build from source. The workspace needs
-Rust 1.98 or newer.
+Releases are source releases tagged `<version>` (the first is `0.1.0`); the crates are not
+published, so build from source. The workspace needs Rust 1.98 or newer.
 
 ## Run the gateway
 

@@ -20,9 +20,9 @@ use llm_provision::{
     LeaseRegistry, Phase,
 };
 use llm_runpod::{
-    CloudType, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX, ManualClock, NetworkVolume,
-    POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe, RunpodModel,
-    RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST,
+    CloudType, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX, ManualClock,
+    NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe,
+    RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST,
     TerminateAnswer, Thinking, VllmSettings,
 };
 
@@ -1315,7 +1315,10 @@ fn l6_every_hold_on_a_pod_that_misses_its_startup_deadline_is_lost_and_starts_no
     let (mut first, mut second) = (Hold::default(), Hold::default());
     for hold in [&mut first, &mut second] {
         assert_eq!(
-            stack.pool.ensure_held(&id(ALIAS), &authorization(), hold).err(),
+            stack
+                .pool
+                .ensure_held(&id(ALIAS), &authorization(), hold)
+                .err(),
             Some(PoolError::Starting)
         );
         assert!(!hold.lost());
@@ -1323,19 +1326,32 @@ fn l6_every_hold_on_a_pod_that_misses_its_startup_deadline_is_lost_and_starts_no
     assert_eq!(stack.runpod.create_calls(), 1, "two holds, one pod");
     stack.clock.advance(600_001);
     assert_eq!(
-        stack.pool.ensure_held(&id(ALIAS), &authorization(), &mut first).err(),
+        stack
+            .pool
+            .ensure_held(&id(ALIAS), &authorization(), &mut first)
+            .err(),
         Some(PoolError::StartupDeadline)
     );
     assert!(first.lost());
-    let told = stack.pool.ensure_held(&id(ALIAS), &authorization(), &mut second);
+    let told = stack
+        .pool
+        .ensure_held(&id(ALIAS), &authorization(), &mut second);
     assert!(
         !matches!(told, Ok(_) | Err(PoolError::Starting)),
         "the second hold was told {:?}",
         told.map(drop)
     );
-    assert!(second.lost(), "the second hold did not learn its pod failed");
+    assert!(
+        second.lost(),
+        "the second hold did not learn its pod failed"
+    );
     for hold in [&mut first, &mut second] {
-        assert!(stack.pool.ensure_held(&id(ALIAS), &authorization(), hold).is_err());
+        assert!(
+            stack
+                .pool
+                .ensure_held(&id(ALIAS), &authorization(), hold)
+                .is_err()
+        );
         assert!(hold.lost());
     }
     assert_eq!(stack.runpod.create_calls(), 1, "a lost hold created a pod");
@@ -1345,7 +1361,10 @@ fn l6_every_hold_on_a_pod_that_misses_its_startup_deadline_is_lost_and_starts_no
     let mut fresh = Hold::default();
     let lease = (0..10)
         .find_map(|_| {
-            match stack.pool.ensure_held(&id(ALIAS), &authorization(), &mut fresh) {
+            match stack
+                .pool
+                .ensure_held(&id(ALIAS), &authorization(), &mut fresh)
+            {
                 Ok(lease) => Some(lease),
                 Err(PoolError::Starting | PoolError::Stopping) => {
                     stack.clock.advance(1_000);
@@ -1371,13 +1390,18 @@ fn l6_a_hold_whose_pod_the_cleanup_pass_retires_is_lost_and_starts_nothing() {
     stack.runpod.ready_after(u32::MAX);
     let mut hold = Hold::default();
     assert_eq!(
-        stack.pool.ensure_held(&id(ALIAS), &authorization(), &mut hold).err(),
+        stack
+            .pool
+            .ensure_held(&id(ALIAS), &authorization(), &mut hold)
+            .err(),
         Some(PoolError::Starting)
     );
     stack.clock.advance(600_001);
     drop(stack.pool.reap().expect("cleanup"));
     assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
-    let told = stack.pool.ensure_held(&id(ALIAS), &authorization(), &mut hold);
+    let told = stack
+        .pool
+        .ensure_held(&id(ALIAS), &authorization(), &mut hold);
     assert!(
         !matches!(told, Ok(_) | Err(PoolError::Starting)),
         "the hold was told {:?}",

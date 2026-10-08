@@ -21,8 +21,8 @@ use llm_gateway::{
     TargetBearer, TargetRefusal,
 };
 use llm_runpod::{
-    Clock, ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry, PoolError, RunpodModel,
-    RunpodPool, RunpodTransport, StreamLease,
+    Clock, ComputeAuthorization, Hold, HostingPolicy, Identifier, LeaseRegistry, PoolError,
+    RunpodModel, RunpodPool, RunpodTransport, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -305,23 +305,28 @@ fn authority(endpoint: &str) -> Option<&str> {
 }
 
 impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
-    /// Asks the pool for the model's ready pod, and while it is starting (or its predecessor is
-    /// still being stopped) holds the request, asking again every 500 ms, until the model's
-    /// `request_hold_seconds` have passed (row L6). Each ask is one pool step under the pool's
-    /// lock; the wait is outside it, so a held request never starts a second pod. Past the
-    /// hold the request is `model-cold-start` (row W6); any other pool refusal is
-    /// `target-unavailable`. Once the gateway starts to stop, a request may still use a pod that
-    /// is ready now, but starts none and waits for none: without a ready pod it gives up at once
-    /// (`target-unavailable`), so it cannot hold the graceful stop.
+    /// Asks the pool for the model's ready pod through one [`Hold`], and while the pool answers
+    /// `starting` (or `stopping`, before the hold is bound to a pod) holds the request, asking
+    /// again every 500 ms, until the model's `request_hold_seconds` have passed (row L6). Each
+    /// ask is one pool step under the pool's lock and the wait is outside it. The first ask may
+    /// start a pod; the hold then binds to the pod it found starting, so requests held together
+    /// start one pod. Still starting past the hold is `model-cold-start` (row W6). Once the
+    /// bound pod fails, owes a stop or leaves the slot, whichever step retired it, the hold is
+    /// lost: the request is `target-unavailable` at once and starts no replacement. Every other
+    /// pool refusal is `target-unavailable` too. Once the gateway starts to stop, a request may
+    /// still use a pod that is ready now, but starts none and waits for none: without a ready
+    /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         let relayed = self.models.get(alias).ok_or(TargetRefusal::Unavailable)?;
         let deadline = Instant::now() + relayed.hold;
+        let mut hold = Hold::default();
         loop {
             let stopping = self.stopping.load(Ordering::SeqCst);
             let asked = if stopping {
                 self.pool.ensure_running(&relayed.alias)
             } else {
-                self.pool.ensure(&relayed.alias, &self.authorization)
+                self.pool
+                    .ensure_held(&relayed.alias, &self.authorization, &mut hold)
             };
             match asked {
                 Ok(lease) => {
@@ -337,7 +342,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         _lease: lease,
                     }));
                 }
-                Err(PoolError::Starting | PoolError::Stopping) if !stopping => {
+                Err(PoolError::Starting | PoolError::Stopping) if !stopping && !hold.lost() => {
                     if Instant::now() >= deadline {
                         return Err(TargetRefusal::ColdStart);
                     }

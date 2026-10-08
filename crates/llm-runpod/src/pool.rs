@@ -150,6 +150,28 @@ struct Usage {
     last_used_ms: AtomicU64,
 }
 
+/// One caller's wait for a starting pod, carried across its [`RunpodPool::ensure_held`] asks.
+///
+/// Bound to the deployment its first `starting` answer was about; [`Self::lost`] once that
+/// deployment failed, owes a stop or left its slot.
+#[derive(Debug, Default)]
+pub struct Hold {
+    deployment: Option<Identifier>,
+    lost: bool,
+}
+
+impl Hold {
+    /// The deployment this hold waits on. `None` until a `starting` answer bound it.
+    pub fn deployment(&self) -> Option<&Identifier> {
+        self.deployment.as_ref()
+    }
+
+    /// Whether the deployment this hold waited on failed. A lost hold starts nothing.
+    pub const fn lost(&self) -> bool {
+        self.lost
+    }
+}
+
 /// A ready endpoint plus the in-flight accounting that keeps the idle reaper away from it.
 ///
 /// Hold it for as long as the response, stream included, is being relayed. Dropping it starts
@@ -421,7 +443,7 @@ impl<T: RunpodTransport> RunpodPool<T> {
         alias: &Identifier,
         authorization: &ComputeAuthorization,
     ) -> Result<StreamLease, PoolError> {
-        self.hand_out(alias, Some(authorization))
+        self.hand_out(alias, Some(authorization), None)
     }
 
     /// Hands out the model's pod only if it is ready now, and never starts one: when no pod is
@@ -432,14 +454,43 @@ impl<T: RunpodTransport> RunpodPool<T> {
     ///
     /// As [`Self::ensure`]; [`PoolError::Starting`] also when no pod is live.
     pub fn ensure_running(&self, alias: &Identifier) -> Result<StreamLease, PoolError> {
-        self.hand_out(alias, None)
+        self.hand_out(alias, None, None)
     }
 
-    /// [`Self::ensure`] when `authorization` is given; without it, nothing is started.
+    /// [`Self::ensure`] for a caller that asks again and again while the pod starts, carrying
+    /// one [`Hold`] across its asks.
+    ///
+    /// The first answer of [`PoolError::Starting`] binds the hold to the deployment it was about;
+    /// while the slot is still stopping a previous deployment the hold stays unbound, so a caller
+    /// that arrives during a replacement binds to the replacement. Once the bound deployment
+    /// owes a stop, is retired, or is no longer the slot's current one, the hold is
+    /// [`Hold::lost`]: that call and every later one through the hold submits nothing and
+    /// answers an error, the retire reason when that very step retired the pod and
+    /// [`PoolError::Stopping`] otherwise. So every caller held on a pod that failed learns it
+    /// failed, not only the one whose step retired it, and none of them starts a replacement.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::ensure`].
+    pub fn ensure_held(
+        &self,
+        alias: &Identifier,
+        authorization: &ComputeAuthorization,
+        hold: &mut Hold,
+    ) -> Result<StreamLease, PoolError> {
+        if hold.lost {
+            return Err(PoolError::Stopping);
+        }
+        self.hand_out(alias, Some(authorization), Some(hold))
+    }
+
+    /// [`Self::ensure`] when `authorization` is given; without it, nothing is started. With a
+    /// `hold`, as [`Self::ensure_held`].
     fn hand_out(
         &self,
         alias: &Identifier,
         authorization: Option<&ComputeAuthorization>,
+        mut hold: Option<&mut Hold>,
     ) -> Result<StreamLease, PoolError> {
         let mut inner = self.lock();
         if !inner.models.contains_key(alias) {
@@ -447,6 +498,20 @@ impl<T: RunpodTransport> RunpodPool<T> {
         }
         let now = self.clock.now_ms();
         let retired = inner.step(now)?;
+        if let Some(hold) = hold.as_deref_mut()
+            && let Some(waited) = hold.deployment.clone()
+        {
+            let reason = retired.get(&waited).copied();
+            inner.forget_terminal(alias);
+            let current = inner.slots.get(alias).and_then(|slot| slot.current.clone());
+            let owes_stop = inner.record(&waited).is_none_or(|record| {
+                record.phase == Phase::StopRequired || record.phase.terminal()
+            });
+            if reason.is_some() || current.as_ref() != Some(&waited) || owes_stop {
+                hold.lost = true;
+                return Err(reason.map_or(PoolError::Stopping, Retire::error));
+            }
+        }
         let current = inner.slots.get(alias).and_then(|slot| slot.current.clone());
         if let Some(deployment) = &current
             && let Some(reason) = retired.get(deployment)
@@ -455,6 +520,25 @@ impl<T: RunpodTransport> RunpodPool<T> {
             return Err(reason.error());
         }
         inner.forget_terminal(alias);
+        let answer = Self::answer(&mut inner, &self.clock, now, alias, authorization);
+        if let Some(hold) = hold
+            && hold.deployment.is_none()
+            && answer.as_ref().err() == Some(&PoolError::Starting)
+        {
+            hold.deployment = inner.slots.get(alias).and_then(|slot| slot.current.clone());
+        }
+        answer
+    }
+
+    /// The answer for a slot whose retired deployments have been forgotten: start one, report
+    /// it starting or stopping, or hand out the ready one.
+    fn answer(
+        inner: &mut Inner<T>,
+        clock: &Arc<dyn Clock>,
+        now: u64,
+        alias: &Identifier,
+        authorization: Option<&ComputeAuthorization>,
+    ) -> Result<StreamLease, PoolError> {
         let current = inner.slots.get(alias).and_then(|slot| slot.current.clone());
         let Some(deployment) = current else {
             return match authorization {
@@ -472,7 +556,7 @@ impl<T: RunpodTransport> RunpodPool<T> {
                 slot.usage.last_used_ms.fetch_max(now, Ordering::SeqCst);
                 Ok(StreamLease {
                     usage: Arc::clone(&slot.usage),
-                    clock: Arc::clone(&self.clock),
+                    clock: Arc::clone(clock),
                     deployment,
                     endpoint: observed.and_then(|observed| observed.endpoint.clone()),
                     served_model: observed.and_then(|observed| observed.served_model.clone()),

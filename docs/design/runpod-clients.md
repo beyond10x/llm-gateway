@@ -342,7 +342,9 @@ Operator input, 2026-10-08:
 > - start stop install model, etc ... how crazy would it be: start llm-gateway, configure runpod,
 > then being able to set via api model, llvm params, etc ...
 
-Not part of this epic; recorded here as the milestone after it (design choice D5). Today the model
+Not part of this epic; recorded here as the milestone after it. Design choice D5 is decided: A, the
+operator, 2026-10-08, a later epic drafted after `story:client-qualification`
+(`decision-blocker:gateway-model-api`). Today the model
 registry is the `[models.<alias>]` tables of a closed document read once at startup
 (`spec/domains/deployment.yaml`), and the route inventory is an immutable snapshot
 (`docs/gateway.md` "The route inventory"). The proposal splits the document in two: the document
@@ -386,4 +388,4 @@ uses.
 | D2 | `HEAD /api/hello` | A leave it `credential-absent`; B answer it as an unauthenticated probe | A unless `story:claude-code-wire` records a failure |
 | D3 | Claude Code's `thinking: adaptive` | A relay; B map on the messages wire, as W4 does | decided by `story:claude-code-wire` from a recorded vLLM answer |
 | D4 | Where the gateway runs | A the workstation, loopback; B a server, which needs TLS on the listener and a public endpoint | A: no listener TLS, nothing exposed, and every client named here runs on the workstation |
-| D5 | Models and vLLM parameters set through an owner API on the running gateway (§ 7) | A a later epic, after `story:client-qualification`; B now, replacing the document's `[models]` before the relay chain is built | A: the relay chain and the clients work on the static document first, and § 7 needs the spending ceilings in the document either way |
+| D5 | Models and vLLM parameters set through an owner API on the running gateway (§ 7) | A a later epic, after `story:client-qualification`; B now, replacing the document's `[models]` before the relay chain is built | Decided: A, the operator, 2026-10-08 (`decision-blocker:gateway-model-api`) |

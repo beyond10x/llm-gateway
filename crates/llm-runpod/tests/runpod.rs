@@ -21,9 +21,9 @@ use llm_provision::{
 };
 use llm_runpod::{
     CloudType, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX, ManualClock,
-    NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget,
-    RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST,
-    TerminateAnswer, Thinking, VllmSettings,
+    NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe,
+    ProbeTarget, RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER,
+    TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
 };
 
 const ALIAS: &str = "qwen";
@@ -1200,7 +1200,8 @@ impl RunpodTransport for Dashed {
         })
     }
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
-        self.0.container_started_at(&pod_id.replacen("pod-", "pod", 1))
+        self.0
+            .container_started_at(&pod_id.replacen("pod-", "pod", 1))
     }
 }
 

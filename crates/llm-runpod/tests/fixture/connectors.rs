@@ -42,15 +42,15 @@ fn fail(code: u8, error: &Value) -> ExitCode {
 }
 
 fn main() -> ExitCode {
-    let argv: Vec<String> = std::env::args().collect();
-    let Some(dir) = argv
+    let command_line: Vec<String> = std::env::args().collect();
+    let Some(dir) = command_line
         .first()
         .and_then(|zero| Path::new(zero).parent())
         .map(Path::to_path_buf)
     else {
         return ExitCode::from(90);
     };
-    let args = argv.get(1..).unwrap_or_default().to_vec();
+    let args = command_line.get(1..).unwrap_or_default().to_vec();
     let input = option(&args, "--input-file")
         .and_then(|path| fs::read_to_string(path).ok())
         .or_else(|| option(&args, "--input-json").map(str::to_owned));
@@ -119,8 +119,8 @@ fn main() -> ExitCode {
 /// The scripted answer for this call, if any: the `seen`-th of the key's list, the last one
 /// repeating.
 fn scripted(dir: &Path, key: &str, seen: usize) -> Option<Value> {
-    let script: Value = serde_json::from_str(&fs::read_to_string(dir.join("script.json")).ok()?)
-        .ok()?;
+    let script: Value =
+        serde_json::from_str(&fs::read_to_string(dir.join("script.json")).ok()?).ok()?;
     let answers = script.get(key)?.as_array()?;
     answers.get(seen).or_else(|| answers.last()).cloned()
 }

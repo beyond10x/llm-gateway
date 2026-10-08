@@ -136,7 +136,11 @@ fn request(gpu: &str) -> PodRequest {
         ports: vec!["8000/http".to_owned()],
         interruptible: false,
         env: BTreeMap::from([("B10X_LLM_REQUEST".to_owned(), "req-1".to_owned())]),
-        docker_entrypoint: vec!["vllm".to_owned(), "serve".to_owned(), "Qwen/Qwen3".to_owned()],
+        docker_entrypoint: vec![
+            "vllm".to_owned(),
+            "serve".to_owned(),
+            "Qwen/Qwen3".to_owned(),
+        ],
         network_volume_id: Some("vol123".to_owned()),
         volume_mount_path: Some("/workspace".to_owned()),
         data_center_ids: vec!["EU-RO-1".to_owned()],
@@ -189,7 +193,10 @@ fn create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_inpu
         assert_eq!(arg(call, "--schema"), Some("schema-pod.create"));
         assert_eq!(arg(call, "--revision"), Some("revision-7"));
         assert_eq!(arg(call, "--output"), Some("json"));
-        assert_eq!(call["input"], invoke["input"], "one exact input for all three");
+        assert_eq!(
+            call["input"], invoke["input"],
+            "one exact input for all three"
+        );
     }
     assert!(issue.get("subject_mismatch").is_none());
     assert!(issue.get("proof_output_refused").is_none());
@@ -231,7 +238,10 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
     assert_eq!(body["dataCenterIds"], json!(["EU-RO-1"]));
     assert_eq!(body["volumeMountPath"], "/workspace");
     // Known gap, pending upstream: v0.36.0's body_keys admit neither, and they are not dropped.
-    assert_eq!(body["dockerStartCmd"], json!(["vllm", "serve", "Qwen/Qwen3"]));
+    assert_eq!(
+        body["dockerStartCmd"],
+        json!(["vllm", "serve", "Qwen/Qwen3"])
+    );
     assert_eq!(body["networkVolumeId"], "vol123");
     for key in body.keys() {
         assert!(
@@ -304,7 +314,10 @@ fn list_invokes_pods_list_and_reads_every_pod() {
         ]
     );
     assert_eq!(
-        listing.pods[0].env.get("B10X_LLM_OWNER").map(String::as_str),
+        listing.pods[0]
+            .env
+            .get("B10X_LLM_OWNER")
+            .map(String::as_str),
         Some("owner-a")
     );
     let invoke = &fixture.calls_of("operations invoke pods.list")[0];
@@ -403,11 +416,23 @@ fn an_unknown_create_that_the_listing_finds_is_created() {
 fn every_create_answer_that_is_not_a_definite_refusal_is_lost() {
     let cases = [
         ("timeout", json!({"sleep_ms": 5000, "stdout": {}})),
-        ("exit_no_answer", json!({"exit": 1, "raw": "connectors: broken pipe"})),
-        ("unparseable", json!({"raw": "{\"result\": {\"status\": 20"})),
+        (
+            "exit_no_answer",
+            json!({"exit": 1, "raw": "connectors: broken pipe"}),
+        ),
+        (
+            "unparseable",
+            json!({"raw": "{\"result\": {\"status\": 20"}),
+        ),
         ("not_attempted", failed("not_attempted", "not_granted")),
-        ("applied_without_pod", invoked("applied", &json!({"status": 201, "body": {}}))),
-        ("no_classification", json!({"stdout": {"result": {"status": 201}}})),
+        (
+            "applied_without_pod",
+            invoked("applied", &json!({"status": 201, "body": {}})),
+        ),
+        (
+            "no_classification",
+            json!({"stdout": {"result": {"status": 201}}}),
+        ),
     ];
     for (name, answer) in cases {
         let fixture = Fixture::new(&format!("create_lost_{name}"));
@@ -415,8 +440,7 @@ fn every_create_answer_that_is_not_a_definite_refusal_is_lost() {
             "operations invoke pod.create": [answer],
             "operations invoke pods.list": [listed(&json!([]))],
         }));
-        let mut transport =
-            ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1500)));
+        let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1500)));
         assert_eq!(
             transport.create_pod(&request("NVIDIA A40")),
             CreateAnswer::Lost,
@@ -505,7 +529,8 @@ fn an_unknown_create_through_the_provider_submits_no_second_create() {
 #[test]
 fn a_refused_create_through_the_provider_tries_the_next_gpu() {
     let fixture = Fixture::new("provider_refused");
-    fixture.script(&json!({"operations invoke pod.create": [failed("refused", "provider_refused")]}));
+    fixture
+        .script(&json!({"operations invoke pod.create": [failed("refused", "provider_refused")]}));
     let outcome = provider(&fixture).create(&create_request());
     assert_eq!(outcome.dispatch, Dispatch::Rejected);
     let gpus: Vec<Value> = fixture
@@ -524,7 +549,10 @@ fn a_listing_that_is_not_whole_is_never_complete() {
         "kind": "provider", "code": "rate_limited", "service_code": "rate_limited",
         "retry_after_seconds": 30}}}});
     let cases = [
-        ("truncated", json!({"raw": "{\"result\": {\"status\": 200, \"body\": [{\"id\": \"abc"})),
+        (
+            "truncated",
+            json!({"raw": "{\"result\": {\"status\": 200, \"body\": [{\"id\": \"abc"}),
+        ),
         ("throttled", throttled),
         ("interrupted", json!({"sleep_ms": 5000, "stdout": {}})),
         ("killed", json!({"exit": 137})),
@@ -541,10 +569,12 @@ fn a_listing_that_is_not_whole_is_never_complete() {
     for (name, answer) in cases {
         let fixture = Fixture::new(&format!("list_partial_{name}"));
         fixture.script(&json!({"operations invoke pods.list": [answer]}));
-        let mut transport =
-            ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1500)));
+        let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1500)));
         let complete = transport.list_pods().is_ok_and(|listing| listing.complete);
-        assert!(!complete, "{name}: a listing that is not whole claimed complete");
+        assert!(
+            !complete,
+            "{name}: a listing that is not whole claimed complete"
+        );
     }
 }
 
@@ -663,7 +693,10 @@ fn the_transport_debug_prints_no_key() {
         !printed.contains(bytes.trim_matches(['[', ']'])),
         "the key's bytes: {printed}"
     );
-    assert!(printed.contains("qwen"), "the alias is not secret: {printed}");
+    assert!(
+        printed.contains("qwen"),
+        "the alias is not secret: {printed}"
+    );
 }
 
 // ---- Acceptance 5: crash-loop detection reads lastStartedAt moving forward ----
@@ -676,7 +709,12 @@ fn last_started_at_parses_runpods_utc_timestamps() {
         started_at_ms("2024-07-12T19:14:40.144Z"),
         Some(1_720_811_680_144)
     );
-    for bad in ["", "2024-07-12", "2024-07-12T19:14:40+02:00", "2024-13-12T19:14:40Z"] {
+    for bad in [
+        "",
+        "2024-07-12",
+        "2024-07-12T19:14:40+02:00",
+        "2024-13-12T19:14:40Z",
+    ] {
         assert_eq!(started_at_ms(bad), None, "{bad}");
     }
 }

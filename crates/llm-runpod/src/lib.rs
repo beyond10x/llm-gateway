@@ -5,10 +5,10 @@
 //! Ported, with attribution, from llmgw `src/runpod.rs` (pod lifecycle), the Runpod part of
 //! llmgw `src/config.rs` (the per-model settings) and the mock lifecycle tests in llmgw
 //! `src/lib.rs`. The mechanics are llmgw's: ordered GPU fallback, one starter per cold model,
-//! readiness polling with crash-loop detection by decreasing container uptime, an idle reaper
-//! whose limit never drops below the measured cold start, in-flight leases that keep a streaming
-//! pod alive, and an orphan sweep. What is new is that every one of them now runs under the
-//! `llm_provision` hosting contract:
+//! readiness polling with crash-loop detection (here by Runpod's `lastStartedAt` moving forward,
+//! where llmgw read a decreasing uptime), an idle reaper whose limit never drops below the
+//! measured cold start, in-flight leases that keep a streaming pod alive, and an orphan sweep.
+//! What is new is that every one of them now runs under the `llm_provision` hosting contract:
 //!
 //! * [`RunpodProvider`] is a `llm_provision::HostingProvider`. A pod is a resource key whose
 //!   incarnation is its Runpod pod id; owner, epoch and request id travel in the pod's
@@ -23,9 +23,12 @@
 //!
 //! Runpod-specific settings — GPU choices, mounted caches, startup deadlines, vLLM arguments —
 //! live in [`RunpodModel`], not in `DeploymentSpec`. Every Runpod call goes through
-//! [`RunpodTransport`]; [`EmulatedRunpod`] is the in-process control plane the tests drive. This
-//! crate opens no connection and reads no credential: the vLLM key reaches a pod as a Runpod
-//! secret reference, never as a value. It links `b10x-llm-credentials` and `tokio` through
+//! [`RunpodTransport`]; [`EmulatedRunpod`] is the in-process control plane the tests drive, and
+//! [`ConnectorsRunpod`] the production transport, which reaches the control plane only through
+//! the `connectors` CLI. This crate holds no control-plane credential and reads no credential
+//! file: the vLLM key reaches a pod as a Runpod secret reference, and reaches the readiness probe
+//! (a plain-HTTP `GET <endpoint>models`, the only connection the crate opens) as a value its
+//! embedding hands in. It links `b10x-llm-credentials` and `tokio` through
 //! `b10x-llm-providers` and uses neither: it calls only `descriptions::runpod` and
 //! `inference_base_url`, which parse the shipped description and fill its URL template.
 

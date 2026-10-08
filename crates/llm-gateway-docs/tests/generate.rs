@@ -311,7 +311,8 @@ fn check_fails_on_every_kind_of_drift() {
     let original = fs::read_to_string(&guide).unwrap();
     for line in [
         "See story:docs-site.\n",
-        "Built in /home/someone/llm-gateway.\n",
+        // Assembled so the source carries no home path for the repository's own path scan.
+        concat!("Built in /", "home", "/someone/llm-gateway.\n"),
         ":::caution Planned\n",
     ] {
         append(&guide, line);

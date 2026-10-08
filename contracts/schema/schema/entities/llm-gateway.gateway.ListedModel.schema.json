@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ListedModel",
+  "x-ess-name": "llm-gateway.gateway.ListedModel",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "object": {
+      "type": "string"
+    },
+    "owned_by": {
+      "type": "string"
+    },
+    "max_model_len": {
+      "type": "integer"
+    },
+    "wires": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/llm-gateway.gateway.Wire"
+      }
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.gateway.ListedModel.State"
+    }
+  },
+  "required": [
+    "id",
+    "object",
+    "owned_by",
+    "wires",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
+    "contract_digest": "slice-sha256/2:a8b4983c3c2e6d39bcff65129f55a3f348de8c495cba058ca69585f6392059ce",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.ListedModel.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.ListedModel.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    },
+    "llm-gateway.gateway.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.gateway.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    }
+  }
+}

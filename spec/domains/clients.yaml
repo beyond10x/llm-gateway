@@ -1,13 +1,13 @@
 domain: llm-gateway.clients
 
-# PLANNED: apart from ToolCalling, no code implements this domain yet, and checks/conformance
-# observes none of it. It is the typed home of the nouns docs/design/runpod-clients.md introduces:
+# PLANNED: apart from ToolCalling and ClientProfile, no code implements this domain yet. It is
+# the typed home of the nouns docs/design/runpod-clients.md introduces:
 # the three clients the operator points at a Runpod-hosted model through this gateway (Claude
 # Code, Codex and a Loom run through llm), what each must be told to reach it, and the one model
-# capability a client's requests depend on: tool calling. The owning stories add the observation
-# entities and the scenarios that hold their implementation to these declarations:
-# story:claude-code-wire (the messages-wire facts below) and story:public-model-listing
-# (ClientProfile, which row R1's `GET /` renders). ToolCalling is implemented
+# capability a client's requests depend on: tool calling. story:claude-code-wire owns the
+# messages-wire facts below. ClientProfile is implemented (story:public-model-listing): row
+# R1's `GET /` renders it (llm-gateway.gateway InstructionAnswer), observed by the `Relay`
+# scenarios `r1-*` in contracts/gateway/scenarios/. ToolCalling is implemented
 # (story:model-tool-calling): each model of the deployment document declares it
 # (llm-gateway.deployment ModelDeclaration `tool_calling`), and the relay refuses a tool request
 # to a model declaring `Absent` as `tools-not-served` (llm-gateway.gateway Refusal
@@ -106,6 +106,9 @@ entities:
       - {name: credential_setting, type: String}
       - {name: model_settings, type: 'List<String>'}
       - {name: context_setting, type: String}
-    # UNMAPPED: whether `GET /` renders one profile per (client, model) pair or one per client
-    # with the model as a parameter. Owner: story:public-model-listing.
+    # DECIDED 2026-10-08 (story:public-model-listing): `GET /` renders one profile per
+    # (client, model) pair, each with the model's alias and `context_window` as its values
+    # (llm-gateway.gateway InstructionAnswer). A client's settings name exactly one model and
+    # one window, and two models of one gateway differ in both, so a profile with the model as
+    # a parameter would leave the client to fill in the one value it cannot know.
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}

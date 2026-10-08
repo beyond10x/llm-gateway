@@ -356,7 +356,11 @@ fn record(
         return;
     };
     let (disposition, status, response_bytes) = match refusal {
-        None => (Disposition::Relayed, call.status, call.response_bytes),
+        None => (
+            Disposition::Relayed,
+            call.target_status.unwrap_or_default(),
+            call.response_bytes,
+        ),
         Some(RefusalCode::UpstreamFailed) => (
             Disposition::UpstreamFailed,
             RefusalCode::UpstreamFailed.status(),
@@ -367,6 +371,7 @@ fn record(
     relay.observe(&UsageRecord {
         model: call.model,
         wire,
+        target_status: call.target_status,
         disposition,
         refusal,
         status,

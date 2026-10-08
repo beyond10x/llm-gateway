@@ -19,11 +19,20 @@ domain: llm-gateway.telemetry
 # rendered inside the gateway crate, which takes no dependency for it. Where each is counted:
 #   fed by the record (one record per relayed call, below):
 #     llmgw_inference_requests_total                  every record
-#     llmgw_upstream_failures_total                   every record with `UpstreamFailed`
+#     llmgw_upstream_failures_total                   every record no target answered: the
+#                                                     target could not be reached or closed
+#                                                     without an answer (`UpstreamFailed`, no
+#                                                     `target_status`)
 #     llmgw_route_requests_total{model,wire}          every record naming a relayed model
-#     llmgw_route_refusals_total{model,wire}          the same, with `Refused`
-#     llmgw_route_upstream_status_failures_total{..}  the same, with `UpstreamFailed`
+#     llmgw_route_refusals_total{model,wire}          the same, `Refused` or no target answered
+#     llmgw_route_upstream_status_failures_total{..}  the same, its `target_status` outside 2xx,
+#                                                     relayed (a 4xx, a 500) or answered
+#                                                     `upstream-failed` (a 502, 503, 504)
 #     llmgw_route_response_bytes_total{model,wire}    the same, its `response_bytes`
+#   DECIDED 2026-10-08 (from llmgw src/lib.rs:598-629 at 048ebd8): llmgw counts
+#   `upstream_failures` and a route refusal when the request got no answer (:598-604), and
+#   `route_upstream_status_failures` for every answer whose status is not a success
+#   (:622-629, `!status.is_success()`), whether it relays it or not. llm-gateway counts the same.
 #   counted by the gateway where the event happens:
 #     llmgw_endpoint_invalidations_total              each target it reports failed (row W7)
 #     llmgw_route_cold_start_holds_total{model,wire}  each request its target source held for a
@@ -102,6 +111,11 @@ entities:
       - {name: refusal, type: 'Optional<llm-gateway.gateway.Refusal>'}
       # The status line the client received.
       - {name: status, type: Integer}
+      # The status the target answered with: the relayed one, or the 502, 503 or 504 the
+      # gateway answered `upstream-failed` instead. Absent when no target answered: a refusal
+      # before any target was asked, or a target that could not be reached or closed without
+      # an answer.
+      - {name: target_status, type: 'Optional<Integer>'}
       # The model name the target reported in its answer. Absent when it reported none; it is
       # never the alias and never the upstream name the gateway rewrote the request to (row W2).
       - {name: reported_model, type: 'Optional<String>'}

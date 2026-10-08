@@ -25,8 +25,8 @@ assert:
     - '30'
     - absent
     records:
-    - model=code wire=chat disposition=Refused refusal=model-cold-start status=503 response_bytes=0 duration_ms=bounded tokens=absent
-    - model=code wire=chat disposition=Relayed refusal=absent status=200 response_bytes=13 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=Refused refusal=model-cold-start status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=13 duration_ms=bounded tokens=absent
     acquired: 2
     scrapes:
     - 1 200 content-type=text/plain; version=0.0.4; charset=utf-8

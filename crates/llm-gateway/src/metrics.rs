@@ -40,6 +40,11 @@ pub struct UsageRecord {
     pub refusal: Option<RefusalCode>,
     /// The status line the client received.
     pub status: u16,
+    /// The status the target answered with: the relayed one, or the 502, 503 or 504 the
+    /// gateway answered `upstream-failed` instead. `None` when no target answered: a refusal
+    /// before any target was asked, or a target that could not be reached or closed without
+    /// an answer.
+    pub target_status: Option<u16>,
     /// The model name the target reported. Not read yet (story:usage-records): always `None`.
     pub reported_model: Option<String>,
     /// Token counters the target reported. Not read yet (story:usage-records): always `None`.
@@ -81,7 +86,7 @@ const PROCESS: [Series; 8] = [
     },
     Series {
         name: "llmgw_upstream_failures_total",
-        help: "Model calls answered upstream-failed because the target could not be reached or failed.",
+        help: "Model calls whose target could not be reached or closed without an answer.",
     },
     Series {
         name: "llmgw_instruction_views_total",
@@ -117,11 +122,11 @@ const ROUTE: [Series; 5] = [
     },
     Series {
         name: "llmgw_route_refusals_total",
-        help: "Model calls the gateway refused, per model and wire.",
+        help: "Model calls refused or left without a target answer, per model and wire.",
     },
     Series {
         name: "llmgw_route_upstream_status_failures_total",
-        help: "Model calls answered upstream-failed, per model and wire.",
+        help: "Model calls whose target answered a status outside 2xx, per model and wire.",
     },
     Series {
         name: "llmgw_route_cold_start_holds_total",
@@ -151,7 +156,7 @@ enum Process {
 enum Route {
     Requests,
     Refusals,
-    UpstreamFailures,
+    StatusFailures,
     ColdStartHolds,
     ResponseBytes,
 }
@@ -220,11 +225,14 @@ impl Metrics {
             .or_insert([0; 5]);
     }
 
-    /// Feeds the six series a record feeds.
+    /// Feeds the six series a record feeds, as llmgw (`src/lib.rs:598-629` at 048ebd8): a call
+    /// no target answered is an upstream failure and a route refusal; a call whose target
+    /// answered outside 2xx is a status failure, relayed or not.
     pub(crate) fn record(&self, record: &UsageRecord) {
         self.add(Process::InferenceRequests, 1);
-        let failed = record.disposition == Disposition::UpstreamFailed;
-        if failed {
+        let unanswered =
+            record.disposition == Disposition::UpstreamFailed && record.target_status.is_none();
+        if unanswered {
             self.add(Process::UpstreamFailures, 1);
         }
         let Some(alias) = &record.model else {
@@ -233,10 +241,14 @@ impl Metrics {
         let mut routes = self.routes();
         if let Some(counters) = routes.get_mut(&(alias.clone(), record.wire)) {
             counters[Route::Requests as usize] += 1;
-            match record.disposition {
-                Disposition::Relayed => {}
-                Disposition::Refused => counters[Route::Refusals as usize] += 1,
-                Disposition::UpstreamFailed => counters[Route::UpstreamFailures as usize] += 1,
+            if record.disposition == Disposition::Refused || unanswered {
+                counters[Route::Refusals as usize] += 1;
+            }
+            if record
+                .target_status
+                .is_some_and(|status| !(200..300).contains(&status))
+            {
+                counters[Route::StatusFailures as usize] += 1;
             }
             counters[Route::ResponseBytes as usize] =
                 counters[Route::ResponseBytes as usize].saturating_add(record.response_bytes);
@@ -333,6 +345,7 @@ mod tests {
             disposition: Disposition::UpstreamFailed,
             refusal: Some(RefusalCode::UpstreamFailed),
             status: 502,
+            target_status: None,
             reported_model: None,
             input_tokens: None,
             output_tokens: None,

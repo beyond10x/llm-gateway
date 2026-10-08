@@ -1,0 +1,51 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure
+summary: a relayed 400 and a 503 answered upstream-failed are status failures; a target that refuses the connection is an upstream failure and a refusal
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat"]}],"pods":[[{"status":400,"content_type":"application/json","chunks":["{\"error\":\"bad\"}"]},{"status":503,"content_type":"application/json","chunks":["{}"]}],[{"transport":"refused"}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"scrape"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 400 relayed
+    - 502 upstream-failed
+    - 502 upstream-failed
+    - 200 scraped
+    records:
+    - model=code wire=chat disposition=Relayed refusal=absent status=400 target_status=400 response_bytes=15 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=503 response_bytes=0 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    acquired: 3
+    invalidated:
+    - pod-1
+    - pod-2
+    released: 3
+    scrapes:
+    - 1 200 content-type=text/plain; version=0.0.4; charset=utf-8
+    - 1 llmgw_inference_requests_total 3
+    - 1 llmgw_upstream_failures_total 1
+    - 1 llmgw_instruction_views_total 0
+    - 1 llmgw_pod_starts_total 0
+    - 1 llmgw_pod_start_failures_total 0
+    - 1 llmgw_pod_reaps_total 0
+    - 1 llmgw_endpoint_invalidations_total 2
+    - 1 llmgw_cold_start_wait_seconds_total bounded
+    - '1 llmgw_route_requests_total{model="code",wire="chat"} 3'
+    - '1 llmgw_route_refusals_total{model="code",wire="chat"} 1'
+    - '1 llmgw_route_upstream_status_failures_total{model="code",wire="chat"} 2'
+    - '1 llmgw_route_cold_start_holds_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_response_bytes_total{model="code",wire="chat"} 15'

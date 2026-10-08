@@ -637,8 +637,9 @@ pub(crate) struct Limits {
 pub(crate) struct Call {
     /// The relayed model the body named, once it is known.
     pub(crate) model: Option<String>,
-    /// The status of the relayed answer.
-    pub(crate) status: u16,
+    /// The status the target answered with, once its answer head arrived; `None` when no
+    /// target answered (llmgw `src/lib.rs:598-629` at 048ebd8).
+    pub(crate) target_status: Option<u16>,
     /// Decoded body bytes of the answer written to the client.
     pub(crate) response_bytes: u64,
 }
@@ -743,12 +744,12 @@ pub(crate) fn serve(
     let Ok(mut head) = read_answer_head(&mut input, limits.line_bytes) else {
         return Err(failed());
     };
+    call.target_status = Some(head.status);
     // A gateway status from the target means the pod behind it is gone or unreachable; a
     // model error arrives as 4xx or 500 instead (llmgw `src/lib.rs:629-643`).
     if matches!(head.status, 502..=504) {
         return Err(failed());
     }
-    call.status = head.status;
     call.response_bytes = stream_answer(
         stream,
         &mut input,

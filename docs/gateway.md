@@ -191,7 +191,7 @@ Every request to a wire path that passed owner authentication makes one `UsageRe
 answer or refusal is written, before the connection is closed: the alias of the relayed model the
 body named (absent when it named none), the wire, its `Disposition` (`Relayed`, `Refused` or
 `UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
-decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
+status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
 request head to the last byte written. The token counters and the model the target reported are
 always absent for now. An unauthenticated or shed request makes no record. The record feeds the
 counters, then leaves the crate through the `UsageRecords` port the embedding implements
@@ -205,7 +205,7 @@ which takes no dependency for it.
 | Series | Labels | Counts |
 | --- | --- | --- |
 | `llmgw_inference_requests_total` | | every usage record |
-| `llmgw_upstream_failures_total` | | every record answered `upstream-failed` |
+| `llmgw_upstream_failures_total` | | every record no target answered: unreachable, or closed without an answer |
 | `llmgw_instruction_views_total` | | `GET /`, which is not served yet, so it stays 0 |
 | `llmgw_pod_starts_total` | | pod creates the embedding counts (`Metrics::count_pod_start`) |
 | `llmgw_pod_start_failures_total` | | pods the embedding counts as failed to start |
@@ -213,8 +213,8 @@ which takes no dependency for it.
 | `llmgw_endpoint_invalidations_total` | | each target reported to `invalidate` |
 | `llmgw_cold_start_wait_seconds_total` | | seconds `acquire` took for a request held for a starting target |
 | `llmgw_route_requests_total` | `model`, `wire` | records naming a relayed model on a wire it declares |
-| `llmgw_route_refusals_total` | `model`, `wire` | the same, refused |
-| `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, answered `upstream-failed` |
+| `llmgw_route_refusals_total` | `model`, `wire` | the same, refused or no target answered |
+| `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
 | `llmgw_route_cold_start_holds_total` | `model`, `wire` | requests held for a starting target: the target says it held them (`RelayTarget::held`), or `acquire` answered `model-cold-start` |
 | `llmgw_route_response_bytes_total` | `model`, `wire` | the records' response bytes |
 
@@ -222,7 +222,8 @@ Every (model, wire) pair a relayed model declares is registered at zero when the
 composed, so an uncalled route reads 0 instead of being absent; a request for another pair feeds
 the process-wide series only. A gateway composed without a relay serves the process-wide series
 alone. An embedding that counts pod events shares one `Metrics` with the relay
-(`Relay::with_metrics`). The specification is `spec/domains/telemetry.yaml`.
+(`Relay::with_metrics`). The upstream and status series count as llmgw does (llmgw
+`src/lib.rs:598-629` at `048ebd8`). The specification is `spec/domains/telemetry.yaml`.
 
 ## Refusals
 

@@ -229,7 +229,8 @@ entities:
       - {name: secret_upstream, type: Boolean}
       # One entry per llm-gateway.telemetry.UsageRecord the gateway handed out, in order, as
       # `model=<alias|absent> wire=<wire> disposition=<Relayed|Refused|UpstreamFailed>
-      # refusal=<code|absent> status=<n> response_bytes=<n> duration_ms=<check>
+      # refusal=<code|absent> status=<n> target_status=<n|absent>
+      # response_bytes=<n> duration_ms=<check>
       # tokens=<check>`. `duration_ms` is `bounded` when the record's value is at most the
       # time the client took from sending the request to reading its last byte, and the value
       # otherwise; `tokens` is `absent` when all five token counters are absent, and

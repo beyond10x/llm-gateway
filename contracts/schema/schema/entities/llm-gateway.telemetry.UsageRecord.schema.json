@@ -23,6 +23,9 @@
     "status": {
       "type": "integer"
     },
+    "target_status": {
+      "type": "integer"
+    },
     "reported_model": {
       "type": "string"
     },
@@ -64,8 +67,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "dc32f4f9ff655a54b661ca3f65d0c6306f5d5d94eccb29e5da0a1d38ce05e1e9",
-    "contract_digest": "slice-sha256/2:338ce1a074a258fde50d213831dd25950365a7d8a528138c402cc8b420b3025a",
+    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
+    "contract_digest": "slice-sha256/2:6054f50392a91a2d65a05188f0a79809afd97c8a8289a537e68c8e1ee671294c",
     "regenerate": "ess generate"
   },
   "$defs": {

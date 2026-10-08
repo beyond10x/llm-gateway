@@ -1,7 +1,7 @@
 type: ess-scenario/1
 domain: llm-gateway.gateway
 scenario: o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series
-summary: each authenticated relay request makes one usage record, and each record-fed series grows by exactly the records counted
+summary: each authenticated relay request makes one usage record, and each record-fed series grows by the records it counts
 timeline:
 - at: '2026-10-08T12:00:00Z'
   command: llm-gateway.gateway.Relay
@@ -25,9 +25,9 @@ assert:
     - 401 credential-absent
     - 200 scraped
     records:
-    - model=code wire=chat disposition=Relayed refusal=absent status=200 response_bytes=10 duration_ms=bounded tokens=absent
-    - model=code wire=responses disposition=UpstreamFailed refusal=upstream-failed status=502 response_bytes=0 duration_ms=bounded tokens=absent
-    - model=code wire=chat disposition=Refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent
+    - model=code wire=responses disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=Refused refusal=target-unavailable status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
     upstream:
     - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
     acquired: 3
@@ -66,9 +66,9 @@ assert:
     - '2 llmgw_route_requests_total{model="code",wire="chat"} 2'
     - '2 llmgw_route_requests_total{model="code",wire="responses"} 1'
     - '2 llmgw_route_refusals_total{model="code",wire="chat"} 1'
-    - '2 llmgw_route_refusals_total{model="code",wire="responses"} 0'
+    - '2 llmgw_route_refusals_total{model="code",wire="responses"} 1'
     - '2 llmgw_route_upstream_status_failures_total{model="code",wire="chat"} 0'
-    - '2 llmgw_route_upstream_status_failures_total{model="code",wire="responses"} 1'
+    - '2 llmgw_route_upstream_status_failures_total{model="code",wire="responses"} 0'
     - '2 llmgw_route_cold_start_holds_total{model="code",wire="chat"} 0'
     - '2 llmgw_route_cold_start_holds_total{model="code",wire="responses"} 0'
     - '2 llmgw_route_response_bytes_total{model="code",wire="chat"} 10'

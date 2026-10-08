@@ -869,11 +869,14 @@ mod relay {
             Disposition::UpstreamFailed => "UpstreamFailed",
         };
         format!(
-            "model={} wire={} disposition={disposition} refusal={} status={} response_bytes={} duration_ms={duration} tokens={tokens}",
+            "model={} wire={} disposition={disposition} refusal={} status={} target_status={} response_bytes={} duration_ms={duration} tokens={tokens}",
             record.model.as_deref().unwrap_or("absent"),
             record.wire.label(),
             record.refusal.map_or("absent", |code| code.wire()),
             record.status,
+            record
+                .target_status
+                .map_or_else(|| "absent".to_owned(), |status| status.to_string()),
             record.response_bytes,
         )
     }

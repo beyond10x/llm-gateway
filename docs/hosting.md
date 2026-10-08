@@ -371,10 +371,33 @@ no key.
 ### The pool the binary composes
 
 `llm_gateway_cli::start_relaying` composes one `RunpodPool` from the deployment document and
-relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). The
-shipped binary has no Runpod transport and never calls it; story:live-runpod-wiring supplies one.
-Its tests run it over `EmulatedRunpod` and a loopback pod. Every input is fixed or read from the
-document (`spec/domains/deployment.yaml`):
+relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). Its
+tests run it over `EmulatedRunpod` and a loopback pod. The shipped binary composes the same pool
+through `llm_gateway_cli::start`, over `ConnectorsRunpod` only, for the one provider whose
+`[providers.<name>.connectors]` table names the connection:
+
+```toml
+[providers.runpod.connectors]
+executable = "/usr/local/bin/connectors"   # absolute; not looked up on PATH
+adapter = "gpu"                            # the alias bound to the Runpod catalog provider
+connection = "conn-1"                      # the saved connection id
+work_directory = "/var/lib/gateway/connectors"  # existing, owned by the gateway's user, mode 0700
+timeout_seconds = 60                       # 1..=600, default 60: one CLI call
+```
+
+At start the binary checks the connection once: the work directory is private and one
+`pods.list` answers a complete listing. If not, it still starts, writes the `warn` event
+`connectors connection unreachable`, runs no further `connectors` call, and answers every model
+of that provider `target-unavailable`; a repaired connection takes a restart. A model whose
+provider declares no `connectors` is `target-unavailable` too. No option or document key selects
+`EmulatedRunpod`. Each connected model's vLLM key is handed to the transport by alias for the
+readiness probe. Until story:pod-proxy-tls, the binary cannot open the proxy's `https://`
+endpoint: the probe reports it unreachable and the pod connector refuses it, so a request for a
+connected model starts a pod, is held, and is answered `model-cold-start`, and the pod's startup
+deadline terminates it. `crates/llm-gateway-cli/tests/binary.rs` (`live_*`) and
+`tests/live_runpod.rs` prove this against the connectors CLI fixture and a loopback pod.
+
+Every input is fixed or read from the document (`spec/domains/deployment.yaml`):
 
 | Input | Source | Value |
 | --- | --- | --- |

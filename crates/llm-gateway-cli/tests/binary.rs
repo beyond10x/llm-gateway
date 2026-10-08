@@ -911,15 +911,12 @@ fn live_a_cold_model_makes_the_connectors_fixture_receive_one_pod_create() {
         "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
         "operations invoke pod.create": [created(&running_small_pod())],
     }));
-    let config = fixture.config(&connected_document(
-        &fixture,
-        "127.0.0.1:0",
-        &connectors,
-        0,
-    ));
+    let config = fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 0));
     let server = Server::start(&config);
     assert!(
-        connectors.calls_of("operations invoke pod.create").is_empty(),
+        connectors
+            .calls_of("operations invoke pod.create")
+            .is_empty(),
         "a pod was created before any request"
     );
     let answer = post_chat(server.address);
@@ -931,8 +928,7 @@ fn live_a_cold_model_makes_the_connectors_fixture_receive_one_pod_create() {
     assert_eq!(creates.len(), 1, "{creates:?}");
     let create = &creates[0];
     assert!(create.get("proof_mismatch").is_none(), "{create:?}");
-    let input: serde_json::Value =
-        serde_json::from_str(create["input"].as_str().unwrap()).unwrap();
+    let input: serde_json::Value = serde_json::from_str(create["input"].as_str().unwrap()).unwrap();
     assert_eq!(
         input["body"]["gpuTypeIds"],
         serde_json::json!(["NVIDIA L40S"]),
@@ -966,12 +962,7 @@ fn live_an_unreachable_connection_starts_and_answers_target_unavailable() {
     let fixture = Fixture::new("live-unreachable");
     let connectors = Connectors::new(&fixture);
     // No script: every `operations invoke` exits 70 without an answer.
-    let config = fixture.config(&connected_document(
-        &fixture,
-        "127.0.0.1:0",
-        &connectors,
-        5,
-    ));
+    let config = fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 5));
     let server = Server::start(&config);
     let at_start = connectors.calls().len();
     assert!(
@@ -990,7 +981,11 @@ fn live_an_unreachable_connection_starts_and_answers_target_unavailable() {
         "the fixture received calls after the start: {:?}",
         connectors.calls()
     );
-    assert!(connectors.calls_of("operations invoke pod.create").is_empty());
+    assert!(
+        connectors
+            .calls_of("operations invoke pod.create")
+            .is_empty()
+    );
     assert!(
         stderr
             .iter()
@@ -1083,7 +1078,12 @@ fn live_no_option_selects_the_emulator() {
         &["--runpod", "emulated"],
     ] {
         let finished = run(args);
-        assert_eq!(finished.status.code(), Some(2), "{args:?}: {:?}", finished.stderr);
+        assert_eq!(
+            finished.status.code(),
+            Some(2),
+            "{args:?}: {:?}",
+            finished.stderr
+        );
     }
     let help = run(&["--help"]).stdout.to_ascii_lowercase();
     for absent in ["emulat", "transport", "fake"] {

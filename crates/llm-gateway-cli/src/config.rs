@@ -8,7 +8,7 @@ use crate::{
     trusted,
 };
 use llm_gateway::{GatewayConfig, ToolCalling};
-use llm_runpod::{CloudType, NetworkVolume, Thinking, VllmSettings};
+use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -16,6 +16,7 @@ use std::{
     net::SocketAddr,
     ops::RangeInclusive,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 const REASONING_EFFORTS: [&str; 4] = ["low", "medium", "high", "xhigh"];
@@ -58,6 +59,24 @@ struct ProviderDocument {
     kind: ProviderKind,
     #[serde(default)]
     cloud_type: CloudTypeDocument,
+    #[serde(default)]
+    connectors: Option<ConnectorsDocument>,
+}
+
+/// `[providers.<name>.connectors]` (`llm-gateway.deployment.ConnectorsDeclaration`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConnectorsDocument {
+    executable: PathBuf,
+    adapter: String,
+    connection: String,
+    work_directory: PathBuf,
+    #[serde(default = "default_connectors_timeout_seconds")]
+    timeout_seconds: u64,
+}
+
+fn default_connectors_timeout_seconds() -> u64 {
+    60
 }
 
 #[derive(Default)]
@@ -190,6 +209,9 @@ impl Wire {
 pub struct Provider {
     pub kind: ProviderKind,
     pub cloud_type: CloudType,
+    /// The connectors connection the provider's pods are reached through, when it declares
+    /// one; `None` leaves its models answered `target-unavailable`.
+    pub connectors: Option<ConnectorsBinding>,
 }
 
 /// `[models.<alias>]`, with every default applied and every rule checked.
@@ -276,14 +298,28 @@ fn parse(text: &str) -> Result<Deployment, Refusal> {
             CloudTypeDocument::Secure => CloudType::Secure,
             CloudTypeDocument::Community => CloudType::Community,
         };
+        let connectors = provider
+            .connectors
+            .map(|table| connectors_binding(&format!("providers.{name}.connectors"), table))
+            .transpose()?;
         providers.insert(
             name,
             Provider {
                 kind: provider.kind,
                 cloud_type,
+                connectors,
             },
         );
     }
+    ensure(
+        providers
+            .values()
+            .filter(|provider| provider.connectors.is_some())
+            .count()
+            <= 1,
+        "providers",
+        "may declare at most one connectors connection",
+    )?;
     let mut models = BTreeMap::new();
     for (alias, model) in document.models {
         let at = format!("models.{alias}");
@@ -339,6 +375,46 @@ fn closed_name(key: &str, name: &str) -> Result<(), Refusal> {
         key,
         "must be 1..=64 lowercase URL-safe ASCII characters without a leading dash",
     )
+}
+
+/// An absolute path of 1..=1024 bytes without a control character.
+fn absolute_path(key: &str, path: &Path) -> Result<(), Refusal> {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    ensure(
+        path.is_absolute()
+            && (1..=1024).contains(&bytes.len())
+            && !bytes.iter().any(u8::is_ascii_control),
+        key,
+        "must be an absolute path of at most 1024 bytes without a control character",
+    )
+}
+
+/// One argument of the connectors CLI: 1..=128 printable ASCII without a space, never read as
+/// an option.
+fn cli_argument(key: &str, value: &str) -> Result<(), Refusal> {
+    ensure(
+        (1..=128).contains(&value.len())
+            && !value.starts_with('-')
+            && value.bytes().all(|byte| byte.is_ascii_graphic()),
+        key,
+        "must be 1..=128 printable ASCII characters without a space or a leading dash",
+    )
+}
+
+/// `[providers.<name>.connectors]`, checked, as the transport's binding.
+fn connectors_binding(at: &str, table: ConnectorsDocument) -> Result<ConnectorsBinding, Refusal> {
+    absolute_path(&format!("{at}.executable"), &table.executable)?;
+    absolute_path(&format!("{at}.work_directory"), &table.work_directory)?;
+    cli_argument(&format!("{at}.adapter"), &table.adapter)?;
+    cli_argument(&format!("{at}.connection"), &table.connection)?;
+    within(at, "timeout_seconds", &table.timeout_seconds, &(1..=600))?;
+    Ok(ConnectorsBinding {
+        executable: table.executable,
+        adapter: table.adapter,
+        connection: table.connection,
+        work_directory: table.work_directory,
+        timeout: Duration::from_secs(table.timeout_seconds),
+    })
 }
 
 fn bounded_text(key: &str, value: &str, limit: usize) -> Result<(), Refusal> {

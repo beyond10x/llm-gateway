@@ -792,9 +792,8 @@ fn connectors_an_unknown_missing_or_mistyped_key_is_refused_as_schema() {
     let fixture = Fixture::new("connectors-schema");
     let without = |key: &str| {
         table()
-            .lines()
+            .split_inclusive('\n')
             .filter(|line| !line.starts_with(key))
-            .map(|line| format!("{line}\n"))
             .collect::<String>()
     };
     let cases = [
@@ -832,7 +831,13 @@ fn connectors_no_document_key_selects_the_emulator() {
         "the control is refused"
     );
     let mut accepted = Vec::new();
-    for key in ["emulated", "emulator", "transport", "runpod_transport", "fake"] {
+    for key in [
+        "emulated",
+        "emulator",
+        "transport",
+        "runpod_transport",
+        "fake",
+    ] {
         for (level, find) in [
             ("top level", "listen = "),
             ("provider", "kind = \"runpod-vllm\"\n"),

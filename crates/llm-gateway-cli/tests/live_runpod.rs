@@ -137,7 +137,9 @@ fn loopback_pod() -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
 fn post_chat(address: SocketAddr) -> String {
     let body = r#"{"model":"small","messages":[{"role":"user","content":"hi"}]}"#;
     let mut stream = TcpStream::connect(address).unwrap();
-    stream.set_read_timeout(Some(Duration::from_secs(60))).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .unwrap();
     write!(
         stream,
         "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
@@ -187,9 +189,20 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
         Arc::new(Loopback(pod)),
     )
     .unwrap();
+    // The startup sweep may probe the listed pod; nothing is relayed before a request.
     assert!(
-        received.lock().unwrap().is_empty(),
-        "the pod was reached before any request"
+        !received
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|request| request.starts_with("POST ")),
+        "a request was relayed before any was made"
+    );
+    assert!(
+        connectors
+            .calls_of("operations invoke pod.create")
+            .is_empty(),
+        "a pod was created before any request"
     );
 
     let answer = post_chat(relaying.local_addr());

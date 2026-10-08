@@ -183,23 +183,8 @@ fn main() -> ExitCode {
     if let Ok(mut file) = OpenOptions::new().create(true).append(true).open(&calls) {
         let _ = writeln!(file, "{record}");
     }
-    if record.get("proof_mismatch").is_some() {
-        return fail(
-            2,
-            &json!({"error": {"code": "not_granted", "data": {"kind": "approval", "code": "proof_mismatch"}}}),
-        );
-    }
-    // connectors v0.37.0 docs/catalog-runpod.md:88-89: "A body carrying any other key … is
-    // refused as `invalid_input` before any request."
-    if record.get("body_keys_refused").is_some() {
-        return fail(
-            2,
-            &json!({"error": {"code": "failure", "data": {
-                "kind": "usage", "code": "invalid_input", "stage": "arguments",
-                "next_action": "retry_explicitly",
-                "mutation": {"classification": "not_attempted", "replayed": false},
-            }}}),
-        );
+    if let Some(refused) = refusal(&record) {
+        return refused;
     }
     if let Some(answer) = scripted(&dir, &key, seen) {
         return play(&answer);
@@ -304,4 +289,27 @@ fn unadmitted_body_keys(input: Option<&str>) -> Vec<String> {
         .filter(|key| !POD_CREATE_BODY_KEYS.contains(&key.as_str()))
         .cloned()
         .collect()
+}
+
+/// The refusals connectors makes before any request, for what was recorded about this call.
+fn refusal(record: &Value) -> Option<ExitCode> {
+    if record.get("proof_mismatch").is_some() {
+        return Some(fail(
+            2,
+            &json!({"error": {"code": "not_granted", "data": {"kind": "approval", "code": "proof_mismatch"}}}),
+        ));
+    }
+    // connectors v0.37.0 docs/catalog-runpod.md:88-89: "A body carrying any other key … is
+    // refused as `invalid_input` before any request."
+    if record.get("body_keys_refused").is_some() {
+        return Some(fail(
+            2,
+            &json!({"error": {"code": "failure", "data": {
+                "kind": "usage", "code": "invalid_input", "stage": "arguments",
+                "next_action": "retry_explicitly",
+                "mutation": {"classification": "not_attempted", "replayed": false},
+            }}}),
+        ));
+    }
+    None
 }

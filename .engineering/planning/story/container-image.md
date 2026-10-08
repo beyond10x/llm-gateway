@@ -2,22 +2,29 @@
 format: aep.planning-md/3
 id: story:container-image
 kind: story
-status: active
+status: implemented
 title: llm-gateway ships a container image definition and the proven model profiles
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
 scope:
-- confidence: inferred
+- confidence: cited
+  path: .dockerignore
+- confidence: cited
   path: Dockerfile
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/dockerfile.rs
+- confidence: cited
   path: crates/llm-gateway-cli/tests/profiles.rs
-- confidence: inferred
+- confidence: cited
   path: docs/model-profiles.md
-revision: 7
+- confidence: cited
+  path: docs/verification/2026-10-08-container-image.md
+revision: 18
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T14:33:53Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-10-08T14:33:53Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-08T15:20:18Z", actor: "human:timo", revision: 18, decided_on: {"recorded":{"test_result":1,"review_outcome":4,"verification":1}}}
 ---
 ## Outcome
 
@@ -54,3 +61,12 @@ D1, D3, from `docs/llmgw-capability-matrix.md`. Split out of `story:gateway-depl
 ## Scope (inferred)
 
 `Dockerfile`, `docs/model-profiles.md`, `crates/llm-gateway-cli/tests/profiles.rs` (new).
+
+## Scope (confirmed)
+
+Confirmed by the implementor of wave 2026-10-08-w03; the typed `scope` entries are this list.
+
+- confirmed: `Dockerfile`, `crates/llm-gateway-cli/tests/profiles.rs`, `docs/model-profiles.md`.
+- not listed, touched: `crates/llm-gateway-cli/tests/dockerfile.rs`, `.dockerignore` (keeps
+  `target/` out of the build context), `docs/verification/2026-10-08-container-image.md`.
+- `spec/` unchanged: the deployment document already holds every key the profiles need.

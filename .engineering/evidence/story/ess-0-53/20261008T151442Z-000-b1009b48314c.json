@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T15:14:42Z",
+  "actor": "human:timo",
+  "artifact": "story:ess-0-53",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo run --locked -p b10x-llm-gateway-conformance -- check",
+    "reference": "pins moved, not regenerated: suite drift, exit 1 vs impl/ess-0-56 d42262e: total 179 passed 179 skipped 0 x3, exit 0"
+  }
+}

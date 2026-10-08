@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T15:14:42Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-deployment",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo run --locked -p b10x-llm-gateway-conformance -- check",
+    "reference": "wave/2026-10-08-w03 524336b (179 scenarios, no bearer scenario) vs impl/gateway-deployment 41779ee (181 passed x3; red at 1599507: authorizations absent)"
+  }
+}

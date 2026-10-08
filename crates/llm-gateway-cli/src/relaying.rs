@@ -800,7 +800,8 @@ impl Parts {
 }
 
 /// Every model of the document as the relay serves it: on its wires, under its alias, with its
-/// `tool_calling`.
+/// `tool_calling`, and with the `max_model_len` and `context_window` the public routes publish
+/// (rows R5, R1).
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len());
     for (alias, model) in &deployment.models {
@@ -816,7 +817,9 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                         format!("models.{alias}: {error}"),
                     )
                 })?
-                .with_tool_calling(model.tool_calling),
+                .with_tool_calling(model.tool_calling)
+                .with_max_model_len(u64::from(model.vllm.max_model_len))
+                .with_context_window(u64::from(model.context_window)),
         );
     }
     Ok(models)

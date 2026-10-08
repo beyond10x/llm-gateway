@@ -104,8 +104,13 @@ fn private_inventory() -> RouteInventory {
             max_output_tokens: None,
         },
     };
-    let route = RouteSummary::new(label("route-id-private"), label("code"), false, vec![target])
-        .unwrap();
+    let route = RouteSummary::new(
+        label("route-id-private"),
+        label("code"),
+        false,
+        vec![target],
+    )
+    .unwrap();
     RouteInventory::new(vec![route])
         .unwrap()
         .with_config_digest(DIGEST)
@@ -143,10 +148,13 @@ fn relay(models: Vec<Declared>, acquired: &Arc<AtomicUsize>) -> Relay {
     let models = models
         .into_iter()
         .map(|model| {
-            let mut relayed =
-                RelayModel::new(label(model.alias), label("upstream-name-private"), model.wires)
-                    .unwrap()
-                    .with_tool_calling(model.tool_calling);
+            let mut relayed = RelayModel::new(
+                label(model.alias),
+                label("upstream-name-private"),
+                model.wires,
+            )
+            .unwrap()
+            .with_tool_calling(model.tool_calling);
             if let Some(length) = model.max_model_len {
                 relayed = relayed.with_max_model_len(length);
             }
@@ -358,7 +366,11 @@ fn r1_a_codex_user_agent_gets_the_codex_config_toml_profile_per_model() {
              name = \"b10x llm-gateway\"\nbase_url = \"http://gateway.test:8080/v1\"\n\
              env_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n"
         );
-        assert!(answer.body.contains(&profile), "{profile}\nin\n{}", answer.body);
+        assert!(
+            answer.body.contains(&profile),
+            "{profile}\nin\n{}",
+            answer.body
+        );
         assert!(
             answer
                 .body
@@ -388,11 +400,23 @@ fn r1_a_claude_user_agent_gets_the_claude_code_environment_variables_per_model()
                  export CLAUDE_CODE_SUBAGENT_MODEL='{alias}'\n\
                  export CLAUDE_CODE_MAX_CONTEXT_TOKENS='{window}'\n"
             );
-            assert!(answer.body.contains(&block), "{agent}: {block}\nin\n{}", answer.body);
+            assert!(
+                answer.body.contains(&block),
+                "{agent}: {block}\nin\n{}",
+                answer.body
+            );
         }
         // The credential setting is named, never given a value.
-        assert!(answer.body.contains("ANTHROPIC_AUTH_TOKEN"), "{}", answer.body);
-        assert!(!answer.body.contains("export ANTHROPIC_AUTH_TOKEN"), "{}", answer.body);
+        assert!(
+            answer.body.contains("ANTHROPIC_AUTH_TOKEN"),
+            "{}",
+            answer.body
+        );
+        assert!(
+            !answer.body.contains("export ANTHROPIC_AUTH_TOKEN"),
+            "{}",
+            answer.body
+        );
         assert!(!answer.body.contains("wire_api"), "{}", answer.body);
     }
 }
@@ -414,7 +438,11 @@ fn r1_any_other_user_agent_or_none_gets_plain_text_with_the_loom_profile_per_mod
         let answer = fixture.get("/", agent);
         assert_eq!(answer.status, 200, "{}", answer.raw);
         assert_eq!(answer.header("content-type"), Some(TEXT), "{agent:?}");
-        assert!(answer.body.contains("auth_kind = \"bearer\""), "{}", answer.body);
+        assert!(
+            answer.body.contains("auth_kind = \"bearer\""),
+            "{}",
+            answer.body
+        );
         for (alias, window) in [("code", 65_536), ("small", 32_768)] {
             assert!(
                 answer.body.contains(&loom_lines(alias, window)),
@@ -433,11 +461,19 @@ fn r1_a_browser_gets_an_html_page_with_the_loom_profile_per_model() {
     let answer = fixture.get("/", Some(BROWSER));
     assert_eq!(answer.status, 200, "{}", answer.raw);
     assert_eq!(answer.header("content-type"), Some(HTML));
-    assert!(answer.body.starts_with("<!DOCTYPE html>\n"), "{}", answer.body);
+    assert!(
+        answer.body.starts_with("<!DOCTYPE html>\n"),
+        "{}",
+        answer.body
+    );
     assert!(answer.body.contains("<pre>"), "{}", answer.body);
     for (alias, window) in [("code", 65_536), ("small", 32_768)] {
         let escaped = loom_lines(alias, window).replace('"', "&quot;");
-        assert!(answer.body.contains(&escaped), "{escaped}\nin\n{}", answer.body);
+        assert!(
+            answer.body.contains(&escaped),
+            "{escaped}\nin\n{}",
+            answer.body
+        );
     }
     // The same page for any agent that starts with `mozilla/`, whatever its case.
     let lower = fixture.get("/", Some("mozilla/5.0 (X11; Linux x86_64)"));
@@ -450,7 +486,10 @@ fn r1_the_rules_are_tried_in_order_codex_then_claude_then_a_browser() {
     let fixture = Fixture::start(two_models());
     let content = |agent: &str| {
         let answer = fixture.get("/", Some(agent));
-        (answer.header("content-type").map(str::to_owned), answer.body)
+        (
+            answer.header("content-type").map(str::to_owned),
+            answer.body,
+        )
     };
     let (_, codex) = content(CODEX);
     let (_, claude) = content(CLAUDE);
@@ -485,14 +524,22 @@ fn r1_a_model_that_does_not_declare_the_clients_wire_gets_no_profile_for_that_cl
 fn r1_a_model_whose_tool_calling_is_absent_gets_no_profile_for_any_client() {
     let mut text_only = declared("textonly", Wire::ALL.to_vec(), 32_768);
     text_only.tool_calling = ToolCalling::Absent;
-    let fixture = Fixture::start(vec![declared("code", Wire::ALL.to_vec(), 65_536), text_only]);
+    let fixture = Fixture::start(vec![
+        declared("code", Wire::ALL.to_vec(), 65_536),
+        text_only,
+    ]);
     for agent in [CODEX, CLAUDE, CURL, BROWSER] {
         let body = fixture.get("/", Some(agent)).body;
         assert!(body.contains("code"), "{agent}: {body}");
         assert!(!body.contains("textonly"), "{agent}: {body}");
     }
     // The listing still names it: it serves text.
-    assert!(fixture.get("/v1/models", None).body.contains("\"id\":\"textonly\""));
+    assert!(
+        fixture
+            .get("/v1/models", None)
+            .body
+            .contains("\"id\":\"textonly\"")
+    );
 }
 
 #[test]
@@ -506,7 +553,10 @@ fn r1_a_model_without_a_context_window_gets_no_context_setting() {
     assert!(codex.contains("model = \"bare\""), "{codex}");
     assert!(!codex.contains("model_context_window"), "{codex}");
     assert!(claude.contains("ANTHROPIC_MODEL='bare'"), "{claude}");
-    assert!(!claude.contains("CLAUDE_CODE_MAX_CONTEXT_TOKENS='"), "{claude}");
+    assert!(
+        !claude.contains("CLAUDE_CODE_MAX_CONTEXT_TOKENS='"),
+        "{claude}"
+    );
     assert!(plain.contains("upstream_name = \"bare\""), "{plain}");
     assert!(!plain.contains("context_window = "), "{plain}");
 }
@@ -517,7 +567,11 @@ fn r1_with_no_model_for_a_client_the_answer_says_so() {
     for agent in [CODEX, CLAUDE, CURL, BROWSER] {
         let answer = fixture.get("/", Some(agent));
         assert_eq!(answer.status, 200, "{}", answer.raw);
-        assert!(answer.body.contains("No model of this gateway"), "{agent}: {}", answer.body);
+        assert!(
+            answer.body.contains("No model of this gateway"),
+            "{agent}: {}",
+            answer.body
+        );
     }
 }
 
@@ -532,7 +586,9 @@ fn r1_the_origin_is_the_host_header_when_it_is_a_plain_authority_and_the_listene
             .body
     };
     assert!(ask("[::1]:8080").contains("ANTHROPIC_BASE_URL='http://[::1]:8080'"));
-    assert!(ask("models_1.example-host").contains("ANTHROPIC_BASE_URL='http://models_1.example-host'"));
+    assert!(
+        ask("models_1.example-host").contains("ANTHROPIC_BASE_URL='http://models_1.example-host'")
+    );
     let listener = format!("ANTHROPIC_BASE_URL='http://{}'", fixture.addr);
     for hostile in ["evil'$(id)", "a\"<script>", "a/b", "a@b", "evil host"] {
         let body = ask(hostile);
@@ -551,7 +607,10 @@ fn r1_aliases_are_escaped_for_the_text_they_are_written_into() {
     let codex = fixture.get("/", Some(CODEX)).body;
     assert!(codex.contains("model = \"o'k\\\"<b>&\\\\\""), "{codex}");
     let claude = fixture.get("/", Some(CLAUDE)).body;
-    assert!(claude.contains("ANTHROPIC_MODEL='o'\\''k\"<b>&\\'"), "{claude}");
+    assert!(
+        claude.contains("ANTHROPIC_MODEL='o'\\''k\"<b>&\\'"),
+        "{claude}"
+    );
     let html = fixture.get("/", Some(BROWSER)).body;
     assert!(
         html.contains("upstream_name = &quot;o&#39;k\\&quot;&lt;b&gt;&amp;\\\\&quot;"),
@@ -603,7 +662,11 @@ fn r1_r5_neither_route_asks_the_target_source_or_renders_an_owner_only_fact() {
     }
     // Positive control: the facts are composed and the owner sees them.
     let routes = fixture.ask("GET", "/v1/routes", None, true);
-    assert!(routes.body.contains("endpoint-label-private"), "{}", routes.body);
+    assert!(
+        routes.body.contains("endpoint-label-private"),
+        "{}",
+        routes.body
+    );
     assert!(routes.body.contains(DIGEST), "{}", routes.body);
     assert_eq!(fixture.acquired(), 0, "a public route asked for a target");
     // And the counter counts: a relayed request does acquire.
@@ -635,7 +698,11 @@ fn r1_r5_only_get_and_head_are_public_another_method_is_credential_absent_then_n
     // Only the two literal paths: a neighbour still takes the credential.
     for path in ["/v1/models/code", "/v1/model", "/index.html", "//"] {
         let answer = fixture.get(path, None);
-        assert_eq!(answer.code().as_deref(), Some("credential-absent"), "{path}");
+        assert_eq!(
+            answer.code().as_deref(),
+            Some("credential-absent"),
+            "{path}"
+        );
     }
     assert_eq!(fixture.acquired(), 0);
 }
@@ -680,26 +747,36 @@ fn variant_attribute(declaration: &str, variant: &str, name: &str) -> String {
         .unwrap_or_else(|| panic!("spec/domains/gateway.yaml declares no {declaration}"));
     let line = SPEC[start..]
         .lines()
-        .find(|line| line.trim_start().starts_with(&format!("- {{name: {variant}, ")))
+        .find(|line| {
+            line.trim_start()
+                .starts_with(&format!("- {{name: {variant}, "))
+        })
         .unwrap_or_else(|| panic!("{declaration} declares no {variant}"));
     let marker = format!("{name}: ");
     let value = &line[line.find(&marker).unwrap() + marker.len()..];
-    let value = value.strip_prefix('"').map_or_else(
+    value.strip_prefix('"').map_or_else(
         || value[..value.find([',', '}']).unwrap()].to_string(),
         |quoted| quoted[..quoted.find('"').unwrap()].to_string(),
-    );
-    value
+    )
 }
 
 #[test]
 fn r1_r5_every_public_answer_has_the_content_type_and_path_the_specification_declares() {
     let fixture = Fixture::start(two_models());
-    assert_eq!(variant_attribute("llm-gateway.gateway.PublicRoute", "Models", "path"), "/v1/models");
-    assert_eq!(variant_attribute("llm-gateway.gateway.PublicRoute", "Instructions", "path"), "/");
+    assert_eq!(
+        variant_attribute("llm-gateway.gateway.PublicRoute", "Models", "path"),
+        "/v1/models"
+    );
+    assert_eq!(
+        variant_attribute("llm-gateway.gateway.PublicRoute", "Instructions", "path"),
+        "/"
+    );
     let models = fixture.get("/v1/models", None);
     assert_eq!(
         models.header("content-type"),
-        Some(variant_attribute("llm-gateway.gateway.PublicRoute", "Models", "content_type").as_str())
+        Some(
+            variant_attribute("llm-gateway.gateway.PublicRoute", "Models", "content_type").as_str()
+        )
     );
     for (variant, agent) in [
         ("Codex", Some(CODEX)),
@@ -708,10 +785,17 @@ fn r1_r5_every_public_answer_has_the_content_type_and_path_the_specification_dec
         ("Plain", Some(CURL)),
         ("Plain", None),
     ] {
-        let declared =
-            variant_attribute("llm-gateway.gateway.InstructionAnswer", variant, "content_type");
+        let declared = variant_attribute(
+            "llm-gateway.gateway.InstructionAnswer",
+            variant,
+            "content_type",
+        );
         let answer = fixture.get("/", agent);
-        assert_eq!(answer.header("content-type"), Some(declared.as_str()), "{variant}");
+        assert_eq!(
+            answer.header("content-type"),
+            Some(declared.as_str()),
+            "{variant}"
+        );
     }
 }
 

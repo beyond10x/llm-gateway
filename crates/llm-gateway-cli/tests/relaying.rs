@@ -920,7 +920,11 @@ fn public_get(address: SocketAddr, path: &str, user_agent: Option<&str>) -> Stri
     let mut stream = TcpStream::connect(address).unwrap();
     stream.set_read_timeout(Some(WAIT)).unwrap();
     let agent = user_agent.map_or(String::new(), |agent| format!("user-agent: {agent}\r\n"));
-    write!(stream, "GET {path} HTTP/1.1\r\nhost: gateway\r\n{agent}\r\n").unwrap();
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nhost: gateway\r\n{agent}\r\n"
+    )
+    .unwrap();
     let mut answer = String::new();
     drop(stream.read_to_string(&mut answer));
     answer
@@ -960,7 +964,10 @@ fn r5_r1_the_binary_lists_and_profiles_each_model_from_the_document_and_starts_n
         ),
         "{listing}"
     );
-    assert!(claude.contains("export ANTHROPIC_MODEL='small'\n"), "{claude}");
+    assert!(
+        claude.contains("export ANTHROPIC_MODEL='small'\n"),
+        "{claude}"
+    );
     assert!(
         claude.contains("export CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'\n"),
         "{claude}"
@@ -970,7 +977,12 @@ fn r5_r1_the_binary_lists_and_profiles_each_model_from_the_document_and_starts_n
     assert!(plain.contains("context_window = 65536\n"), "{plain}");
     assert_eq!(runpod.create_calls(), 0, "a public route started a pod");
     for answer in [&listing, &claude, &codex, &plain] {
-        for owner_only in [deployment.digest.as_str(), OWNER_SECRET, VLLM_KEY, "example/small-model"] {
+        for owner_only in [
+            deployment.digest.as_str(),
+            OWNER_SECRET,
+            VLLM_KEY,
+            "example/small-model",
+        ] {
             assert!(!answer.contains(owner_only), "{owner_only:?} in {answer}");
         }
     }

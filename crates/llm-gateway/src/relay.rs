@@ -162,14 +162,16 @@ pub enum ToolCalling {
     Absent,
 }
 
-/// A model the gateway relays: its alias, the model name its target expects, its wires and
-/// whether it serves tool calls.
+/// A model the gateway relays: its alias, the model name its target expects, its wires,
+/// whether it serves tool calls, and the two lengths the public routes publish (rows R5, R1).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayModel {
     alias: Label,
     upstream_model: Label,
     wires: Vec<Wire>,
     tool_calling: ToolCalling,
+    max_model_len: Option<u64>,
+    context_window: Option<u64>,
 }
 
 impl RelayModel {
@@ -192,6 +194,8 @@ impl RelayModel {
             upstream_model,
             wires,
             tool_calling: ToolCalling::default(),
+            max_model_len: None,
+            context_window: None,
         })
     }
 
@@ -202,8 +206,32 @@ impl RelayModel {
         self
     }
 
+    /// Declares the longest sequence the model's server takes, which `GET /v1/models` lists as
+    /// `max_model_len`. Undeclared, the listing has no such key.
+    #[must_use]
+    pub fn with_max_model_len(mut self, max_model_len: u64) -> Self {
+        self.max_model_len = Some(max_model_len);
+        self
+    }
+
+    /// Declares the model's context window, which `GET /` tells each client. Undeclared, a
+    /// client profile carries no context setting.
+    #[must_use]
+    pub fn with_context_window(mut self, context_window: u64) -> Self {
+        self.context_window = Some(context_window);
+        self
+    }
+
     pub fn tool_calling(&self) -> ToolCalling {
         self.tool_calling
+    }
+
+    pub fn max_model_len(&self) -> Option<u64> {
+        self.max_model_len
+    }
+
+    pub fn context_window(&self) -> Option<u64> {
+        self.context_window
     }
 
     pub fn alias(&self) -> &Label {
@@ -279,6 +307,11 @@ impl Relay {
                 self.metrics.register(model.alias.as_str(), *wire);
             }
         }
+    }
+
+    /// Every relayed model, in alias order: what the public routes render (rows R5, R1).
+    pub(crate) fn models(&self) -> impl Iterator<Item = &RelayModel> {
+        self.models.values()
     }
 
     pub(crate) fn metrics(&self) -> &Arc<Metrics> {

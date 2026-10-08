@@ -143,7 +143,8 @@ const ROUTE: [Series; 5] = [
 enum Process {
     InferenceRequests,
     UpstreamFailures,
-    PodStarts = 3,
+    InstructionViews,
+    PodStarts,
     PodStartFailures,
     PodReaps,
     EndpointInvalidations,
@@ -186,6 +187,12 @@ impl Metrics {
     /// Counts deployments and pods a cleanup pass stopped (`llmgw_pod_reaps_total`).
     pub fn count_pod_reaps(&self, stopped: u64) {
         self.add(Process::PodReaps, stopped);
+    }
+
+    /// Counts a setup instructions answer served at `GET /` (`llmgw_instruction_views_total`,
+    /// row R1).
+    pub(crate) fn count_instruction_view(&self) {
+        self.add(Process::InstructionViews, 1);
     }
 
     /// The counters as Prometheus text (format 0.0.4): one `# HELP` and `# TYPE` pair and its

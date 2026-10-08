@@ -2,27 +2,40 @@
 format: aep.planning-md/3
 id: story:gateway-spec-declarations
 kind: story
-status: active
+status: implemented
 title: gateway.yaml and deployment.yaml declare every rule docs/gateway.md and README promise
 relations:
 - decomposes: epic:spec-hardening
 - serves: vision:portable-model-inference
 - depends_on: story:ess-0-53
 scope:
-- confidence: inferred
+- confidence: cited
+  path: README.md
+- confidence: cited
   path: checks/conformance/src/gateway.rs
-- confidence: inferred
+- confidence: cited
+  path: contracts/gateway/scenarios
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/binary.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/spec_declarations.rs
+- confidence: cited
   path: docs/gateway.md
-- confidence: inferred
-  path: docs/verification/gateway-spec-declarations.md
+- confidence: cited
+  path: docs/verification/2026-10-08-gateway-spec-declarations.md
+- confidence: cited
+  path: docs/verification/spec-hardening-gateway-review.md
 - confidence: cited
   path: spec/domains/deployment.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
-revision: 10
+- confidence: cited
+  path: spec/system.yaml
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T20:01:23Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-10-08T21:43:29Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"review_outcome":3,"verification":1}}}
 ---
 ## Outcome
 
@@ -61,8 +74,17 @@ The findings are the rows of `docs/verification/spec-hardening-gateway-review.md
    recorded in a new `docs/verification/` record.
 7. `ess specify validate` and the conformance check exit 0.
 
-## Scope (inferred)
+## Scope (confirmed by the implementor, wave 2026-10-08-w06)
 
-`spec/domains/gateway.yaml`, `spec/domains/deployment.yaml`, `docs/gateway.md`, new scenarios
-under `contracts/gateway/scenarios/`, `checks/conformance/src/gateway.rs` (only if a scenario
-needs a new observation fact), `docs/verification/`.
+Confirmed: `spec/domains/gateway.yaml`, `spec/domains/deployment.yaml`,
+`checks/conformance/src/gateway.rs` (the new `answer_headers` fact), `docs/gateway.md`.
+
+Corrected: the new record is `docs/verification/2026-10-08-gateway-spec-declarations.md` (the
+dated-record convention), not `docs/verification/gateway-spec-declarations.md`.
+
+Not listed but changed: `spec/system.yaml` (format `ess/14` to `ess/23`, for typed `Refusal`
+attributes), `crates/llm-gateway/tests/spec_declarations.rs`,
+`crates/llm-gateway-cli/tests/binary.rs`, four scenarios
+`contracts/gateway/scenarios/inspection-*.yaml`,
+`docs/verification/spec-hardening-gateway-review.md`, and `README.md` (row 38's answer and the
+stop bound of row 22).

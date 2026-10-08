@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T21:10:30Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-spec-declarations",
+  "kind": "story",
+  "revision": 10,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway --locked --test spec_declarations; cargo run -p b10x-llm-gateway-conformance -- check",
+    "reference": "6b4a33c red (8 passed, 2 failed: row_4_*, row_25_*; conformance refused ESS-AUTHOR-013 LastExchange declares no answer_headers) vs d941384 (10 passed; conformance 195/195 x3; ~/.cache/llm-gateway-w06/spec-decl/gate-final.log)"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T21:37:15Z",
+  "actor": "human:timo",
+  "artifact": "story:docs-site",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p llm-gateway-docs --locked; npm --prefix website run build; llm-gateway-docs provenance",
+    "reference": "1e1a44a red (0 passed, 8 failed, placeholder binary) vs 71ee770 (22 passed; generate --check 0; site build 0; provenance 14 routes under /llm-gateway/; ~/.cache/llm-gateway-w06/docs/)"
+  }
+}

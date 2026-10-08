@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:public-model-listing
 kind: story
-status: active
+status: implemented
 title: GET /v1/models and GET / answer without a credential and wake no pod
 relations:
 - decomposes: epic:gateway
@@ -12,26 +12,37 @@ relations:
 - informed_by: epic:client-access
 - depends_on: story:model-tool-calling
 scope:
-- confidence: inferred
-  path: checks/conformance/src/gateway.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/src/serve.rs
 - confidence: cited
-  path: crates/llm-gateway/src/inventory.rs
+  path: checks/conformance/src/gateway.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/relaying.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/relaying.rs
+- confidence: cited
+  path: crates/llm-gateway/src/listing.rs
+- confidence: cited
+  path: crates/llm-gateway/src/metrics.rs
+- confidence: cited
+  path: crates/llm-gateway/src/relay.rs
 - confidence: cited
   path: crates/llm-gateway/src/server.rs
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway/tests/adversary_public_listing.rs
+- confidence: cited
   path: crates/llm-gateway/tests/gateway.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/public_listing.rs
 - confidence: cited
   path: docs/gateway.md
 - confidence: cited
   path: spec/domains/clients.yaml
-- confidence: inferred
+- confidence: cited
   path: spec/domains/gateway.yaml
-revision: 16
+revision: 19
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 15, decided_on: {"recorded":{"review_outcome":12}}}
 - {from: "proposed", to: "active", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 16, decided_on: {"recorded":{"review_outcome":12}}}
+- {from: "active", to: "implemented", at: "2026-10-08T21:43:29Z", actor: "human:timo", revision: 19, decided_on: {"recorded":{"test_result":1,"review_outcome":13,"verification":1}}}
 ---
 ## Outcome
 
@@ -85,11 +96,18 @@ methods before any code.
   `max_model_len` is held only by the binary's model (`crates/llm-gateway-cli/src/config.rs:450`),
   so `inventory()` and `start` in `serve.rs` change. The key files are read in the same module.
 
-## Scope (inferred)
+## Scope (confirmed by the implementor, wave 2026-10-08-w06)
 
-`crates/llm-gateway/src/server.rs`, `crates/llm-gateway/src/inventory.rs`,
-`crates/llm-gateway-cli/src/serve.rs`, `docs/gateway.md`, `crates/llm-gateway/tests/gateway.rs`,
+Confirmed: `crates/llm-gateway/src/server.rs`, `docs/gateway.md`, `spec/domains/clients.yaml`,
 `spec/domains/gateway.yaml`, `checks/conformance/src/gateway.rs`.
+
+Corrected: `crates/llm-gateway/src/inventory.rs` was not touched; the rendering is in the new
+`crates/llm-gateway/src/listing.rs`, and `relay.rs` and `metrics.rs` changed too. The binary's
+change is `relay_models` in `crates/llm-gateway-cli/src/relaying.rs`, not
+`crates/llm-gateway-cli/src/serve.rs`. `crates/llm-gateway/tests/gateway.rs` only gains
+`listing.rs` in `SOURCES`; the cases are in `crates/llm-gateway/tests/public_listing.rs`,
+`crates/llm-gateway/tests/adversary_public_listing.rs` and
+`crates/llm-gateway-cli/tests/relaying.rs`.
 
 ## Client profiles
 
@@ -112,3 +130,4 @@ acceptance criteria, numbered on from the list above.
 Depends on `story:model-tool-calling`, which declares the tool calling criterion 11 reads; both
 change `docs/gateway.md`, `spec/domains/clients.yaml`, `crates/llm-gateway-cli/src/serve.rs` and
 `crates/llm-gateway/tests/gateway.rs`.
+

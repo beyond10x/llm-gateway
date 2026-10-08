@@ -9,25 +9,33 @@ relations:
 - serves: vision:portable-model-inference
 - depends_on: story:public-model-listing
 scope:
-- confidence: inferred
+- confidence: cited
   path: .github/workflows/b10x-docs-site.yml
-- confidence: inferred
+- confidence: cited
   path: .github/workflows/gate.yml
-- confidence: inferred
+- confidence: cited
   path: .github/workflows/pages.yml
-- confidence: inferred
-  path: .gitignore
-- confidence: inferred
+- confidence: cited
   path: CHANGELOG.md
-- confidence: inferred
+- confidence: cited
   path: Cargo.toml
-- confidence: inferred
+- confidence: cited
   path: Taskfile.yml
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway-cli/Cargo.toml
+- confidence: cited
+  path: crates/llm-gateway-cli/src/cli.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/lib.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/main.rs
+- confidence: cited
   path: crates/llm-gateway-docs
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway/Cargo.toml
+- confidence: cited
   path: website
-revision: 12
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 11}
 - {from: "proposed", to: "active", at: "2026-10-08T20:01:24Z", actor: "human:timo", revision: 12}

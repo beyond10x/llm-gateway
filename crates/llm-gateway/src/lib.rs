@@ -6,9 +6,10 @@
 //! deployment serves. It does four things and refuses the rest:
 //!
 //! - **Authenticate before anything else.** Apart from a closed two-path liveness and readiness
-//!   surface, no request is decoded past its HTTP head until an [`OwnerVerifier`] has accepted
-//!   it, and every inspection entry point demands an [`Authenticated`] that only an accepted
-//!   verdict can produce.
+//!   surface and the two public routes (`GET /v1/models` and `GET /`, which render the relayed
+//!   models and nothing else), no request is decoded past its HTTP head until an
+//!   [`OwnerVerifier`] has accepted it, and every inspection entry point demands an
+//!   [`Authenticated`] that only an accepted verdict can produce.
 //! - **Inspect, read-only.** [`RouteInventory`] is an immutable snapshot with no field for an
 //!   endpoint URL, a secret reference or credential material, and no callback, so serving it
 //!   cannot provision anything. It renders exactly the identifier bytes the composer supplied
@@ -31,6 +32,7 @@ mod body;
 mod error;
 mod inventory;
 mod json;
+mod listing;
 mod metrics;
 mod relay;
 mod server;

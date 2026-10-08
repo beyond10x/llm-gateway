@@ -54,7 +54,13 @@
       "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure",
       "llm-gateway.gateway/authored/owner-material-that-is-empty-or-not-printable-is-refused",
       "llm-gateway.gateway/authored/owner-material-with-a-space-is-refused",
+      "llm-gateway.gateway/authored/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile",
+      "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view",
+      "llm-gateway.gateway/authored/r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked",
+      "llm-gateway.gateway/authored/r1-r5-another-method-takes-the-credential-and-then-is-not-allowed",
+      "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body",
       "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero",
+      "llm-gateway.gateway/authored/r5-the-model-listing-answers-without-a-credential-and-asks-for-no-target",
       "llm-gateway.gateway/authored/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path",
       "llm-gateway.gateway/authored/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method",
       "llm-gateway.gateway/authored/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path",
@@ -459,10 +465,40 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/owner-material-with-a-space-is-refused"
       },
+      "gateway/scenarios/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile.yaml": {
+        "digest": "sha256:3dc16b895efd1944a8ccdeef12280d32bc2e320c84ea8f052de4df43f7070c5e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile"
+      },
+      "gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml": {
+        "digest": "sha256:63d17afb039b4cbafee38a90d0fd4733a62cf33312e6621013558870efa2b5ea",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view"
+      },
+      "gateway/scenarios/r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked.yaml": {
+        "digest": "sha256:97960ded45006336b1f4e845f5848ae83ae6979dd969620b93e2715228c638c1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked"
+      },
+      "gateway/scenarios/r1-r5-another-method-takes-the-credential-and-then-is-not-allowed.yaml": {
+        "digest": "sha256:ea4276331588cf5e1ba14d59d6264c99faf6020e1bb5f38a72202254d80304ac",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r1-r5-another-method-takes-the-credential-and-then-is-not-allowed"
+      },
+      "gateway/scenarios/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body.yaml": {
+        "digest": "sha256:5fa6473d43b0884bfcd494bf887118a29eb594e5be1a6a0668a1cc5b65f6e52e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body"
+      },
       "gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml": {
         "digest": "sha256:620fa5146343c5fdc44610c90f98bfa8ed848bbbde3de6d76c055ab9c90d4cf1",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero"
+      },
+      "gateway/scenarios/r5-the-model-listing-answers-without-a-credential-and-asks-for-no-target.yaml": {
+        "digest": "sha256:f023fa3559eefefbe5f5783240ff95ac72742ef1cd16de7243e565e72e3ea07f",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r5-the-model-listing-answers-without-a-credential-and-asks-for-no-target"
       },
       "gateway/scenarios/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path.yaml": {
         "digest": "sha256:1536ceb3587988ed7ea0d7c51fd2d1d6374976bf11471d5de8a898df8f6eed48",
@@ -1151,7 +1187,7 @@
       }
     },
     "counts": {
-      "authored": 191,
+      "authored": 197,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1176,9 +1212,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "d2a3007fedb152126b47e850bebfd70a14e1bfc879a9aa1e490a6a226172bdf2",
+    "contract_digest": "6c36e26191d653305e3398f45ca0fc00e87465906f6909915c2e00cc7ccd37c4",
     "scenario_initial_state": "empty",
-    "spec_digest": "58f21af44a3a0b8513ecaf7f230a70cc1cd1e57427ea4c3e562b5279b2b52f66",
+    "spec_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -5860,6 +5896,523 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile": {
+      "purpose": "GET / offers a client its profile only for models declaring its wire and tool calling parsed; a chat-only model gets no Codex or Claude Code profile, a text-only model none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"chatonly\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"],\"tool_calling\":\"parsed\",\"context_window\":32768},{\"alias\":\"textonly\",\"upstream_model\":\"served-text\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"tool_calling\":\"absent\",\"context_window\":32768},{\"alias\":\"agentic\",\"upstream_model\":\"served-agentic\",\"wires\":[\"responses\",\"messages\"],\"tool_calling\":\"parsed\",\"context_window\":16384}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"codex-cli/1.0\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"claude-cli/2.0\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"curl/8.0\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "# Codex profiles for this llm-gateway, one per model it serves on the responses wire with\n# tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the\n# gateway's owner token, and start Codex with `codex --profile <alias>`.\n\n# ~/.codex/agentic.config.toml\nmodel = \"agentic\"\nmodel_provider = \"b10x-gateway\"\nmodel_context_window = 16384\n\n[model_providers.b10x-gateway]\nname = \"b10x llm-gateway\"\nbase_url = \"http://gateway/v1\"\nenv_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n",
+                  "# Claude Code settings for this llm-gateway, one block per model it serves on the messages\n# wire with tool calling parsed. Set ANTHROPIC_AUTH_TOKEN to the gateway's owner token, or\n# name an apiKeyHelper that prints it; ANTHROPIC_API_KEY is sent as x-api-key, which this\n# gateway does not read.\n\n# model agentic\nexport ANTHROPIC_BASE_URL='http://gateway'\nexport ANTHROPIC_MODEL='agentic'\nexport ANTHROPIC_DEFAULT_OPUS_MODEL='agentic'\nexport ANTHROPIC_DEFAULT_SONNET_MODEL='agentic'\nexport ANTHROPIC_DEFAULT_HAIKU_MODEL='agentic'\nexport CLAUDE_CODE_SUBAGENT_MODEL='agentic'\nexport CLAUDE_CODE_MAX_CONTEXT_TOKENS='16384'\n",
+                  "llm-gateway\n\nGET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex\nanswers Codex profiles, and one naming claude answers Claude Code settings. Every model call\ncarries the gateway's owner token as Authorization: Bearer.\n\n# Loom, through an llm catalog (format = \"llm.catalog/1\"), one serving model per model this\n# gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the\n# account a secret_reference_id that resolves to the owner token.\n\n# model chatonly\n[[accounts]]\nauth_kind = \"bearer\"\n\n[[endpoints]]\nbase_url = \"http://gateway/v1\"\n\n[[models]]\nupstream_name = \"chatonly\"\n\n[[serving_models]]\nprotocol = \"chat-completions\"\n[serving_models.capabilities]\ntools = true\ncontext_window = 32768\n"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view": {
+      "purpose": "every GET or HEAD / answered 200 counts one llmgw_instruction_views_total; the listing and a refused / count none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"],\"tool_calling\":\"parsed\"}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"HEAD\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"Mozilla/5.0\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/\",\"body\":\"\",\"credential\":false},{\"step\":\"scrape\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "401 credential-absent",
+                  "200 scraped"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "1 llmgw_inference_requests_total 0",
+                  "1 llmgw_upstream_failures_total 0",
+                  "1 llmgw_instruction_views_total 2",
+                  "1 llmgw_pod_starts_total 0",
+                  "1 llmgw_pod_start_failures_total 0",
+                  "1 llmgw_pod_reaps_total 0",
+                  "1 llmgw_endpoint_invalidations_total 0",
+                  "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked": {
+      "purpose": "GET / without a credential answers Codex a config.toml profile, Claude Code its variables, a browser HTML and anything else plain text, and asks for no target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"tool_calling\":\"parsed\",\"max_model_len\":32768,\"context_window\":65536}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"codex-cli/1.0\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"claude-cli/2.0\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"Mozilla/5.0\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"curl/8.0\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "# Codex profiles for this llm-gateway, one per model it serves on the responses wire with\n# tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the\n# gateway's owner token, and start Codex with `codex --profile <alias>`.\n\n# ~/.codex/code.config.toml\nmodel = \"code\"\nmodel_provider = \"b10x-gateway\"\nmodel_context_window = 65536\n\n[model_providers.b10x-gateway]\nname = \"b10x llm-gateway\"\nbase_url = \"http://gateway/v1\"\nenv_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n",
+                  "# Claude Code settings for this llm-gateway, one block per model it serves on the messages\n# wire with tool calling parsed. Set ANTHROPIC_AUTH_TOKEN to the gateway's owner token, or\n# name an apiKeyHelper that prints it; ANTHROPIC_API_KEY is sent as x-api-key, which this\n# gateway does not read.\n\n# model code\nexport ANTHROPIC_BASE_URL='http://gateway'\nexport ANTHROPIC_MODEL='code'\nexport ANTHROPIC_DEFAULT_OPUS_MODEL='code'\nexport ANTHROPIC_DEFAULT_SONNET_MODEL='code'\nexport ANTHROPIC_DEFAULT_HAIKU_MODEL='code'\nexport CLAUDE_CODE_SUBAGENT_MODEL='code'\nexport CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'\n",
+                  "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>llm-gateway</title></head>\n<body>\n<pre>\nllm-gateway\n\nGET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex\nanswers Codex profiles, and one naming claude answers Claude Code settings. Every model call\ncarries the gateway&#39;s owner token as Authorization: Bearer.\n\n# Loom, through an llm catalog (format = &quot;llm.catalog/1&quot;), one serving model per model this\n# gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the\n# account a secret_reference_id that resolves to the owner token.\n\n# model code\n[[accounts]]\nauth_kind = &quot;bearer&quot;\n\n[[endpoints]]\nbase_url = &quot;http://gateway/v1&quot;\n\n[[models]]\nupstream_name = &quot;code&quot;\n\n[[serving_models]]\nprotocol = &quot;chat-completions&quot;\n[serving_models.capabilities]\ntools = true\ncontext_window = 65536\n</pre>\n</body>\n</html>\n",
+                  "llm-gateway\n\nGET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex\nanswers Codex profiles, and one naming claude answers Claude Code settings. Every model call\ncarries the gateway's owner token as Authorization: Bearer.\n\n# Loom, through an llm catalog (format = \"llm.catalog/1\"), one serving model per model this\n# gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the\n# account a secret_reference_id that resolves to the owner token.\n\n# model code\n[[accounts]]\nauth_kind = \"bearer\"\n\n[[endpoints]]\nbase_url = \"http://gateway/v1\"\n\n[[models]]\nupstream_name = \"code\"\n\n[[serving_models]]\nprotocol = \"chat-completions\"\n[serving_models.capabilities]\ntools = true\ncontext_window = 65536\n",
+                  "llm-gateway\n\nGET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex\nanswers Codex profiles, and one naming claude answers Claude Code settings. Every model call\ncarries the gateway's owner token as Authorization: Bearer.\n\n# Loom, through an llm catalog (format = \"llm.catalog/1\"), one serving model per model this\n# gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the\n# account a secret_reference_id that resolves to the owner token.\n\n# model code\n[[accounts]]\nauth_kind = \"bearer\"\n\n[[endpoints]]\nbase_url = \"http://gateway/v1\"\n\n[[models]]\nupstream_name = \"code\"\n\n[[serving_models]]\nprotocol = \"chat-completions\"\n[serving_models.capabilities]\ntools = true\ncontext_window = 65536\n"
+                ]
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent",
+                  "content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent",
+                  "content-type=text/html; charset=utf-8 cache-control=no-store allow=absent",
+                  "content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent",
+                  "content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r1-r5-another-method-takes-the-credential-and-then-is-not-allowed": {
+      "purpose": "another method on a public route is credential-absent, with the owner method-not-allowed; the route inventory and neighbouring paths still take the credential",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"],\"tool_calling\":\"parsed\",\"max_model_len\":32768,\"context_window\":65536}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/v1/models\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/v1/models\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"DELETE\",\"path\":\"/\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/routes\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/code\",\"body\":\"\",\"credential\":false}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=GET, HEAD",
+                  "content-type=application/json cache-control=no-store allow=GET, HEAD",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "401 credential-absent",
+                  "401 credential-absent",
+                  "405 method-not-allowed",
+                  "405 method-not-allowed",
+                  "401 credential-absent",
+                  "401 credential-absent"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body": {
+      "purpose": "before mark_ready both public routes are unavailable, as inspection; once ready, a request that declares a body is body-not-allowed and one without is answered",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"],\"tool_calling\":\"parsed\"}],\"pods\":[],\"steps\":[{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"\",\"credential\":false,\"user_agent\":\"curl/8.0\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models\",\"body\":\"{}\",\"credential\":false},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/\",\"body\":\"{}\",\"credential\":false},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models\",\"body\":\"\",\"credential\":false}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "503 unavailable",
+                  "503 unavailable",
+                  "ok",
+                  "400 body-not-allowed",
+                  "400 body-not-allowed",
+                  "200 answered"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero": {
       "purpose": "GET /metrics takes the owner and readiness, then serves llmgw's 13 series with every declared model and wire at zero",
       "source": [
@@ -5964,6 +6517,113 @@
                   "3 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
                   "3 llmgw_route_response_bytes_total{model=\"code\",wire=\"messages\"} 0"
                 ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r5-the-model-listing-answers-without-a-credential-and-asks-for-no-target": {
+      "purpose": "GET and HEAD /v1/models answer without a credential in the OpenAI list shape, one entry per model with its max_model_len and wires, and ask the target source for nothing",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"served-small\",\"wires\":[\"messages\",\"chat\"]},{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"tool_calling\":\"parsed\",\"max_model_len\":32768,\"context_window\":65536}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"HEAD\",\"path\":\"/v1/models\",\"body\":\"\",\"credential\":false}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"object\":\"list\",\"data\":[{\"id\":\"code\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"max_model_len\":32768,\"wires\":[\"chat\",\"responses\",\"messages\"]},{\"id\":\"small\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"wires\":[\"messages\",\"chat\"]}]}",
+                  ""
+                ]
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
               },
               "valid_program": {
                 "kind": "literal",

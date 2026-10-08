@@ -39,7 +39,8 @@ domain: llm-gateway.telemetry
 #                                                     starting target: the target says it held
 #                                                     it, or the source answered `model-cold-start`
 #     llmgw_cold_start_wait_seconds_total             the time those requests spent in `acquire`
-#     llmgw_instruction_views_total                   `GET /` (row R1); not served yet, so zero
+#     llmgw_instruction_views_total                   each `GET /` or `HEAD /` it answered 200
+#                                                     (row R1)
 #   counted by the binary from the pool's results (crates/llm-gateway-cli/src/relaying.rs):
 #     llmgw_pod_starts_total                          each pod create the pool submitted, seen as
 #                                                     a request's hold binding to a new deployment
@@ -49,8 +50,8 @@ domain: llm-gateway.telemetry
 #     llmgw_pod_reaps_total                           each deployment or pod a cleanup pass
 #                                                     stopped (idle, retired, replaced, orphan)
 # DECIDED 2026-10-08: `GET /metrics` (and `HEAD`) requires the owner credential, like every path
-# outside the closed two-path probe set, and is served once the gateway is ready, like inspection
-# (llm-gateway.gateway, docs/gateway.md "The HTTP surface").
+# outside the closed two-path probe set and the two public routes, and is served once the
+# gateway is ready, like inspection (llm-gateway.gateway, docs/gateway.md "The HTTP surface").
 #
 # Usage. A usage record is what the gateway learned about one model call it was asked to relay.
 # The token counters are llm's (beyond10x/llm spec/domains/chat.yaml at ee2ae428, its usage

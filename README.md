@@ -19,7 +19,8 @@ loopback; nothing is deployed or qualified.**
 
 It is not a model client: the neutral turn, the protocol clients, credentials, routing and cost
 are llm's. The gateway library relays the owner's chat, responses and messages requests to a target
-its embedding hands out, and serves health and readiness probes and a read-only route inventory;
+its embedding hands out, and serves health and readiness probes, a public model listing with
+setup instructions per client, and a read-only route inventory;
 it translates no protocol, and the binary does not relay to a Runpod pod yet: it refuses a
 document that declares a `connectors` provider until it can reach the pod's `https` endpoint
 (story:pod-proxy-tls). The hosting contract opens no socket and
@@ -35,7 +36,7 @@ in service until the capability matrix has no open gap and a cutover has been qu
 
 | Package | What it is |
 | --- | --- |
-| `b10x-llm-gateway` | The single-owner gateway library: owner authentication, probes, route inventory, drain and stop |
+| `b10x-llm-gateway` | The single-owner gateway library: owner authentication, probes, the public model listing and setup instructions, route inventory, drain and stop |
 | `b10x-llm-gateway-cli` | The `b10x-llm-gateway` binary: one closed TOML deployment document, the gateway, a graceful stop on a signal |
 | `b10x-llm-provision` | The hosting lifecycle contract: resource identity, leases, stop obligations, and the in-process `FakeProvider` |
 | `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract: the in-process `EmulatedRunpod`, and `ConnectorsRunpod`, which reaches Runpod through the `connectors` CLI |
@@ -118,7 +119,9 @@ bytes is accepted; a broken rule refuses the start as `vllm-api-key:<rule>`. The
 Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' keyring
 ([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1).
 
-The gateway answers `GET /health` and `GET /ready` without a credential; the owner can read
+The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model with its
+`max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,
+chosen by `User-Agent`) without a credential; the owner can read
 `GET /v1/routes`, `GET /v1/routes/<alias>` and `GET /metrics`, llmgw's 13 `llmgw_` counters as
 Prometheus text. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
 The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/responses` and

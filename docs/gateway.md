@@ -92,13 +92,16 @@ exactly `digest-characters` lowercase hexadecimal characters (`inventory:malform
 
 Every response is `cache-control: no-store` and `connection: close`, and every response the
 gateway writes itself is `application/json` except the counters at `/metrics`, which are
-Prometheus text; a relayed answer keeps its target's content type.
+Prometheus text, and the text and HTML answers of `GET /` ([the public routes](#the-public-routes));
+a relayed answer keeps its target's content type.
 The gateway serves one request per connection; keep-alive is not in this milestone.
 
 | Method | Path | Credential | Meaning |
 | --- | --- | --- | --- |
 | `GET`, `HEAD` | `/health` | none | Liveness. Always `200 {"status":"live"}` while the process serves. |
 | `GET`, `HEAD` | `/ready` | none | Readiness. `200 {"status":"ready"}`, or `503 {"status":"unready"}` before `mark_ready` and while draining. |
+| `GET`, `HEAD` | `/v1/models` | none | The relayed models in the OpenAI list shape ([the public routes](#the-public-routes)). |
+| `GET`, `HEAD` | `/` | none | Setup instructions chosen by `User-Agent`. |
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the snapshot. |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
 | `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
@@ -106,26 +109,59 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `POST` | `/v1/responses` | owner | The `responses` wire, relayed. |
 | `POST` | `/v1/messages` | owner | The `messages` wire, relayed. |
 
-The unauthenticated surface is a closed set of two literal paths with two literal methods,
-matched before anything else — including before load is shed — so that a liveness probe never
-carries the owner credential and never fails because the gateway is busy. A liveness probe that
-fails under load restarts the process, which would turn shedding into a restart loop. Reading a
-bounded request head under a timeout is the cheapest way to know whether a request is a probe,
-so that happens first and nothing beyond the head is read before the request is authenticated.
+The unauthenticated surface is a closed set of four literal paths with two literal methods. The
+two probes are matched before anything else — including before load is shed — so that a
+liveness probe never carries the owner credential and never fails because the gateway is busy.
+A liveness probe that fails under load restarts the process, which would turn shedding into a
+restart loop. Reading a bounded request head under a timeout is the cheapest way to know whether
+a request is a probe, so that happens first and nothing beyond the head is read before the
+request is authenticated.
 
 Load is shed immediately after the probe match and **before** authentication, as `overloaded`:
-shedding has to be cheaper than the work it sheds. Shedding is not decoding.
+shedding has to be cheaper than the work it sheds. Shedding is not decoding. The two public
+routes, `GET /v1/models` and `GET /`, are matched after shedding and before authentication; any
+other method on them is authenticated like any other request.
 **Every other request is authenticated before any further decoding**: an unauthenticated `POST`
 to an unknown path is refused as `credential-absent`, not as `method-not-allowed` or
 `path-unknown`, so the surface cannot be enumerated without the credential. A query string is
 discarded; this milestone decodes no request parameter. Only a relay reads a request body, and
 only after the owner is authenticated and the head has admitted it.
 
-A head that is not HTTP/1.x, a header whose name is followed by whitespace before its colon
-(RFC 9112 section 5.1), a CR, LF or NUL inside a line (RFC 9110 section 5.5), and a head that
-has not arrived whole when `read_timeout` passes are each `request-malformed`. The owner presents
+A head that is not HTTP/1.x, a head that is not UTF-8 (obs-text included), a header whose name
+is followed by whitespace before its colon (RFC 9112 section 5.1), a CR, LF or NUL inside a line
+(RFC 9110 section 5.5), and a head that has not arrived whole when `read_timeout` passes are each
+`request-malformed`. The owner presents
 `authorization: Bearer <token>`, the scheme matched without regard to case. Every `401` carries
 `www-authenticate: Bearer`, and every `405` an `allow` header naming the methods the path takes.
+
+## The public routes
+
+`GET /v1/models` (row R5) and `GET /` (row R1) answer without a credential, so a client can be
+told how to reach the gateway before it holds anything. They read the relayed models and nothing
+else: never the route inventory, never the target source, never a credential. So neither wakes a
+pod, and neither renders a provenance label, the `config_digest`, a target's endpoint, an upstream
+model name, a bearer or any byte of the owner secret. A gateway composed without a relay lists no
+model. Like inspection, a declared body is `body-not-allowed` and before `mark_ready` they are
+`unavailable`. Another method is authenticated like any other request: `credential-absent`
+without the credential, `method-not-allowed` with `allow: GET, HEAD` with it. `GET /v1/routes`
+still takes the owner credential.
+
+`GET /v1/models` is `{"object":"list","data":[…]}`, one entry per model in alias order:
+`{"id":<alias>,"object":"model","owned_by":"llm-gateway","max_model_len"?:<n>,"wires":[…]}`.
+`max_model_len` is what `RelayModel::with_max_model_len` declared, and absent, never `0`, when
+nothing was.
+
+`GET /` chooses its answer from the lowercased `user-agent`, by the first rule that holds:
+containing `codex`, a Codex `config.toml` profile per model (`text/plain; charset=utf-8`);
+containing `claude` or `anthropic`, Claude Code's environment variables per model (the same
+type); starting with `mozilla/`, an HTML page (`text/html; charset=utf-8`); anything else, or no
+`user-agent`, plain text with the llm catalog lines a Loom run needs. A client gets a profile for
+a model only when the model declares the client's wire (Codex `responses`, Claude Code `messages`,
+Loom `chat`) and parses tool calls; each profile names the model's alias and the
+`context_window` from `RelayModel::with_context_window`. The base URLs use `http://` and the
+request's `host` when it is only letters, digits, `.`, `-`, `_`, `:`, `[` and `]`, and the
+listener's address otherwise. The owner token is named as the setting that carries it, never
+given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_views_total`.
 
 ## The relay
 
@@ -228,7 +264,7 @@ which takes no dependency for it.
 | --- | --- | --- |
 | `llmgw_inference_requests_total` | | every usage record |
 | `llmgw_upstream_failures_total` | | every record no target answered: unreachable, or closed without an answer |
-| `llmgw_instruction_views_total` | | `GET /`, which is not served yet, so it stays 0 |
+| `llmgw_instruction_views_total` | | every `GET /` and `HEAD /` answered `200` ([the public routes](#the-public-routes)) |
 | `llmgw_pod_starts_total` | | pod creates the embedding counts (`Metrics::count_pod_start`) |
 | `llmgw_pod_start_failures_total` | | pods the embedding counts as failed to start |
 | `llmgw_pod_reaps_total` | | deployments and pods the embedding's cleanup pass stopped |

@@ -2,8 +2,9 @@ domain: llm-gateway.gateway
 
 # The authenticated single-owner gateway (crates/llm-gateway, docs/gateway.md). It admits one
 # owner through an injected verifier, serves a closed two-path liveness and readiness surface,
-# lets the owner read an immutable route inventory and its counters (`GET /metrics`, row R4),
-# drains and stops gracefully
+# lists its models and answers setup instructions without a credential (`GET /v1/models` and
+# `GET /`, rows R5 and R1), lets the owner read an immutable route inventory and its counters
+# (`GET /metrics`, row R4), drains and stops gracefully
 # (crates/llm-gateway/src/lib.rs:5-18). The entities are verification-adapter observations of
 # the real `Gateway` bound to a loopback socket and exercised with raw HTTP/1.1 requests; they
 # are not a production event bus.
@@ -91,6 +92,59 @@ types:
   - name: llm-gateway.gateway.Wire
     kind: enum
     variants: [Chat, Responses, Messages]
+  # The two public routes (rows R5 and R1; story:public-model-listing), each answered to `GET`
+  # and `HEAD` without a credential, by the `path` alone, with the `content_type` named here
+  # (`Instructions` takes its own from the InstructionAnswer it chooses). Neither asks the
+  # target source for a target, so neither wakes a pod, and neither renders an owner-only fact:
+  # no route inventory label, no `config_digest`, no target endpoint or authority, no upstream
+  # model name, no bearer and no byte of the owner secret. What they render is read from the
+  # relayed models alone (`RelayModel`: alias, wires, tool calling, `max_model_len`,
+  # `context_window`); a gateway composed without a relay lists no model.
+  # DECIDED: llmgw serves both routes without authentication (llmgw src/lib.rs:127-131), and
+  # so does llm-gateway: a client is told how to reach the gateway before it holds anything.
+  - name: llm-gateway.gateway.PublicRoute
+    kind: enum
+    attributes:
+      - {name: path, type: String}
+      - {name: content_type, type: String}
+    variants:
+      - {name: Models, attributes: {path: /v1/models, content_type: application/json}}
+      - {name: Instructions, attributes: {path: /, content_type: chosen}}
+  # The answer `GET /` chooses, from the request's `user-agent` lowercased, by the first rule
+  # that holds, in the order declared (llmgw src/lib.rs:231-245 at 048ebd8). No `user-agent` is
+  # `Plain`. Each renders, per relayed model, the llm-gateway.clients.ClientProfile of its
+  # `client` with the model's alias and `context_window` filled in, for exactly the models that
+  # declare that profile's wire and tool calling `Parsed`; a model without a `context_window`
+  # gets no context setting. The gateway origin in every base URL is `http://` and the
+  # request's `host`, when it is non-empty and only ASCII letters, digits, `.`, `-`, `_`, `:`,
+  # `[` and `]`, and the listener's bound address otherwise, so no other caller byte is
+  # rendered. The credential setting is named, never given a value.
+  #   Codex       one `config.toml` profile per model, `[model_providers.b10x-gateway]` with
+  #               `base_url` the origin plus `/v1`, `env_key = "B10X_GATEWAY_TOKEN"`,
+  #               `wire_api = "responses"`, `model` the alias and `model_context_window`.
+  #   ClaudeCode  one block of `export NAME='value'` lines per model: `ANTHROPIC_BASE_URL` the
+  #               origin, each model setting the alias, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`.
+  #   Html        the `Plain` text, HTML-escaped, inside one `<pre>` of a fixed page.
+  #   Plain       where the other answers and the listing are found, then the Loom profile per
+  #               model on the `chat` wire: the llm catalog (`llm.catalog/1`) lines of an
+  #               account with
+  #               `auth_kind = "bearer"`, an endpoint `base_url` the origin plus `/v1`, and a
+  #               serving model with `protocol = "chat-completions"`, `upstream_name` the
+  #               alias, `capabilities.tools = true` and `capabilities.context_window`.
+  # DECIDED: docs/design/runpod-clients.md § 5 step 7 writes `protocol = "chat"`; llm's
+  # catalog spells the chat wire `chat-completions` (beyond10x/llm
+  # `crates/llm-core/src/vocabulary.rs:4-10`), and the instructions render what llm reads.
+  - name: llm-gateway.gateway.InstructionAnswer
+    kind: enum
+    attributes:
+      - {name: rule, type: String}
+      - {name: client, type: String}
+      - {name: content_type, type: String}
+    variants:
+      - {name: Codex, attributes: {rule: "contains codex", client: Codex, content_type: "text/plain; charset=utf-8"}}
+      - {name: ClaudeCode, attributes: {rule: "contains claude or anthropic", client: ClaudeCode, content_type: "text/plain; charset=utf-8"}}
+      - {name: Html, attributes: {rule: "starts with mozilla/", client: Loom, content_type: "text/html; charset=utf-8"}}
+      - {name: Plain, attributes: {rule: "anything else", client: Loom, content_type: "text/plain; charset=utf-8"}}
   # Why a gateway cannot be composed, reported as `error_code` `<source>:<rule>`. Owner material
   # (auth.rs OwnerToken::new): `token:empty`, `token:too-large` (over 4096 bytes),
   # `token:not-printable-ascii`. The shared-secret verifier (auth.rs SharedSecretVerifier::new):
@@ -124,7 +178,7 @@ entities:
   # (server.rs GatewayConfig, GatewayHandle).
   #
   # The lifecycle. `Gateway::bind` listens at once and starts not ready. `mark_ready` opens
-  # inspection, the counters and the relay. `begin_drain` reports unready while every request
+  # the public routes, inspection, the counters and the relay. `begin_drain` reports unready while every request
   # that still arrives is served, and it cannot be undone: `mark_ready` does not clear it
   # (scenario a-drain-reports-unready-keeps-serving-and-cannot-be-undone,
   # `a_drain_cannot_be_undone_by_marking_ready_again` in tests/gateway.rs).
@@ -170,6 +224,20 @@ entities:
       - {name: ready, type: Boolean}
       - {name: draining, type: Boolean}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  # One entry of `GET /v1/models` (row R5), one per relayed model in alias order, rendered in
+  # the OpenAI list shape `{"object":"list","data":[entry…]}` with an entry's keys in the order
+  # below: `id` is the alias, `object` is `model`, `owned_by` is `llm-gateway`, `max_model_len`
+  # is the longest sequence the model's server takes, absent when the embedding declared none
+  # (never `0`), and `wires` names the model's wires in its declared order (`chat`, `responses`,
+  # `messages`). No other key exists.
+  - name: llm-gateway.gateway.ListedModel
+    identity: {name: id, type: String}
+    fields:
+      - {name: object, type: String}
+      - {name: owned_by, type: String}
+      - {name: max_model_len, type: 'Optional<Integer>'}
+      - {name: wires, type: 'List<llm-gateway.gateway.Wire>'}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.gateway.ExchangeObservation
     identity: {name: observation_id, type: String}
     fields: &exchange_facts
@@ -203,8 +271,9 @@ entities:
       - {name: headers, type: 'List<String>'}
       # Per exchange, `content-type=<value> cache-control=<value> connection=<value>`, `absent`
       # for a header that was not sent. Every answer the gateway writes itself is
-      # `application/json`, except the counters at `/metrics`, and every answer is
-      # `cache-control: no-store` and `connection: close`.
+      # `application/json`, except the counters at `/metrics` and the text and HTML answers of
+      # `GET /` (InstructionAnswer), and every answer is `cache-control: no-store` and
+      # `connection: close`.
       - {name: answer_headers, type: 'List<String>'}
       # Whether any byte the gateway wrote contains the owner secret. Absent when no gateway
       # was composed.
@@ -219,7 +288,8 @@ entities:
   # leaves the machine.
   #
   # The relay, in the order the gateway decides (each step is the row it answers):
-  #   1. The head, probes, shedding and owner authentication come first, exactly as steps 1-4
+  #   1. The head, probes, shedding, the public routes and owner authentication come first,
+  #      exactly as steps 1-5
   #      of the `Exchange` order below: an unauthenticated relay is refused before any byte of
   #      its body is read. DECIDED: llmgw serves its wires without authentication
   #      (`--insecure`, llmgw README.md:28); llm-gateway admits only its owner's bearer
@@ -316,8 +386,9 @@ entities:
       # `label:<rule>` or `relay:<rule>`.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
-      # `<status> <refusal code>` for a refusal or `<status> relayed` for a relayed answer, and
-      # for a scrape `<status> scraped` when served or `<status> <refusal code>`.
+      # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer and
+      # `<status> answered` for an answer to a public route, and for a scrape
+      # `<status> scraped` when served or `<status> <refusal code>`.
       - {name: results, type: 'List<String>'}
       # The body each request received, decoded from its HTTP framing, in order.
       - {name: bodies, type: 'List<String>'}
@@ -365,11 +436,13 @@ commands:
   # surface"; server.rs serve, dispatch, decide):
   #   1. The head, and nothing beyond it, is read under the `max_head_bytes` bound
   #      (`request-too-large`) and one `read_timeout_ms` deadline (`request-malformed` when it
-  #      never completes). A head that is not HTTP/1.x, a header whose name is followed by
-  #      whitespace before its colon (RFC 9112 section 5.1), and a CR, LF or NUL inside a line
-  #      (RFC 9110 section 5.5) are `request-malformed` (scenarios
-  #      a-request-head-that-is-not-http-is-malformed,
-  #      gateway-a-header-name-followed-by-whitespace-is-malformed). A query string is
+  #      never completes). A head that is not HTTP/1.x, a head that is not UTF-8 (obs-text
+  #      included), a header whose name is followed by whitespace before its colon (RFC 9112
+  #      section 5.1), and a CR, LF or NUL inside a line (RFC 9110 section 5.5) are
+  #      `request-malformed` (scenarios a-request-head-that-is-not-http-is-malformed,
+  #      gateway-a-header-name-followed-by-whitespace-is-malformed; the UTF-8 rule by
+  #      crates/llm-gateway/tests/adversary_public_listing.rs
+  #      adversary_r1_a_user_agent_that_is_not_utf8_is_request_malformed). A query string is
   #      discarded: no request parameter is decoded, and the path alone decides (scenarios
   #      inspection-a-query-string-is-discarded, head-inspection-answers-without-a-body).
   #   2. The probes, matched before anything else, without a credential and whatever the load:
@@ -383,17 +456,27 @@ commands:
   #      sheds: past `max_concurrent_requests` a request is `overloaded` (scenarios
   #      an-overloaded-gateway-sheds-inspection-but-still-answers-probes,
   #      the-concurrency-bound-admits-its-own-count).
-  #   4. Owner authentication, before any further decoding: no `authorization` is
+  #   4. The public routes (PublicRoute, rows R5 and R1), without a credential: exactly `GET`
+  #      or `HEAD` on exactly `/v1/models` or `/`. A declared body is `body-not-allowed` and
+  #      before `mark_ready` they are `unavailable`, as inspection. Then `/v1/models` answers
+  #      `200` with the ListedModel list and `/` answers `200` with the InstructionAnswer its
+  #      `user-agent` chooses; each served `/` counts one `llmgw_instruction_views_total`
+  #      (llm-gateway.telemetry). Neither asks the target source for anything. Any other method
+  #      goes on to step 5, so without a credential it is `credential-absent`, and with the
+  #      owner's it is `method-not-allowed` with `allow: GET, HEAD` at step 8 (scenarios
+  #      `r1-*` and `r5-*`).
+  #   5. Owner authentication, before any further decoding: no `authorization` is
   #      `credential-absent`, one that is not a single bearer token is `credential-malformed`
   #      (the scheme is matched without regard to case), and a token that is not the owner's
   #      is `credential-rejected`. So an unauthenticated request to an unknown path, with any
   #      method, is `credential-absent`, and the surface cannot be enumerated without the
   #      credential (scenarios authentication-comes-before-the-path-is-decided,
   #      inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent).
-  #   5. A wire path of a gateway composed with a relay goes on to the `Relay` order below.
-  #   6. `/metrics`, R4 (see RelayObservation).
-  #   7. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
-  #      `allow: GET, HEAD`; a declared body is `body-not-allowed`; before `mark_ready` it is
+  #   6. A wire path of a gateway composed with a relay goes on to the `Relay` order below.
+  #   7. `/metrics`, R4 (see RelayObservation).
+  #   8. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
+  #      `allow: GET, HEAD`, the two public routes included; a declared body is
+  #      `body-not-allowed`; before `mark_ready` it is
   #      `unavailable`; then `/v1/routes` serves every route, `/v1/routes/{alias}` the route
   #      with that alias or `route-unknown`, and any other path is `path-unknown`. A gateway
   #      composed without a relay therefore answers the three wire paths as it answers any
@@ -418,11 +501,13 @@ commands:
     input:
       # A bounded fixture program:
       #   secret  the owner secret
-      #   models  `[{alias, upstream_model, wires, bearer, tool_calling}]`, the relayed models;
+      #   models  `[{alias, upstream_model, wires, bearer, tool_calling, max_model_len,
+      #           context_window}]`, the relayed models;
       #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key
       #           every target the source hands out for that model carries (row B8); the
       #           optional `tool_calling` is `parsed` or `absent`, default `absent`, as the
-      #           deployment document's
+      #           deployment document's; the optional `max_model_len` and `context_window` are
+      #           what the public routes render (rows R5, R1), absent unless given
       #   pods    one script per fixture pod, `pod-1` first. The target source hands out the
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a
@@ -439,8 +524,10 @@ commands:
       #           optional `credential`, default true), or `{step: request, path, body}` with
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
-      #           `}` to exactly that many bytes) and `declare_bytes` (only a head declaring
-      #           that `content-length` is sent, never a body)
+      #           `}` to exactly that many bytes), `declare_bytes` (only a head declaring
+      #           that `content-length` is sent, never a body) and `user_agent` (sent as the
+      #           request's `user-agent`; none is sent without it). Every request carries
+      #           `host: gateway`.
       - {name: program_json, type: String}
     outcomes:
       - name: observed

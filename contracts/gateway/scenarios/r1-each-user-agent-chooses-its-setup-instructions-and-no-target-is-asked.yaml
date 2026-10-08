@@ -1,0 +1,150 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked
+summary: GET / without a credential answers Codex a config.toml profile, Claude Code its variables, a browser HTML and anything else plain text, and asks for no target
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"],"tool_calling":"parsed","max_model_len":32768,"context_window":65536}],"pods":[],"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/","body":"","credential":false,"user_agent":"codex-cli/1.0"},{"step":"request","method":"GET","path":"/","body":"","credential":false,"user_agent":"claude-cli/2.0"},{"step":"request","method":"GET","path":"/","body":"","credential":false,"user_agent":"Mozilla/5.0"},{"step":"request","method":"GET","path":"/","body":"","credential":false,"user_agent":"curl/8.0"},{"step":"request","method":"GET","path":"/","body":"","credential":false}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    headers:
+    - content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent
+    - content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent
+    - content-type=text/html; charset=utf-8 cache-control=no-store allow=absent
+    - content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent
+    - content-type=text/plain; charset=utf-8 cache-control=no-store allow=absent
+    bodies:
+    - |
+      # Codex profiles for this llm-gateway, one per model it serves on the responses wire with
+      # tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the
+      # gateway's owner token, and start Codex with `codex --profile <alias>`.
+
+      # ~/.codex/code.config.toml
+      model = "code"
+      model_provider = "b10x-gateway"
+      model_context_window = 65536
+
+      [model_providers.b10x-gateway]
+      name = "b10x llm-gateway"
+      base_url = "http://gateway/v1"
+      env_key = "B10X_GATEWAY_TOKEN"
+      wire_api = "responses"
+    - |
+      # Claude Code settings for this llm-gateway, one block per model it serves on the messages
+      # wire with tool calling parsed. Set ANTHROPIC_AUTH_TOKEN to the gateway's owner token, or
+      # name an apiKeyHelper that prints it; ANTHROPIC_API_KEY is sent as x-api-key, which this
+      # gateway does not read.
+
+      # model code
+      export ANTHROPIC_BASE_URL='http://gateway'
+      export ANTHROPIC_MODEL='code'
+      export ANTHROPIC_DEFAULT_OPUS_MODEL='code'
+      export ANTHROPIC_DEFAULT_SONNET_MODEL='code'
+      export ANTHROPIC_DEFAULT_HAIKU_MODEL='code'
+      export CLAUDE_CODE_SUBAGENT_MODEL='code'
+      export CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'
+    - |
+      <!DOCTYPE html>
+      <html lang="en">
+      <head><meta charset="utf-8"><title>llm-gateway</title></head>
+      <body>
+      <pre>
+      llm-gateway
+
+      GET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex
+      answers Codex profiles, and one naming claude answers Claude Code settings. Every model call
+      carries the gateway&#39;s owner token as Authorization: Bearer.
+
+      # Loom, through an llm catalog (format = &quot;llm.catalog/1&quot;), one serving model per model this
+      # gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the
+      # account a secret_reference_id that resolves to the owner token.
+
+      # model code
+      [[accounts]]
+      auth_kind = &quot;bearer&quot;
+
+      [[endpoints]]
+      base_url = &quot;http://gateway/v1&quot;
+
+      [[models]]
+      upstream_name = &quot;code&quot;
+
+      [[serving_models]]
+      protocol = &quot;chat-completions&quot;
+      [serving_models.capabilities]
+      tools = true
+      context_window = 65536
+      </pre>
+      </body>
+      </html>
+    - |
+      llm-gateway
+
+      GET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex
+      answers Codex profiles, and one naming claude answers Claude Code settings. Every model call
+      carries the gateway's owner token as Authorization: Bearer.
+
+      # Loom, through an llm catalog (format = "llm.catalog/1"), one serving model per model this
+      # gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the
+      # account a secret_reference_id that resolves to the owner token.
+
+      # model code
+      [[accounts]]
+      auth_kind = "bearer"
+
+      [[endpoints]]
+      base_url = "http://gateway/v1"
+
+      [[models]]
+      upstream_name = "code"
+
+      [[serving_models]]
+      protocol = "chat-completions"
+      [serving_models.capabilities]
+      tools = true
+      context_window = 65536
+    - |
+      llm-gateway
+
+      GET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex
+      answers Codex profiles, and one naming claude answers Claude Code settings. Every model call
+      carries the gateway's owner token as Authorization: Bearer.
+
+      # Loom, through an llm catalog (format = "llm.catalog/1"), one serving model per model this
+      # gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the
+      # account a secret_reference_id that resolves to the owner token.
+
+      # model code
+      [[accounts]]
+      auth_kind = "bearer"
+
+      [[endpoints]]
+      base_url = "http://gateway/v1"
+
+      [[models]]
+      upstream_name = "code"
+
+      [[serving_models]]
+      protocol = "chat-completions"
+      [serving_models.capabilities]
+      tools = true
+      context_window = 65536
+    upstream: []
+    records: []
+    acquired: 0

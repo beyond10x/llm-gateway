@@ -310,10 +310,12 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// again every 500 ms, until the model's `request_hold_seconds` have passed (row L6). Each
     /// ask is one pool step under the pool's lock and the wait is outside it. The first ask may
     /// start a pod; the hold then binds to the pod it found starting, so requests held together
-    /// start one pod. Still starting past the hold is `model-cold-start` (row W6). Once the
-    /// bound pod fails, owes a stop or leaves the slot, whichever step retired it, the hold is
-    /// lost: the request is `target-unavailable` at once and starts no replacement. Every other
-    /// pool refusal is `target-unavailable` too. Once the gateway starts to stop, a request may
+    /// start one pod. A bound pod still starting when the hold passes is `model-cold-start`
+    /// (row W6); a hold that passes still unbound, waiting out a previous pod's unconfirmed
+    /// stop, is `target-unavailable`. Once the bound pod is retired, marked stop-required or
+    /// gone from the slot, whichever step retired it, the hold is lost: the request is
+    /// `target-unavailable` at once and starts no replacement. Every other pool refusal is
+    /// `target-unavailable` too. Once the gateway starts to stop, a request may
     /// still use a pod that is ready now, but starts none and waits for none: without a ready
     /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
@@ -344,7 +346,14 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                 }
                 Err(PoolError::Starting | PoolError::Stopping) if !stopping && !hold.lost() => {
                     if Instant::now() >= deadline {
-                        return Err(TargetRefusal::ColdStart);
+                        // Only a request bound to a pod still starting is told to come back;
+                        // one still waiting out a previous pod's unconfirmed stop had no pod
+                        // starting for it (row W6).
+                        return Err(if hold.deployment().is_some() {
+                            TargetRefusal::ColdStart
+                        } else {
+                            TargetRefusal::Unavailable
+                        });
                     }
                     let next = (Instant::now() + POLL).min(deadline);
                     while Instant::now() < next && !self.stopping.load(Ordering::SeqCst) {

@@ -153,7 +153,8 @@ struct Usage {
 /// One caller's wait for a starting pod, carried across its [`RunpodPool::ensure_held`] asks.
 ///
 /// Bound to the deployment its first `starting` answer was about; [`Self::lost`] once that
-/// deployment failed, owes a stop or left its slot.
+/// deployment was retired, was marked stop-required, reached a terminal phase or left its slot.
+/// An `Uncertain` record (a lost create that may have allocated a pod) keeps it waiting.
 #[derive(Debug, Default)]
 pub struct Hold {
     deployment: Option<Identifier>,
@@ -462,9 +463,11 @@ impl<T: RunpodTransport> RunpodPool<T> {
     ///
     /// The first answer of [`PoolError::Starting`] binds the hold to the deployment it was about;
     /// while the slot is still stopping a previous deployment the hold stays unbound, so a caller
-    /// that arrives during a replacement binds to the replacement. Once the bound deployment
-    /// owes a stop, is retired, or is no longer the slot's current one, the hold is
-    /// [`Hold::lost`]: that call and every later one through the hold submits nothing and
+    /// that arrives during a replacement binds to the replacement. Once the bound deployment is
+    /// retired, is marked `StopRequired`, reaches a terminal phase, or is no longer the slot's
+    /// current one, the hold is [`Hold::lost`]. An `Uncertain` record (a lost create that may
+    /// have allocated a pod) keeps the hold waiting, bound, since that pod may still serve. On a
+    /// lost hold that call and every later one through the hold submits nothing and
     /// answers an error, the retire reason when that very step retired the pod and
     /// [`PoolError::Stopping`] otherwise. So every caller held on a pod that failed learns it
     /// failed, not only the one whose step retired it, and none of them starts a replacement.
@@ -504,10 +507,12 @@ impl<T: RunpodTransport> RunpodPool<T> {
             let reason = retired.get(&waited).copied();
             inner.forget_terminal(alias);
             let current = inner.slots.get(alias).and_then(|slot| slot.current.clone());
-            let owes_stop = inner.record(&waited).is_none_or(|record| {
+            // `StopRequired` and the terminal phases only. An `Uncertain` record also carries a
+            // stop obligation, but its pod may still be adopted and serve, so the hold waits on.
+            let stopped = inner.record(&waited).is_none_or(|record| {
                 record.phase == Phase::StopRequired || record.phase.terminal()
             });
-            if reason.is_some() || current.as_ref() != Some(&waited) || owes_stop {
+            if reason.is_some() || current.as_ref() != Some(&waited) || stopped {
                 hold.lost = true;
                 return Err(reason.map_or(PoolError::Stopping, Retire::error));
             }

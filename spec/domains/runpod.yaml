@@ -25,11 +25,13 @@ types:
   # hold budget (llm-gateway.deployment `request_hold_seconds`, row K28).
   # DECIDED: a caller that asks again and again through `ensure_held` carries a `Hold`, bound to
   # the deployment its first `starting` answer was about. While the slot is stopping a previous
-  # deployment the hold stays unbound. Once its bound deployment owes a stop, is retired, or is no
-  # longer the slot's current one, the hold is lost: the call answers the retire reason if that
-  # step retired it, `stopping` otherwise, submits nothing, and every later call through that
-  # hold does the same. Every caller held on a pod that failed learns it failed, not only the one
-  # whose step retired it.
+  # deployment the hold stays unbound. Once its bound deployment is retired, is marked
+  # stop-required, reaches a terminal phase, or is no longer the slot's current one, the hold is
+  # lost. An `uncertain` record (a lost create that may have allocated a pod) keeps the hold
+  # waiting, bound, because that pod may still serve. On a lost hold the call answers the retire
+  # reason if that step retired it, `stopping` otherwise, submits nothing, and every later call
+  # through that hold does the same. Every caller held on a pod that failed learns it failed, not
+  # only the one whose step retired it.
   - name: llm-gateway.runpod.PoolRefusal
     kind: enum
     variants: [UnknownModel, InvalidModel, Starting, Stopping, NoCapacity, CrashLoop, CredentialRefused, StartupDeadline, PodExited, StoppedServing, Hosting]

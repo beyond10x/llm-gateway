@@ -347,17 +347,21 @@ pod keeps its long deadline (`docs/design/runpod-clients.md` recommends 240 s fo
 Code, whose own timeouts are 300 s and 600 s). The hold defaults to `start_wait_seconds`, so a
 document that does not name it behaves as llmgw, and is at most `start_wait_seconds`
 (`config:value` past it), because a request still waiting past the deadline would wait for a
-terminated pod. While the pool answers
-`starting` (or `stopping`, while the previous pod is being stopped for a replacement) the relay
-asks it again every 500 ms through one `Hold` (`RunpodPool::ensure_held`); each ask is one pool
-step under the pool's lock and the wait is outside it. The hold binds to the pod its request
-first found starting, so requests held together start one pod. A request still waiting when its
-hold passes is answered `model-cold-start` (503) with `retry-after: 30` (row W6), and the pod
-keeps starting for the next request. If the bound pod fails during the hold (startup deadline,
-exit, crash loop, refused key), owes a stop or leaves the slot, every request held on it is
-answered `target-unavailable` at once, whichever request's or cleanup pass's step retired it, and
-none starts a replacement; the next request does. A hold of 0 asks once, starting the pod if none is live, and
-answers `model-cold-start` at once. `l6_*`, `w6_*` and `k28_*` in
+terminated pod. While the pool answers `starting` (or `stopping`, while the previous pod is being
+stopped for a replacement) the relay asks it again every 500 ms through one `Hold`
+(`RunpodPool::ensure_held`); each ask is one pool step under the pool's lock and the wait is
+outside it. The hold binds to the pod its request first found starting, so requests held
+together start one pod; a request that arrives during an unconfirmed stop waits unbound and binds
+to the replacement it starts once the stop is confirmed. A request whose bound pod is still
+starting when its hold passes is answered `model-cold-start` (503) with `retry-after: 30`
+(row W6), and the pod keeps starting for the next request. A request whose hold passes while it
+is still unbound had no pod starting for it, and is answered `target-unavailable` without
+`retry-after`. If the bound pod fails during the hold (startup deadline, exit, crash loop,
+refused key), is marked stop-required or leaves the slot, every request held on it is answered
+`target-unavailable` at once, whichever request's or cleanup pass's step retired it, and none
+starts a replacement; the next request does. A record whose create answer was lost
+(`uncertain`) keeps its holds waiting, because its pod may still be adopted and serve. A hold of
+0 asks once, starting the pod if none is live, and answers `model-cold-start` at once. `l6_*`, `w6_*` and `k28_*` in
 `crates/llm-gateway-cli/tests/relaying.rs` prove it.
 
 **`idle_timeout_minutes = 0` means no idle grace** (row K27). The pod is stopped by the first

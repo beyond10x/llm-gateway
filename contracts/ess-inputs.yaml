@@ -134,6 +134,8 @@ scenarios:
 - gateway/scenarios/an-unready-gateway-refuses-inspection-even-to-the-owner.yaml
 - gateway/scenarios/an-unrunnable-program-composes-nothing.yaml
 - gateway/scenarios/authentication-comes-before-the-path-is-decided.yaml
+- gateway/scenarios/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing.yaml
+- gateway/scenarios/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential.yaml
 - gateway/scenarios/head-inspection-answers-without-a-body.yaml
 - gateway/scenarios/liveness-is-served-without-a-credential-and-readiness-starts-unready.yaml
 - gateway/scenarios/owner-material-that-is-empty-or-not-printable-is-refused.yaml

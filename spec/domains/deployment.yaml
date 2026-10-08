@@ -24,8 +24,36 @@ domain: llm-gateway.deployment
 # DECIDED: each model's vLLM key (row B9) is read from the file its `vllm_api_key_file` names,
 # not derived from the Runpod key as llmgw does: the operator writes the value they stored as
 # the model's Runpod secret, which the pod receives as `{{ RUNPOD_SECRET_<name> }}`. The binary
-# reads each file once at startup and holds the value redacted. Nothing in the binary provisions
-# a pod or relays a model call yet (rows B, L and W).
+# reads each file once at startup and holds the value redacted.
+# DECIDED: the relay (row B8) is composed over one `RunpodPool` (`llm_gateway_cli::start_relaying`):
+# every model is relayed on its wires to the pod the pool hands out for its alias, with the
+# model's vLLM key as `authorization: Bearer <key>`. A model relayed this way must name a
+# `vllm_api_key_file` (`config:value` otherwise): its pod always expects the key. The shipped
+# binary has no Runpod transport, so `start` composes no relay and the binary relays nothing until
+# story:live-runpod-wiring supplies one; `start_relaying` takes the transport, the connection to a
+# pod and the clock, and only tests call it, with `EmulatedRunpod` and loopback pods.
+# The pool's inputs, each from the document or fixed:
+#   ComputeAuthorization  fixed: ledger `b10x-llm-gateway`, reservation `unmetered`. No budget
+#                         ledger is consulted yet; the pair only satisfies the hosting contract
+#   wall clock            fixed: system time in Unix milliseconds, never moving backwards
+#   LeaseRegistry         fixed: one empty in-process registry per run
+#   HostingPolicy         controller `b10x-llm-gateway`, provider `runpod`, account `default`,
+#                         ledger `b10x-llm-gateway`, max_lifetime_ms 86400000 (24 h) and
+#                         lease_ms 300000 (5 min) are fixed; max_active is the document's model
+#                         count, one pod per model
+#   RunpodModel           from `[models.<alias>]`: hf_model, image, gpu_types, disk_gb, cache,
+#                         data_center_ids, the vLLM settings, cloud_type from the model's
+#                         provider, startup_deadline_ms = start_wait_seconds x 1000 (also how
+#                         long a request waits for its pod), idle_timeout_ms from
+#                         idle_timeout_minutes. Fixed: crash_restart_limit 2, crash_window_ms
+#                         600000, and api_key_secret `vllm_<alias>` with every `-` and `.` of the
+#                         alias written `_` (the Runpod secret the operator stores the key in)
+# The pool is stepped by one cleanup pass (`reap`) before the gateway is marked ready and then
+# every 60 seconds until the stop, well inside lease_ms.
+# DECIDED: `idle_timeout_minutes = 0` (row K27) means no idle grace: the pod is stopped by the
+# first cleanup pass that finds it with no request in flight, and never sooner than its measured
+# cold start, which is the floor every idle limit has. `RunpodModel` takes no zero window, so 0 is
+# written as 1 ms. Proved by `k27_*` in crates/llm-gateway-cli/tests/relaying.rs.
 # ESS-LIMIT: the binary is observed by the crate's row-named process tests
 # (crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/config.rs), not by a
 # conformance command: a signal, a file mode and a symlink are process-environment facts the

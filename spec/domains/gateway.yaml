@@ -71,9 +71,14 @@ types:
   # A relayed model (row K11; relay.rs RelayModel::new, Relay::new): `relay:no-wire` for an empty
   # wire set, `relay:repeated-wire` for a wire named twice, `relay:duplicate-model` for two models
   # with one alias.
+  #
+  # A target's bearer (row B8; relay.rs TargetBearer::new) follows the owner material's rules:
+  # `bearer:empty`, `bearer:too-large` (over 4096 bytes), `bearer:not-printable-ascii`. A bearer
+  # is checked when the embedding builds it, so no relayed request can carry a CR, LF or space
+  # into the head it is written to.
   - name: llm-gateway.gateway.CompositionRefusal
     kind: enum
-    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel]
+    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii]
 entities:
   # One gateway: one owner verifier, one route inventory snapshot, one listener.
   - name: llm-gateway.gateway.Gateway
@@ -146,6 +151,11 @@ entities:
   #   7. The embedding's target source hands out the target serving the model; none is
   #      `target-unavailable`. The request goes to the same path at the target, with a
   #      `content-length`.
+  #      B8: a target that carries a bearer (the model's vLLM key, which the embedding reads)
+  #      is sent `authorization: Bearer <key>`; a target without one is sent no
+  #      `authorization`. The head the target receives is built by the gateway alone: no
+  #      header of the client's request is forwarded, so the owner's credential never reaches
+  #      a target, in the head or anywhere else.
   #   8. W7: a target that cannot be connected to, closes without an answer, or answers 502,
   #      503 or 504 is reported failed to the target source by the endpoint that served it (so
   #      the source drops it only if it is still current), and the client gets `upstream-failed`
@@ -185,6 +195,11 @@ entities:
       - {name: invalidated, type: 'List<String>'}
       # How many targets the gateway had released when the run ended.
       - {name: released, type: Integer}
+      # Per request a fixture pod received, in the order of `upstream`, the value of its
+      # `authorization` header as received, or `absent` when it carried none.
+      - {name: authorizations, type: 'List<String>'}
+      # Whether any byte any fixture pod received contains the owner secret.
+      - {name: secret_upstream, type: Boolean}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   - name: llm-gateway.gateway.Exchange
@@ -203,8 +218,9 @@ commands:
     input:
       # A bounded fixture program:
       #   secret  the owner secret
-      #   models  `[{alias, upstream_model, wires}]`, the relayed models; `wires` names
-      #           `chat`, `responses`, `messages`
+      #   models  `[{alias, upstream_model, wires, bearer}]`, the relayed models; `wires`
+      #           names `chat`, `responses`, `messages`; the optional `bearer` is the key every
+      #           target the source hands out for that model carries (row B8)
       #   pods    one script per fixture pod, `pod-1` first. The target source hands out the
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a

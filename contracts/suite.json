@@ -37,6 +37,8 @@
       "llm-gateway.gateway/authored/an-unready-gateway-refuses-inspection-even-to-the-owner",
       "llm-gateway.gateway/authored/an-unrunnable-program-composes-nothing",
       "llm-gateway.gateway/authored/authentication-comes-before-the-path-is-decided",
+      "llm-gateway.gateway/authored/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing",
+      "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
       "llm-gateway.gateway/authored/k11-a-model-repeating-a-wire-is-refused-at-composition",
       "llm-gateway.gateway/authored/k11-a-model-with-no-wire-is-refused-at-composition",
@@ -337,6 +339,16 @@
         "digest": "sha256:bbea3cdd6f12e5b3569940f9f07add4cb005fdc11ce64f190b95b34736904f8c",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/authentication-comes-before-the-path-is-decided"
+      },
+      "gateway/scenarios/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing.yaml": {
+        "digest": "sha256:9ebfee44702de49fbabdb3f98314b6310c1a20d3a5f55f78e2130e3934a076f0",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing"
+      },
+      "gateway/scenarios/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential.yaml": {
+        "digest": "sha256:66eed4b84aef8e2d17e6844e6d543fb5cd485574ab23ff9e060e2b266dedf30b",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential"
       },
       "gateway/scenarios/gateway-a-header-name-followed-by-whitespace-is-malformed.yaml": {
         "digest": "sha256:7b9b260a007aa5475525e43d9defa53b20c041e838905a43d60a66fc0fec5aac",
@@ -1055,7 +1067,7 @@
       }
     },
     "counts": {
-      "authored": 175,
+      "authored": 177,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1080,9 +1092,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "328d0606ff055effd9de49d0a687e685fb9c9df07a610d811839ca3a4e06e673",
+    "contract_digest": "2cdcd9f0ffc0cfdd288e40e10bbc9f7e1870bb361c031acb355d26bf58d531ba",
     "scenario_initial_state": "empty",
-    "spec_digest": "10cc864999c395e2016cc4bfd77c1538a5704cb4634998b82a3a9262c0a2e9ff",
+    "spec_digest": "65376af2dfc735bf9f87fe036535c7a25219e829862c90d87c321ed9da49366e",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -4118,6 +4130,209 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing": {
+      "purpose": "a bearer holding a space cannot be written into a head as one token, so it is refused when it is built and no gateway is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"],\"bearer\":\"vllm key\"}],\"pods\":[],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "bearer:not-printable-ascii"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential": {
+      "purpose": "a target that carries the model's vLLM key is sent it as the bearer, a target without one is sent no authorization, and no byte any pod receives holds the owner's credential",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"],\"bearer\":\"vllm-key-code-0123456789abcdef\"},{\"alias\":\"plain\",\"upstream_model\":\"served-plain\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"event: message_stop\\n\\n\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-2\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"stream\\\":true,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "Bearer vllm-key-code-0123456789abcdef",
+                  "Bearer vllm-key-code-0123456789abcdef",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"stream\":true,\"messages\":[]}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-plain\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },

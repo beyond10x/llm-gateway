@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Modal provisioning adapter behind the hosting lifecycle port."
+description = "Modal provisioning adapter behind the hosting lifecycle port; it exports nothing yet."
 
 [lints]
 workspace = true

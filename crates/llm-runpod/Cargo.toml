@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Runpod provisioning adapter for vLLM."
+description = "Runpod vLLM adapter behind the hosting lifecycle contract: EmulatedRunpod for tests, and ConnectorsRunpod, which reaches Runpod only through the connectors CLI."
 
 [lints]
 workspace = true

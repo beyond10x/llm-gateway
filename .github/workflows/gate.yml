@@ -19,6 +19,8 @@ jobs:
           cargo test --workspace --locked
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Documentation pages
+        run: cargo run --locked -p llm-gateway-docs -- generate --check
       - name: Install ess
         env:
           ESS_VERSION: "0.56.0"

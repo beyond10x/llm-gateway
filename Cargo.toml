@@ -6,6 +6,7 @@ members = [
     "crates/llm-modal",
     "crates/llm-gateway",
     "crates/llm-gateway-cli",
+    "crates/llm-gateway-docs",
     "checks/conformance",
 ]
 

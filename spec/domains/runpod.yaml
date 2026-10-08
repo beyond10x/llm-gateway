@@ -10,7 +10,7 @@ domain: llm-gateway.runpod
 #
 # DECIDED 2026-10-08 (D1 = A, docs/design/runpod-clients.md § 4): the production transport,
 # `ConnectorsRunpod` (crates/llm-runpod/src/transport/connectors.rs), reaches Runpod's control
-# plane only through the `connectors` CLI of beyond10x/connectors v0.36.0 and its Runpod catalog
+# plane only through the `connectors` CLI of beyond10x/connectors v0.37.0 and its Runpod catalog
 # bundle (connectors docs/catalog-runpod.md). This crate holds no HTTP client and no credential
 # for the control plane; the Runpod API key stays in the connectors keyring. The invocations it
 # makes, its inputs and the answers it maps are the `Connectors*`, `PodCreateBody`, `CreateAnswer`,
@@ -65,12 +65,12 @@ types:
       - {name: timeout_ms, type: Integer}
   # The three operations of connectors' shipped Runpod selection set, `pod.create` (Runpod
   # `CreatePod`), `pods.list` (`ListPods`) and `pod.terminate` (`DeletePod`). connectors
-  # v0.36.0 selects no `GetPod`: a get is `pods.list` with the `id` filter. Every invocation is
+  # v0.37.0 selects no `GetPod`: a get is `pods.list` with the `id` filter. Every invocation is
   # `connectors --output json operations invoke --adapter <adapter> --connection <connection>
   # --operation <id> --schema <schema> --revision <revision> --input-file <document>`, where
   # `schema` and `revision` are read per operation from `connectors --output json operations
   # describe --adapter <adapter> --operation <id>` and kept until a refusal below drops them.
-  # DECIDED: the answers are read in connectors' published framing (connectors v0.36.0
+  # DECIDED: the answers are read in connectors' published framing (connectors v0.37.0
   # contracts/cli/v1alpha1/semantics.md:178-181). A success is exit 0 with one
   # `{"ok":true,"result":…}` envelope on stdout; every value the transport reads (`schema`,
   # `revision`, `preparation.subject_sha256`, `connection.summary.revision`, the invoke's
@@ -86,7 +86,7 @@ types:
   # DECIDED: an invoke refused before anything was dispatched (no classification, or
   # `not_attempted`) is repeated once, after one recovery step, when its `error.data` is one of:
   # - `code: not_granted`, `stage: admission`: the connection's evidence expired
-  #   (`evidence_lifetime_ms`, 60 s when omitted, at most 300 000 ms; connectors v0.36.0
+  #   (`evidence_lifetime_ms`, 60 s when omitted, at most 300 000 ms; connectors v0.37.0
   #   docs/local-catalog-provider.md:479-486, "The invoke does not revalidate on its own";
   #   semantics.md:748-753). Recovery: read the connection's revision (`connections describe`)
   #   and run `connections revalidate --adapter <adapter> --connection <connection>
@@ -132,17 +132,18 @@ types:
     variants: [Terminated, Refused, Lost]
   # The `pod.create` `body`, one field per key the transport may send, named as Runpod's pinned
   # `PodCreateInput` names it (connectors adapters/runpod/upstream/runpod-rest-v1.json, SHA-256
-  # 9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db). The first twelve are
-  # connectors v0.36.0's `pod.create` `body_keys` (adapters/catalog/providers/runpod/operations.json).
+  # 9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db). The fields are exactly
+  # connectors v0.37.0's fifteen `pod.create` `body_keys`
+  # (adapters/catalog/providers/runpod/operations.json); connectors refuses any other key as
+  # `invalid_input` before any request (docs/catalog-runpod.md:88-89).
   # DECIDED: the body follows llmgw's (llmgw src/runpod.rs:781-799 at 048ebd8): `dockerEntrypoint`
   # carries the vLLM argv (`vllm serve …`), `dockerStartCmd` is always `[]`, `volumeInGb` is `0`
   # when there is no network volume, and `networkVolumeId` carries the model cache volume.
   # `dockerStartCmd: []` is llmgw parity; the pinned PodCreateInput says of it "If [], uses the
-  # start CMD defined in the image", so it does not clear the image's CMD. `volumeInGb: 0` asks
-  # for no pod volume, where Runpod's default is 20. v0.36.0 refuses `dockerEntrypoint`,
-  # `dockerStartCmd` and `networkVolumeId` as `invalid_input` before any request; a connectors
-  # release admitting them is requested upstream; until it lands, connectors creates no pod
-  # from such a body. Any other optional key is left out, never sent empty.
+  # start CMD defined in the image", and connectors v0.37.0 docs/catalog-runpod.md:84 says `[]`
+  # "keeps the image's", so it does not clear the image's CMD. `volumeInGb: 0` asks for no pod
+  # volume, where Runpod's default is 20 (docs/catalog-runpod.md:77); `networkVolumeId` "replaces
+  # the pod volume" (:86). Any other optional key is left out, never sent empty.
   - name: llm-gateway.runpod.PodCreateBody
     kind: struct
     fields:

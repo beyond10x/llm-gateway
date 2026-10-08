@@ -13,7 +13,7 @@ use std::{
 
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 use llm_runpod::{
-    CloudType, CreateAnswer, EmulatedRunpod, ManualClock, PodListing, PodRequest, PoolError, Probe,
+    CloudType, CreateAnswer, EmulatedRunpod, ManualClock, PodListing, PodRequest, PoolError, Probe, ProbeTarget,
     RunpodModel, RunpodPool, RunpodTransport, TerminateAnswer, Thinking, VllmSettings,
 };
 
@@ -108,11 +108,15 @@ impl RunpodTransport for DashedIds {
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
         self.inner().terminate_pod(&inbound(pod_id))
     }
-    fn probe_ready(&mut self, pod_id: &str) -> Probe {
-        self.inner().probe_ready(&inbound(pod_id))
+    fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe {
+        let pod_id = inbound(target.pod_id);
+        self.inner().probe_ready(&ProbeTarget {
+            pod_id: &pod_id,
+            ..*target
+        })
     }
-    fn container_uptime(&mut self, pod_id: &str) -> Option<u64> {
-        self.inner().container_uptime(&inbound(pod_id))
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
+        self.inner().container_started_at(&inbound(pod_id))
     }
 }
 

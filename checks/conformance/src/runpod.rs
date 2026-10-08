@@ -18,7 +18,7 @@ use ess_conformance::target::TargetError;
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 use llm_runpod::{
     CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock, NetworkVolume, PodListing,
-    PodRequest, PodStatus, PoolError, Probe, RunpodModel, RunpodPool, RunpodTransport, StreamLease,
+    PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel, RunpodPool, RunpodTransport, StreamLease,
     TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
 };
 use serde::Deserialize;
@@ -209,8 +209,9 @@ impl RunpodTransport for Fixture {
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
         self.runpod.terminate_pod(pod_id)
     }
-    fn probe_ready(&mut self, pod_id: &str) -> Probe {
-        let answer = self.runpod.probe_ready(pod_id);
+    fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe {
+        let pod_id = target.pod_id;
+        let answer = self.runpod.probe_ready(target);
         let wedged = self
             .wedged
             .lock()
@@ -218,8 +219,8 @@ impl RunpodTransport for Fixture {
             .contains(pod_id);
         if wedged { Probe::NotReady } else { answer }
     }
-    fn container_uptime(&mut self, pod_id: &str) -> Option<u64> {
-        self.runpod.container_uptime(pod_id)
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
+        self.runpod.container_started_at(pod_id)
     }
 }
 

@@ -48,5 +48,6 @@ pub use request::{
     TAG_REQUEST, Tags, in_namespace, pod_name, pod_request, vllm_entrypoint,
 };
 pub use transport::{
-    CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, RunpodTransport, TerminateAnswer,
+    ConnectorsBinding, ConnectorsRunpod, CreateAnswer, POD_CREATE_BODY_KEYS, Pod, PodListing,
+    PodRequest, PodStatus, Probe, ProbeTarget, RunpodTransport, TerminateAnswer, started_at_ms,
 };

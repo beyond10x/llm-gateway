@@ -21,7 +21,7 @@ use llm_provision::{
 };
 use llm_runpod::{
     CloudType, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX, ManualClock,
-    NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe,
+    NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget,
     RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST,
     TerminateAnswer, Thinking, VllmSettings,
 };
@@ -1105,12 +1105,12 @@ impl RunpodTransport for Listing {
     fn terminate_pod(&mut self, _pod_id: &str) -> TerminateAnswer {
         TerminateAnswer::Refused
     }
-    fn probe_ready(&mut self, _pod_id: &str) -> Probe {
+    fn probe_ready(&mut self, _target: &ProbeTarget<'_>) -> Probe {
         Probe::Ready {
             served_models: vec![ALIAS.to_owned()],
         }
     }
-    fn container_uptime(&mut self, _pod_id: &str) -> Option<u64> {
+    fn container_started_at(&mut self, _pod_id: &str) -> Option<u64> {
         None
     }
 }
@@ -1192,11 +1192,15 @@ impl RunpodTransport for Dashed {
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
         self.0.terminate_pod(&pod_id.replacen("pod-", "pod", 1))
     }
-    fn probe_ready(&mut self, pod_id: &str) -> Probe {
-        self.0.probe_ready(&pod_id.replacen("pod-", "pod", 1))
+    fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe {
+        let pod_id = target.pod_id.replacen("pod-", "pod", 1);
+        self.0.probe_ready(&ProbeTarget {
+            pod_id: &pod_id,
+            ..*target
+        })
     }
-    fn container_uptime(&mut self, pod_id: &str) -> Option<u64> {
-        self.0.container_uptime(&pod_id.replacen("pod-", "pod", 1))
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
+        self.0.container_started_at(&pod_id.replacen("pod-", "pod", 1))
     }
 }
 

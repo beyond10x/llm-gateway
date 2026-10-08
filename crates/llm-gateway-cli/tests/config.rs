@@ -619,5 +619,8 @@ fn k29_an_enumerated_value_written_as_an_inline_table_is_refused_as_schema() {
             Err(refusal) => assert_eq!(refusal.code(), "config:schema", "{case}"),
         }
     }
-    assert!(accepted.is_empty(), "accepted as inline tables: {accepted:?}");
+    assert!(
+        accepted.is_empty(),
+        "accepted as inline tables: {accepted:?}"
+    );
 }

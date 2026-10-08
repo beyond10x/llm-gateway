@@ -1,0 +1,33 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w6-a-model-still-starting-past-its-hold-budget-is-model-cold-start-with-retry-after-30
+summary: a model whose target is still starting when the hold budget passes is answered model-cold-start with retry-after 30, and the next request reaches the pod once it serves
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"warm\"}"]}]],"cold_starts":1,"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 503 model-cold-start
+    - 200 relayed
+    bodies:
+    - '{"error":{"code":"model-cold-start","message":"the model is still starting; ask again after the retry-after delay"}}'
+    - '{"id":"warm"}'
+    retry_after:
+    - '30'
+    - absent
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    acquired: 2
+    invalidated: []
+    released: 1

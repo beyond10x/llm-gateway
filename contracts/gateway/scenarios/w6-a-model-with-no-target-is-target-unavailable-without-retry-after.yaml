@@ -1,0 +1,28 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: w6-a-model-with-no-target-is-target-unavailable-without-retry-after
+summary: a source that can hand out no target answers target-unavailable, which carries no retry-after; only a cold start does
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 503 target-unavailable
+    bodies:
+    - '{"error":{"code":"target-unavailable","message":"no model target is available"}}'
+    retry_after:
+    - absent
+    upstream: []
+    acquired: 1
+    released: 0

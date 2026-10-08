@@ -38,6 +38,9 @@ mod transport;
 
 pub use config::{CloudType, ConfigError, NetworkVolume, RunpodModel, Thinking, VllmSettings};
 pub use emulated::EmulatedRunpod;
+/// The hosting-contract values a [`RunpodPool`] is built from, so a composer can build one
+/// without naming `b10x-llm-provision` itself.
+pub use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 pub use pool::{CleanupReport, Clock, ManualClock, PoolError, RunpodPool, StreamLease};
 pub use provider::{RunpodProvider, Unserviceable};
 pub use request::{

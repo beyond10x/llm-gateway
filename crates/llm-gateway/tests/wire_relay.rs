@@ -1,6 +1,6 @@
 //! The relay of the three model-call wires (story:wire-relay), one test per behaviour, each
 //! named after the row of `docs/llmgw-capability-matrix.md` it closes: R6, R7, R8, W1, W2, W3,
-//! W4, W5, W7 and K11. The specification is the `Relay` command of
+//! W4, W5, W7, K11 and B8. The specification is the `Relay` command of
 //! `spec/domains/gateway.yaml`.
 //!
 //! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
@@ -10,7 +10,8 @@
 
 use llm_gateway::{
     Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay, RelayError, RelayModel,
-    RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, Wire,
+    RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
+    TokenError, Wire,
 };
 use std::{
     io::{self, Read, Write},
@@ -110,7 +111,10 @@ struct Seen {
     host: Option<String>,
     content_length: Option<String>,
     transfer_encoding: Option<String>,
+    authorization: Option<String>,
     body: Vec<u8>,
+    /// Every byte the pod read for this request, head and body.
+    raw: Vec<u8>,
 }
 
 impl Seen {
@@ -220,6 +224,7 @@ fn read_request(connection: &mut TcpStream) -> Option<Seen> {
         }
         body.extend_from_slice(&chunk[..read]);
     }
+    let raw = [&buffer[..end + 4], body.as_slice()].concat();
     let mut start = head.split("\r\n").next()?.split(' ');
     Some(Seen {
         method: start.next()?.to_string(),
@@ -227,7 +232,9 @@ fn read_request(connection: &mut TcpStream) -> Option<Seen> {
         host: header_of(&head, "host"),
         content_length,
         transfer_encoding: header_of(&head, "transfer-encoding"),
+        authorization: header_of(&head, "authorization"),
         body,
+        raw,
     })
 }
 
@@ -295,6 +302,7 @@ fn answer_with(connection: &mut TcpStream, answer: Answer) {
 struct Slot {
     authority: String,
     refuses: bool,
+    bearer: Option<Arc<TargetBearer>>,
 }
 
 /// The fake target source: hands out the current slot, and moves to the next one when the
@@ -355,6 +363,7 @@ fn listening(pod: &Pod) -> Slot {
     Slot {
         authority: pod.authority.clone(),
         refuses: false,
+        bearer: None,
     }
 }
 
@@ -362,6 +371,7 @@ fn refusing(name: &str) -> Slot {
     Slot {
         authority: format!("{name}.invalid:8000"),
         refuses: true,
+        bearer: None,
     }
 }
 
@@ -400,6 +410,10 @@ struct Target {
 impl RelayTarget for Target {
     fn authority(&self) -> &str {
         &self.slot.authority
+    }
+
+    fn bearer(&self) -> Option<&TargetBearer> {
+        self.slot.bearer.as_deref()
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -1490,4 +1504,79 @@ fn k11_two_models_under_one_alias_are_refused() {
         Relay::new(vec![first, second], targets).err(),
         Some(RelayError::DuplicateModel)
     );
+}
+
+// --- B8: the target's own credential, never the owner's ---------------------------------------
+
+const VLLM_KEY: &str = "vllm-key-code-0123456789abcdef";
+
+#[test]
+fn b8_a_target_with_a_bearer_receives_it_and_never_the_owners_credential() {
+    let pod = Pod::start(vec![
+        ok_json("{\"id\":\"one\"}"),
+        stream(&["data: [DONE]\n\n"]),
+    ]);
+    let mut slot = listening(&pod);
+    slot.bearer = Some(Arc::new(
+        TargetBearer::new(VLLM_KEY.as_bytes().to_vec()).unwrap(),
+    ));
+    let source = Source::new(vec![slot]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    for (path, body) in [
+        ("/v1/chat/completions", "{\"model\":\"code\"}"),
+        ("/v1/messages", "{\"model\":\"code\",\"stream\":true}"),
+    ] {
+        assert_eq!(gateway.post_text(path, body).status, 200, "{path}");
+    }
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    for request in &seen {
+        assert_eq!(
+            request.authorization.as_deref(),
+            Some(format!("Bearer {VLLM_KEY}").as_str()),
+            "{}",
+            request.path
+        );
+        assert!(
+            find(&request.raw, OWNER.as_bytes()).is_none(),
+            "the owner's credential reached the pod on {}",
+            request.path
+        );
+    }
+}
+
+#[test]
+fn b8_a_target_without_a_bearer_receives_no_authorization_at_all() {
+    let pod = Pod::start(vec![ok_json("{\"id\":\"one\"}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    assert_eq!(
+        gateway
+            .post_text("/v1/chat/completions", "{\"model\":\"code\"}")
+            .status,
+        200
+    );
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].authorization, None);
+    assert!(find(&seen[0].raw, OWNER.as_bytes()).is_none());
+}
+
+#[test]
+fn b8_a_bearer_follows_the_owner_material_rules() {
+    assert!(TargetBearer::new(b"k".to_vec()).is_ok());
+    assert!(TargetBearer::new(vec![b'k'; 4096]).is_ok());
+    for (material, rule) in [
+        (Vec::new(), TokenError::Empty),
+        (vec![b'k'; 4097], TokenError::TooLarge),
+        (b"vllm key".to_vec(), TokenError::NotPrintableAscii),
+        (
+            b"vllm\r\nx-injected: 1".to_vec(),
+            TokenError::NotPrintableAscii,
+        ),
+    ] {
+        assert_eq!(TargetBearer::new(material).err(), Some(rule));
+    }
+    let bearer = TargetBearer::new(VLLM_KEY.as_bytes().to_vec()).unwrap();
+    assert!(!format!("{bearer:?}").contains(VLLM_KEY));
 }

@@ -1229,3 +1229,76 @@ fn a_serving_pod_with_a_refused_id_is_never_handed_out_and_misses_its_startup_de
     );
     assert_eq!(runpod.terminations(), vec!["pod1".to_owned()]);
 }
+
+// --- W7 and the idle clock: what the gateway's relay asks of the pool ------------------------
+
+#[test]
+fn w7_invalidating_the_current_endpoint_stops_its_pod_and_the_next_ensure_starts_a_replacement() {
+    let stack = stack();
+    let endpoint = ready(&stack).endpoint().unwrap().to_owned();
+    assert_eq!(
+        stack
+            .pool
+            .invalidate(&id(ALIAS), |reported| reported == endpoint),
+        Ok(true)
+    );
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
+    let replacement = ready(&stack);
+    assert_eq!(
+        replacement.endpoint(),
+        Some("https://pod2-8000.proxy.runpod.net/v1/")
+    );
+    assert_eq!(stack.runpod.create_calls(), 2);
+}
+
+#[test]
+fn w7_a_report_about_an_endpoint_that_is_not_current_stops_nothing() {
+    // Nothing is live before the first request: nothing to drop.
+    let cold = stack();
+    assert_eq!(cold.pool.invalidate(&id(ALIAS), |_| true), Ok(false));
+    let stack = stack();
+    drop(ready(&stack));
+    assert_eq!(
+        stack
+            .pool
+            .invalidate(&id(ALIAS), |reported| reported.contains("pod9-")),
+        Ok(false)
+    );
+    assert!(stack.runpod.terminations().is_empty());
+    assert_eq!(
+        stack.pool.invalidate(&id("unknown"), |_| true),
+        Err(PoolError::UnknownModel)
+    );
+}
+
+#[test]
+fn l10_a_pod_is_idle_only_from_the_step_that_first_finds_it_ready() {
+    let mut quick = model();
+    quick.idle_timeout_ms = 1;
+    let stack = stack_with(BTreeMap::from([(id(ALIAS), quick)]));
+    // The request that starts the pod is still waiting when the cleanup pass first sees it ready.
+    assert_eq!(
+        stack.pool.ensure(&id(ALIAS), &authorization()).err(),
+        Some(PoolError::Starting)
+    );
+    stack.clock.advance(5_000);
+    assert!(stack.pool.reap().unwrap().idle.is_empty());
+    assert!(stack.pool.ensure(&id(ALIAS), &authorization()).is_ok());
+    // Nobody asks for it again: it is stopped once the measured cold start has passed.
+    stack.clock.advance(5_000);
+    assert_eq!(stack.pool.reap().unwrap().idle.len(), 1);
+}
+
+#[test]
+fn d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one() {
+    let stack = stack();
+    assert_eq!(
+        stack.pool.ensure_running(&id(ALIAS)).err(),
+        Some(PoolError::Starting)
+    );
+    assert_eq!(stack.runpod.create_calls(), 0, "a pod was started");
+    let endpoint = ready(&stack).endpoint().unwrap().to_owned();
+    let lease = stack.pool.ensure_running(&id(ALIAS)).unwrap();
+    assert_eq!(lease.endpoint(), Some(endpoint.as_str()));
+    assert_eq!(stack.runpod.create_calls(), 1);
+}

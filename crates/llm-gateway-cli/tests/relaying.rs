@@ -281,14 +281,55 @@ fn b8_relaying_needs_every_models_vllm_key_file() {
 
 #[test]
 fn b8_the_shipped_binary_composes_no_emulator_and_no_relay_seam() {
-    let main = include_str!("../src/main.rs");
-    for forbidden in [
-        "start_relaying",
-        "Emulated",
-        "PodConnector",
-        "RunpodTransport",
-    ] {
-        assert!(!main.contains(forbidden), "src/main.rs names {forbidden}");
+    // Behaviour: the gateway `start` composes, which is what `main` runs, relays nothing.
+    // Were it composed through `start_relaying` with any transport, the wire path would be
+    // served and this request would reach the pool; without a relay a wire path is
+    // inspection-only and refuses `POST`.
+    let fixture = Fixture::new("b8-shipped");
+    let deployment = deployment(&fixture, |text| text);
+    let running = llm_gateway_cli::start(&deployment).unwrap();
+    let answer = post(
+        running.local_addr(),
+        "/v1/chat/completions",
+        OWNER_SECRET,
+        "{\"model\":\"small\",\"messages\":[]}",
+    );
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 405 "), "{answer}");
+    assert!(
+        answer.contains("\"code\":\"method-not-allowed\""),
+        "{answer}"
+    );
+    // Source: only the seam's own module names the relay composition, and no source file
+    // names the emulator, so neither `main` nor `start` can select it.
+    let sources = [
+        ("main.rs", include_str!("../src/main.rs")),
+        ("lib.rs", include_str!("../src/lib.rs")),
+        ("serve.rs", include_str!("../src/serve.rs")),
+        ("config.rs", include_str!("../src/config.rs")),
+        ("keys.rs", include_str!("../src/keys.rs")),
+        ("refusal.rs", include_str!("../src/refusal.rs")),
+        ("trusted.rs", include_str!("../src/trusted.rs")),
+        ("relaying.rs", include_str!("../src/relaying.rs")),
+    ];
+    for (name, source) in sources {
+        // Code only: a comment may name the emulator the tests use.
+        let code: String = source
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        assert!(!code.contains("Emulated"), "src/{name} uses the emulator");
+        if name != "relaying.rs" && name != "lib.rs" {
+            for forbidden in [
+                "start_relaying",
+                "bind_with_relay",
+                "PoolTargets",
+                "RunpodPool",
+            ] {
+                assert!(!code.contains(forbidden), "src/{name} names {forbidden}");
+            }
+        }
     }
     let manifest = include_str!("../Cargo.toml");
     assert!(

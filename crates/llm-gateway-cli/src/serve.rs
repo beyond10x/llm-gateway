@@ -188,8 +188,7 @@ impl Running {
         self.handle.shutdown()
     }
 
-    /// A running gateway from its parts, for a composition outside this module
-    /// ([`crate::start_relaying`]).
+    /// A running gateway from its parts, for the relay composition in `relaying.rs`.
     pub(crate) fn from_parts(
         handle: GatewayHandle,
         signals: Signals,
@@ -200,6 +199,19 @@ impl Running {
             signals,
             vllm_keys,
         }
+    }
+
+    /// Blocks until SIGINT or SIGTERM and names it, as [`Self::wait_for_stop`] does, without
+    /// stopping anything.
+    pub(crate) fn wait_for_signal(&mut self) -> StopSignal {
+        self.signals
+            .forever()
+            .find_map(|signal| match signal {
+                SIGINT => Some(StopSignal::Sigint),
+                SIGTERM => Some(StopSignal::Sigterm),
+                _ => None,
+            })
+            .unwrap_or(StopSignal::Sigterm)
     }
 
     /// Installs the stop signals, as [`start`] does.

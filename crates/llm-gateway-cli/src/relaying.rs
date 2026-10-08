@@ -30,7 +30,7 @@ use std::{
     net::SocketAddr,
     sync::{
         Arc, Condvar, Mutex, PoisonError,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     thread::{self, JoinHandle},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
@@ -58,6 +58,8 @@ pub const CRASH_WINDOW_MS: u64 = 600_000;
 pub const CLEANUP_INTERVAL: Duration = Duration::from_secs(60);
 /// How long a request waiting for its pod waits between two asks of the pool.
 const POLL: Duration = Duration::from_millis(500);
+/// How often a waiting request looks for the stop between two asks.
+const STOP_CHECK: Duration = Duration::from_millis(20);
 
 /// Opens connections to pods. The production one speaks TLS to the Runpod proxy
 /// (story:live-runpod-wiring); a test's reaches a loopback pod.
@@ -244,6 +246,8 @@ pub(crate) struct PoolTargets<T> {
     authorization: ComputeAuthorization,
     models: BTreeMap<String, Relayed>,
     connector: Arc<dyn PodConnector>,
+    /// Set when the gateway starts to stop: a request still waiting for its pod gives up.
+    stopping: Arc<AtomicBool>,
 }
 
 impl<T> PoolTargets<T> {
@@ -255,6 +259,7 @@ impl<T> PoolTargets<T> {
         keys: &VllmKeys,
         pool: Arc<RunpodPool<T>>,
         connector: Arc<dyn PodConnector>,
+        stopping: Arc<AtomicBool>,
     ) -> Result<Self, Refusal> {
         let mut models = BTreeMap::new();
         for (alias, model) in &deployment.models {
@@ -285,6 +290,7 @@ impl<T> PoolTargets<T> {
             authorization: compute_authorization()?,
             models,
             connector,
+            stopping,
         })
     }
 }
@@ -300,11 +306,15 @@ fn authority(endpoint: &str) -> Option<&str> {
 
 impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// Asks the pool for the model's ready pod, and while it is starting asks again until the
-    /// model's `start_wait_seconds` have passed.
+    /// model's `start_wait_seconds` have passed. Once the gateway starts to stop, a waiting
+    /// request gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
     fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
         let relayed = self.models.get(alias)?;
         let deadline = Instant::now() + relayed.wait;
         loop {
+            if self.stopping.load(Ordering::SeqCst) {
+                return None;
+            }
             match self.pool.ensure(&relayed.alias, &self.authorization) {
                 Ok(lease) => {
                     let authority = authority(lease.endpoint()?)?.to_owned();
@@ -316,17 +326,28 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                     }));
                 }
                 Err(PoolError::Starting | PoolError::Stopping) if Instant::now() < deadline => {
-                    thread::sleep(POLL.min(deadline.saturating_duration_since(Instant::now())));
+                    let next = (Instant::now() + POLL).min(deadline);
+                    while Instant::now() < next && !self.stopping.load(Ordering::SeqCst) {
+                        thread::sleep(
+                            STOP_CHECK.min(next.saturating_duration_since(Instant::now())),
+                        );
+                    }
                 }
                 Err(_) => return None,
             }
         }
     }
 
-    /// Nothing is dropped on one failed request: the pool's own observation retires a pod that
-    /// stopped serving, crash-loops, exited or refused its key, and the next acquisition starts
-    /// its replacement.
-    fn invalidate(&self, _alias: &str, _authority: &str) {}
+    /// A request through the pod at `authority` failed (row W7): the pool stops that pod if it
+    /// is still the model's current one, so the next acquisition starts a replacement. A report
+    /// about a pod already replaced changes nothing.
+    fn invalidate(&self, alias: &str, failed: &str) {
+        if let Some(relayed) = self.models.get(alias) {
+            let _stopped = self.pool.invalidate(&relayed.alias, |endpoint| {
+                authority(endpoint) == Some(failed)
+            });
+        }
+    }
 }
 
 /// One pod, held through its [`StreamLease`] until the relayed answer has ended.
@@ -388,9 +409,13 @@ impl Cleanup {
 }
 
 /// A gateway that relays model calls to Runpod pods, and the pool's cleanup pass beside it.
+///
+/// Stopping it stops no pod: a pod created during the run keeps running, and billing, until its
+/// idle limit would have passed and the next run's startup sweep terminates it.
 pub struct Relaying {
     running: Running,
     cleanup: Cleanup,
+    stopping: Arc<AtomicBool>,
 }
 
 impl Relaying {
@@ -398,18 +423,22 @@ impl Relaying {
         self.running.local_addr()
     }
 
-    /// Drains and stops the gateway gracefully now, then stops the cleanup pass.
+    /// Drains and stops the gateway gracefully now, then stops the cleanup pass. A request
+    /// still waiting for its pod is answered `target-unavailable` at once.
     pub fn shutdown(self) -> ShutdownReport {
+        self.stopping.store(true, Ordering::SeqCst);
         let report = self.running.shutdown();
         self.cleanup.stop();
         report
     }
 
-    /// As [`Running::wait_for_stop`], then stops the cleanup pass.
-    pub fn wait_for_stop(self) -> Stopped {
-        let stopped = self.running.wait_for_stop();
-        self.cleanup.stop();
-        stopped
+    /// Blocks until SIGINT or SIGTERM, then stops as [`Self::shutdown`] does.
+    pub fn wait_for_stop(mut self) -> Stopped {
+        let signal = self.running.wait_for_signal();
+        Stopped {
+            signal,
+            report: self.shutdown(),
+        }
     }
 }
 
@@ -451,7 +480,14 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     let vllm_keys = crate::keys::vllm_keys(deployment)?;
     let inventory = inventory(deployment)?;
     let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
-    let targets = PoolTargets::new(deployment, &vllm_keys, Arc::clone(&pool), pods)?;
+    let stopping = Arc::new(AtomicBool::new(false));
+    let targets = PoolTargets::new(
+        deployment,
+        &vllm_keys,
+        Arc::clone(&pool),
+        pods,
+        Arc::clone(&stopping),
+    )?;
     let mut models = Vec::with_capacity(deployment.models.len());
     for (alias, model) in &deployment.models {
         let wires = model.wires.iter().copied().map(relay_wire).collect();
@@ -486,6 +522,7 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     Ok(Relaying {
         running: Running::from_parts(handle, signals, vllm_keys),
         cleanup,
+        stopping,
     })
 }
 

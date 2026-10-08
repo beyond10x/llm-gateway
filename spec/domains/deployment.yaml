@@ -54,6 +54,14 @@ domain: llm-gateway.deployment
 # first cleanup pass that finds it with no request in flight, and never sooner than its measured
 # cold start, which is the floor every idle limit has. `RunpodModel` takes no zero window, so 0 is
 # written as 1 ms. Proved by `k27_*` in crates/llm-gateway-cli/tests/relaying.rs.
+# DECIDED: a pod counts as in use while a request holds it or waits for it: its idle clock starts
+# no earlier than the pool step that first finds it ready, so the cleanup pass never stops the pod
+# a waiting request started before that request is served.
+# DECIDED: a request through the relay that fails stops the model's current pod if it is the one
+# that failed (row W7, `RunpodPool::invalidate`); the next request starts a replacement.
+# DECIDED: once the gateway starts to stop, a request still waiting for its pod is answered
+# `target-unavailable` at once. Stopping stops no pod: pods outlive the process, and the next
+# start's cleanup pass terminates them.
 # ESS-LIMIT: the binary is observed by the crate's row-named process tests
 # (crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/config.rs), not by a
 # conformance command: a signal, a file mode and a symlink are process-environment facts the

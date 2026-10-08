@@ -10,12 +10,18 @@
 //!
 //! * Every call is `connectors --output json operations invoke --adapter <a> --connection <c>
 //!   --operation <id> --schema <s> --revision <r> --input-file <document>`; `schema` and
-//!   `revision` come from `operations describe` for that operation, read once.
+//!   `revision` come from `operations describe` for that operation, kept until a refusal says
+//!   they are stale.
+//! * Answers are read only in connectors' framing: `{"ok":true,"result":…}` on stdout for a
+//!   success, `{"ok":false,"error":…}` on stderr for a failure ([`Answer`]).
 //! * A write (`pod.create`, `pod.terminate`) is first `approvals prepare`d and `approvals
 //!   issue`d for its exact input document, then invoked with `--approval-file <proof>
-//!   --idempotency-key <key>` (connectors `docs/local-approvals.md`). It is never sent twice.
+//!   --idempotency-key <key>` (connectors `docs/local-approvals.md`). It is never sent twice; a
+//!   call refused before dispatch for a reason one step can mend is repeated once after it
+//!   ([`ConnectorsRunpod::recovery`]).
 //! * A create is `Refused` only when connectors classifies it `refused`. An `unknown` create is
-//!   resolved by one `pods.list` on the pod's unique name; everything else is `Lost`.
+//!   resolved by one `pods.list` on the pod's name and its request tag; everything else is
+//!   `Lost`.
 
 use std::{
     collections::BTreeMap,
@@ -119,36 +125,114 @@ impl fmt::Debug for ConnectorsRunpod {
 }
 
 /// What one CLI call ended with.
+///
+/// It is read only in connectors' published framing (v0.36.0
+/// `contracts/cli/v1alpha1/semantics.md:178-181`): a success is exit 0 with one
+/// `{"ok":true,"result":…}` envelope on stdout, a failure a non-zero exit with stdout empty and
+/// one `{"ok":false,"error":{"code","data"}}` envelope on stderr. Nothing else is read, and no
+/// part of either stream is kept beyond the fields below or printed.
 struct Answer {
     /// `None` when the call was killed at the timeout, could not start, or ended by a signal.
     exit: Option<i32>,
-    /// The JSON it printed, if it printed exactly one readable JSON document.
-    json: Option<Value>,
+    /// The success envelope's `result`.
+    result: Option<Value>,
+    /// The failure envelope's `error`: `code` (`failure` for an application failure) and
+    /// `data`, connectors' `Failure`.
+    error: Option<Value>,
+}
+
+/// The one JSON document a stream holds, if it holds exactly one.
+fn document(bytes: Option<Vec<u8>>) -> Option<Value> {
+    serde_json::from_slice(&bytes?).ok()
+}
+
+/// Reads one stream to its end on its own thread, up to [`MAX_OUTPUT_BYTES`]; a longer or
+/// unreadable stream sends `None`.
+fn bounded_reader(mut stream: impl Read + Send + 'static) -> mpsc::Receiver<Option<Vec<u8>>> {
+    let (sender, receiver) = mpsc::channel();
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        let limit = u64::try_from(MAX_OUTPUT_BYTES).unwrap_or(u64::MAX);
+        let complete = (&mut stream)
+            .take(limit.saturating_add(1))
+            .read_to_end(&mut bytes)
+            .is_ok()
+            && bytes.len() <= MAX_OUTPUT_BYTES;
+        let _ = sender.send(complete.then_some(bytes));
+    });
+    receiver
+}
+
+/// The one step taken before an invoke refused with nothing dispatched is repeated.
+#[derive(Clone, Copy)]
+struct Recovery {
+    /// Renew the connection's evidence: `connections describe`, `connections revalidate`.
+    revalidate: bool,
+    /// Drop the operation's cached `schema` and `revision` and run `operations describe`.
+    redescribe: bool,
 }
 
 impl Answer {
     fn lost() -> Self {
         Self {
             exit: None,
-            json: None,
+            result: None,
+            error: None,
         }
     }
 
-    /// connectors' `mutation.classification`, on success at the top level and on failure in
-    /// `error.data` (connectors `docs/local-gitlab-merge.md`).
-    fn classification(&self) -> Option<&str> {
-        let json = self.json.as_ref()?;
-        json.pointer("/mutation/classification")
-            .or_else(|| json.pointer("/error/data/mutation/classification"))
+    fn framed(exit: Option<i32>, stdout: Option<Vec<u8>>, stderr: Option<Vec<u8>>) -> Self {
+        let mut answer = Self {
+            exit,
+            ..Self::lost()
+        };
+        match exit {
+            Some(0) => {
+                answer.result = document(stdout)
+                    .filter(|envelope| envelope.get("ok") == Some(&Value::Bool(true)))
+                    .and_then(|mut envelope| envelope.get_mut("result").map(Value::take));
+            }
+            Some(_) => {
+                answer.error = document(stderr)
+                    .filter(|envelope| envelope.get("ok") == Some(&Value::Bool(false)))
+                    .and_then(|mut envelope| envelope.get_mut("error").map(Value::take))
+                    .filter(Value::is_object);
+            }
+            None => {}
+        }
+        answer
+    }
+
+    /// A string field of the success envelope's `result`, by JSON pointer.
+    fn read(&self, pointer: &str) -> Option<&str> {
+        self.result.as_ref()?.pointer(pointer)?.as_str()
+    }
+
+    /// connectors' `Failure` field (`code`, `stage`, `next_action`) of a failure. `code` falls
+    /// back to the envelope's own code, which a presentation error (`cli_parse`, …) carries.
+    fn failure(&self, field: &str) -> Option<&str> {
+        let error = self.error.as_ref()?;
+        error
+            .pointer(&format!("/data/{field}"))
+            .or_else(|| (field == "code").then(|| error.get("code")).flatten())
             .and_then(Value::as_str)
     }
 
-    /// The provider's answer body, only for a call that succeeded.
+    /// connectors' `mutation.classification`: beside the invoke's `result` on success, in the
+    /// failure's `data` otherwise (connectors `docs/local-gitlab-merge.md`).
+    fn classification(&self) -> Option<&str> {
+        self.read("/mutation/classification").or_else(|| {
+            self.error
+                .as_ref()?
+                .pointer("/data/mutation/classification")?
+                .as_str()
+        })
+    }
+
+    /// The provider's answer body, only for a call that succeeded: the invoke's
+    /// `result.status` (2xx, when present) and `result.body`.
     fn body(&self) -> Option<&Value> {
-        if self.exit != Some(0) {
-            return None;
-        }
-        let result = self.json.as_ref()?.get("result")?;
+        let result = self.result.as_ref()?.get("result")?;
         if let Some(status) = result.get("status")
             && !status
                 .as_u64()
@@ -201,7 +285,7 @@ impl ConnectorsRunpod {
             .args(args)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
-            .stderr(Stdio::null())
+            .stderr(Stdio::piped())
             .process_group(0)
             .spawn()
         else {
@@ -210,9 +294,10 @@ impl ConnectorsRunpod {
         self.wait(child)
     }
 
-    /// Waits for the CLI to exit **and** for its output to close, both inside one deadline.
-    /// When the deadline passes first, the CLI's whole process group is killed and the answer
-    /// is lost: a process it started that still holds its output does not hold the transport.
+    /// Waits for the CLI to exit **and** for both its output streams to close, all inside one
+    /// deadline, each stream read up to [`MAX_OUTPUT_BYTES`]. When the deadline passes first,
+    /// the CLI's whole process group is killed and the answer is lost: a process it started
+    /// that still holds a stream does not hold the transport.
     fn wait(&self, mut child: Child) -> Answer {
         let group = Pid::from_child(&child);
         let kill = |child: &mut Child| {
@@ -220,21 +305,12 @@ impl ConnectorsRunpod {
             let _ = child.kill();
             let _ = child.wait();
         };
-        let Some(mut stdout) = child.stdout.take() else {
+        let (Some(stdout), Some(stderr)) = (child.stdout.take(), child.stderr.take()) else {
             kill(&mut child);
             return Answer::lost();
         };
-        let (sender, printed) = mpsc::channel();
-        thread::spawn(move || {
-            let mut bytes = Vec::new();
-            let limit = u64::try_from(MAX_OUTPUT_BYTES).unwrap_or(u64::MAX);
-            let complete = (&mut stdout)
-                .take(limit.saturating_add(1))
-                .read_to_end(&mut bytes)
-                .is_ok()
-                && bytes.len() <= MAX_OUTPUT_BYTES;
-            let _ = sender.send(complete.then_some(bytes));
-        });
+        let stdout = bounded_reader(stdout);
+        let stderr = bounded_reader(stderr);
         let deadline = Instant::now() + self.binding.timeout;
         let status = loop {
             match child.try_wait() {
@@ -246,32 +322,57 @@ impl ConnectorsRunpod {
                 }
             }
         };
-        let left = deadline.saturating_duration_since(Instant::now());
-        let Ok(printed) = printed.recv_timeout(left) else {
-            // The CLI exited, and something it started still holds its output.
+        let left = || deadline.saturating_duration_since(Instant::now());
+        let (Ok(printed), Ok(reported)) =
+            (stdout.recv_timeout(left()), stderr.recv_timeout(left()))
+        else {
+            // The CLI exited, and something it started still holds one of its streams.
             let _ = kill_process_group(group, Signal::KILL);
             return Answer::lost();
         };
-        Answer {
-            exit: status.code(),
-            json: printed.and_then(|bytes| serde_json::from_slice(&bytes).ok()),
+        Answer::framed(status.code(), printed, reported)
+    }
+
+    /// What to do before repeating an invoke connectors refused with nothing dispatched (no
+    /// classification, or `not_attempted`): `spec/domains/runpod.yaml`, `ConnectorsOperation`.
+    /// `None` for every other answer, which is never repeated.
+    fn recovery(answer: &Answer) -> Option<Recovery> {
+        if answer.exit == Some(0)
+            || !matches!(answer.classification(), None | Some("not_attempted"))
+        {
+            return None;
+        }
+        let at_admission = answer.failure("stage") == Some("admission");
+        match answer.failure("code")? {
+            // Expired connection evidence (connectors semantics.md:748-753).
+            "not_granted" if at_admission => Some(Recovery {
+                revalidate: true,
+                redescribe: false,
+            }),
+            // "schema/descriptor changed", answered before dispatch (semantics.md:579-581, :606).
+            "stale_description" => Some(Recovery {
+                revalidate: false,
+                redescribe: true,
+            }),
+            // "stale revision": a configuration upgrade (semantics.md:601, :759-764).
+            "lifecycle_conflict" if at_admission => Some(Recovery {
+                revalidate: answer.failure("next_action") == Some("revalidate_connection"),
+                redescribe: true,
+            }),
+            _ => None,
         }
     }
 
-    /// Whether connectors refused an invoke `not_granted` at `admission` and dispatched
-    /// nothing: no classification, or `not_attempted`.
-    fn refused_at_admission(answer: &Answer) -> bool {
-        let Some(data) = answer
-            .json
-            .as_ref()
-            .and_then(|json| json.pointer("/error/data"))
-        else {
-            return false;
-        };
-        answer.exit != Some(0)
-            && data.get("code").and_then(Value::as_str) == Some("not_granted")
-            && data.get("stage").and_then(Value::as_str) == Some("admission")
-            && matches!(answer.classification(), None | Some("not_attempted"))
+    /// Runs one recovery step for `operation`. `false` when a step failed, and the refused
+    /// answer stands.
+    fn recover(&mut self, operation: &'static str, recovery: Recovery) -> bool {
+        if recovery.redescribe {
+            self.described.remove(operation);
+            if self.describe(operation).is_none() {
+                return false;
+            }
+        }
+        !recovery.revalidate || self.revalidate()
     }
 
     /// `connections revalidate` for the binding's connection, at the revision `connections
@@ -285,11 +386,7 @@ impl ConnectorsRunpod {
         ];
         let described = self.run(&[&["connections", "describe"][..], &connection[..]].concat());
         let Some(revision) = described
-            .json
-            .as_ref()
-            .filter(|_| described.exit == Some(0))
-            .and_then(|json| json.pointer("/connection/summary/revision"))
-            .and_then(Value::as_str)
+            .read("/connection/summary/revision")
             .map(str::to_owned)
         else {
             return false;
@@ -302,8 +399,8 @@ impl ConnectorsRunpod {
             ]
             .concat(),
         )
-        .exit
-            == Some(0)
+        .result
+        .is_some()
     }
 
     /// `(schema, revision)` for one operation, from `operations describe`, read once.
@@ -319,12 +416,8 @@ impl ConnectorsRunpod {
             "--operation",
             operation,
         ]);
-        if answer.exit != Some(0) {
-            return None;
-        }
-        let json = answer.json?;
-        let schema = json.get("schema")?.as_str()?.to_owned();
-        let revision = json.get("revision")?.as_str()?.to_owned();
+        let schema = answer.read("/schema")?.to_owned();
+        let revision = answer.read("/revision")?.to_owned();
         self.described
             .insert(operation, (schema.clone(), revision.clone()));
         Some((schema, revision))
@@ -352,17 +445,28 @@ impl ConnectorsRunpod {
 
     /// One read: `operations invoke` of `pods.list` with these filters.
     fn read(&mut self, filters: &Value) -> Answer {
-        let Some((schema, revision)) = self.describe(PODS_LIST) else {
-            return Answer::lost();
-        };
         let Some(input) = self.new_file(
             &format!("{}.json", file_stem(PODS_LIST)),
             filters.to_string().as_bytes(),
         ) else {
             return Answer::lost();
         };
-        let input_arg = path_arg(&input);
-        let invoke = [
+        let mut answer = self.read_once(&input);
+        // Refused before dispatch for a reason one step can mend: mend it, repeat once.
+        if let Some(recovery) = Self::recovery(&answer)
+            && self.recover(PODS_LIST, recovery)
+        {
+            answer = self.read_once(&input);
+        }
+        let _ = fs::remove_file(&input);
+        answer
+    }
+
+    fn read_once(&mut self, input: &Path) -> Answer {
+        let Some((schema, revision)) = self.describe(PODS_LIST) else {
+            return Answer::lost();
+        };
+        self.run(&[
             "operations",
             "invoke",
             "--adapter",
@@ -376,56 +480,44 @@ impl ConnectorsRunpod {
             "--revision",
             &revision,
             "--input-file",
-            &input_arg,
-        ];
-        let mut answer = self.run(&invoke);
-        // Expired connection evidence: renew it once and repeat the read once.
-        if Self::refused_at_admission(&answer) && self.revalidate() {
-            answer = self.run(&invoke);
-        }
-        let _ = fs::remove_file(&input);
-        answer
+            &path_arg(input),
+        ])
     }
 
     /// One write: prepare and issue an approval for its exact input, then invoke it once with
-    /// that proof. `None` when it was never invoked. Refused at admission with nothing
-    /// dispatched, it renews the connection once and is repeated once, as a new attempt with a
-    /// fresh proof and its own idempotency key.
+    /// that proof. `None` when it was never invoked. Refused before dispatch for a reason one
+    /// step can mend ([`Self::recovery`]), it is repeated once after that step, as a new
+    /// attempt with a fresh proof and its own idempotency key.
     fn write(
         &mut self,
         operation: &'static str,
         input: &Value,
         idempotency_key: &str,
     ) -> Option<Answer> {
-        let (schema, revision) = self.describe(operation)?;
-        let answer = self.write_once(operation, &schema, &revision, input, idempotency_key)?;
-        if !Self::refused_at_admission(&answer) || !self.revalidate() {
+        let answer = self.write_once(operation, input, idempotency_key)?;
+        let Some(recovery) = Self::recovery(&answer) else {
+            return Some(answer);
+        };
+        if !self.recover(operation, recovery) {
             return Some(answer);
         }
-        self.write_once(
-            operation,
-            &schema,
-            &revision,
-            input,
-            &format!("{idempotency_key}:revalidated"),
-        )
+        self.write_once(operation, input, &format!("{idempotency_key}:repeated"))
     }
 
     fn write_once(
-        &self,
+        &mut self,
         operation: &'static str,
-        schema: &str,
-        revision: &str,
         input: &Value,
         idempotency_key: &str,
     ) -> Option<Answer> {
+        let (schema, revision) = self.describe(operation)?;
         let stem = file_stem(operation);
         let input_path = self.new_file(&format!("{stem}.json"), input.to_string().as_bytes())?;
         let proof_path = self.binding.work_directory.join(format!("{stem}.proof"));
         let answer = self.approve_and_invoke(
             operation,
-            schema,
-            revision,
+            &schema,
+            &revision,
             &input_path,
             &proof_path,
             idempotency_key,
@@ -461,14 +553,7 @@ impl ConnectorsRunpod {
             &input,
         ];
         let prepared = self.run(&[&["approvals", "prepare"][..], &target[..]].concat());
-        if prepared.exit != Some(0) {
-            return None;
-        }
-        let subject = prepared
-            .json?
-            .pointer("/preparation/subject_sha256")?
-            .as_str()?
-            .to_owned();
+        let subject = prepared.read("/preparation/subject_sha256")?.to_owned();
         let issued = self.run(
             &[
                 &["approvals", "issue"][..],
@@ -477,9 +562,7 @@ impl ConnectorsRunpod {
             ]
             .concat(),
         );
-        if issued.exit != Some(0) {
-            return None;
-        }
+        issued.result.as_ref()?;
         Some(
             self.run(
                 &[

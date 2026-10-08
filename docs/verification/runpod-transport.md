@@ -36,14 +36,19 @@ cargo fmt -p b10x-llm-runpod --check
   and answers from `script.json`. It answers `operations describe`, `approvals prepare` and
   `approvals issue` itself; an issued proof records the input it was issued for, and an invoke of
   a write with no proof, no idempotency key, or a proof for another input is refused and recorded
-  as `proof_mismatch`.
+  as `proof_mismatch`. It answers `connections describe` and `connections revalidate` too. Every
+  answer goes out in connectors' framing: a script's bare success becomes
+  `{"ok":true,"result":…}` on stdout, a script's `{"error":…}` becomes
+  `{"ok":false,"error":{"code":"failure","data":…}}` on stderr with stdout empty, and `raw` is
+  printed as given. Before adversary pass 2 it printed bare answers, and the transport read
+  them; that shape is not connectors', and is no longer read.
 - A loopback `TcpListener` in `tests/transport.rs` that answers one probe and returns the request
   it received.
 
 ## Acceptance and cases
 
-`crates/llm-runpod/tests/transport.rs` holds 22 cases and `tests/adversary_w05_transport.rs` the 6 of
-the first adversary pass: 28.
+`crates/llm-runpod/tests/transport.rs` holds 27 cases, `tests/adversary_w05_transport.rs` the 6 of the
+first adversary pass and `tests/adversary_w05_transport_pass2.rs` the 4 of the second: 37.
 
 | Acceptance | Cases |
 | --- | --- |
@@ -54,6 +59,8 @@ the first adversary pass: 28.
 | 5: crash-loop detection reads `lastStartedAt` moving forward | `last_started_at_parses_runpods_utc_timestamps`, `a_last_started_at_moving_forward_counts_as_a_restart` |
 | adversary pass 1 | `a_cli_whose_stdout_outlives_it_does_not_outlive_the_timeout` (the process group is killed at the deadline), `an_unknown_create_is_not_resolved_to_a_pod_of_another_request` and `an_unknown_create_through_the_provider_does_not_accept_an_earlier_requests_pod` (an `unknown` create is `Created` only for a pod carrying its own `B10X_LLM_REQUEST`), `the_create_body_asks_for_no_pod_volume_as_llmgw_does`, `terminate_maps_404_to_refused_and_every_uncertain_answer_to_lost`, `the_proof_output_is_absolute_for_a_relative_work_directory` |
 | expired connection evidence (connectors `docs/local-catalog-provider.md:479-486`) | `a_read_refused_at_admission_revalidates_the_connection_once_and_is_repeated_once`, `a_second_refusal_at_admission_is_not_repeated_again`, `a_create_refused_at_admission_before_dispatch_is_repeated_once_with_a_fresh_proof`, `a_write_refused_after_admission_or_classified_otherwise_is_never_repeated` |
+| connectors' output framing (`contracts/cli/v1alpha1/semantics.md:178-181`): success on stdout, failure on stderr | `an_answer_outside_connectors_framing_is_not_read`, `a_failure_on_stderr_reaches_no_debug_output`; adversary pass 2: `a_listing_in_connectors_success_envelope_is_read`, `an_applied_create_in_connectors_success_envelope_is_created`, `a_refused_create_reported_on_stderr_is_refused`, `a_read_refused_at_admission_on_stderr_revalidates_once` |
+| a stale descriptor: `stale_description`, `lifecycle_conflict` at `admission` (`semantics.md:579-581`, `:601`, `:606`) | `a_stale_description_refreshes_the_descriptor_once_and_repeats_the_read_once`, `a_lifecycle_conflict_at_admission_refreshes_revalidates_and_repeats_a_create_once`, `a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again` |
 
 ## The planted inversion
 
@@ -86,3 +93,13 @@ was reverted.
 - That `lastStartedAt` moves when a container restarts, that Runpod returns a pod's `env` in a
   listing, or that a live pod's `https://` endpoint is reachable: the probe speaks plain HTTP only
   (story:pod-proxy-tls).
+
+## Mutations planted for the second adversary pass
+
+The framing and stale-descriptor cases were written after the code that satisfies them, so each
+was shown live by a planted mutation, run, and reverted:
+
+| Mutation in `src/transport/connectors.rs` | Result |
+| --- | --- |
+| `stale_description` and `lifecycle_conflict` no longer recovered | `transport.rs` 24 passed, 3 failed: the three stale-descriptor cases |
+| stderr read but not parsed (`Answer::framed(status.code(), printed, None)`) | 13 failed across the three lanes, every case whose answer is a failure on stderr |

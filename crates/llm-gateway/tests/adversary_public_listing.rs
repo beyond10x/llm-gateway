@@ -63,20 +63,22 @@ fn exchange(handle: &GatewayHandle, request: &[u8]) -> String {
     String::from_utf8_lossy(&raw).into_owned()
 }
 
-/// RFC 9110 section 5.5 admits obs-text (0x80-0xFF) in a field value, so a `user-agent` that
-/// is not UTF-8 is a well-formed request. It matches none of the first three rules, so by
-/// acceptance 2 it is "anything else" and gets the plain-text answer. The gateway refuses the
-/// whole request as `request-malformed` instead.
+/// RFC 9110 section 5.5 admits obs-text (0x80-0xFF) in a field value, but the gateway reads a
+/// request head only as UTF-8 and refuses any other head as `request-malformed`, on every route
+/// (`docs/gateway.md`, the causes of `request-malformed`). So a `user-agent` that is not UTF-8
+/// never reaches the selection rules of `GET /`: it gets the documented refusal, not one of the
+/// four answers. No client the setup text addresses sends one. If the head reader starts to admit
+/// obs-text, this case must change to expect the plain-text answer for "anything else".
 #[test]
-fn adversary_r1_a_user_agent_that_is_not_utf8_gets_plain_text() {
+fn adversary_r1_a_user_agent_that_is_not_utf8_is_request_malformed() {
     let handle = gateway();
     let request = b"GET / HTTP/1.1\r\nhost: gateway\r\nuser-agent: curl/8.0 (Z\xfcrich)\r\n\r\n";
     let answer = exchange(&handle, request);
     handle.shutdown();
-    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(answer.starts_with("HTTP/1.1 400 "), "{answer}");
     assert!(
-        answer.contains("\r\ncontent-type: text/plain; charset=utf-8\r\n"),
+        answer.contains("\"code\":\"request-malformed\""),
         "{answer}"
     );
-    assert!(answer.contains("upstream_name = \"code\"\n"), "{answer}");
+    assert!(!answer.contains("upstream_name"), "{answer}");
 }

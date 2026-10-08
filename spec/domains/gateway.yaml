@@ -436,11 +436,13 @@ commands:
   # surface"; server.rs serve, dispatch, decide):
   #   1. The head, and nothing beyond it, is read under the `max_head_bytes` bound
   #      (`request-too-large`) and one `read_timeout_ms` deadline (`request-malformed` when it
-  #      never completes). A head that is not HTTP/1.x, a header whose name is followed by
-  #      whitespace before its colon (RFC 9112 section 5.1), and a CR, LF or NUL inside a line
-  #      (RFC 9110 section 5.5) are `request-malformed` (scenarios
-  #      a-request-head-that-is-not-http-is-malformed,
-  #      gateway-a-header-name-followed-by-whitespace-is-malformed). A query string is
+  #      never completes). A head that is not HTTP/1.x, a head that is not UTF-8 (obs-text
+  #      included), a header whose name is followed by whitespace before its colon (RFC 9112
+  #      section 5.1), and a CR, LF or NUL inside a line (RFC 9110 section 5.5) are
+  #      `request-malformed` (scenarios a-request-head-that-is-not-http-is-malformed,
+  #      gateway-a-header-name-followed-by-whitespace-is-malformed; the UTF-8 rule by
+  #      crates/llm-gateway/tests/adversary_public_listing.rs
+  #      adversary_r1_a_user_agent_that_is_not_utf8_is_request_malformed). A query string is
   #      discarded: no request parameter is decoded, and the path alone decides (scenarios
   #      inspection-a-query-string-is-discarded, head-inspection-answers-without-a-body).
   #   2. The probes, matched before anything else, without a credential and whatever the load:

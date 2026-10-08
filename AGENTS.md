@@ -78,9 +78,9 @@ Never edit these by hand; change `spec/` or the scenarios and regenerate:
 | `contracts/suite.json` | `ess verify conform synthesize --path spec --suite-format 5 --target ir --scenarios contracts --out contracts/suite.json` |
 | `contracts/schema/schema/` | `ess generate --path spec --kind schema --out contracts/schema` |
 
-`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.52.0 release asset, checked
+`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.56.0 release asset, checked
 against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
-`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.52.0`. Move
+`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.56.0`. Move
 all three together, to the newest ESS release (workspace rule), and regenerate both files in the
 same commit.
 

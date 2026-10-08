@@ -1,7 +1,7 @@
 ---
 title: "Crates"
 sidebar_position: 4
-description: "Every package in the llm-gateway workspace at 0.5.0: what it is, its library and its binaries."
+description: "Every package in the llm-gateway workspace at 0.6.0: what it is, its library and its binaries."
 custom_edit_url: null
 ---
 
@@ -9,7 +9,7 @@ custom_edit_url: null
 
 # Crates
 
-The workspace holds 7 packages at version `0.5.0`. None is published to a registry: build from a release tag. Package names start with `b10x-`; library names do not, so `b10x-llm-gateway` is `use llm_gateway`. This page is generated from `cargo metadata` by `llm-gateway-docs`.
+The workspace holds 7 packages at version `0.6.0`. None is published to a registry: build from a release tag. Package names start with `b10x-`; library names do not, so `b10x-llm-gateway` is `use llm_gateway`. This page is generated from `cargo metadata` by `llm-gateway-docs`.
 
 | Package | Library | Binaries | Directory | What it is |
 | --- | --- | --- | --- | --- |

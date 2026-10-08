@@ -17,17 +17,17 @@ assert:
   contains:
     results:
     - ready
-    - inserted:pod-2
-    - inserted:pod-3
-    - inserted:pod-4
-    - inserted:pod-5
+    - inserted:pod2
+    - inserted:pod3
+    - inserted:pod4
+    - inserted:pod5
     - ok
     cleanups:
-    - idle=[] retired=[] replaced=[] orphans=[pod-2]
+    - idle=[] retired=[] replaced=[] orphans=[pod2]
     terminations:
-    - pod-2
+    - pod2
     pods:
-    - pod-1:b10x-llm-qwen:running
-    - pod-3:b10x-llm-theirs:running
-    - pod-4:b10x-llm-untagged:running
-    - pod-5:someone-elses-pod:running
+    - pod1:b10x-llm-qwen:running
+    - pod3:b10x-llm-theirs:running
+    - pod4:b10x-llm-untagged:running
+    - pod5:someone-elses-pod:running

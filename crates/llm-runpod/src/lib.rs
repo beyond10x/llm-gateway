@@ -25,7 +25,9 @@
 //! live in [`RunpodModel`], not in `DeploymentSpec`. Every Runpod call goes through
 //! [`RunpodTransport`]; [`EmulatedRunpod`] is the in-process control plane the tests drive. This
 //! crate opens no connection and reads no credential: the vLLM key reaches a pod as a Runpod
-//! secret reference, never as a value.
+//! secret reference, never as a value. It links `b10x-llm-credentials` and `tokio` through
+//! `b10x-llm-providers` and uses neither: it calls only `descriptions::runpod` and
+//! `inference_base_url`, which parse the shipped description and fill its URL template.
 
 mod config;
 mod emulated;

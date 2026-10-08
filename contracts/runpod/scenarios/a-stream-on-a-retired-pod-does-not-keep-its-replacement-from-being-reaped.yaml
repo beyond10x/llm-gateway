@@ -6,7 +6,7 @@ timeline:
 - at: '2026-09-27T12:00:00Z'
   command: llm-gateway.runpod.Exercise
   input:
-    program_json: '{"models":{"qwen":{}},"steps":[{"step":"hold","alias":"qwen"},{"step":"vanish","pod":"pod-1"},{"step":"until_ready","alias":"qwen"},{"step":"advance","ms":1800000},{"step":"reap"}]}'
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"hold","alias":"qwen"},{"step":"vanish","pod":"pod1"},{"step":"until_ready","alias":"qwen"},{"step":"advance","ms":1800000},{"step":"reap"}]}'
   outcome: observed
 assert:
 - view: llm-gateway.runpod.LastExecution
@@ -18,4 +18,4 @@ assert:
     cleanups:
     - idle=[qwen-2] retired=[] replaced=[] orphans=[]
     terminations:
-    - pod-2
+    - pod2

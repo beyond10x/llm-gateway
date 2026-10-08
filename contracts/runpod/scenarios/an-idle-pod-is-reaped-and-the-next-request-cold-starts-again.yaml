@@ -26,7 +26,7 @@ assert:
     - idle=[] retired=[] replaced=[] orphans=[]
     - idle=[qwen-1] retired=[] replaced=[] orphans=[]
     terminations:
-    - pod-1
+    - pod1
     leases:
-    - https://pod-1-8000.proxy.runpod.net qwen
-    - https://pod-2-8000.proxy.runpod.net qwen
+    - https://pod1-8000.proxy.runpod.net/v1/ qwen
+    - https://pod2-8000.proxy.runpod.net/v1/ qwen

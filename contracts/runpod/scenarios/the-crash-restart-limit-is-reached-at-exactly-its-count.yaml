@@ -20,4 +20,4 @@ assert:
     - ok
     - err:crash-loop
     terminations:
-    - pod-1
+    - pod1

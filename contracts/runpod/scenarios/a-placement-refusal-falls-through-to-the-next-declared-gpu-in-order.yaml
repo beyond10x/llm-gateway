@@ -22,4 +22,4 @@ assert:
     - NVIDIA L40S
     - NVIDIA H100 NVL
     pods:
-    - pod-1:b10x-llm-qwen:running
+    - pod1:b10x-llm-qwen:running

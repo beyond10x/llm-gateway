@@ -131,7 +131,7 @@ fn a_lost_create_is_not_resolved_against_another_controllers_pod_with_the_same_a
         .expect("the lost create allocated a pod");
     assert_eq!(
         settle(&pool, &clock),
-        Ok(Some(format!("https://{ours}-8000.proxy.runpod.net"))),
+        Ok(Some(format!("https://{ours}-8000.proxy.runpod.net/v1/"))),
         "the lost create must resolve to the pod it created, not to another controller's pod \
          that happens to carry the same deterministic request id"
     );
@@ -154,7 +154,7 @@ fn a_leftover_pod_of_ours_is_swept_even_when_a_fresh_pool_reuses_its_request_id(
     let endpoint = settle(&pool, &clock).expect("serves");
     assert_ne!(
         endpoint,
-        Some(format!("https://{leftover}-8000.proxy.runpod.net")),
+        Some(format!("https://{leftover}-8000.proxy.runpod.net/v1/")),
         "precondition: the new record owns a different pod"
     );
     let report = pool.reap().expect("reap");
@@ -217,7 +217,7 @@ fn an_exited_pod_is_terminated_rather_than_recorded_as_stopped() {
     };
     let pool = pool_over(transport, &clock);
     settle(&pool, &clock).expect("serves");
-    *exited.lock().unwrap_or_else(PoisonError::into_inner) = Some("pod-1".to_owned());
+    *exited.lock().unwrap_or_else(PoisonError::into_inner) = Some("pod1".to_owned());
     clock.advance(1_000);
     let _ = pool.ensure(&id(ALIAS), &authorization());
     pool.reap().expect("reap");
@@ -227,10 +227,10 @@ fn an_exited_pod_is_terminated_rather_than_recorded_as_stopped() {
         .into_iter()
         .find(|record| record.deployment == id("qwen-1"))
         .expect("record");
-    let still_listed = runpod.pods().iter().any(|pod| pod.id == "pod-1");
+    let still_listed = runpod.pods().iter().any(|pod| pod.id == "pod1");
     assert!(
         !(first.phase == Phase::Stopped && still_listed),
-        "qwen-1 is {:?} with evidence {:?}, yet pod-1 still exists and was never terminated \
+        "qwen-1 is {:?} with evidence {:?}, yet pod1 still exists and was never terminated \
          (terminations: {:?})",
         first.phase,
         first.stop_evidence,
@@ -250,7 +250,7 @@ fn the_crash_restart_limit_is_reached_at_exactly_its_count() {
     runpod.uptimes(vec![30, 5, 40, 2]);
     let pool = pool_over(runpod.clone(), &clock);
     assert_eq!(settle(&pool, &clock), Err("crash-loop"));
-    assert_eq!(runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(runpod.terminations(), vec!["pod1".to_owned()]);
 }
 
 /// Every setting validation claims to refuse, one at a time. The existing case leaves these

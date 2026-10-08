@@ -96,7 +96,7 @@ fn a_takeover_never_terminates_a_pod_a_third_controller_has_retagged() {
     let snapshot = first.snapshot();
     drop(first);
     clock.advance(3_600_001);
-    runpod.retag("pod-1", "controller-c", 1);
+    runpod.retag("pod1", "controller-c", 1);
     let second = RunpodPool::restore(
         policy_for("controller-b"),
         leases,
@@ -112,10 +112,10 @@ fn a_takeover_never_terminates_a_pod_a_third_controller_has_retagged() {
         clock.advance(1_000);
     }
     assert!(
-        !runpod.terminations().contains(&"pod-1".to_owned()),
+        !runpod.terminations().contains(&"pod1".to_owned()),
         "a pod labelled for a third controller is never terminated here"
     );
-    assert!(runpod.pods().iter().any(|pod| pod.id == "pod-1"));
+    assert!(runpod.pods().iter().any(|pod| pod.id == "pod1"));
 }
 
 /// F8's boundary. After a pod has served, only a definite "not ready" starts the clock; a probe

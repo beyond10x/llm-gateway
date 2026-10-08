@@ -100,7 +100,8 @@ cross-system relation, so those edges are `BOUNDARY:` comments beside the fields
 ## Dependencies on llm
 
 A crate that needs an llm client crate takes it by tag,
-`{ git = "https://github.com/beyond10x/llm", tag = "<release>" }`, never by path. None does today.
+`{ git = "https://github.com/beyond10x/llm", tag = "<release>" }`, never by path.
+`b10x-llm-runpod` takes `b10x-llm-providers` at tag `0.5.0` for the Runpod provider description.
 
 ## Documents
 

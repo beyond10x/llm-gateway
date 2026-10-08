@@ -57,9 +57,11 @@ impl EmulatedRunpod {
         self.state.lock().unwrap_or_else(PoisonError::into_inner)
     }
 
+    /// `pod1`, `pod2`, …: ids llm's Runpod description accepts (`[a-z0-9]`, 1-48 bytes), so
+    /// every running emulated pod has an endpoint.
     fn next_id(state: &mut State) -> String {
         state.next_pod = state.next_pod.saturating_add(1);
-        format!("pod-{}", state.next_pod)
+        format!("pod{}", state.next_pod)
     }
 
     /// Create calls submitted, whatever they answered.

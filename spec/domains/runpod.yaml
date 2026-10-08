@@ -68,22 +68,41 @@ types:
   # v0.36.0 selects no `GetPod`: a get is `pods.list` with the `id` filter. Every invocation is
   # `connectors --output json operations invoke --adapter <adapter> --connection <connection>
   # --operation <id> --schema <schema> --revision <revision> --input-file <document>`, where
-  # `schema` and `revision` are read once per operation from `connectors --output json
-  # operations describe --adapter <adapter> --operation <id>`.
+  # `schema` and `revision` are read per operation from `connectors --output json operations
+  # describe --adapter <adapter> --operation <id>` and kept until a refusal below drops them.
+  # DECIDED: the answers are read in connectors' published framing (connectors v0.36.0
+  # contracts/cli/v1alpha1/semantics.md:178-181). A success is exit 0 with one
+  # `{"ok":true,"result":…}` envelope on stdout; every value the transport reads (`schema`,
+  # `revision`, `preparation.subject_sha256`, `connection.summary.revision`, the invoke's
+  # `result.status`, `result.body` and `mutation.classification`) is inside that `result`. A
+  # failure is a non-zero exit with stdout empty and one `{"ok":false,"error":{"code","data"}}`
+  # envelope on stderr; `error.data` is connectors' `Failure` (`code`, `stage`, `next_action`)
+  # and carries `mutation` when connectors observed one. Both streams are read under the same
+  # deadline and size bound. Anything else, top-level fields outside an envelope included, is
+  # unreadable: `Lost` for a write, an incomplete listing for a read.
   # DECIDED: each write (`pod.create`, `pod.terminate`) is first `approvals prepare`d and
   # `approvals issue`d for its exact input document, then invoked with `--approval-file
   # <proof> --idempotency-key <key>`. The transport never sends a write twice.
-  # DECIDED: connectors' connection evidence expires (`evidence_lifetime_ms`, 60 s when omitted,
-  # at most 300 000 ms), and an invoke is then refused `not_granted` at `admission` with
-  # `next_action: revalidate_connection` until `connections revalidate` renews it (connectors
-  # v0.36.0 docs/local-catalog-provider.md:479-486, "Bind the provider to the local CLI"; it
-  # names reads, and says "The invoke does not revalidate on its own"). An invoke refused `not_granted` at stage `admission`, with no
-  # classification or `not_attempted` (nothing was dispatched), makes the transport read the
-  # connection's revision (`connections describe`), run `connections revalidate --adapter
-  # <adapter> --connection <connection> --expected-revision <revision>` once, and repeat that
-  # one invoke once (a write with a fresh proof and its own idempotency key). A second refusal,
-  # or any other answer, is mapped as usual: `Lost` for a write, an incomplete listing for a
-  # read. A write refused at any other stage, or classified otherwise, is never repeated.
+  # DECIDED: an invoke refused before anything was dispatched (no classification, or
+  # `not_attempted`) is repeated once, after one recovery step, when its `error.data` is one of:
+  # - `code: not_granted`, `stage: admission`: the connection's evidence expired
+  #   (`evidence_lifetime_ms`, 60 s when omitted, at most 300 000 ms; connectors v0.36.0
+  #   docs/local-catalog-provider.md:479-486, "The invoke does not revalidate on its own";
+  #   semantics.md:748-753). Recovery: read the connection's revision (`connections describe`)
+  #   and run `connections revalidate --adapter <adapter> --connection <connection>
+  #   --expected-revision <revision>` once.
+  # - `code: stale_description`: "schema/descriptor changed", answered "before provider
+  #   dispatch" (semantics.md:579-581, :606). Recovery: drop that operation's cached `schema`
+  #   and `revision` and run `operations describe` once.
+  # - `code: lifecycle_conflict`, `stage: admission`: "stale revision" (semantics.md:601),
+  #   e.g. a connection saved under an older configuration revision after a connectors
+  #   configuration upgrade (docs/local-catalog-provider.md:396-399, semantics.md:759-764).
+  #   Recovery: drop the cached `schema` and `revision`, run `operations describe` once, and,
+  #   when `next_action` is `revalidate_connection`, revalidate the connection as above.
+  # A recovery step that fails ends there. The repeat of a write is a new attempt, with a fresh
+  # proof and its own idempotency key. A second refusal, or any other answer, is mapped as
+  # usual: `Lost` for a write, an incomplete listing for a read. A write refused any other way,
+  # or classified otherwise, is never repeated.
   - name: llm-gateway.runpod.ConnectorsOperation
     kind: enum
     variants: [PodCreate, PodsList, PodTerminate]

@@ -772,7 +772,9 @@ fn o1_o2_a_pod_start_and_the_request_held_on_it_are_counted() {
         after["llmgw_route_cold_start_holds_total{model=\"small\",wire=\"chat\"}"],
         "1"
     );
-    let waited: f64 = after["llmgw_cold_start_wait_seconds_total"].parse().unwrap();
+    let waited: f64 = after["llmgw_cold_start_wait_seconds_total"]
+        .parse()
+        .unwrap();
     assert!(
         waited >= 1.0 && waited <= held.as_secs_f64(),
         "waited {waited} s of a request held {held:?}"
@@ -796,7 +798,10 @@ fn o1_a_pod_start_refused_for_capacity_is_a_pod_start_failure() {
     let (answer, _) = timed_chat(running.local_addr());
     let after = scrape(running.local_addr());
     running.shutdown();
-    assert!(answer.contains("\"code\":\"target-unavailable\""), "{answer}");
+    assert!(
+        answer.contains("\"code\":\"target-unavailable\""),
+        "{answer}"
+    );
     assert_eq!(after["llmgw_pod_start_failures_total"], "1");
     assert_eq!(after["llmgw_pod_starts_total"], "0");
     assert_eq!(

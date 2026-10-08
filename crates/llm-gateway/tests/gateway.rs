@@ -30,6 +30,7 @@ const SOURCES: &[&str] = &[
     include_str!("../src/error.rs"),
     include_str!("../src/inventory.rs"),
     include_str!("../src/json.rs"),
+    include_str!("../src/metrics.rs"),
     include_str!("../src/relay.rs"),
     include_str!("../src/server.rs"),
 ];

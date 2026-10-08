@@ -5,7 +5,8 @@ use crate::{
     auth::{Authenticated, OwnerToken, OwnerVerifier},
     error::RefusalCode,
     inventory::RouteInventory,
-    relay::{self, Admitted, Relay, Wire},
+    metrics::{Disposition, Metrics, UsageRecord},
+    relay::{self, Admitted, Call, Relay, Wire},
 };
 use std::{
     io::{self, Read, Write},
@@ -33,6 +34,11 @@ const COLD_START_RETRY_AFTER_SECONDS: u64 = 30;
 const UNKNOWN_PHRASE: &str = "Unknown";
 const ROUTES: &str = "/v1/routes";
 const ROUTES_PREFIX: &str = "/v1/routes/";
+/// The owner's counters as Prometheus text (row R4).
+const METRICS: &str = "/metrics";
+const JSON: &str = "application/json";
+/// The Prometheus text exposition format, version 0.0.4.
+const PROMETHEUS_TEXT: &str = "text/plain; version=0.0.4; charset=utf-8";
 
 /// How the gateway listens. It holds no credential: the verifier is a separate argument, so a
 /// configuration value can be logged or written to disk without leaking anything.
@@ -74,6 +80,8 @@ struct Shared {
     verifier: Arc<dyn OwnerVerifier>,
     inventory: RouteInventory,
     relay: Option<Relay>,
+    /// The relay's counters, or the gateway's own when it relays nothing.
+    metrics: Arc<Metrics>,
     running: AtomicBool,
     ready: AtomicBool,
     draining: AtomicBool,
@@ -123,11 +131,16 @@ impl Gateway {
         let listener = TcpListener::bind(config.bind)?;
         listener.set_nonblocking(true)?;
         let local_addr = listener.local_addr()?;
+        let metrics = relay.as_ref().map_or_else(
+            || Arc::new(Metrics::default()),
+            |relay| Arc::clone(relay.metrics()),
+        );
         let shared = Arc::new(Shared {
             config,
             verifier,
             inventory,
             relay,
+            metrics,
             running: AtomicBool::new(true),
             ready: AtomicBool::new(false),
             draining: AtomicBool::new(false),
@@ -260,6 +273,8 @@ fn accept_loop(listener: &TcpListener, shared: &Arc<Shared>) {
 /// A decided response, before it is written.
 enum Outcome {
     Served(String),
+    /// The counters, rendered as Prometheus text.
+    Metrics(String),
     Probe(u16, String),
     Refused(RefusalCode),
     /// `method-not-allowed`, with the methods the path does take.
@@ -283,14 +298,18 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
             Ok((head, leftover)) => (dispatch(&head, shared), leftover),
             Err(code) => (Decision::refused(code), Vec::new()),
         };
+    // A usage record's duration runs from the end of the head (llm-gateway.telemetry).
+    let begun = Instant::now();
+    let mut call = Call::default();
     let outcome = match (decision.outcome, &shared.relay) {
         (Outcome::Relay(admitted), Some(relay)) => {
             let limits = relay::Limits {
                 line_bytes: shared.config.max_head_bytes,
                 timeout,
             };
-            match relay::serve(&mut stream, leftover, admitted, relay, &limits) {
+            match relay::serve(&mut stream, leftover, admitted, relay, &limits, &mut call) {
                 Ok(()) => {
+                    record(shared, decision.recorded, call, None, begun);
                     drop(stream.shutdown(Shutdown::Both));
                     return;
                 }
@@ -306,11 +325,60 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
         decision.head_only,
         Instant::now() + timeout,
     );
+    let refusal = match outcome {
+        Outcome::Refused(code) => Some(code),
+        Outcome::NotAllowed(_) => Some(RefusalCode::MethodNotAllowed),
+        _ => None,
+    };
+    if let Some(code) = refusal {
+        // Written before the connection is closed, so a client that has read its answer to
+        // the end can count on the record having been made.
+        record(shared, decision.recorded, call, Some(code), begun);
+    }
     if decision.linger {
         linger(&mut stream, Instant::now() + timeout);
     } else {
         drop(stream.shutdown(Shutdown::Both));
     }
+}
+
+/// Makes the usage record of an authenticated request to a relayed wire (rows O1, O2): `wire`
+/// is `None` for every other request, which makes no record. `refusal` is what the client was
+/// answered instead of a relayed answer.
+fn record(
+    shared: &Shared,
+    wire: Option<Wire>,
+    call: Call,
+    refusal: Option<RefusalCode>,
+    begun: Instant,
+) {
+    let (Some(wire), Some(relay)) = (wire, &shared.relay) else {
+        return;
+    };
+    let (disposition, status, response_bytes) = match refusal {
+        None => (Disposition::Relayed, call.status, call.response_bytes),
+        Some(RefusalCode::UpstreamFailed) => (
+            Disposition::UpstreamFailed,
+            RefusalCode::UpstreamFailed.status(),
+            0,
+        ),
+        Some(code) => (Disposition::Refused, code.status(), 0),
+    };
+    relay.observe(&UsageRecord {
+        model: call.model,
+        wire,
+        disposition,
+        refusal,
+        status,
+        reported_model: None,
+        input_tokens: None,
+        output_tokens: None,
+        cached_input_tokens: None,
+        cache_creation_input_tokens: None,
+        reasoning_output_tokens: None,
+        response_bytes,
+        duration_ms: u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX),
+    });
 }
 
 /// Closes a relay connection that was refused gracefully: the answer is already written, so
@@ -379,6 +447,9 @@ struct Decision {
     /// Whether the connection is closed gracefully after a refusal: a request to a relayed
     /// wire may still be sending a body the gateway never read.
     linger: bool,
+    /// The wire of an authenticated request to a relayed wire path, which makes a usage
+    /// record whatever answers it.
+    recorded: Option<Wire>,
 }
 
 impl Decision {
@@ -387,6 +458,7 @@ impl Decision {
             outcome: Outcome::Refused(code),
             head_only: false,
             linger: false,
+            recorded: None,
         }
     }
 }
@@ -483,25 +555,28 @@ fn dispatch(head: &str, shared: &Shared) -> Decision {
     };
     let head_only = request.head_only();
     let linger = shared.relay.is_some() && Wire::from_path(request.path).is_some();
-    let outcome = decide(&request, shared);
+    let (outcome, recorded) = decide(&request, shared);
     Decision {
         outcome,
         head_only,
         linger,
+        recorded,
     }
 }
 
-fn decide(request: &Request<'_>, shared: &Shared) -> Outcome {
+/// The outcome, and the wire when the request is an authenticated one to a relayed wire path.
+fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
     // The unauthenticated surface is a closed set of two literal paths with two literal methods.
     if request.is_read() {
         match request.path {
-            "/health" => return Outcome::Probe(200, status_body("live")),
+            "/health" => return (Outcome::Probe(200, status_body("live")), None),
             "/ready" => {
-                return if is_ready(shared) {
+                let probe = if is_ready(shared) {
                     Outcome::Probe(200, status_body("ready"))
                 } else {
                     Outcome::Probe(503, status_body("unready"))
                 };
+                return (probe, None);
             }
             _ => {}
         }
@@ -509,17 +584,42 @@ fn decide(request: &Request<'_>, shared: &Shared) -> Outcome {
     // Shedding is not decoding: an overloaded gateway refuses before spending a verification,
     // because shedding has to be cheaper than the work it sheds.
     if shared.in_flight.load(Ordering::SeqCst) > shared.config.max_concurrent_requests {
-        return Outcome::Refused(RefusalCode::Overloaded);
+        return (Outcome::Refused(RefusalCode::Overloaded), None);
     }
     // Everything else establishes the authenticated context before decoding anything further.
     let owner = match authenticate(request, shared) {
         Ok(owner) => owner,
-        Err(code) => return Outcome::Refused(code),
+        Err(code) => return (Outcome::Refused(code), None),
     };
     if let (Some(wire), Some(_)) = (Wire::from_path(request.path), &shared.relay) {
-        return admit(request, shared, wire);
+        return (admit(request, shared, wire), Some(wire));
     }
-    inspect(request, shared, &owner)
+    if request.path == METRICS {
+        return (scrape(request, shared), None);
+    }
+    (inspect(request, shared, &owner), None)
+}
+
+/// `GET /metrics` (row R4): the owner's counters, under inspection's method, body and
+/// readiness rules.
+fn scrape(request: &Request<'_>, shared: &Shared) -> Outcome {
+    if !request.is_read() {
+        return Outcome::NotAllowed("GET, HEAD");
+    }
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    if !serves_inspection(shared) {
+        return Outcome::Refused(RefusalCode::Unavailable);
+    }
+    Outcome::Metrics(shared.metrics.render())
+}
+
+fn declares_body(request: &Request<'_>) -> bool {
+    request.header("transfer-encoding").is_some()
+        || request
+            .header("content-length")
+            .is_some_and(|value| value != "0")
 }
 
 /// Decides from the head alone whether a relay may read its body: the method, readiness, and
@@ -571,11 +671,7 @@ fn inspect(request: &Request<'_>, shared: &Shared, owner: &Authenticated) -> Out
     if !request.is_read() {
         return Outcome::NotAllowed("GET, HEAD");
     }
-    let declares_body = request.header("transfer-encoding").is_some()
-        || request
-            .header("content-length")
-            .is_some_and(|value| value != "0");
-    if declares_body {
+    if declares_body(request) {
         return Outcome::Refused(RefusalCode::BodyNotAllowed);
     }
     if !serves_inspection(shared) {
@@ -605,7 +701,7 @@ fn status_body(status: &str) -> String {
 fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, deadline: Instant) {
     let refused = |code: RefusalCode| (code.status(), refusal_body(code), None);
     let (status, body, allow) = match outcome {
-        Outcome::Served(body) => (200, body.clone(), None),
+        Outcome::Served(body) | Outcome::Metrics(body) => (200, body.clone(), None),
         Outcome::Probe(status, body) => (*status, body.clone(), None),
         Outcome::Refused(code) => refused(*code),
         Outcome::NotAllowed(allow) => {
@@ -616,12 +712,18 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
         // here had no relay to go to.
         Outcome::Relay(_) => refused(RefusalCode::PathUnknown),
     };
+    let content_type = match outcome {
+        Outcome::Metrics(_) => PROMETHEUS_TEXT,
+        _ => JSON,
+    };
     let mut head = String::new();
     head.push_str("HTTP/1.1 ");
     head.push_str(&status.to_string());
     head.push(' ');
     head.push_str(reason_phrase(status));
-    head.push_str("\r\ncontent-type: application/json\r\n");
+    head.push_str("\r\ncontent-type: ");
+    head.push_str(content_type);
+    head.push_str("\r\n");
     head.push_str("content-length: ");
     head.push_str(&body.len().to_string());
     head.push_str("\r\ncache-control: no-store\r\nconnection: close\r\n");

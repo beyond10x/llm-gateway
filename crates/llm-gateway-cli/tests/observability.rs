@@ -110,7 +110,11 @@ fn o3_each_usage_record_is_one_structured_info_event() {
     assert!(lines[0].contains("disposition=Relayed"), "{}", lines[0]);
     assert!(lines[0].contains("status=200"), "{}", lines[0]);
     assert!(!lines[0].contains("refusal="), "{}", lines[0]);
-    assert!(lines[1].contains("disposition=UpstreamFailed"), "{}", lines[1]);
+    assert!(
+        lines[1].contains("disposition=UpstreamFailed"),
+        "{}",
+        lines[1]
+    );
     assert!(lines[1].contains("refusal=upstream-failed"), "{}", lines[1]);
     assert!(lines[1].contains("status=502"), "{}", lines[1]);
 }
@@ -209,5 +213,8 @@ fn r4_the_binary_serves_its_counters_to_the_owner() {
         scraped.contains("\r\n\r\n# HELP llmgw_inference_requests_total "),
         "{scraped}"
     );
-    assert!(scraped.contains("\nllmgw_pod_starts_total 0\n"), "{scraped}");
+    assert!(
+        scraped.contains("\nllmgw_pod_starts_total 0\n"),
+        "{scraped}"
+    );
 }

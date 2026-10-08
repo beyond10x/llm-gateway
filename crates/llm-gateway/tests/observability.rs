@@ -122,7 +122,7 @@ impl RelayTargets for Source {
 }
 
 impl RelayTarget for Target {
-    fn authority(&self) -> &str {
+    fn authority(&self) -> &'static str {
         "pod.invalid:8000"
     }
 
@@ -162,7 +162,14 @@ struct Fixture {
 /// A gateway relaying `code` on chat and responses (not messages), with `script` as its source.
 fn relaying(script: Vec<Script>, ready: bool) -> Fixture {
     relaying_models(
-        vec![RelayModel::new(label("code"), label("served-code"), vec![Wire::Chat, Wire::Responses]).unwrap()],
+        vec![
+            RelayModel::new(
+                label("code"),
+                label("served-code"),
+                vec![Wire::Chat, Wire::Responses],
+            )
+            .unwrap(),
+        ],
         script,
         ready,
     )
@@ -195,7 +202,9 @@ fn relaying_models(models: Vec<RelayModel>, script: Vec<Script>, ready: bool) ->
 }
 
 fn verifier() -> Arc<SharedSecretVerifier> {
-    Arc::new(SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap())
+    Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    )
 }
 
 impl Fixture {
@@ -233,7 +242,14 @@ fn exchange(address: SocketAddr, raw: &str) -> Answered {
     let text = String::from_utf8(answer).unwrap();
     let (head, rest) = text.split_once("\r\n\r\n").unwrap();
     let mut lines = head.split("\r\n");
-    let status = lines.next().unwrap().split(' ').nth(1).unwrap().parse().unwrap();
+    let status = lines
+        .next()
+        .unwrap()
+        .split(' ')
+        .nth(1)
+        .unwrap()
+        .parse()
+        .unwrap();
     let headers: Vec<(String, String)> = lines
         .filter_map(|line| line.split_once(':'))
         .map(|(name, value)| (name.trim().to_ascii_lowercase(), value.trim().to_owned()))
@@ -241,7 +257,11 @@ fn exchange(address: SocketAddr, raw: &str) -> Answered {
     let chunked = headers
         .iter()
         .any(|(name, value)| name == "transfer-encoding" && value == "chunked");
-    let body = if chunked { dechunk(rest) } else { rest.to_owned() };
+    let body = if chunked {
+        dechunk(rest)
+    } else {
+        rest.to_owned()
+    };
     Answered {
         status,
         headers,
@@ -274,7 +294,10 @@ fn credential(owner: bool) -> String {
 fn scrape_as(address: SocketAddr, method: &str, owner: bool) -> Answered {
     exchange(
         address,
-        &format!("{method} /metrics HTTP/1.1\r\nhost: g\r\n{}\r\n", credential(owner)),
+        &format!(
+            "{method} /metrics HTTP/1.1\r\nhost: g\r\n{}\r\n",
+            credential(owner)
+        ),
     )
 }
 
@@ -350,10 +373,15 @@ fn r4_metrics_is_prometheus_text_carrying_llmgws_13_series_names_in_order() {
     let mut names = Vec::new();
     let mut lines = body.lines().peekable();
     while let Some(line) = lines.next() {
-        let help = line.strip_prefix("# HELP ").unwrap_or_else(|| panic!("{line:?}"));
+        let help = line
+            .strip_prefix("# HELP ")
+            .unwrap_or_else(|| panic!("{line:?}"));
         let (name, text) = help.split_once(' ').unwrap();
         assert!(!text.is_empty(), "{name} has no help text");
-        assert_eq!(lines.next(), Some(format!("# TYPE {name} counter").as_str()));
+        assert_eq!(
+            lines.next(),
+            Some(format!("# TYPE {name} counter").as_str())
+        );
         while lines.peek().is_some_and(|next| !next.starts_with('#')) {
             let sample = lines.next().unwrap();
             assert!(sample.starts_with(name), "{sample:?} under {name}");
@@ -392,7 +420,12 @@ fn r4_a_gateway_without_a_relay_serves_the_process_wide_series_and_no_route() {
 fn o2_every_declared_model_and_wire_is_registered_at_zero_before_any_request() {
     let fixture = relaying_models(
         vec![
-            RelayModel::new(label("code"), label("served-code"), vec![Wire::Chat, Wire::Responses]).unwrap(),
+            RelayModel::new(
+                label("code"),
+                label("served-code"),
+                vec![Wire::Chat, Wire::Responses],
+            )
+            .unwrap(),
             RelayModel::new(label("a\"b\\c"), label("served"), vec![Wire::Messages]).unwrap(),
         ],
         Vec::new(),
@@ -400,7 +433,11 @@ fn o2_every_declared_model_and_wire_is_registered_at_zero_before_any_request() {
     );
     let scraped = samples(&scrape(fixture.handle.local_addr()));
     for series in ROUTE_SERIES {
-        for (model, wire) in [("code", "chat"), ("code", "responses"), ("a\\\"b\\\\c", "messages")] {
+        for (model, wire) in [
+            ("code", "chat"),
+            ("code", "responses"),
+            ("a\\\"b\\\\c", "messages"),
+        ] {
             assert_eq!(
                 scraped.get(&route(series, model, wire)).map(String::as_str),
                 Some("0"),
@@ -420,10 +457,20 @@ fn o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record
     let fixture = relaying(vec![Script::Answer(ANSWER), Script::Refused], true);
     let address = fixture.handle.local_addr();
     let before = samples(&scrape(address));
-    let relayed = post(address, "/v1/chat/completions", "{\"model\":\"code\"}", true);
+    let relayed = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
     let refused = post(address, "/v1/messages", "{\"model\":\"code\"}", true);
     let failed = post(address, "/v1/responses", "{\"model\":\"code\"}", true);
-    let unknown = post(address, "/v1/chat/completions", "{\"model\":\"nobody\"}", true);
+    let unknown = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"nobody\"}",
+        true,
+    );
     assert_eq!(relayed.status, 200);
     assert_eq!(relayed.body, "{\"id\":\"a\"}");
     assert_eq!(refused.status, 400);
@@ -432,68 +479,162 @@ fn o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record
 
     let records = fixture.records();
     assert_eq!(records.len(), 4, "{records:?}");
-    let expected = [
-        (Some("code"), Wire::Chat, Disposition::Relayed, None, 200, 10),
-        (Some("code"), Wire::Messages, Disposition::Refused, Some(RefusalCode::WireNotServed), 400, 0),
-        (Some("code"), Wire::Responses, Disposition::UpstreamFailed, Some(RefusalCode::UpstreamFailed), 502, 0),
-        (None, Wire::Chat, Disposition::Refused, Some(RefusalCode::ModelUnknown), 404, 0),
+    let expected: [Expected; 4] = [
+        (
+            Some("code"),
+            Wire::Chat,
+            Disposition::Relayed,
+            None,
+            200,
+            10,
+        ),
+        (
+            Some("code"),
+            Wire::Messages,
+            Disposition::Refused,
+            Some(RefusalCode::WireNotServed),
+            400,
+            0,
+        ),
+        (
+            Some("code"),
+            Wire::Responses,
+            Disposition::UpstreamFailed,
+            Some(RefusalCode::UpstreamFailed),
+            502,
+            0,
+        ),
+        (
+            None,
+            Wire::Chat,
+            Disposition::Refused,
+            Some(RefusalCode::ModelUnknown),
+            404,
+            0,
+        ),
     ];
     let answers = [&relayed, &refused, &failed, &unknown];
     for ((record, expected), answer) in records.iter().zip(expected).zip(answers) {
-        let (model, wire, disposition, refusal, status, bytes) = expected;
-        assert_eq!(record.model.as_deref(), model, "{record:?}");
-        assert_eq!(record.wire, wire, "{record:?}");
-        assert_eq!(record.disposition, disposition, "{record:?}");
-        assert_eq!(record.refusal, refusal, "{record:?}");
-        assert_eq!(record.status, status, "{record:?}");
-        assert_eq!(record.response_bytes, bytes, "{record:?}");
-        assert!(
-            u128::from(record.duration_ms) <= answer.elapsed.as_millis(),
-            "{record:?} took longer than the client waited, {:?}",
-            answer.elapsed
-        );
-        assert_eq!(record.reported_model, None);
-        assert_eq!(record.input_tokens, None);
-        assert_eq!(record.output_tokens, None);
-        assert_eq!(record.cached_input_tokens, None);
-        assert_eq!(record.cache_creation_input_tokens, None);
-        assert_eq!(record.reasoning_output_tokens, None);
+        assert_record(record, expected, answer.elapsed);
     }
 
     let after = samples(&scrape(address));
-    let grew = |series: String| {
-        let value = |scrape: &BTreeMap<String, String>| -> u64 {
-            scrape.get(&series).unwrap_or_else(|| panic!("{series} absent")).parse().unwrap()
-        };
-        value(&after) - value(&before)
-    };
-    assert_eq!(grew("llmgw_inference_requests_total".to_owned()), 4);
-    assert_eq!(grew("llmgw_upstream_failures_total".to_owned()), 1);
-    assert_eq!(grew("llmgw_endpoint_invalidations_total".to_owned()), 1);
-    assert_eq!(grew(route("llmgw_route_requests_total", "code", "chat")), 1);
-    assert_eq!(grew(route("llmgw_route_requests_total", "code", "responses")), 1);
-    assert_eq!(grew(route("llmgw_route_refusals_total", "code", "chat")), 0);
-    assert_eq!(grew(route("llmgw_route_refusals_total", "code", "responses")), 0);
-    assert_eq!(grew(route("llmgw_route_upstream_status_failures_total", "code", "responses")), 1);
-    assert_eq!(grew(route("llmgw_route_upstream_status_failures_total", "code", "chat")), 0);
-    assert_eq!(grew(route("llmgw_route_response_bytes_total", "code", "chat")), 10);
+    let process = |name: &str| name.to_owned();
+    assert_grew(
+        &before,
+        &after,
+        &[
+            (process("llmgw_inference_requests_total"), 4),
+            (process("llmgw_upstream_failures_total"), 1),
+            (process("llmgw_endpoint_invalidations_total"), 1),
+            (route("llmgw_route_requests_total", "code", "chat"), 1),
+            (route("llmgw_route_requests_total", "code", "responses"), 1),
+            (route("llmgw_route_refusals_total", "code", "chat"), 0),
+            (route("llmgw_route_refusals_total", "code", "responses"), 0),
+            (
+                route(
+                    "llmgw_route_upstream_status_failures_total",
+                    "code",
+                    "responses",
+                ),
+                1,
+            ),
+            (
+                route("llmgw_route_upstream_status_failures_total", "code", "chat"),
+                0,
+            ),
+            (
+                route("llmgw_route_response_bytes_total", "code", "chat"),
+                10,
+            ),
+        ],
+    );
     // `code` does not declare messages: its refusal there feeds the process-wide series only.
     assert!(!after.contains_key(&route("llmgw_route_requests_total", "code", "messages")));
-    assert_eq!(*fixture.source.invalidated.lock().unwrap(), vec!["pod.invalid:8000".to_owned()]);
+    assert_eq!(
+        *fixture.source.invalidated.lock().unwrap(),
+        vec!["pod.invalid:8000".to_owned()]
+    );
+}
+
+/// The model, wire, disposition, refusal, status and response bytes a record must carry.
+type Expected = (
+    Option<&'static str>,
+    Wire,
+    Disposition,
+    Option<RefusalCode>,
+    u16,
+    u64,
+);
+
+/// Asserts one record's fields, a duration within the client's wait, and no token counter.
+fn assert_record(record: &UsageRecord, expected: Expected, elapsed: Duration) {
+    let (model, wire, disposition, refusal, status, bytes) = expected;
+    assert_eq!(record.model.as_deref(), model, "{record:?}");
+    assert_eq!(record.wire, wire, "{record:?}");
+    assert_eq!(record.disposition, disposition, "{record:?}");
+    assert_eq!(record.refusal, refusal, "{record:?}");
+    assert_eq!(record.status, status, "{record:?}");
+    assert_eq!(record.response_bytes, bytes, "{record:?}");
+    assert!(
+        u128::from(record.duration_ms) <= elapsed.as_millis(),
+        "{record:?} took longer than the client waited, {elapsed:?}"
+    );
+    assert_eq!(record.reported_model, None);
+    assert_eq!(record.input_tokens, None);
+    assert_eq!(record.output_tokens, None);
+    assert_eq!(record.cached_input_tokens, None);
+    assert_eq!(record.cache_creation_input_tokens, None);
+    assert_eq!(record.reasoning_output_tokens, None);
+}
+
+/// Asserts each series grew by exactly its count between two scrapes.
+fn assert_grew(
+    before: &BTreeMap<String, String>,
+    after: &BTreeMap<String, String>,
+    expected: &[(String, u64)],
+) {
+    let value = |scrape: &BTreeMap<String, String>, series: &str| -> u64 {
+        scrape
+            .get(series)
+            .unwrap_or_else(|| panic!("{series} absent"))
+            .parse()
+            .unwrap()
+    };
+    for (series, count) in expected {
+        assert_eq!(
+            value(after, series) - value(before, series),
+            *count,
+            "{series}"
+        );
+    }
 }
 
 #[test]
 fn o1_a_relay_refused_at_its_head_after_authentication_is_recorded_and_an_anonymous_one_is_not() {
     let fixture = relaying(Vec::new(), true);
     let address = fixture.handle.local_addr();
-    let anonymous = post(address, "/v1/chat/completions", "{\"model\":\"code\"}", false);
+    let anonymous = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        false,
+    );
     assert_eq!(anonymous.status, 401);
     let got = exchange(
         address,
-        &format!("GET /v1/chat/completions HTTP/1.1\r\nhost: g\r\n{}\r\n", credential(true)),
+        &format!(
+            "GET /v1/chat/completions HTTP/1.1\r\nhost: g\r\n{}\r\n",
+            credential(true)
+        ),
     );
     assert_eq!(got.status, 405);
-    let none = post(address, "/v1/chat/completions", "{\"model\":\"code\"}", true);
+    let none = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
     assert_eq!(none.status, 503);
     let records = fixture.records();
     assert_eq!(records.len(), 2, "{records:?}");
@@ -505,7 +646,10 @@ fn o1_a_relay_refused_at_its_head_after_authentication_is_recorded_and_an_anonym
     assert_eq!(records[1].disposition, Disposition::Refused);
     let scraped = samples(&scrape(address));
     assert_eq!(scraped["llmgw_inference_requests_total"], "2");
-    assert_eq!(scraped[&route("llmgw_route_refusals_total", "code", "chat")], "1");
+    assert_eq!(
+        scraped[&route("llmgw_route_refusals_total", "code", "chat")],
+        "1"
+    );
 }
 
 #[test]
@@ -519,19 +663,40 @@ fn o1_o2_a_request_held_for_a_starting_target_is_counted_with_its_wait() {
         true,
     );
     let address = fixture.handle.local_addr();
-    let cold = post(address, "/v1/chat/completions", "{\"model\":\"code\"}", true);
+    let cold = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
     assert_eq!(cold.status, 503);
     assert_eq!(cold.header("retry-after"), Some("30"));
     let held = post(address, "/v1/responses", "{\"model\":\"code\"}", true);
     assert_eq!(held.status, 200);
-    let warm = post(address, "/v1/chat/completions", "{\"model\":\"code\"}", true);
+    let warm = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
     assert_eq!(warm.status, 200);
     let scraped = samples(&scrape(address));
-    assert_eq!(scraped[&route("llmgw_route_cold_start_holds_total", "code", "chat")], "1");
-    assert_eq!(scraped[&route("llmgw_route_cold_start_holds_total", "code", "responses")], "1");
-    let waited: f64 = scraped["llmgw_cold_start_wait_seconds_total"].parse().unwrap();
+    assert_eq!(
+        scraped[&route("llmgw_route_cold_start_holds_total", "code", "chat")],
+        "1"
+    );
+    assert_eq!(
+        scraped[&route("llmgw_route_cold_start_holds_total", "code", "responses")],
+        "1"
+    );
+    let waited: f64 = scraped["llmgw_cold_start_wait_seconds_total"]
+        .parse()
+        .unwrap();
     assert!((0.12..10.0).contains(&waited), "{waited}");
-    assert_eq!(fixture.records()[0].refusal, Some(RefusalCode::ModelColdStart));
+    assert_eq!(
+        fixture.records()[0].refusal,
+        Some(RefusalCode::ModelColdStart)
+    );
 }
 
 #[test]
@@ -561,6 +726,9 @@ fn o1_the_embeddings_pod_counters_are_served_as_counted() {
     assert_eq!(scraped["llmgw_pod_start_failures_total"], "1");
     assert_eq!(scraped["llmgw_pod_reaps_total"], "3");
     // The metrics handed in carry the relay's routes too.
-    assert_eq!(scraped[&route("llmgw_route_requests_total", "code", "chat")], "0");
+    assert_eq!(
+        scraped[&route("llmgw_route_requests_total", "code", "chat")],
+        "0"
+    );
     assert!(metrics.render().contains("llmgw_pod_reaps_total 3\n"));
 }

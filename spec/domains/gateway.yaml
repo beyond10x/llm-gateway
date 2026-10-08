@@ -2,7 +2,8 @@ domain: llm-gateway.gateway
 
 # The authenticated single-owner gateway (crates/llm-gateway, docs/gateway.md). It admits one
 # owner through an injected verifier, serves a closed two-path liveness and readiness surface,
-# lets the owner read an immutable route inventory, drains and stops gracefully
+# lets the owner read an immutable route inventory and its counters (`GET /metrics`, row R4),
+# drains and stops gracefully
 # (crates/llm-gateway/src/lib.rs:5-18). The entities are verification-adapter observations of
 # the real `Gateway` bound to a loopback socket and exercised with raw HTTP/1.1 requests; they
 # are not a production event bus.
@@ -179,6 +180,16 @@ entities:
   #      client is not sent a chunked answer (RFC 9112 section 6.1): it gets the bytes unframed,
   #      ended by closing the connection. Every head the target sends, interim 1xx heads
   #      included, and its trailer section share one head-sized budget.
+  #  10. O1, O2: every request to a wire path that passed step 1 makes one
+  #      llm-gateway.telemetry.UsageRecord once its answer or refusal is written, before the
+  #      connection is closed. The record feeds the counters llm-gateway.telemetry lists and
+  #      leaves the gateway through the embedding's `UsageRecords`.
+  # R4: `GET /metrics` (and `HEAD`) serves those counters as Prometheus text
+  # (`content-type: text/plain; version=0.0.4; charset=utf-8`), one `# HELP`, `# TYPE` pair and
+  # its samples per series, in llm-gateway.telemetry's order. It takes the owner credential and
+  # readiness like inspection: unauthenticated it is `credential-absent`, before `mark_ready` it
+  # is `unavailable`, and another method is `method-not-allowed` with `allow: GET, HEAD`. A
+  # gateway composed without a relay serves the process-wide series and no per-route one.
   - name: llm-gateway.gateway.RelayObservation
     identity: {name: observation_id, type: String}
     fields: &relay_facts
@@ -187,7 +198,8 @@ entities:
       # `label:<rule>` or `relay:<rule>`.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
-      # `<status> <refusal code>` for a refusal or `<status> relayed` for a relayed answer.
+      # `<status> <refusal code>` for a refusal or `<status> relayed` for a relayed answer, and
+      # for a scrape `<status> scraped` when served or `<status> <refusal code>`.
       - {name: results, type: 'List<String>'}
       # The body each request received, decoded from its HTTP framing, in order.
       - {name: bodies, type: 'List<String>'}
@@ -215,6 +227,19 @@ entities:
       - {name: authorizations, type: 'List<String>'}
       # Whether any byte any fixture pod received contains the owner secret.
       - {name: secret_upstream, type: Boolean}
+      # One entry per llm-gateway.telemetry.UsageRecord the gateway handed out, in order, as
+      # `model=<alias|absent> wire=<wire> disposition=<Relayed|Refused|UpstreamFailed>
+      # refusal=<code|absent> status=<n> response_bytes=<n> duration_ms=<check>
+      # tokens=<check>`. `duration_ms` is `bounded` when the record's value is at most the
+      # time the client took from sending the request to reading its last byte, and the value
+      # otherwise; `tokens` is `absent` when all five token counters are absent, and
+      # `reported` otherwise.
+      - {name: records, type: 'List<String>'}
+      # Per `scrape` step, in order: `<n> <status> content-type=<value>`, then for a served
+      # scrape every sample line of its body as `<n> <line>`, where `<n>` counts scrapes from 1.
+      # `llmgw_cold_start_wait_seconds_total` is measured, so its value is written `bounded`
+      # when it is at most the time the run has taken, and as served otherwise.
+      - {name: scrapes, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   - name: llm-gateway.gateway.Exchange
@@ -248,7 +273,8 @@ commands:
       #   cold_starts  optional, default 0: the target source answers its first `cold_starts`
       #           acquisitions with the model still starting past the request's hold budget
       #           (row W6), and hands out the current pod after that
-      #   steps  in order: `{step: mark_ready}`, or `{step: request, path, body}` with
+      #   steps  in order: `{step: mark_ready}`, `{step: scrape}` (a `GET /metrics`, with
+      #           optional `credential`, default true), or `{step: request, path, body}` with
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
       #           `}` to exactly that many bytes) and `declare_bytes` (only a head declaring

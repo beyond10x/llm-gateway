@@ -1,19 +1,47 @@
 domain: llm-gateway.telemetry
 
-# PLANNED: no code implements this domain yet, and checks/conformance observes none of it. It is
-# the typed home of the nouns story:gateway-observability (docs/llmgw-capability-matrix.md rows
-# R4, O1, O2, O3) and story:usage-records introduce. Each story adds the observation entity and
-# the scenarios that hold its implementation to these declarations.
+# The gateway's counters and its per-call record (docs/llmgw-capability-matrix.md rows R4, O1, O2,
+# O3; story:gateway-observability). The `Relay` command of llm-gateway.gateway observes both: its
+# `records` fact holds one UsageRecord per call, and its `scrapes` fact holds what `GET /metrics`
+# served. PLANNED: the token counters and `reported_model` of UsageRecord, and their series, which
+# story:usage-records adds; no code fills them yet and every record carries them absent.
 #
 # Series. llmgw serves 13 Prometheus counters at `GET /metrics`, all prefixed `llmgw_`
 # (llmgw src/lib.rs:144-180 at 048ebd8; llmgw README.md "Metrics"): eight process-wide and five
 # per model and wire, labelled `model` and `wire`. The per-route series are registered from the
 # configured registry before the first request, so an uncalled route reports zero instead of
 # being absent. llm-gateway relays the same three wires (llm-gateway.gateway.Wire).
-# UNMAPPED: the series names llm-gateway exports. llmgw's `llmgw_` names, a prefix of this
-# repository's own, and the OpenTelemetry GenAI metric names (`gen_ai.client.token.usage`,
-# `gen_ai.client.operation.duration`) are all candidates; no source here names a consumer that
-# reads them, so nothing settles which. Owner: story:gateway-observability.
+# DECIDED 2026-10-08 (story:gateway-observability): llm-gateway exports llmgw's 13 names
+# verbatim, prefix `llmgw_` included, so a scrape configured for llmgw keeps working when llmgw
+# retires (beyond10x/llm story:llmgw-retirement). Labels are `model` (the alias) and `wire`
+# (`chat`, `responses`, `messages`), as llmgw, and every (model, wire) pair a relayed model
+# declares is registered at zero when the gateway is composed. Each is a `counter`. The text is
+# rendered inside the gateway crate, which takes no dependency for it. Where each is counted:
+#   fed by the record (one record per relayed call, below):
+#     llmgw_inference_requests_total                  every record
+#     llmgw_upstream_failures_total                   every record with `UpstreamFailed`
+#     llmgw_route_requests_total{model,wire}          every record naming a relayed model
+#     llmgw_route_refusals_total{model,wire}          the same, with `Refused`
+#     llmgw_route_upstream_status_failures_total{..}  the same, with `UpstreamFailed`
+#     llmgw_route_response_bytes_total{model,wire}    the same, its `response_bytes`
+#   counted by the gateway where the event happens:
+#     llmgw_endpoint_invalidations_total              each target it reports failed (row W7)
+#     llmgw_route_cold_start_holds_total{model,wire}  each request its target source held for a
+#                                                     starting target: the target says it held
+#                                                     it, or the source answered `model-cold-start`
+#     llmgw_cold_start_wait_seconds_total             the time those requests spent in `acquire`
+#     llmgw_instruction_views_total                   `GET /` (row R1); not served yet, so zero
+#   counted by the binary from the pool's results (crates/llm-gateway-cli/src/relaying.rs):
+#     llmgw_pod_starts_total                          each pod create the pool submitted, seen as
+#                                                     a request's hold binding to a new deployment
+#     llmgw_pod_start_failures_total                  each `no-capacity`, `crash-loop`,
+#                                                     `credential-refused` or `startup-deadline`
+#                                                     answer a request received
+#     llmgw_pod_reaps_total                           each deployment or pod a cleanup pass
+#                                                     stopped (idle, retired, replaced, orphan)
+# DECIDED 2026-10-08: `GET /metrics` (and `HEAD`) requires the owner credential, like every path
+# outside the closed two-path probe set, and is served once the gateway is ready, like inspection
+# (llm-gateway.gateway, docs/gateway.md "The HTTP surface").
 #
 # Usage. A usage record is what the gateway learned about one model call it was asked to relay.
 # The token counters are llm's (beyond10x/llm spec/domains/chat.yaml at ee2ae428, its usage
@@ -28,10 +56,13 @@ domain: llm-gateway.telemetry
 # closure stays empty (crates/llm-gateway/tests/dependency_boundary.rs). The token counters and
 # `reported_model` are story:usage-records'; `disposition`, `refusal`, `status`,
 # `response_bytes` and `duration_ms` need no parsing and are story:gateway-observability's.
-# UNMAPPED: where a record goes once made: a structured line on standard error, an
-# OpenTelemetry exporter, or only the counters above. No source names a reader. Owner:
-# story:gateway-observability. Tests read a record from the conformance observation the owning
-# story adds, whatever its destination.
+# DECIDED 2026-10-08 (story:gateway-observability): a record is made for every request to a
+# relayed wire path that passed owner authentication, whatever answered it, and goes two ways:
+# into the counters above, and out of the gateway through a port the embedding implements
+# (`UsageRecords`), as the target source does. The binary writes each as one structured
+# `tracing` event at `info` (row O3: level from `RUST_LOG`, default `info`). There is no
+# exporter. An unauthenticated or shed request makes no record. Tests read a record from the
+# `Relay` command's `records` fact.
 types:
   # `Process`: one series per gateway. `ModelWire`: one series per declared (model, wire) pair,
   # labelled `model` and `wire` (llmgw src/lib.rs:170-178).
@@ -44,7 +75,8 @@ types:
     variants: [Counter]
   # How one call ended, from the gateway's side: relayed to the client with the target's answer
   # (a 4xx or 500 from the target included, row W7), refused by the gateway before any target
-  # was asked, or ended `upstream-failed` (502).
+  # answered (`target-unavailable` and `model-cold-start` included: the source handed out none),
+  # or ended `upstream-failed` (502).
   - name: llm-gateway.telemetry.Disposition
     kind: enum
     variants: [Relayed, Refused, UpstreamFailed]
@@ -60,7 +92,9 @@ entities:
     identity: {name: record_id, type: String}
     fields:
       # The relayed model's alias, as the client named it in the body's top-level `model`.
-      # Absent when the body named none (`model-absent`).
+      # Absent when the body named no relayed model: a refusal before the body was read, and
+      # `body-incomplete`, `body-not-json`, `model-absent` and `model-unknown`. A name no model
+      # carries never reaches a record, a label or a log line.
       - {name: model, type: 'Optional<String>'}
       - {name: wire, type: llm-gateway.gateway.Wire}
       - {name: disposition, type: llm-gateway.telemetry.Disposition}
@@ -76,7 +110,8 @@ entities:
       - {name: cached_input_tokens, type: 'Optional<Integer>'}
       - {name: cache_creation_input_tokens, type: 'Optional<Integer>'}
       - {name: reasoning_output_tokens, type: 'Optional<Integer>'}
-      # Body bytes relayed to the client (llmgw `route_response_bytes_total`).
+      # Decoded body bytes of the target's answer relayed to the client (llmgw
+      # `route_response_bytes_total`); 0 for a refusal, whose body is the gateway's own.
       - {name: response_bytes, type: Integer}
       # From the end of the request head to the last byte relayed or the refusal written.
       - {name: duration_ms, type: Integer}

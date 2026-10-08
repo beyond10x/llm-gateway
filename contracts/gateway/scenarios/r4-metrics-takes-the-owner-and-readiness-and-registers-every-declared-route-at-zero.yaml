@@ -1,0 +1,47 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero
+summary: GET /metrics takes the owner and readiness, then serves llmgw's 13 series with every declared model and wire at zero
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","messages"]}],"pods":[],"steps":[{"step":"scrape","credential":false},{"step":"scrape"},{"step":"mark_ready"},{"step":"scrape"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - 401 credential-absent
+    - 503 unavailable
+    - ok
+    - 200 scraped
+    scrapes:
+    - 1 401 content-type=application/json
+    - 2 503 content-type=application/json
+    - 3 200 content-type=text/plain; version=0.0.4; charset=utf-8
+    - 3 llmgw_inference_requests_total 0
+    - 3 llmgw_upstream_failures_total 0
+    - 3 llmgw_instruction_views_total 0
+    - 3 llmgw_pod_starts_total 0
+    - 3 llmgw_pod_start_failures_total 0
+    - 3 llmgw_pod_reaps_total 0
+    - 3 llmgw_endpoint_invalidations_total 0
+    - 3 llmgw_cold_start_wait_seconds_total bounded
+    - '3 llmgw_route_requests_total{model="code",wire="chat"} 0'
+    - '3 llmgw_route_requests_total{model="code",wire="messages"} 0'
+    - '3 llmgw_route_refusals_total{model="code",wire="chat"} 0'
+    - '3 llmgw_route_refusals_total{model="code",wire="messages"} 0'
+    - '3 llmgw_route_upstream_status_failures_total{model="code",wire="chat"} 0'
+    - '3 llmgw_route_upstream_status_failures_total{model="code",wire="messages"} 0'
+    - '3 llmgw_route_cold_start_holds_total{model="code",wire="chat"} 0'
+    - '3 llmgw_route_cold_start_holds_total{model="code",wire="messages"} 0'
+    - '3 llmgw_route_response_bytes_total{model="code",wire="chat"} 0'
+    - '3 llmgw_route_response_bytes_total{model="code",wire="messages"} 0'
+    records: []
+    acquired: 0

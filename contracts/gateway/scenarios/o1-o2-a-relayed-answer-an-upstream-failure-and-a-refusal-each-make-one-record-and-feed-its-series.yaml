@@ -1,0 +1,75 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series
+summary: each authenticated relay request makes one usage record, and each record-fed series grows by exactly the records counted
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"a\"}"]},{"transport":"refused"}]],"steps":[{"step":"mark_ready"},{"step":"scrape"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}","credential":false},{"step":"scrape"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 scraped
+    - 200 relayed
+    - 502 upstream-failed
+    - 503 target-unavailable
+    - 401 credential-absent
+    - 200 scraped
+    records:
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 response_bytes=10 duration_ms=bounded tokens=absent
+    - model=code wire=responses disposition=UpstreamFailed refusal=upstream-failed status=502 response_bytes=0 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=Refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=bounded tokens=absent
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    acquired: 3
+    invalidated:
+    - pod-1
+    released: 2
+    scrapes:
+    - 1 200 content-type=text/plain; version=0.0.4; charset=utf-8
+    - 1 llmgw_inference_requests_total 0
+    - 1 llmgw_upstream_failures_total 0
+    - 1 llmgw_instruction_views_total 0
+    - 1 llmgw_pod_starts_total 0
+    - 1 llmgw_pod_start_failures_total 0
+    - 1 llmgw_pod_reaps_total 0
+    - 1 llmgw_endpoint_invalidations_total 0
+    - 1 llmgw_cold_start_wait_seconds_total bounded
+    - '1 llmgw_route_requests_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_requests_total{model="code",wire="responses"} 0'
+    - '1 llmgw_route_refusals_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_refusals_total{model="code",wire="responses"} 0'
+    - '1 llmgw_route_upstream_status_failures_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_upstream_status_failures_total{model="code",wire="responses"} 0'
+    - '1 llmgw_route_cold_start_holds_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_cold_start_holds_total{model="code",wire="responses"} 0'
+    - '1 llmgw_route_response_bytes_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_response_bytes_total{model="code",wire="responses"} 0'
+    - 2 200 content-type=text/plain; version=0.0.4; charset=utf-8
+    - 2 llmgw_inference_requests_total 3
+    - 2 llmgw_upstream_failures_total 1
+    - 2 llmgw_instruction_views_total 0
+    - 2 llmgw_pod_starts_total 0
+    - 2 llmgw_pod_start_failures_total 0
+    - 2 llmgw_pod_reaps_total 0
+    - 2 llmgw_endpoint_invalidations_total 1
+    - 2 llmgw_cold_start_wait_seconds_total bounded
+    - '2 llmgw_route_requests_total{model="code",wire="chat"} 2'
+    - '2 llmgw_route_requests_total{model="code",wire="responses"} 1'
+    - '2 llmgw_route_refusals_total{model="code",wire="chat"} 1'
+    - '2 llmgw_route_refusals_total{model="code",wire="responses"} 0'
+    - '2 llmgw_route_upstream_status_failures_total{model="code",wire="chat"} 0'
+    - '2 llmgw_route_upstream_status_failures_total{model="code",wire="responses"} 1'
+    - '2 llmgw_route_cold_start_holds_total{model="code",wire="chat"} 0'
+    - '2 llmgw_route_cold_start_holds_total{model="code",wire="responses"} 0'
+    - '2 llmgw_route_response_bytes_total{model="code",wire="chat"} 10'
+    - '2 llmgw_route_response_bytes_total{model="code",wire="responses"} 0'

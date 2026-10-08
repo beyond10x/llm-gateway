@@ -16,6 +16,13 @@ domain: llm-gateway.deployment
 #   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
 #   stop (exit status 0). A command-line error is clap's (exit status 2).
+# DECIDED 2026-10-08 (row O3, story:gateway-observability): beside those lines the process
+# writes `tracing` events to standard error, uncoloured, at the level `RUST_LOG` sets (`info`
+# when it is unset, empty or unreadable). The lines above are not events and stay as written at
+# every level. The shipped binary emits one `debug` event, `deployment loaded`, so at the
+# default level it writes only those lines; a relaying composition (`start_relaying`) also
+# emits one `info` event per usage record, per pod start and per cleanup pass that stopped
+# pods, and a `warn` event per pod start failure (llm-gateway.telemetry).
 #
 # DECIDED: the Runpod API key (row K7) is held by connectors, not by this document: under design
 # choice D1 = A (docs/design/runpod-clients.md § 4) the gateway never holds it, so the closed

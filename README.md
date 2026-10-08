@@ -11,7 +11,7 @@ model; this repository answers them and, later, starts the pods they reach.
 [docs/llmgw-capability-matrix.md](docs/llmgw-capability-matrix.md) (what is still missing before
 it can replace llmgw, row by row).
 
-**Status: 0.1.0, released 2026-10-08 as a source release; tested against in-process fakes and
+**Status: 0.2.0, released 2026-10-08 as a source release; tested against in-process fakes and
 loopback; nothing is deployed or qualified.**
 
 ## What it is not

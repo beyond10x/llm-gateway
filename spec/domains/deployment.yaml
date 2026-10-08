@@ -63,11 +63,17 @@ domain: llm-gateway.deployment
 # wait.
 # DECIDED (row L6): a request for a model whose pod is not ready is held: the relay asks the pool
 # again every 500 ms until the pod is ready, the hold budget passes, or the gateway starts to
-# stop. Each ask takes the pool's lock for one step and waits outside it, so a held request never
-# starts a second pod.
-# DECIDED (row W6): a request whose model is still starting, or whose pod is still being stopped
-# for a replacement, when its hold budget passes is answered `model-cold-start` (503) with
-# `retry-after: 30`; any other pool refusal is `target-unavailable`.
+# stop. Each ask takes the pool's lock for one step and waits outside it. A held request is bound
+# to the pod it first finds starting (`RunpodPool::ensure_held`): it waits on that pod and no
+# other, so requests held together start one pod, and a held request never starts a second.
+# DECIDED (row W6): a request whose bound pod is still starting when its hold budget passes is
+# answered `model-cold-start` (503) with `retry-after: 30`. A request that arrives while the
+# model's previous pod is still being stopped waits unbound, and binds to the replacement it
+# starts once that stop is confirmed. Once its bound pod fails during the hold (retired for its
+# startup deadline, an exit, a crash loop or a refused key, owing a stop, or gone from the slot,
+# whichever request's or cleanup pass's step retired it), the request is answered
+# `target-unavailable` at once, without `retry-after`, and starts no replacement; the next request
+# does. Any other pool refusal is `target-unavailable` too.
 # DECIDED: `idle_timeout_minutes = 0` (row K27) means no idle grace: the pod is stopped by the
 # first cleanup pass that finds it with no request in flight, and never sooner than its measured
 # cold start, which is the floor every idle limit has. `RunpodModel` takes no zero window, so 0 is

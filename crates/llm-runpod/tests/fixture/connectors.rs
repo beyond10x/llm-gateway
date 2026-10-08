@@ -22,6 +22,7 @@ use std::{
 use serde_json::{Value, json};
 
 const WRITES: [&str; 2] = ["pod.create", "pod.terminate"];
+const CONNECTION_REVISION: &str = "conn-rev-3";
 
 fn option<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
     args.iter()
@@ -88,6 +89,25 @@ fn main() -> ExitCode {
             "preparation": {"subject_sha256": subject(input.as_deref().unwrap_or(""))},
         })),
         "approvals issue" => Some(issue(&args, input.as_deref(), &mut record)),
+        // `connections describe` and `connections revalidate` (connectors ess/domains/cli.yaml
+        // `ConnectionDescribeResult`, `ConnectionRevalidateInput`): the connection's revision is
+        // `conn-rev-3`, and a revalidate naming another one is refused.
+        "connections describe" => Some(json!({"connection": {
+            "summary": {
+                "adapter": option(&args, "--adapter"),
+                "connection": option(&args, "--connection"),
+                "revision": CONNECTION_REVISION,
+                "state": "pending",
+            },
+            "stale": false,
+        }})),
+        "connections revalidate" => {
+            if option(&args, "--expected-revision") == Some(CONNECTION_REVISION) {
+                Some(json!({"connection": {"summary": {"revision": CONNECTION_REVISION}}}))
+            } else {
+                Some(json!({"error": {"code": "revision_conflict"}}))
+            }
+        }
         "operations invoke" => {
             if WRITES.contains(&operation.as_str()) && !proof_matches(&args, input.as_deref()) {
                 record["proof_mismatch"] = json!(true);

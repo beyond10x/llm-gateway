@@ -767,3 +767,119 @@ fn a_last_started_at_moving_forward_counts_as_a_restart() {
         "two forward moves inside the window are a crash loop"
     );
 }
+
+// ---- connectors' connection evidence expires: revalidate once, repeat once ----
+//
+// connectors v0.36.0 docs/local-catalog-provider.md:479-486: evidence lasts
+// `evidence_lifetime_ms` (60 s when omitted, at most 300 000 ms); then an invoke is refused
+// `not_granted` at `admission` with `next_action: revalidate_connection` until
+// `connections revalidate` renews it, and "The invoke does not revalidate on its own".
+
+fn refused_at_admission(classification: Option<&str>) -> Value {
+    let mut data = json!({
+        "kind": "admission", "code": "not_granted", "stage": "admission",
+        "next_action": "revalidate_connection",
+    });
+    if let Some(classification) = classification {
+        data["mutation"] = json!({"classification": classification, "replayed": false});
+    }
+    json!({"exit": 2, "stdout": {"error": {"code": "not_granted", "data": data}}})
+}
+
+#[test]
+fn a_read_refused_at_admission_revalidates_the_connection_once_and_is_repeated_once() {
+    let fixture = Fixture::new("revalidate_read");
+    fixture.script(&json!({"operations invoke pods.list": [
+        refused_at_admission(None),
+        listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")])),
+    ]}));
+    let listing = fixture.transport().list_pods().expect("listing");
+
+    assert!(listing.complete, "the repeated read is whole");
+    assert_eq!(listing.pods.len(), 1);
+    assert_eq!(fixture.calls_of("operations invoke pods.list").len(), 2);
+    let revalidations = fixture.calls_of("connections revalidate ");
+    assert_eq!(revalidations.len(), 1, "revalidated once");
+    assert_eq!(arg(&revalidations[0], "--adapter"), Some("gpu"));
+    assert_eq!(arg(&revalidations[0], "--connection"), Some("conn-1"));
+    assert_eq!(
+        arg(&revalidations[0], "--expected-revision"),
+        Some("conn-rev-3"),
+        "the revision connections describe reports"
+    );
+}
+
+#[test]
+fn a_second_refusal_at_admission_is_not_repeated_again() {
+    let fixture = Fixture::new("revalidate_read_twice");
+    fixture.script(&json!({"operations invoke pods.list": [refused_at_admission(None)]}));
+    let complete = fixture
+        .transport()
+        .list_pods()
+        .is_ok_and(|listing| listing.complete);
+
+    assert!(!complete);
+    assert_eq!(fixture.calls_of("operations invoke pods.list").len(), 2);
+    assert_eq!(fixture.calls_of("connections revalidate ").len(), 1);
+}
+
+#[test]
+fn a_create_refused_at_admission_before_dispatch_is_repeated_once_with_a_fresh_proof() {
+    let fixture = Fixture::new("revalidate_create");
+    fixture.script(&json!({"operations invoke pod.create": [
+        refused_at_admission(Some("not_attempted")),
+        invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
+    ]}));
+    let answer = fixture.transport().create_pod(&request("NVIDIA A40"));
+
+    assert!(
+        matches!(&answer, CreateAnswer::Created(pod) if pod.id == "abc123"),
+        "{answer:?}"
+    );
+    let invokes = fixture.calls_of("operations invoke pod.create");
+    assert_eq!(invokes.len(), 2);
+    assert_eq!(fixture.calls_of("connections revalidate ").len(), 1);
+    assert_eq!(
+        fixture.calls_of("approvals issue pod.create").len(),
+        2,
+        "a proof each"
+    );
+    for invoke in &invokes {
+        assert!(invoke.get("proof_mismatch").is_none(), "{invoke}");
+    }
+    assert_eq!(invokes[0]["input"], invokes[1]["input"], "the same body");
+    assert_ne!(
+        arg(&invokes[0], "--idempotency-key"),
+        arg(&invokes[1], "--idempotency-key"),
+        "the repeat is a new attempt"
+    );
+}
+
+#[test]
+fn a_write_refused_after_admission_or_classified_otherwise_is_never_repeated() {
+    let mut dispatched = refused_at_admission(Some("unknown"));
+    dispatched["stdout"]["error"]["data"]["stage"] = json!("admission");
+    let mut later = refused_at_admission(Some("not_attempted"));
+    later["stdout"]["error"]["data"]["stage"] = json!("dispatch");
+    for (name, answer) in [("dispatched", dispatched), ("later_stage", later)] {
+        let fixture = Fixture::new(&format!("revalidate_never_{name}"));
+        fixture.script(&json!({
+            "operations invoke pod.create": [answer],
+            "operations invoke pods.list": [listed(&json!([]))],
+        }));
+        assert_eq!(
+            fixture.transport().create_pod(&request("NVIDIA A40")),
+            CreateAnswer::Lost,
+            "{name}"
+        );
+        assert_eq!(
+            fixture.calls_of("operations invoke pod.create").len(),
+            1,
+            "{name}"
+        );
+        assert!(
+            fixture.calls_of("connections revalidate ").is_empty(),
+            "{name}"
+        );
+    }
+}

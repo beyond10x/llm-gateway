@@ -5,7 +5,14 @@ llm-gateway is the serving side of [llm](https://beyond10x.github.io/llm/)
 contract with Runpod and Modal adapters for provisioning model endpoints. llm's client crates call a
 model; this repository answers them and, later, starts the pods they reach.
 
-**Documentation:** there is no documentation site yet. The contracts live in this tree:
+**Documentation:** the documentation site is built from [`website/`](website/) and is not
+published yet. Read its pages in this tree: [overview](website/docs/index.md),
+[getting started](website/docs/getting-started.md),
+[set up a client](website/docs/guides/set-up-a-client.md),
+[CLI reference](website/docs/reference/cli.md),
+[deployment document](website/docs/reference/deployment-document.md),
+[crates](website/docs/reference/crates.md) and [status](website/docs/status.mdx).
+The contracts live in this tree too:
 [docs/gateway.md](docs/gateway.md) (the gateway's HTTP surface, refusals, lifecycle and bounds),
 [docs/hosting.md](docs/hosting.md) (the owned-resource hosting lifecycle) and
 [docs/llmgw-capability-matrix.md](docs/llmgw-capability-matrix.md) (what is still missing before
@@ -13,7 +20,8 @@ it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
 **Status: 0.5.0, released 2026-10-08 as a source release; tested against in-process fakes and
-loopback; nothing is deployed or qualified.**
+loopback; nothing is deployed or qualified.** [CHANGELOG.md](CHANGELOG.md) lists every release
+and what is unreleased.
 
 ## What it is not
 
@@ -41,6 +49,7 @@ in service until the capability matrix has no open gap and a cutover has been qu
 | `b10x-llm-provision` | The hosting lifecycle contract: resource identity, leases, stop obligations, and the in-process `FakeProvider` |
 | `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract: the in-process `EmulatedRunpod`, and `ConnectorsRunpod`, which reaches Runpod through the `connectors` CLI |
 | `b10x-llm-modal` | A Modal adapter; it exports nothing yet |
+| `llm-gateway-docs` | Generates the documentation site's CLI, crate and refusal references and its status page, checks them for drift, and binds a built site to its commit |
 
 Releases are source releases tagged `<version>` (the first is `0.1.0`); the crates are not
 published, so build from source. The workspace needs Rust 1.98 or newer.
@@ -134,7 +143,8 @@ The command line is `--config <file>`, `--help` and `--version`, and nothing els
 argument is refused with exit status 2.
 
 `RUST_LOG` sets the level of the structured log events the process writes to standard error
-beside the lines below (default `info`); at the default level the binary writes only those lines.
+beside the lines below (default `info`). At the default level those events are one `usage` event
+per authenticated model call; `RUST_LOG=warn` leaves only the lines below.
 
 | Event | Line on standard error | Exit status |
 | --- | --- | --- |
@@ -159,10 +169,17 @@ cargo test --workspace --locked
 task check
 ```
 
-`task check` adds formatting, Clippy, specification validation and the conformance suite. It
-needs [Task](https://taskfile.dev) and the `ess` command from
+`task check` adds formatting, Clippy, the documentation drift check, specification validation and
+the conformance suite. It needs [Task](https://taskfile.dev) and the `ess` command from
 [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) on `PATH`.
 [AGENTS.md](AGENTS.md) explains each step.
+
+Build the documentation site with Node 20 or newer:
+
+```bash
+npm --prefix website ci
+npm --prefix website run build
+```
 
 ## License
 

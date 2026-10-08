@@ -17,7 +17,9 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests, `ConnectorsRunpod` the production transport, which reaches the control plane only through the `connectors` CLI |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
+| `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
+| `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served under `/llm-gateway/` of the organisation Pages host once the `Documentation site` workflow has deployed it |
 | `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters and the usage record; its token fields are `PLANNED`), and the `PLANNED` `llm-gateway.upstream` and `llm-gateway.clients`, which no code implements and no scenario observes yet |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
 | `docs/` | The gateway and hosting contracts, the llmgw capability matrix, dated verification records, and designs under `docs/design/` |
@@ -44,6 +46,9 @@ at all.
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
 | The suite answers at least 201 of at least 201 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The generated site pages equal what `llm-gateway-docs` generates, and no hand-written page carries a raw admonition title, a story id or a `/home/` path | `crates/llm-gateway-docs/tests/generate.rs::check_fails_on_every_kind_of_drift` |
+| Every `shipped` item on the status page names a test that exists | `crates/llm-gateway-docs/src/status.rs::a_vanished_test_or_a_shipped_item_without_one_is_refused` |
+| The refusal reference lists every code `RefusalCode::ALL` and `StartupRefusal::ALL` hold | `crates/llm-gateway-docs/tests/generate.rs::refusal_reference_lists_every_code_the_gateway_can_emit` |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
 | No test makes a paid call or provisions an external resource. Tests run against `EmulatedRunpod` or a fixture, never a live API. | `crates/llm-runpod/tests/transport.rs` drives `ConnectorsRunpod` against the `connectors-fixture` binary and a loopback pod; every other Runpod test drives `EmulatedRunpod` |
 
@@ -53,17 +58,26 @@ at all.
 
 1. `task rust`: `cargo test --workspace --locked`, `cargo fmt --all --check`, then
    `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`.
-2. `ess specify validate --path spec`.
-3. `task conformance`: `cargo run --locked -p b10x-llm-gateway-conformance -- check`. It refuses to
+2. `task docs`: `cargo run --locked -p llm-gateway-docs -- generate --check`.
+3. `ess specify validate --path spec`.
+4. `task conformance`: `cargo run --locked -p b10x-llm-gateway-conformance -- check`. It refuses to
    run anywhere but the repository root, and writes its reports to `target/conformance/` under the
    root regardless of `CARGO_TARGET_DIR`.
+
+The site build is not in `task check`: run `npm --prefix website ci && npm --prefix website run
+build` (Node 20 or newer; `website/node_modules` and `website/build` are ignored). Its
+`onBrokenLinks: 'throw'` fails on a link to a page that does not exist.
 
 Each step runs alone with the command shown. CI (`.github/workflows/gate.yml`) runs the same steps
 on Rust 1.98.0 and uploads `target/conformance` as `serving-conformance`; the repository has no
 `rust-toolchain.toml`. Run the gate on that toolchain (`RUSTUP_TOOLCHAIN=1.98.0 task check`): a
 newer Clippy can add lints CI does not have. The tree also lints clean on 1.99.0 (stable on
 2026-10-05). `.github/workflows/shared-gates.yml` runs the common
-Gates checks against the `B10X_GATES_POLICY` secret.
+Gates checks against the `B10X_GATES_POLICY` secret. `.github/workflows/pages.yml`
+(`Documentation validation`) builds the site, runs `cargo test -p llm-gateway-docs` and binds the
+build to its commit with `llm-gateway-docs provenance`; on a push to `main` it uploads the build
+as `b10x-project-site`, and `.github/workflows/b10x-docs-site.yml` (`Documentation site`) deploys
+it through the Website's `project-site.yml` when the push was the bot's.
 
 Every build writes the worktree's own `target/`; never set `CARGO_TARGET_DIR`. Check `df -h /`
 before a full gate. End a tree with `worktree finish --discard-cache --archive <tree>`, which
@@ -77,6 +91,13 @@ Never edit these by hand; change `spec/` or the scenarios and regenerate:
 | --- | --- |
 | `contracts/suite.json` | `ess verify conform synthesize --path spec --suite-format 5 --target ir --scenarios contracts --out contracts/suite.json` |
 | `contracts/schema/schema/` | `ess generate --path spec --kind schema --out contracts/schema` |
+| `website/docs/reference/cli.md`, `website/docs/reference/crates.md`, `website/docs/reference/refusals.md`, `website/docs/status.mdx`, `website/data/status.json` | `cargo run --locked -p llm-gateway-docs -- generate` |
+
+The CLI reference comes from `llm_gateway_cli::cli::Cli`, the crate list from `cargo metadata`
+(each package's `description` is public text), the refusal reference from `RefusalCode::ALL` and
+`StartupRefusal::ALL`, and the status page from `CAPABILITIES` in
+`crates/llm-gateway-docs/src/status.rs`, where each `shipped` item names its test as
+`path::function`. A capability that ships, or a story that lands, changes that list.
 
 `ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.56.0 release asset, checked
 against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
@@ -113,9 +134,12 @@ closed (C1, C2, C4, C5, K29, K30, D2) at its own tree, and `story:wire-relay` th
 in beyond10x/llm before the move, some under the old `llm.*` domain names; leave them as written and
 add a new record instead.
 
-There is no documentation site and no `website/`. Creating one follows the workspace `docs` skill
-(`~/beyond10x/.agents/skills/docs/SKILL.md`). The README links `docs/` until then. A change to a
-command, crate or rule updates README.md and this file in the same commit.
+The documentation site lives in `website/` and follows the `docs` skill kept in Atlas
+(`.agents/skills/docs/SKILL.md`). Its pages are public: no story id, internal name or `/home/`
+path in them, and every command on a page is run before its output is pasted. A change to a
+command, crate or rule updates README.md, this file and the site in the same commit, and
+`CHANGELOG.md` gains a line under **Unreleased**. Until the site answers at its address, README
+links the pages in the tree rather than the site URL.
 
 ## Planning and waves
 
@@ -143,7 +167,9 @@ crate is `publish = false`, so a release is a source release with no assets. The
 workflow. The first release is 0.1.0, the version the workspace already carries.
 
 1. On the wave's integration branch, one commit `release: llm-gateway <version>` that sets the
-   workspace version (and `Cargo.lock`) and moves README.md's status line.
+   workspace version (and `Cargo.lock`), moves README.md's status line, renames `CHANGELOG.md`'s
+   **Unreleased** section to `<version> (<date>)`, and regenerates the site
+   (`llm-gateway-docs generate`: the crate reference names the version).
 2. The wave pull request, green `Gate` and `Shared source gates`, merged through the bot App.
 3. Tag `<version>` on the merge commit and publish the GitHub Release `llm-gateway <version>`, both
    as the bot (`b10x-gates bot -- tag` and `push`, `b10x-gates api` `POST /releases`).

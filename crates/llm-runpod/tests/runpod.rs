@@ -1137,28 +1137,95 @@ fn a_pod_whose_id_the_description_refuses_reports_no_endpoint() {
         models(),
         Arc::new(ManualClock::new(0)),
     );
-    let endpoints: BTreeMap<String, Option<String>> = provider
+    let observed: BTreeMap<String, (Option<String>, Option<bool>)> = provider
         .inventory()
         .resources
         .into_iter()
         .map(|resource| {
             (
                 resource.key.incarnation.as_str().to_owned(),
-                resource.endpoint,
+                (resource.endpoint, resource.ready),
             )
         })
         .collect();
     for pod in refused {
         assert_eq!(
-            endpoints.get(pod),
-            Some(&None),
-            "{pod} is listed and running but its id is refused, so it reports no endpoint"
+            observed.get(pod),
+            Some(&(None, Some(false))),
+            "{pod} is listed, running and answers ready, but its id is refused: it reports no \
+             endpoint and is never ready, so no lease without an address is handed out and the \
+             startup deadline retires it"
         );
     }
     for pod in accepted {
         assert_eq!(
-            endpoints.get(pod),
-            Some(&Some(format!("https://{pod}-8000.proxy.runpod.net/v1/"))),
+            observed.get(pod),
+            Some(&(
+                Some(format!("https://{pod}-8000.proxy.runpod.net/v1/")),
+                Some(true)
+            )),
         );
     }
+}
+
+/// The emulator with every pod id it issues shown as `pod-<n>`, an id the description refuses.
+#[derive(Debug, Clone)]
+struct Dashed(EmulatedRunpod);
+
+impl RunpodTransport for Dashed {
+    fn list_pods(&mut self) -> Result<PodListing, ()> {
+        let mut listing = self.0.list_pods()?;
+        for pod in &mut listing.pods {
+            pod.id = pod.id.replacen("pod", "pod-", 1);
+        }
+        Ok(listing)
+    }
+    fn create_pod(&mut self, request: &PodRequest) -> CreateAnswer {
+        match self.0.create_pod(request) {
+            CreateAnswer::Created(mut pod) => {
+                pod.id = pod.id.replacen("pod", "pod-", 1);
+                CreateAnswer::Created(pod)
+            }
+            other => other,
+        }
+    }
+    fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
+        self.0.terminate_pod(&pod_id.replacen("pod-", "pod", 1))
+    }
+    fn probe_ready(&mut self, pod_id: &str) -> Probe {
+        self.0.probe_ready(&pod_id.replacen("pod-", "pod", 1))
+    }
+    fn container_uptime(&mut self, pod_id: &str) -> Option<u64> {
+        self.0.container_uptime(&pod_id.replacen("pod-", "pod", 1))
+    }
+}
+
+/// A running, serving pod with no address is never handed out and is retired by its startup
+/// deadline, exactly as a pod that never becomes ready is.
+#[test]
+fn a_serving_pod_with_a_refused_id_is_never_handed_out_and_misses_its_startup_deadline() {
+    let runpod = EmulatedRunpod::new();
+    let clock = ManualClock::new(1_000);
+    let pool = RunpodPool::new(
+        policy(),
+        Arc::new(LeaseRegistry::default()),
+        Dashed(runpod.clone()),
+        models(),
+        Arc::new(clock.clone()),
+    )
+    .expect("pool");
+    for _ in 0..600 {
+        assert_eq!(
+            pool.ensure(&id(ALIAS), &authorization()).err(),
+            Some(PoolError::Starting),
+            "a pod without an address is never ready"
+        );
+        clock.advance(1_000);
+    }
+    clock.advance(1);
+    assert_eq!(
+        pool.ensure(&id(ALIAS), &authorization()).err(),
+        Some(PoolError::StartupDeadline)
+    );
+    assert_eq!(runpod.terminations(), vec!["pod1".to_owned()]);
 }

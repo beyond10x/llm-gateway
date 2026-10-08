@@ -289,7 +289,9 @@ contract reports.
 (`src/runpod.rs`, the Runpod part of `src/config.rs`, and the mock lifecycle tests in
 `src/lib.rs`) onto the contract above. Every Runpod call goes through the `RunpodTransport` trait;
 the only transport in the crate is `EmulatedRunpod`, an in-process control plane. Nothing in the
-crate opens a connection or reads a credential.
+crate opens a connection or reads a credential. The crate links `b10x-llm-credentials` and `tokio`
+through `b10x-llm-providers`, and uses neither: it calls only `descriptions::runpod` and
+`inference_base_url`, which parse the shipped description and fill its URL template.
 
 | Mechanism | llmgw | here |
 | --- | --- | --- |
@@ -304,7 +306,7 @@ crate opens a connection or reads a credential.
 | orphan sweep | `llmgw-*` pods whose alias left the registry | pods in `b10x-llm-` carrying **this controller's** owner tag that no live record holds, by exact key, or by request id for a record that holds no key yet; records whose model left the registry are stopped through the controller |
 | request id | none | a readable prefix of at most 64 bytes (`request-<controller>-<alias>-<generation>-`, cut short when long) followed by a 128-bit digest of a length-prefixed encoding of controller, alias, generation, instant and a per-process nonce: at most 96 bytes, so it always fits the identifier limit. Two different tuples never share an encoding — `c-qwen`/`x` and `c`/`qwen-x` do not — so two request ids agree only if the digest collides. The digest is the standard library's hasher run twice, not a cryptographic hash; it has to avoid accidents, not an adversary |
 | pod status | — | only `TERMINATED` ends a resource. `EXITED` is a stopped pod that still exists and is billed: it is reported present-but-not-running, terminated, and replaced (`pod-exited`). An endpoint is reported only for a `RUNNING` pod; otherwise it is `None` |
-| endpoint | — | `https://<pod id>-8000.proxy.runpod.net/v1/`, `/v1/` included, built by llm's Runpod provider description (`b10x-llm-providers` 0.5.0, `descriptions::runpod().inference_base_url(<pod id>)`); this crate holds no URL format of its own. A running pod whose id the description refuses (anything but 1-48 bytes of `[a-z0-9]`) reports no endpoint, as a pod that is not running does. `EmulatedRunpod` issues `pod1`, `pod2`, … |
+| endpoint | — | `https://<pod id>-8000.proxy.runpod.net/v1/`, `/v1/` included, built by llm's Runpod provider description (`b10x-llm-providers` 0.5.0, `descriptions::runpod().inference_base_url(<pod id>)`); this crate holds no URL format of its own. A running pod whose id the description refuses (anything but 1-48 bytes of `[a-z0-9]`) reports no endpoint, as a pod that is not running does, and is observed not ready whatever its probe answers: no ready lease is handed out without an endpoint, and the startup deadline terminates the pod (`startup-deadline`) like one that never becomes ready. `EmulatedRunpod` issues `pod1`, `pod2`, … |
 | vLLM key | derived from the Runpod API key and passed as `--api-key` | a Runpod secret reference in `VLLM_API_KEY` (`{{ RUNPOD_SECRET_<name> }}`); no value passes through this process |
 
 Runpod settings — ordered GPU types, cloud type, disk, the mounted network volume and its

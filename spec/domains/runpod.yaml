@@ -61,7 +61,9 @@ entities:
       # it (b10x-llm-providers 0.5.0, `descriptions::runpod().inference_base_url(<pod id>)`):
       # `https://<pod id>-8000.proxy.runpod.net/v1/`, `/v1/` included. Only a running pod whose
       # id the description accepts (1-48 bytes of `[a-z0-9]`) has one; any other pod reports
-      # none. The emulator issues the ids `pod1`, `pod2`, … in creation order.
+      # none. A running pod with no endpoint is observed `ready=false` whatever its probe
+      # answers, so no ready lease is handed out without an endpoint and its startup deadline
+      # retires it. The emulator issues the ids `pod1`, `pod2`, … in creation order.
       - {name: leases, type: 'List<String>'}
       # Every cleanup pass, as `idle=[..] retired=[..] replaced=[..] orphans=[..]`.
       - {name: cleanups, type: 'List<String>'}

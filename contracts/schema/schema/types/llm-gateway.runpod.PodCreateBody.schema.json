@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8a2e960bc51248f6b3d51e6fef9ae17e692775a3fd4a2f1294ad42b994b4815e",
-    "contract_digest": "slice-sha256/2:8407c6ef86d282b1c00d1a447277eec561378e78b8dd7d10ea158366fbea1fb7",
+    "source_digest": "7cab12334d8de6446e6131530a627e346a8d9899dde16f60b62248a3797a42fe",
+    "contract_digest": "slice-sha256/2:99ab9a2a1c174fb8290a5af69f5747325456f546551e685182994ed5ae470525",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -64,6 +64,12 @@
         "interruptible": {
           "type": "boolean"
         },
+        "dockerEntrypoint": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
         "dockerStartCmd": {
           "type": "array",
           "items": {
@@ -83,7 +89,8 @@
         "ports",
         "env",
         "cloudType",
-        "interruptible"
+        "interruptible",
+        "dockerStartCmd"
       ],
       "additionalProperties": false
     }

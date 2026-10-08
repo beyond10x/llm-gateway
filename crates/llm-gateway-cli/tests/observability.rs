@@ -53,6 +53,7 @@ fn record(disposition: Disposition, refusal: Option<RefusalCode>, status: u16) -
         disposition,
         refusal,
         status,
+        target_status: (refusal.is_none()).then_some(status),
         reported_model: None,
         input_tokens: None,
         output_tokens: None,
@@ -108,7 +109,8 @@ fn o3_each_usage_record_is_one_structured_info_event() {
         }
     }
     assert!(lines[0].contains("disposition=Relayed"), "{}", lines[0]);
-    assert!(lines[0].contains("status=200"), "{}", lines[0]);
+    assert!(lines[0].contains(" status=200"), "{}", lines[0]);
+    assert!(lines[0].contains("target_status=200"), "{}", lines[0]);
     assert!(!lines[0].contains("refusal="), "{}", lines[0]);
     assert!(
         lines[1].contains("disposition=UpstreamFailed"),
@@ -116,7 +118,8 @@ fn o3_each_usage_record_is_one_structured_info_event() {
         lines[1]
     );
     assert!(lines[1].contains("refusal=upstream-failed"), "{}", lines[1]);
-    assert!(lines[1].contains("status=502"), "{}", lines[1]);
+    assert!(lines[1].contains(" status=502"), "{}", lines[1]);
+    assert!(!lines[1].contains("target_status="), "{}", lines[1]);
 }
 
 #[test]
@@ -129,6 +132,12 @@ fn o3_the_level_comes_from_rust_log_and_defaults_to_info() {
     assert_eq!(logged(Some("off"), &one), "");
     // A value that names no level is not a reason to go quiet or to start shouting.
     assert_eq!(logged(Some(""), &one).lines().count(), 1);
+    // A directive that cannot be read is dropped; the readable ones beside it still apply.
+    assert_eq!(
+        logged(Some("llm_gateway_cli=loud"), &one).lines().count(),
+        1
+    );
+    assert_eq!(logged(Some("llm_gateway_cli=loud,warn"), &one), "");
 }
 
 /// Runs the binary on `config` with `RUST_LOG` set to `rust_log` (removed for `None`), scrapes

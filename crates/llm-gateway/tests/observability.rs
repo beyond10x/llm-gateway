@@ -517,6 +517,8 @@ fn o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record
     for ((record, expected), answer) in records.iter().zip(expected).zip(answers) {
         assert_record(record, expected, answer.elapsed);
     }
+    let targets: Vec<Option<u16>> = records.iter().map(|record| record.target_status).collect();
+    assert_eq!(targets, [Some(200), None, None, None]);
 
     let after = samples(&scrape(address));
     let process = |name: &str| name.to_owned();
@@ -530,14 +532,15 @@ fn o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record
             (route("llmgw_route_requests_total", "code", "chat"), 1),
             (route("llmgw_route_requests_total", "code", "responses"), 1),
             (route("llmgw_route_refusals_total", "code", "chat"), 0),
-            (route("llmgw_route_refusals_total", "code", "responses"), 0),
+            // No target answered: an upstream failure and a route refusal, as llmgw.
+            (route("llmgw_route_refusals_total", "code", "responses"), 1),
             (
                 route(
                     "llmgw_route_upstream_status_failures_total",
                     "code",
                     "responses",
                 ),
-                1,
+                0,
             ),
             (
                 route("llmgw_route_upstream_status_failures_total", "code", "chat"),
@@ -555,6 +558,88 @@ fn o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record
         *fixture.source.invalidated.lock().unwrap(),
         vec!["pod.invalid:8000".to_owned()]
     );
+}
+
+const BAD_REQUEST: &str = "HTTP/1.1 400 Bad Request\r\ncontent-type: application/json\r\ncontent-length: 15\r\n\r\n{\"error\":\"bad\"}";
+const UNAVAILABLE: &str = "HTTP/1.1 503 Service Unavailable\r\ncontent-length: 0\r\n\r\n";
+
+/// llmgw `src/lib.rs:598-629` at 048ebd8: `upstream_failures` counts a call no target answered
+/// (and counts a route refusal with it); `route_upstream_status_failures` counts every call whose
+/// target answered outside 2xx, the 4xx a client receives unchanged and the 503 this gateway
+/// turns into `upstream-failed` alike.
+#[test]
+fn o1_o2_a_target_status_outside_2xx_is_a_status_failure_and_an_unreachable_target_an_upstream_failure()
+ {
+    let fixture = relaying(
+        vec![
+            Script::Answer(BAD_REQUEST),
+            Script::Answer(UNAVAILABLE),
+            Script::Refused,
+        ],
+        true,
+    );
+    let address = fixture.handle.local_addr();
+    let before = samples(&scrape(address));
+    let model_error = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    assert_eq!(model_error.status, 400);
+    assert_eq!(model_error.body, "{\"error\":\"bad\"}");
+    let middle = samples(&scrape(address));
+    let gone = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    assert_eq!(gone.status, 502);
+    let after_gone = samples(&scrape(address));
+    let unreachable = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    assert_eq!(unreachable.status, 502);
+    let after = samples(&scrape(address));
+    let status_failures = route("llmgw_route_upstream_status_failures_total", "code", "chat");
+    let refusals = route("llmgw_route_refusals_total", "code", "chat");
+    let upstream = "llmgw_upstream_failures_total".to_owned();
+    // A relayed 400 is a status failure, not an upstream failure and not a refusal.
+    assert_grew(
+        &before,
+        &middle,
+        &[
+            (status_failures.clone(), 1),
+            (upstream.clone(), 0),
+            (refusals.clone(), 0),
+        ],
+    );
+    // A 503 answered `upstream-failed` is a status failure too: the target did answer.
+    assert_grew(
+        &middle,
+        &after_gone,
+        &[
+            (status_failures.clone(), 1),
+            (upstream.clone(), 0),
+            (refusals.clone(), 0),
+        ],
+    );
+    // An unreachable target is an upstream failure and a refusal, not a status failure.
+    assert_grew(
+        &after_gone,
+        &after,
+        &[(status_failures, 0), (upstream, 1), (refusals, 1)],
+    );
+    let targets: Vec<Option<u16>> = fixture
+        .records()
+        .iter()
+        .map(|record| record.target_status)
+        .collect();
+    assert_eq!(targets, [Some(400), Some(503), None]);
 }
 
 /// The model, wire, disposition, refusal, status and response bytes a record must carry.

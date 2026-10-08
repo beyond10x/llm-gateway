@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:live-runpod-wiring
 kind: story
-status: active
+status: implemented
 title: The binary starts real pods through the production Runpod transport
 relations:
 - decomposes: epic:gateway
@@ -13,18 +13,25 @@ relations:
 scope:
 - confidence: inferred
   path: crates/llm-gateway-cli/Cargo.toml
+- confidence: cited
+  path: crates/llm-gateway-cli/src/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/relaying.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/src/serve.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/tests/binary.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/live_runpod.rs
 - confidence: inferred
   path: docs/hosting.md
 - confidence: inferred
   path: spec/domains/deployment.yaml
-revision: 9
+revision: 15
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-08T19:44:56Z", actor: "human:timo", revision: 15, decided_on: {"recorded":{"test_result":1,"review_outcome":5,"verification":1}}}
 ---
 ## Outcome
 
@@ -81,3 +88,38 @@ keys) and `story:runpod-production-transport` (the transport).
 
 Depends on `story:model-tool-calling` as well: both change `spec/domains/deployment.yaml` and
 `crates/llm-gateway-cli/src/serve.rs`, and this story lands after it.
+
+## Inert until story:pod-proxy-tls (2026-10-08)
+
+Decided for this wave: the binary must not be able to create a billed pod. A pod is reached only
+at the Runpod proxy's `https://` endpoint, which the binary cannot open yet, so the wiring is inert
+in the shipped binary: `b10x-llm-gateway` refuses a document that declares a `connectors` table
+with `config:value` before it reads any other file, runs any `connectors` call or binds anything
+(`spec/domains/deployment.yaml`, DECIDED). story:pod-proxy-tls removes that refusal.
+
+How each criterion is met in this wave:
+
+1. Library level, not through the binary's document: `crates/llm-gateway-cli/tests/live_runpod.rs`
+   runs `start_connected` (the composition `start` will run) over `ConnectorsRunpod` and the
+   connectors CLI fixture, with only the probe endpoint and pod connector moved to loopback: one
+   `pod.create` with the first declared GPU type, then the probe with the vLLM key, then the
+   relayed request.
+2. `tests/binary.rs` `live_a_connectors_document_is_refused_and_the_fixture_receives_nothing`
+   (no key on the refusal's output) and `tests/live_runpod.rs` (no key in a response).
+3. The refusal above, with zero fixture invocations; the reachability rule and
+   `target-unavailable` proved in process (`live_an_unreachable_*`,
+   `live_a_missing_executable_*`); `live_no_option_selects_the_emulator` and
+   `connectors_no_document_key_selects_the_emulator`.
+4. No test calls Runpod or starts a pod.
+
+Criterion 1's "one `CreatePod` invocation with the declared GPU types" is met as the transport
+creates: one `pod.create` per GPU-type attempt, each carrying one type, tried in declared order
+(`crates/llm-runpod/src/transport/connectors.rs`, `gpuTypeIds`); a cold model whose first type is
+accepted sends one create with the first declared type.
+
+## Scope as built (wave 2026-10-08-w05)
+
+Confirmed by the implementor: the composition is `start_connected` in `crates/llm-gateway-cli/src/relaying.rs`;
+also `src/lib.rs`, `src/config.rs`, `tests/config.rs`, `tests/relaying.rs`, `tests/support/mod.rs` and the new
+`tests/live_runpod.rs`. `crates/llm-gateway-cli/Cargo.toml` builds the connectors fixture as
+`gateway-connectors-fixture` for its tests.

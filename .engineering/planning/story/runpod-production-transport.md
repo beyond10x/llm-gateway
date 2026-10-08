@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:runpod-production-transport
 kind: story
-status: active
+status: implemented
 title: Runpod has a production REST/GraphQL transport
 relations:
 - decomposes: epic:hosting
@@ -18,10 +18,14 @@ scope:
   path: crates/llm-runpod/src/lib.rs
 - confidence: inferred
   path: crates/llm-runpod/src/provider.rs
-- confidence: inferred
-  path: crates/llm-runpod/src/rest.rs
 - confidence: cited
   path: crates/llm-runpod/src/transport.rs
+- confidence: cited
+  path: crates/llm-runpod/src/transport/connectors.rs
+- confidence: cited
+  path: crates/llm-runpod/src/transport/probe.rs
+- confidence: cited
+  path: crates/llm-runpod/tests/fixture/connectors.rs
 - confidence: inferred
   path: crates/llm-runpod/tests/transport.rs
 - confidence: cited
@@ -30,10 +34,11 @@ scope:
   path: docs/verification/runpod-transport.md
 - confidence: cited
   path: spec/domains/runpod.yaml
-revision: 23
+revision: 29
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T18:12:14Z", actor: "human:timo", revision: 22, decided_on: {"recorded":{"review_outcome":5}}}
 - {from: "proposed", to: "active", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 23, decided_on: {"recorded":{"review_outcome":5}}}
+- {from: "active", to: "implemented", at: "2026-10-08T19:44:56Z", actor: "human:timo", revision: 29, decided_on: {"recorded":{"test_result":1,"review_outcome":7,"verification":1}}}
 ---
 ## Acceptance
 
@@ -138,3 +143,13 @@ both were ordering edges for shared files (`spec/domains/runpod.yaml`, `docs/hos
 is reversed: `story:hosting-spec-declarations` now depends on this story, and `story:spec-diff-gate`
 still follows `story:hosting-spec-declarations`. A rule `docs/hosting.md` promises that this story
 does not touch stays with `story:hosting-spec-declarations`.
+
+## Scope as built (wave 2026-10-08-w05)
+
+Confirmed by the implementor against the tree: the transport is `crates/llm-runpod/src/transport/connectors.rs`
+and `probe.rs` (not the inferred `rest.rs`); `crates/llm-runpod/Cargo.toml` gained `serde_json`, `rustix` and the
+connectors fixture `[[bin]]` (`tests/fixture/connectors.rs`), no HTTP or TLS client; the workspace `Cargo.toml` was
+not touched. The trait changed (`probe_ready` takes a `ProbeTarget`, `container_uptime` became
+`container_started_at`), so the four conditional implementors changed, plus `tests/adversary_w02.rs` and two
+wrappers in `tests/runpod.rs`. The readiness probe speaks plain HTTP only; matrix row B6 stays partial until
+`story:pod-proxy-tls`.

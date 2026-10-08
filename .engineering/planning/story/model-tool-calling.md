@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:model-tool-calling
 kind: story
-status: active
+status: implemented
 title: A model declares tool calling, and a tool request to a model without it is refused before a pod starts
 relations:
 - decomposes: epic:client-access
@@ -15,10 +15,14 @@ scope:
   path: checks/conformance/src/gateway.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/src/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/relaying.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/src/serve.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/relaying.rs
 - confidence: inferred
   path: crates/llm-gateway/src/body.rs
 - confidence: inferred
@@ -37,10 +41,11 @@ scope:
   path: spec/domains/deployment.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
-revision: 8
+revision: 12
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-08T19:44:56Z", actor: "human:timo", revision: 12, decided_on: {"recorded":{"test_result":1,"review_outcome":5,"verification":1}}}
 ---
 ## Outcome
 
@@ -110,3 +115,10 @@ through `story:client-qualification`, `story:hosted-endpoints`, `story:target-fa
 `spec/domains/deployment.yaml` and `crates/llm-gateway-cli/src/serve.rs`. The order is reversed:
 `story:live-runpod-wiring` now depends on this story. Criterion 5 uses the test seam
 `story:gateway-deployment` added, which exists on `main`.
+
+## Scope as built (wave 2026-10-08-w05)
+
+Confirmed by the implementor: the binary-side change landed in `crates/llm-gateway-cli/src/relaying.rs`
+(`start_relaying`), not `serve.rs`, which is untouched; also `crates/llm-gateway/src/lib.rs` (export) and
+`crates/llm-gateway-cli/tests/relaying.rs` (criterion 5). Every enumerated deployment-document value is now read
+from a TOML string only (`from_string_only!` in `config.rs`), after adversary pass 1.

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T19:05:04Z",
+  "actor": "human:timo",
+  "artifact": "story:runpod-production-transport",
+  "kind": "story",
+  "revision": 23,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-runpod --locked --no-fail-fast",
+    "reference": "impl/runpod-production-transport 4e9d232 (adversary pass-2 cases: 4 failed) vs b620359 (104 passed); planted inversions: unknown->Refused 3 failed (~/.cache/llm-gateway-w05/transport/planted.log), no stale-descriptor recovery 3 failed, stderr unparsed 13 failed (planted2.log)"
+  }
+}

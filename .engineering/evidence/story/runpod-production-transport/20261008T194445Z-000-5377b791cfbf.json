@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T19:44:45Z",
+  "actor": "human:timo",
+  "artifact": "story:runpod-production-transport",
+  "kind": "story",
+  "revision": 23,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "~/.cache/llm-gateway-w05/gate.sh on wave/2026-10-08-w05 (RUSTUP_TOOLCHAIN=1.98.0)",
+    "reference": "530931c: cargo test --workspace --no-fail-fast 49 targets 461 passed 0 failed (--list 461); fmt 0; clippy 0; ess specify validate 0; conformance 191/191 x3"
+  }
+}

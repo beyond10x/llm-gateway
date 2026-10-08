@@ -1,0 +1,1 @@
+//! Stub: the readiness probe.

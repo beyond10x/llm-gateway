@@ -37,7 +37,9 @@ types:
   #
   # The trusted-file rules apply to every file (llmgw `src/trusted.rs:21-42`): the file is opened
   # once without following a final symlink and every check reads that handle. `vllm-api-key`
-  # follows `owner-secret` in every rule: mode & 0o077 and a 4098-byte file bound.
+  # follows `owner-secret` in every rule: mode & 0o077 and a 4098-byte file bound. Every
+  # `vllm-api-key:<rule>` message starts `models.<alias>.vllm_api_key_file <path>:`, naming the
+  # model and the file and never the key's bytes.
   #   `<source>:unreadable`     the file cannot be opened (absent, no permission)
   #   `<source>:symlink`        the final path component is a symbolic link
   #   `<source>:not-regular`    the handle is not a regular file

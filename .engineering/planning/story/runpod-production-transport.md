@@ -32,35 +32,40 @@ scope:
   path: docs/verification/runpod-transport.md
 - confidence: cited
   path: spec/domains/runpod.yaml
-revision: 18
+revision: 20
 ---
 ## Acceptance
 
-Rows B2, B3, B4, B5 and B6 of `docs/llmgw-capability-matrix.md` are `covered` by a production
-`RunpodTransport`. It is tested only against loopback HTTP fixtures, and no test makes a paid
-call.
+Rewritten 2026-10-08 for design choice D1 = A (`decision-blocker:runpod-control-plane`,
+`docs/design/runpod-clients.md` § 4). Rows B2, B3, B4 and B5 of
+`docs/llmgw-capability-matrix.md` are `covered` by a production `RunpodTransport` whose control
+plane calls go through beyond10x/connectors' Runpod bundle; row B6 (the readiness probe) is
+covered by a call to the pod's address from llm's description. Tests run only against fixtures,
+and no test makes a paid call.
 
-1. Each `RunpodTransport` call that `crates/llm-runpod/src/transport.rs:5-7` names has a
-   production implementation: create, list, terminate, the uptime query and the readiness probe.
-   Each is tested against a loopback HTTP fixture that records the request it receives.
-2. A create answers `CreateAnswer::Refused` only when the fixture states that nothing was
-   created. A timeout, a closed connection or an unparseable answer is `Lost`, and a test pins
-   each case. With the classification inverted, the provider's GPU fallback (`provider.rs:246`)
-   submits a second create, and that test fails.
-3. `PodListing::complete` (`transport.rs:41`) is `true` only when the fixture's answer is a whole
-   listing. Three tests pin the other cases, each giving `false`: a fixture that answers a
-   truncated page (a continuation marker), one that answers a throttling status (429), and one
-   that closes mid-body.
-4. The Runpod key and the vLLM key reach the transport as values. The transport reads no file,
-   and its `Debug` prints neither key, which a test checks.
-5. `spec/domains/runpod.yaml` declares the request shapes and replaces its `DEFERRED:` note on the
-   transport before any code. The live endpoints stay recorded as unchecked in `docs/hosting.md`
-   until a qualified live run.
-6. `docs/verification/runpod-transport.md` records the fixtures and the planted
-   `Refused`/`Lost` inversion.
+1. Create, list, get and terminate invoke the connectors operations llm 0.5.0's Runpod
+   description names (`CreatePod`, `ListPods`, `GetPod`, `DeletePod`;
+   `crates/llm-providers/descriptions/runpod.toml` at llm tag `0.5.0`), through the interface
+   the connectors release that carries the bundle publishes. This crate holds no HTTP client and
+   no credential for the control plane. A test against a fixture of that interface records each
+   invocation.
+2. A create answers `CreateAnswer::Refused` only when connectors classifies the write `refused`;
+   connectors' `unknown`, a timeout or an unparseable answer is `Lost`, and a test pins each case.
+   With the classification inverted, the provider's GPU fallback (`crates/llm-runpod/src/provider.rs`,
+   `fn create` and its GPU loop) submits a second create, and that test fails.
+3. `PodListing::complete` (`transport.rs:41`) is `true` only when the listing is whole. Tests pin
+   `false` for a truncated listing, a throttled answer and an interrupted one.
+4. The readiness probe sends the model's vLLM key, read by `story:provider-key-files`, as a
+   bearer to `<endpoint>models`, the endpoint `story:runpod-provider-description` reports. The
+   transport reads no file, and its `Debug` prints no key, which a test checks.
+5. Crash-loop detection reads `lastStartedAt` moving forward, in place of llmgw's GraphQL uptime
+   query (`docs/design/runpod-clients.md` § 4, marked there as inferred and unverified); a test
+   pins the rule and `docs/hosting.md` states it.
+6. `spec/domains/runpod.yaml` declares the invocations and replaces its `DEFERRED:` note on the
+   transport before any code. `docs/verification/runpod-transport.md` records the fixtures and
+   the planted `Refused`/`Lost` inversion.
 7. The paid-call row of `AGENTS.md` "Invariants" reads: "No test makes a paid call or provisions
-   an external resource. Tests run against `EmulatedRunpod` or a loopback HTTP fixture, never a
-   live API."
+   an external resource. Tests run against `EmulatedRunpod` or a fixture, never a live API."
 
 ## Moved
 
@@ -105,3 +110,12 @@ Not established: whether `RunpodTransport` must change (B6 needs a per-model vLL
 `story:hosting-spec-declarations`. Both stories change `spec/domains/runpod.yaml` and
 `docs/hosting.md`. This story declares the transport's request shapes on top of the Runpod rules
 that story declares.
+
+## Scope correction for D1 = A
+
+Under D1 = A (2026-10-08) the Scope section below is corrected in three places: the inferred
+`crates/llm-runpod/src/rest.rs` and "an HTTP and TLS client" for the control plane are dropped,
+because connectors makes the Runpod API calls; the proxy URL is no longer formatted at
+`provider.rs:146-148` (it comes from llm's description since `story:runpod-provider-description`);
+and `provider.rs:315` no longer holds the "no idempotency key" note, so the double-billing fact
+below is re-read from `docs/hosting.md` "GPU choice" when the story starts.

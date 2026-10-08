@@ -6,7 +6,7 @@ status: open
 title: llm exports no usage reader for all three wires (0.2.0)
 relations:
 - blocks: story:usage-records
-revision: 1
+revision: 2
 ---
 ## What is missing
 
@@ -28,3 +28,16 @@ Read by `story-scoper` from the local llm checkout at the 0.2.0 tree, 2026-10-06
 An llm release exports a usage reader for each of the three wires, for streamed answers read
 piece by piece and for answers that are not streamed. `story:usage-records` then names that tag.
 The change belongs in beyond10x/llm, where it is filed and implemented.
+
+## Re-read at llm 0.5.0
+
+Read 2026-10-08 from beyond10x/llm at tag `0.5.0` through the GitHub contents API, exports only:
+
+- `b10x-llm-chat` exports `decode_completion` and `StreamProjection` (`src/lib.rs:26`); its
+  incoming observation carries `usage` and `final_usage` (`src/incoming.rs:207-218, 356-358`).
+- `b10x-llm-messages` exports `StreamDecoder`, `decode_message` and `decode_stream`
+  (`src/lib.rs:12`); `Snapshot` is still `pub(crate)` (`src/usage.rs:7`).
+- `b10x-llm-responses` exports `decode_stream` and `StreamDecoding` (`src/lib.rs:43`).
+
+Whether each export yields token usage for streamed answers read piece by piece and for answers
+that are not streamed was not read. The blocker stays open until that is read for all three.

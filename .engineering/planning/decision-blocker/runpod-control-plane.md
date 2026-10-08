@@ -7,7 +7,7 @@ title: Where Runpod is described and how its API is reached is not decided (desi
 relations:
 - blocks: story:runpod-production-transport
 - blocks: story:provider-key-files
-revision: 3
+revision: 4
 transitions:
 - {from: "open", to: "cleared", at: "2026-10-08T10:03:41Z", actor: "human:timo", revision: 3}
 ---
@@ -31,3 +31,7 @@ OpenAPI bundle are requested from those two repositories.
 The choice is recorded (done above). `story:runpod-production-transport` and
 `story:provider-key-files` are rewritten for A before either starts, and then depend on the llm and
 connectors releases that carry the Runpod description and bundle.
+
+## Rewritten for A
+
+Both stories are rewritten for A: `story:provider-key-files` (implemented 2026-10-08, reads only each model's vLLM key) and `story:runpod-production-transport` (2026-10-08, control plane through connectors; still blocked by `upstream-blocker:connectors-runpod-bundle`).

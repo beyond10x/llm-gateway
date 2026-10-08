@@ -8,7 +8,10 @@ key, calls Runpod or starts a pod.
 
 ## The interface it was built against
 
-beyond10x/connectors at tag `v0.36.0`, read from the release:
+beyond10x/connectors at tag `v0.37.0`, read from the release. The transport was first built against
+`v0.36.0`; between the two tags only `docs/catalog-runpod.md` (three `body_keys` rows at 84-86, and
+the refusal sentence at 88-89) and `operations.json` changed among the documents below, so every
+other citation holds at `v0.37.0` unchanged:
 
 | Document | What it fixed |
 | --- | --- |
@@ -16,7 +19,7 @@ beyond10x/connectors at tag `v0.36.0`, read from the release:
 | `docs/local-approvals.md` | `approvals prepare` → `approvals issue --approve-subject <sha256> --proof-output <new file in a private dir>` → `operations invoke --approval-file --idempotency-key`; a proof binds the exact input |
 | `docs/local-catalog-provider.md`, `docs/local-gitlab-merge.md` | `schema` and `revision` from `operations describe`; `result` and `mutation` on success, `error.data` on failure |
 | `ess/domains/cli.yaml`, `ess/domains/delegation.yaml`, `ess/domains/mutations.yaml` | the printed JSON: `preparation.subject_sha256`, `OperationInvokeResult`, `EffectKnowledge` |
-| `adapters/catalog/providers/runpod/operations.json` | the twelve `body_keys` |
+| `adapters/catalog/providers/runpod/operations.json` | the fifteen `body_keys`, which `POD_CREATE_BODY_KEYS` equals as a set and the fixture enforces |
 | `adapters/runpod/upstream/runpod-rest-v1.json` (SHA-256 `9500a898…b580db`) | `PodCreateInput` (`dockerEntrypoint`, `dockerStartCmd`, `networkVolumeId`), `Pod.lastStartedAt` (`2024-07-12T19:14:40.144Z`), `desiredStatus` |
 
 ## Commands
@@ -47,12 +50,12 @@ cargo fmt -p b10x-llm-runpod --check
 
 ## Acceptance and cases
 
-`crates/llm-runpod/tests/transport.rs` holds 27 cases, `tests/adversary_w05_transport.rs` the 6 of the
-first adversary pass and `tests/adversary_w05_transport_pass2.rs` the 4 of the second: 37.
+`crates/llm-runpod/tests/transport.rs` holds 28 cases, `tests/adversary_w05_transport.rs` the 6 of the
+first adversary pass and `tests/adversary_w05_transport_pass2.rs` the 4 of the second: 38.
 
 | Acceptance | Cases |
 | --- | --- |
-| 1: create, list, get and terminate invoke `pod.create`, `pods.list`, `pods.list` with `id`, `pod.terminate`; each write carries a proof for its exact input | `create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_input`, `list_invokes_pods_list_and_reads_every_pod`, `get_is_pods_list_with_the_id_filter_and_reads_last_started_at`, `terminate_invokes_pod_terminate_with_a_proof_for_the_pod_id`, `the_create_body_maps_every_request_field_to_a_declared_key` (`dockerEntrypoint` is the argv, `dockerStartCmd` is `[]`), `the_body_key_constant_is_the_specified_pod_create_body` |
+| 1: create, list, get and terminate invoke `pod.create`, `pods.list`, `pods.list` with `id`, `pod.terminate`; each write carries a proof for its exact input | `create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_input`, `list_invokes_pods_list_and_reads_every_pod`, `get_is_pods_list_with_the_id_filter_and_reads_last_started_at`, `terminate_invokes_pod_terminate_with_a_proof_for_the_pod_id`, `the_create_body_maps_every_request_field_to_a_declared_key` (`dockerEntrypoint` is the argv, `dockerStartCmd` is `[]`), `the_body_key_constant_is_the_specified_pod_create_body`, `the_body_key_constant_is_connectors_v0_37_0_body_keys` (the fixture refuses a body key outside v0.37.0's `body_keys`) |
 | 2: `Refused` only for `refused`; `unknown`, a timeout, an unparseable answer are `Lost`; the GPU fallback both ways | `a_refused_create_is_refused`, `every_create_answer_that_is_not_a_definite_refusal_is_lost` (timeout, non-zero exit with no answer, unparseable, `not_attempted`, `applied` without a pod, no classification), `an_unknown_create_is_lost_after_one_listing_by_name_and_never_retried`, `an_unknown_create_that_the_listing_finds_is_created`, `an_unknown_create_through_the_provider_submits_no_second_create`, `a_refused_create_through_the_provider_tries_the_next_gpu` |
 | 3: `complete` only for a whole listing | `a_listing_that_is_not_whole_is_never_complete` (truncated, throttled, interrupted, killed, not an array, one unreadable pod, an unknown status) |
 | 4: the probe sends the vLLM key as a bearer to `<endpoint>models`; no file; `Debug` prints no key | `the_probe_sends_the_models_vllm_key_as_a_bearer_to_endpoint_models`, `the_probe_maps_each_answer`, `the_transport_debug_prints_no_key` |
@@ -83,13 +86,11 @@ was reverted.
 
 - That the real connectors CLI refuses an expired connection exactly as the fixture does, or
   refuses a write that way at all: the document names reads.
-- That connectors v0.36.0 prints exactly these shapes: the fixture was written from the
+- That connectors v0.37.0 prints exactly these shapes: the fixture was written from the
   documents and ESS types above, not from a run of the real CLI.
-- That a create succeeds: its body always carries `dockerStartCmd: []` (llmgw parity; the
-  pinned `PodCreateInput` says "If [], uses the start CMD defined in the image") and, for a
-  declared model, `dockerEntrypoint` (the vLLM argv, as llmgw `src/runpod.rs:781-799` at
-  `048ebd8`), and `networkVolumeId` for a cached one; v0.36.0 refuses all three keys. A connectors release
-  admitting them is requested upstream.
+- That Runpod accepts the create body: `dockerEntrypoint` with the vLLM argv, `dockerStartCmd: []`
+  (llmgw parity; `[]` "keeps the image's", connectors v0.37.0 `docs/catalog-runpod.md:84`) and
+  `volumeInGb: 0` have not been sent to a live Runpod.
 - That `lastStartedAt` moves when a container restarts, that Runpod returns a pod's `env` in a
   listing, or that a live pod's `https://` endpoint is reachable: the probe speaks plain HTTP only
   (story:pod-proxy-tls).
@@ -103,3 +104,10 @@ was shown live by a planted mutation, run, and reverted:
 | --- | --- |
 | `stale_description` and `lifecycle_conflict` no longer recovered | `transport.rs` 24 passed, 3 failed: the three stale-descriptor cases |
 | stderr read but not parsed (`Answer::framed(status.code(), printed, None)`) | 13 failed across the three lanes, every case whose answer is a failure on stderr |
+
+## Mutations planted for the connectors v0.37.0 pin
+
+| Mutation in `src/transport/connectors.rs` | Result |
+| --- | --- |
+| the create body carries `templateId` | `transport.rs` 20 passed, 8 failed; `adversary_w05_transport_pass2.rs` 2 passed, 2 failed: every case whose create reaches the invoke, refused `invalid_input` by the fixture |
+| `dockerEntrypoint` dropped from `POD_CREATE_BODY_KEYS` | `transport.rs` 25 passed, 3 failed: both constant pins and the body mapping |

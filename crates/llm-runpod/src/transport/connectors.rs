@@ -1,6 +1,6 @@
 //! The production Runpod transport: the control plane through the `connectors` CLI.
 //!
-//! `beyond10x/connectors` v0.36.0 serves Runpod's REST API from a pinned `OpenAPI` document through
+//! `beyond10x/connectors` v0.37.0 serves Runpod's REST API from a pinned `OpenAPI` document through
 //! its catalog provider and keeps the Runpod API key in its keyring (connectors
 //! `docs/catalog-runpod.md`). This transport runs that CLI as a child process, one call at a
 //! time, and maps what it prints; it holds no HTTP client for the control plane and never sees the
@@ -52,13 +52,12 @@ use crate::{
 /// Every key a `pod.create` `body` may carry, as Runpod's pinned `PodCreateInput` names it
 /// (`llm-gateway.runpod.PodCreateBody`).
 ///
-/// Source: connectors v0.36.0, `adapters/catalog/providers/runpod/operations.json`, `pod.create`
-/// `body_keys` (the first twelve), plus `dockerEntrypoint`, `dockerStartCmd` and `networkVolumeId`
-/// from the pinned `PodCreateInput` (connectors `adapters/runpod/upstream/runpod-rest-v1.json`,
-/// SHA-256 `9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db`), which llmgw sends
-/// (llmgw `src/runpod.rs:792-793` at `048ebd8`). v0.36.0 refuses those three as `invalid_input`
-/// before any request; the connectors release requested upstream admits all three. Move this
-/// list with the connectors release this crate is used with.
+/// Source: connectors v0.37.0, `adapters/catalog/providers/runpod/operations.json`, `pod.create`
+/// `body_keys`, all fifteen; connectors refuses any other key as `invalid_input` before any
+/// request (`docs/catalog-runpod.md:88-89`). They are keys of the pinned `PodCreateInput`
+/// (connectors `adapters/runpod/upstream/runpod-rest-v1.json`, SHA-256
+/// `9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db`). Move this list with the
+/// connectors release this crate is used with.
 pub const POD_CREATE_BODY_KEYS: &[&str] = &[
     "name",
     "imageName",
@@ -126,7 +125,7 @@ impl fmt::Debug for ConnectorsRunpod {
 
 /// What one CLI call ended with.
 ///
-/// It is read only in connectors' published framing (v0.36.0
+/// It is read only in connectors' published framing (v0.37.0
 /// `contracts/cli/v1alpha1/semantics.md:178-181`): a success is exit 0 with one
 /// `{"ok":true,"result":…}` envelope on stdout, a failure a non-zero exit with stdout empty and
 /// one `{"ok":false,"error":{"code","data"}}` envelope on stderr. Nothing else is read, and no
@@ -656,7 +655,8 @@ fn create_input(request: &PodRequest) -> Value {
     // As llmgw (`src/runpod.rs:781-799` at `048ebd8`): the vLLM argv (`vllm serve …`) is the
     // entrypoint, `dockerStartCmd` is `[]`, and no pod volume is asked for without a network
     // volume. `dockerStartCmd: []` is llmgw parity only: Runpod's pinned `PodCreateInput` says
-    // "If [], uses the start CMD defined in the image", so it does not clear the image's CMD.
+    // "If [], uses the start CMD defined in the image", and connectors v0.37.0
+    // `docs/catalog-runpod.md:84` says `[]` "keeps the image's": it does not clear the CMD.
     if !request.docker_entrypoint.is_empty() {
         body.insert(
             "dockerEntrypoint".to_owned(),

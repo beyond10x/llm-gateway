@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T14:10:01Z",
+  "actor": "human:timo",
+  "artifact": "story:provider-key-files",
+  "kind": "story",
+  "revision": 19,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check steps on wave/2026-10-08-w02 8a6ea64 (Rust 1.98.0, ess 0.52.0; ess 0.56.0 validate)",
+    "reference": "6/6 steps exit 0; conformance total 179 passed 179 skipped 0 x3"
+  }
+}

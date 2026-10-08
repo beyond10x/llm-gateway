@@ -2,12 +2,14 @@
 format: aep.planning-md/3
 id: story:runpod-provider-description
 kind: story
-status: active
+status: implemented
 title: The Runpod adapter takes a pod's address from llm's Runpod description
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
 scope:
+- confidence: cited
+  path: AGENTS.md
 - confidence: inferred
   path: contracts/runpod/scenarios
 - confidence: inferred
@@ -15,19 +17,30 @@ scope:
 - confidence: inferred
   path: crates/llm-runpod/src/emulated.rs
 - confidence: cited
+  path: crates/llm-runpod/src/lib.rs
+- confidence: cited
   path: crates/llm-runpod/src/provider.rs
 - confidence: inferred
   path: crates/llm-runpod/tests/adversary.rs
+- confidence: cited
+  path: crates/llm-runpod/tests/adversary2.rs
+- confidence: cited
+  path: crates/llm-runpod/tests/adversary_w02.rs
+- confidence: cited
+  path: crates/llm-runpod/tests/round2.rs
 - confidence: inferred
   path: crates/llm-runpod/tests/runpod.rs
 - confidence: inferred
   path: docs/hosting.md
+- confidence: cited
+  path: docs/llmgw-capability-matrix.md
 - confidence: inferred
   path: spec/domains/runpod.yaml
-revision: 11
+revision: 18
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T13:35:57Z", actor: "human:timo", revision: 10}
 - {from: "proposed", to: "active", at: "2026-10-08T13:35:57Z", actor: "human:timo", revision: 11}
+- {from: "active", to: "implemented", at: "2026-10-08T14:10:01Z", actor: "human:timo", revision: 18, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

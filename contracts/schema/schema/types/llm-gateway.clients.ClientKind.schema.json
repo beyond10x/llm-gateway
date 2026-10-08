@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.clients.ClientKind",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "7250cc93b5f67c9acd4cf005309fe2064c918b1011dd5991b11b37d3467b2d0f",
+    "contract_digest": "slice-sha256/2:dad4333e112d37b01cd9204a688d25121d65a83ccb0b8c084a1b6e91354e79cf",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.clients.ClientKind": {
+      "title": "ClientKind",
+      "x-ess-name": "llm-gateway.clients.ClientKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "ClaudeCode",
+        "Codex",
+        "Loom"
+      ]
+    }
+  }
+}

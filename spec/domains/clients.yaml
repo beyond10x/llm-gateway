@@ -1,0 +1,108 @@
+domain: llm-gateway.clients
+
+# PLANNED: no code implements this domain yet, and checks/conformance observes none of it. It is
+# the typed home of the nouns docs/design/runpod-clients.md introduces: the three clients the
+# operator points at a Runpod-hosted model through this gateway (Claude Code, Codex and a Loom run
+# through llm), what each must be told to reach it, and the one model capability a client's
+# requests depend on that the deployment document does not declare yet: tool calling. The owning
+# stories add the observation entities and the scenarios that hold their implementation to these
+# declarations: story:model-tool-calling (ToolCalling, ClientRefusal), story:claude-code-wire
+# (the messages-wire facts below) and story:public-model-listing (ClientProfile, which row R1's
+# `GET /` renders).
+#
+# Every client reaches the gateway with the owner's one bearer credential
+# (llm-gateway.gateway, docs/gateway.md "The HTTP surface"; `credential-malformed` refuses any
+# other scheme) and names a model by its deployment alias (llm-gateway.deployment
+# ModelDeclaration). The gateway relays the request untranslated to the pod's vLLM server on the
+# same wire (docs/gateway.md "The relay", steps 6-7), so a client is served exactly when the model
+# declares the client's wire.
+#
+# Facts about the clients, read 2026-10-08:
+#   Claude Code 2.1.293 speaks only the messages wire. `ANTHROPIC_BASE_URL` is the gateway origin,
+#   `ANTHROPIC_AUTH_TOKEN` (or an `apiKeyHelper`) is sent as `Authorization: Bearer`, while
+#   `ANTHROPIC_API_KEY` is sent as `x-api-key`, which this gateway reads as no credential.
+#   Inference is `POST /v1/messages?beta=true`; the gateway discards the query
+#   (crates/llm-gateway/src/server.rs:421-422). It also sends `HEAD /api/hello` at startup and,
+#   optionally, `POST /v1/messages/count_tokens`, falling back to an estimate when that fails.
+#   For a model id it does not recognise it assumes a 200000-token window unless
+#   `CLAUDE_CODE_MAX_CONTEXT_TOKENS` says otherwise, and sends `thinking: {"type":"adaptive"}`.
+#   Sources: https://code.claude.com/docs/en/llm-gateway-protocol,
+#   https://code.claude.com/docs/en/authentication, https://code.claude.com/docs/en/model-config.
+#   Codex 0.160.0 speaks only the responses wire: `wire_api = "chat"` is a hard error in that
+#   build, and `responses` is the only value its configuration reference admits. A
+#   `[model_providers.<id>]` table names `base_url` (the gateway origin plus `/v1`) and `env_key`,
+#   whose value is sent as `Authorization: Bearer`; every turn is
+#   `POST {base_url}/responses` with `stream: true`, `store: false`, tools and
+#   `include: ["reasoning.encrypted_content"]`. Sources:
+#   https://learn.chatgpt.com/docs/config-file/config-reference, openai/codex rust-v0.160.0
+#   `codex-rs/codex-api/src/common.rs`, `codex-rs/core/src/client.rs`.
+#   A Loom run reaches a model through llm's `Model::turn` (beyond10x/llm 0.3.1,
+#   `crates/llm-core/src/port.rs:46-51`) and any of llm's three protocol clients; a `bearer`
+#   account with `base_url` the gateway origin plus `/v1` reaches every wire
+#   (`crates/llm-providers/src/declaration.rs:15-52`, `crates/llm-providers/src/auth.rs:58-78`).
+#   The `b10x-loom` command line builds only a Codex-subscription responses model
+#   (beyond10x/loom `crates/loom-cli/src/main.rs:145,202`); naming a route is beyond10x/loom's
+#   change, and a protocol-to-client factory is beyond10x/llm's.
+types:
+  # The three clients this design serves.
+  - name: llm-gateway.clients.ClientKind
+    kind: enum
+    variants: [ClaudeCode, Codex, Loom]
+  # Whether the model's vLLM server parses tool calls. `Parsed`: the pod is started with
+  # `--enable-auto-tool-choice` and a `--tool-call-parser`, as both of llmgw's proven profiles
+  # are (llmgw docs/model-profiles.md, `extraVllmArgs`). `Absent`: it is not, and the model can
+  # answer text only. Claude Code and Codex always offer tools (Codex: shell and `apply_patch`,
+  # rust-v0.160.0 `codex-rs/core/src/client.rs`), so neither can work against `Absent`.
+  # UNMAPPED: whether the deployment document declares this per model as its own key, or the
+  # binary infers it from `extra_vllm_args`. Inference would tie a refusal to the spelling of a
+  # vLLM flag. Owner: story:model-tool-calling.
+  - name: llm-gateway.clients.ToolCalling
+    kind: enum
+    variants: [Parsed, Absent]
+  # Refusals this design adds to llm-gateway.gateway.Refusal when its stories land.
+  # `ToolsNotServed` (`tools-not-served`, 400): the request body carries a non-empty top-level
+  # `tools` array and the model declares `Absent`. It is decided at step 5 of the relay, with
+  # `wire-not-served`, before any target is asked for, so it never wakes a pod.
+  # DECIDED 2026-10-08 in docs/design/runpod-clients.md: refused at the gateway, because the pod
+  # would otherwise be started and billed to answer a request it cannot serve.
+  - name: llm-gateway.clients.ClientRefusal
+    kind: enum
+    variants: [ToolsNotServed]
+  # What the messages wire does with Claude Code's `thinking` object for a model id Claude Code
+  # does not recognise. `Relayed`: unchanged, as today. `Mapped`: rewritten in place, as the
+  # messages-wire effort already is (docs/gateway.md "The relay", step 6; matrix row W4).
+  # UNMAPPED: whether the pinned vLLM (`vllm/vllm-openai:v0.27.1`, llmgw docs/model-profiles.md)
+  # accepts `{"type":"adaptive"}`. No source here shows it either way. Owner:
+  # story:claude-code-wire, which settles it from a recorded vLLM answer before choosing.
+  - name: llm-gateway.clients.ThinkingHandling
+    kind: enum
+    variants: [Relayed, Mapped]
+entities:
+  # What a client must be told to reach one model of this gateway: the wire it speaks, the path
+  # its base URL carries after the gateway origin, and the settings that name the model and its
+  # context window. It holds no credential: every profile sends the owner credential as
+  # `Authorization: Bearer`, and the profile names only the setting that carries it.
+  #   ClaudeCode: wire Messages, base path "", credential `ANTHROPIC_AUTH_TOKEN` or
+  #     `apiKeyHelper`; model settings `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`,
+  #     `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`,
+  #     `CLAUDE_CODE_SUBAGENT_MODEL`, each the alias, so no request names a model the gateway
+  #     refuses as `model-unknown`; context setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS`.
+  #   Codex: wire Responses, base path "/v1", credential the provider's `env_key`; model setting
+  #     `model`; context setting `model_context_window`.
+  #   Loom: wire Chat, Responses or Messages, base path "/v1", credential a `bearer` account's
+  #     secret reference; model setting the serving model's `upstream_name`; context setting
+  #     `capabilities.context_window`.
+  # A profile is offered for a model only when the model declares the profile's wire and its
+  # tool calling is `Parsed`.
+  - name: llm-gateway.clients.ClientProfile
+    identity: {name: profile_id, type: String}
+    fields:
+      - {name: client, type: llm-gateway.clients.ClientKind}
+      - {name: wire, type: llm-gateway.gateway.Wire}
+      - {name: base_path, type: String}
+      - {name: credential_setting, type: String}
+      - {name: model_settings, type: 'List<String>'}
+      - {name: context_setting, type: String}
+    # UNMAPPED: whether `GET /` renders one profile per (client, model) pair or one per client
+    # with the model as a parameter. Owner: story:public-model-listing.
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}

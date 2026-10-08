@@ -10,13 +10,13 @@ relations:
 - depends_on: story:gateway-deployment
 - depends_on: story:cold-start-hold
 - depends_on: story:gateway-observability
+- depends_on: story:pod-proxy-tls
+- depends_on: story:claude-code-wire
 scope:
 - confidence: inferred
   path: checks/conformance/Cargo.toml
 - confidence: cited
   path: checks/conformance/src/gateway.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/Cargo.toml
 - confidence: cited
   path: crates/llm-gateway-cli/src/config.rs
 - confidence: inferred
@@ -43,7 +43,7 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/upstream.yaml
-revision: 23
+revision: 25
 ---
 ## Outcome
 
@@ -141,3 +141,16 @@ Derived 2026-10-06 by `story-scoper`. Every line is **cited** (read from the sto
 - **Safety fact:** TLS and the endpoint credential can stay out of the gateway crate's dependency closure. `RelayTarget::connect` returns any `Read + Write + Send` stream (`relay.rs:67-83`), and `dependency_boundary.rs` holds that crate to zero declared dependencies and a closure of itself. Also, `relay.rs:581-591` writes no request byte until `connect` returns `Ok`, so a handshake done inside `connect` meets case 4's "no request byte reaches it". Step 2, unproven
 
 Not established: which TLS crate (`rustls` with ring or aws-lc-rs, or `native-tls`); how case 4's fixture gets a trusted root (`HostedEndpoint` has no CA field, so a CA file in the document or a test-only root); whether the `Relay` scenarios drive the binary's own target source; the `UNMAPPED` declaration shape.
+
+## TLS and ordering
+
+Added 2026-10-08 (`epic:client-access`, design critic round 1). This section supersedes the TLS
+lines of `## Scope` below: the TLS crate in `crates/llm-gateway-cli/Cargo.toml`, "which TLS
+crate", and the open question of a CA file in the document or a test-only root.
+
+This story reuses the binary's TLS client and its test-root seam from `story:pod-proxy-tls`. The
+shipped binary takes no trust-root key in the document (`story:pod-proxy-tls` acceptance 3), so
+case 4's fixture gets its root through that seam. This story adds no TLS dependency of its own.
+
+It also comes after `story:claude-code-wire`: both change `crates/llm-gateway/src/relay.rs` and
+`docs/gateway.md`.

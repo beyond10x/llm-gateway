@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-08T00:43:49Z",
+  "actor": "human:timo",
+  "artifact": "epic:client-access",
+  "kind": "epic",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:client-access-scope-round-1",
+    "review": "review-result:client-access-scope-round-1",
+    "outcome": "fixed"
+  }
+}

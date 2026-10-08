@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:cold-start-hold
 kind: story
-status: draft
+status: active
 title: A request for a cold model waits for its pod within a hold budget
 relations:
 - decomposes: epic:gateway
@@ -39,7 +39,10 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: inferred
   path: spec/domains/runpod.yaml
-revision: 17
+revision: 19
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 18}
+- {from: "proposed", to: "active", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 19}
 ---
 ## Outcome
 

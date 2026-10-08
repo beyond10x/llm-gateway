@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:gateway-observability
 kind: story
-status: draft
+status: active
 title: llm-gateway exposes its counters and logs
 relations:
 - decomposes: epic:gateway
@@ -43,7 +43,10 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/telemetry.yaml
-revision: 25
+revision: 27
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 26, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "proposed", to: "active", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 27, decided_on: {"recorded":{"review_outcome":4}}}
 ---
 ## Outcome
 

@@ -25,7 +25,7 @@ use std::{
     time::Duration,
 };
 use support::{
-    Connectors, Fixture, OWNER_SECRET, VLLM_KEY, connected_document, created, listed,
+    Connectors, Fixture, OWNER_SECRET, VLLM_KEY, connected_document, created, listed, mutate,
     running_small_pod,
 };
 
@@ -241,4 +241,131 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
         !received[relayed].contains(OWNER_SECRET),
         "the owner token reached the pod: {received:?}"
     );
+}
+
+/// The library composition with the shipped transport and connector, from `text`.
+fn start_shipped(text: &str, fixture: &Fixture) -> Result<llm_gateway_cli::Relaying, String> {
+    let deployment = load(&fixture.config(text)).unwrap();
+    start_connected(
+        &deployment,
+        |transport| transport,
+        Arc::new(llm_gateway_cli::ProxyConnector),
+    )
+    .map_err(|refusal| refusal.to_string())
+}
+
+/// Criterion 3 at the library level: a connection that does not answer a complete `pods.list`
+/// at start is unreachable. The composition starts, a request for the model is
+/// `target-unavailable` (not `model-cold-start`), and the fixture receives nothing after the
+/// start: no create, no approval, no further listing.
+#[test]
+fn live_an_unreachable_connection_starts_and_answers_target_unavailable() {
+    let fixture = Fixture::new("live-unreachable");
+    let connectors = Connectors::new(&fixture);
+    // No script: every `operations invoke` fails without an answer.
+    let relaying = start_shipped(
+        &connected_document(&fixture, "127.0.0.1:0", &connectors, 5),
+        &fixture,
+    )
+    .unwrap();
+    let at_start = connectors.calls().len();
+    assert_eq!(
+        connectors.calls_of("operations invoke pods.list").len(),
+        1,
+        "the reachability check is one pods.list: {:?}",
+        connectors.calls()
+    );
+    let answer = post_chat(relaying.local_addr());
+    relaying.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 503 "), "{answer:?}");
+    assert!(answer.contains("target-unavailable"), "{answer:?}");
+    assert!(!answer.contains("model-cold-start"), "{answer:?}");
+    assert_eq!(
+        connectors.calls().len(),
+        at_start,
+        "the fixture received calls after the start: {:?}",
+        connectors.calls()
+    );
+    assert!(
+        connectors
+            .calls_of("operations invoke pod.create")
+            .is_empty()
+    );
+    assert!(!answer.contains(VLLM_KEY) && !answer.contains(OWNER_SECRET));
+}
+
+/// Criterion 3, the rest of "reachable": a missing executable and a work directory that is not
+/// private are unreachable too, and the fixture receives nothing at all.
+#[test]
+fn live_a_missing_executable_or_a_shared_work_directory_is_unreachable() {
+    for case in ["missing executable", "group-readable work directory"] {
+        let fixture = Fixture::new(&format!("live-{}", case.replace(' ', "-")));
+        let connectors = Connectors::new(&fixture);
+        connectors.script(&serde_json::json!({
+            "operations invoke pods.list": [listed(&serde_json::json!([]))],
+        }));
+        let mut text = connected_document(&fixture, "127.0.0.1:0", &connectors, 5);
+        if case == "missing executable" {
+            let missing = fixture.path("no-such-connectors");
+            text = mutate(
+                &text,
+                &format!("executable = \"{}\"", connectors.executable().display()),
+                &format!("executable = \"{}\"", missing.display()),
+            );
+        } else {
+            std::fs::set_permissions(
+                connectors.work(),
+                std::os::unix::fs::PermissionsExt::from_mode(0o750),
+            )
+            .unwrap();
+        }
+        let relaying = start_shipped(&text, &fixture).unwrap();
+        let answer = post_chat(relaying.local_addr());
+        relaying.shutdown();
+        assert!(answer.starts_with("HTTP/1.1 503 "), "{case}: {answer:?}");
+        assert!(answer.contains("target-unavailable"), "{case}: {answer:?}");
+        assert!(
+            connectors.calls().is_empty(),
+            "{case}: the fixture received {:?}",
+            connectors.calls()
+        );
+    }
+}
+
+/// A connected model must name its vLLM key file: its pod always expects the key. Refused before
+/// the connection is checked.
+#[test]
+fn live_a_connected_model_without_a_vllm_key_file_is_refused() {
+    let fixture = Fixture::new("live-no-key");
+    let connectors = Connectors::new(&fixture);
+    let text = connected_document(&fixture, "127.0.0.1:0", &connectors, 5);
+    let key = fixture.path("vllm-key");
+    let text = mutate(
+        &text,
+        &format!("vllm_api_key_file = \"{}\"\n", key.display()),
+        "",
+    );
+    let refused = start_shipped(&text, &fixture).err().unwrap();
+    assert!(
+        refused.starts_with("config:value: models.small.vllm_api_key_file is required"),
+        "{refused}"
+    );
+    assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
+}
+
+/// The shipped `start` refuses what `start_connected` composes: the wiring is inert in the
+/// binary until story:pod-proxy-tls, and the refusal comes before any connectors call.
+#[test]
+fn live_start_refuses_a_connectors_document_before_any_call() {
+    let fixture = Fixture::new("live-start-inert");
+    let connectors = Connectors::new(&fixture);
+    connectors.script(&serde_json::json!({
+        "operations invoke pods.list": [listed(&serde_json::json!([]))],
+    }));
+    let deployment =
+        load(&fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 5)))
+            .unwrap();
+    let refused = llm_gateway_cli::start(&deployment).err().unwrap();
+    assert_eq!(refused.code(), "config:value", "{refused}");
+    assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
 }

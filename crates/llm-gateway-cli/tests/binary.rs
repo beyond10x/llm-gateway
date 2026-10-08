@@ -119,8 +119,6 @@ struct Server {
     child: Option<Child>,
     address: SocketAddr,
     lines: Receiver<String>,
-    /// Every line written before and including the listening line.
-    early: Vec<String>,
 }
 
 impl Server {
@@ -149,11 +147,9 @@ impl Server {
             match lines.recv_timeout(left) {
                 Ok(line) => {
                     if let Some(address) = line.strip_prefix(LISTENING) {
-                        let address = address.parse::<SocketAddr>().unwrap_or_else(|error| {
+                        break address.parse::<SocketAddr>().unwrap_or_else(|error| {
                             panic!("the listening line names no address ({error}): {line:?}")
                         });
-                        seen.push(line);
-                        break address;
                     }
                     seen.push(line);
                 }
@@ -171,7 +167,6 @@ impl Server {
             child: Some(child),
             address,
             lines,
-            early: seen,
         }
     }
 
@@ -852,7 +847,7 @@ fn d2_sigint_stops_the_server() {
     );
 }
 
-// --- story:live-runpod-wiring: the shipped binary over the production Runpod transport --------
+// --- story:live-runpod-wiring: inert in the shipped binary until story:pod-proxy-tls ----------
 
 const CHAT_BODY: &str = r#"{"model":"small","messages":[{"role":"user","content":"hi"}]}"#;
 
@@ -868,175 +863,58 @@ fn post_chat(address: SocketAddr) -> String {
     )
 }
 
-/// Stops `server` with SIGTERM and returns every line it wrote to standard error.
-fn stop_and_collect(server: Server) -> Vec<String> {
-    let mut written = server.early.clone();
-    server.signal(Signal::TERM);
-    let (status, rest) = server.wait();
-    assert_eq!(status.code(), Some(0), "{written:?} {rest:?}");
-    written.extend(rest);
-    written
-}
-
-/// Criterion 2: none of `secrets` appears in any response or on any line of standard error.
-fn assert_written_nowhere(secrets: &[&str], responses: &[&str], stderr: &[String]) {
-    for secret in secrets.iter().filter(|secret| !secret.is_empty()) {
-        for response in responses {
-            assert!(
-                !response.contains(secret),
-                "a response carries {secret:?}: {response:?}"
-            );
-        }
-        for line in stderr {
-            assert!(
-                !line.contains(secret),
-                "standard error carries {secret:?}: {line:?}"
-            );
-        }
-    }
-}
-
-/// Criteria 1 and 2 through the process: a request for a cold model makes the connectors
-/// fixture receive exactly one `pod.create` with the first declared GPU type, approved for its
-/// exact input; the binary composes the production transport, not the emulator. Nothing
-/// secret reaches a response or standard error. The pod's address is the Runpod proxy's
-/// `https://` endpoint, which the binary cannot reach yet (story:pod-proxy-tls), so the request
-/// is answered `model-cold-start`; the probe and the relayed request are proved in process by
-/// `tests/live_runpod.rs`.
+/// The binary cannot open the pod's `https://` endpoint yet, so a pod it started would be
+/// billed and never serve: a document that declares a `connectors` connection is refused
+/// `config:value` before anything is read, called or bound, and the connectors fixture receives
+/// no invocation at all (no `pods.list`, no `pod.create`). The fixture is scripted to answer a
+/// listing and a create, so a binary that called it would be seen. Nothing secret reaches
+/// standard error (criterion 2). Criterion 1 is proved at the library level by
+/// `tests/live_runpod.rs`, which no document reaches.
 #[test]
-fn live_a_cold_model_makes_the_connectors_fixture_receive_one_pod_create() {
-    let fixture = Fixture::new("live-create");
+fn live_a_connectors_document_is_refused_and_the_fixture_receives_nothing() {
+    let fixture = Fixture::new("live-inert");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
         "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
         "operations invoke pod.create": [created(&running_small_pod())],
     }));
-    let config = fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 0));
-    let server = Server::start(&config);
-    assert!(
-        connectors
-            .calls_of("operations invoke pod.create")
-            .is_empty(),
-        "a pod was created before any request"
-    );
-    let answer = post_chat(server.address);
-    assert_eq!(status(&answer), "503", "{answer:?}");
-    assert!(answer.contains("model-cold-start"), "{answer:?}");
-    let stderr = stop_and_collect(server);
-
-    let creates = connectors.calls_of("operations invoke pod.create");
-    assert_eq!(creates.len(), 1, "{creates:?}");
-    let create = &creates[0];
-    assert!(create.get("proof_mismatch").is_none(), "{create:?}");
-    let input: serde_json::Value = serde_json::from_str(create["input"].as_str().unwrap()).unwrap();
-    assert_eq!(
-        input["body"]["gpuTypeIds"],
-        serde_json::json!(["NVIDIA L40S"]),
-        "{input}"
-    );
-    assert_eq!(input["body"]["name"], serde_json::json!("b10x-llm-small"));
-    let argv = |call: &serde_json::Value, name: &str| -> Option<String> {
-        let argv = call["argv"].as_array()?;
-        let at = argv.iter().position(|arg| arg == name)?;
-        argv.get(at + 1)?.as_str().map(str::to_owned)
-    };
-    assert_eq!(argv(create, "--adapter").as_deref(), Some("gpu"));
-    assert_eq!(argv(create, "--connection").as_deref(), Some("conn-1"));
-    // The approval subject and the proof's path are a proof's contents and handle.
-    let issued = connectors.calls_of("approvals issue pod.create");
-    assert_eq!(issued.len(), 1, "{issued:?}");
-    let subject = argv(&issued[0], "--approve-subject").unwrap();
-    let proof = argv(&issued[0], "--proof-output").unwrap();
-    assert_written_nowhere(
-        &[VLLM_KEY, OWNER_SECRET, &subject, &proof],
-        &[&answer],
-        &stderr,
-    );
-}
-
-/// Criterion 3: a connection that does not answer a complete `pods.list` at start is
-/// unreachable. The binary starts, a request for the model is `target-unavailable`, and the
-/// fixture receives nothing after the start: no create, no approval, no further listing.
-#[test]
-fn live_an_unreachable_connection_starts_and_answers_target_unavailable() {
-    let fixture = Fixture::new("live-unreachable");
-    let connectors = Connectors::new(&fixture);
-    // No script: every `operations invoke` exits 70 without an answer.
-    let config = fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 5));
-    let server = Server::start(&config);
-    let at_start = connectors.calls().len();
-    assert!(
-        connectors.calls_of("operations invoke pods.list").len() == 1,
-        "the reachability check is one pods.list: {:?}",
-        connectors.calls()
-    );
-    let answer = post_chat(server.address);
-    assert_eq!(status(&answer), "503", "{answer:?}");
-    assert!(answer.contains("target-unavailable"), "{answer:?}");
-    assert!(!answer.contains("model-cold-start"), "{answer:?}");
-    let stderr = stop_and_collect(server);
-    assert_eq!(
-        connectors.calls().len(),
-        at_start,
-        "the fixture received calls after the start: {:?}",
-        connectors.calls()
-    );
-    assert!(
-        connectors
-            .calls_of("operations invoke pod.create")
-            .is_empty()
-    );
-    assert!(
-        stderr
-            .iter()
-            .any(|line| line.contains("connectors connection unreachable")),
-        "{stderr:?}"
-    );
-    assert_written_nowhere(&[VLLM_KEY, OWNER_SECRET], &[&answer], &stderr);
-}
-
-/// Criterion 3, the rest of "reachable": a missing executable and a work directory that is not
-/// private are unreachable too, and the fixture receives nothing at all.
-#[test]
-fn live_a_missing_executable_or_a_shared_work_directory_is_unreachable() {
-    for case in ["missing executable", "group-readable work directory"] {
-        let fixture = Fixture::new(&format!("live-{}", case.replace(' ', "-")));
-        let connectors = Connectors::new(&fixture);
-        connectors.script(&serde_json::json!({
-            "operations invoke pods.list": [listed(&serde_json::json!([]))],
-        }));
-        let mut text = connected_document(&fixture, "127.0.0.1:0", &connectors, 5);
-        if case == "missing executable" {
-            let missing = fixture.path("no-such-connectors");
-            text = mutate(
-                &text,
-                &format!("executable = \"{}\"", connectors.executable().display()),
-                &format!("executable = \"{}\"", missing.display()),
-            );
-        } else {
-            std::fs::set_permissions(
-                connectors.work(),
-                std::os::unix::fs::PermissionsExt::from_mode(0o750),
-            )
-            .unwrap();
+    for hold in [0, 5] {
+        let config = fixture.config(&connected_document(
+            &fixture,
+            "127.0.0.1:0",
+            &connectors,
+            hold,
+        ));
+        let finished = run_config(&config);
+        assert_refused(&finished, "config:value");
+        assert!(
+            finished.stderr.contains(
+                "providers.runpod.connectors cannot be served until the binary speaks TLS"
+            ),
+            "{:?}",
+            finished.stderr
+        );
+        assert!(
+            !finished.stderr.contains("listening on"),
+            "{:?}",
+            finished.stderr
+        );
+        for secret in [VLLM_KEY, OWNER_SECRET] {
+            assert!(!finished.stderr.contains(secret), "{:?}", finished.stderr);
+            assert!(!finished.stdout.contains(secret), "{:?}", finished.stdout);
         }
-        let server = Server::start(&fixture.config(&text));
-        let answer = post_chat(server.address);
-        assert_eq!(status(&answer), "503", "{case}: {answer:?}");
-        assert!(answer.contains("target-unavailable"), "{case}: {answer:?}");
-        let stderr = stop_and_collect(server);
-        assert!(
-            connectors.calls().is_empty(),
-            "{case}: the fixture received {:?}",
-            connectors.calls()
-        );
-        assert!(
-            stderr
-                .iter()
-                .any(|line| line.contains("connectors connection unreachable")),
-            "{case}: {stderr:?}"
-        );
     }
+    assert!(
+        connectors.calls().is_empty(),
+        "the fixture received {:?}",
+        connectors.calls()
+    );
+    // The control: the same document without its `connectors` table serves.
+    let text = connected_document(&fixture, "127.0.0.1:0", &connectors, 0);
+    let table = format!("\n[providers.runpod.connectors]\n{}", connectors.table());
+    let server = Server::start(&fixture.config(&mutate(&text, &table, "")));
+    server.stop();
+    assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
 }
 
 /// A model whose provider declares no connection is answered `target-unavailable`: the shipped
@@ -1050,22 +928,6 @@ fn live_a_model_without_a_connection_is_target_unavailable() {
     assert_eq!(status(&answer), "503", "{answer:?}");
     assert!(answer.contains("target-unavailable"), "{answer:?}");
     server.stop();
-}
-
-/// A connected model must name its vLLM key file: its pod always expects the key.
-#[test]
-fn live_a_connected_model_without_a_vllm_key_file_is_refused() {
-    let fixture = Fixture::new("live-no-key");
-    let connectors = Connectors::new(&fixture);
-    let text = connected_document(&fixture, "127.0.0.1:0", &connectors, 5);
-    let key = fixture.path("vllm-key");
-    let text = mutate(
-        &text,
-        &format!("vllm_api_key_file = \"{}\"\n", key.display()),
-        "",
-    );
-    assert_refused(&run_config(&fixture.config(&text)), "config:value");
-    assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
 }
 
 /// Criterion 3: no command-line option selects the emulator, or any transport.

@@ -2,47 +2,62 @@
 format: aep.planning-md/3
 id: story:cold-start-hold
 kind: story
-status: active
+status: implemented
 title: A request for a cold model waits for its pod within a hold budget
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
 - depends_on: story:gateway-deployment
 scope:
-- confidence: inferred
+- confidence: cited
   path: checks/conformance/src/gateway.rs
-- confidence: inferred
-  path: checks/conformance/src/runpod.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/src/serve.rs
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway-cli/src/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/relaying.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_w04_cold_start.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_w04_cold_start_pass2.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/relaying.rs
+- confidence: cited
   path: crates/llm-gateway/src/error.rs
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway/src/lib.rs
+- confidence: cited
   path: crates/llm-gateway/src/relay.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/server.rs
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway/tests/adversary_relay.rs
+- confidence: cited
   path: crates/llm-gateway/tests/gateway.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/tests/wire_relay.rs
 - confidence: cited
-  path: crates/llm-runpod/src/config.rs
+  path: crates/llm-runpod/src/lib.rs
 - confidence: cited
   path: crates/llm-runpod/src/pool.rs
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-runpod/tests/adversary_w04_hold.rs
+- confidence: cited
   path: crates/llm-runpod/tests/runpod.rs
-- confidence: inferred
+- confidence: cited
   path: docs/gateway.md
-- confidence: inferred
+- confidence: cited
   path: docs/hosting.md
-- confidence: inferred
+- confidence: cited
+  path: spec/domains/deployment.yaml
+- confidence: cited
   path: spec/domains/gateway.yaml
-- confidence: inferred
+- confidence: cited
   path: spec/domains/runpod.yaml
-revision: 19
+revision: 57
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 18}
 - {from: "proposed", to: "active", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 19}
+- {from: "active", to: "implemented", at: "2026-10-08T17:04:45Z", actor: "human:timo", revision: 57, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 ## Outcome
 

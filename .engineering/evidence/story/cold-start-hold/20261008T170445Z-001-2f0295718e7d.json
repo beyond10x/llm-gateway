@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T17:04:45Z",
+  "actor": "human:timo",
+  "artifact": "story:cold-start-hold",
+  "kind": "story",
+  "revision": 56,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "~/.cache/llm-gateway-w03/gate.sh on wave/2026-10-08-w04 (RUSTUP_TOOLCHAIN=1.98.0)",
+    "reference": "bb17d17: cargo test --workspace --no-fail-fast 37 targets 391 passed 0 failed; fmt 0; clippy 0; ess specify validate 0; conformance 187/187 x3"
+  }
+}

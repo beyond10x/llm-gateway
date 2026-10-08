@@ -9,7 +9,7 @@
 
 use crate::{
     auth, body,
-    error::{RefusalCode, RelayError, TokenError},
+    error::{RefusalCode, RelayError, TargetRefusal, TokenError},
     inventory::Label,
 };
 use std::{
@@ -125,9 +125,15 @@ pub trait RelayTarget: Send {
 
 /// Where a model's requests go. The embedding implements this over its pool.
 pub trait RelayTargets: Send + Sync {
-    /// The target serving `alias` now, starting one when none is live, or `None` when none can
-    /// be had.
-    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>>;
+    /// The target serving `alias` now, starting one when none is live. The embedding may hold
+    /// the request while the target starts (row L6); how long, and what a stop does to a held
+    /// request, are its own. The gateway holds nothing itself.
+    ///
+    /// # Errors
+    /// [`TargetRefusal::Unavailable`] when none can be had, answered `target-unavailable`;
+    /// [`TargetRefusal::ColdStart`] when the target is still starting and the request's hold
+    /// budget has passed, answered `model-cold-start` with `retry-after: 30` (row W6).
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal>;
 
     /// A request for `alias` through the target at `authority` failed (row W7): drop that
     /// endpoint if it is still the current one, so the next acquisition starts a replacement.
@@ -614,7 +620,7 @@ pub(crate) fn serve(
     let target = relay
         .targets
         .acquire(alias)
-        .ok_or(RefusalCode::TargetUnavailable)?;
+        .map_err(TargetRefusal::refusal)?;
     let failed = || {
         relay.targets.invalidate(alias, target.authority());
         RefusalCode::UpstreamFailed
@@ -737,17 +743,33 @@ fn stream_answer(
 #[cfg(test)]
 mod tests {
     use super::{Framing, MAX_REQUEST_BODY_BYTES, Relay, RelayModel, RelayTargets, Wire, framing};
-    use crate::{error::RefusalCode, error::RelayError, inventory::Label};
+    use crate::{
+        error::{RefusalCode, RelayError, TargetRefusal},
+        inventory::Label,
+    };
     use std::sync::Arc;
 
     struct NoTargets;
 
     impl RelayTargets for NoTargets {
-        fn acquire(&self, _alias: &str) -> Option<Box<dyn super::RelayTarget>> {
-            None
+        fn acquire(&self, _alias: &str) -> Result<Box<dyn super::RelayTarget>, TargetRefusal> {
+            Err(TargetRefusal::Unavailable)
         }
 
         fn invalidate(&self, _alias: &str, _authority: &str) {}
+    }
+
+    /// Each way `acquire` can refuse has its own 503 refusal, and no two share one.
+    #[test]
+    fn every_target_refusal_is_answered_with_its_own_503() {
+        for &refusal in TargetRefusal::ALL {
+            let expected = match refusal {
+                TargetRefusal::Unavailable => RefusalCode::TargetUnavailable,
+                TargetRefusal::ColdStart => RefusalCode::ModelColdStart,
+            };
+            assert_eq!(refusal.refusal(), expected);
+            assert_eq!(expected.status(), 503);
+        }
     }
 
     fn model(alias: &str, wires: Vec<Wire>) -> Result<RelayModel, RelayError> {

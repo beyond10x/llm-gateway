@@ -119,6 +119,10 @@ refusal_codes! {
     /// The embedding handed out no target for the model.
     TargetUnavailable => "target-unavailable", 503,
         "no model target is available";
+    /// The embedding reports the model's target still starting when the request's hold budget
+    /// passed (row W6). The only refusal with a `retry-after`.
+    ModelColdStart => "model-cold-start", 503,
+        "the model is still starting; ask again after the retry-after delay";
     /// The target could not be reached, closed without an answer, or answered 502, 503 or 504.
     UpstreamFailed => "upstream-failed", 502,
         "the model target could not be reached or failed; the next request asks for a replacement";
@@ -210,5 +214,28 @@ closed_enum! {
         RepeatedWire => "a relayed model names one wire twice";
         /// Two models with one alias.
         DuplicateModel => "two relayed models declare the same alias";
+    }
+}
+
+closed_enum! {
+    /// Why [`crate::RelayTargets::acquire`] handed out no target. Each is answered with its own
+    /// refusal: `target-unavailable` or `model-cold-start`.
+    TargetRefusal {
+        /// No target can be had: the model is down, failed to start, or the embedding is
+        /// stopping.
+        Unavailable => "no model target is available";
+        /// The model's target is still starting and the request's hold budget has passed
+        /// (row W6). The client is told to ask again later.
+        ColdStart => "the model is still starting";
+    }
+}
+
+impl TargetRefusal {
+    /// The refusal the client is answered with.
+    pub const fn refusal(self) -> RefusalCode {
+        match self {
+            Self::Unavailable => RefusalCode::TargetUnavailable,
+            Self::ColdStart => RefusalCode::ModelColdStart,
+        }
     }
 }

@@ -473,7 +473,7 @@ mod relay {
     use llm_gateway::{
         Gateway, GatewayConfig, GatewayHandle, OwnerToken, Relay, RelayError, RelayModel,
         RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
-        Wire,
+        TargetRefusal, Wire,
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
@@ -514,6 +514,10 @@ mod relay {
         secret: String,
         models: Vec<ModelInput>,
         pods: Vec<Vec<AnswerInput>>,
+        /// The source's first `cold_starts` acquisitions report the model still starting past
+        /// the hold budget (row W6).
+        #[serde(default)]
+        cold_starts: usize,
         steps: Vec<Step>,
     }
 
@@ -812,16 +816,18 @@ mod relay {
             .position(|window| window == needle)
     }
 
-    /// The target source: hands out the current pod, and moves to the next once the gateway
-    /// reports the current one failed.
     /// A pod as the source knows it: its name, its authority and its script.
     type PodSlot = (String, String, Arc<Mutex<VecDeque<AnswerInput>>>);
 
+    /// The target source: reports a cold start for its first `cold` acquisitions, then hands
+    /// out the current pod, and moves to the next once the gateway reports the current one
+    /// failed.
     struct Source {
         pods: Vec<PodSlot>,
         /// Each model's bearer, set once the gateway is composed.
         bearers: Mutex<BTreeMap<String, Arc<TargetBearer>>>,
         current: Mutex<usize>,
+        cold: AtomicUsize,
         acquired: AtomicUsize,
         released: Arc<AtomicUsize>,
         invalidated: Mutex<Vec<String>>,
@@ -835,12 +841,30 @@ mod relay {
     }
 
     impl RelayTargets for Source {
-        fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
+        fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
             self.acquired.fetch_add(1, Ordering::SeqCst);
-            let current = *self.current.lock().ok()?;
-            let (_, authority, script) = self.pods.get(current)?;
-            let bearer = self.bearers.lock().ok()?.get(alias).cloned();
-            Some(Box::new(Target {
+            if self
+                .cold
+                .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                    left.checked_sub(1)
+                })
+                .is_ok()
+            {
+                return Err(TargetRefusal::ColdStart);
+            }
+            let current = *self
+                .current
+                .lock()
+                .map_err(|_| TargetRefusal::Unavailable)?;
+            let (_, authority, script) =
+                self.pods.get(current).ok_or(TargetRefusal::Unavailable)?;
+            let bearer = self
+                .bearers
+                .lock()
+                .map_err(|_| TargetRefusal::Unavailable)?
+                .get(alias)
+                .cloned();
+            Ok(Box::new(Target {
                 authority: authority.clone(),
                 script: Arc::clone(script),
                 bearer,
@@ -1115,6 +1139,7 @@ mod relay {
 
     fn valid(program: &Program) -> bool {
         program.steps.len() <= MAX_STEPS
+            && program.cold_starts <= MAX_STEPS
             && program.pods.len() <= MAX_PODS
             && program
                 .pods
@@ -1131,7 +1156,7 @@ mod relay {
     fn run(program_json: &str) -> Value {
         let mut facts = json!({
             "valid_program": false, "error_code": null, "results": [], "bodies": [],
-            "headers": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
+            "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
@@ -1170,6 +1195,7 @@ mod relay {
                 .collect(),
             bearers: Mutex::new(BTreeMap::new()),
             current: Mutex::new(0),
+            cold: AtomicUsize::new(program.cold_starts),
             acquired: AtomicUsize::new(0),
             released: Arc::new(AtomicUsize::new(0)),
             invalidated: Mutex::new(Vec::new()),
@@ -1213,8 +1239,8 @@ mod relay {
 
     fn steps(program: &Program, handle: &GatewayHandle, shared: &Shared, facts: &mut Value) {
         let addr = handle.local_addr();
-        let (mut results, mut bodies, mut headers, mut arrivals) =
-            (Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let (mut results, mut bodies, mut headers, mut retry_after, mut arrivals) =
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
         for step in &program.steps {
             if matches!(step, Step::MarkReady) {
                 handle.mark_ready();
@@ -1239,6 +1265,7 @@ mod relay {
                 received.header("cache-control"),
                 received.header("allow")
             ));
+            retry_after.push(received.header("retry-after").to_owned());
             let replied = progress
                 .replied
                 .lock()
@@ -1252,6 +1279,7 @@ mod relay {
         facts["results"] = json!(results);
         facts["bodies"] = json!(bodies);
         facts["headers"] = json!(headers);
+        facts["retry_after"] = json!(retry_after);
         facts["arrivals"] = json!(arrivals);
     }
 

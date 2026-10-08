@@ -148,7 +148,13 @@ A request to a wire path is decided in this order:
    to `high` become `xhigh`, because the served chat template rejects `high` (llmgw
    `src/lib.rs:470-504`). Every other byte reaches the target unchanged: llmgw re-serialises the
    document with sorted keys, llm-gateway replaces those values in place.
-7. `acquire` (`target-unavailable` when it hands out none), then `POST` to the same path at the
+7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
+   `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
+   request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's
+   `model_cold_start` (row W6). It is the only refusal that carries `retry-after`. The embedding
+   holds the request while its target starts and owns the hold budget; the Runpod composition
+   asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
+   `docs/hosting.md`). Then `POST` to the same path at the
    target with `host` set to the target's authority and a `content-length`. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target without one is sent no `authorization`. The head is the
@@ -198,6 +204,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `body-too-large` | 413 | the request body exceeds its byte bound |
 | `method-not-allowed` | 405 | this path does not accept that method |
 | `model-absent` | 400 | the request body names no model |
+| `model-cold-start` | 503 | the model is still starting; ask again after the retry-after delay |
 | `model-unknown` | 404 | no such model |
 | `overloaded` | 503 | the gateway is already serving its maximum concurrent requests |
 | `path-unknown` | 404 | no such gateway resource |
@@ -285,6 +292,12 @@ defaults to ten seconds, and its enforcement is measured with a short configured
 `a_stalled_head_is_refused_when_the_read_timeout_expires`,
 `a_trickled_head_is_refused_when_the_read_timeout_expires` and
 `a_peer_that_never_reads_its_answer_cannot_hold_the_stop`.
+
+`COLD_START_RETRY_AFTER_SECONDS` (30) is the `retry-after` a `model-cold-start` refusal carries. It
+is a hint to the client rather than a limit the gateway enforces, so it is not in this table
+either; `w6_a_model_still_starting_past_its_hold_budget_is_model_cold_start_with_retry_after_30`
+in `tests/wire_relay.rs` measures the header, and
+`every_refusal_code_has_a_request_that_provokes_it` checks that no other refusal carries one.
 
 ## Verification
 

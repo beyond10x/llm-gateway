@@ -25,6 +25,9 @@ const DEFAULT_MAX_HEAD_BYTES: usize = 8192;
 const DEFAULT_MAX_CONCURRENT_REQUESTS: u64 = 64;
 /// A timeout, not a size bound. Its enforcement is measured with a short configured value.
 const DEFAULT_READ_TIMEOUT_SECONDS: u64 = 10;
+/// The `retry-after` a `model-cold-start` refusal carries, in seconds, as llmgw (row W6). A hint
+/// to the client, not a bound.
+const COLD_START_RETRY_AFTER_SECONDS: u64 = 30;
 /// The phrase a status line carries when no phrase is known. No status the crate can answer
 /// with maps to it, which `every_status_the_crate_can_answer_carries_a_reason_phrase` checks.
 const UNKNOWN_PHRASE: &str = "Unknown";
@@ -624,6 +627,11 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
     head.push_str("\r\ncache-control: no-store\r\nconnection: close\r\n");
     if status == 401 {
         head.push_str("www-authenticate: Bearer\r\n");
+    }
+    if matches!(outcome, Outcome::Refused(RefusalCode::ModelColdStart)) {
+        head.push_str("retry-after: ");
+        head.push_str(&COLD_START_RETRY_AFTER_SECONDS.to_string());
+        head.push_str("\r\n");
     }
     if let Some(allow) = allow {
         head.push_str("allow: ");

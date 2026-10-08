@@ -38,8 +38,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "65376af2dfc735bf9f87fe036535c7a25219e829862c90d87c321ed9da49366e",
-    "contract_digest": "slice-sha256/2:c6c890bb5f96829b04094c9a018d2966b8e70972cbdf429ddec260f47d21530d",
+    "source_digest": "c3ce02b8b57c76fe5c53ffd48bb877ace971911aa2e24391646d280cfda5be38",
+    "contract_digest": "slice-sha256/2:5dd98f7a83b923370e260e8e2f02c6c992fcdcdfeed1ea0b01cc4c0a7450c92a",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -174,6 +174,9 @@
         "start_wait_seconds": {
           "type": "integer"
         },
+        "request_hold_seconds": {
+          "type": "integer"
+        },
         "vllm_api_key_file": {
           "type": "string"
         }
@@ -194,7 +197,8 @@
         "volume_mount_path",
         "data_center_ids",
         "idle_timeout_minutes",
-        "start_wait_seconds"
+        "start_wait_seconds",
+        "request_hold_seconds"
       ],
       "additionalProperties": false
     },

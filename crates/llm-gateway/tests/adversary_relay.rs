@@ -8,7 +8,7 @@
 
 use llm_gateway::{
     Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay, RelayModel, RelayStream,
-    RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, Wire,
+    RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetRefusal, Wire,
 };
 use std::{
     io::{self, Read, Write},
@@ -168,9 +168,9 @@ impl Source {
 }
 
 impl RelayTargets for Source {
-    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         self.acquired.lock().unwrap().push(alias.to_string());
-        Some(Box::new(Target {
+        Ok(Box::new(Target {
             authority: self.authority.clone(),
         }))
     }

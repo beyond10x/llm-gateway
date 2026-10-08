@@ -577,3 +577,47 @@ fn tool_calling_any_other_value_is_refused_as_schema() {
         }
     }
 }
+
+// --- Every closed value is a TOML string, never a one-key inline table naming a variant ------
+
+/// serde reads an externally tagged unit variant from a one-key table as well as from a string,
+/// so `{ on = {} }` loaded as `on`. Each enumerated key of the document is refused that way.
+#[test]
+fn k29_an_enumerated_value_written_as_an_inline_table_is_refused_as_schema() {
+    let fixture = Fixture::new("k29-inline-table");
+    let text = base(&fixture);
+    let mut accepted = Vec::new();
+    for (case, find, replace) in [
+        (
+            "kind",
+            "kind = \"runpod-vllm\"",
+            "kind = { runpod-vllm = {} }",
+        ),
+        (
+            "cloud_type",
+            "kind = \"runpod-vllm\"",
+            "kind = \"runpod-vllm\"\ncloud_type = { COMMUNITY = {} }",
+        ),
+        (
+            "wires",
+            "wires = [\"chat\", \"responses\"]",
+            "wires = [\"chat\", { responses = {} }]",
+        ),
+        (
+            "thinking",
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nthinking = { on = {} }\n",
+        ),
+        (
+            "tool_calling",
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\ntool_calling = { parsed = {} }\n",
+        ),
+    ] {
+        match load(&fixture.config(&mutate(&text, find, replace))) {
+            Ok(_) => accepted.push(case),
+            Err(refusal) => assert_eq!(refusal.code(), "config:schema", "{case}"),
+        }
+    }
+    assert!(accepted.is_empty(), "accepted as inline tables: {accepted:?}");
+}

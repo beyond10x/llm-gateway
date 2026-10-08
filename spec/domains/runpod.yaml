@@ -48,9 +48,13 @@ types:
   # `adapter` the alias its configuration binds the Runpod catalog provider to (connectors
   # docs/catalog-runpod.md "Authentication", e.g. `gpu`), `connection` the saved connection id.
   # `work_directory` is an existing private directory: each write's input document and its
-  # approval proof are new files there (`approvals issue --proof-output` must name a new file
-  # in a private directory, connectors docs/local-approvals.md). `timeout_ms` bounds one CLI
-  # call; a call still running then is killed and its answer is lost.
+  # approval proof are new files there (`approvals issue --proof-output` must name "a new
+  # absolute output path inside an existing private directory", connectors
+  # docs/local-approvals.md). DECIDED: a relative `work_directory` is resolved against the
+  # current directory once, when the transport is built, so every path it passes is absolute.
+  # `timeout_ms` bounds one CLI call, its output included: the CLI runs in its own process
+  # group, and when the bound passes, before it exited or before its output closed (a process
+  # it started may hold it), the whole group is killed and the answer is lost.
   - name: llm-gateway.runpod.ConnectorsBinding
     kind: struct
     fields:
@@ -69,6 +73,17 @@ types:
   # DECIDED: each write (`pod.create`, `pod.terminate`) is first `approvals prepare`d and
   # `approvals issue`d for its exact input document, then invoked with `--approval-file
   # <proof> --idempotency-key <key>`. The transport never sends a write twice.
+  # DECIDED: connectors' connection evidence expires (`evidence_lifetime_ms`, 60 s when omitted,
+  # at most 300 000 ms), and an invoke is then refused `not_granted` at `admission` with
+  # `next_action: revalidate_connection` until `connections revalidate` renews it (connectors
+  # v0.36.0 docs/local-catalog-provider.md:479-486, "Bind the provider to the local CLI"; it
+  # names reads, and says "The invoke does not revalidate on its own"). An invoke refused `not_granted` at stage `admission`, with no
+  # classification or `not_attempted` (nothing was dispatched), makes the transport read the
+  # connection's revision (`connections describe`), run `connections revalidate --adapter
+  # <adapter> --connection <connection> --expected-revision <revision>` once, and repeat that
+  # one invoke once (a write with a fresh proof and its own idempotency key). A second refusal,
+  # or any other answer, is mapped as usual: `Lost` for a write, an incomplete listing for a
+  # read. A write refused at any other stage, or classified otherwise, is never repeated.
   - name: llm-gateway.runpod.ConnectorsOperation
     kind: enum
     variants: [PodCreate, PodsList, PodTerminate]
@@ -80,8 +95,11 @@ types:
   # A create's answer to the provider.
   # DECIDED: `Created` only for `applied` with a pod whose `id` and `name` parse from
   # `result.body`. `Refused` only for `refused`: Runpod made nothing, so the provider may try the
-  # next GPU. `unknown` is resolved by one `pods.list` on the pod's unique `name`: `Created` if
-  # that whole answer holds exactly one pod of that name, `Lost` otherwise. `not_attempted`, a
+  # next GPU. `unknown` is resolved by one `pods.list` on the pod's `name`. That name is per
+  # model alias, not per create (`pod_name(resource_name)`), and Runpod's `Pod.name` "does not
+  # need to be unique", so the answer is `Created` only if that whole answer holds exactly one
+  # pod of that name whose env `B10X_LLM_REQUEST` equals this create's request tag, and `Lost`
+  # otherwise, including for a create with no request tag. `not_attempted`, a
   # timeout, a non-zero exit with no classification, and unparseable output are `Lost`. A `Lost`
   # create is never retried, here or by the provider.
   - name: llm-gateway.runpod.CreateAnswer
@@ -97,12 +115,15 @@ types:
   # `PodCreateInput` names it (connectors adapters/runpod/upstream/runpod-rest-v1.json, SHA-256
   # 9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db). The first twelve are
   # connectors v0.36.0's `pod.create` `body_keys` (adapters/catalog/providers/runpod/operations.json).
-  # DECIDED: as llmgw does (llmgw src/runpod.rs:792-793 at 048ebd8), `dockerEntrypoint` carries
-  # the vLLM argv (`vllm serve …`), `dockerStartCmd` is always `[]` so the image's CMD is not
-  # appended, and `networkVolumeId` carries the model cache volume. v0.36.0 refuses all three
-  # as `invalid_input` before any request; a connectors release admitting them is requested
-  # upstream; until it lands, connectors creates no pod from such a body. Any other optional
-  # key is left out, never sent empty.
+  # DECIDED: the body follows llmgw's (llmgw src/runpod.rs:781-799 at 048ebd8): `dockerEntrypoint`
+  # carries the vLLM argv (`vllm serve …`), `dockerStartCmd` is always `[]`, `volumeInGb` is `0`
+  # when there is no network volume, and `networkVolumeId` carries the model cache volume.
+  # `dockerStartCmd: []` is llmgw parity; the pinned PodCreateInput says of it "If [], uses the
+  # start CMD defined in the image", so it does not clear the image's CMD. `volumeInGb: 0` asks
+  # for no pod volume, where Runpod's default is 20. v0.36.0 refuses `dockerEntrypoint`,
+  # `dockerStartCmd` and `networkVolumeId` as `invalid_input` before any request; a connectors
+  # release admitting them is requested upstream; until it lands, connectors creates no pod
+  # from such a body. Any other optional key is left out, never sent empty.
   - name: llm-gateway.runpod.PodCreateBody
     kind: struct
     fields:

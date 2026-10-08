@@ -7,8 +7,9 @@
 //! `authorization: Bearer <key>`, and nothing of the client's request head.
 //!
 //! The pool needs a Runpod transport and a way to open a connection to a pod. The shipped
-//! binary has neither (story:live-runpod-wiring), so only [`crate::start_relaying`] composes
-//! this, and only tests call it, with `EmulatedRunpod` and loopback pods.
+//! binary ([`crate::start`]) composes it over the production transport, `ConnectorsRunpod`, for
+//! the provider that declares a `connectors` connection; [`crate::start_relaying`] takes any
+//! transport, and only tests call it, with `EmulatedRunpod` and loopback pods.
 
 use crate::{
     config::{Deployment, Model, Wire},
@@ -18,11 +19,12 @@ use crate::{
 };
 use llm_gateway::{
     Gateway, Label, Metrics, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    ShutdownReport, TargetBearer, TargetRefusal,
+    RouteInventory, SharedSecretVerifier, ShutdownReport, TargetBearer, TargetRefusal,
 };
 use llm_runpod::{
-    CleanupReport, Clock, ComputeAuthorization, Hold, HostingPolicy, Identifier, LeaseRegistry,
-    PoolError, RunpodModel, RunpodPool, RunpodTransport, StreamLease,
+    CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
+    HostingPolicy, Identifier, LeaseRegistry, PodListing, PoolError, RunpodModel, RunpodPool,
+    RunpodTransport, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -102,9 +104,10 @@ fn identifier(value: &str, key: &str) -> Result<Identifier, Refusal> {
 /// The hosting policy: fixed values, and one pod per declared model.
 ///
 /// # Errors
-/// None for a loaded document; a `config:value` [`Refusal`] if a fixed value were invalid.
+/// A `config:value` [`Refusal`] if a fixed value were invalid, or for more models than one
+/// controller may hold.
 pub fn hosting_policy(deployment: &Deployment) -> Result<HostingPolicy, Refusal> {
-    Ok(HostingPolicy {
+    let policy = HostingPolicy {
         controller: identifier(CONTROLLER, "the controller")?,
         provider: identifier(PROVIDER, "the provider")?,
         account: identifier(ACCOUNT, "the account")?,
@@ -112,7 +115,15 @@ pub fn hosting_policy(deployment: &Deployment) -> Result<HostingPolicy, Refusal>
         max_active: u32::try_from(deployment.models.len()).unwrap_or(u32::MAX),
         max_lifetime_ms: MAX_LIFETIME_MS,
         lease_ms: LEASE_MS,
-    })
+    };
+    // The check the pool's controller makes, made here so that it is made before a transport.
+    policy.validate().map_err(|error| {
+        Refusal::new(
+            StartupRefusal::ConfigValue,
+            format!("the hosting policy cannot be run: {error}"),
+        )
+    })?;
+    Ok(policy)
 }
 
 /// The fixed authorization every pod is created under.
@@ -240,6 +251,43 @@ struct Relayed {
     hold: Duration,
 }
 
+/// What each model of `deployment` needs at acquisition: its alias, its vLLM key as the bearer,
+/// and its hold.
+///
+/// # Errors
+/// A `config:value` [`Refusal`] for a model that names no `vllm_api_key_file`: its pod always
+/// expects a key; `vllm-api-key:not-a-token` for a key a header cannot carry.
+fn relayed_models(
+    deployment: &Deployment,
+    keys: &VllmKeys,
+) -> Result<BTreeMap<String, Relayed>, Refusal> {
+    let mut models = BTreeMap::new();
+    for (alias, model) in &deployment.models {
+        let at = format!("models.{alias}.vllm_api_key_file");
+        let key = keys.get(alias).ok_or_else(|| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("{at} is required to relay to a Runpod pod"),
+            )
+        })?;
+        let bearer = TargetBearer::new(key.expose().to_vec()).map_err(|error| {
+            Refusal::new(
+                StartupRefusal::VllmApiKeyNotAToken,
+                format!("{at}: {error}"),
+            )
+        })?;
+        models.insert(
+            alias.clone(),
+            Relayed {
+                alias: identifier(alias, &format!("models.{alias}"))?,
+                bearer: Arc::new(bearer),
+                hold: Duration::from_secs(model.request_hold_seconds),
+            },
+        );
+    }
+    Ok(models)
+}
+
 /// The gateway's targets: the pod the pool hands out for each alias.
 pub(crate) struct PoolTargets<T> {
     pool: Arc<RunpodPool<T>>,
@@ -266,39 +314,33 @@ impl<T> PoolTargets<T> {
         stopping: Arc<AtomicBool>,
         metrics: Arc<Metrics>,
     ) -> Result<Self, Refusal> {
-        let mut models = BTreeMap::new();
-        for (alias, model) in &deployment.models {
-            let at = format!("models.{alias}.vllm_api_key_file");
-            let key = keys.get(alias).ok_or_else(|| {
-                Refusal::new(
-                    StartupRefusal::ConfigValue,
-                    format!("{at} is required to relay to a Runpod pod"),
-                )
-            })?;
-            let bearer = TargetBearer::new(key.expose().to_vec()).map_err(|error| {
-                Refusal::new(
-                    StartupRefusal::VllmApiKeyNotAToken,
-                    format!("{at}: {error}"),
-                )
-            })?;
-            models.insert(
-                alias.clone(),
-                Relayed {
-                    alias: identifier(alias, &format!("models.{alias}"))?,
-                    bearer: Arc::new(bearer),
-                    hold: Duration::from_secs(model.request_hold_seconds),
-                },
-            );
-        }
-        Ok(Self {
+        Ok(Self::from_relayed(
+            relayed_models(deployment, keys)?,
+            compute_authorization()?,
             pool,
-            authorization: compute_authorization()?,
+            connector,
+            stopping,
+            metrics,
+        ))
+    }
+
+    fn from_relayed(
+        models: BTreeMap<String, Relayed>,
+        authorization: ComputeAuthorization,
+        pool: Arc<RunpodPool<T>>,
+        connector: Arc<dyn PodConnector>,
+        stopping: Arc<AtomicBool>,
+        metrics: Arc<Metrics>,
+    ) -> Self {
+        Self {
+            pool,
+            authorization,
             models,
             connector,
             stopping,
             metrics,
             started: Mutex::new(BTreeMap::new()),
-        })
+        }
     }
 
     /// Counts the pod a hold bound to as started, once per deployment (row O1). The pool binds
@@ -519,7 +561,8 @@ impl Cleanup {
 /// idle limit would have passed and the next run's startup sweep terminates it.
 pub struct Relaying {
     running: Running,
-    cleanup: Cleanup,
+    /// The pool's cleanup pass; `None` when no pool is composed.
+    cleanup: Option<Cleanup>,
     stopping: Arc<AtomicBool>,
 }
 
@@ -533,7 +576,9 @@ impl Relaying {
     pub fn shutdown(self) -> ShutdownReport {
         self.stopping.store(true, Ordering::SeqCst);
         let report = self.running.shutdown();
-        self.cleanup.stop();
+        if let Some(cleanup) = self.cleanup {
+            cleanup.stop();
+        }
         report
     }
 
@@ -569,8 +614,8 @@ const fn relay_wire(wire: Wire) -> llm_gateway::Wire {
 /// (row B8). Every model must name a `vllm_api_key_file`. The pool runs one cleanup pass before
 /// the gateway is marked ready and then one every [`CLEANUP_INTERVAL`] until the stop.
 ///
-/// The shipped binary has no Runpod transport and never calls this (story:live-runpod-wiring);
-/// it is the seam a test composes with `EmulatedRunpod` and loopback pods.
+/// The shipped binary never calls this: it composes [`start_connected`]. This is the seam a
+/// test composes with `EmulatedRunpod` and loopback pods.
 ///
 /// # Errors
 /// As [`crate::start`], plus `config:value` for a model the pool cannot run or that names no
@@ -581,20 +626,182 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     pods: Arc<dyn PodConnector>,
     clock: Arc<dyn Clock>,
 ) -> Result<Relaying, Refusal> {
-    let verifier = owner_verifier(deployment)?;
-    let vllm_keys = crate::keys::vllm_keys(deployment)?;
-    let inventory = inventory(deployment)?;
+    let parts = Parts::read(deployment)?;
     let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
-    let stopping = Arc::new(AtomicBool::new(false));
-    let metrics = Arc::new(Metrics::default());
     let targets = PoolTargets::new(
         deployment,
-        &vllm_keys,
+        &parts.vllm_keys,
         Arc::clone(&pool),
         pods,
-        Arc::clone(&stopping),
-        Arc::clone(&metrics),
+        Arc::clone(&parts.stopping),
+        Arc::clone(&parts.metrics),
     )?;
+    let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
+    compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
+}
+
+/// The shipped pod connector. A pod is reached at the Runpod proxy's TLS endpoint, and the
+/// binary has no TLS client yet (story:pod-proxy-tls), so it refuses every connection: no vLLM
+/// key leaves the process unencrypted.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct ProxyConnector;
+
+impl PodConnector for ProxyConnector {
+    fn connect(&self, _authority: &str) -> io::Result<Box<dyn RelayStream>> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "the Runpod proxy needs TLS, which this binary does not speak yet",
+        ))
+    }
+}
+
+/// Targets for models no pool serves: every acquisition is `target-unavailable`.
+struct Unconnected;
+
+impl RelayTargets for Unconnected {
+    fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        Err(TargetRefusal::Unavailable)
+    }
+
+    fn invalidate(&self, _alias: &str, _failed: &str) {}
+}
+
+/// Whether the work directory is an existing directory of the effective user with no group or
+/// world permission.
+fn private_directory(path: &std::path::Path) -> bool {
+    use std::os::unix::fs::MetadataExt;
+    std::fs::metadata(path).is_ok_and(|metadata| {
+        metadata.is_dir()
+            // No group or world bit: the low six bits of the mode are clear.
+            && metadata.mode().trailing_zeros() >= 6
+            && metadata.uid() == rustix::process::geteuid().as_raw()
+    })
+}
+
+/// The reachability check (`llm-gateway.deployment`, DECIDED): a private work directory and one
+/// complete `pods.list` through the transport.
+fn reachable(binding: &ConnectorsBinding, transport: &mut ConnectorsRunpod) -> bool {
+    private_directory(&binding.work_directory)
+        && transport
+            .list_pods()
+            .is_ok_and(|listing: PodListing| listing.complete)
+}
+
+/// The composition the shipped binary runs ([`crate::start`]): every model is relayed; the
+/// models of the provider that declares a `connectors` connection through one `RunpodPool`
+/// over `wrap(ConnectorsRunpod)`, every other model `target-unavailable`. Each connected
+/// model's vLLM key is handed to the transport by alias for the readiness probe. When the
+/// connection is not reachable at start, no pool is composed, no further `connectors` call is
+/// made, and its models are `target-unavailable` too.
+///
+/// `wrap` and `pods` are the seam a test moves the pod's address to a loopback pod with. `wrap`
+/// receives the `ConnectorsRunpod` built from the document and may return any
+/// `RunpodTransport`, including one that ignores it; the type does not hold the transport to
+/// `ConnectorsRunpod`. What does is the callers: [`crate::start`], the only composition the
+/// shipped binary reaches, passes the identity and [`ProxyConnector`], and only tests pass
+/// anything else. No document key and no option reaches `wrap` or `pods`.
+///
+/// # Errors
+/// As [`start_relaying`], for the connected models.
+pub fn start_connected<W, F>(
+    deployment: &Deployment,
+    wrap: F,
+    pods: Arc<dyn PodConnector>,
+) -> Result<Relaying, Refusal>
+where
+    W: RunpodTransport + Send + 'static,
+    F: FnOnce(ConnectorsRunpod) -> W,
+{
+    let parts = Parts::read(deployment)?;
+    let connected = deployment
+        .providers
+        .iter()
+        .find_map(|(name, provider)| Some((name, provider.connectors.clone()?)));
+    let Some((provider, binding)) = connected else {
+        return compose(deployment, parts, Arc::new(Unconnected), None);
+    };
+    let mut subset = deployment.clone();
+    subset.models.retain(|_, model| &model.provider == provider);
+    if subset.models.is_empty() {
+        return compose(deployment, parts, Arc::new(Unconnected), None);
+    }
+    // Every check the pool and its targets make, made before the transport is built: whether
+    // a document is valid never depends on the connection, and a refused document costs no
+    // `connectors` call.
+    let models = runpod_models(&subset)?;
+    let policy = hosting_policy(&subset)?;
+    let authorization = compute_authorization()?;
+    let relayed = relayed_models(&subset, &parts.vllm_keys)?;
+    let mut transport = ConnectorsRunpod::new(binding.clone());
+    if !reachable(&binding, &mut transport) {
+        tracing::warn!(
+            provider = provider.as_str(),
+            "connectors connection unreachable; its models answer target-unavailable"
+        );
+        return compose(deployment, parts, Arc::new(Unconnected), None);
+    }
+    for alias in subset.models.keys() {
+        if let Some(key) = parts.vllm_keys.get(alias) {
+            transport.set_vllm_key(alias, key.expose().to_vec());
+        }
+    }
+    let pool = RunpodPool::new(
+        policy,
+        Arc::new(LeaseRegistry::default()),
+        wrap(transport),
+        models,
+        Arc::new(WallClock::default()),
+    )
+    .map_err(|error| {
+        Refusal::new(
+            StartupRefusal::ConfigValue,
+            format!("the Runpod pool cannot be composed: {error}"),
+        )
+    })?;
+    let pool = Arc::new(pool);
+    let targets = PoolTargets::from_relayed(
+        relayed,
+        authorization,
+        Arc::clone(&pool),
+        pods,
+        Arc::clone(&parts.stopping),
+        Arc::clone(&parts.metrics),
+    );
+    let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
+    compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
+}
+
+/// What every composition reads from the document first, in this order, and the state the
+/// relay and the stop share.
+struct Parts {
+    verifier: SharedSecretVerifier,
+    inventory: RouteInventory,
+    vllm_keys: VllmKeys,
+    stopping: Arc<AtomicBool>,
+    metrics: Arc<Metrics>,
+    /// Every model as the relay serves it.
+    models: Vec<RelayModel>,
+}
+
+impl Parts {
+    /// # Errors
+    /// An `owner-secret:*`, `vllm-api-key:*` or `config:value` [`Refusal`]: every refusal the
+    /// document itself can earn, before any transport is built.
+    fn read(deployment: &Deployment) -> Result<Self, Refusal> {
+        Ok(Self {
+            verifier: owner_verifier(deployment)?,
+            vllm_keys: crate::keys::vllm_keys(deployment)?,
+            inventory: inventory(deployment)?,
+            stopping: Arc::new(AtomicBool::new(false)),
+            metrics: Arc::new(Metrics::default()),
+            models: relay_models(deployment)?,
+        })
+    }
+}
+
+/// Every model of the document as the relay serves it: on its wires, under its alias, with its
+/// `tool_calling`.
+fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len());
     for (alias, model) in &deployment.models {
         let wires = model.wires.iter().copied().map(relay_wire).collect();
@@ -612,7 +819,29 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
                 .with_tool_calling(model.tool_calling),
         );
     }
-    let relay = Relay::new(models, Arc::new(targets))
+    Ok(models)
+}
+
+/// One cleanup pass of a pool, counting what it stopped.
+type CleanupPass = Box<dyn Fn(&Metrics) + Send>;
+
+/// The gateway relaying every model of `deployment` to `targets`, with `pass` run once before
+/// it is marked ready and then every [`CLEANUP_INTERVAL`].
+fn compose(
+    deployment: &Deployment,
+    parts: Parts,
+    targets: Arc<dyn RelayTargets>,
+    pass: Option<CleanupPass>,
+) -> Result<Relaying, Refusal> {
+    let Parts {
+        verifier,
+        inventory,
+        vllm_keys,
+        stopping,
+        metrics,
+        models,
+    } = parts;
+    let relay = Relay::new(models, targets)
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
         .with_metrics(Arc::clone(&metrics))
         .with_records(Arc::new(crate::logging::TracingRecords));
@@ -627,9 +856,9 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     .map_err(|error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")))?;
     // One pass before serving: it sweeps the pods a previous run of this controller left. A
     // refused pass changes nothing, and the next one runs on time.
-    count_reaps(&metrics, pool.reap());
-    let cleanup = Cleanup::start(CLEANUP_INTERVAL, move || {
-        count_reaps(&metrics, pool.reap());
+    let cleanup = pass.map(|pass| {
+        pass(&metrics);
+        Cleanup::start(CLEANUP_INTERVAL, move || pass(&metrics))
     });
     handle.mark_ready();
     Ok(Relaying {

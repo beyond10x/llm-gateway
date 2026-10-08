@@ -20,7 +20,8 @@ use std::{
     time::{Duration, Instant},
 };
 use support::{
-    CONFIG_LIMIT, Fixture, OWNER_SECRET, SECRET_LIMIT, VLLM_KEY, document, mutate, padded,
+    CONFIG_LIMIT, Connectors, Fixture, OWNER_SECRET, SECRET_LIMIT, VLLM_KEY, connected_document,
+    created, document, listed, mutate, padded, running_small_pod,
 };
 
 const PREFIX: &str = "b10x-llm-gateway: ";
@@ -844,4 +845,110 @@ fn d2_sigint_stops_the_server() {
             .any(|line| line == "b10x-llm-gateway: stopped by SIGINT accepted=0 completed=0"),
         "{lines:?}"
     );
+}
+
+// --- story:live-runpod-wiring: inert in the shipped binary until story:pod-proxy-tls ----------
+
+const CHAT_BODY: &str = r#"{"model":"small","messages":[{"role":"user","content":"hi"}]}"#;
+
+fn post_chat(address: SocketAddr) -> String {
+    exchange(
+        address,
+        &format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nHost: gateway\r\n\
+             Authorization: Bearer {OWNER_SECRET}\r\ncontent-type: application/json\r\n\
+             content-length: {}\r\n\r\n{CHAT_BODY}",
+            CHAT_BODY.len()
+        ),
+    )
+}
+
+/// The binary cannot open the pod's `https://` endpoint yet, so a pod it started would be
+/// billed and never serve: a document that declares a `connectors` connection is refused
+/// `config:value` before anything is read, called or bound, and the connectors fixture receives
+/// no invocation at all (no `pods.list`, no `pod.create`). The fixture is scripted to answer a
+/// listing and a create, so a binary that called it would be seen. Nothing secret reaches
+/// standard error (criterion 2). Criterion 1 is proved at the library level by
+/// `tests/live_runpod.rs`, which no document reaches.
+#[test]
+fn live_a_connectors_document_is_refused_and_the_fixture_receives_nothing() {
+    let fixture = Fixture::new("live-inert");
+    let connectors = Connectors::new(&fixture);
+    connectors.script(&serde_json::json!({
+        "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "operations invoke pod.create": [created(&running_small_pod())],
+    }));
+    for hold in [0, 5] {
+        let config = fixture.config(&connected_document(
+            &fixture,
+            "127.0.0.1:0",
+            &connectors,
+            hold,
+        ));
+        let finished = run_config(&config);
+        assert_refused(&finished, "config:value");
+        assert!(
+            finished.stderr.contains(
+                "providers.runpod.connectors cannot be served until the binary speaks TLS"
+            ),
+            "{:?}",
+            finished.stderr
+        );
+        assert!(
+            !finished.stderr.contains("listening on"),
+            "{:?}",
+            finished.stderr
+        );
+        for secret in [VLLM_KEY, OWNER_SECRET] {
+            assert!(!finished.stderr.contains(secret), "{:?}", finished.stderr);
+            assert!(!finished.stdout.contains(secret), "{:?}", finished.stdout);
+        }
+    }
+    assert!(
+        connectors.calls().is_empty(),
+        "the fixture received {:?}",
+        connectors.calls()
+    );
+    // The control: the same document without its `connectors` table serves.
+    let text = connected_document(&fixture, "127.0.0.1:0", &connectors, 0);
+    let table = format!("\n[providers.runpod.connectors]\n{}", connectors.table());
+    let server = Server::start(&fixture.config(&mutate(&text, &table, "")));
+    server.stop();
+    assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
+}
+
+/// A model whose provider declares no connection is answered `target-unavailable`: the shipped
+/// binary has no other transport to start its pod with.
+#[test]
+fn live_a_model_without_a_connection_is_target_unavailable() {
+    let fixture = Fixture::new("live-unconnected");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let server = Server::start(&config);
+    let answer = post_chat(server.address);
+    assert_eq!(status(&answer), "503", "{answer:?}");
+    assert!(answer.contains("target-unavailable"), "{answer:?}");
+    server.stop();
+}
+
+/// Criterion 3: no command-line option selects the emulator, or any transport.
+#[test]
+fn live_no_option_selects_the_emulator() {
+    for args in [
+        &["--emulated"][..],
+        &["--emulator"],
+        &["--transport", "emulated"],
+        &["--runpod", "emulated"],
+    ] {
+        let finished = run(args);
+        assert_eq!(
+            finished.status.code(),
+            Some(2),
+            "{args:?}: {:?}",
+            finished.stderr
+        );
+    }
+    let help = run(&["--help"]).stdout.to_ascii_lowercase();
+    for absent in ["emulat", "transport", "fake"] {
+        assert!(!help.contains(absent), "--help offers {absent:?}: {help}");
+    }
 }

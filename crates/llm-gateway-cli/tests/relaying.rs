@@ -284,10 +284,10 @@ fn b8_relaying_needs_every_models_vllm_key_file() {
 
 #[test]
 fn b8_the_shipped_binary_composes_no_emulator_and_no_relay_seam() {
-    // Behaviour: the gateway `start` composes, which is what `main` runs, relays nothing.
-    // Were it composed through `start_relaying` with any transport, the wire path would be
-    // served and this request would reach the pool; without a relay a wire path is
-    // inspection-only and refuses `POST`.
+    // Behaviour: the gateway `start` composes, which is what `main` runs, has no transport but
+    // `ConnectorsRunpod` (story:live-runpod-wiring). This document names no connectors
+    // connection, so the model is answered `target-unavailable` and no pool is asked. Were it
+    // composed through `start_relaying` with the emulator, the emulated pod would answer.
     let fixture = Fixture::new("b8-shipped");
     let deployment = deployment(&fixture, |text| text);
     let running = llm_gateway_cli::start(&deployment).unwrap();
@@ -298,9 +298,9 @@ fn b8_the_shipped_binary_composes_no_emulator_and_no_relay_seam() {
         "{\"model\":\"small\",\"messages\":[]}",
     );
     running.shutdown();
-    assert!(answer.starts_with("HTTP/1.1 405 "), "{answer}");
+    assert!(answer.starts_with("HTTP/1.1 503 "), "{answer}");
     assert!(
-        answer.contains("\"code\":\"method-not-allowed\""),
+        answer.contains("\"code\":\"target-unavailable\""),
         "{answer}"
     );
     // Source: only the seam's own module names the relay composition, and no source file

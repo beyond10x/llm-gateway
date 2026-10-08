@@ -11,9 +11,15 @@ mod support;
 
 use llm_gateway::ToolCalling;
 use llm_gateway_cli::{load, vllm_keys};
-use llm_runpod::{CloudType, NetworkVolume, Thinking};
-use std::net::SocketAddr;
-use support::{Fixture, VLLM_KEY, document, mutate, with_vllm_key};
+use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking};
+use std::{
+    net::SocketAddr,
+    path::{Path, PathBuf},
+    time::Duration,
+};
+use support::{
+    Fixture, VLLM_KEY, connectors_table, document, mutate, with_connectors, with_vllm_key,
+};
 
 fn base(fixture: &Fixture) -> String {
     document("127.0.0.1:0", &fixture.owner_secret())
@@ -623,4 +629,232 @@ fn k29_an_enumerated_value_written_as_an_inline_table_is_refused_as_schema() {
         accepted.is_empty(),
         "accepted as inline tables: {accepted:?}"
     );
+}
+
+// --- The provider's connectors connection (story:live-runpod-wiring) --------------------------
+
+const EXECUTABLE: &str = "/opt/connectors/bin/connectors";
+const WORK: &str = "/var/lib/gateway/connectors";
+
+fn connected(fixture: &Fixture, lines: &str) -> String {
+    with_connectors(&base(fixture), lines)
+}
+
+fn table() -> String {
+    connectors_table(Path::new(EXECUTABLE), Path::new(WORK))
+}
+
+#[test]
+fn connectors_a_provider_without_the_table_names_no_connection() {
+    let fixture = Fixture::new("connectors-absent");
+    let deployment = load(&fixture.config(&base(&fixture))).unwrap();
+    assert_eq!(deployment.providers["runpod"].connectors, None);
+}
+
+#[test]
+fn connectors_the_table_maps_onto_the_transport_binding_with_a_60_second_default() {
+    let fixture = Fixture::new("connectors-binding");
+    let deployment = load(&fixture.config(&connected(&fixture, &table()))).unwrap();
+    assert_eq!(
+        deployment.providers["runpod"].connectors,
+        Some(ConnectorsBinding {
+            executable: PathBuf::from(EXECUTABLE),
+            adapter: "gpu".to_owned(),
+            connection: "conn-1".to_owned(),
+            work_directory: PathBuf::from(WORK),
+            timeout: Duration::from_secs(60),
+        })
+    );
+    let explicit = format!("{}timeout_seconds = 5\n", table());
+    let deployment = load(&fixture.config(&connected(&fixture, &explicit))).unwrap();
+    assert_eq!(
+        deployment.providers["runpod"]
+            .connectors
+            .as_ref()
+            .map(|binding| binding.timeout),
+        Some(Duration::from_secs(5))
+    );
+}
+
+#[test]
+fn connectors_every_range_boundary_is_accepted() {
+    let fixture = Fixture::new("connectors-bounds");
+    let long_path = format!("/{}", "p".repeat(1023));
+    let long_name = "a".repeat(128);
+    for (case, lines) in [
+        ("timeout 1", format!("{}timeout_seconds = 1\n", table())),
+        ("timeout 600", format!("{}timeout_seconds = 600\n", table())),
+        (
+            "a 1024-byte executable",
+            connectors_table(Path::new(&long_path), Path::new(WORK)),
+        ),
+        (
+            "a 1024-byte work directory",
+            connectors_table(Path::new(EXECUTABLE), Path::new(&long_path)),
+        ),
+        (
+            "a 128-character adapter and connection",
+            format!(
+                "executable = \"{EXECUTABLE}\"\nadapter = \"{long_name}\"\n\
+                 connection = \"{long_name}\"\nwork_directory = \"{WORK}\"\n"
+            ),
+        ),
+        (
+            "an adapter and connection of every printable class",
+            format!(
+                "executable = \"{EXECUTABLE}\"\nadapter = \"a-B_9.x:y\"\n\
+                 connection = \"conn/1@2\"\nwork_directory = \"{WORK}\"\n"
+            ),
+        ),
+    ] {
+        if let Err(refusal) = load(&fixture.config(&connected(&fixture, &lines))) {
+            panic!("{case}: refused {refusal}");
+        }
+    }
+}
+
+#[test]
+fn connectors_every_value_outside_its_rule_is_refused() {
+    let fixture = Fixture::new("connectors-out-of-rule");
+    let long_path = format!("/{}", "p".repeat(1024));
+    let long_name = "a".repeat(129);
+    let named = |adapter: &str, connection: &str| {
+        format!(
+            "executable = \"{EXECUTABLE}\"\nadapter = \"{adapter}\"\n\
+             connection = \"{connection}\"\nwork_directory = \"{WORK}\"\n"
+        )
+    };
+    let cases = [
+        ("timeout 0", format!("{}timeout_seconds = 0\n", table())),
+        ("timeout 601", format!("{}timeout_seconds = 601\n", table())),
+        (
+            "a relative executable",
+            connectors_table(Path::new("connectors"), Path::new(WORK)),
+        ),
+        (
+            "a relative work directory",
+            connectors_table(Path::new(EXECUTABLE), Path::new("work")),
+        ),
+        (
+            "a 1025-byte executable",
+            connectors_table(Path::new(&long_path), Path::new(WORK)),
+        ),
+        (
+            "a 1025-byte work directory",
+            connectors_table(Path::new(EXECUTABLE), Path::new(&long_path)),
+        ),
+        (
+            "an executable with a control character",
+            connectors_table(Path::new("/opt/conn\\u0007ectors"), Path::new(WORK)),
+        ),
+        (
+            "a work directory with a control character",
+            connectors_table(Path::new(EXECUTABLE), Path::new("/var/w\\tork")),
+        ),
+        ("an empty adapter", named("", "conn-1")),
+        ("an adapter read as an option", named("--adapter", "conn-1")),
+        ("an adapter with a space", named("g pu", "conn-1")),
+        ("a 129-character adapter", named(&long_name, "conn-1")),
+        ("a non-ASCII adapter", named("gpü", "conn-1")),
+        ("an empty connection", named("gpu", "")),
+        ("a connection read as an option", named("gpu", "-c")),
+        ("a connection with a space", named("gpu", "conn 1")),
+        ("a 129-character connection", named("gpu", &long_name)),
+    ];
+    for (case, lines) in cases {
+        match load(&fixture.config(&connected(&fixture, &lines))) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:value", "{case}"),
+        }
+    }
+}
+
+#[test]
+fn connectors_at_most_one_provider_declares_a_connection() {
+    let fixture = Fixture::new("connectors-two");
+    let text = connected(&fixture, &table());
+    let second = format!(
+        "{text}\n[providers.other]\nkind = \"runpod-vllm\"\n\n\
+         [providers.other.connectors]\n{}",
+        table()
+    );
+    match load(&fixture.config(&second)) {
+        Ok(_) => panic!("two connected providers: accepted"),
+        Err(refusal) => assert_eq!(refusal.code(), "config:value"),
+    }
+    // The control: a second provider without a connection is a valid document.
+    let unconnected = format!("{text}\n[providers.other]\nkind = \"runpod-vllm\"\n");
+    assert!(load(&fixture.config(&unconnected)).is_ok());
+}
+
+#[test]
+fn connectors_an_unknown_missing_or_mistyped_key_is_refused_as_schema() {
+    let fixture = Fixture::new("connectors-schema");
+    let without = |key: &str| {
+        table()
+            .split_inclusive('\n')
+            .filter(|line| !line.starts_with(key))
+            .collect::<String>()
+    };
+    let cases = [
+        ("an unknown key", format!("{}region = \"eu\"\n", table())),
+        ("no executable", without("executable")),
+        ("no adapter", without("adapter")),
+        ("no connection", without("connection")),
+        ("no work_directory", without("work_directory")),
+        (
+            "a string timeout",
+            format!("{}timeout_seconds = \"60\"\n", table()),
+        ),
+        (
+            "a negative timeout",
+            format!("{}timeout_seconds = -1\n", table()),
+        ),
+    ];
+    for (case, lines) in cases {
+        match load(&fixture.config(&connected(&fixture, &lines))) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:schema", "{case}"),
+        }
+    }
+}
+
+/// Criterion 3: no document key selects the emulator, or any transport but the production one.
+/// Every spelling a reader might try, at every level a transport could be named, is outside the
+/// closed document.
+#[test]
+fn connectors_no_document_key_selects_the_emulator() {
+    let fixture = Fixture::new("connectors-no-emulator");
+    let text = connected(&fixture, &table());
+    assert!(
+        load(&fixture.config(&text)).is_ok(),
+        "the control is refused"
+    );
+    let mut accepted = Vec::new();
+    for key in [
+        "emulated",
+        "emulator",
+        "transport",
+        "runpod_transport",
+        "fake",
+    ] {
+        for (level, find) in [
+            ("top level", "listen = "),
+            ("provider", "kind = \"runpod-vllm\"\n"),
+            ("connectors", "adapter = \"gpu\"\n"),
+            ("model", "max_model_len = 1024\n"),
+        ] {
+            for value in ["true", "\"emulated\""] {
+                let line = format!("{key} = {value}\n");
+                let mutated = mutate(&text, find, &format!("{line}{find}"));
+                match load(&fixture.config(&mutated)) {
+                    Ok(_) => accepted.push(format!("{level}: {line}")),
+                    Err(refusal) => {
+                        assert_eq!(refusal.code(), "config:schema", "{level}: {line}");
+                    }
+                }
+            }
+        }
+    }
+    assert!(accepted.is_empty(), "accepted: {accepted:?}");
 }

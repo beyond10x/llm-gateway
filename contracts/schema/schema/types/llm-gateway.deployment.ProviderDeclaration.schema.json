@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8e882b8982412b7561017fcd6bea168c19cc7a1ce5fd35e27bf9c1c8c7f198ec",
-    "contract_digest": "slice-sha256/2:d874b243bc9f3f6f3f65ec78ccb1e4ae1de4d64fa4f70eb9af9704ffd4791462",
+    "source_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
+    "contract_digest": "slice-sha256/2:06ccda5db8b730e79cf60dc1f00b90ecb0741aa0f78ac0849322cd897e03b35e",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -19,6 +19,37 @@
         "Community"
       ]
     },
+    "llm-gateway.deployment.ConnectorsDeclaration": {
+      "title": "ConnectorsDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ConnectorsDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "executable": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "work_directory": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "executable",
+        "adapter",
+        "connection",
+        "work_directory",
+        "timeout_seconds"
+      ],
+      "additionalProperties": false
+    },
     "llm-gateway.deployment.ProviderDeclaration": {
       "title": "ProviderDeclaration",
       "x-ess-name": "llm-gateway.deployment.ProviderDeclaration",
@@ -30,6 +61,9 @@
         },
         "cloud_type": {
           "$ref": "#/$defs/llm-gateway.deployment.CloudType"
+        },
+        "connectors": {
+          "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
         }
       },
       "required": [

@@ -11,11 +11,15 @@
 //! this, and only tests call it, with `EmulatedRunpod` and loopback pods.
 
 use crate::{
-    config::{Deployment, Model},
+    config::{Deployment, Model, Wire},
     keys::VllmKeys,
     refusal::{Refusal, StartupRefusal},
+    serve::{Running, Stopped, inventory, owner_verifier},
 };
-use llm_gateway::{RelayStream, RelayTarget, RelayTargets, TargetBearer};
+use llm_gateway::{
+    Gateway, Label, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, ShutdownReport,
+    TargetBearer,
+};
 use llm_runpod::{
     Clock, ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry, PoolError, RunpodModel,
     RunpodPool, RunpodTransport, StreamLease,
@@ -23,11 +27,12 @@ use llm_runpod::{
 use std::{
     collections::BTreeMap,
     io,
+    net::SocketAddr,
     sync::{
-        Arc,
+        Arc, Condvar, Mutex, PoisonError,
         atomic::{AtomicU64, Ordering},
     },
-    thread,
+    thread::{self, JoinHandle},
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -123,7 +128,11 @@ pub fn compute_authorization() -> Result<ComputeAuthorization, Refusal> {
 /// no zero window, so it is 1 ms, and the pod is stopped by the first cleanup pass that finds it
 /// quiet, never sooner than its measured cold start.
 pub const fn idle_timeout_ms(minutes: u64) -> u64 {
-    minutes.saturating_mul(60_000)
+    if minutes == 0 {
+        1
+    } else {
+        minutes.saturating_mul(60_000)
+    }
 }
 
 /// The Runpod secret the model's pod reads its vLLM key from: `vllm_<alias>`, with every `-`
@@ -340,6 +349,144 @@ impl RelayTarget for PodTarget {
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
         self.connector.connect(&self.authority)
     }
+}
+
+/// The pool's cleanup pass, run every [`CLEANUP_INTERVAL`] on its own thread until stopped.
+struct Cleanup {
+    stop: Arc<(Mutex<bool>, Condvar)>,
+    thread: JoinHandle<()>,
+}
+
+impl Cleanup {
+    fn start(pass: impl Fn() + Send + 'static) -> Self {
+        let stop = Arc::new((Mutex::new(false), Condvar::new()));
+        let stopped = Arc::clone(&stop);
+        let thread = thread::spawn(move || {
+            let (lock, wake) = &*stopped;
+            let mut stopping = lock.lock().unwrap_or_else(PoisonError::into_inner);
+            loop {
+                let (next, _) = wake
+                    .wait_timeout_while(stopping, CLEANUP_INTERVAL, |stop| !*stop)
+                    .unwrap_or_else(PoisonError::into_inner);
+                if *next {
+                    return;
+                }
+                drop(next);
+                pass();
+                stopping = lock.lock().unwrap_or_else(PoisonError::into_inner);
+            }
+        });
+        Self { stop, thread }
+    }
+
+    fn stop(self) {
+        let (lock, wake) = &*self.stop;
+        *lock.lock().unwrap_or_else(PoisonError::into_inner) = true;
+        wake.notify_all();
+        drop(self.thread.join());
+    }
+}
+
+/// A gateway that relays model calls to Runpod pods, and the pool's cleanup pass beside it.
+pub struct Relaying {
+    running: Running,
+    cleanup: Cleanup,
+}
+
+impl Relaying {
+    pub fn local_addr(&self) -> SocketAddr {
+        self.running.local_addr()
+    }
+
+    /// Drains and stops the gateway gracefully now, then stops the cleanup pass.
+    pub fn shutdown(self) -> ShutdownReport {
+        let report = self.running.shutdown();
+        self.cleanup.stop();
+        report
+    }
+
+    /// As [`Running::wait_for_stop`], then stops the cleanup pass.
+    pub fn wait_for_stop(self) -> Stopped {
+        let stopped = self.running.wait_for_stop();
+        self.cleanup.stop();
+        stopped
+    }
+}
+
+fn relay_label(value: &str) -> Result<Label, Refusal> {
+    Label::new(value).map_err(|error| {
+        Refusal::new(
+            StartupRefusal::ConfigValue,
+            format!("{value:?} cannot be relayed as a model name: {error}"),
+        )
+    })
+}
+
+const fn relay_wire(wire: Wire) -> llm_gateway::Wire {
+    match wire {
+        Wire::Chat => llm_gateway::Wire::Chat,
+        Wire::Responses => llm_gateway::Wire::Responses,
+        Wire::Messages => llm_gateway::Wire::Messages,
+    }
+}
+
+/// Composes the gateway like [`crate::start`], and also relays each model on its wires to the
+/// pod a `RunpodPool` over `transport` hands out, sending the model's vLLM key as the bearer
+/// (row B8). Every model must name a `vllm_api_key_file`. The pool runs one cleanup pass before
+/// the gateway is marked ready and then one every [`CLEANUP_INTERVAL`] until the stop.
+///
+/// The shipped binary has no Runpod transport and never calls this (story:live-runpod-wiring);
+/// it is the seam a test composes with `EmulatedRunpod` and loopback pods.
+///
+/// # Errors
+/// As [`crate::start`], plus `config:value` for a model the pool cannot run or that names no
+/// `vllm_api_key_file`.
+pub fn start_relaying<T: RunpodTransport + Send + 'static>(
+    deployment: &Deployment,
+    transport: T,
+    pods: Arc<dyn PodConnector>,
+    clock: Arc<dyn Clock>,
+) -> Result<Relaying, Refusal> {
+    let verifier = owner_verifier(deployment)?;
+    let vllm_keys = crate::keys::vllm_keys(deployment)?;
+    let inventory = inventory(deployment)?;
+    let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
+    let targets = PoolTargets::new(deployment, &vllm_keys, Arc::clone(&pool), pods)?;
+    let mut models = Vec::with_capacity(deployment.models.len());
+    for (alias, model) in &deployment.models {
+        let wires = model.wires.iter().copied().map(relay_wire).collect();
+        // The pod serves the model under its alias (`--served-model-name`), so the upstream
+        // name is the alias too.
+        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires);
+        models.push(relayed.map_err(|error| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("models.{alias}: {error}"),
+            )
+        })?);
+    }
+    let relay = Relay::new(models, Arc::new(targets))
+        .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?;
+    let signals = Running::install_signals()?;
+    let bind = deployment.gateway.bind;
+    let handle = Gateway::bind_with_relay(
+        deployment.gateway.clone(),
+        Arc::new(verifier),
+        inventory,
+        relay,
+    )
+    .map_err(|error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")))?;
+    // One pass before serving: it sweeps the pods a previous run of this controller left. A
+    // refused pass changes nothing, and the next one runs on time.
+    let _swept = pool.reap();
+    let cleanup = Cleanup::start(move || {
+        let _report = pool.reap();
+    });
+    handle.mark_ready();
+    Ok(Relaying {
+        running: Running::from_parts(handle, signals, vllm_keys),
+        cleanup,
+    })
 }
 
 #[cfg(test)]

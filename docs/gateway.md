@@ -149,7 +149,14 @@ A request to a wire path is decided in this order:
    `src/lib.rs:470-504`). Every other byte reaches the target unchanged: llmgw re-serialises the
    document with sorted keys, llm-gateway replaces those values in place.
 7. `acquire` (`target-unavailable` when it hands out none), then `POST` to the same path at the
-   target with `host` set to the target's authority and a `content-length`.
+   target with `host` set to the target's authority and a `content-length`. A target whose
+   `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
+   the model's vLLM key. A target without one is sent no `authorization`. The head is the
+   gateway's own and forwards no header of the client's request, so the owner's credential never
+   reaches a target. A `TargetBearer` follows the owner material's rules, refused as
+   `bearer:empty`, `bearer:too-large` (over `owner-credential-bytes`) and
+   `bearer:not-printable-ascii`, so it is one token in the line it is written into; it is
+   redacted in `Debug` and overwritten when dropped.
 8. A connection that fails, a request that cannot be written, an answer head that never arrives
    or is malformed, and a `502`, `503` or `504` answer each report the target to `invalidate` by
    its authority and answer `upstream-failed` (502). Naming the authority lets the pool drop the

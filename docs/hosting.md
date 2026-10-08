@@ -317,6 +317,35 @@ declared one, or names an undeclared model, is not sent.
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out.
 
+### The pool the binary composes
+
+`llm_gateway_cli::start_relaying` composes one `RunpodPool` from the deployment document and
+relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). The
+shipped binary has no Runpod transport and never calls it; story:live-runpod-wiring supplies one.
+Its tests run it over `EmulatedRunpod` and a loopback pod. Every input is fixed or read from the
+document (`spec/domains/deployment.yaml`):
+
+| Input | Source | Value |
+| --- | --- | --- |
+| `ComputeAuthorization` | fixed | ledger `b10x-llm-gateway`, reservation `unmetered`; no budget ledger is consulted yet |
+| clock | fixed | `WallClock`: system time in Unix milliseconds, never moving backwards |
+| `LeaseRegistry` | fixed | one empty in-process registry per run |
+| `HostingPolicy` | fixed, and the document | controller `b10x-llm-gateway`, provider `runpod`, account `default`, ledger `b10x-llm-gateway`, `max_lifetime_ms` 86400000 (24 h), `lease_ms` 300000 (5 min); `max_active` is the number of declared models |
+| `RunpodModel` | the document, and fixed | `hf_model`, `image`, `gpu_types`, `disk_gb`, the volume, `data_center_ids` and the vLLM settings from `[models.<alias>]`; `cloud_type` from its provider; `startup_deadline_ms` from `start_wait_seconds`, which is also how long a request waits for the pod; `idle_timeout_ms` from `idle_timeout_minutes`. Fixed: `crash_restart_limit` 2, `crash_window_ms` 600000, and `api_key_secret` `vllm_<alias>` with every `-` and `.` written `_` |
+
+Every relayed model must name a `vllm_api_key_file` (`config:value` otherwise), because its pod
+always expects the key. The pool runs one cleanup pass before the gateway is marked ready, which
+sweeps what a previous run of this controller left, and then one every 60 seconds until the stop.
+
+**`idle_timeout_minutes = 0` means no idle grace** (row K27). The pod is stopped by the first
+cleanup pass that finds it with no request in flight, and never sooner than its measured cold
+start, the floor every idle limit has. `RunpodModel` takes no zero window, so 0 is written as
+1 ms. `k27_*` in `crates/llm-gateway-cli/tests/relaying.rs` prove both bounds.
+
+A request through the relay that fails is not dropped by the pool: `invalidate` changes nothing,
+and the pool's own observation retires a pod that stopped serving, crash-loops, exited or refused
+its key.
+
 **Open: orphan and inherited terminations bypass the controller.** An inherited pod whose record
 is parked in `ownership-lost` is terminated through the provider too, because the controller
 refuses to stop a resource labelled for another owner; its record is then discharged by the next

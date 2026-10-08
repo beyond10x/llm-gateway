@@ -167,7 +167,6 @@ fn b8_a_chat_request_reaches_the_pod_with_the_models_vllm_key_and_its_answer_rea
         Arc::new(ManualClock::new(1_000)),
     )
     .unwrap();
-    assert!(running.relaying());
     let answer = post(
         running.local_addr(),
         "/v1/chat/completions",

@@ -620,16 +620,34 @@ pub(crate) fn serve(
         RefusalCode::UpstreamFailed
     };
     let mut connection = target.connect().map_err(|_| failed())?;
-    let request = format!(
-        "POST {} HTTP/1.1\r\nhost: {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+    // The head is the gateway's own: no header of the client's request is forwarded, so the
+    // owner's credential never reaches a target. The target's bearer is one printable token
+    // (`TargetBearer::new`), so it cannot end the line it is written into.
+    let mut request = format!(
+        "POST {} HTTP/1.1\r\nhost: {}\r\n",
         admitted.wire.path(),
-        target.authority(),
-        rewritten.len()
+        target.authority()
+    )
+    .into_bytes();
+    if let Some(bearer) = target.bearer() {
+        request.extend_from_slice(b"authorization: Bearer ");
+        request.extend_from_slice(&bearer.0);
+        request.extend_from_slice(b"\r\n");
+    }
+    request.extend_from_slice(
+        format!(
+            "content-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            rewritten.len()
+        )
+        .as_bytes(),
     );
     let sent = connection
-        .write_all(request.as_bytes())
+        .write_all(&request)
         .and_then(|()| connection.write_all(&rewritten))
         .and_then(|()| connection.flush());
+    // The head holds the bearer's bytes: overwrite them as `TargetBearer` does its own.
+    request.fill(0);
+    std::hint::black_box(&request);
     drop(rewritten);
     if sent.is_err() {
         return Err(failed());

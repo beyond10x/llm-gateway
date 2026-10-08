@@ -33,8 +33,8 @@ domain: llm-gateway.deployment
 # the model's Runpod secret, which the pod receives as `{{ RUNPOD_SECRET_<name> }}`. The binary
 # reads each file once at startup and holds the value redacted.
 # DECIDED: the relay (row B8) is composed over one `RunpodPool` (`llm_gateway_cli::start_relaying`):
-# every model is relayed on its wires to the pod the pool hands out for its alias, with the
-# model's vLLM key as `authorization: Bearer <key>`. A model relayed this way must name a
+# every model is relayed on its wires, with its `tool_calling`, to the pod the pool hands out for
+# its alias, with the model's vLLM key as `authorization: Bearer <key>`. A model relayed this way must name a
 # `vllm_api_key_file` (`config:value` otherwise): its pod always expects the key. The shipped
 # binary has no Runpod transport, so `start` composes no relay and the binary relays nothing until
 # story:live-runpod-wiring supplies one; `start_relaying` takes the transport, the connection to a
@@ -199,6 +199,15 @@ types:
   #                         request waits for the pod (row K28)
   #   vllm_api_key_file     optional; the file holding the key the model's pod's vLLM server
   #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
+  #   tool_calling          `parsed` or `absent` (llm-gateway.clients.ToolCalling), default
+  #                         `absent`; any other value is `config:schema`
+  # DECIDED 2026-10-08 (story:model-tool-calling): `tool_calling` is the model's own key, and a
+  # document that omits it declares `Absent`. An omitted key then refuses a tool request as
+  # `tools-not-served` before a pod is asked for, instead of starting and billing a pod that
+  # cannot answer it; a model is served tools only when the operator says its pod parses them
+  # (`--enable-auto-tool-choice` and a `--tool-call-parser` in `extra_vllm_args`). The binary
+  # does not check those flags against the declaration (llm-gateway.clients ToolCalling says
+  # why). Proved by `tool_calling_*` in crates/llm-gateway-cli/tests/config.rs.
   - name: llm-gateway.deployment.ModelDeclaration
     kind: struct
     fields:
@@ -223,6 +232,7 @@ types:
       - {name: start_wait_seconds, type: Integer}
       - {name: request_hold_seconds, type: Integer}
       - {name: vllm_api_key_file, type: 'Optional<String>'}
+      - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
   # becomes the gateway's shared-secret owner verifier; at least one model is required. Each

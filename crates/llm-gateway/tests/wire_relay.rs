@@ -1,6 +1,6 @@
 //! The relay of the three model-call wires (story:wire-relay), one test per behaviour, each
 //! named after the row of `docs/llmgw-capability-matrix.md` it closes: R6, R7, R8, W1, W2, W3,
-//! W4, W5, W6, W7, K11 and B8. The specification is the `Relay` command of
+//! W4, W5, W6, W7, K11 and B8, and tool calling (`tools_*`). The specification is the `Relay` command of
 //! `spec/domains/gateway.yaml`.
 //!
 //! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
@@ -11,7 +11,7 @@
 use llm_gateway::{
     Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay, RelayError, RelayModel,
     RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
-    TargetRefusal, TokenError, Wire,
+    TargetRefusal, TokenError, ToolCalling, Wire,
 };
 use std::{
     io::{self, Read, Write},
@@ -1645,4 +1645,114 @@ fn b8_a_bearer_follows_the_owner_material_rules() {
     }
     let bearer = TargetBearer::new(VLLM_KEY.as_bytes().to_vec()).unwrap();
     assert!(!format!("{bearer:?}").contains(VLLM_KEY));
+}
+
+// --- Tool calling: a tool request to a model that cannot parse tool calls --------------------
+
+const TOOLS_NOT_SERVED: &str = "{\"error\":{\"code\":\"tools-not-served\",\"message\":\"the model does not serve tool calls\"}}";
+
+#[test]
+fn tools_a_tool_request_to_a_model_without_tool_calling_is_refused_without_asking_for_a_target() {
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let declared = RelayModel::new(label("text"), label("served-text"), all_wires())
+        .unwrap()
+        .with_tool_calling(ToolCalling::Absent);
+    // A model that says nothing about tool calling takes `Absent`.
+    let undeclared =
+        RelayModel::new(label("undeclared"), label("served-undeclared"), all_wires()).unwrap();
+    assert_eq!(undeclared.tool_calling(), ToolCalling::Absent);
+    let gateway = Relayed::start(vec![declared, undeclared], &source);
+
+    for (path, body) in [
+        (
+            "/v1/chat/completions",
+            "{\"model\":\"text\",\"tools\":[{\"type\":\"function\"}]}",
+        ),
+        (
+            "/v1/responses",
+            "{\"tools\" : [ {} ] , \"model\":\"text\",\"input\":\"hi\"}",
+        ),
+        (
+            "/v1/messages",
+            "{\"model\":\"text\",\"tools\":[{\"name\":\"shell\"}],\"messages\":[]}",
+        ),
+        // A second top-level `tools` that is non-empty is refused, whichever the target reads.
+        (
+            "/v1/chat/completions",
+            "{\"model\":\"text\",\"tools\":[],\"tools\":[{}]}",
+        ),
+        (
+            "/v1/chat/completions",
+            "{\"model\":\"undeclared\",\"tools\":[{}]}",
+        ),
+    ] {
+        let answer = gateway.post_text(path, body);
+        assert_eq!(
+            answer.refused(),
+            (400, Some("tools-not-served".into())),
+            "{path} {body}"
+        );
+        assert_eq!(answer.text(), TOOLS_NOT_SERVED);
+    }
+    assert_eq!(
+        source.acquired(),
+        Vec::<String>::new(),
+        "a tool request to a model without tool calling woke a target"
+    );
+    assert!(pod.seen().is_empty());
+}
+
+#[test]
+fn tools_a_tool_request_to_a_model_with_tool_calling_parsed_is_relayed_unchanged() {
+    let pod = Pod::start(vec![ok_json("{\"id\":\"tool\"}")]);
+    let source = Source::of(&[&pod]);
+    let model = RelayModel::new(label("code"), label("served-code"), all_wires())
+        .unwrap()
+        .with_tool_calling(ToolCalling::Parsed);
+    assert_eq!(model.tool_calling(), ToolCalling::Parsed);
+    let gateway = Relayed::start(vec![model], &source);
+    let answer = gateway.post_text(
+        "/v1/chat/completions",
+        "{\"model\":\"code\",\"tools\":[{\"type\":\"function\"}]}",
+    );
+    assert_eq!(answer.text(), "{\"id\":\"tool\"}");
+    assert_eq!(source.acquired(), vec!["code"]);
+    let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    assert_eq!(
+        bodies,
+        vec!["{\"model\":\"served-code\",\"tools\":[{\"type\":\"function\"}]}"]
+    );
+}
+
+#[test]
+fn tools_a_request_offering_no_tool_to_a_model_without_tool_calling_is_relayed_unchanged() {
+    let bodies = [
+        // No `tools` key.
+        "{\"model\":\"text\",\"messages\":[]}",
+        // An empty array offers no tool.
+        "{\"model\":\"text\",\"tools\": [ ]}",
+        // Not an array: the target decides what it means.
+        "{\"model\":\"text\",\"tools\":null}",
+        "{\"model\":\"text\",\"tools\":{\"a\":1}}",
+        // Only the top level counts.
+        "{\"model\":\"text\",\"metadata\":{\"tools\":[{}]},\"messages\":[{\"tools\":[1]}]}",
+    ];
+    let pod = Pod::start(bodies.iter().map(|_| ok_json("{}")).collect());
+    let source = Source::of(&[&pod]);
+    let model = RelayModel::new(label("text"), label("served-text"), all_wires())
+        .unwrap()
+        .with_tool_calling(ToolCalling::Absent);
+    let gateway = Relayed::start(vec![model], &source);
+    for body in bodies {
+        let answer = gateway.post_text("/v1/chat/completions", body);
+        assert_eq!(answer.status, 200, "{body}: {}", answer.text());
+    }
+    assert_eq!(source.acquired().len(), bodies.len());
+    let seen: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    let expected: Vec<String> = bodies
+        .iter()
+        .map(|body| body.replacen("\"text\"", "\"served-text\"", 1))
+        .collect();
+    assert_eq!(seen, expected);
 }

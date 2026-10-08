@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:model-tool-calling
 kind: story
-status: draft
+status: active
 title: A model declares tool calling, and a tool request to a model without it is refused before a pod starts
 relations:
 - decomposes: epic:client-access
@@ -10,7 +10,6 @@ relations:
 - depends_on: story:provider-key-files
 - depends_on: story:cold-start-hold
 - depends_on: story:gateway-observability
-- depends_on: story:live-runpod-wiring
 scope:
 - confidence: inferred
   path: checks/conformance/src/gateway.rs
@@ -38,7 +37,10 @@ scope:
   path: spec/domains/deployment.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
-revision: 5
+revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "proposed", to: "active", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":4}}}
 ---
 ## Outcome
 
@@ -101,3 +103,10 @@ Ordered after this story through edges: `story:pod-proxy-tls` and `story:public-
 through `story:client-qualification`, `story:hosted-endpoints`, `story:target-fallback` and
 `story:gateway-translation` (`spec/domains/deployment.yaml`, `spec/domains/gateway.yaml`,
 `docs/gateway.md`, the `RefusalCode` set in `crates/llm-gateway/src/error.rs`).
+
+## Order changed 2026-10-08
+
+`depends_on story:live-runpod-wiring` was taken back: it ordered two stories that both change
+`spec/domains/deployment.yaml` and `crates/llm-gateway-cli/src/serve.rs`. The order is reversed:
+`story:live-runpod-wiring` now depends on this story. Criterion 5 uses the test seam
+`story:gateway-deployment` added, which exists on `main`.

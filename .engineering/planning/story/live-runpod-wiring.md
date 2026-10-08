@@ -2,13 +2,14 @@
 format: aep.planning-md/3
 id: story:live-runpod-wiring
 kind: story
-status: draft
+status: active
 title: The binary starts real pods through the production Runpod transport
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
 - depends_on: story:gateway-deployment
 - depends_on: story:runpod-production-transport
+- depends_on: story:model-tool-calling
 scope:
 - confidence: inferred
   path: crates/llm-gateway-cli/Cargo.toml
@@ -20,7 +21,10 @@ scope:
   path: docs/hosting.md
 - confidence: inferred
   path: spec/domains/deployment.yaml
-revision: 6
+revision: 9
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "proposed", to: "active", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":4}}}
 ---
 ## Outcome
 
@@ -72,3 +76,8 @@ keys) and `story:runpod-production-transport` (the transport).
 `crates/llm-gateway-cli/src/serve.rs`, `crates/llm-gateway-cli/src/config.rs`,
 `crates/llm-gateway-cli/Cargo.toml`, `crates/llm-gateway-cli/tests/binary.rs`,
 `spec/domains/deployment.yaml`, `docs/hosting.md`.
+
+## Order changed 2026-10-08
+
+Depends on `story:model-tool-calling` as well: both change `spec/domains/deployment.yaml` and
+`crates/llm-gateway-cli/src/serve.rs`, and this story lands after it.

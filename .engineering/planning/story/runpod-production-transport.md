@@ -2,13 +2,11 @@
 format: aep.planning-md/3
 id: story:runpod-production-transport
 kind: story
-status: draft
+status: active
 title: Runpod has a production REST/GraphQL transport
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
-- depends_on: story:hosting-spec-declarations
-- depends_on: story:spec-diff-gate
 scope:
 - confidence: inferred
   path: Cargo.toml
@@ -32,7 +30,10 @@ scope:
   path: docs/verification/runpod-transport.md
 - confidence: cited
   path: spec/domains/runpod.yaml
-revision: 20
+revision: 23
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T18:12:14Z", actor: "human:timo", revision: 22, decided_on: {"recorded":{"review_outcome":5}}}
+- {from: "proposed", to: "active", at: "2026-10-08T18:12:15Z", actor: "human:timo", revision: 23, decided_on: {"recorded":{"review_outcome":5}}}
 ---
 ## Acceptance
 
@@ -119,3 +120,21 @@ because connectors makes the Runpod API calls; the proxy URL is no longer format
 `provider.rs:146-148` (it comes from llm's description since `story:runpod-provider-description`);
 and `provider.rs:315` no longer holds the "no idempotency key" note, so the double-billing fact
 below is re-read from `docs/hosting.md` "GPU choice" when the story starts.
+
+## Acceptance 1 amended for connectors v0.36.0
+
+connectors v0.36.0 selects `pod.create`, `pods.list` and `pod.terminate` and no `GetPod`
+(connectors `docs/catalog-runpod.md`, "The shipped selection set"). Acceptance 1 therefore reads:
+create, list and terminate invoke `pod.create`, `pods.list` and `pod.terminate`; get is `pods.list`
+with the `id` filter. Each write carries an approval proof prepared and issued for its exact input
+(`approvals prepare`, `approvals issue`), and a create classified `unknown` is resolved by one
+`pods.list` on the pod's unique `name` (`CreateAnswer::Lost` until that read finds it). The rest of
+acceptance 1 stands.
+
+## Order changed 2026-10-08
+
+`depends_on story:hosting-spec-declarations` and `depends_on story:spec-diff-gate` were taken back:
+both were ordering edges for shared files (`spec/domains/runpod.yaml`, `docs/hosting.md`). The order
+is reversed: `story:hosting-spec-declarations` now depends on this story, and `story:spec-diff-gate`
+still follows `story:hosting-spec-declarations`. A rule `docs/hosting.md` promises that this story
+does not touch stays with `story:hosting-spec-declarations`.

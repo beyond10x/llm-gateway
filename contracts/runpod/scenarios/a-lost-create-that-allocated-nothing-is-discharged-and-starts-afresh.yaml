@@ -21,4 +21,4 @@ assert:
     - ready
     create_calls: 2
     pods:
-    - pod-1:b10x-llm-qwen:running
+    - pod1:b10x-llm-qwen:running

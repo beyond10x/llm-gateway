@@ -30,7 +30,7 @@ scope:
   path: docs/hosting.md
 - confidence: cited
   path: spec/domains/deployment.yaml
-revision: 5
+revision: 6
 ---
 ## Outcome
 
@@ -40,8 +40,8 @@ certificate verified against the platform's trust roots, before any request byte
 ## Why
 
 `RelayTarget::connect` leaves the transport, TLS included, to the embedding (`docs/gateway.md` "The
-relay"), and a Runpod pod is served at `https://<pod>-8000.proxy.runpod.net`
-(`crates/llm-runpod/src/provider.rs`, `docs/hosting.md:326-330`). `story:gateway-deployment` proves
+relay"), and a Runpod pod is served at `https://<pod>-8000.proxy.runpod.net/v1/`, the address llm 0.5.0's Runpod
+description gives (`llm_providers::descriptions::runpod()`, used by `crates/llm-runpod/src/provider.rs`; `docs/hosting.md`, the endpoint row). `story:gateway-deployment` proves
 the relay against a loopback pod, and no story gives the binary a TLS client
 (`docs/design/runpod-clients.md`, "What exists and what is missing"). `story:hosted-endpoints`
 reuses the client and the test-root seam this story adds.

@@ -20,17 +20,20 @@ scope:
   path: docs/hosting.md
 - confidence: inferred
   path: spec/domains/deployment.yaml
-revision: 3
+revision: 6
 ---
 ## Outcome
 
-The `b10x-llm-gateway` binary composes `RunpodProvider` over the production Runpod transport. It
-hands the transport the Runpod API key and each model's vLLM key, both read by
-`story:provider-key-files`: the transport needs the first for the API and the second for the
-readiness probe (row B6). A deployment that names `runpod_api_key_file` then starts real pods.
-The shipped binary never composes `EmulatedRunpod`. Without the key file it starts no pod and
-answers `target-unavailable`, following llm's rule that "a provider adapter never silently
-changes endpoints or billing accounts" (beyond10x/llm `AGENTS.md:18`).
+The `b10x-llm-gateway` binary composes `RunpodProvider` over the production Runpod transport.
+Rewritten 2026-10-08 for design choice D1 = A: the Runpod authorization is the connectors
+connection's, held in the connectors keyring, and the binary never holds the Runpod API key
+(`runpod_api_key_file` stays refused, `story:provider-key-files` acceptance 5). The binary hands
+the transport each model's vLLM key for the readiness probe (row B6), and reaches the control
+plane through the connectors owner process that runs beside it (`docs/design/runpod-clients.md`
+§ 4, "Work outside this repository"). The shipped binary never composes `EmulatedRunpod`. Without
+a reachable connectors connection it starts no pod and answers `target-unavailable`, following
+llm's rule that "a provider adapter never silently changes endpoints or billing accounts"
+(beyond10x/llm `AGENTS.md:18`).
 
 ## Why
 
@@ -42,22 +45,22 @@ binary that reaches a real pod.
 
 ## ESS first
 
-`spec/domains/deployment.yaml` declares the provider's `api_base_url` key (default: the Runpod
-API) before any code. It is the only way a test points the binary at a fixture.
+`spec/domains/deployment.yaml` declares the provider's connectors connection key (how the binary
+names the connectors connection and reaches its owner process) before any code. It is the only
+way a test points the binary at a fixture.
 
 ## Acceptance
 
-1. A process test sets `api_base_url` to a loopback fixture of the Runpod API and runs the binary.
-   A request for a cold model makes the fixture receive one create with the declared GPU types.
+1. A process test points the binary at a fixture of the connectors interface. A request for a
+   cold model makes the fixture receive one `CreatePod` invocation with the declared GPU types.
    The fixture's pod then receives the readiness probe with the model's vLLM key, and after that
    the relayed request.
-2. The Runpod key reaches the fixture as the API's authorization. Neither key appears in any
-   response or on any line of standard error.
-3. A document without `runpod_api_key_file` starts. A request for a Runpod-served model answers
-   `target-unavailable`, and the fixture receives nothing. A test checks this, and it also checks
-   that the binary has no option that selects the emulator.
-4. No test makes a paid call. A live run against Runpod is qualification evidence for llm
-   `story:llmgw-retirement` and is recorded there, outside the gate.
+2. No key appears in any response or on any line of standard error.
+3. Without a reachable connectors connection the binary starts, and a request for a
+   Runpod-served model answers `target-unavailable` while the fixture receives nothing. A test
+   checks this, and it also checks that the binary has no option that selects the emulator.
+4. No test makes a paid call. A live run against Runpod is qualification evidence, recorded by
+   `story:client-qualification`, outside the gate.
 
 ## Depends on
 

@@ -11,6 +11,7 @@ use std::{
     sync::Arc,
 };
 
+use llm_providers::{ProviderDescription, descriptions};
 use llm_provision::{
     CreateOutcome, CreateRequest, Dispatch, HostingProvider, Identifier, Inventory,
     ObservedResource, ProviderState, ResourceKey, StopOutcome,
@@ -52,6 +53,8 @@ pub struct RunpodProvider<T> {
     models: BTreeMap<Identifier, RunpodModel>,
     health: BTreeMap<String, Health>,
     clock: Arc<dyn Clock>,
+    /// llm's Runpod provider description: where a running pod serves inference.
+    description: ProviderDescription,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RunpodProvider<T> {
@@ -85,6 +88,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             models,
             health: BTreeMap::new(),
             clock,
+            description: descriptions::runpod(),
         }
     }
 
@@ -142,10 +146,22 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             Some(Probe::NotReady | Probe::Refused) => (Some(false), None),
             Some(Probe::Unreachable) | None => (None, None),
         };
+        // The address is llm's Runpod description filled with the pod id. It exists only for a
+        // running pod whose id the description accepts; any other pod reports none.
+        let endpoint = (pod.status == PodStatus::Running)
+            .then(|| self.description.inference_base_url(&pod.id).ok())
+            .flatten()
+            .map(|url| url.as_str().to_owned());
+        // A running pod with no address cannot serve anybody, whatever it answers, so it is
+        // never ready: no lease without an address is handed out, and its startup deadline
+        // retires it like a pod that never becomes ready.
+        let (ready, served_model) = if pod.status == PodStatus::Running && endpoint.is_none() {
+            (Some(false), None)
+        } else {
+            (ready, served_model)
+        };
         Some(ObservedResource {
-            // The proxy address exists only for a running pod; any other status reports none.
-            endpoint: (pod.status == PodStatus::Running)
-                .then(|| format!("https://{}-8000.proxy.runpod.net", pod.id)),
+            endpoint,
             key,
             state,
             ready,

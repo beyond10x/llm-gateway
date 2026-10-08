@@ -16,7 +16,7 @@ assert:
 - view: llm-gateway.runpod.LastExecution
   contains:
     results:
-    - inserted:pod-1
+    - inserted:pod1
     - ok
     - ready
     - ok
@@ -26,6 +26,6 @@ assert:
     - idle=[] retired=[] replaced=[] orphans=[]
     - idle=[qwen-1] retired=[] replaced=[] orphans=[]
     terminations:
-    - pod-2
+    - pod2
     pods:
-    - pod-1:llmgw-qwen:running
+    - pod1:llmgw-qwen:running

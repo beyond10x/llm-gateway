@@ -9,10 +9,10 @@
 
 mod support;
 
-use llm_gateway_cli::load;
+use llm_gateway_cli::{load, vllm_keys};
 use llm_runpod::{CloudType, NetworkVolume, Thinking};
 use std::net::SocketAddr;
-use support::{Fixture, document, mutate};
+use support::{Fixture, VLLM_KEY, document, mutate, with_vllm_key};
 
 fn base(fixture: &Fixture) -> String {
     document("127.0.0.1:0", &fixture.owner_secret())
@@ -418,7 +418,9 @@ const OUTSIDE_THE_SCHEMA: &[Case] = &[
         "[identity]\norigin = \"https://identity.example\"\ntenant = \"t\"\n\n[providers.runpod]",
     ),
     (
-        "a runpod_api_key_file",
+        // Row K7 under design choice D1 = A (docs/design/runpod-clients.md § 4): the Runpod API
+        // key is held by connectors, and the gateway never holds it.
+        "a runpod_api_key_file, which D1 = A leaves to connectors",
         "kind = \"runpod-vllm\"\n",
         "kind = \"runpod-vllm\"\nrunpod_api_key_file = \"/run/key\"\n",
     ),
@@ -461,6 +463,66 @@ const OUTSIDE_THE_SCHEMA: &[Case] = &[
     ),
     ("not TOML", "[models.small]", "[models.small"),
 ];
+
+// --- B9: each model's vLLM key, read from a trusted file -------------------------------------
+
+#[test]
+fn b9_the_vllm_api_key_file_is_optional() {
+    let fixture = Fixture::new("b9-optional");
+    let without = load(&fixture.config(&base(&fixture))).unwrap();
+    assert_eq!(without.models["small"].vllm_api_key_file, None);
+    assert!(vllm_keys(&without).unwrap().is_empty());
+
+    let key = fixture.vllm_key();
+    let with = load(&fixture.config(&with_vllm_key(&base(&fixture), &key))).unwrap();
+    assert_eq!(with.models["small"].vllm_api_key_file, Some(key));
+}
+
+#[test]
+fn b9_the_binary_holds_each_models_vllm_key_and_debug_prints_none() {
+    let fixture = Fixture::new("b9-held");
+    let small = fixture.vllm_key();
+    let large_key = "large-model-test-token-not-a-secret";
+    let large = fixture.write(
+        "vllm-key-large",
+        format!("{large_key}\r\n").as_bytes(),
+        0o600,
+    );
+    let text = with_vllm_key(&base(&fixture), &small);
+    let text = format!(
+        "{text}\n[models.large]\nprovider = \"runpod\"\nwires = [\"chat\"]\n\
+         context_window = 65536\nhf_model = \"example/large-model\"\n\
+         image = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\n\
+         max_model_len = 1024\nvllm_api_key_file = \"{}\"\n\
+         \n[models.keyless]\nprovider = \"runpod\"\nwires = [\"chat\"]\n\
+         context_window = 65536\nhf_model = \"example/keyless-model\"\n\
+         image = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\n\
+         max_model_len = 1024\n",
+        large.display()
+    );
+    let deployment = load(&fixture.config(&text)).unwrap();
+    let keys = vllm_keys(&deployment).unwrap();
+
+    // The value read, with the trailing newline or CRLF trimmed; a model without a key has none.
+    assert_eq!(keys.len(), 2);
+    assert_eq!(keys.get("small").unwrap().expose(), VLLM_KEY.as_bytes());
+    assert_eq!(keys.get("large").unwrap().expose(), large_key.as_bytes());
+    assert!(keys.get("keyless").is_none());
+
+    // Neither the map nor one key prints its value.
+    let printed = [
+        format!("{keys:?}"),
+        format!("{keys:#?}"),
+        format!("{:?}", keys.get("small").unwrap()),
+    ];
+    for text in &printed {
+        for value in [VLLM_KEY, large_key] {
+            assert!(!text.contains(value), "Debug prints a key: {text}");
+        }
+    }
+    assert!(printed[0].contains("small"), "{}", printed[0]);
+    assert!(printed[0].contains("REDACTED"), "{}", printed[0]);
+}
 
 #[test]
 fn k29_every_key_outside_the_closed_document_is_refused() {

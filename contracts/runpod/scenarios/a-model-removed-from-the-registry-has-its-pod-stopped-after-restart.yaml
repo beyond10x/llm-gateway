@@ -22,5 +22,5 @@ assert:
     cleanups:
     - idle=[] retired=[qwen-1] replaced=[] orphans=[]
     terminations:
-    - pod-1
+    - pod1
     stop_required: []

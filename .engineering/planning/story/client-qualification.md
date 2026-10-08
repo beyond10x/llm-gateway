@@ -17,7 +17,7 @@ scope:
   path: docs/verification/client-qualification.md
 - confidence: cited
   path: docs/verification/fixtures/claude-code-2.1.293-messages.json
-revision: 5
+revision: 6
 ---
 ## Outcome
 
@@ -72,5 +72,5 @@ duration is cross-checked against the per-call record `story:gateway-observabili
 `story:live-runpod-wiring`, `story:pod-proxy-tls`, `story:cold-start-hold` and
 `story:model-tool-calling`: together they are a binary that starts a real pod, reaches it over TLS,
 holds a cold request and refuses a tool request to a model that cannot answer it.
-`story:gateway-observability`: the per-call records criterion 5 reads. Blocked by
-`decision-blocker:qualification-spend`: a live run spends money.
+`story:gateway-observability`: the per-call records criterion 5 reads. Its spend ceiling is approved:
+`decision-blocker:qualification-spend` is cleared with a $15 ceiling for live runs.

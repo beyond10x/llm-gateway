@@ -829,7 +829,7 @@
         "scenario": "llm-gateway.hosting/authored/validating-and-listing-allocate-nothing"
       },
       "runpod/scenarios/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one.yaml": {
-        "digest": "sha256:68496f4ecb853d3ea2767ea3c2687ac5ae6b0e9a0b7b494fc67860ba0d759c90",
+        "digest": "sha256:ac21d1b61ce28a7ccfd6f8f9b6ec18895f9ad9fba5f35dbaa6fe8721add1657b",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one"
       },
@@ -844,17 +844,17 @@
         "scenario": "llm-gateway.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted"
       },
       "runpod/scenarios/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id.yaml": {
-        "digest": "sha256:9455ca67872419570e8b184984393b7fc23a87252f899714ecf80f2369ca196d",
+        "digest": "sha256:0b1deb6c8744bc097400929f5f86628a4692e3c44299b1599148cb11b19ad080",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id"
       },
       "runpod/scenarios/a-lost-create-that-allocated-nothing-is-discharged-and-starts-afresh.yaml": {
-        "digest": "sha256:00fc6a7e137923085b7a584018f6dc66eb5220c5c0184a9cd81783484c285ac5",
+        "digest": "sha256:a33a8e310fd5375af598aac9178445616769bb1ddb8b3d2164ee7cc816988203",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-lost-create-that-allocated-nothing-is-discharged-and-starts-afresh"
       },
       "runpod/scenarios/a-model-removed-from-the-registry-has-its-pod-stopped-after-restart.yaml": {
-        "digest": "sha256:6d807f9131cebb1fbaf394e95f8aa5381b10bc4ea746c411edecc15807442bfe",
+        "digest": "sha256:4d5321d24a8f311e67675664bc097dd3e0a2d3184a93901c114670625424893e",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-model-removed-from-the-registry-has-its-pod-stopped-after-restart"
       },
@@ -874,62 +874,62 @@
         "scenario": "llm-gateway.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override"
       },
       "runpod/scenarios/a-partial-listing-neither-discharges-nor-replaces-a-running-pod.yaml": {
-        "digest": "sha256:4d159f463e8110601cbba9263f80c64b948191c44444c486f5ac401c83d3145b",
+        "digest": "sha256:982bad2de09a7527b92a69ba9189455b636725b9615641aef3a08eb8f2854023",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-partial-listing-neither-discharges-nor-replaces-a-running-pod"
       },
       "runpod/scenarios/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order.yaml": {
-        "digest": "sha256:d2b5f77be3d10fb6e80b8c2db08e6acebfeb651d1da6f0531373acd3436d86b6",
+        "digest": "sha256:c4dad43da5514a323d7672338433a0025b5ed96c2a309c8ee8ebb615f1917407",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order"
       },
       "runpod/scenarios/a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated.yaml": {
-        "digest": "sha256:f071e0de9717a14f6f63666a7686682967d57f077db9c24b2a161d99fd37df9c",
+        "digest": "sha256:bc2cb335916e5a2d5357d26791be60082e78e6727206450e450e044654dc0ab6",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated"
       },
       "runpod/scenarios/a-pod-that-is-not-running-reports-no-endpoint.yaml": {
-        "digest": "sha256:cdaf13980157074f599e7846a74c625c27fd983eb164b96b0e66b5fa2d5bcaf3",
+        "digest": "sha256:ff545aa659a7b3f147ee39006b52f7f12bcaed30a9211a7108e1ff970f23674a",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-pod-that-is-not-running-reports-no-endpoint"
       },
       "runpod/scenarios/a-pod-that-misses-its-startup-deadline-is-terminated.yaml": {
-        "digest": "sha256:966c5ea62fd02352512a1d0195fb5f4e2291f6243bc9654f1f93ce189c414c1b",
+        "digest": "sha256:354b9acc5661dcc3282ba8f4d92254d09641554629ad69ac53d4123895692d86",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-pod-that-misses-its-startup-deadline-is-terminated"
       },
       "runpod/scenarios/a-pod-that-refuses-its-credential-is-terminated.yaml": {
-        "digest": "sha256:ff8e09d0781e36816f8bb1b68271081b5070c7b3869ba21399eb7041f8719086",
+        "digest": "sha256:cbc7954be6437c219af6cfdda9a737d5f5023d9cf62e49533062c9e3c6c753c7",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-pod-that-refuses-its-credential-is-terminated"
       },
       "runpod/scenarios/a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline.yaml": {
-        "digest": "sha256:0bbd2216db5d93075102249655179f67feb302135469c749beb0e03186559bc3",
+        "digest": "sha256:96283afe146880a299b0055eed0df2fc87ec042e497228f18525c99019426980",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline"
       },
       "runpod/scenarios/a-pod-that-vanishes-out-of-band-is-replaced-on-the-next-request.yaml": {
-        "digest": "sha256:046cd3028dbfd9eb0ec9b31f0e24f1597c32ef021572e463718443d6210aa4ba",
+        "digest": "sha256:a995577626bca30b4290c7e89da4b455c9cb77de878895bd2b139617614674f1",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-pod-that-vanishes-out-of-band-is-replaced-on-the-next-request"
       },
       "runpod/scenarios/a-request-while-the-pod-starts-waits-on-it-instead-of-creating-another.yaml": {
-        "digest": "sha256:cb34c64cbdbc285a501d2d64de663c5cd7033c439dbd690087a667369f1dc882",
+        "digest": "sha256:2874597de1a9705640128a8fec22393962fe85419d2598c6c231ef5c3f286a2e",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-request-while-the-pod-starts-waits-on-it-instead-of-creating-another"
       },
       "runpod/scenarios/a-restarted-pool-adopts-its-own-pod-by-exact-identity-without-creating.yaml": {
-        "digest": "sha256:4db3d31bf3a10bf909da8369a1655a7796c877d69ad9ab5c04fa4ab8cbdcf753",
+        "digest": "sha256:7f442455b35d80043244c91a308336e8dbc329908f1f2b6a964c13bbf7e8394a",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-restarted-pool-adopts-its-own-pod-by-exact-identity-without-creating"
       },
       "runpod/scenarios/a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name.yaml": {
-        "digest": "sha256:050a8ca1dbbf60ec89bb1d2f6d75351587f482070647608b3a7aba30876739a8",
+        "digest": "sha256:001cb80bd12a4c04f8825c16d33151f790c242c2f5badd1ddfee6f5b50ca4d64",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name"
       },
       "runpod/scenarios/a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan.yaml": {
-        "digest": "sha256:e246b4cef0941385ad9ae959df0fc47524b19c425634d654314407e7a73c6b77",
+        "digest": "sha256:9defcc4d006c2e933bac769381d376dc7e6b80a52bee1f8db1a92977a8aad8d1",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan"
       },
@@ -939,7 +939,7 @@
         "scenario": "llm-gateway.runpod/authored/a-secret-name-unusable-in-a-runpod-template-is-refused"
       },
       "runpod/scenarios/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped.yaml": {
-        "digest": "sha256:18a603bffb3556717b5675cc84bb47fe8a411de4ae6ebea764e0574569a445e6",
+        "digest": "sha256:6980caae7d63334a9dde0c0b175afb7399d16da66513343927276de1d2314e26",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped"
       },
@@ -949,12 +949,12 @@
         "scenario": "llm-gateway.runpod/authored/a-zero-crash-window-is-refused"
       },
       "runpod/scenarios/an-exited-pod-is-terminated-and-replaced.yaml": {
-        "digest": "sha256:ba8890556201171d022745d4f075512f0349627dd11734df3a18185fc90c1f19",
+        "digest": "sha256:156a43328c906da29bd523176cbf8c68c6d6dc8223e173f19c8527a8a4e0291d",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/an-exited-pod-is-terminated-and-replaced"
       },
       "runpod/scenarios/an-idle-pod-is-reaped-and-the-next-request-cold-starts-again.yaml": {
-        "digest": "sha256:506141dbee933a9b45ea34fbb1f0e5024a41a8c1eb2f19c4e84b575eb0a7d2ff",
+        "digest": "sha256:f24a2c59e2c8682348d9a2fc5933bdaec941a785e2f6beed91cdb35b2e8588e8",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/an-idle-pod-is-reaped-and-the-next-request-cold-starts-again"
       },
@@ -969,12 +969,12 @@
         "scenario": "llm-gateway.runpod/authored/an-unknown-model-is-refused-without-contacting-runpod"
       },
       "runpod/scenarios/an-unreported-readiness-or-served-model-stays-unknown.yaml": {
-        "digest": "sha256:c7704b841c63a6acb2ec3fb33205aa5cc47138c2c4e0833ed804f8712fb0453e",
+        "digest": "sha256:8e188cafa9925d2f6ecd358eae12fd6f8c8a2161bed319417300af2d70a150c8",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/an-unreported-readiness-or-served-model-stays-unknown"
       },
       "runpod/scenarios/an-unresolved-lost-create-blocks-a-second-pod-until-it-is-resolved.yaml": {
-        "digest": "sha256:9e0a7e95a34e77fe8d101917aabed942863141063ea0b99fc64a53c033745c21",
+        "digest": "sha256:88dcf1e7b08fd5c0528ebb0e5ffafa210758367719c25ef19184400cab975092",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/an-unresolved-lost-create-blocks-a-second-pod-until-it-is-resolved"
       },
@@ -989,7 +989,7 @@
         "scenario": "llm-gateway.runpod/authored/concurrent-callers-of-a-slow-pod-all-wait-on-one-create"
       },
       "runpod/scenarios/concurrent-first-requests-create-exactly-one-pod.yaml": {
-        "digest": "sha256:774a591b56266a3c4399988bb200060e38b573841e71113f4c02b5e7a5f7ebb3",
+        "digest": "sha256:5d72fa2ce2491aa1f718230c587677dbd8840fb184710a2bbcd913cad50f1cb5",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/concurrent-first-requests-create-exactly-one-pod"
       },
@@ -1009,7 +1009,7 @@
         "scenario": "llm-gateway.runpod/authored/reasoning-effort-and-explicit-sampling-reach-the-entrypoint"
       },
       "runpod/scenarios/restarts-inside-the-crash-window-are-a-crash-loop.yaml": {
-        "digest": "sha256:041ae0363093508db92d81bc7a0e63b07bd1a712042afd31dcb1f28113593bd5",
+        "digest": "sha256:551679c152d7f9b673e593ac3225ba5d89d8f5a0ec633c7f108341aab34a62b9",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop"
       },
@@ -1024,7 +1024,7 @@
         "scenario": "llm-gateway.runpod/authored/adversary-w2-a-gpu-memory-utilization-of-zero-is-refused"
       },
       "runpod/scenarios/the-crash-restart-limit-is-reached-at-exactly-its-count.yaml": {
-        "digest": "sha256:3542bf0f8c0339af1f4591e6f7801ed4834b48571da27b12b6692b3ea1553b9b",
+        "digest": "sha256:5b88cebe404b10891a8682c7110b955a9056df360a0bd90b938c22eb48f7264a",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/the-crash-restart-limit-is-reached-at-exactly-its-count"
       },
@@ -1039,12 +1039,12 @@
         "scenario": "llm-gateway.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start"
       },
       "runpod/scenarios/the-orphan-sweep-never-selects-a-legacy-llmgw-pod.yaml": {
-        "digest": "sha256:91413d69a59159b3d83d3d9d59828e2dd3a37cc7fb323eeaacc44e178d5f2562",
+        "digest": "sha256:60c8785a7a31076410a8d00063e2f4ce12c9f9ac9d84eb49b9b07b5142ccf8eb",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod"
       },
       "runpod/scenarios/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods.yaml": {
-        "digest": "sha256:2947bc731dfbbd5b8c3e6638c2c33edabf0f469ac4a1e8c84928f12828938a49",
+        "digest": "sha256:af4bc8213573f37344601712339d9fa14cc267e8953b9063ac51d6142dfc13aa",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods"
       },
@@ -1080,8 +1080,8 @@
     }
   },
   "provenance": {
-    "contract_digest": "62bf35759a8038a6234963805a63710930bbee5ec8ff450ca043657fc1ea9967",
-    "spec_digest": "7250cc93b5f67c9acd4cf005309fe2064c918b1011dd5991b11b37d3467b2d0f",
+    "contract_digest": "328d0606ff055effd9de49d0a687e685fb9c9df07a610d811839ca3a4e06e673",
+    "spec_digest": "10cc864999c395e2016cc4bfd77c1538a5704cb4634998b82a3a9262c0a2e9ff",
     "specification_version": "v1",
     "suite_version": "ess-conformance/5",
     "system": "llm-gateway"
@@ -13865,7 +13865,7 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-2-8000.proxy.runpod.net qwen"
+                  "https://pod2-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -13882,7 +13882,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -14121,7 +14121,7 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "requested_gpus": {
@@ -14214,7 +14214,7 @@
               "pods": {
                 "kind": "literal",
                 "value": [
-                  "pod-1:b10x-llm-qwen:running"
+                  "pod1:b10x-llm-qwen:running"
                 ]
               },
               "results": {
@@ -14315,7 +14315,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -14609,7 +14609,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"partial_listing\",\"partial\":true},{\"step\":\"vanish\",\"pod\":\"pod-1\"},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"partial_listing\",\"partial\":true},{\"step\":\"vanish\",\"pod\":\"pod1\"},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
             }
           },
           "step": "execute_command"
@@ -14728,7 +14728,7 @@
               "pods": {
                 "kind": "literal",
                 "value": [
-                  "pod-1:b10x-llm-qwen:running"
+                  "pod1:b10x-llm-qwen:running"
                 ]
               },
               "requested_gpus": {
@@ -14781,7 +14781,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"retag\",\"pod\":\"pod-1\",\"owner\":\"controller-b\",\"epoch\":99},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"reap\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"retag\",\"pod\":\"pod1\",\"owner\":\"controller-b\",\"epoch\":99},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"reap\"}]}"
             }
           },
           "step": "execute_command"
@@ -14860,7 +14860,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"set_status\",\"pod\":\"pod-1\",\"status\":\"Created\"},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"set_status\",\"pod\":\"pod1\",\"status\":\"Created\"},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
             }
           },
           "step": "execute_command"
@@ -14995,7 +14995,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -15034,7 +15034,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"ready_after\",\"probes\":1},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"refuse_credential\",\"pod\":\"pod-1\"},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"ready_after\",\"probes\":1},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"refuse_credential\",\"pod\":\"pod1\"},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
             }
           },
           "step": "execute_command"
@@ -15083,7 +15083,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -15122,7 +15122,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"wedge\",\"pod\":\"pod-1\"},{\"step\":\"advance\",\"ms\":600000},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"advance\",\"ms\":1},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"wedge\",\"pod\":\"pod1\"},{\"step\":\"advance\",\"ms\":600000},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"advance\",\"ms\":1},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
             }
           },
           "step": "execute_command"
@@ -15169,7 +15169,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -15208,7 +15208,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"vanish\",\"pod\":\"pod-1\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"vanish\",\"pod\":\"pod1\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"}]}"
             }
           },
           "step": "execute_command"
@@ -15248,8 +15248,8 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen",
-                  "https://pod-2-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen",
+                  "https://pod2-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -15340,7 +15340,7 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -15429,8 +15429,8 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen",
-                  "https://pod-1-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen",
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -15481,7 +15481,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"vanish\",\"pod\":\"pod-1\"},{\"step\":\"insert_pod\",\"name\":\"b10x-llm-qwen\",\"env\":{\"B10X_LLM_OWNER\":\"controller-b\",\"B10X_LLM_EPOCH\":\"7\",\"B10X_LLM_REQUEST\":\"their-request\"}},{\"step\":\"restart\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"vanish\",\"pod\":\"pod1\"},{\"step\":\"insert_pod\",\"name\":\"b10x-llm-qwen\",\"env\":{\"B10X_LLM_OWNER\":\"controller-b\",\"B10X_LLM_EPOCH\":\"7\",\"B10X_LLM_REQUEST\":\"their-request\"}},{\"step\":\"restart\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"}]}"
             }
           },
           "step": "execute_command"
@@ -15521,8 +15521,8 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen",
-                  "https://pod-3-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen",
+                  "https://pod3-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -15530,7 +15530,7 @@
                 "value": [
                   "ready",
                   "ok",
-                  "inserted:pod-2",
+                  "inserted:pod2",
                   "ok",
                   "ready"
                 ]
@@ -15611,20 +15611,20 @@
               "cleanups": {
                 "kind": "literal",
                 "value": [
-                  "idle=[] retired=[] replaced=[] orphans=[pod-2]"
+                  "idle=[] retired=[] replaced=[] orphans=[pod2]"
                 ]
               },
               "pods": {
                 "kind": "literal",
                 "value": [
-                  "pod-1:b10x-llm-qwen:running"
+                  "pod1:b10x-llm-qwen:running"
                 ]
               },
               "results": {
                 "kind": "literal",
                 "value": [
                   "ready",
-                  "inserted:pod-2",
+                  "inserted:pod2",
                   "ok"
                 ]
               }
@@ -15741,7 +15741,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"hold\",\"alias\":\"qwen\"},{\"step\":\"vanish\",\"pod\":\"pod-1\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"advance\",\"ms\":1800000},{\"step\":\"reap\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"hold\",\"alias\":\"qwen\"},{\"step\":\"vanish\",\"pod\":\"pod1\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"advance\",\"ms\":1800000},{\"step\":\"reap\"}]}"
             }
           },
           "step": "execute_command"
@@ -15783,7 +15783,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-2"
+                  "pod2"
                 ]
               }
             }
@@ -15976,7 +15976,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"set_status\",\"pod\":\"pod-1\",\"status\":\"Exited\"},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"}]}"
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"until_ready\",\"alias\":\"qwen\"},{\"step\":\"set_status\",\"pod\":\"pod1\",\"status\":\"Exited\"},{\"step\":\"advance\",\"ms\":1000},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"}]}"
             }
           },
           "step": "execute_command"
@@ -16012,8 +16012,8 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen",
-                  "https://pod-2-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen",
+                  "https://pod2-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -16029,7 +16029,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -16111,8 +16111,8 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen",
-                  "https://pod-2-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen",
+                  "https://pod2-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -16129,7 +16129,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -16381,7 +16381,7 @@
               "observed": {
                 "kind": "literal",
                 "value": [
-                  "qwen-1 ready=unreported served=unreported endpoint=https://pod-1-8000.proxy.runpod.net"
+                  "qwen-1 ready=unreported served=unreported endpoint=https://pod1-8000.proxy.runpod.net/v1/"
                 ]
               },
               "results": {
@@ -16468,7 +16468,7 @@
               "results": {
                 "kind": "literal",
                 "value": [
-                  "inserted:pod-1",
+                  "inserted:pod1",
                   "ok",
                   "err:starting",
                   "ok",
@@ -16779,7 +16779,7 @@
               "leases": {
                 "kind": "literal",
                 "value": [
-                  "https://pod-1-8000.proxy.runpod.net qwen"
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen"
                 ]
               },
               "results": {
@@ -17162,7 +17162,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -17329,7 +17329,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-1"
+                  "pod1"
                 ]
               }
             }
@@ -17615,13 +17615,13 @@
               "pods": {
                 "kind": "literal",
                 "value": [
-                  "pod-1:llmgw-qwen:running"
+                  "pod1:llmgw-qwen:running"
                 ]
               },
               "results": {
                 "kind": "literal",
                 "value": [
-                  "inserted:pod-1",
+                  "inserted:pod1",
                   "ok",
                   "ready",
                   "ok",
@@ -17631,7 +17631,7 @@
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-2"
+                  "pod2"
                 ]
               }
             }
@@ -17706,33 +17706,33 @@
               "cleanups": {
                 "kind": "literal",
                 "value": [
-                  "idle=[] retired=[] replaced=[] orphans=[pod-2]"
+                  "idle=[] retired=[] replaced=[] orphans=[pod2]"
                 ]
               },
               "pods": {
                 "kind": "literal",
                 "value": [
-                  "pod-1:b10x-llm-qwen:running",
-                  "pod-3:b10x-llm-theirs:running",
-                  "pod-4:b10x-llm-untagged:running",
-                  "pod-5:someone-elses-pod:running"
+                  "pod1:b10x-llm-qwen:running",
+                  "pod3:b10x-llm-theirs:running",
+                  "pod4:b10x-llm-untagged:running",
+                  "pod5:someone-elses-pod:running"
                 ]
               },
               "results": {
                 "kind": "literal",
                 "value": [
                   "ready",
-                  "inserted:pod-2",
-                  "inserted:pod-3",
-                  "inserted:pod-4",
-                  "inserted:pod-5",
+                  "inserted:pod2",
+                  "inserted:pod3",
+                  "inserted:pod4",
+                  "inserted:pod5",
                   "ok"
                 ]
               },
               "terminations": {
                 "kind": "literal",
                 "value": [
-                  "pod-2"
+                  "pod2"
                 ]
               }
             }

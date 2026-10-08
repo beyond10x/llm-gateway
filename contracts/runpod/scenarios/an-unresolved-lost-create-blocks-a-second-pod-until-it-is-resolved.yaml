@@ -16,7 +16,7 @@ assert:
 - view: llm-gateway.runpod.LastExecution
   contains:
     results:
-    - inserted:pod-1
+    - inserted:pod1
     - ok
     - err:starting
     - ok

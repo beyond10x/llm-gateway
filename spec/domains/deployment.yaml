@@ -17,19 +17,29 @@ domain: llm-gateway.deployment
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
 #   stop (exit status 0). A command-line error is clap's (exit status 2).
 #
-# DEFERRED: the document carries no `runpod_api_key_file` (row K7) and no `[identity]` (rows
-# K2-K4, not needed); the closed document refuses both until the story that reads a provider key
-# lands. Nothing in the binary provisions a pod or relays a model call yet (rows B, L and W).
+# DECIDED: the Runpod API key (row K7) is held by connectors, not by this document: under design
+# choice D1 = A (docs/design/runpod-clients.md § 4) the gateway never holds it, so the closed
+# document refuses `runpod_api_key_file`. It also carries no `[identity]` (rows K2-K4, not
+# needed) and refuses that too.
+# DECIDED: each model's vLLM key (row B9) is read from the file its `vllm_api_key_file` names,
+# not derived from the Runpod key as llmgw does: the operator writes the value they stored as
+# the model's Runpod secret, which the pod receives as `{{ RUNPOD_SECRET_<name> }}`. The binary
+# reads each file once at startup and holds the value redacted. Nothing in the binary provisions
+# a pod or relays a model call yet (rows B, L and W).
 # ESS-LIMIT: the binary is observed by the crate's row-named process tests
 # (crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/config.rs), not by a
 # conformance command: a signal, a file mode and a symlink are process-environment facts the
 # fixture-program targets in checks/conformance do not model.
 types:
   # Why startup is refused, reported as `<source>:<rule>`. Sources are `config` (the deployment
-  # document), `owner-secret` (the file `owner_secret_file` names), `listen` and `signal`.
+  # document), `owner-secret` (the file `owner_secret_file` names), `vllm-api-key` (a file a
+  # model's `vllm_api_key_file` names), `listen` and `signal`.
   #
-  # The trusted-file rules apply to both files (llmgw `src/trusted.rs:21-42`): the file is opened
-  # once without following a final symlink and every check reads that handle.
+  # The trusted-file rules apply to every file (llmgw `src/trusted.rs:21-42`): the file is opened
+  # once without following a final symlink and every check reads that handle. `vllm-api-key`
+  # follows `owner-secret` in every rule: mode & 0o077 and a 4098-byte file bound. Every
+  # `vllm-api-key:<rule>` message starts `models.<alias>.vllm_api_key_file <path>:`, naming the
+  # model and the file and never the key's bytes.
   #   `<source>:unreadable`     the file cannot be opened (absent, no permission)
   #   `<source>:symlink`        the final path component is a symbolic link
   #   `<source>:not-regular`    the handle is not a regular file
@@ -52,12 +62,15 @@ types:
   #   `owner-secret:not-a-token`  empty, or not one printable ASCII token (`token:<rule>` of
   #                               llm-gateway.gateway.CompositionRefusal)
   #   `owner-secret:too-short`    under 32 bytes (`verifier:secret-too-short`)
+  # vLLM key rules, after trailing ASCII whitespace is trimmed (the value is sent as a bearer):
+  #   `vllm-api-key:too-large`    a key over 4096 bytes
+  #   `vllm-api-key:not-a-token`  empty, or not one printable ASCII token
   # Process rules:
   #   `listen:bind`     the listen address cannot be bound
   #   `signal:install`  SIGINT and SIGTERM handlers cannot be installed
   - name: llm-gateway.deployment.StartupRefusal
     kind: enum
-    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, ListenBind, SignalInstall]
+    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, ListenBind, SignalInstall]
   # The signal that ended a served process.
   - name: llm-gateway.deployment.StopSignal
     kind: enum
@@ -112,6 +125,8 @@ types:
   #   data_center_ids       at most 16, each 2..=32 of `A-Z 0-9 -`
   #   idle_timeout_minutes  0..=1440, default 30
   #   start_wait_seconds    10..=3600, default 600
+  #   vllm_api_key_file     optional; the file holding the key the model's pod's vLLM server
+  #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
   - name: llm-gateway.deployment.ModelDeclaration
     kind: struct
     fields:
@@ -134,6 +149,7 @@ types:
       - {name: data_center_ids, type: 'List<String>'}
       - {name: idle_timeout_minutes, type: Integer}
       - {name: start_wait_seconds, type: Integer}
+      - {name: vllm_api_key_file, type: 'Optional<String>'}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
   # becomes the gateway's shared-secret owner verifier; at least one model is required. Each

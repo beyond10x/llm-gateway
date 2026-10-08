@@ -131,7 +131,7 @@ fn a_pod_inherited_through_a_lease_takeover_is_served_or_stopped_by_its_new_owne
         second.reap().expect("reap");
         clock.advance(1_000);
     }
-    let pod_alive = runpod.pods().iter().any(|pod| pod.id == "pod-1");
+    let pod_alive = runpod.pods().iter().any(|pod| pod.id == "pod1");
     let served = answers.iter().any(Result::is_ok);
     let record = second
         .view()
@@ -141,7 +141,7 @@ fn a_pod_inherited_through_a_lease_takeover_is_served_or_stopped_by_its_new_owne
         .map(|record| (record.phase, record.stop_reason));
     assert!(
         served || !pod_alive,
-        "the inherited pod-1 is neither served nor stopped by the new owner: answers {answers:?}, \
+        "the inherited pod1 is neither served nor stopped by the new owner: answers {answers:?}, \
          record {record:?}, terminations {:?}",
         runpod.terminations()
     );
@@ -209,7 +209,7 @@ fn a_pod_that_stops_serving_after_it_served_is_retired_within_its_startup_deadli
     )
     .expect("pool");
     settle(&pool, &clock).expect("serves");
-    *wedged.lock().unwrap_or_else(PoisonError::into_inner) = Some("pod-1".to_owned());
+    *wedged.lock().unwrap_or_else(PoisonError::into_inner) = Some("pod1".to_owned());
     let mut answers = Vec::new();
     // 11 x 60 s: past the 600 s startup deadline, well inside the 1 800 s idle timeout.
     for _ in 0..11 {
@@ -222,8 +222,8 @@ fn a_pod_that_stops_serving_after_it_served_is_retired_within_its_startup_deadli
         pool.reap().expect("reap");
     }
     assert!(
-        runpod.terminations().contains(&"pod-1".to_owned()),
-        "pod-1 has not served for 660 s against a 600 s deadline and is still billed; \
+        runpod.terminations().contains(&"pod1".to_owned()),
+        "pod1 has not served for 660 s against a 600 s deadline and is still billed; \
          answers {answers:?}"
     );
 }

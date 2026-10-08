@@ -6,7 +6,7 @@ timeline:
 - at: '2026-09-27T12:00:00Z'
   command: llm-gateway.runpod.Exercise
   input:
-    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"wedge","pod":"pod-1"},{"step":"advance","ms":600000},{"step":"ensure","alias":"qwen"},{"step":"advance","ms":1},{"step":"ensure","alias":"qwen"}]}'
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"until_ready","alias":"qwen"},{"step":"wedge","pod":"pod1"},{"step":"advance","ms":600000},{"step":"ensure","alias":"qwen"},{"step":"advance","ms":1},{"step":"ensure","alias":"qwen"}]}'
   outcome: observed
 assert:
 - view: llm-gateway.runpod.LastExecution
@@ -23,4 +23,4 @@ assert:
     - ok
     - err:stopped-serving
     terminations:
-    - pod-1
+    - pod1

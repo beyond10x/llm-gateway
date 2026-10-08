@@ -11,7 +11,7 @@ model; this repository answers them and, later, starts the pods they reach.
 [docs/llmgw-capability-matrix.md](docs/llmgw-capability-matrix.md) (what is still missing before
 it can replace llmgw, row by row).
 
-**Status: 0.1.0, released 2026-10-08 as a source release; tested against in-process fakes and
+**Status: 0.2.0, released 2026-10-08 as a source release; tested against in-process fakes and
 loopback; nothing is deployed or qualified.**
 
 ## What it is not
@@ -99,11 +99,18 @@ The document is closed: an unknown key at any level is refused as `config:schema
 and the keys that are allowed. A relative `owner_secret_file` is resolved from the working
 directory. `spec/domains/deployment.yaml` holds every key, default and range.
 
-Both files go through a trusted-file reader. Each must be a regular file, not a symlink, owned by
-you or root. The document must be at most 256 KiB and not group- or world-writable. The owner
-secret must be one printable token of 32 to 4096 bytes (trailing ASCII whitespace is trimmed),
-with no group or world permission at all (mode & 0o077 is 0). Clients send it as
-`Authorization: Bearer <secret>`.
+Every file the binary reads goes through a trusted-file reader. Each must be a regular file, not a
+symlink, owned by you or root. The document must be at most 256 KiB and not group- or
+world-writable. The owner secret must be one printable token of 32 to 4096 bytes (trailing ASCII
+whitespace is trimmed), with no group or world permission at all (mode & 0o077 is 0). Clients send
+it as `Authorization: Bearer <secret>`.
+
+A `[models.<alias>]` table may name `vllm_api_key_file`: the file holding the key that model's
+pod's vLLM server expects, the same value stored as the model's Runpod secret. It is read once at
+startup under the owner secret's rules, except that any non-empty printable token of at most 4096
+bytes is accepted; a broken rule refuses the start as `vllm-api-key:<rule>`. The document holds no
+Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' keyring
+([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1).
 
 The gateway answers `GET /health` and `GET /ready` without a credential; the owner can read
 `GET /v1/routes` and `GET /v1/routes/<alias>`. [docs/gateway.md](docs/gateway.md) has the full

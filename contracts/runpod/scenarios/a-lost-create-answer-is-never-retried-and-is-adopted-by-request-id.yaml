@@ -23,4 +23,4 @@ assert:
     requested_gpus:
     - NVIDIA L40S
     leases:
-    - https://pod-1-8000.proxy.runpod.net qwen
+    - https://pod1-8000.proxy.runpod.net/v1/ qwen

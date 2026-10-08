@@ -373,7 +373,8 @@ fn padded(raw: &str, pad: Option<usize>) -> Option<String> {
 fn run(program_json: &str) -> Value {
     let mut facts = json!({
         "valid_program": false, "error_code": null, "results": [], "bodies": [],
-        "headers": [], "secret_on_wire": null, "ready": null, "shutdown": null
+        "headers": [], "answer_headers": [], "secret_on_wire": null, "ready": null,
+        "shutdown": null
     });
     if program_json.len() > MAX_PROGRAM_BYTES {
         return facts;
@@ -401,6 +402,7 @@ fn run(program_json: &str) -> Value {
     let secret = program.secret.as_bytes();
     let mut on_wire = false;
     let (mut results, mut bodies, mut headers) = (Vec::new(), Vec::new(), Vec::new());
+    let mut answer_headers = Vec::new();
     for step in &program.steps {
         let answer = match step {
             Step::Send { raw, pad_bytes } => padded(raw, *pad_bytes)
@@ -421,6 +423,12 @@ fn run(program_json: &str) -> Value {
                     "www-authenticate={} allow={}",
                     answer.header("www-authenticate"),
                     answer.header("allow")
+                ));
+                answer_headers.push(format!(
+                    "content-type={} cache-control={} connection={}",
+                    answer.header("content-type"),
+                    answer.header("cache-control"),
+                    answer.header("connection")
                 ));
                 answer.summary()
             }
@@ -457,6 +465,7 @@ fn run(program_json: &str) -> Value {
     facts["results"] = json!(results);
     facts["bodies"] = json!(bodies);
     facts["headers"] = json!(headers);
+    facts["answer_headers"] = json!(answer_headers);
     facts["secret_on_wire"] = json!(on_wire);
     facts["ready"] = json!(handle.as_ref().map(GatewayHandle::is_ready));
     if let Some(live) = handle {

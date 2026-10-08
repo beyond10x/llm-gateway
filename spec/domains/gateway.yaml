@@ -15,40 +15,42 @@ domain: llm-gateway.gateway
 # the single-owner admission is what the credential scenarios in contracts/gateway/scenarios/ declare.
 # DECIDED 2026-09-27: the gateway has no multi-tenant accounts or quotas; tenancy and quotas belong
 # to the embedding platform, which runs one gateway per owner.
-# ESS-LIMIT: the owner comparison is constant-time (auth.rs:69-78). ESS 0.52 has no construct
+# ESS-LIMIT: the owner comparison is constant-time (auth.rs:69-78). ESS 0.56 has no construct
 # for a timing or side-channel property (no non-functional or duration-distribution assertion
 # over a command); only its functional result is declared here, and the timing is proved by the
 # crate's unit cases.
+# ESS-LIMIT: nothing in the crate's build resolves a credential, opens a connection to an
+# upstream or creates a billed resource: its dependency closure, as cargo resolves it, holds no
+# credential, HTTP, provisioning, provider or async-runtime crate, and today it is the crate
+# alone. The relay speaks only over connections its injected targets open. A dependency graph
+# is no ESS construct; `the_transitive_closure_contains_nothing_that_can_resolve_a_secret_or_provision`
+# and `the_manifest_names_nothing_forbidden` in crates/llm-gateway/tests/dependency_boundary.rs
+# hold it. The gateway is never given a credential source: the embedding resolves the owner's
+# material once and hands over an `OwnerToken`
+# (`the_owner_inspects_routes_without_a_credential_or_a_secret_read` in tests/gateway.rs).
+# ESS-LIMIT: `OwnerToken` is redacted in `Debug`, has no `Display`, no `Clone` and no
+# serialisation, and its bytes are overwritten when it is dropped; `TargetBearer` likewise. A
+# value's rendering and its freed memory are no ESS construct.
+# `the_owner_credential_is_redacted_in_every_debug_rendering` in tests/gateway.rs and
+# `row_12_owner_material_and_a_target_bearer_overwrite_their_bytes_on_drop` in
+# tests/spec_declarations.rs hold them. On the wire, `secret_on_wire` below is observed.
+# DECIDED: an embedding that authenticates otherwise implements `OwnerVerifier` itself, and that
+# implementation must redact its own `Debug`; the crate cannot check code it does not hold.
+# `GatewayConfig` holds no credential at all (the `Gateway` entity's fields), so a configuration
+# value can be logged.
 types:
-  # The closed refusal set, with the wire code, status and fixed message the crate publishes
-  # (crates/llm-gateway/src/error.rs:99-133).
-  #
-  # The relay adds ten (rows W1, W3, W6, W7, K11, and tool calling), each
-  # `{"error":{"code":..,"message":..}}` like every other refusal, with this fixed message:
-  #   body-incomplete     400  a body that ended, or stalled past the read timeout, before it was
-  #                            complete: "the request body ended or stalled before it was
-  #                            complete"
-  #   body-too-large      413  a request body over 33554432 bytes (32 MiB), declared or decoded:
-  #                            "the request body exceeds its byte bound"
-  #   body-not-json       400  the body is not one JSON object:
-  #                            "the request body is not one JSON object"
-  #   model-absent        400  the object has no top-level `model` string:
-  #                            "the request body names no model"
-  #   model-unknown       404  no relayed model has that alias: "no such model"
-  #   wire-not-served     400  the model does not declare the wire of the path it was sent to:
-  #                            "the model is not served on this wire"
-  #   tools-not-served    400  the body carries a non-empty top-level `tools` array and the model
-  #                            declares its tool calling `Absent` (llm-gateway.clients
-  #                            ToolCalling): "the model does not serve tool calls"
-  #   target-unavailable  503  the embedding handed out no target for the model:
-  #                            "no model target is available"
-  #   model-cold-start    503  the embedding reports the model's target still starting when the
-  #                            request's hold budget passed (row W6), with `retry-after: 30`:
-  #                            "the model is still starting; ask again after the retry-after
-  #                            delay"
-  #   upstream-failed     502  the target could not be reached, closed without an answer, or
-  #                            answered 502, 503 or 504: "the model target could not be reached
-  #                            or failed; the next request asks for a replacement"
+  # The closed refusal set. Each variant carries the wire `code` a client reads, the HTTP
+  # `status` and the fixed `message` (crates/llm-gateway/src/error.rs `refusal_codes!`), the
+  # same three docs/gateway.md's refusal table publishes. Every refusal is written
+  # `{"error":{"code":..,"message":..}}`, and it quotes nothing the caller sent: a rejected
+  # credential is never echoed back and no upstream text reaches a refusal
+  # (`a_rejected_or_malformed_credential_is_never_echoed_back` in tests/gateway.rs). The
+  # attributes are held to the crate by
+  # `row_4_every_refusal_the_crate_emits_is_declared_with_its_code_status_and_message` in
+  # tests/spec_declarations.rs, and the published table by
+  # `the_published_refusal_table_matches_the_codes_the_crate_can_emit` in tests/gateway.rs.
+  # Which request earns which code is the decision order of the `Exchange` and `Relay`
+  # commands below.
   # DECIDED: llmgw answers `{"error":{"type":..,"message":..}}` with `invalid_request_error`,
   # `model_not_found` and `upstream_error` (llmgw src/lib.rs:515-552, 686-691); llm-gateway keeps
   # its own published refusal shape and codes, so a client reads `error.code`, not `error.type`.
@@ -57,16 +59,38 @@ types:
   # refusal that carries `retry-after`.
   - name: llm-gateway.gateway.Refusal
     kind: enum
-    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelColdStart, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, ToolsNotServed, Unavailable, UpstreamFailed, WireNotServed]
+    attributes:
+      - {name: code, type: String}
+      - {name: status, type: Integer}
+      - {name: message, type: String}
+    variants:
+      - {name: BodyIncomplete, attributes: {code: body-incomplete, status: 400, message: "the request body ended or stalled before it was complete"}}
+      - {name: BodyNotAllowed, attributes: {code: body-not-allowed, status: 400, message: "the inspection surface accepts no request body"}}
+      - {name: BodyNotJson, attributes: {code: body-not-json, status: 400, message: "the request body is not one JSON object"}}
+      - {name: BodyTooLarge, attributes: {code: body-too-large, status: 413, message: "the request body exceeds its byte bound"}}
+      - {name: CredentialAbsent, attributes: {code: credential-absent, status: 401, message: "no owner credential was presented"}}
+      - {name: CredentialMalformed, attributes: {code: credential-malformed, status: 401, message: "the owner credential is not a bearer token"}}
+      - {name: CredentialRejected, attributes: {code: credential-rejected, status: 401, message: "the presented owner credential was rejected"}}
+      - {name: MethodNotAllowed, attributes: {code: method-not-allowed, status: 405, message: "this path does not accept that method"}}
+      - {name: ModelAbsent, attributes: {code: model-absent, status: 400, message: "the request body names no model"}}
+      - {name: ModelColdStart, attributes: {code: model-cold-start, status: 503, message: "the model is still starting; ask again after the retry-after delay"}}
+      - {name: ModelUnknown, attributes: {code: model-unknown, status: 404, message: "no such model"}}
+      - {name: Overloaded, attributes: {code: overloaded, status: 503, message: "the gateway is already serving its maximum concurrent requests"}}
+      - {name: PathUnknown, attributes: {code: path-unknown, status: 404, message: "no such gateway resource"}}
+      - {name: RequestMalformed, attributes: {code: request-malformed, status: 400, message: "the request is not well-formed HTTP"}}
+      - {name: RequestTooLarge, attributes: {code: request-too-large, status: 431, message: "the request head exceeds its byte bound"}}
+      - {name: RouteUnknown, attributes: {code: route-unknown, status: 404, message: "no such route alias"}}
+      - {name: TargetUnavailable, attributes: {code: target-unavailable, status: 503, message: "no model target is available"}}
+      - {name: ToolsNotServed, attributes: {code: tools-not-served, status: 400, message: "the model does not serve tool calls"}}
+      - {name: Unavailable, attributes: {code: unavailable, status: 503, message: "the gateway is not ready to serve inspection"}}
+      - {name: UpstreamFailed, attributes: {code: upstream-failed, status: 502, message: "the model target could not be reached or failed; the next request asks for a replacement"}}
+      - {name: WireNotServed, attributes: {code: wire-not-served, status: 400, message: "the model is not served on this wire"}}
   # A wire the gateway relays, each on its own path, to the same path at the target (rows R6-R8):
   # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
   # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
   - name: llm-gateway.gateway.Wire
     kind: enum
     variants: [Chat, Responses, Messages]
-  # A header whose name is followed by whitespace before its colon is `request-malformed`
-  # (RFC 9112 section 5.1; server.rs Request::parse).
-  #
   # Why a gateway cannot be composed, reported as `error_code` `<source>:<rule>`. Owner material
   # (auth.rs OwnerToken::new): `token:empty`, `token:too-large` (over 4096 bytes),
   # `token:not-printable-ascii`. The shared-secret verifier (auth.rs SharedSecretVerifier::new):
@@ -75,9 +99,14 @@ types:
   # (inventory.rs RouteSummary::new): `inventory:route-without-target`,
   # `inventory:too-many-targets` (over 64), `inventory:non-contiguous-positions`,
   # `inventory:duplicate-target`. A snapshot (inventory.rs RouteInventory): `inventory:duplicate-alias`,
-  # `inventory:malformed-digest`, and `inventory:too-many-routes` for more than 4096 routes
-  # (inventory.rs:25, 252); exactly 4096 is composed. A program reaches that count through its
-  # inventory's `generated_routes`, which appends routes `g<i>` the program need not spell out.
+  # and `inventory:too-many-routes` for more than 4096 routes (inventory.rs:25, 252); exactly
+  # 4096 is composed. A program reaches that count through its inventory's `generated_routes`,
+  # which appends routes `g<i>` the program need not spell out. `inventory:malformed-digest` is
+  # a `config_digest` that is not exactly 64 (`digest-characters`, an exact length, not a
+  # maximum) lowercase hexadecimal characters; a snapshot whose source reported no digest has
+  # none, never an empty one (scenario a-config-digest-that-is-not-lowercase-hex-is-refused,
+  # `a_digest_is_either_a_real_digest_or_absent` in src/inventory.rs and
+  # `every_published_bound_flips_at_exactly_the_published_number` in tests/gateway.rs).
   #
   # A relayed model (row K11; relay.rs RelayModel::new, Relay::new): `relay:no-wire` for an empty
   # wire set, `relay:repeated-wire` for a wire named twice, `relay:duplicate-model` for two models
@@ -91,12 +120,50 @@ types:
     kind: enum
     variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii]
 entities:
-  # One gateway: one owner verifier, one route inventory snapshot, one listener.
+  # One gateway: one owner verifier, one route inventory snapshot, one listener
+  # (server.rs GatewayConfig, GatewayHandle).
+  #
+  # The lifecycle. `Gateway::bind` listens at once and starts not ready. `mark_ready` opens
+  # inspection, the counters and the relay. `begin_drain` reports unready while every request
+  # that still arrives is served, and it cannot be undone: `mark_ready` does not clear it
+  # (scenario a-drain-reports-unready-keeps-serving-and-cannot-be-undone,
+  # `a_drain_cannot_be_undone_by_marking_ready_again` in tests/gateway.rs).
+  # `GatewayHandle::shutdown` reports unready at once, stops accepting, finishes every accepted
+  # connection and only then stops serving inspection, so no connection the report counts as
+  # completed was refused because of the stop. Its report's `completed` equals its `accepted`
+  # and counts every accepted connection, those refused on their own merits included (scenario
+  # a-graceful-stop-completes-every-accepted-connection), and `in_flight_at_signal` is what was
+  # still running when the stop was signalled (`graceful_shutdown_drains_readiness_then_stops_accepting`
+  # in tests/gateway.rs, `a_connection_accepted_before_shutdown_is_finished_rather_than_refused`
+  # in tests/adversary.rs).
+  # ESS-LIMIT: a duration is no ESS construct (see the header). For inspection a stop takes at
+  # most twice `read_timeout_ms`: one deadline covers the whole head and another the whole
+  # answer (`a_stalled_head_is_refused_when_the_read_timeout_expires`,
+  # `a_trickled_head_is_refused_when_the_read_timeout_expires` and
+  # `a_peer_that_never_reads_its_answer_cannot_hold_the_stop` in tests/gateway.rs). A relay is
+  # not bounded that way: its head and its body each have one deadline, each chunk written to
+  # the client has its own, reading the target is bounded by the connection the target opened,
+  # and a stop waits for a relayed stream to end
+  # (`row_23_a_stop_waits_for_a_relayed_stream_to_end` and
+  # `row_23_a_client_that_stops_reading_a_stream_cannot_hold_the_stop` in
+  # tests/spec_declarations.rs).
+  # ESS-LIMIT: dropping the handle without a shutdown still stops the listener, and reports
+  # nothing; a handle's drop is no command
+  # (`row_24_dropping_the_handle_without_a_shutdown_stops_the_listener`).
   - name: llm-gateway.gateway.Gateway
     identity: {name: id, type: String}
     fields:
+      # `request-head-bytes`, a maximum: a longer head is `request-too-large`. An embedding may
+      # set it; `GatewayConfig::new` defaults it to 8192.
       - {name: max_head_bytes, type: Integer}
+      # `concurrent-requests`, a maximum: a request that is not a probe, arriving while that
+      # many are in flight, is `overloaded`. An embedding may set it; `GatewayConfig::new`
+      # defaults it to 64.
       - {name: max_concurrent_requests, type: Integer}
+      # `GatewayConfig::read_timeout`, in milliseconds: one deadline for the whole request head,
+      # never a timeout per read, and a second of the same length for the whole answer. An
+      # embedding may set it; `GatewayConfig::new` defaults it to 10000 (ten seconds).
+      # ESS-LIMIT: a deadline is no ESS construct; the three tests named above hold it.
       - {name: read_timeout_ms, type: Integer}
       # Ready is set once by the embedding; a drain is one way for the life of the handle
       # (server.rs mark_ready, begin_drain).
@@ -111,12 +178,34 @@ entities:
       # `label:<rule>` or `inventory:<rule>`.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order. An exchange is `<status> <refusal code>` for a refusal,
-      # `<status> <probe status>` for a probe and `<status> inspected` for a served inspection.
+      # `<status> <probe status>` for a probe, `<status> inspected` for a served inspection and
+      # `<status> no-body` for an answer to `HEAD`.
       - {name: results, type: 'List<String>'}
-      # The body of every exchange, in order, exactly as the gateway wrote it.
+      # The body of every exchange, in order, exactly as the gateway wrote it. A probe is
+      # `{"status":"live"}`, `{"status":"ready"}` or `{"status":"unready"}`; an answer to `HEAD`
+      # has no body. An inspection renders exactly the identifier bytes the composer supplied
+      # and nothing else: `{"config_digest"?,"route_count","routes":[route…]}` for
+      # `/v1/routes` and `{"route":route}` for `/v1/routes/{alias}`, a route being
+      # `{"route_id","alias","fallback_enabled","target_count","targets":[target…]}` and a target
+      # `{"target_id","position","protocol","provider","account","endpoint","model",
+      # "binding_revision","auth_kind","billing_kind","context_window"?,"max_output_tokens"?}`.
+      # There is no key for an endpoint URL, a secret reference name or credential material
+      # (`an_inspection_response_carries_exactly_these_keys` in tests/gateway.rs,
+      # `provenance_renders_exactly_the_bytes_the_composer_supplied` in src/inventory.rs). A
+      # limit the snapshot's source did not report is absent, never `0` and never a substituted
+      # value, and a snapshot with no `config_digest` renders no `config_digest` key (scenario
+      # the-owner-inspects-every-route-and-unreported-limits-stay-absent,
+      # `an_unreported_limit_stays_absent_and_never_becomes_zero` in tests/gateway.rs).
       - {name: bodies, type: 'List<String>'}
-      # The challenge and method headers of every exchange, in order.
+      # Per exchange, `www-authenticate=<value> allow=<value>`, `absent` for a header that was
+      # not sent: every `401` carries `www-authenticate: Bearer`, and every `405` an `allow`
+      # naming the methods the path takes.
       - {name: headers, type: 'List<String>'}
+      # Per exchange, `content-type=<value> cache-control=<value> connection=<value>`, `absent`
+      # for a header that was not sent. Every answer the gateway writes itself is
+      # `application/json`, except the counters at `/metrics`, and every answer is
+      # `cache-control: no-store` and `connection: close`.
+      - {name: answer_headers, type: 'List<String>'}
       # Whether any byte the gateway wrote contains the owner secret. Absent when no gateway
       # was composed.
       - {name: secret_on_wire, type: 'Optional<Boolean>'}
@@ -130,21 +219,31 @@ entities:
   # leaves the machine.
   #
   # The relay, in the order the gateway decides (each step is the row it answers):
-  #   1. Probes, shedding and owner authentication come first, exactly as for inspection: an
-  #      unauthenticated relay is refused before any byte of its body is read. DECIDED: llmgw
-  #      serves its wires without authentication (`--insecure`, llmgw README.md:28); llm-gateway
-  #      admits only its owner's bearer credential.
+  #   1. The head, probes, shedding and owner authentication come first, exactly as steps 1-4
+  #      of the `Exchange` order below: an unauthenticated relay is refused before any byte of
+  #      its body is read. DECIDED: llmgw serves its wires without authentication
+  #      (`--insecure`, llmgw README.md:28); llm-gateway admits only its owner's bearer
+  #      credential.
   #   2. A wire path takes `POST` only; another method is `method-not-allowed` with
-  #      `allow: POST`. A gateway composed without a relay keeps its inspection-only answers.
-  #      Before `mark_ready` and once stopped, a relay is `unavailable`, like inspection.
-  #   3. W1: the body is bounded at 33554432 bytes (32 MiB; llmgw src/lib.rs:35). A
+  #      `allow: POST`. Before `mark_ready` a relay is `unavailable`, like inspection.
+  #   3. W1: the body is framed by `content-length` or `transfer-encoding: chunked` and nothing
+  #      else: both, a repeated or a list-valued framing header, or another coding is
+  #      `request-malformed` before a target is asked for
+  #      (`adv_w1_conflicting_or_unknown_framings_are_refused_before_a_target_is_asked` in
+  #      tests/adversary_relay.rs, `the_body_framing_is_read_from_the_head_alone` in
+  #      src/relay.rs). The body is bounded at 33554432 bytes (32 MiB; llmgw src/lib.rs:35). A
   #      `content-length` over the bound is `body-too-large` before a byte is read; a chunked
   #      body is decoded and refused the moment its decoded size passes the bound. Exactly
   #      33554432 bytes are relayed. A chunk size is `1*HEXDIG` with an optional extension after
   #      `;` (RFC 9112 section 7.1), else `request-malformed`, which also names a head holding a
   #      CR, LF or NUL inside a line (RFC 9110 section 5.5). A chunked body's trailer section
-  #      counts against the head bound (`request-too-large`). A body that ends or stalls before
-  #      it is complete is `body-incomplete`.
+  #      counts against the head bound (`request-too-large`). The whole body is read under one
+  #      `read_timeout_ms` deadline, not a timeout per read, and a body that ends or stalls
+  #      before it is complete is `body-incomplete`
+  #      (`row_14_a_body_trickled_past_one_read_timeout_is_body_incomplete`). An HTTP/1.1
+  #      request carrying `expect: 100-continue` is sent an interim `100 Continue` before its
+  #      body is read; an HTTP/1.0 one is not
+  #      (`row_15_expect_100_continue_is_answered_for_http_1_1_only`).
   #   4. W3: the body must be one well-formed UTF-8 JSON object (`body-not-json`) with exactly
   #      one top-level `model` key whose value is a string (`model-absent`; a second top-level
   #      `model` is `body-not-json`, because the target could read the other one), naming a
@@ -169,21 +268,29 @@ entities:
   #      with `retry-after: 30`, so the client asks again later rather than treating the model
   #      as down. How long a request is held for its target, and what a stop does to a held
   #      request, are the embedding's (llm-gateway.deployment, rows L6 and K28); the gateway
-  #      holds nothing itself. The request goes to the same path at the target, with a
-  #      `content-length`.
+  #      holds nothing itself. The request goes to the same path at the target, with `host` set
+  #      to the target's authority and a `content-length` (`r6_*`, `r7_*` and `r8_*` in
+  #      tests/wire_relay.rs).
   #      B8: a target that carries a bearer (the model's vLLM key, which the embedding reads)
   #      is sent `authorization: Bearer <key>`; a target without one is sent no
   #      `authorization`. The head the target receives is built by the gateway alone: no
   #      header of the client's request is forwarded, so the owner's credential never reaches
   #      a target, in the head or anywhere else.
-  #   8. W7: a target that cannot be connected to, closes without an answer, or answers 502,
-  #      503 or 504 is reported failed to the target source by the endpoint that served it (so
-  #      the source drops it only if it is still current), and the client gets `upstream-failed`
-  #      (502). The next request asks the source again and so reaches a replacement. Any other
-  #      status, 500 and 4xx included, is relayed and the target is kept.
+  #   8. W7: a target that cannot be connected to, a request that cannot be written to it, an
+  #      answer head that never arrives or is malformed, and an answer of 502, 503 or 504 are
+  #      each reported failed to the target source by the authority of the endpoint that served
+  #      it (so the source drops it only if it is still current), and the client gets
+  #      `upstream-failed` (502) (`w7_*` in tests/wire_relay.rs,
+  #      `row_17_an_unwritable_request_or_a_malformed_answer_head_is_upstream_failed`). The next
+  #      request asks the source again and so reaches a replacement. Any other status, 500 and
+  #      4xx included, is relayed and the target is kept.
   #   9. W5: the target's status, its `content-type` and its decoded body bytes reach the client
-  #      unchanged and as they arrive, event streams included, with `cache-control: no-store`.
-  #      The target is held until the last byte is relayed (row L12), then released. An HTTP/1.0
+  #      unchanged and as they arrive, event streams included, as `transfer-encoding: chunked`
+  #      with `cache-control: no-store` and `connection: close`, and no other header of the
+  #      target's (`adv_w5_target_headers_other_than_content_type_never_reach_the_client`). An
+  #      answer cut short on either side ends without its last chunk, so the client sees it cut
+  #      (`adv_w5_a_stream_cut_mid_event_reaches_the_client_cut_and_keeps_the_endpoint`). The
+  #      target is held until the last byte is relayed (row L12), then released. An HTTP/1.0
   #      client is not sent a chunked answer (RFC 9112 section 6.1): it gets the bytes unframed,
   #      ended by closing the connection. Every head the target sends, interim 1xx heads
   #      included, and its trailer section share one head-sized budget.
@@ -191,6 +298,10 @@ entities:
   #      llm-gateway.telemetry.UsageRecord once its answer or refusal is written, before the
   #      connection is closed. The record feeds the counters llm-gateway.telemetry lists and
   #      leaves the gateway through the embedding's `UsageRecords`.
+  # A refused relay is closed gracefully: the refusal is written, the write side closed, and
+  # what the client still sends is read and discarded, up to 33554432 bytes and within one
+  # `read_timeout_ms`, so a reset cannot destroy the refusal before the client reads it
+  # (`row_19_a_client_still_sending_a_refused_body_reads_its_refusal`).
   # R4: `GET /metrics` (and `HEAD`) serves those counters as Prometheus text
   # (`content-type: text/plain; version=0.0.4; charset=utf-8`), one `# HELP`, `# TYPE` pair and
   # its samples per series, in llm-gateway.telemetry's order. It takes the owner credential and
@@ -250,6 +361,47 @@ entities:
       - {name: scrapes, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
+  # A request outside the relay, in the order the gateway decides (docs/gateway.md, "The HTTP
+  # surface"; server.rs serve, dispatch, decide):
+  #   1. The head, and nothing beyond it, is read under the `max_head_bytes` bound
+  #      (`request-too-large`) and one `read_timeout_ms` deadline (`request-malformed` when it
+  #      never completes). A head that is not HTTP/1.x, a header whose name is followed by
+  #      whitespace before its colon (RFC 9112 section 5.1), and a CR, LF or NUL inside a line
+  #      (RFC 9110 section 5.5) are `request-malformed` (scenarios
+  #      a-request-head-that-is-not-http-is-malformed,
+  #      gateway-a-header-name-followed-by-whitespace-is-malformed). A query string is
+  #      discarded: no request parameter is decoded, and the path alone decides (scenarios
+  #      inspection-a-query-string-is-discarded, head-inspection-answers-without-a-body).
+  #   2. The probes, matched before anything else, without a credential and whatever the load:
+  #      exactly `GET` or `HEAD` on exactly `/health` is `200 {"status":"live"}` for as long as
+  #      the process serves; on exactly `/ready` it is `200 {"status":"ready"}`, or
+  #      `503 {"status":"unready"}` before `mark_ready` and while draining. Any other method on
+  #      those paths, and any other path, goes on to step 3 (scenarios
+  #      liveness-is-served-without-a-credential-and-readiness-starts-unready,
+  #      a-ready-gateway-reports-ready, the-probe-surface-is-two-literal-paths-and-two-methods).
+  #   3. Shedding, before authentication, because shedding has to be cheaper than the work it
+  #      sheds: past `max_concurrent_requests` a request is `overloaded` (scenarios
+  #      an-overloaded-gateway-sheds-inspection-but-still-answers-probes,
+  #      the-concurrency-bound-admits-its-own-count).
+  #   4. Owner authentication, before any further decoding: no `authorization` is
+  #      `credential-absent`, one that is not a single bearer token is `credential-malformed`
+  #      (the scheme is matched without regard to case), and a token that is not the owner's
+  #      is `credential-rejected`. So an unauthenticated request to an unknown path, with any
+  #      method, is `credential-absent`, and the surface cannot be enumerated without the
+  #      credential (scenarios authentication-comes-before-the-path-is-decided,
+  #      inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent).
+  #   5. A wire path of a gateway composed with a relay goes on to the `Relay` order below.
+  #   6. `/metrics`, R4 (see RelayObservation).
+  #   7. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
+  #      `allow: GET, HEAD`; a declared body is `body-not-allowed`; before `mark_ready` it is
+  #      `unavailable`; then `/v1/routes` serves every route, `/v1/routes/{alias}` the route
+  #      with that alias or `route-unknown`, and any other path is `path-unknown`. A gateway
+  #      composed without a relay therefore answers the three wire paths as it answers any
+  #      path it does not serve (scenario
+  #      inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve).
+  # The gateway serves one request per connection: it answers the first request on a connection
+  # and closes it, and a request pipelined behind it is never answered (scenario
+  # inspection-every-answer-is-json-no-store-and-closes-after-one-request).
   - name: llm-gateway.gateway.Exchange
     input:
       # A bounded fixture program: the owner secret, the listener bounds, an optional route

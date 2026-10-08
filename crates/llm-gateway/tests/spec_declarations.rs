@@ -52,7 +52,10 @@ fn declaration(name: &str) -> &'static str {
 #[test]
 fn row_4_every_refusal_the_crate_emits_is_declared_with_its_code_status_and_message() {
     let refusal = declaration("llm-gateway.gateway.Refusal");
-    let declared: Vec<&str> = refusal
+    let variants = refusal
+        .split_once("\n    variants:")
+        .map_or("", |(_, variants)| variants);
+    let declared: Vec<&str> = variants
         .lines()
         .filter(|line| line.trim_start().starts_with("- {name: "))
         .collect();

@@ -67,8 +67,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
-    "contract_digest": "slice-sha256/2:f734f269e85bbd3fc7b2126b529d866c818cf45e3e56ff61c9f55b37124dfb92",
+    "source_digest": "58f21af44a3a0b8513ecaf7f230a70cc1cd1e57427ea4c3e562b5279b2b52f66",
+    "contract_digest": "slice-sha256/2:3657a5a454b12cd2816c7a3d9de3e8e81c7dba5733812874016487796a9bee47",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -99,6 +99,92 @@
         "Unavailable",
         "UpstreamFailed",
         "WireNotServed"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "BodyIncomplete": "body-incomplete",
+            "BodyNotAllowed": "body-not-allowed",
+            "BodyNotJson": "body-not-json",
+            "BodyTooLarge": "body-too-large",
+            "CredentialAbsent": "credential-absent",
+            "CredentialMalformed": "credential-malformed",
+            "CredentialRejected": "credential-rejected",
+            "MethodNotAllowed": "method-not-allowed",
+            "ModelAbsent": "model-absent",
+            "ModelColdStart": "model-cold-start",
+            "ModelUnknown": "model-unknown",
+            "Overloaded": "overloaded",
+            "PathUnknown": "path-unknown",
+            "RequestMalformed": "request-malformed",
+            "RequestTooLarge": "request-too-large",
+            "RouteUnknown": "route-unknown",
+            "TargetUnavailable": "target-unavailable",
+            "ToolsNotServed": "tools-not-served",
+            "Unavailable": "unavailable",
+            "UpstreamFailed": "upstream-failed",
+            "WireNotServed": "wire-not-served"
+          }
+        },
+        {
+          "kind": "integer",
+          "name": "status",
+          "type": "Integer",
+          "values": {
+            "BodyIncomplete": 400,
+            "BodyNotAllowed": 400,
+            "BodyNotJson": 400,
+            "BodyTooLarge": 413,
+            "CredentialAbsent": 401,
+            "CredentialMalformed": 401,
+            "CredentialRejected": 401,
+            "MethodNotAllowed": 405,
+            "ModelAbsent": 400,
+            "ModelColdStart": 503,
+            "ModelUnknown": 404,
+            "Overloaded": 503,
+            "PathUnknown": 404,
+            "RequestMalformed": 400,
+            "RequestTooLarge": 431,
+            "RouteUnknown": 404,
+            "TargetUnavailable": 503,
+            "ToolsNotServed": 400,
+            "Unavailable": 503,
+            "UpstreamFailed": 502,
+            "WireNotServed": 400
+          }
+        },
+        {
+          "kind": "string",
+          "name": "message",
+          "type": "String",
+          "values": {
+            "BodyIncomplete": "the request body ended or stalled before it was complete",
+            "BodyNotAllowed": "the inspection surface accepts no request body",
+            "BodyNotJson": "the request body is not one JSON object",
+            "BodyTooLarge": "the request body exceeds its byte bound",
+            "CredentialAbsent": "no owner credential was presented",
+            "CredentialMalformed": "the owner credential is not a bearer token",
+            "CredentialRejected": "the presented owner credential was rejected",
+            "MethodNotAllowed": "this path does not accept that method",
+            "ModelAbsent": "the request body names no model",
+            "ModelColdStart": "the model is still starting; ask again after the retry-after delay",
+            "ModelUnknown": "no such model",
+            "Overloaded": "the gateway is already serving its maximum concurrent requests",
+            "PathUnknown": "no such gateway resource",
+            "RequestMalformed": "the request is not well-formed HTTP",
+            "RequestTooLarge": "the request head exceeds its byte bound",
+            "RouteUnknown": "no such route alias",
+            "TargetUnavailable": "no model target is available",
+            "ToolsNotServed": "the model does not serve tool calls",
+            "Unavailable": "the gateway is not ready to serve inspection",
+            "UpstreamFailed": "the model target could not be reached or failed; the next request asks for a replacement",
+            "WireNotServed": "the model is not served on this wire"
+          }
+        }
       ]
     },
     "llm-gateway.gateway.Wire": {

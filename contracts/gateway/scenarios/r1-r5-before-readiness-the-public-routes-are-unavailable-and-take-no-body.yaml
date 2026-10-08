@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body
+summary: before mark_ready both public routes are unavailable, as inspection; once ready, a request that declares a body is body-not-allowed and one without is answered
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat"],"tool_calling":"parsed"}],"pods":[],"steps":[{"step":"request","method":"GET","path":"/v1/models","body":"","credential":false},{"step":"request","method":"GET","path":"/","body":"","credential":false,"user_agent":"curl/8.0"},{"step":"mark_ready"},{"step":"request","method":"GET","path":"/v1/models","body":"{}","credential":false},{"step":"request","method":"GET","path":"/","body":"{}","credential":false},{"step":"request","method":"GET","path":"/v1/models","body":"","credential":false}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - 503 unavailable
+    - 503 unavailable
+    - ok
+    - 400 body-not-allowed
+    - 400 body-not-allowed
+    - 200 answered
+    acquired: 0

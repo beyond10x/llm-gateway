@@ -547,6 +547,12 @@ mod relay {
         /// `parsed` or `absent`, default `absent`, as the deployment document's `tool_calling`.
         #[serde(default)]
         tool_calling: Option<String>,
+        /// What `GET /v1/models` lists as `max_model_len` (row R5).
+        #[serde(default)]
+        max_model_len: Option<u64>,
+        /// What `GET /` tells each client as its context window (row R1).
+        #[serde(default)]
+        context_window: Option<u64>,
     }
 
     /// One scripted answer: a reply, or a transport failure.
@@ -585,6 +591,9 @@ mod relay {
             pad_to_bytes: Option<usize>,
             #[serde(default)]
             declare_bytes: Option<u64>,
+            /// Sent as the request's `user-agent` (row R1); none is sent without it.
+            #[serde(default)]
+            user_agent: Option<String>,
         },
     }
 
@@ -1051,11 +1060,17 @@ mod relay {
                 Some("parsed") => ToolCalling::Parsed,
                 Some(_) => return Err("fixture:unknown-tool-calling".to_owned()),
             };
-            models.push(
+            let mut relayed =
                 RelayModel::new(label(&model.alias)?, label(&model.upstream_model)?, wires)
                     .map_err(relay_error)?
-                    .with_tool_calling(tool_calling),
-            );
+                    .with_tool_calling(tool_calling);
+            if let Some(length) = model.max_model_len {
+                relayed = relayed.with_max_model_len(length);
+            }
+            if let Some(window) = model.context_window {
+                relayed = relayed.with_context_window(window);
+            }
+            models.push(relayed);
         }
         let mut bearers = BTreeMap::new();
         for model in &program.models {
@@ -1092,6 +1107,7 @@ mod relay {
             credential,
             pad_to_bytes,
             declare_bytes,
+            user_agent,
         } = step
         else {
             return None;
@@ -1108,9 +1124,12 @@ mod relay {
         } else {
             String::new()
         };
+        let agent = user_agent
+            .as_ref()
+            .map_or_else(String::new, |agent| format!("user-agent: {agent}\r\n"));
         let length = declare_bytes.unwrap_or(u64::try_from(body.len()).ok()?);
         let mut raw = format!(
-            "{} {path} HTTP/1.1\r\nhost: gateway\r\n{auth}content-type: application/json\r\ncontent-length: {length}\r\n\r\n",
+            "{} {path} HTTP/1.1\r\nhost: gateway\r\n{agent}{auth}content-type: application/json\r\ncontent-length: {length}\r\n\r\n",
             method.as_deref().unwrap_or("POST")
         )
         .into_bytes();
@@ -1224,10 +1243,15 @@ mod relay {
         if replied.as_ref() == Some(&(status, received.body.clone())) {
             return format!("{status} relayed");
         }
-        let word = serde_json::from_slice::<Value>(&received.body)
+        let refusal = serde_json::from_slice::<Value>(&received.body)
             .ok()
-            .and_then(|value| value["error"]["code"].as_str().map(str::to_owned))
-            .unwrap_or_else(|| "unparsed".to_owned());
+            .and_then(|value| value["error"]["code"].as_str().map(str::to_owned));
+        // An answer the gateway wrote itself that is no refusal: a public route (R1, R5).
+        let word = match refusal {
+            Some(code) => code,
+            None if (200..300).contains(&status) => "answered".to_owned(),
+            None => "unparsed".to_owned(),
+        };
         format!("{status} {word}")
     }
 

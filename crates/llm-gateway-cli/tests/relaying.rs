@@ -912,3 +912,66 @@ fn tools_a_tool_request_is_refused_for_the_absent_model_and_reaches_the_pod_for_
         "{request}"
     );
 }
+
+// --- R5, R1: the public routes read the document's models and start no pod --------------------
+
+/// A `GET` without a credential, with `user-agent` when given; the whole answer.
+fn public_get(address: SocketAddr, path: &str, user_agent: Option<&str>) -> String {
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    let agent = user_agent.map_or(String::new(), |agent| format!("user-agent: {agent}\r\n"));
+    write!(stream, "GET {path} HTTP/1.1\r\nhost: gateway\r\n{agent}\r\n").unwrap();
+    let mut answer = String::new();
+    drop(stream.read_to_string(&mut answer));
+    answer
+}
+
+#[test]
+fn r5_r1_the_binary_lists_and_profiles_each_model_from_the_document_and_starts_no_pod() {
+    let fixture = Fixture::new("r5-r1-public");
+    let deployment = deployment(&fixture, |text| {
+        mutate(
+            &text,
+            "max_model_len = 1024\n",
+            "max_model_len = 2048\ntool_calling = \"parsed\"\n",
+        )
+    });
+    let pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let listing = public_get(running.local_addr(), "/v1/models", None);
+    let claude = public_get(running.local_addr(), "/", Some("claude-cli/2.0"));
+    let codex = public_get(running.local_addr(), "/", Some("codex-cli/1.0"));
+    let plain = public_get(running.local_addr(), "/", Some("curl/8.0"));
+    running.shutdown();
+
+    assert!(listing.starts_with("HTTP/1.1 200 "), "{listing}");
+    assert!(
+        listing.ends_with(
+            "\r\n\r\n{\"object\":\"list\",\"data\":[{\"id\":\"small\",\"object\":\"model\",\
+             \"owned_by\":\"llm-gateway\",\"max_model_len\":2048,\
+             \"wires\":[\"chat\",\"responses\",\"messages\"]}]}"
+        ),
+        "{listing}"
+    );
+    assert!(claude.contains("export ANTHROPIC_MODEL='small'\n"), "{claude}");
+    assert!(
+        claude.contains("export CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'\n"),
+        "{claude}"
+    );
+    assert!(codex.contains("model_context_window = 65536\n"), "{codex}");
+    assert!(plain.contains("upstream_name = \"small\"\n"), "{plain}");
+    assert!(plain.contains("context_window = 65536\n"), "{plain}");
+    assert_eq!(runpod.create_calls(), 0, "a public route started a pod");
+    for answer in [&listing, &claude, &codex, &plain] {
+        for owner_only in [deployment.digest.as_str(), OWNER_SECRET, VLLM_KEY, "example/small-model"] {
+            assert!(!answer.contains(owner_only), "{owner_only:?} in {answer}");
+        }
+    }
+}

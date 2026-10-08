@@ -18,7 +18,7 @@ use crate::{
 };
 use llm_gateway::{
     Gateway, Label, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, ShutdownReport,
-    TargetBearer,
+    TargetBearer, TargetRefusal,
 };
 use llm_runpod::{
     Clock, ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry, PoolError, RunpodModel,
@@ -236,8 +236,8 @@ pub fn runpod_pool<T: RunpodTransport>(
 struct Relayed {
     alias: Identifier,
     bearer: Arc<TargetBearer>,
-    /// How long a request waits for the model's pod: `start_wait_seconds` (row K28).
-    wait: Duration,
+    /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
+    hold: Duration,
 }
 
 /// The gateway's targets: the pod the pool hands out for each alias.
@@ -281,7 +281,7 @@ impl<T> PoolTargets<T> {
                 Relayed {
                     alias: identifier(alias, &format!("models.{alias}"))?,
                     bearer: Arc::new(bearer),
-                    wait: Duration::from_secs(model.start_wait_seconds),
+                    hold: Duration::from_secs(model.request_hold_seconds),
                 },
             );
         }
@@ -305,13 +305,17 @@ fn authority(endpoint: &str) -> Option<&str> {
 }
 
 impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
-    /// Asks the pool for the model's ready pod, and while it is starting asks again until the
-    /// model's `start_wait_seconds` have passed. Once the gateway starts to stop, a request may
-    /// still use a pod that is ready now, but starts none and waits for none: without a ready
-    /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
-    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
-        let relayed = self.models.get(alias)?;
-        let deadline = Instant::now() + relayed.wait;
+    /// Asks the pool for the model's ready pod, and while it is starting (or its predecessor is
+    /// still being stopped) holds the request, asking again every 500 ms, until the model's
+    /// `request_hold_seconds` have passed (row L6). Each ask is one pool step under the pool's
+    /// lock; the wait is outside it, so a held request never starts a second pod. Past the
+    /// hold the request is `model-cold-start` (row W6); any other pool refusal is
+    /// `target-unavailable`. Once the gateway starts to stop, a request may still use a pod that
+    /// is ready now, but starts none and waits for none: without a ready pod it gives up at once
+    /// (`target-unavailable`), so it cannot hold the graceful stop.
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        let relayed = self.models.get(alias).ok_or(TargetRefusal::Unavailable)?;
+        let deadline = Instant::now() + relayed.hold;
         loop {
             let stopping = self.stopping.load(Ordering::SeqCst);
             let asked = if stopping {
@@ -321,17 +325,22 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
             };
             match asked {
                 Ok(lease) => {
-                    let authority = authority(lease.endpoint()?)?.to_owned();
-                    return Some(Box::new(PodTarget {
+                    let authority = lease
+                        .endpoint()
+                        .and_then(authority)
+                        .ok_or(TargetRefusal::Unavailable)?
+                        .to_owned();
+                    return Ok(Box::new(PodTarget {
                         authority,
                         bearer: Arc::clone(&relayed.bearer),
                         connector: Arc::clone(&self.connector),
                         _lease: lease,
                     }));
                 }
-                Err(PoolError::Starting | PoolError::Stopping)
-                    if !stopping && Instant::now() < deadline =>
-                {
+                Err(PoolError::Starting | PoolError::Stopping) if !stopping => {
+                    if Instant::now() >= deadline {
+                        return Err(TargetRefusal::ColdStart);
+                    }
                     let next = (Instant::now() + POLL).min(deadline);
                     while Instant::now() < next && !self.stopping.load(Ordering::SeqCst) {
                         thread::sleep(
@@ -339,7 +348,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         );
                     }
                 }
-                Err(_) => return None,
+                Err(_) => return Err(TargetRefusal::Unavailable),
             }
         }
     }
@@ -378,14 +387,15 @@ impl RelayTarget for PodTarget {
     }
 }
 
-/// The pool's cleanup pass, run every [`CLEANUP_INTERVAL`] on its own thread until stopped.
+/// The pool's cleanup pass, run every `interval` ([`CLEANUP_INTERVAL`] when relaying, row L13)
+/// on its own thread until stopped.
 struct Cleanup {
     stop: Arc<(Mutex<bool>, Condvar)>,
     thread: JoinHandle<()>,
 }
 
 impl Cleanup {
-    fn start(pass: impl Fn() + Send + 'static) -> Self {
+    fn start(interval: Duration, pass: impl Fn() + Send + 'static) -> Self {
         let stop = Arc::new((Mutex::new(false), Condvar::new()));
         let stopped = Arc::clone(&stop);
         let thread = thread::spawn(move || {
@@ -393,7 +403,7 @@ impl Cleanup {
             let mut stopping = lock.lock().unwrap_or_else(PoisonError::into_inner);
             loop {
                 let (next, _) = wake
-                    .wait_timeout_while(stopping, CLEANUP_INTERVAL, |stop| !*stop)
+                    .wait_timeout_while(stopping, interval, |stop| !*stop)
                     .unwrap_or_else(PoisonError::into_inner);
                 if *next {
                     return;
@@ -521,7 +531,7 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     // One pass before serving: it sweeps the pods a previous run of this controller left. A
     // refused pass changes nothing, and the next one runs on time.
     let _swept = pool.reap();
-    let cleanup = Cleanup::start(move || {
+    let cleanup = Cleanup::start(CLEANUP_INTERVAL, move || {
         let _report = pool.reap();
     });
     handle.mark_ready();
@@ -572,7 +582,11 @@ mod tests {
         );
         let stopped = passes.load(Ordering::SeqCst);
         thread::sleep(Duration::from_millis(150));
-        assert_eq!(passes.load(Ordering::SeqCst), stopped, "a pass ran after the stop");
+        assert_eq!(
+            passes.load(Ordering::SeqCst),
+            stopped,
+            "a pass ran after the stop"
+        );
     }
 
     #[test]

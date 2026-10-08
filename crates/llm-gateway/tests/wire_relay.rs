@@ -387,7 +387,9 @@ impl RelayTargets for Source {
         self.acquired.lock().unwrap().push(alias.to_string());
         if self
             .cold
-            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| left.checked_sub(1))
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
             .is_ok()
         {
             return Err(TargetRefusal::ColdStart);
@@ -865,7 +867,10 @@ fn w6_a_model_still_starting_past_its_hold_budget_is_model_cold_start_with_retry
     assert_eq!(warm.text(), "{\"id\":\"warm\"}");
     assert_eq!(warm.header("retry-after"), None);
     assert_eq!(source.acquired(), vec!["code", "code"]);
-    assert!(source.invalidated().is_empty(), "a cold start is no failure");
+    assert!(
+        source.invalidated().is_empty(),
+        "a cold start is no failure"
+    );
     assert_eq!(pod.seen().len(), 1);
 }
 

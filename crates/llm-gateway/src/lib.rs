@@ -35,7 +35,9 @@ mod relay;
 mod server;
 
 pub use auth::{Authenticated, OwnerToken, OwnerVerifier, SharedSecretVerifier, Verdict};
-pub use error::{InventoryError, LabelError, RefusalCode, RelayError, TokenError, VerifierError};
+pub use error::{
+    InventoryError, LabelError, RefusalCode, RelayError, TargetRefusal, TokenError, VerifierError,
+};
 pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,

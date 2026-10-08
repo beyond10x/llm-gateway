@@ -301,7 +301,7 @@ through `b10x-llm-providers`, and uses neither: it calls only `descriptions::run
 | single-flight start | an atomic phase flip on a watch channel | one mutex across a whole pool step: the first caller declares and submits, every later caller sees the live deployment and is told `starting` |
 | GPU choice | ordered; each refusal tries the next | the same, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false` |
 | crash recovery | two decreasing uptimes during startup terminate the pod | the same count, at any time, but only restarts inside the model's declared `crash_window_ms` count (window end inclusive), so sparse restarts over a long life are not a loop; a pod refusing its vLLM key is terminated too; the next request starts a new deployment |
-| startup deadline | the caller's hold budget; the pod keeps starting | a pod that has not served within its declared deadline is terminated, because it is a billed resource serving nobody. A pod that served and then answers a definite "not ready" gets the same bound, counted from the last time it was seen ready (`stopped-serving`); unknown readiness neither starts nor ends that clock |
+| startup deadline | the caller's hold budget; the pod keeps starting | the pod's deadline is separate from a request's hold budget (`request_hold_seconds`, row K28): a pod that has not served within its declared deadline is terminated, because it is a billed resource serving nobody. A pod that served and then answers a definite "not ready" gets the same bound, counted from the last time it was seen ready (`stopped-serving`); unknown readiness neither starts nor ends that clock |
 | idle reaper | idle past the timeout, never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement |
 | orphan sweep | `llmgw-*` pods whose alias left the registry | pods in `b10x-llm-` carrying **this controller's** owner tag that no live record holds, by exact key, or by request id for a record that holds no key yet; records whose model left the registry are stopped through the controller |
 | request id | none | a readable prefix of at most 64 bytes (`request-<controller>-<alias>-<generation>-`, cut short when long) followed by a 128-bit digest of a length-prefixed encoding of controller, alias, generation, instant and a per-process nonce: at most 96 bytes, so it always fits the identifier limit. Two different tuples never share an encoding — `c-qwen`/`x` and `c`/`qwen-x` do not — so two request ids agree only if the digest collides. The digest is the standard library's hasher run twice, not a cryptographic hash; it has to avoid accidents, not an adversary |
@@ -331,11 +331,30 @@ document (`spec/domains/deployment.yaml`):
 | clock | fixed | `WallClock`: system time in Unix milliseconds, never moving backwards |
 | `LeaseRegistry` | fixed | one empty in-process registry per run |
 | `HostingPolicy` | fixed, and the document | controller `b10x-llm-gateway`, provider `runpod`, account `default`, ledger `b10x-llm-gateway`, `max_lifetime_ms` 86400000 (24 h), `lease_ms` 300000 (5 min); `max_active` is the number of declared models |
-| `RunpodModel` | the document, and fixed | `hf_model`, `image`, `gpu_types`, `disk_gb`, the volume, `data_center_ids` and the vLLM settings from `[models.<alias>]`; `cloud_type` from its provider; `startup_deadline_ms` from `start_wait_seconds`, which is also how long a request waits for the pod; `idle_timeout_ms` from `idle_timeout_minutes`. Fixed: `crash_restart_limit` 2, `crash_window_ms` 600000, and `api_key_secret` `vllm_<alias>` with every `-` and `.` written `_` |
+| `RunpodModel` | the document, and fixed | `hf_model`, `image`, `gpu_types`, `disk_gb`, the volume, `data_center_ids` and the vLLM settings from `[models.<alias>]`; `cloud_type` from its provider; `startup_deadline_ms` from `start_wait_seconds`; `idle_timeout_ms` from `idle_timeout_minutes`. Fixed: `crash_restart_limit` 2, `crash_window_ms` 600000, and `api_key_secret` `vllm_<alias>` with every `-` and `.` written `_` |
 
 Every relayed model must name a `vllm_api_key_file` (`config:value` otherwise), because its pod
 always expects the key. The pool runs one cleanup pass before the gateway is marked ready, which
-sweeps what a previous run of this controller left, and then one every 60 seconds until the stop.
+sweeps what a previous run of this controller left (row L15), and then one every 60 seconds until
+the stop (row L13), five passes to one `lease_ms`. `l15_*` and `l13_*` in
+`crates/llm-gateway-cli/tests/relaying.rs` and `src/relaying.rs` prove both.
+
+**A request is held while its pod starts** (row L6), and **its hold budget is its own setting**
+(row K28). `request_hold_seconds` bounds how long one request waits; `start_wait_seconds` bounds
+how long the pod may take to serve before it is terminated. llmgw uses one value for both; they
+are separate here because a client with a short timeout of its own needs a short hold while the
+pod keeps its long deadline (`docs/design/runpod-clients.md` recommends 240 s for Codex and Claude
+Code, whose own timeouts are 300 s and 600 s). The hold defaults to `start_wait_seconds`, so a
+document that does not name it behaves as llmgw, and is at most `start_wait_seconds`
+(`config:value` past it), because a request still waiting past the deadline would wait for a
+terminated pod. While the pool answers
+`starting` (or `stopping`, while the previous pod is being stopped for a replacement) the relay
+asks it again every 500 ms; each ask is one pool step under the pool's lock and the wait is
+outside it, so requests held together start one pod. A request still waiting when its hold
+passes is answered `model-cold-start` (503) with `retry-after: 30` (row W6), and the pod keeps
+starting for the next request. A hold of 0 asks once, starting the pod if none is live, and
+answers `model-cold-start` at once. `l6_*`, `w6_*` and `k28_*` in
+`crates/llm-gateway-cli/tests/relaying.rs` prove it.
 
 **`idle_timeout_minutes = 0` means no idle grace** (row K27). The pod is stopped by the first
 cleanup pass that finds it with no request in flight, and never sooner than its measured cold
@@ -356,7 +375,7 @@ already replaced stops nothing.
 During the stop a request may still use a pod that is ready now (`RunpodPool::ensure_running`),
 but starts no pod and waits for none: with no ready pod for its model, or still waiting for one
 when the stop begins, it is answered `target-unavailable` at once, so the graceful stop is not
-held for `start_wait_seconds`.
+held for `request_hold_seconds`.
 
 **Pods outlive the process.** Stopping the gateway stops no pod: a pod created during the run keeps
 running, and billing, after the process has exited. The next start's cleanup pass, run before the

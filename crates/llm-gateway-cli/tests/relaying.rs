@@ -510,7 +510,11 @@ fn l6_a_request_for_a_pod_still_starting_is_held_until_the_pod_serves() {
         held >= Duration::from_secs(1),
         "answered after {held:?}: the request was not held while the pod started"
     );
-    assert_eq!(runpod.create_calls(), 1, "a held request started a second pod");
+    assert_eq!(
+        runpod.create_calls(),
+        1,
+        "a held request started a second pod"
+    );
     assert_eq!(pod.received().len(), 1);
 }
 
@@ -540,7 +544,11 @@ fn l6_requests_held_together_wait_on_one_pod() {
     for (answer, _) in &answers {
         assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
     }
-    assert_eq!(runpod.create_calls(), 1, "held requests started more than one pod");
+    assert_eq!(
+        runpod.create_calls(),
+        1,
+        "held requests started more than one pod"
+    );
     assert_eq!(pod.received().len(), 3);
 }
 
@@ -647,7 +655,11 @@ fn k28_a_hold_of_zero_answers_model_cold_start_at_once_and_still_starts_the_pod(
         held < Duration::from_millis(500),
         "a hold of 0 waited {held:?}"
     );
-    assert_eq!(runpod.create_calls(), 1, "the request did not start the pod");
+    assert_eq!(
+        runpod.create_calls(),
+        1,
+        "the request did not start the pod"
+    );
     assert!(pod.received().is_empty());
 }
 

@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-08T10:05:39Z",
+  "actor": "human:timo",
+  "artifact": "story:repo-operations",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "acceptance greps on wave/2026-10-08-w01 75e70ed: b10x-target 0/0/0, ## Serves at line 26 naming O1 and O5, ## Releases at line 138"
+  }
+}

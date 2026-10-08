@@ -11,7 +11,7 @@ relations:
 scope:
 - confidence: cited
   path: docs/verification/loom-qualification.md
-revision: 3
+revision: 4
 ---
 ## Outcome
 
@@ -46,3 +46,14 @@ repository.
 `story:client-qualification`: the same binary, model and capture method, already qualified for
 two clients. Blocked by `dependency-blocker:llm-model-factory` and
 `dependency-blocker:loom-route-option`.
+
+## Releases that cleared its blockers (2026-10-08)
+
+- `dependency-blocker:llm-model-factory`: llm 0.4.0, https://github.com/beyond10x/llm/releases/tag/0.4.0
+  (`story:catalog-model-port`). llm 0.5.0 (https://github.com/beyond10x/llm/releases/tag/0.5.0) is
+  the newest and the tag this story takes.
+- `dependency-blocker:loom-route-option`: loom 0.7.0, https://github.com/beyond10x/loom/releases/tag/0.7.0
+  (the catalog route).
+
+It still waits on `story:client-qualification`, whose chain reaches
+`story:runpod-production-transport`, blocked by `upstream-blocker:connectors-runpod-bundle`.

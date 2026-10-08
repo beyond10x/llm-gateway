@@ -6,7 +6,6 @@ status: open
 title: No connectors release carries a Runpod OpenAPI bundle (design choice D1 = A)
 relations:
 - blocks: story:runpod-production-transport
-- blocks: story:provider-key-files
 revision: 2
 ---
 ## What is missing

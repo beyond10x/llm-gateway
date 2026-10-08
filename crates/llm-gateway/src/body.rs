@@ -2,8 +2,9 @@
 //!
 //! The relay changes at most three string values of a body (rows W2 and W4) and must pass every
 //! other byte through unchanged. So the body is scanned, not parsed into a tree: the scan
-//! validates the whole document against RFC 8259, and records where the values it may rewrite
-//! lie. The rewrite then replaces exactly those byte ranges.
+//! validates the whole document against RFC 8259, records where the values it may rewrite lie and
+//! whether a top-level `tools` array is non-empty (the tool-calling refusal). The rewrite then
+//! replaces exactly those byte ranges.
 //!
 //! The scan keeps its nesting on an explicit stack rather than the call stack, so a body that is
 //! nothing but `[[[[…` costs memory bounded by the body bound and cannot overflow a thread's
@@ -27,6 +28,9 @@ pub(crate) struct Analysis {
     /// Every `output_config.effort` and `chat_template_kwargs.reasoning_effort` string token
     /// whose unescaped value is exactly `high`.
     efforts: Vec<Range<usize>>,
+    /// Whether a top-level `tools` member is a non-empty array: the body offers the model a
+    /// tool. With `tools` named twice at the top level, either one counts.
+    pub(crate) offers_tools: bool,
 }
 
 impl Analysis {
@@ -73,6 +77,7 @@ enum Slot {
     OutputConfig,
     TemplateKwargs,
     Effort,
+    Tools,
     Other,
 }
 
@@ -80,6 +85,7 @@ impl Slot {
     fn member(role: Role, key: &str) -> Self {
         match (role, key) {
             (Role::Top, "model") => Self::Model,
+            (Role::Top, "tools") => Self::Tools,
             (Role::Top, "output_config") => Self::OutputConfig,
             (Role::Top, "chat_template_kwargs") => Self::TemplateKwargs,
             (Role::OutputConfig, "effort") | (Role::TemplateKwargs, "reasoning_effort") => {
@@ -94,7 +100,7 @@ impl Slot {
             Self::Root => Role::Top,
             Self::OutputConfig => Role::OutputConfig,
             Self::TemplateKwargs => Role::TemplateKwargs,
-            Self::Model | Self::Effort | Self::Other => Role::Other,
+            Self::Model | Self::Effort | Self::Tools | Self::Other => Role::Other,
         }
     }
 }
@@ -121,6 +127,9 @@ struct Found {
     models: usize,
     model: Option<(Range<usize>, String)>,
     efforts: Vec<Range<usize>>,
+    /// The array just opened is a top-level `tools`; its first element decides `offers_tools`.
+    tools_opened: bool,
+    offers_tools: bool,
 }
 
 impl Found {
@@ -167,6 +176,7 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
                 }
                 Some(b'[') => {
                     found.value(slot, position..position + 1, None);
+                    found.tools_opened = slot == Slot::Tools;
                     stack.push(Frame::Array);
                     position += 1;
                     Next::FirstElement
@@ -206,11 +216,15 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
                 Next::Value(Slot::member(role, &key))
             }
             Next::FirstElement if byte == Some(b']') => {
+                found.tools_opened = false;
                 stack.pop();
                 position += 1;
                 Next::AfterValue
             }
-            Next::FirstElement => Next::Value(Slot::Other),
+            Next::FirstElement => {
+                found.offers_tools |= std::mem::take(&mut found.tools_opened);
+                Next::Value(Slot::Other)
+            }
             Next::AfterValue => match (stack.last(), byte) {
                 (None, None) => break,
                 (Some(Frame::Object(_)), Some(b',')) => {
@@ -238,6 +252,7 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
         model,
         model_span,
         efforts: found.efforts,
+        offers_tools: found.offers_tools,
     })
 }
 

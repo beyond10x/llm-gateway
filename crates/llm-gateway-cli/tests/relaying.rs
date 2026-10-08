@@ -2,7 +2,8 @@
 //! `EmulatedRunpod` and a loopback pod (row B8), and the pool's inputs from the deployment
 //! document, `idle_timeout_minutes = 0` included (row K27), the hold of a request for a pod that
 //! is still starting (rows L6, W6, K28), and the cleanup pass before serving and on its timer
-//! (rows L15, L13), and the pod and hold counters `GET /metrics` serves (rows O1, O2). No pod is
+//! (rows L15, L13), the pod and hold counters `GET /metrics` serves (rows O1, O2), and the refusal
+//! of a tool request to a model without tool calling before a pod starts (`tools_*`). No pod is
 //! started, no Runpod API is called and nothing leaves the loopback interface.
 
 mod support;
@@ -841,4 +842,73 @@ fn o1_the_startup_sweep_counts_each_pod_it_stops_as_a_reap() {
     assert_eq!(runpod.terminations(), vec!["pod1".to_owned()]);
     assert_eq!(scraped["llmgw_pod_reaps_total"], "1");
     assert_eq!(scraped["llmgw_pod_starts_total"], "0");
+}
+
+// --- Tool calling: a tool request to a model without it starts no pod ---------------------------
+
+#[test]
+fn tools_a_tool_request_is_refused_for_the_absent_model_and_reaches_the_pod_for_the_parsed_one() {
+    let fixture = Fixture::new("tools-relay");
+    let key = fixture.vllm_key();
+    let deployment = deployment(&fixture, |text| {
+        let text = mutate(
+            &text,
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\ntool_calling = \"parsed\"\n",
+        );
+        format!(
+            "{text}\n[models.text]\nprovider = \"runpod\"\nwires = [\"chat\"]\n\
+             context_window = 65536\nhf_model = \"example/text-model\"\n\
+             image = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\n\
+             max_model_len = 1024\nvllm_api_key_file = \"{}\"\ntool_calling = \"absent\"\n",
+            key.display()
+        )
+    });
+    let mut pod = Pod::start(1, "{\"id\":\"tool\"}");
+    let runpod = EmulatedRunpod::new();
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let tools = "\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"shell\"}}]";
+    let refused = post(
+        running.local_addr(),
+        CHAT,
+        OWNER_SECRET,
+        &format!("{{\"model\":\"text\",\"messages\":[],{tools}}}"),
+    );
+    assert_eq!(
+        runpod.create_calls(),
+        0,
+        "a tool request to a model without tool calling started a pod"
+    );
+    let relayed = post(
+        running.local_addr(),
+        CHAT,
+        OWNER_SECRET,
+        &format!("{{\"model\":\"small\",\"messages\":[],{tools}}}"),
+    );
+    running.shutdown();
+
+    assert!(refused.starts_with("HTTP/1.1 400 "), "{refused}");
+    assert!(
+        refused.contains(
+            "{\"error\":{\"code\":\"tools-not-served\",\"message\":\"the model does not serve tool calls\"}}"
+        ),
+        "{refused}"
+    );
+    assert!(relayed.starts_with("HTTP/1.1 200 "), "{relayed}");
+    assert!(relayed.contains("{\"id\":\"tool\"}"), "{relayed}");
+    // Only the parsed model's pod was started, and it received the one tool request.
+    assert_eq!(runpod.create_calls(), 1);
+    let received = pod.received();
+    assert_eq!(received.len(), 1);
+    let request = String::from_utf8(received[0].clone()).unwrap();
+    assert!(
+        request.ends_with(&format!("{{\"model\":\"small\",\"messages\":[],{tools}}}")),
+        "{request}"
+    );
 }

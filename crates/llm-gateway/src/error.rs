@@ -116,6 +116,10 @@ refusal_codes! {
     /// The model does not declare the wire of the path it was sent to.
     WireNotServed => "wire-not-served", 400,
         "the model is not served on this wire";
+    /// The body offers tools (a non-empty top-level `tools` array) to a model whose tool calling
+    /// is [`crate::ToolCalling::Absent`].
+    ToolsNotServed => "tools-not-served", 400,
+        "the model does not serve tool calls";
     /// The embedding handed out no target for the model.
     TargetUnavailable => "target-unavailable", 503,
         "no model target is available";

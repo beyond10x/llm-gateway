@@ -23,8 +23,8 @@ types:
   # The closed refusal set, with the wire code, status and fixed message the crate publishes
   # (crates/llm-gateway/src/error.rs:99-133).
   #
-  # The relay adds nine (rows W1, W3, W6, W7, K11), each `{"error":{"code":..,"message":..}}` like
-  # every other refusal, with this fixed message:
+  # The relay adds ten (rows W1, W3, W6, W7, K11, and tool calling), each
+  # `{"error":{"code":..,"message":..}}` like every other refusal, with this fixed message:
   #   body-incomplete     400  a body that ended, or stalled past the read timeout, before it was
   #                            complete: "the request body ended or stalled before it was
   #                            complete"
@@ -37,6 +37,9 @@ types:
   #   model-unknown       404  no relayed model has that alias: "no such model"
   #   wire-not-served     400  the model does not declare the wire of the path it was sent to:
   #                            "the model is not served on this wire"
+  #   tools-not-served    400  the body carries a non-empty top-level `tools` array and the model
+  #                            declares its tool calling `Absent` (llm-gateway.clients
+  #                            ToolCalling): "the model does not serve tool calls"
   #   target-unavailable  503  the embedding handed out no target for the model:
   #                            "no model target is available"
   #   model-cold-start    503  the embedding reports the model's target still starting when the
@@ -54,7 +57,7 @@ types:
   # refusal that carries `retry-after`.
   - name: llm-gateway.gateway.Refusal
     kind: enum
-    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelColdStart, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
+    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelColdStart, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, ToolsNotServed, Unavailable, UpstreamFailed, WireNotServed]
   # A wire the gateway relays, each on its own path, to the same path at the target (rows R6-R8):
   # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
   # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
@@ -146,8 +149,12 @@ entities:
   #      one top-level `model` key whose value is a string (`model-absent`; a second top-level
   #      `model` is `body-not-json`, because the target could read the other one), naming a
   #      relayed model after JSON unescaping (`model-unknown`, 404).
-  #   5. K11: the model must declare the path's wire (`wire-not-served`). Steps 3-5 hand out no
-  #      target, so a refused request never wakes a pod.
+  #   5. K11: the model must declare the path's wire (`wire-not-served`). Then a body whose
+  #      top-level `tools` is a non-empty array, for a model whose tool calling is `Absent`, is
+  #      `tools-not-served` (400); a `tools` that is absent, an empty array or not an array, and
+  #      any `tools` below the top level, is relayed unchanged (llm-gateway.clients
+  #      ToolCalling). A body naming `tools` twice at its top level is refused when either is a
+  #      non-empty array. Steps 3-5 hand out no target, so a refused request never wakes a pod.
   #   6. W2: the top-level `model` value is rewritten to the model's upstream name on every wire,
   #      written as a JSON string (a `"` or `\` in the name is escaped).
   #      W4: on the messages wire only, `output_config.effort` and
@@ -259,9 +266,11 @@ commands:
     input:
       # A bounded fixture program:
       #   secret  the owner secret
-      #   models  `[{alias, upstream_model, wires, bearer}]`, the relayed models; `wires`
-      #           names `chat`, `responses`, `messages`; the optional `bearer` is the key every
-      #           target the source hands out for that model carries (row B8)
+      #   models  `[{alias, upstream_model, wires, bearer, tool_calling}]`, the relayed models;
+      #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key
+      #           every target the source hands out for that model carries (row B8); the
+      #           optional `tool_calling` is `parsed` or `absent`, default `absent`, as the
+      #           deployment document's
       #   pods    one script per fixture pod, `pod-1` first. The target source hands out the
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a

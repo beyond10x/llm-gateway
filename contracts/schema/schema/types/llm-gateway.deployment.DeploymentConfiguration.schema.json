@@ -4,11 +4,21 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
-    "contract_digest": "slice-sha256/2:100bfd272f0d5e6d8a6ab63d849c1fa0b4c0b6bb7ae1001f901a711ad73c5315",
+    "source_digest": "4a63a16d8afe4d83c7a15fa42311e14d4f4a75ed81a9bc6007676f58cda1c225",
+    "contract_digest": "slice-sha256/2:f64d7ebf1c5f0da256a42681b1fc521981c811e9eed8ddec334e108feb81dca6",
     "regenerate": "ess generate"
   },
   "$defs": {
+    "llm-gateway.clients.ToolCalling": {
+      "title": "ToolCalling",
+      "x-ess-name": "llm-gateway.clients.ToolCalling",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Parsed",
+        "Absent"
+      ]
+    },
     "llm-gateway.deployment.CloudType": {
       "title": "CloudType",
       "x-ess-name": "llm-gateway.deployment.CloudType",
@@ -136,6 +146,9 @@
         },
         "vllm_api_key_file": {
           "type": "string"
+        },
+        "tool_calling": {
+          "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
         }
       },
       "required": [
@@ -155,7 +168,8 @@
         "data_center_ids",
         "idle_timeout_minutes",
         "start_wait_seconds",
-        "request_hold_seconds"
+        "request_hold_seconds",
+        "tool_calling"
       ],
       "additionalProperties": false
     },

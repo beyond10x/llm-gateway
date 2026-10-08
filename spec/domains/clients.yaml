@@ -1,14 +1,17 @@
 domain: llm-gateway.clients
 
-# PLANNED: no code implements this domain yet, and checks/conformance observes none of it. It is
-# the typed home of the nouns docs/design/runpod-clients.md introduces: the three clients the
-# operator points at a Runpod-hosted model through this gateway (Claude Code, Codex and a Loom run
-# through llm), what each must be told to reach it, and the one model capability a client's
-# requests depend on that the deployment document does not declare yet: tool calling. The owning
-# stories add the observation entities and the scenarios that hold their implementation to these
-# declarations: story:model-tool-calling (ToolCalling, ClientRefusal), story:claude-code-wire
-# (the messages-wire facts below) and story:public-model-listing (ClientProfile, which row R1's
-# `GET /` renders).
+# PLANNED: apart from ToolCalling, no code implements this domain yet, and checks/conformance
+# observes none of it. It is the typed home of the nouns docs/design/runpod-clients.md introduces:
+# the three clients the operator points at a Runpod-hosted model through this gateway (Claude
+# Code, Codex and a Loom run through llm), what each must be told to reach it, and the one model
+# capability a client's requests depend on: tool calling. The owning stories add the observation
+# entities and the scenarios that hold their implementation to these declarations:
+# story:claude-code-wire (the messages-wire facts below) and story:public-model-listing
+# (ClientProfile, which row R1's `GET /` renders). ToolCalling is implemented
+# (story:model-tool-calling): each model of the deployment document declares it
+# (llm-gateway.deployment ModelDeclaration `tool_calling`), and the relay refuses a tool request
+# to a model declaring `Absent` as `tools-not-served` (llm-gateway.gateway Refusal
+# `ToolsNotServed`), observed by the `Relay` scenarios `tools-*` in contracts/gateway/scenarios/.
 #
 # Every client reaches the gateway with the owner's one bearer credential
 # (llm-gateway.gateway, docs/gateway.md "The HTTP surface"; `credential-malformed` refuses any
@@ -53,21 +56,21 @@ types:
   # are (llmgw docs/model-profiles.md, `extraVllmArgs`). `Absent`: it is not, and the model can
   # answer text only. Claude Code and Codex always offer tools (Codex: shell and `apply_patch`,
   # rust-v0.160.0 `codex-rs/core/src/client.rs`), so neither can work against `Absent`.
-  # UNMAPPED: whether the deployment document declares this per model as its own key, or the
-  # binary infers it from `extra_vllm_args`. Inference would tie a refusal to the spelling of a
-  # vLLM flag. Owner: story:model-tool-calling.
+  # DECIDED 2026-10-08 (story:model-tool-calling): the deployment document declares this per
+  # model as its own key, `tool_calling = "parsed" | "absent"`, default `absent`
+  # (llm-gateway.deployment ModelDeclaration). It is not inferred from `extra_vllm_args`:
+  # inference would tie a refusal to the spelling of a vLLM flag, and would read a flag the
+  # image's own defaults may already set or a later vLLM may rename, so the declaration states
+  # the operator's intent and the closed document checks it.
+  # The refusal it decides, `tools-not-served` (400), is llm-gateway.gateway.Refusal
+  # `ToolsNotServed`: the request body carries a non-empty top-level `tools` array and the model
+  # declares `Absent`. It is decided at step 5 of the relay, with `wire-not-served`, before any
+  # target is asked for, so it never wakes a pod. DECIDED 2026-10-08 in
+  # docs/design/runpod-clients.md: refused at the gateway, because the pod would otherwise be
+  # started and billed to answer a request it cannot serve.
   - name: llm-gateway.clients.ToolCalling
     kind: enum
     variants: [Parsed, Absent]
-  # Refusals this design adds to llm-gateway.gateway.Refusal when its stories land.
-  # `ToolsNotServed` (`tools-not-served`, 400): the request body carries a non-empty top-level
-  # `tools` array and the model declares `Absent`. It is decided at step 5 of the relay, with
-  # `wire-not-served`, before any target is asked for, so it never wakes a pod.
-  # DECIDED 2026-10-08 in docs/design/runpod-clients.md: refused at the gateway, because the pod
-  # would otherwise be started and billed to answer a request it cannot serve.
-  - name: llm-gateway.clients.ClientRefusal
-    kind: enum
-    variants: [ToolsNotServed]
   # What the messages wire does with Claude Code's `thinking` object for a model id Claude Code
   # does not recognise. `Relayed`: unchanged, as today. `Mapped`: rewritten in place, as the
   # messages-wire effort already is (docs/gateway.md "The relay", step 6; matrix row W4).

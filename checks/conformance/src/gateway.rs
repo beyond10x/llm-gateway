@@ -473,7 +473,7 @@ mod relay {
     use llm_gateway::{
         Disposition, Gateway, GatewayConfig, GatewayHandle, OwnerToken, Relay, RelayError,
         RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier,
-        TargetBearer, TargetRefusal, UsageRecord, UsageRecords, Wire,
+        TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
@@ -530,6 +530,9 @@ mod relay {
         /// The key every target handed out for this model carries (row B8).
         #[serde(default)]
         bearer: Option<String>,
+        /// `parsed` or `absent`, default `absent`, as the deployment document's `tool_calling`.
+        #[serde(default)]
+        tool_calling: Option<String>,
     }
 
     /// One scripted answer: a reply, or a transport failure.
@@ -1029,9 +1032,15 @@ mod relay {
                 .iter()
                 .map(|name| wire(name))
                 .collect::<Result<Vec<_>, _>>()?;
+            let tool_calling = match model.tool_calling.as_deref() {
+                None | Some("absent") => ToolCalling::Absent,
+                Some("parsed") => ToolCalling::Parsed,
+                Some(_) => return Err("fixture:unknown-tool-calling".to_owned()),
+            };
             models.push(
                 RelayModel::new(label(&model.alias)?, label(&model.upstream_model)?, wires)
-                    .map_err(relay_error)?,
+                    .map_err(relay_error)?
+                    .with_tool_calling(tool_calling),
             );
         }
         let mut bearers = BTreeMap::new();

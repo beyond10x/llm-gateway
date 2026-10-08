@@ -7,7 +7,7 @@ use crate::{
     refusal::{Refusal, StartupRefusal},
     trusted,
 };
-use llm_gateway::GatewayConfig;
+use llm_gateway::{GatewayConfig, ToolCalling};
 use llm_runpod::{CloudType, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -20,6 +20,24 @@ use std::{
 
 const REASONING_EFFORTS: [&str; 4] = ["low", "medium", "high", "xhigh"];
 const HEX: &[u8; 16] = b"0123456789abcdef";
+
+/// Reads a closed enumerated value from a TOML string and nothing else. serde's derived
+/// `Deserialize` for an externally tagged enum also takes a one-key table naming a unit
+/// variant, so `thinking = { on = {} }` loaded as `on`; every enum of the document is read
+/// through this instead, and anything but one of its strings is `config:schema`.
+macro_rules! from_string_only {
+    ($name:ident { $( $text:literal => $variant:ident ),+ $(,)? }) => {
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let text = String::deserialize(deserializer)?;
+                match text.as_str() {
+                    $( $text => Ok(Self::$variant), )+
+                    other => Err(serde::de::Error::unknown_variant(other, &[$( $text ),+])),
+                }
+            }
+        }
+    };
+}
 
 // --- The document, exactly as written --------------------------------------------------------
 
@@ -42,23 +60,33 @@ struct ProviderDocument {
     cloud_type: CloudTypeDocument,
 }
 
-#[derive(Deserialize, Default)]
+#[derive(Default)]
 enum CloudTypeDocument {
     #[default]
-    #[serde(rename = "SECURE")]
     Secure,
-    #[serde(rename = "COMMUNITY")]
     Community,
 }
 
-#[derive(Deserialize, Default)]
+from_string_only!(CloudTypeDocument { "SECURE" => Secure, "COMMUNITY" => Community });
+
+#[derive(Default)]
 enum ThinkingDocument {
-    #[serde(rename = "on")]
     On,
     #[default]
-    #[serde(rename = "off")]
     Off,
 }
+
+from_string_only!(ThinkingDocument { "on" => On, "off" => Off });
+
+#[derive(Default)]
+enum ToolCallingDocument {
+    Parsed,
+    /// The default: a model that says nothing is served no tool request.
+    #[default]
+    Absent,
+}
+
+from_string_only!(ToolCallingDocument { "parsed" => Parsed, "absent" => Absent });
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -99,6 +127,8 @@ struct ModelDocument {
     request_hold_seconds: Option<u64>,
     #[serde(default)]
     vllm_api_key_file: Option<PathBuf>,
+    #[serde(default)]
+    tool_calling: ToolCallingDocument,
 }
 
 fn default_max_num_seqs() -> u32 {
@@ -128,22 +158,22 @@ fn default_start_wait_seconds() -> u64 {
 // --- The loaded deployment -------------------------------------------------------------------
 
 /// `providers.<name>.kind`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderKind {
-    #[serde(rename = "runpod-vllm")]
     RunpodVllm,
 }
 
+from_string_only!(ProviderKind { "runpod-vllm" => RunpodVllm });
+
 /// A wire a model is served on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Wire {
-    #[serde(rename = "chat")]
     Chat,
-    #[serde(rename = "responses")]
     Responses,
-    #[serde(rename = "messages")]
     Messages,
 }
+
+from_string_only!(Wire { "chat" => Chat, "responses" => Responses, "messages" => Messages });
 
 impl Wire {
     pub const fn label(self) -> &'static str {
@@ -184,6 +214,10 @@ pub struct Model {
     /// The file holding the key this model's pod's vLLM server expects (row B9). Only the path
     /// is loaded here; [`crate::vllm_keys`] reads it.
     pub vllm_api_key_file: Option<PathBuf>,
+    /// Whether the model's pod parses tool calls; `absent` unless the document says
+    /// `parsed`. A request offering tools to an `Absent` model is refused before a pod is
+    /// asked for.
+    pub tool_calling: ToolCalling,
 }
 
 /// A loaded and validated deployment document.
@@ -486,5 +520,9 @@ fn into_model(model: ModelDocument) -> Model {
             .request_hold_seconds
             .unwrap_or(model.start_wait_seconds),
         vllm_api_key_file: model.vllm_api_key_file,
+        tool_calling: match model.tool_calling {
+            ToolCallingDocument::Parsed => ToolCalling::Parsed,
+            ToolCallingDocument::Absent => ToolCalling::Absent,
+        },
     }
 }

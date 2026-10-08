@@ -31,6 +31,7 @@ mod body;
 mod error;
 mod inventory;
 mod json;
+mod metrics;
 mod relay;
 mod server;
 
@@ -42,5 +43,6 @@ pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,
 };
+pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
 pub use relay::{Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, TargetBearer, Wire};
 pub use server::{Gateway, GatewayConfig, GatewayHandle, ShutdownReport};

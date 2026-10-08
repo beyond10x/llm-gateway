@@ -17,12 +17,12 @@ use crate::{
     serve::{Running, Stopped, inventory, owner_verifier},
 };
 use llm_gateway::{
-    Gateway, Label, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, ShutdownReport,
-    TargetBearer, TargetRefusal,
+    Gateway, Label, Metrics, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    ShutdownReport, TargetBearer, TargetRefusal,
 };
 use llm_runpod::{
-    Clock, ComputeAuthorization, Hold, HostingPolicy, Identifier, LeaseRegistry, PoolError,
-    RunpodModel, RunpodPool, RunpodTransport, StreamLease,
+    CleanupReport, Clock, ComputeAuthorization, Hold, HostingPolicy, Identifier, LeaseRegistry,
+    PoolError, RunpodModel, RunpodPool, RunpodTransport, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -248,6 +248,10 @@ pub(crate) struct PoolTargets<T> {
     connector: Arc<dyn PodConnector>,
     /// Set when the gateway starts to stop: a request still waiting for its pod gives up.
     stopping: Arc<AtomicBool>,
+    /// The pod counters (row O1), shared with the relay that serves them.
+    metrics: Arc<Metrics>,
+    /// Per alias, the last deployment counted as a pod start.
+    started: Mutex<BTreeMap<String, Identifier>>,
 }
 
 impl<T> PoolTargets<T> {
@@ -260,6 +264,7 @@ impl<T> PoolTargets<T> {
         pool: Arc<RunpodPool<T>>,
         connector: Arc<dyn PodConnector>,
         stopping: Arc<AtomicBool>,
+        metrics: Arc<Metrics>,
     ) -> Result<Self, Refusal> {
         let mut models = BTreeMap::new();
         for (alias, model) in &deployment.models {
@@ -291,7 +296,65 @@ impl<T> PoolTargets<T> {
             models,
             connector,
             stopping,
+            metrics,
+            started: Mutex::new(BTreeMap::new()),
         })
+    }
+
+    /// Counts the pod a hold bound to as started, once per deployment (row O1). The pool binds
+    /// a hold on the `starting` answer of the very ask that submitted the create, and names each
+    /// deployment it creates anew, so a deployment not yet counted for its alias is a create the
+    /// pool submitted. A request that binds to a pod another request started counts nothing.
+    fn count_start(&self, alias: &str, hold: &Hold) {
+        let Some(deployment) = hold.deployment() else {
+            return;
+        };
+        let mut started = self.started.lock().unwrap_or_else(PoisonError::into_inner);
+        if started.get(alias) != Some(deployment) {
+            started.insert(alias.to_owned(), deployment.clone());
+            drop(started);
+            self.metrics.count_pod_start();
+            tracing::info!(
+                model = alias,
+                deployment = deployment.as_str(),
+                "pod start submitted"
+            );
+        }
+    }
+
+    /// Counts a pool answer that says a pod could not be started or failed while starting
+    /// (row O1). The pool gives a failure's reason to exactly one ask, so each is counted once.
+    fn count_failure(&self, alias: &str, error: PoolError) {
+        if matches!(
+            error,
+            PoolError::NoCapacity
+                | PoolError::CrashLoop
+                | PoolError::CredentialRefused
+                | PoolError::StartupDeadline
+        ) {
+            self.metrics.count_pod_start_failure();
+            tracing::warn!(model = alias, reason = error.code(), "pod start failed");
+        }
+    }
+}
+
+/// Counts what one cleanup pass stopped (row O1): idle, retired and replaced deployments and
+/// orphaned pods. A refused pass stopped nothing it can name.
+fn count_reaps(metrics: &Metrics, pass: Result<CleanupReport, PoolError>) {
+    let Ok(report) = pass else {
+        return;
+    };
+    let stopped =
+        report.idle.len() + report.retired.len() + report.replaced.len() + report.orphans.len();
+    if stopped > 0 {
+        metrics.count_pod_reaps(u64::try_from(stopped).unwrap_or(u64::MAX));
+        tracing::info!(
+            idle = report.idle.len(),
+            retired = report.retired.len(),
+            replaced = report.replaced.len(),
+            orphans = report.orphans.len(),
+            "cleanup pass stopped pods"
+        );
     }
 }
 
@@ -330,6 +393,10 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                 self.pool
                     .ensure_held(&relayed.alias, &self.authorization, &mut hold)
             };
+            self.count_start(alias, &hold);
+            if let Err(error) = &asked {
+                self.count_failure(alias, *error);
+            }
             match asked {
                 Ok(lease) => {
                     let authority = lease
@@ -341,6 +408,8 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         authority,
                         bearer: Arc::clone(&relayed.bearer),
                         connector: Arc::clone(&self.connector),
+                        // A hold binds only to a pod it found starting (rows O1, O2).
+                        held: hold.deployment().is_some(),
                         _lease: lease,
                     }));
                 }
@@ -384,6 +453,8 @@ struct PodTarget {
     authority: String,
     bearer: Arc<TargetBearer>,
     connector: Arc<dyn PodConnector>,
+    /// The request was held while this pod started.
+    held: bool,
     _lease: StreamLease,
 }
 
@@ -394,6 +465,10 @@ impl RelayTarget for PodTarget {
 
     fn bearer(&self) -> Option<&TargetBearer> {
         Some(&self.bearer)
+    }
+
+    fn held(&self) -> bool {
+        self.held
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -511,12 +586,14 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     let inventory = inventory(deployment)?;
     let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
     let stopping = Arc::new(AtomicBool::new(false));
+    let metrics = Arc::new(Metrics::default());
     let targets = PoolTargets::new(
         deployment,
         &vllm_keys,
         Arc::clone(&pool),
         pods,
         Arc::clone(&stopping),
+        Arc::clone(&metrics),
     )?;
     let mut models = Vec::with_capacity(deployment.models.len());
     for (alias, model) in &deployment.models {
@@ -532,7 +609,9 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
         })?);
     }
     let relay = Relay::new(models, Arc::new(targets))
-        .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?;
+        .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
+        .with_metrics(Arc::clone(&metrics))
+        .with_records(Arc::new(crate::logging::TracingRecords));
     let signals = Running::install_signals()?;
     let bind = deployment.gateway.bind;
     let handle = Gateway::bind_with_relay(
@@ -544,9 +623,9 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     .map_err(|error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")))?;
     // One pass before serving: it sweeps the pods a previous run of this controller left. A
     // refused pass changes nothing, and the next one runs on time.
-    let _swept = pool.reap();
+    count_reaps(&metrics, pool.reap());
     let cleanup = Cleanup::start(CLEANUP_INTERVAL, move || {
-        let _report = pool.reap();
+        count_reaps(&metrics, pool.reap());
     });
     handle.mark_ready();
     Ok(Relaying {

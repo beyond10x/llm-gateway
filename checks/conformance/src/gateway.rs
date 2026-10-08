@@ -471,9 +471,9 @@ mod relay {
     use super::{Observed, label, token_code, unavailable, verifier_code};
     use ess_conformance::target::TargetError;
     use llm_gateway::{
-        Gateway, GatewayConfig, GatewayHandle, OwnerToken, Relay, RelayError, RelayModel,
-        RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
-        TargetRefusal, Wire,
+        Disposition, Gateway, GatewayConfig, GatewayHandle, OwnerToken, Relay, RelayError,
+        RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier,
+        TargetBearer, TargetRefusal, UsageRecord, UsageRecords, Wire,
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
@@ -552,6 +552,11 @@ mod relay {
     #[serde(tag = "step", rename_all = "snake_case", deny_unknown_fields)]
     enum Step {
         MarkReady,
+        /// A `GET /metrics` (row R4), with the owner's credential unless `credential` is false.
+        Scrape {
+            #[serde(default)]
+            credential: Option<bool>,
+        },
         Request {
             path: String,
             body: String,
@@ -816,6 +821,66 @@ mod relay {
             .position(|window| window == needle)
     }
 
+    /// Keeps every usage record the gateway hands out (rows O1, O2).
+    #[derive(Default)]
+    struct Records(Mutex<Vec<UsageRecord>>);
+
+    impl UsageRecords for Records {
+        fn record(&self, record: &UsageRecord) {
+            if let Ok(mut records) = self.0.lock() {
+                records.push(record.clone());
+            }
+        }
+    }
+
+    impl Records {
+        /// The records made since the last call.
+        fn take(&self) -> Vec<UsageRecord> {
+            self.0
+                .lock()
+                .map(|mut records| std::mem::take(&mut *records))
+                .unwrap_or_default()
+        }
+    }
+
+    /// One record as the `records` fact writes it; `elapsed` is how long the client took from
+    /// sending the request to reading its last byte.
+    fn record_fact(record: &UsageRecord, elapsed: Duration) -> String {
+        let duration = if u128::from(record.duration_ms) <= elapsed.as_millis() {
+            "bounded".to_owned()
+        } else {
+            record.duration_ms.to_string()
+        };
+        let tokens = [
+            record.input_tokens,
+            record.output_tokens,
+            record.cached_input_tokens,
+            record.cache_creation_input_tokens,
+            record.reasoning_output_tokens,
+        ];
+        let tokens = if tokens.iter().all(Option::is_none) && record.reported_model.is_none() {
+            "absent"
+        } else {
+            "reported"
+        };
+        let disposition = match record.disposition {
+            Disposition::Relayed => "Relayed",
+            Disposition::Refused => "Refused",
+            Disposition::UpstreamFailed => "UpstreamFailed",
+        };
+        format!(
+            "model={} wire={} disposition={disposition} refusal={} status={} target_status={} response_bytes={} duration_ms={duration} tokens={tokens}",
+            record.model.as_deref().unwrap_or("absent"),
+            record.wire.label(),
+            record.refusal.map_or("absent", |code| code.wire()),
+            record.status,
+            record
+                .target_status
+                .map_or_else(|| "absent".to_owned(), |status| status.to_string()),
+            record.response_bytes,
+        )
+    }
+
     /// A pod as the source knows it: its name, its authority and its script.
     type PodSlot = (String, String, Arc<Mutex<VecDeque<AnswerInput>>>);
 
@@ -947,7 +1012,11 @@ mod relay {
         }
     }
 
-    fn compose(program: &Program, source: Arc<Source>) -> Result<GatewayHandle, String> {
+    fn compose(
+        program: &Program,
+        source: Arc<Source>,
+        records: Arc<Records>,
+    ) -> Result<GatewayHandle, String> {
         let token = OwnerToken::new(program.secret.as_bytes().to_vec())
             .map_err(|error| format!("token:{}", token_code(error)))?;
         let verifier = SharedSecretVerifier::new(token)
@@ -977,7 +1046,9 @@ mod relay {
             .bearers
             .lock()
             .map_err(|_| "fixture:bearers".to_owned())? = bearers;
-        let relay = Relay::new(models, source).map_err(relay_error)?;
+        let relay = Relay::new(models, source)
+            .map_err(relay_error)?
+            .with_records(records);
         let inventory =
             RouteInventory::new(Vec::new()).map_err(|_| "fixture:inventory".to_owned())?;
         let bind = "127.0.0.1:0"
@@ -1146,7 +1217,7 @@ mod relay {
                 .iter()
                 .all(|pod| pod.len() <= MAX_ANSWERS && pod.iter().all(AnswerInput::valid))
             && program.steps.iter().all(|step| match step {
-                Step::MarkReady => true,
+                Step::MarkReady | Step::Scrape { .. } => true,
                 Step::Request { pad_to_bytes, .. } => {
                     pad_to_bytes.is_none_or(|bytes| bytes <= MAX_PAD_BYTES)
                 }
@@ -1157,7 +1228,8 @@ mod relay {
         let mut facts = json!({
             "valid_program": false, "error_code": null, "results": [], "bodies": [],
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
-            "released": 0, "authorizations": [], "secret_upstream": false
+            "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
+            "scrapes": []
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -1200,9 +1272,10 @@ mod relay {
             released: Arc::new(AtomicUsize::new(0)),
             invalidated: Mutex::new(Vec::new()),
         });
-        match compose(&program, Arc::clone(&source)) {
+        let records = Arc::new(Records::default());
+        match compose(&program, Arc::clone(&source), Arc::clone(&records)) {
             Ok(handle) => {
-                steps(&program, &handle, &shared, &mut facts);
+                steps(&program, &handle, &shared, &records, &mut facts);
                 handle.shutdown();
             }
             Err(code) => {
@@ -1237,22 +1310,106 @@ mod relay {
         facts
     }
 
-    fn steps(program: &Program, handle: &GatewayHandle, shared: &Shared, facts: &mut Value) {
+    /// A `GET /metrics`: its result entry, and its `scrapes` entries numbered `index`.
+    fn scrape(
+        addr: SocketAddr,
+        secret: &str,
+        credential: bool,
+        index: usize,
+        run_started: Instant,
+        scrapes: &mut Vec<String>,
+    ) -> String {
+        let auth = if credential {
+            format!("authorization: Bearer {secret}\r\n")
+        } else {
+            String::new()
+        };
+        let raw = format!("GET /metrics HTTP/1.1\r\nhost: gateway\r\n{auth}\r\n");
+        let Some(received) = exchange(addr, raw.as_bytes(), &Progress::default()) else {
+            return "no-response".to_owned();
+        };
+        let Some(status) = received.status else {
+            return "no-response".to_owned();
+        };
+        scrapes.push(format!(
+            "{index} {status} content-type={}",
+            received.header("content-type")
+        ));
+        if status != 200 {
+            return summary(&received, &Progress::default());
+        }
+        let text = String::from_utf8_lossy(&received.body).into_owned();
+        scrapes.extend(
+            text.lines()
+                .filter(|line| !line.starts_with('#'))
+                .map(|line| format!("{index} {}", waited(line, run_started.elapsed()))),
+        );
+        format!("{status} scraped")
+    }
+
+    /// A sample line as the `scrapes` fact writes it: the time requests waited for a starting
+    /// target is measured, so its value is written `bounded` when it is at most the time the
+    /// run has taken, and as served otherwise.
+    fn waited(line: &str, run: Duration) -> String {
+        const WAITED: &str = "llmgw_cold_start_wait_seconds_total ";
+        let Some(value) = line.strip_prefix(WAITED) else {
+            return line.to_owned();
+        };
+        match value.parse::<f64>() {
+            Ok(seconds) if (0.0..=run.as_secs_f64()).contains(&seconds) => {
+                format!("{WAITED}bounded")
+            }
+            _ => line.to_owned(),
+        }
+    }
+
+    fn steps(
+        program: &Program,
+        handle: &GatewayHandle,
+        shared: &Shared,
+        records: &Records,
+        facts: &mut Value,
+    ) {
         let addr = handle.local_addr();
         let (mut results, mut bodies, mut headers, mut retry_after, mut arrivals) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
+        let (mut recorded, mut scrapes, mut scrape_number) = (Vec::new(), Vec::new(), 0);
+        let run_started = Instant::now();
         for step in &program.steps {
             if matches!(step, Step::MarkReady) {
                 handle.mark_ready();
                 results.push("ok".to_owned());
                 continue;
             }
+            if let Step::Scrape { credential } = step {
+                scrape_number += 1;
+                let credential = credential.unwrap_or(true);
+                results.push(scrape(
+                    addr,
+                    &program.secret,
+                    credential,
+                    scrape_number,
+                    run_started,
+                    &mut scrapes,
+                ));
+                continue;
+            }
             let progress = Arc::new(Progress::default());
             if let Ok(mut current) = shared.progress.lock() {
                 *current = Arc::clone(&progress);
             }
+            let started = Instant::now();
             let received = request_bytes(&program.secret, step)
                 .and_then(|raw| exchange(addr, &raw, &progress));
+            // A record is made before the gateway closes the connection, so every record of
+            // this request is kept by the time its answer has been read to the end.
+            let elapsed = started.elapsed();
+            recorded.extend(
+                records
+                    .take()
+                    .iter()
+                    .map(|record| record_fact(record, elapsed)),
+            );
             let Some(received) = received else {
                 results.push("no-response".to_owned());
                 continue;
@@ -1281,6 +1438,8 @@ mod relay {
         facts["headers"] = json!(headers);
         facts["retry_after"] = json!(retry_after);
         facts["arrivals"] = json!(arrivals);
+        facts["records"] = json!(recorded);
+        facts["scrapes"] = json!(scrapes);
     }
 
     fn stop(shared: &Shared, pods: Vec<Pod>) {

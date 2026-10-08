@@ -180,3 +180,7 @@ scenarios:
 - gateway/scenarios/w1-a-body-shorter-than-its-declared-length-is-incomplete.yaml
 - gateway/scenarios/w6-a-model-still-starting-past-its-hold-budget-is-model-cold-start-with-retry-after-30.yaml
 - gateway/scenarios/w6-a-model-with-no-target-is-target-unavailable-without-retry-after.yaml
+- gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml
+- gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml
+- gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml
+- gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml

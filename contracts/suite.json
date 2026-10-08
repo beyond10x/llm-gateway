@@ -45,8 +45,12 @@
       "llm-gateway.gateway/authored/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target",
       "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition",
       "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready",
+      "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series",
+      "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route",
+      "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure",
       "llm-gateway.gateway/authored/owner-material-that-is-empty-or-not-printable-is-refused",
       "llm-gateway.gateway/authored/owner-material-with-a-space-is-refused",
+      "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero",
       "llm-gateway.gateway/authored/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path",
       "llm-gateway.gateway/authored/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method",
       "llm-gateway.gateway/authored/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path",
@@ -402,6 +406,21 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready"
       },
+      "gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml": {
+        "digest": "sha256:992afafe817f0ac341fb2f466d801901f3db2cebfb32010709b76bc48aab97ae",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series"
+      },
+      "gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml": {
+        "digest": "sha256:1b70404fc92ba3a0df94b6d515ed197f5caa348df2188f00c0b6a3cd884feb55",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route"
+      },
+      "gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml": {
+        "digest": "sha256:f44feae80c91a3b16f19151635beaa37040cea8fb67fbfab7b96926c56d79968",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure"
+      },
       "gateway/scenarios/owner-material-that-is-empty-or-not-printable-is-refused.yaml": {
         "digest": "sha256:35a641a821cc9f90f4d7bd860026630b13aabdec7c817d8cf1d96b6f517fa51f",
         "disposition": "accepted",
@@ -411,6 +430,11 @@
         "digest": "sha256:0c8c8c8fe941522d96c5e56bdbccd90bacfd7b81ac362a5d283c1c531a00246a",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/owner-material-with-a-space-is-refused"
+      },
+      "gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml": {
+        "digest": "sha256:620fa5146343c5fdc44610c90f98bfa8ed848bbbde3de6d76c055ab9c90d4cf1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero"
       },
       "gateway/scenarios/r6-a-chat-completion-and-a-chat-stream-are-relayed-to-the-chat-path.yaml": {
         "digest": "sha256:1536ceb3587988ed7ea0d7c51fd2d1d6374976bf11471d5de8a898df8f6eed48",
@@ -1079,7 +1103,7 @@
       }
     },
     "counts": {
-      "authored": 179,
+      "authored": 183,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1104,9 +1128,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "08f73a1aee27b37b918fb9b8842341917943687d92808083dd6360a62421d277",
+    "contract_digest": "458d636aa9c3508e0099febaf89b181cfb72c846cd45283320bd22dd4d4b673e",
     "scenario_initial_state": "empty",
-    "spec_digest": "c3ce02b8b57c76fe5c53ffd48bb877ace971911aa2e24391646d280cfda5be38",
+    "spec_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -4873,6 +4897,413 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series": {
+      "purpose": "each authenticated relay request makes one usage record, and each record-fed series grows by the records it counts",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"a\\\"}\"]},{\"transport\":\"refused\"}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"scrape\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"credential\":false},{\"step\":\"scrape\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": [
+                  "pod-1"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent",
+                  "model=code wire=responses disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent",
+                  "model=code wire=chat disposition=Refused refusal=target-unavailable status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 scraped",
+                  "200 relayed",
+                  "502 upstream-failed",
+                  "503 target-unavailable",
+                  "401 credential-absent",
+                  "200 scraped"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "1 llmgw_inference_requests_total 0",
+                  "1 llmgw_upstream_failures_total 0",
+                  "1 llmgw_instruction_views_total 0",
+                  "1 llmgw_pod_starts_total 0",
+                  "1 llmgw_pod_start_failures_total 0",
+                  "1 llmgw_pod_reaps_total 0",
+                  "1 llmgw_endpoint_invalidations_total 0",
+                  "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"responses\"} 0",
+                  "2 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "2 llmgw_inference_requests_total 3",
+                  "2 llmgw_upstream_failures_total 1",
+                  "2 llmgw_instruction_views_total 0",
+                  "2 llmgw_pod_starts_total 0",
+                  "2 llmgw_pod_start_failures_total 0",
+                  "2 llmgw_pod_reaps_total 0",
+                  "2 llmgw_endpoint_invalidations_total 1",
+                  "2 llmgw_cold_start_wait_seconds_total bounded",
+                  "2 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
+                  "2 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 1",
+                  "2 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
+                  "2 llmgw_route_refusals_total{model=\"code\",wire=\"responses\"} 1",
+                  "2 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "2 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"responses\"} 0",
+                  "2 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "2 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"responses\"} 0",
+                  "2 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 10",
+                  "2 llmgw_route_response_bytes_total{model=\"code\",wire=\"responses\"} 0"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route": {
+      "purpose": "a model-cold-start refusal is one Refused record and one cold-start hold on its model and wire",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"warm\\\"}\"]}]],\"cold_starts\":1,\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"scrape\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Refused refusal=model-cold-start status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent",
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=13 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "503 model-cold-start",
+                  "200 relayed",
+                  "200 scraped"
+                ]
+              },
+              "retry_after": {
+                "kind": "literal",
+                "value": [
+                  "30",
+                  "absent"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "1 llmgw_inference_requests_total 2",
+                  "1 llmgw_upstream_failures_total 0",
+                  "1 llmgw_instruction_views_total 0",
+                  "1 llmgw_pod_starts_total 0",
+                  "1 llmgw_pod_start_failures_total 0",
+                  "1 llmgw_pod_reaps_total 0",
+                  "1 llmgw_endpoint_invalidations_total 0",
+                  "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 1",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 13"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure": {
+      "purpose": "a relayed 400 and a 503 answered upstream-failed are status failures; a target that refuses the connection is an upstream failure and a refusal",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":400,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"error\\\":\\\"bad\\\"}\"]},{\"status\":503,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}],[{\"transport\":\"refused\"}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"scrape\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": [
+                  "pod-1",
+                  "pod-2"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Relayed refusal=absent status=400 target_status=400 response_bytes=15 duration_ms=bounded tokens=absent",
+                  "model=code wire=chat disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=503 response_bytes=0 duration_ms=bounded tokens=absent",
+                  "model=code wire=chat disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 relayed",
+                  "502 upstream-failed",
+                  "502 upstream-failed",
+                  "200 scraped"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "1 llmgw_inference_requests_total 3",
+                  "1 llmgw_upstream_failures_total 1",
+                  "1 llmgw_instruction_views_total 0",
+                  "1 llmgw_pod_starts_total 0",
+                  "1 llmgw_pod_start_failures_total 0",
+                  "1 llmgw_pod_reaps_total 0",
+                  "1 llmgw_endpoint_invalidations_total 2",
+                  "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 3",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 2",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 15"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\"}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/owner-material-that-is-empty-or-not-printable-is-refused": {
       "purpose": "an empty owner secret is refused as a token before a verifier is composed",
       "source": [
@@ -5016,6 +5447,122 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero": {
+      "purpose": "GET /metrics takes the owner and readiness, then serves llmgw's 13 series with every declared model and wire at zero",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"]}],\"pods\":[],\"steps\":[{\"step\":\"scrape\",\"credential\":false},{\"step\":\"scrape\"},{\"step\":\"mark_ready\"},{\"step\":\"scrape\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "401 credential-absent",
+                  "503 unavailable",
+                  "ok",
+                  "200 scraped"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 401 content-type=application/json",
+                  "2 503 content-type=application/json",
+                  "3 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "3 llmgw_inference_requests_total 0",
+                  "3 llmgw_upstream_failures_total 0",
+                  "3 llmgw_instruction_views_total 0",
+                  "3 llmgw_pod_starts_total 0",
+                  "3 llmgw_pod_start_failures_total 0",
+                  "3 llmgw_pod_reaps_total 0",
+                  "3 llmgw_endpoint_invalidations_total 0",
+                  "3 llmgw_cold_start_wait_seconds_total bounded",
+                  "3 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
+                  "3 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
+                  "3 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
+                  "3 llmgw_route_refusals_total{model=\"code\",wire=\"messages\"} 0",
+                  "3 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "3 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"messages\"} 0",
+                  "3 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "3 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"messages\"} 0",
+                  "3 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
+                  "3 llmgw_route_response_bytes_total{model=\"code\",wire=\"messages\"} 0"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },

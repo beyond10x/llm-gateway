@@ -13,6 +13,9 @@ use std::{
 /// reader trims.
 pub const OWNER_SECRET: &str = "owner-secret-0123456789abcdefghijklmnop";
 
+/// A model's vLLM key (row B9). Written with a trailing newline, which the reader trims.
+pub const VLLM_KEY: &str = "vllm-key-small-5f3c0a9e1b7d4c2a8e6f0b1d3c5a7e9f";
+
 /// The deployment document's size bound, llmgw `src/config.rs:16`.
 pub const CONFIG_LIMIT: usize = 256 * 1024;
 
@@ -53,6 +56,17 @@ impl Fixture {
         )
     }
 
+    /// [`VLLM_KEY`] and its newline at `vllm-key`, mode 0600.
+    pub fn vllm_key(&self) -> PathBuf {
+        self.write("vllm-key", format!("{VLLM_KEY}\n").as_bytes(), 0o600)
+    }
+
+    /// A valid document whose model `small` names `key` as its `vllm_api_key_file`.
+    pub fn config_with_vllm_key(&self, listen: &str, key: &Path) -> PathBuf {
+        let secret = self.owner_secret();
+        self.config(&with_vllm_key(&document(listen, &secret), key))
+    }
+
     pub fn config(&self, text: &str) -> PathBuf {
         self.write("gateway.toml", text.as_bytes(), 0o600)
     }
@@ -85,6 +99,18 @@ gpu_types = ["NVIDIA L40S"]
 max_model_len = 1024
 "#,
         owner_secret_file.display()
+    )
+}
+
+/// `text` (a [`document`]) with `vllm_api_key_file = "<key>"` in its `[models.small]` table.
+pub fn with_vllm_key(text: &str, key: &Path) -> String {
+    mutate(
+        text,
+        "max_model_len = 1024\n",
+        &format!(
+            "max_model_len = 1024\nvllm_api_key_file = \"{}\"\n",
+            key.display()
+        ),
     )
 }
 

@@ -1,4 +1,4 @@
-//! The same-handle, bounded trusted-file reader (row K30; llmgw `src/trusted.rs:21-42`).
+//! The same-handle, bounded trusted-file reader (rows K30 and B9; llmgw `src/trusted.rs:21-42`).
 //!
 //! The file is opened once without following a final symlink, and every check reads that handle:
 //! a path swapped between a check and the read cannot substitute another file.
@@ -40,6 +40,13 @@ pub(crate) const OWNER_SECRET: Policy = Policy {
     source: Source::OwnerSecret,
     limit: 4 * 1024 + 2,
     unsafe_mode: 0o077,
+};
+
+/// A model's vLLM key (row B9): a credential sent to the pod as a bearer, held to the owner
+/// secret's rules.
+pub(crate) const VLLM_API_KEY: Policy = Policy {
+    source: Source::VllmApiKey,
+    ..OWNER_SECRET
 };
 
 fn refuse(policy: &Policy, rule: FileRule, path: &Path, detail: &str) -> Refusal {

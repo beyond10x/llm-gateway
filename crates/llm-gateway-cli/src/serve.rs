@@ -15,7 +15,7 @@ use signal_hook::{
     consts::{SIGINT, SIGTERM},
     iterator::Signals,
 };
-use std::{fmt, net::SocketAddr, sync::Arc};
+use std::{collections::BTreeMap, fmt, net::SocketAddr, sync::Arc};
 
 /// The signal that ended a served process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -65,6 +65,107 @@ pub fn owner_verifier(deployment: &Deployment) -> Result<SharedSecretVerifier, R
             format!("{}: {error}", deployment.owner_secret_file.display()),
         )
     })
+}
+
+/// The largest vLLM key, after trailing ASCII whitespace is trimmed: the owner token's bound.
+const MAX_VLLM_KEY_BYTES: usize = 4096;
+
+/// One model's vLLM key (row B9). It is redacted in `Debug`, has no `Display` and no `Clone`,
+/// and its bytes are overwritten when it is dropped.
+pub struct VllmKey(Vec<u8>);
+
+impl VllmKey {
+    /// The key as the pod's vLLM server expects it: one printable ASCII token.
+    pub fn expose(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl fmt::Debug for VllmKey {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("VllmKey([REDACTED])")
+    }
+}
+
+impl Drop for VllmKey {
+    fn drop(&mut self) {
+        // Best effort without a `zeroize` dependency, as `OwnerToken` does.
+        self.0.fill(0);
+        std::hint::black_box(&self.0);
+    }
+}
+
+/// Every model's vLLM key, by alias. A model whose declaration names no `vllm_api_key_file` has
+/// none. `Debug` prints the aliases and no value.
+#[derive(Default)]
+pub struct VllmKeys(BTreeMap<String, VllmKey>);
+
+impl VllmKeys {
+    pub fn get(&self, alias: &str) -> Option<&VllmKey> {
+        self.0.get(alias)
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl fmt::Debug for VllmKeys {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.debug_map().entries(self.0.iter()).finish()
+    }
+}
+
+/// Reads each model's `vllm_api_key_file` once through the trusted-file reader.
+///
+/// # Errors
+/// A `vllm-api-key:*` [`Refusal`] for the first file, in alias order, that breaks a rule. The
+/// message names the model and the file, never the bytes.
+pub fn vllm_keys(deployment: &Deployment) -> Result<VllmKeys, Refusal> {
+    let mut keys = BTreeMap::new();
+    for (alias, model) in &deployment.models {
+        let Some(path) = &model.vllm_api_key_file else {
+            continue;
+        };
+        let refuse = |kind, rule: &str| {
+            Refusal::new(
+                kind,
+                format!(
+                    "models.{alias}.vllm_api_key_file {}: {rule}",
+                    path.display()
+                ),
+            )
+        };
+        let mut read = trusted::read(path, &trusted::VLLM_API_KEY)?.into_bytes();
+        // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
+        let end = read
+            .iter()
+            .rposition(|byte| !byte.is_ascii_whitespace())
+            .map_or(0, |last| last + 1);
+        let material = &read[..end];
+        let key = if material.len() > MAX_VLLM_KEY_BYTES {
+            Err(refuse(
+                StartupRefusal::VllmApiKeyTooLarge,
+                &format!("the key exceeds {MAX_VLLM_KEY_BYTES} bytes"),
+            ))
+        } else if material.is_empty() || !material.iter().all(u8::is_ascii_graphic) {
+            Err(refuse(
+                StartupRefusal::VllmApiKeyNotAToken,
+                "the key must be one non-empty printable ASCII token",
+            ))
+        } else {
+            Ok(VllmKey(material.to_vec()))
+        };
+        // The bytes read are overwritten whichever way the rules went.
+        read.fill(0);
+        std::hint::black_box(&read);
+        keys.insert(alias.clone(), key?);
+    }
+    Ok(VllmKeys(keys))
 }
 
 fn label(value: &str) -> Result<Label, Refusal> {
@@ -122,11 +223,17 @@ pub fn inventory(deployment: &Deployment) -> Result<RouteInventory, Refusal> {
 pub struct Running {
     handle: GatewayHandle,
     signals: Signals,
+    vllm_keys: VllmKeys,
 }
 
 impl Running {
     pub fn local_addr(&self) -> SocketAddr {
         self.handle.local_addr()
+    }
+
+    /// Each model's vLLM key, read once at startup.
+    pub fn vllm_keys(&self) -> &VllmKeys {
+        &self.vllm_keys
     }
 
     /// Blocks until SIGINT or SIGTERM, then drains and stops the gateway gracefully: every
@@ -156,9 +263,11 @@ impl Running {
 /// takes the graceful path.
 ///
 /// # Errors
-/// An `owner-secret:*`, `config:value`, `signal:install` or `listen:bind` [`Refusal`].
+/// An `owner-secret:*`, `vllm-api-key:*`, `config:value`, `signal:install` or `listen:bind`
+/// [`Refusal`].
 pub fn start(deployment: &Deployment) -> Result<Running, Refusal> {
     let verifier = owner_verifier(deployment)?;
+    let vllm_keys = vllm_keys(deployment)?;
     let inventory = inventory(deployment)?;
     let signals = Signals::new([SIGINT, SIGTERM])
         .map_err(|error| Refusal::new(StartupRefusal::SignalInstall, error.to_string()))?;
@@ -166,5 +275,9 @@ pub fn start(deployment: &Deployment) -> Result<Running, Refusal> {
     let handle = Gateway::bind(deployment.gateway.clone(), Arc::new(verifier), inventory)
         .map_err(|error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")))?;
     handle.mark_ready();
-    Ok(Running { handle, signals })
+    Ok(Running {
+        handle,
+        signals,
+        vllm_keys,
+    })
 }

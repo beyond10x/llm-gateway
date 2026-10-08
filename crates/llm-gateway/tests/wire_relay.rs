@@ -1,7 +1,7 @@
 //! The relay of the three model-call wires (story:wire-relay), one test per behaviour, each
 //! named after the row of `docs/llmgw-capability-matrix.md` it closes: R6, R7, R8, W1, W2, W3,
-//! W4, W5, W6, W7, K11 and B8, and tool calling (`tools_*`). The specification is the `Relay` command of
-//! `spec/domains/gateway.yaml`.
+//! W4, W5, W6, W7, K11 and B8, and tool calling (`tools_*`). The specification is the `Relay`
+//! command of `spec/domains/gateway.yaml`.
 //!
 //! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
 //! answers a fixed script. The gateway never connects anywhere itself; it asks the injected

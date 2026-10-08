@@ -117,9 +117,10 @@ only after the owner is authenticated and the head has admitted it.
 ## The relay
 
 `Gateway::bind_with_relay` composes the gateway with a `Relay`: the relayed models and an injected
-`RelayTargets`. A `RelayModel` is an alias, the model name its target expects and a non-empty set
+`RelayTargets`. A `RelayModel` is an alias, the model name its target expects, a non-empty set
 of distinct `Wire`s (`relay:no-wire`, `relay:repeated-wire`; two models with one alias are
-`relay:duplicate-model`). The embedding implements `RelayTargets` over its pool: `acquire` hands
+`relay:duplicate-model`) and its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
+`with_tool_calling` says otherwise. The embedding implements `RelayTargets` over its pool: `acquire` hands
 out the `RelayTarget` serving an alias, and `invalidate` is told when a request through one
 failed. A `RelayTarget` opens its own connection (`connect`), so the transport, TLS included,
 and its timeouts are the embedding's; this crate opens none. The specification is the `Relay`
@@ -143,8 +144,13 @@ A request to a wire path is decided in this order:
 4. One well-formed UTF-8 JSON object (`body-not-json`), with exactly one top-level `model`
    string (`model-absent`; a second top-level `model` is `body-not-json`, because the target
    could read the other), naming a relayed model after unescaping (`model-unknown`).
-5. The model must declare the path's wire (`wire-not-served`). Nothing so far asks for a target,
-   so a refused request never wakes a pod.
+5. The model must declare the path's wire (`wire-not-served`). Then a body whose top-level
+   `tools` is a non-empty array, sent to a model whose `ToolCalling` is `Absent`, is
+   `tools-not-served` (400): a pod started without `--enable-auto-tool-choice` and a
+   `--tool-call-parser` cannot answer it. No `tools` key, `"tools": []`, a `tools` that is not
+   an array and any `tools` below the top level are relayed unchanged; a body naming `tools`
+   twice at its top level is refused when either is a non-empty array. Nothing so far asks for
+   a target, so a refused request never wakes a pod.
 6. The top-level `model` value becomes the upstream name, written as a JSON string. On the
    messages wire only, `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal
    to `high` become `xhigh`, because the served chat template rejects `high` (llmgw
@@ -254,6 +260,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `request-too-large` | 431 | the request head exceeds its byte bound |
 | `route-unknown` | 404 | no such route alias |
 | `target-unavailable` | 503 | no model target is available |
+| `tools-not-served` | 400 | the model does not serve tool calls |
 | `unavailable` | 503 | the gateway is not ready to serve inspection |
 | `upstream-failed` | 502 | the model target could not be reached or failed; the next request asks for a replacement |
 | `wire-not-served` | 400 | the model is not served on this wire |

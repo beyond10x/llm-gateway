@@ -44,5 +44,7 @@ pub use inventory::{
     TargetSummary,
 };
 pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
-pub use relay::{Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, TargetBearer, Wire};
+pub use relay::{
+    Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, TargetBearer, ToolCalling, Wire,
+};
 pub use server::{Gateway, GatewayConfig, GatewayHandle, ShutdownReport};

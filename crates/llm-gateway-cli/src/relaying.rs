@@ -601,12 +601,16 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
         // The pod serves the model under its alias (`--served-model-name`), so the upstream
         // name is the alias too.
         let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires);
-        models.push(relayed.map_err(|error| {
-            Refusal::new(
-                StartupRefusal::ConfigValue,
-                format!("models.{alias}: {error}"),
-            )
-        })?);
+        models.push(
+            relayed
+                .map_err(|error| {
+                    Refusal::new(
+                        StartupRefusal::ConfigValue,
+                        format!("models.{alias}: {error}"),
+                    )
+                })?
+                .with_tool_calling(model.tool_calling),
+        );
     }
     let relay = Relay::new(models, Arc::new(targets))
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?

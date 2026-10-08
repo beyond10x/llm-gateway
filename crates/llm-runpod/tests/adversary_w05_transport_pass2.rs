@@ -134,7 +134,11 @@ fn a_listing_in_connectors_success_envelope_is_read() {
     );
     assert!(listing.complete, "the enveloped answer is whole");
     assert_eq!(
-        listing.pods.iter().map(|pod| pod.id.as_str()).collect::<Vec<_>>(),
+        listing
+            .pods
+            .iter()
+            .map(|pod| pod.id.as_str())
+            .collect::<Vec<_>>(),
         ["abc123"]
     );
 }

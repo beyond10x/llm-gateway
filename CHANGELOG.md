@@ -4,7 +4,7 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.6.0 (2026-10-08)
 
 - `GET /v1/models` and `GET /` answer without a credential and wake no pod. The listing is the
   OpenAI list shape, one entry per model with its `max_model_len` and wires. `GET /` answers the

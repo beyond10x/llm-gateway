@@ -25,14 +25,14 @@
     },
     {
       "area": "Gateway",
-      "detail": "GET /v1/models lists each model with its wires and max_model_len, without a credential and without waking a pod. On main after 0.5.0.",
+      "detail": "GET /v1/models lists each model with its wires and max_model_len, without a credential and without waking a pod. Since 0.6.0.",
       "href": "/docs/guides/set-up-a-client",
       "label": "Public model listing",
       "status": "shipped"
     },
     {
       "area": "Gateway",
-      "detail": "GET / answers the Codex, Claude Code or Loom settings for each model, chosen by User-Agent, and never the owner secret. On main after 0.5.0.",
+      "detail": "GET / answers the Codex, Claude Code or Loom settings for each model, chosen by User-Agent, and never the owner secret. Since 0.6.0.",
       "href": "/docs/guides/set-up-a-client",
       "label": "Setup instructions per client",
       "status": "shipped"

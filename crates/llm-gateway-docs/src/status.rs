@@ -96,14 +96,14 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Gateway",
         "Public model listing",
-        "GET /v1/models lists each model with its wires and max_model_len, without a credential and without waking a pod. On main after 0.5.0.",
+        "GET /v1/models lists each model with its wires and max_model_len, without a credential and without waking a pod. Since 0.6.0.",
         "crates/llm-gateway/tests/public_listing.rs::r5_the_listing_answers_without_a_credential_one_entry_per_model_with_its_wires",
         Some("/docs/guides/set-up-a-client"),
     ),
     shipped(
         "Gateway",
         "Setup instructions per client",
-        "GET / answers the Codex, Claude Code or Loom settings for each model, chosen by User-Agent, and never the owner secret. On main after 0.5.0.",
+        "GET / answers the Codex, Claude Code or Loom settings for each model, chosen by User-Agent, and never the owner secret. Since 0.6.0.",
         "crates/llm-gateway/tests/public_listing.rs::r1_the_rules_are_tried_in_order_codex_then_claude_then_a_browser",
         Some("/docs/guides/set-up-a-client"),
     ),

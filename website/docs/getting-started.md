@@ -28,7 +28,7 @@ gateway="$PWD/target/release/b10x-llm-gateway"
 ```
 
 ```text
-b10x-llm-gateway 0.5.0
+b10x-llm-gateway 0.6.0
 ```
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else

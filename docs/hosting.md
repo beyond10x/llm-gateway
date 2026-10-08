@@ -329,21 +329,37 @@ control plane and no credential for it. `spec/domains/runpod.yaml` declares ever
 | --- | --- | --- |
 | list | `pods.list` with no filter | `complete` only when the whole answer is one array of pods and every pod parses; a truncated, throttled (`rate_limited`), interrupted or partly unreadable answer is not complete |
 | get | `pods.list` with `id` (v0.36.0 selects no `GetPod`) | the pod's `lastStartedAt`, for crash detection |
-| create | `pod.create`, one per GPU choice | `Created` for `applied` with a readable pod; `Refused` only for `refused`; `unknown` is resolved by one `pods.list` on the pod's unique `name` (`Created` if exactly that pod is found, `Lost` otherwise); `not_attempted`, a timeout, a non-zero exit with no classification and unparseable output are `Lost` |
+| create | `pod.create`, one per GPU choice | `Created` for `applied` with a readable pod; `Refused` only for `refused`; `unknown` is resolved by one `pods.list` on the pod's `name`, which is per model alias (`Created` only if exactly one pod of that name carries this create's `B10X_LLM_REQUEST` tag, `Lost` otherwise); `not_attempted`, a timeout, a non-zero exit with no classification and unparseable output are `Lost` |
 | terminate | `pod.terminate` with `podId` | `Terminated` for `applied`; `Refused` for `refused`, including `404`/`not_found`, which does not prove the pod is gone; anything else `Lost` |
 
 Each write is prepared and issued for its exact input (`approvals prepare`, `approvals issue`
-into a new file in the transport's private work directory) and invoked once with that proof and
-an idempotency key; the transport never sends it again. `schema` and `revision` come from
-`operations describe`, read once per operation. A call still running after the binding's
-timeout is killed, and its answer is lost.
+into a new file in the transport's private work directory, made absolute when the transport is
+built) and invoked once with that proof and an idempotency key; the transport never sends it
+again. `schema` and `revision` come from `operations describe`, read once per operation. The CLI
+runs in its own process group. When the binding's timeout passes before the CLI has exited and
+its output has closed, which a process it started can hold open, the group is killed and the
+answer is lost.
 
-The `pod.create` body carries the keys `POD_CREATE_BODY_KEYS` names. connectors v0.36.0 admits
-twelve of them. As llmgw does (llmgw `src/runpod.rs:792-793` at `048ebd8`), the vLLM argv
-(`vllm serve …`) travels as `dockerEntrypoint`, `dockerStartCmd` is always `[]` so the image's CMD
-is not appended to it, and the model cache volume travels as `networkVolumeId`. v0.36.0 refuses
-all three as `invalid_input` before any request. Until a connectors release admits them, such a
-create starts no pod.
+connectors' connection evidence expires: it lasts `evidence_lifetime_ms`, 60 s when omitted and
+at most 300 000 ms. After that an invoke is refused `not_granted` at `admission` with
+`next_action: revalidate_connection`, and "The invoke does not revalidate on its own"
+(connectors v0.36.0 `docs/local-catalog-provider.md:479-486`). An invoke refused `not_granted` at
+`admission`, with no classification or `not_attempted` (nothing was dispatched), makes the
+transport read the connection's revision with `connections describe`, run `connections
+revalidate` once, and repeat that one invoke once. A repeated write is a new attempt, with a fresh
+proof and its own idempotency key. A second refusal is mapped as usual (`Lost` for a write, an
+incomplete listing for a read), and a write refused at any other stage, or classified otherwise,
+is never repeated.
+
+The `pod.create` body carries the keys `POD_CREATE_BODY_KEYS` names, and follows llmgw's
+(`src/runpod.rs:781-799` at `048ebd8`). connectors v0.36.0 admits twelve of them. The vLLM argv
+(`vllm serve …`) travels as `dockerEntrypoint`, `dockerStartCmd` is always `[]`, `volumeInGb` is
+`0` when there is no network volume (Runpod's default is a 20 GB pod volume), and the model cache
+volume travels as `networkVolumeId`. `dockerStartCmd: []` is llmgw parity, not a way to clear the
+image's CMD: Runpod's pinned `PodCreateInput` says "If [], uses the start CMD defined in the
+image". v0.36.0 refuses `dockerEntrypoint`, `dockerStartCmd` and `networkVolumeId` as
+`invalid_input` before any request. Until a connectors release admits them, such a create starts
+no pod.
 
 The readiness probe goes to the pod, not to connectors: `GET <endpoint>models` with the model's
 vLLM key, handed to the transport by alias, as a bearer. `200` is ready with the served model

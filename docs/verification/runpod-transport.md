@@ -42,7 +42,8 @@ cargo fmt -p b10x-llm-runpod --check
 
 ## Acceptance and cases
 
-All in `crates/llm-runpod/tests/transport.rs`: 18 cases.
+`crates/llm-runpod/tests/transport.rs` holds 22 cases and `tests/adversary_w05_transport.rs` the 6 of
+the first adversary pass: 28.
 
 | Acceptance | Cases |
 | --- | --- |
@@ -51,12 +52,14 @@ All in `crates/llm-runpod/tests/transport.rs`: 18 cases.
 | 3: `complete` only for a whole listing | `a_listing_that_is_not_whole_is_never_complete` (truncated, throttled, interrupted, killed, not an array, one unreadable pod, an unknown status) |
 | 4: the probe sends the vLLM key as a bearer to `<endpoint>models`; no file; `Debug` prints no key | `the_probe_sends_the_models_vllm_key_as_a_bearer_to_endpoint_models`, `the_probe_maps_each_answer`, `the_transport_debug_prints_no_key` |
 | 5: crash-loop detection reads `lastStartedAt` moving forward | `last_started_at_parses_runpods_utc_timestamps`, `a_last_started_at_moving_forward_counts_as_a_restart` |
+| adversary pass 1 | `a_cli_whose_stdout_outlives_it_does_not_outlive_the_timeout` (the process group is killed at the deadline), `an_unknown_create_is_not_resolved_to_a_pod_of_another_request` and `an_unknown_create_through_the_provider_does_not_accept_an_earlier_requests_pod` (an `unknown` create is `Created` only for a pod carrying its own `B10X_LLM_REQUEST`), `the_create_body_asks_for_no_pod_volume_as_llmgw_does`, `terminate_maps_404_to_refused_and_every_uncertain_answer_to_lost`, `the_proof_output_is_absolute_for_a_relative_work_directory` |
+| expired connection evidence (connectors `docs/local-catalog-provider.md:479-486`) | `a_read_refused_at_admission_revalidates_the_connection_once_and_is_repeated_once`, `a_second_refusal_at_admission_is_not_repeated_again`, `a_create_refused_at_admission_before_dispatch_is_repeated_once_with_a_fresh_proof`, `a_write_refused_after_admission_or_classified_otherwise_is_never_repeated` |
 
 ## The planted inversion
 
 With `crates/llm-runpod/src/transport/connectors.rs` changed so that `unknown` maps to
 `CreateAnswer::Refused` (`Some("refused" | "unknown") => CreateAnswer::Refused`), the transport
-lane went 18 passed → 15 passed, 3 failed:
+lane at `25f61ee` went 18 passed → 15 passed, 3 failed:
 
 ```
 test an_unknown_create_that_the_listing_finds_is_created ... FAILED
@@ -71,11 +74,14 @@ was reverted.
 
 ## What this does not establish
 
+- That the real connectors CLI refuses an expired connection exactly as the fixture does, or
+  refuses a write that way at all: the document names reads.
 - That connectors v0.36.0 prints exactly these shapes: the fixture was written from the
   documents and ESS types above, not from a run of the real CLI.
-- That a create succeeds: its body always carries `dockerStartCmd: []` and, for a declared
-  model, `dockerEntrypoint` (the vLLM argv, as llmgw `src/runpod.rs:792-793` at `048ebd8`), and
-  `networkVolumeId` for a cached one; v0.36.0 refuses all three keys. A connectors release
+- That a create succeeds: its body always carries `dockerStartCmd: []` (llmgw parity; the
+  pinned `PodCreateInput` says "If [], uses the start CMD defined in the image") and, for a
+  declared model, `dockerEntrypoint` (the vLLM argv, as llmgw `src/runpod.rs:781-799` at
+  `048ebd8`), and `networkVolumeId` for a cached one; v0.36.0 refuses all three keys. A connectors release
   admitting them is requested upstream.
 - That `lastStartedAt` moves when a container restarts, that Runpod returns a pod's `env` in a
   listing, or that a live pod's `https://` endpoint is reachable: the probe speaks plain HTTP only

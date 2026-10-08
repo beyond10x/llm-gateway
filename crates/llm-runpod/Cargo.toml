@@ -26,3 +26,4 @@ doc = false
 llm-provision = { package = "b10x-llm-provision", path = "../llm-provision" }
 llm-providers = { package = "b10x-llm-providers", git = "https://github.com/beyond10x/llm", tag = "0.5.0" }
 serde_json.workspace = true
+rustix = { version = "1.1", features = ["process"] }

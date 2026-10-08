@@ -23,13 +23,18 @@ use std::{
     fs::{self, OpenOptions},
     io::{Read, Write},
     os::unix::fs::OpenOptionsExt,
+    os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
-    sync::atomic::{AtomicU64, Ordering},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        mpsc,
+    },
     thread,
     time::{Duration, Instant},
 };
 
+use rustix::process::{Pid, Signal, kill_process_group};
 use serde_json::{Map, Value, json};
 
 use super::probe::{self, BearerKey};
@@ -167,7 +172,14 @@ fn file_stem(operation: &str) -> String {
 
 impl ConnectorsRunpod {
     /// A transport over one connectors adapter and connection. Runs nothing yet.
-    pub fn new(binding: ConnectorsBinding) -> Self {
+    ///
+    /// A relative `work_directory` is resolved against the current directory here, once:
+    /// `approvals issue` takes only an absolute `--proof-output` (connectors
+    /// `docs/local-approvals.md`).
+    pub fn new(mut binding: ConnectorsBinding) -> Self {
+        if let Ok(absolute) = std::path::absolute(&binding.work_directory) {
+            binding.work_directory = absolute;
+        }
         Self {
             binding,
             keys: BTreeMap::new(),
@@ -181,7 +193,8 @@ impl ConnectorsRunpod {
         self.keys.insert(alias.to_owned(), BearerKey::new(key));
     }
 
-    /// Runs the CLI once with these arguments, after `--output json`, within the timeout.
+    /// Runs the CLI once with these arguments, after `--output json`, within the timeout. The
+    /// CLI leads its own process group, so that the group can be killed with it.
     fn run(&self, args: &[&str]) -> Answer {
         let Ok(child) = Command::new(&self.binding.executable)
             .args(["--output", "json"])
@@ -189,6 +202,7 @@ impl ConnectorsRunpod {
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::null())
+            .process_group(0)
             .spawn()
         else {
             return Answer::lost();
@@ -196,13 +210,22 @@ impl ConnectorsRunpod {
         self.wait(child)
     }
 
+    /// Waits for the CLI to exit **and** for its output to close, both inside one deadline.
+    /// When the deadline passes first, the CLI's whole process group is killed and the answer
+    /// is lost: a process it started that still holds its output does not hold the transport.
     fn wait(&self, mut child: Child) -> Answer {
-        let Some(mut stdout) = child.stdout.take() else {
+        let group = Pid::from_child(&child);
+        let kill = |child: &mut Child| {
+            let _ = kill_process_group(group, Signal::KILL);
             let _ = child.kill();
             let _ = child.wait();
+        };
+        let Some(mut stdout) = child.stdout.take() else {
+            kill(&mut child);
             return Answer::lost();
         };
-        let reader = thread::spawn(move || {
+        let (sender, printed) = mpsc::channel();
+        thread::spawn(move || {
             let mut bytes = Vec::new();
             let limit = u64::try_from(MAX_OUTPUT_BYTES).unwrap_or(u64::MAX);
             let complete = (&mut stdout)
@@ -210,28 +233,77 @@ impl ConnectorsRunpod {
                 .read_to_end(&mut bytes)
                 .is_ok()
                 && bytes.len() <= MAX_OUTPUT_BYTES;
-            complete.then_some(bytes)
+            let _ = sender.send(complete.then_some(bytes));
         });
         let deadline = Instant::now() + self.binding.timeout;
         let status = loop {
             match child.try_wait() {
-                Ok(Some(status)) => break Some(status),
+                Ok(Some(status)) => break status,
                 Ok(None) if Instant::now() < deadline => thread::sleep(Duration::from_millis(10)),
                 _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break None;
+                    kill(&mut child);
+                    return Answer::lost();
                 }
             }
         };
-        let printed = reader.join().ok().flatten();
-        let Some(status) = status else {
+        let left = deadline.saturating_duration_since(Instant::now());
+        let Ok(printed) = printed.recv_timeout(left) else {
+            // The CLI exited, and something it started still holds its output.
+            let _ = kill_process_group(group, Signal::KILL);
             return Answer::lost();
         };
         Answer {
             exit: status.code(),
             json: printed.and_then(|bytes| serde_json::from_slice(&bytes).ok()),
         }
+    }
+
+    /// Whether connectors refused an invoke `not_granted` at `admission` and dispatched
+    /// nothing: no classification, or `not_attempted`.
+    fn refused_at_admission(answer: &Answer) -> bool {
+        let Some(data) = answer
+            .json
+            .as_ref()
+            .and_then(|json| json.pointer("/error/data"))
+        else {
+            return false;
+        };
+        answer.exit != Some(0)
+            && data.get("code").and_then(Value::as_str) == Some("not_granted")
+            && data.get("stage").and_then(Value::as_str) == Some("admission")
+            && matches!(answer.classification(), None | Some("not_attempted"))
+    }
+
+    /// `connections revalidate` for the binding's connection, at the revision `connections
+    /// describe` reports. `true` when connectors renewed it.
+    fn revalidate(&self) -> bool {
+        let connection = [
+            "--adapter",
+            self.binding.adapter.as_str(),
+            "--connection",
+            self.binding.connection.as_str(),
+        ];
+        let described = self.run(&[&["connections", "describe"][..], &connection[..]].concat());
+        let Some(revision) = described
+            .json
+            .as_ref()
+            .filter(|_| described.exit == Some(0))
+            .and_then(|json| json.pointer("/connection/summary/revision"))
+            .and_then(Value::as_str)
+            .map(str::to_owned)
+        else {
+            return false;
+        };
+        self.run(
+            &[
+                &["connections", "revalidate"][..],
+                &connection[..],
+                &["--expected-revision", &revision][..],
+            ]
+            .concat(),
+        )
+        .exit
+            == Some(0)
     }
 
     /// `(schema, revision)` for one operation, from `operations describe`, read once.
@@ -289,7 +361,8 @@ impl ConnectorsRunpod {
         ) else {
             return Answer::lost();
         };
-        let answer = self.run(&[
+        let input_arg = path_arg(&input);
+        let invoke = [
             "operations",
             "invoke",
             "--adapter",
@@ -303,14 +376,21 @@ impl ConnectorsRunpod {
             "--revision",
             &revision,
             "--input-file",
-            &path_arg(&input),
-        ]);
+            &input_arg,
+        ];
+        let mut answer = self.run(&invoke);
+        // Expired connection evidence: renew it once and repeat the read once.
+        if Self::refused_at_admission(&answer) && self.revalidate() {
+            answer = self.run(&invoke);
+        }
         let _ = fs::remove_file(&input);
         answer
     }
 
     /// One write: prepare and issue an approval for its exact input, then invoke it once with
-    /// that proof. `None` when it was never invoked.
+    /// that proof. `None` when it was never invoked. Refused at admission with nothing
+    /// dispatched, it renews the connection once and is repeated once, as a new attempt with a
+    /// fresh proof and its own idempotency key.
     fn write(
         &mut self,
         operation: &'static str,
@@ -318,13 +398,34 @@ impl ConnectorsRunpod {
         idempotency_key: &str,
     ) -> Option<Answer> {
         let (schema, revision) = self.describe(operation)?;
+        let answer = self.write_once(operation, &schema, &revision, input, idempotency_key)?;
+        if !Self::refused_at_admission(&answer) || !self.revalidate() {
+            return Some(answer);
+        }
+        self.write_once(
+            operation,
+            &schema,
+            &revision,
+            input,
+            &format!("{idempotency_key}:revalidated"),
+        )
+    }
+
+    fn write_once(
+        &self,
+        operation: &'static str,
+        schema: &str,
+        revision: &str,
+        input: &Value,
+        idempotency_key: &str,
+    ) -> Option<Answer> {
         let stem = file_stem(operation);
         let input_path = self.new_file(&format!("{stem}.json"), input.to_string().as_bytes())?;
         let proof_path = self.binding.work_directory.join(format!("{stem}.proof"));
         let answer = self.approve_and_invoke(
             operation,
-            &schema,
-            &revision,
+            schema,
+            revision,
             &input_path,
             &proof_path,
             idempotency_key,
@@ -469,8 +570,10 @@ fn create_input(request: &PodRequest) -> Value {
         body.insert("dataCenterIds".to_owned(), json!(request.data_center_ids));
     }
     body.insert("interruptible".to_owned(), json!(request.interruptible));
-    // As llmgw (`src/runpod.rs:792-793` at `048ebd8`): the vLLM argv (`vllm serve …`) is the
-    // entrypoint, and the image CMD is cleared so that it is not appended to it.
+    // As llmgw (`src/runpod.rs:781-799` at `048ebd8`): the vLLM argv (`vllm serve …`) is the
+    // entrypoint, `dockerStartCmd` is `[]`, and no pod volume is asked for without a network
+    // volume. `dockerStartCmd: []` is llmgw parity only: Runpod's pinned `PodCreateInput` says
+    // "If [], uses the start CMD defined in the image", so it does not clear the image's CMD.
     if !request.docker_entrypoint.is_empty() {
         body.insert(
             "dockerEntrypoint".to_owned(),
@@ -478,6 +581,9 @@ fn create_input(request: &PodRequest) -> Value {
         );
     }
     body.insert("dockerStartCmd".to_owned(), json!([]));
+    if request.network_volume_id.is_none() {
+        body.insert("volumeInGb".to_owned(), json!(0));
+    }
     if let Some(volume) = &request.network_volume_id {
         body.insert("networkVolumeId".to_owned(), json!(volume));
     }
@@ -559,16 +665,23 @@ impl RunpodTransport for ConnectorsRunpod {
                 .and_then(pod_of)
                 .map_or(CreateAnswer::Lost, CreateAnswer::Created),
             Some("refused") => CreateAnswer::Refused,
-            // The pod may exist and may be billed: one read by its unique name, never a resend.
-            Some("unknown") => match self.listing(&json!({ "name": request.name })) {
-                Some(pods) => {
-                    let mut named = pods.into_iter().filter(|pod| pod.name == request.name);
-                    match (named.next(), named.next()) {
+            // The pod may exist and may be billed: one read by its name, never a resend. The name
+            // is per model alias, not per create, and Runpod names need not be unique: only a pod
+            // carrying this create's own request tag was made by it.
+            Some("unknown") => match (
+                request.env.get(crate::TAG_REQUEST),
+                self.listing(&json!({ "name": request.name })),
+            ) {
+                (Some(tag), Some(pods)) => {
+                    let mut ours = pods.into_iter().filter(|pod| {
+                        pod.name == request.name && pod.env.get(crate::TAG_REQUEST) == Some(tag)
+                    });
+                    match (ours.next(), ours.next()) {
                         (Some(pod), None) => CreateAnswer::Created(pod),
                         _ => CreateAnswer::Lost,
                     }
                 }
-                None => CreateAnswer::Lost,
+                _ => CreateAnswer::Lost,
             },
             _ => CreateAnswer::Lost,
         }

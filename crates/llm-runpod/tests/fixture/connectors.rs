@@ -43,6 +43,16 @@ fn fail(code: u8, error: &Value) -> ExitCode {
 
 fn main() -> ExitCode {
     let command_line: Vec<String> = std::env::args().collect();
+    // A child started by `hold_stdout_ms`: it only keeps the inherited stdout open, the way a
+    // helper or an auto-started owner process the CLI launches would, and then exits.
+    if command_line.get(1).map(String::as_str) == Some("__hold_stdout") {
+        let ms = command_line
+            .get(2)
+            .and_then(|ms| ms.parse().ok())
+            .unwrap_or(0);
+        thread::sleep(Duration::from_millis(ms));
+        return ExitCode::SUCCESS;
+    }
     let Some(dir) = command_line
         .first()
         .and_then(|zero| Path::new(zero).parent())
@@ -126,6 +136,15 @@ fn scripted(dir: &Path, key: &str, seen: usize) -> Option<Value> {
 }
 
 fn play(answer: &Value) -> ExitCode {
+    if let Some(ms) = answer.get("hold_stdout_ms").and_then(Value::as_u64)
+        && let Ok(exe) = std::env::current_exe()
+    {
+        let _ = std::process::Command::new(exe)
+            .args(["__hold_stdout", &ms.to_string()])
+            .stdin(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .spawn();
+    }
     if let Some(ms) = answer.get("sleep_ms").and_then(Value::as_u64) {
         thread::sleep(Duration::from_millis(ms));
     }

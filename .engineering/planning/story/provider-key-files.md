@@ -2,30 +2,43 @@
 format: aep.planning-md/3
 id: story:provider-key-files
 kind: story
-status: active
+status: implemented
 title: The binary reads each model's vLLM key from a trusted file
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
 scope:
 - confidence: cited
+  path: README.md
+- confidence: cited
   path: crates/llm-gateway-cli/src/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/keys.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/lib.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/src/refusal.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/src/serve.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/src/trusted.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_w02.rs
 - confidence: inferred
   path: crates/llm-gateway-cli/tests/binary.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/config.rs
 - confidence: cited
+  path: crates/llm-gateway-cli/tests/support/mod.rs
+- confidence: cited
+  path: docs/llmgw-capability-matrix.md
+- confidence: cited
   path: spec/domains/deployment.yaml
-revision: 13
+revision: 20
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-08T13:35:57Z", actor: "human:timo", revision: 12, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-10-08T13:35:57Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-08T14:10:01Z", actor: "human:timo", revision: 20, decided_on: {"recorded":{"test_result":1,"review_outcome":5}}}
 ---
 ## Outcome
 

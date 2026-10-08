@@ -143,8 +143,11 @@ beside the lines below (default `info`); at the default level the binary writes 
 that cannot be bound is refused as `listen:bind`, and signal handlers that cannot be installed as
 `signal:install`.
 
-A stop answers every request already accepted first, and takes at most twice the 10-second read
-timeout however slowly a client sends or reads.
+A stop answers every request already accepted first. For the probes and inspection it takes at
+most twice the 10-second read timeout however slowly a client sends or reads; a request to a wire
+path can hold it longer, because its head, its body, its answer and the read-out of a refusal each
+have their own deadline, and a relayed stream is waited for until it ends
+([docs/gateway.md](docs/gateway.md#lifecycle)).
 
 ## Build and check
 

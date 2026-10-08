@@ -287,9 +287,10 @@ contract reports.
 
 `b10x-llm-runpod` is the first adapter behind this seam. It ports llmgw's pod lifecycle
 (`src/runpod.rs`, the Runpod part of `src/config.rs`, and the mock lifecycle tests in
-`src/lib.rs`) onto the contract above. Every Runpod call goes through the `RunpodTransport` trait;
-the only transport in the crate is `EmulatedRunpod`, an in-process control plane. Nothing in the
-crate opens a connection or reads a credential. The crate links `b10x-llm-credentials` and `tokio`
+`src/lib.rs`) onto the contract above. Every Runpod call goes through the `RunpodTransport` trait.
+The crate has two transports: `EmulatedRunpod`, an in-process control plane the tests drive, and
+`ConnectorsRunpod`, the production transport described below. Neither holds a control-plane
+credential, and no test reaches a live API. The crate links `b10x-llm-credentials` and `tokio`
 through `b10x-llm-providers`, and uses neither: it calls only `descriptions::runpod` and
 `inference_base_url`, which parse the shipped description and fill its URL template.
 
@@ -300,7 +301,7 @@ through `b10x-llm-providers`, and uses neither: it calls only `descriptions::run
 | adoption after restart | any pod with the matching name | only the durable record's exact key, or its request id; a pod labelled for another owner is not adopted, and one taken over at a newer epoch is reported as transferred. After a takeover — the snapshot's previous lease holder gone and its claim expired — the new owner finds its inherited pods still labelled for that holder, because Runpod cannot relabel a pod; the contract parks such a record in `ownership-lost`, and the pool terminates the pod itself, but only when its label still names exactly the holder the snapshot records. A pod labelled for any other controller is never terminated |
 | single-flight start | an atomic phase flip on a watch channel | one mutex across a whole pool step: the first caller declares and submits, every later caller sees the live deployment and is told `starting` |
 | GPU choice | ordered; each refusal tries the next | the same, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false` |
-| crash recovery | two decreasing uptimes during startup terminate the pod | the same count, at any time, but only restarts inside the model's declared `crash_window_ms` count (window end inclusive), so sparse restarts over a long life are not a loop; a pod refusing its vLLM key is terminated too; the next request starts a new deployment |
+| crash recovery | two decreasing uptimes during startup terminate the pod | Runpod reports no uptime, so a restart is the pod's `lastStartedAt` (read by `pods.list` with `id`) moving forward: a value later than the last one seen is one restart, and the first value, an equal or an earlier one, or none, is not. The same count, at any time, but only restarts inside the model's declared `crash_window_ms` count (window end inclusive), so sparse restarts over a long life are not a loop; a pod refusing its vLLM key is terminated too; the next request starts a new deployment |
 | startup deadline | the caller's hold budget; the pod keeps starting | the pod's deadline is separate from a request's hold budget (`request_hold_seconds`, row K28): a pod that has not served within its declared deadline is terminated, because it is a billed resource serving nobody. A pod that served and then answers a definite "not ready" gets the same bound, counted from the last time it was seen ready (`stopped-serving`); unknown readiness neither starts nor ends that clock |
 | idle reaper | idle past the timeout, never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement |
 | orphan sweep | `llmgw-*` pods whose alias left the registry | pods in `b10x-llm-` carrying **this controller's** owner tag that no live record holds, by exact key, or by request id for a record that holds no key yet; records whose model left the registry are stopped through the controller |
@@ -317,13 +318,111 @@ declared one, or names an undeclared model, is not sent.
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out.
 
+### The production transport
+
+`ConnectorsRunpod` reaches Runpod's control plane only through the `connectors` CLI of
+beyond10x/connectors v0.37.0 and its Runpod catalog bundle (connectors `docs/catalog-runpod.md`).
+The Runpod API key stays in the connectors keyring; this crate holds no HTTP client for the
+control plane and no credential for it. `spec/domains/runpod.yaml` declares every invocation.
+
+| Call | connectors operation | Answer |
+| --- | --- | --- |
+| list | `pods.list` with no filter | `complete` only when the whole answer is one array of pods and every pod parses; a truncated, throttled (`rate_limited`), interrupted or partly unreadable answer is not complete |
+| get | `pods.list` with `id` (v0.37.0 selects no `GetPod`) | the pod's `lastStartedAt`, for crash detection |
+| create | `pod.create`, one per GPU choice | `Created` for `applied` with a readable pod; `Refused` only for `refused`; `unknown` is resolved by one `pods.list` on the pod's `name`, which is per model alias (`Created` only if exactly one pod of that name carries this create's `B10X_LLM_REQUEST` tag, `Lost` otherwise); `not_attempted`, a timeout, a non-zero exit with no classification and unparseable output are `Lost` |
+| terminate | `pod.terminate` with `podId` | `Terminated` for `applied`; `Refused` for `refused`, including `404`/`not_found`, which does not prove the pod is gone; anything else `Lost` |
+
+Each write is prepared and issued for its exact input (`approvals prepare`, `approvals issue`
+into a new file in the transport's private work directory, made absolute when the transport is
+built) and invoked once with that proof and an idempotency key; the transport never sends it
+again. `schema` and `revision` come from `operations describe` and are kept per operation until
+one of the refusals below drops them. The CLI runs in its own process group. When the binding's
+timeout passes before the CLI has exited and both its output streams have closed, which a process
+it started can hold open, the group is killed and the answer is lost.
+
+Answers are read only in connectors' published framing (connectors v0.37.0
+`contracts/cli/v1alpha1/semantics.md:178-181`). A success is exit 0 with one
+`{"ok":true,"result":…}` envelope on stdout, and everything the transport reads (`schema`,
+`revision`, the approval's `subject_sha256`, the connection's revision, the invoke's `status`,
+`body` and `mutation.classification`) is inside its `result`. A failure is a non-zero exit with
+stdout empty and one `{"ok":false,"error":{"code":"failure","data":…}}` envelope on stderr, whose
+`data` is connectors' `Failure` (`code`, `stage`, `next_action`, and `mutation` when connectors
+observed one). Both streams are read under the call's deadline and an 8 MiB bound each. Anything
+else is unreadable: `Lost` for a write, an incomplete listing for a read. No part of either stream
+reaches the transport's `Debug`.
+
+An invoke refused with nothing dispatched (no classification, or `not_attempted`) is repeated
+once, after one recovery step, for three refusals:
+
+| `error.data` | Why (connectors v0.37.0) | Recovery |
+| --- | --- | --- |
+| `code: not_granted`, `stage: admission` | the connection's evidence expired: it lasts `evidence_lifetime_ms`, 60 s when omitted and at most 300 000 ms, and "The invoke does not revalidate on its own" (`docs/local-catalog-provider.md:479-486`, `semantics.md:748-753`) | `connections describe` for the connection's revision, then `connections revalidate` once |
+| `code: stale_description` | "schema/descriptor changed", answered "before provider dispatch" (`semantics.md:579-581`, `:606`) | drop the operation's cached `schema` and `revision`, run `operations describe` once |
+| `code: lifecycle_conflict`, `stage: admission` | "stale revision" (`semantics.md:601`), as after a configuration upgrade moves the descriptor revision (`docs/local-catalog-provider.md:396-399`, `semantics.md:759-764`) | the same refresh, and a revalidation too when `next_action` is `revalidate_connection` |
+
+A recovery step that fails ends there. A repeated write is a new attempt, with a fresh proof and
+its own idempotency key. A second refusal is mapped as usual (`Lost` for a write, an incomplete
+listing for a read), and a write refused any other way, or classified otherwise, is never
+repeated.
+
+The `pod.create` body carries the keys `POD_CREATE_BODY_KEYS` names, which are connectors
+v0.37.0's fifteen `body_keys` (`adapters/catalog/providers/runpod/operations.json`); connectors
+refuses any other key as `invalid_input` before any request (`docs/catalog-runpod.md:88-89`). The
+body follows llmgw's (`src/runpod.rs:781-799` at `048ebd8`). The vLLM argv (`vllm serve …`)
+travels as `dockerEntrypoint`, `dockerStartCmd` is always `[]`, `volumeInGb` is `0` when there is
+no network volume (Runpod's default is a 20 GB pod volume, `docs/catalog-runpod.md:77`), and the
+model cache volume travels as `networkVolumeId`, which "replaces the pod volume" (:86).
+`dockerStartCmd: []` is llmgw parity, not a way to clear the image's CMD: Runpod's pinned
+`PodCreateInput` says "If [], uses the start CMD defined in the image", and connectors v0.37.0
+says `[]` "keeps the image's" (`docs/catalog-runpod.md:84`).
+
+The readiness probe goes to the pod, not to connectors: `GET <endpoint>models` with the model's
+vLLM key, handed to the transport by alias, as a bearer. `200` is ready with the served model
+names, `401`/`403` refused, any other answer not ready, no answer unreachable. The probe speaks
+plain HTTP only: an `https://` endpoint, which is what a live pod has, is unreachable until the
+crate gets a TLS client (story:pod-proxy-tls). The transport reads no file, and its `Debug` prints
+no key.
+
 ### The pool the binary composes
 
 `llm_gateway_cli::start_relaying` composes one `RunpodPool` from the deployment document and
-relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). The
-shipped binary has no Runpod transport and never calls it; story:live-runpod-wiring supplies one.
-Its tests run it over `EmulatedRunpod` and a loopback pod. Every input is fixed or read from the
-document (`spec/domains/deployment.yaml`):
+relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). Its
+tests run it over `EmulatedRunpod` and a loopback pod. The composition the shipped binary is
+wired for, `llm_gateway_cli::start_connected`, builds a `ConnectorsRunpod` from the document and
+runs the same pool over what its caller's `wrap` returns: `llm_gateway_cli::start`, the shipped
+path, passes the identity, and only tests pass anything else. It serves the one provider whose
+`[providers.<name>.connectors]` table names the connection, and makes every document check
+before its first `connectors` call:
+
+```toml
+[providers.runpod.connectors]
+executable = "/usr/local/bin/connectors"   # absolute; not looked up on PATH
+adapter = "gpu"                            # the alias bound to the Runpod catalog provider
+connection = "conn-1"                      # the saved connection id
+work_directory = "/var/lib/gateway/connectors"  # existing, owned by the gateway's user, mode 0700
+timeout_seconds = 60                       # 1..=600, default 60: one CLI call
+```
+
+**The wiring is inert in the shipped binary until story:pod-proxy-tls.** A pod is reached only at
+the Runpod proxy's `https://` endpoint, which the binary cannot open yet, so a pod it started
+would be billed and never serve. `b10x-llm-gateway` therefore refuses a document that declares a
+`connectors` table with `config:value` (`providers.<name>.connectors cannot be served until the
+binary speaks TLS to the pod endpoint`) before it reads any other file, runs any `connectors`
+call or binds anything. The table's own rules are still checked when the document is loaded.
+story:pod-proxy-tls removes the refusal.
+
+What `start_connected` does, proved at the library level: at start it checks the connection once
+(the work directory is private and one `pods.list` answers a complete listing). If not, it still
+starts, writes the `warn` event `connectors connection unreachable`, runs no further `connectors`
+call, and answers every model of that provider `target-unavailable`; a repaired connection takes a
+restart. Each connected model's vLLM key is handed to the transport by alias for the readiness
+probe. A model whose provider declares no `connectors` is `target-unavailable`, in the shipped
+binary too. No option or document key selects `EmulatedRunpod`.
+`crates/llm-gateway-cli/tests/binary.rs` (`live_*`) proves the refusal against the connectors CLI
+fixture, which records no invocation; `tests/live_runpod.rs` proves the composition against the
+fixture and a loopback pod.
+
+Every input is fixed or read from the document (`spec/domains/deployment.yaml`):
 
 | Input | Source | Value |
 | --- | --- | --- |
@@ -403,5 +502,8 @@ deployment — and is recorded as an open finding for the operator.
 What this does **not** establish: that Runpod's REST listing returns the `env` a pod was created
 with, that `{{ RUNPOD_SECRET_<name> }}` is substituted into `VLLM_API_KEY`, that a `DELETE` stops
 billing, or that the proxy URL `https://<pod id>-8000.proxy.runpod.net/v1/` is the one to serve from.
-Those are properties of the live control plane; no production transport exists yet and no paid
-call has been made. [Runpod verification](verification/runpod.md) records the emulated evidence.
+Nor does it establish that `lastStartedAt` moves when a container restarts. Those are properties
+of the live control plane; the production transport has run only against a fixture of the
+`connectors` CLI and no paid call has been made. [Runpod verification](verification/runpod.md)
+records the emulated evidence, [the transport record](verification/runpod-transport.md) the
+fixture evidence.

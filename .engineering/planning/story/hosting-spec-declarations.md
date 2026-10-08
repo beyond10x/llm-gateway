@@ -8,6 +8,7 @@ relations:
 - decomposes: epic:spec-hardening
 - serves: vision:portable-model-inference
 - depends_on: story:ess-0-53
+- depends_on: story:runpod-production-transport
 scope:
 - confidence: inferred
   path: checks/conformance/src/hosting.rs
@@ -21,7 +22,7 @@ scope:
   path: spec/domains/hosting.yaml
 - confidence: cited
   path: spec/domains/runpod.yaml
-revision: 9
+revision: 10
 ---
 ## Outcome
 
@@ -72,3 +73,9 @@ The findings are the rows of `docs/verification/spec-hardening-hosting-review.md
 `spec/domains/hosting.yaml`, `spec/domains/runpod.yaml`, `docs/hosting.md`, new scenarios under
 `contracts/hosting/scenarios/` and `contracts/runpod/scenarios/`,
 `checks/conformance/src/hosting.rs`, `crates/llm-provision/tests/hosting.rs`, `docs/verification/`.
+
+## Order changed 2026-10-08
+
+Depends on `story:runpod-production-transport`: both change `spec/domains/runpod.yaml` and
+`docs/hosting.md`, and this story now lands after the transport. Rows of
+`docs/verification/spec-hardening-hosting-review.md` the transport closes are marked closed by it.

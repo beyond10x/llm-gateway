@@ -7,8 +7,8 @@ use crate::{
     refusal::{Refusal, StartupRefusal},
     trusted,
 };
-use llm_gateway::GatewayConfig;
-use llm_runpod::{CloudType, NetworkVolume, Thinking, VllmSettings};
+use llm_gateway::{GatewayConfig, ToolCalling};
+use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -16,10 +16,29 @@ use std::{
     net::SocketAddr,
     ops::RangeInclusive,
     path::{Path, PathBuf},
+    time::Duration,
 };
 
 const REASONING_EFFORTS: [&str; 4] = ["low", "medium", "high", "xhigh"];
 const HEX: &[u8; 16] = b"0123456789abcdef";
+
+/// Reads a closed enumerated value from a TOML string and nothing else. serde's derived
+/// `Deserialize` for an externally tagged enum also takes a one-key table naming a unit
+/// variant, so `thinking = { on = {} }` loaded as `on`; every enum of the document is read
+/// through this instead, and anything but one of its strings is `config:schema`.
+macro_rules! from_string_only {
+    ($name:ident { $( $text:literal => $variant:ident ),+ $(,)? }) => {
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                let text = String::deserialize(deserializer)?;
+                match text.as_str() {
+                    $( $text => Ok(Self::$variant), )+
+                    other => Err(serde::de::Error::unknown_variant(other, &[$( $text ),+])),
+                }
+            }
+        }
+    };
+}
 
 // --- The document, exactly as written --------------------------------------------------------
 
@@ -40,25 +59,53 @@ struct ProviderDocument {
     kind: ProviderKind,
     #[serde(default)]
     cloud_type: CloudTypeDocument,
+    #[serde(default)]
+    connectors: Option<ConnectorsDocument>,
 }
 
-#[derive(Deserialize, Default)]
+/// `[providers.<name>.connectors]` (`llm-gateway.deployment.ConnectorsDeclaration`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ConnectorsDocument {
+    executable: PathBuf,
+    adapter: String,
+    connection: String,
+    work_directory: PathBuf,
+    #[serde(default = "default_connectors_timeout_seconds")]
+    timeout_seconds: u64,
+}
+
+fn default_connectors_timeout_seconds() -> u64 {
+    60
+}
+
+#[derive(Default)]
 enum CloudTypeDocument {
     #[default]
-    #[serde(rename = "SECURE")]
     Secure,
-    #[serde(rename = "COMMUNITY")]
     Community,
 }
 
-#[derive(Deserialize, Default)]
+from_string_only!(CloudTypeDocument { "SECURE" => Secure, "COMMUNITY" => Community });
+
+#[derive(Default)]
 enum ThinkingDocument {
-    #[serde(rename = "on")]
     On,
     #[default]
-    #[serde(rename = "off")]
     Off,
 }
+
+from_string_only!(ThinkingDocument { "on" => On, "off" => Off });
+
+#[derive(Default)]
+enum ToolCallingDocument {
+    Parsed,
+    /// The default: a model that says nothing is served no tool request.
+    #[default]
+    Absent,
+}
+
+from_string_only!(ToolCallingDocument { "parsed" => Parsed, "absent" => Absent });
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -99,6 +146,8 @@ struct ModelDocument {
     request_hold_seconds: Option<u64>,
     #[serde(default)]
     vllm_api_key_file: Option<PathBuf>,
+    #[serde(default)]
+    tool_calling: ToolCallingDocument,
 }
 
 fn default_max_num_seqs() -> u32 {
@@ -128,22 +177,22 @@ fn default_start_wait_seconds() -> u64 {
 // --- The loaded deployment -------------------------------------------------------------------
 
 /// `providers.<name>.kind`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ProviderKind {
-    #[serde(rename = "runpod-vllm")]
     RunpodVllm,
 }
 
+from_string_only!(ProviderKind { "runpod-vllm" => RunpodVllm });
+
 /// A wire a model is served on.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Wire {
-    #[serde(rename = "chat")]
     Chat,
-    #[serde(rename = "responses")]
     Responses,
-    #[serde(rename = "messages")]
     Messages,
 }
+
+from_string_only!(Wire { "chat" => Chat, "responses" => Responses, "messages" => Messages });
 
 impl Wire {
     pub const fn label(self) -> &'static str {
@@ -160,6 +209,9 @@ impl Wire {
 pub struct Provider {
     pub kind: ProviderKind,
     pub cloud_type: CloudType,
+    /// The connectors connection the provider's pods are reached through, when it declares
+    /// one; `None` leaves its models answered `target-unavailable`.
+    pub connectors: Option<ConnectorsBinding>,
 }
 
 /// `[models.<alias>]`, with every default applied and every rule checked.
@@ -184,6 +236,10 @@ pub struct Model {
     /// The file holding the key this model's pod's vLLM server expects (row B9). Only the path
     /// is loaded here; [`crate::vllm_keys`] reads it.
     pub vllm_api_key_file: Option<PathBuf>,
+    /// Whether the model's pod parses tool calls; `absent` unless the document says
+    /// `parsed`. A request offering tools to an `Absent` model is refused before a pod is
+    /// asked for.
+    pub tool_calling: ToolCalling,
 }
 
 /// A loaded and validated deployment document.
@@ -242,14 +298,28 @@ fn parse(text: &str) -> Result<Deployment, Refusal> {
             CloudTypeDocument::Secure => CloudType::Secure,
             CloudTypeDocument::Community => CloudType::Community,
         };
+        let connectors = provider
+            .connectors
+            .map(|table| connectors_binding(&format!("providers.{name}.connectors"), table))
+            .transpose()?;
         providers.insert(
             name,
             Provider {
                 kind: provider.kind,
                 cloud_type,
+                connectors,
             },
         );
     }
+    ensure(
+        providers
+            .values()
+            .filter(|provider| provider.connectors.is_some())
+            .count()
+            <= 1,
+        "providers",
+        "may declare at most one connectors connection",
+    )?;
     let mut models = BTreeMap::new();
     for (alias, model) in document.models {
         let at = format!("models.{alias}");
@@ -305,6 +375,46 @@ fn closed_name(key: &str, name: &str) -> Result<(), Refusal> {
         key,
         "must be 1..=64 lowercase URL-safe ASCII characters without a leading dash",
     )
+}
+
+/// An absolute path of 1..=1024 bytes without a control character.
+fn absolute_path(key: &str, path: &Path) -> Result<(), Refusal> {
+    let bytes = path.as_os_str().as_encoded_bytes();
+    ensure(
+        path.is_absolute()
+            && (1..=1024).contains(&bytes.len())
+            && !bytes.iter().any(u8::is_ascii_control),
+        key,
+        "must be an absolute path of at most 1024 bytes without a control character",
+    )
+}
+
+/// One argument of the connectors CLI: 1..=128 printable ASCII without a space, never read as
+/// an option.
+fn cli_argument(key: &str, value: &str) -> Result<(), Refusal> {
+    ensure(
+        (1..=128).contains(&value.len())
+            && !value.starts_with('-')
+            && value.bytes().all(|byte| byte.is_ascii_graphic()),
+        key,
+        "must be 1..=128 printable ASCII characters without a space or a leading dash",
+    )
+}
+
+/// `[providers.<name>.connectors]`, checked, as the transport's binding.
+fn connectors_binding(at: &str, table: ConnectorsDocument) -> Result<ConnectorsBinding, Refusal> {
+    absolute_path(&format!("{at}.executable"), &table.executable)?;
+    absolute_path(&format!("{at}.work_directory"), &table.work_directory)?;
+    cli_argument(&format!("{at}.adapter"), &table.adapter)?;
+    cli_argument(&format!("{at}.connection"), &table.connection)?;
+    within(at, "timeout_seconds", &table.timeout_seconds, &(1..=600))?;
+    Ok(ConnectorsBinding {
+        executable: table.executable,
+        adapter: table.adapter,
+        connection: table.connection,
+        work_directory: table.work_directory,
+        timeout: Duration::from_secs(table.timeout_seconds),
+    })
 }
 
 fn bounded_text(key: &str, value: &str, limit: usize) -> Result<(), Refusal> {
@@ -486,5 +596,9 @@ fn into_model(model: ModelDocument) -> Model {
             .request_hold_seconds
             .unwrap_or(model.start_wait_seconds),
         vllm_api_key_file: model.vllm_api_key_file,
+        tool_calling: match model.tool_calling {
+            ToolCallingDocument::Parsed => ToolCalling::Parsed,
+            ToolCallingDocument::Absent => ToolCalling::Absent,
+        },
     }
 }

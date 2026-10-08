@@ -10,7 +10,7 @@ use std::{
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 use llm_runpod::{
     CloudType, CreateAnswer, EmulatedRunpod, ManualClock, PodListing, PodRequest, PoolError, Probe,
-    RunpodModel, RunpodPool, RunpodTransport, TerminateAnswer, Thinking, VllmSettings,
+    ProbeTarget, RunpodModel, RunpodPool, RunpodTransport, TerminateAnswer, Thinking, VllmSettings,
 };
 
 const ALIAS: &str = "qwen";
@@ -168,21 +168,22 @@ impl RunpodTransport for Wedging {
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
         self.inner.terminate_pod(pod_id)
     }
-    fn probe_ready(&mut self, pod_id: &str) -> Probe {
+    fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe {
+        let pod_id = target.pod_id;
         let wedged = self
             .wedged
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .clone();
-        let answer = self.inner.probe_ready(pod_id);
+        let answer = self.inner.probe_ready(target);
         if wedged.as_deref() == Some(pod_id) {
             Probe::NotReady
         } else {
             answer
         }
     }
-    fn container_uptime(&mut self, pod_id: &str) -> Option<u64> {
-        self.inner.container_uptime(pod_id)
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
+        self.inner.container_started_at(pod_id)
     }
 }
 

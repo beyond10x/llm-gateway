@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T19:21:45Z",
+  "actor": "human:timo",
+  "artifact": "story:live-runpod-wiring",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --locked",
+    "reference": "impl/live-runpod-wiring with inert_until_tls removed (~/.cache/llm-gateway-w05/wiring/red2.log: live_a_connectors_document_is_refused_and_the_fixture_receives_nothing FAILED, binary served) vs 28aaef7 (133 passed; fixture records zero calls)"
+  }
+}

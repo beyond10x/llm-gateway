@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.WriteClassification",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
+    "contract_digest": "slice-sha256/2:6200a0208803d042b1f958886f6fd7137b32c666dd81879e82c84b63b5b4aff4",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.WriteClassification": {
+      "title": "WriteClassification",
+      "x-ess-name": "llm-gateway.runpod.WriteClassification",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "not_attempted",
+        "refused",
+        "applied",
+        "unknown"
+      ]
+    }
+  }
+}

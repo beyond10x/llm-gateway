@@ -1,0 +1,32 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target
+summary: a body with a non-empty top-level tools array, for a model declaring tool calling absent or not declaring it, is tools-not-served on every wire, and no target is asked for, so no pod starts
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"text","upstream_model":"served-text","wires":["chat","responses","messages"],"tool_calling":"absent"},{"alias":"undeclared","upstream_model":"served-undeclared","wires":["chat"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"text\",\"messages\":[],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"shell\"}}]}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"text\",\"input\":\"hi\",\"tools\":[{\"type\":\"function\",\"name\":\"shell\"}]}"},{"step":"request","path":"/v1/messages","body":"{\"tools\":[{\"name\":\"shell\",\"input_schema\":{}}],\"model\":\"text\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"undeclared\",\"messages\":[],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"shell\"}}]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 400 tools-not-served
+    - 400 tools-not-served
+    - 400 tools-not-served
+    - 400 tools-not-served
+    bodies:
+    - '{"error":{"code":"tools-not-served","message":"the model does not serve tool calls"}}'
+    - '{"error":{"code":"tools-not-served","message":"the model does not serve tool calls"}}'
+    - '{"error":{"code":"tools-not-served","message":"the model does not serve tool calls"}}'
+    - '{"error":{"code":"tools-not-served","message":"the model does not serve tool calls"}}'
+    upstream: []
+    acquired: 0
+    invalidated: []

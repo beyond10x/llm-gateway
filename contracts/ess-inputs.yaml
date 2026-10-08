@@ -184,3 +184,7 @@ scenarios:
 - gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml
 - gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml
 - gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml
+- gateway/scenarios/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target.yaml
+- gateway/scenarios/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged.yaml
+- gateway/scenarios/tools-a-request-without-tools-to-a-model-without-tool-calling-is-relayed-unchanged.yaml
+- gateway/scenarios/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged.yaml

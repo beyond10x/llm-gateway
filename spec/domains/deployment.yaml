@@ -19,10 +19,11 @@ domain: llm-gateway.deployment
 # DECIDED 2026-10-08 (row O3, story:gateway-observability): beside those lines the process
 # writes `tracing` events to standard error, uncoloured, at the level `RUST_LOG` sets (`info`
 # when it is unset, empty or unreadable; a directive it cannot read is dropped without a line). The lines above are not events and stay as written at
-# every level. The shipped binary emits one `debug` event, `deployment loaded`, so at the
-# default level it writes only those lines; a relaying composition (`start_relaying`) also
-# emits one `info` event per usage record, per pod start and per cleanup pass that stopped
-# pods, and a `warn` event per pod start failure (llm-gateway.telemetry).
+# every level. The shipped binary emits one `debug` event, `deployment loaded`; a relaying
+# composition also emits one `info` event per usage record, per pod start and per cleanup pass
+# that stopped pods, a `warn` event per pod start failure (llm-gateway.telemetry), and one
+# `warn` event, `connectors connection unreachable`, naming the provider, when the reachability
+# check below fails. No event carries a key, the owner token or an approval proof.
 #
 # DECIDED: the Runpod API key (row K7) is held by connectors, not by this document: under design
 # choice D1 = A (docs/design/runpod-clients.md § 4) the gateway never holds it, so the closed
@@ -33,12 +34,54 @@ domain: llm-gateway.deployment
 # the model's Runpod secret, which the pod receives as `{{ RUNPOD_SECRET_<name> }}`. The binary
 # reads each file once at startup and holds the value redacted.
 # DECIDED: the relay (row B8) is composed over one `RunpodPool` (`llm_gateway_cli::start_relaying`):
-# every model is relayed on its wires to the pod the pool hands out for its alias, with the
-# model's vLLM key as `authorization: Bearer <key>`. A model relayed this way must name a
-# `vllm_api_key_file` (`config:value` otherwise): its pod always expects the key. The shipped
-# binary has no Runpod transport, so `start` composes no relay and the binary relays nothing until
-# story:live-runpod-wiring supplies one; `start_relaying` takes the transport, the connection to a
-# pod and the clock, and only tests call it, with `EmulatedRunpod` and loopback pods.
+# every model is relayed on its wires, with its `tool_calling`, to the pod the pool hands out for
+# its alias, with the model's vLLM key as `authorization: Bearer <key>`. A model relayed this way must name a
+# `vllm_api_key_file` (`config:value` otherwise): its pod always expects the key.
+# `start_relaying` takes the transport, the connection to a pod and the clock; tests call it with
+# `EmulatedRunpod` and loopback pods.
+# DECIDED 2026-10-08 (story:live-runpod-wiring, design choice D1 = A): the shipped binary
+# (`llm_gateway_cli::start`) always composes the relay, and its only Runpod transport is the
+# production one, `ConnectorsRunpod` (llm-gateway.runpod.ConnectorsBinding), built from the
+# `connectors` table of the provider (ConnectorsDeclaration below). No command-line option and no
+# document key selects `EmulatedRunpod` or any other transport: the closed document refuses every
+# key it does not declare (`config:schema`).
+#   * A provider that declares `connectors` is connected; its models are relayed through one
+#     `RunpodPool` over that transport and must each name a `vllm_api_key_file`
+#     (`config:value`). Each such key is handed to the transport by model alias
+#     (`ConnectorsRunpod::set_vllm_key`) for the readiness probe, and is the relay's bearer.
+#   * At most one provider declares `connectors` (`config:value` otherwise): the pool's controller
+#     identity and account are fixed, so two pools would sweep each other's pods.
+#   * A model whose provider declares no `connectors` is answered `target-unavailable` on its
+#     wires; no pool is asked and no process is run for it.
+#   * DECIDED: every refusal the document can earn is decided before the first `connectors`
+#     call: the owner secret, the key files, the inventory, the relayed models, each connected
+#     model as the pool runs it (`RunpodModel`), the hosting policy and each model's bearer. A
+#     document's validity never depends on the connection, and a refused document costs no call.
+#     Only process facts (`signal:install`, `listen:bind`) are decided after it.
+#   * DECIDED: "reachable" is decided once, at start, before the gateway is marked ready: the work
+#     directory is an existing directory owned by the effective user with no group or world
+#     permission, and one `pods.list` through the transport answers a complete listing (exit 0,
+#     a 2xx status, every entry readable). Anything else is unreachable: the binary still starts,
+#     writes the `connectors connection unreachable` event, composes no pool and runs no further
+#     `connectors` call for the life of the process, and every model of that provider is
+#     answered `target-unavailable`. A connection repaired later takes a restart: a checked
+#     connection never changes under a running process.
+#   * The connection to a pod is the Runpod proxy's TLS endpoint (`https://`, from llm's Runpod
+#     description), which the binary cannot open yet (story:pod-proxy-tls): the shipped pod
+#     connector refuses every connection, so no vLLM key leaves the process unencrypted, and the
+#     probe reports an `https://` endpoint `Unreachable`, so no pod would ever become ready.
+#   * DECIDED 2026-10-08: so that the binary cannot create a billed pod that can never serve,
+#     the wiring is inert in the shipped binary until story:pod-proxy-tls. `start` refuses a
+#     document in which any provider declares `connectors` with `config:value`
+#     (`providers.<name>.connectors cannot be served until the binary speaks TLS to the pod
+#     endpoint`), as its first step: before the owner secret or any key file is read, before
+#     any `connectors` call and before anything is bound. The process exits 1 like any refused
+#     document. `load` still reads and checks the table, so the document's rules stay enforced
+#     and tested. story:pod-proxy-tls removes this refusal.
+#   * `llm_gateway_cli::start_connected` is the composition `start` will run once that refusal
+#     is gone, with the transport wrapped and the pod connector supplied by the caller. Only
+#     tests call it, to reach a loopback pod; it is not reachable from the shipped binary's
+#     document or command line.
 # The pool's inputs, each from the document or fixed:
 #   ComputeAuthorization  fixed: ledger `b10x-llm-gateway`, reservation `unmetered`. No budget
 #                         ledger is consulted yet; the pair only satisfies the hosting contract
@@ -167,11 +210,38 @@ types:
     variants: [Low, Medium, High, Xhigh]
   # `[providers.<name>]`. The name is 1..=64 of `a-z 0-9 - _ .` without a leading dash
   # (`config:value`).
+  # `connectors`, optional: when present the provider's pods are reached through the connectors
+  # connection it names, and the table is closed.
   - name: llm-gateway.deployment.ProviderDeclaration
     kind: struct
     fields:
       - {name: kind, type: llm-gateway.deployment.ProviderKind}
       - {name: cloud_type, type: llm-gateway.deployment.CloudType}
+      - {name: connectors, type: 'Optional<llm-gateway.deployment.ConnectorsDeclaration>'}
+  # `[providers.<name>.connectors]`: how the binary reaches the connectors owner process that
+  # holds the Runpod authorization (docs/design/runpod-clients.md § 4). It maps one to one onto
+  # llm-gateway.runpod.ConnectorsBinding, `timeout_seconds` x 1000 being its `timeout_ms`. Every
+  # rule is `config:value`; a missing key other than `timeout_seconds` is `config:schema`.
+  # ESS-LIMIT: the ranges are not struct invariants, for the reason ModelDeclaration gives; the
+  # crate tests named `connectors_*` in crates/llm-gateway-cli/tests/config.rs prove them.
+  #   executable       an absolute path, 1..=1024 bytes, no control character: the `connectors`
+  #                    CLI. It is not looked up on PATH
+  #   adapter          1..=128 printable ASCII without a space, not starting with `-` (it is one
+  #                    argument of the CLI, never read as an option): the adapter alias the
+  #                    connectors configuration binds the Runpod catalog provider to
+  #   connection       the same rule: the saved connectors connection id
+  #   work_directory   an absolute path, 1..=1024 bytes, no control character: an existing
+  #                    private directory for each write's input document and approval proof
+  #                    (checked at start, see the reachability rule above)
+  #   timeout_seconds  1..=600, default 60: the bound on one CLI call
+  - name: llm-gateway.deployment.ConnectorsDeclaration
+    kind: struct
+    fields:
+      - {name: executable, type: String}
+      - {name: adapter, type: String}
+      - {name: connection, type: String}
+      - {name: work_directory, type: String}
+      - {name: timeout_seconds, type: Integer}
   # `[models.<alias>]`, llmgw `ModelConfig` (`src/config.rs:95-136`) and its rules
   # (`src/config.rs:244-342`), every one `config:value`. The alias follows the provider-name rule.
   # ESS-LIMIT: the ranges are not struct invariants: synthesis refuses an invariant no view can
@@ -199,6 +269,15 @@ types:
   #                         request waits for the pod (row K28)
   #   vllm_api_key_file     optional; the file holding the key the model's pod's vLLM server
   #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
+  #   tool_calling          `parsed` or `absent` (llm-gateway.clients.ToolCalling), default
+  #                         `absent`; any other value is `config:schema`
+  # DECIDED 2026-10-08 (story:model-tool-calling): `tool_calling` is the model's own key, and a
+  # document that omits it declares `Absent`. An omitted key then refuses a tool request as
+  # `tools-not-served` before a pod is asked for, instead of starting and billing a pod that
+  # cannot answer it; a model is served tools only when the operator says its pod parses them
+  # (`--enable-auto-tool-choice` and a `--tool-call-parser` in `extra_vllm_args`). The binary
+  # does not check those flags against the declaration (llm-gateway.clients ToolCalling says
+  # why). Proved by `tool_calling_*` in crates/llm-gateway-cli/tests/config.rs.
   - name: llm-gateway.deployment.ModelDeclaration
     kind: struct
     fields:
@@ -223,6 +302,7 @@ types:
       - {name: start_wait_seconds, type: Integer}
       - {name: request_hold_seconds, type: Integer}
       - {name: vllm_api_key_file, type: 'Optional<String>'}
+      - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
   # becomes the gateway's shared-secret owner verifier; at least one model is required. Each

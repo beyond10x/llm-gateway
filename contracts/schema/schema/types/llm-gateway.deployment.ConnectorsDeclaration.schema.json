@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
+    "contract_digest": "slice-sha256/2:7f8a41b3baf7847903f2791df8636195cf50d6c6de6f5d23fee4c8bdc7978c40",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.ConnectorsDeclaration": {
+      "title": "ConnectorsDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ConnectorsDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "executable": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "work_directory": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "executable",
+        "adapter",
+        "connection",
+        "work_directory",
+        "timeout_seconds"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

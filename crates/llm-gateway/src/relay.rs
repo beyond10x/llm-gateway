@@ -149,15 +149,32 @@ pub trait RelayTargets: Send + Sync {
     fn invalidate(&self, alias: &str, authority: &str);
 }
 
-/// A model the gateway relays: its alias, the model name its target expects, and its wires.
+/// Whether a model's server parses tool calls (`llm-gateway.clients.ToolCalling`).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ToolCalling {
+    /// The server parses tool calls: a Runpod pod started with `--enable-auto-tool-choice` and
+    /// a `--tool-call-parser`.
+    Parsed,
+    /// It does not, and answers text only. A body offering tools is refused
+    /// `tools-not-served` before any target is asked for. The default, so a model that says
+    /// nothing never wakes a pod for a request it cannot answer.
+    #[default]
+    Absent,
+}
+
+/// A model the gateway relays: its alias, the model name its target expects, its wires and
+/// whether it serves tool calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayModel {
     alias: Label,
     upstream_model: Label,
     wires: Vec<Wire>,
+    tool_calling: ToolCalling,
 }
 
 impl RelayModel {
+    /// Its tool calling is [`ToolCalling::Absent`] until [`Self::with_tool_calling`].
+    ///
     /// # Errors
     /// [`RelayError::NoWire`] for an empty wire set, [`RelayError::RepeatedWire`] for a wire
     /// named twice (row K11).
@@ -174,7 +191,19 @@ impl RelayModel {
             alias,
             upstream_model,
             wires,
+            tool_calling: ToolCalling::default(),
         })
+    }
+
+    /// Declares whether the model's server parses tool calls.
+    #[must_use]
+    pub fn with_tool_calling(mut self, tool_calling: ToolCalling) -> Self {
+        self.tool_calling = tool_calling;
+        self
+    }
+
+    pub fn tool_calling(&self) -> ToolCalling {
+        self.tool_calling
     }
 
     pub fn alias(&self) -> &Label {
@@ -644,6 +673,28 @@ pub(crate) struct Call {
     pub(crate) response_bytes: u64,
 }
 
+/// The relayed model the body names, if it serves this request (relay steps 4 and 5). Decided
+/// before any target is asked for, so a request the model cannot answer never wakes a pod.
+fn served_model<'r>(
+    relay: &'r Relay,
+    analysis: &body::Analysis,
+    wire: Wire,
+    call: &mut Call,
+) -> Result<&'r RelayModel, RefusalCode> {
+    let model = relay
+        .models
+        .get(&analysis.model)
+        .ok_or(RefusalCode::ModelUnknown)?;
+    call.model = Some(model.alias.as_str().to_string());
+    if !model.wires.contains(&wire) {
+        return Err(RefusalCode::WireNotServed);
+    }
+    if analysis.offers_tools && model.tool_calling == ToolCalling::Absent {
+        return Err(RefusalCode::ToolsNotServed);
+    }
+    Ok(model)
+}
+
 /// Relays one admitted request, filling `call` as it learns. A refusal is returned for the
 /// caller to write; once the answer's head has been written, nothing more is refused.
 pub(crate) fn serve(
@@ -669,14 +720,7 @@ pub(crate) fn serve(
         read_body(&mut input, admitted.framing, limits.line_bytes)?
     };
     let analysis = body::analyse(&body)?;
-    let model = relay
-        .models
-        .get(&analysis.model)
-        .ok_or(RefusalCode::ModelUnknown)?;
-    call.model = Some(model.alias.as_str().to_string());
-    if !model.wires.contains(&admitted.wire) {
-        return Err(RefusalCode::WireNotServed);
-    }
+    let model = served_model(relay, &analysis, admitted.wire, call)?;
     let rewritten = analysis.rewrite(
         &body,
         model.upstream_model.as_str(),

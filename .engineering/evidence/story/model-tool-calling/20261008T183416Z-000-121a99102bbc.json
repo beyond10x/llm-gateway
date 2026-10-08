@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T18:34:16Z",
+  "actor": "human:timo",
+  "artifact": "story:model-tool-calling",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo run --locked -p b10x-llm-gateway-conformance -- check",
+    "reference": "impl/model-tool-calling 46f0926 (tools-* scenarios, no code: 191 total, 187 passed, 4 failed) vs 09eabc2 (191/191 x3)"
+  }
+}

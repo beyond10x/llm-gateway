@@ -566,6 +566,8 @@ fn provoke(code: RefusalCode) -> Provocation {
         RefusalCode::ModelAbsent => relayed(chat, "{}"),
         RefusalCode::ModelUnknown => relayed(chat, "{\"model\":\"other\"}"),
         RefusalCode::WireNotServed => relayed("/v1/messages", "{\"model\":\"none\"}"),
+        // `none` declares no tool calling, so it takes `Absent`.
+        RefusalCode::ToolsNotServed => relayed(chat, "{\"model\":\"none\",\"tools\":[{}]}"),
         RefusalCode::TargetUnavailable => relayed(chat, "{\"model\":\"none\"}"),
         RefusalCode::ModelColdStart => relayed(chat, "{\"model\":\"cold\"}"),
         RefusalCode::UpstreamFailed => relayed(chat, "{\"model\":\"down\"}"),

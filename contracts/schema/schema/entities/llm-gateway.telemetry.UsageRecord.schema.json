@@ -67,8 +67,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
-    "contract_digest": "slice-sha256/2:6054f50392a91a2d65a05188f0a79809afd97c8a8289a537e68c8e1ee671294c",
+    "source_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
+    "contract_digest": "slice-sha256/2:f734f269e85bbd3fc7b2126b529d866c818cf45e3e56ff61c9f55b37124dfb92",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -95,6 +95,7 @@
         "RequestTooLarge",
         "RouteUnknown",
         "TargetUnavailable",
+        "ToolsNotServed",
         "Unavailable",
         "UpstreamFailed",
         "WireNotServed"

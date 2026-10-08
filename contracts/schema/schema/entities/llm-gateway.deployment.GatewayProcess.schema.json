@@ -38,11 +38,21 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
-    "contract_digest": "slice-sha256/2:5dd98f7a83b923370e260e8e2f02c6c992fcdcdfeed1ea0b01cc4c0a7450c92a",
+    "source_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
+    "contract_digest": "slice-sha256/2:53df0a27a5c1b8f13b3850a01dec68ffe1ef67dbc501e2500dec3aff84f84741",
     "regenerate": "ess generate"
   },
   "$defs": {
+    "llm-gateway.clients.ToolCalling": {
+      "title": "ToolCalling",
+      "x-ess-name": "llm-gateway.clients.ToolCalling",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Parsed",
+        "Absent"
+      ]
+    },
     "llm-gateway.deployment.CloudType": {
       "title": "CloudType",
       "x-ess-name": "llm-gateway.deployment.CloudType",
@@ -52,6 +62,37 @@
         "Secure",
         "Community"
       ]
+    },
+    "llm-gateway.deployment.ConnectorsDeclaration": {
+      "title": "ConnectorsDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ConnectorsDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "executable": {
+          "type": "string"
+        },
+        "adapter": {
+          "type": "string"
+        },
+        "connection": {
+          "type": "string"
+        },
+        "work_directory": {
+          "type": "string"
+        },
+        "timeout_seconds": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "executable",
+        "adapter",
+        "connection",
+        "work_directory",
+        "timeout_seconds"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.DeploymentConfiguration": {
       "title": "DeploymentConfiguration",
@@ -179,6 +220,9 @@
         },
         "vllm_api_key_file": {
           "type": "string"
+        },
+        "tool_calling": {
+          "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
         }
       },
       "required": [
@@ -198,7 +242,8 @@
         "data_center_ids",
         "idle_timeout_minutes",
         "start_wait_seconds",
-        "request_hold_seconds"
+        "request_hold_seconds",
+        "tool_calling"
       ],
       "additionalProperties": false
     },
@@ -213,6 +258,9 @@
         },
         "cloud_type": {
           "$ref": "#/$defs/llm-gateway.deployment.CloudType"
+        },
+        "connectors": {
+          "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
         }
       },
       "required": [

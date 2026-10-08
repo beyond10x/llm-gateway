@@ -60,6 +60,10 @@
       "llm-gateway.gateway/authored/the-owner-inspects-every-route-and-unreported-limits-stay-absent",
       "llm-gateway.gateway/authored/the-owner-inspects-one-route-by-its-alias",
       "llm-gateway.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods",
+      "llm-gateway.gateway/authored/tools-a-request-without-tools-to-a-model-without-tool-calling-is-relayed-unchanged",
+      "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged",
+      "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target",
+      "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged",
       "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread",
       "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed",
       "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete",
@@ -480,6 +484,26 @@
         "digest": "sha256:7cb54e853128a27f6f4d62705761ce8be1185b65e003a392d51190a090397210",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/the-probe-surface-is-two-literal-paths-and-two-methods"
+      },
+      "gateway/scenarios/tools-a-request-without-tools-to-a-model-without-tool-calling-is-relayed-unchanged.yaml": {
+        "digest": "sha256:b2bfcfca5edfbb7da86b69f9bb4fc0dda31dcbdb697cd5a7d2715a25b36af6c2",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/tools-a-request-without-tools-to-a-model-without-tool-calling-is-relayed-unchanged"
+      },
+      "gateway/scenarios/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged.yaml": {
+        "digest": "sha256:fbbd0b8db2c39c6b9c22b425c47748f9c3c4c02d37806d0f95a093aca0ab8455",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged"
+      },
+      "gateway/scenarios/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target.yaml": {
+        "digest": "sha256:f6d14954c5babb5dcdf24d2534fc9aa6cf4f4a3799a90c166201f16b9eb43b43",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target"
+      },
+      "gateway/scenarios/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged.yaml": {
+        "digest": "sha256:b3044c460fbc2b9b016b90a0185ae2fcb9faaab19ca0aadc9d1ab2717c67b59c",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged"
       },
       "gateway/scenarios/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread.yaml": {
         "digest": "sha256:9d1666bcd8103702b2dcaa5fa64bab30d5b32586c6b4243bc72c562126b73c38",
@@ -1103,7 +1127,7 @@
       }
     },
     "counts": {
-      "authored": 183,
+      "authored": 187,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1128,9 +1152,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "458d636aa9c3508e0099febaf89b181cfb72c846cd45283320bd22dd4d4b673e",
+    "contract_digest": "8e42fe2aed696783d96158ed85412820ad95e643f71df5c629de86571e05a8cb",
     "scenario_initial_state": "empty",
-    "spec_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
+    "spec_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -6395,6 +6419,410 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/tools-a-request-without-tools-to-a-model-without-tool-calling-is-relayed-unchanged": {
+      "purpose": "a body with no tools key, for a model declaring tool calling absent, reaches the fixture pod with only its model rewritten, so a text-only model still serves a plain client",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"text\",\"upstream_model\":\"served-text\",\"wires\":[\"chat\"],\"tool_calling\":\"absent\"}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"text\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"text\\\",\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"tools\\\"}],\\\"metadata\\\":{\\\"tools\\\":[\\\"nested\\\"]}}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"text\"}"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-text\",\"messages\":[{\"role\":\"user\",\"content\":\"tools\"}],\"metadata\":{\"tools\":[\"nested\"]}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged": {
+      "purpose": "a body with a non-empty top-level tools array, for a model declaring tool calling parsed, reaches the fixture pod with only its model rewritten",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"],\"tool_calling\":\"parsed\"}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"tool\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[],\\\"tools\\\":[{\\\"type\\\":\\\"function\\\",\\\"function\\\":{\\\"name\\\":\\\"shell\\\"}}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"tool\"}"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"messages\":[],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"shell\"}}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target": {
+      "purpose": "a body with a non-empty top-level tools array, for a model declaring tool calling absent or not declaring it, is tools-not-served on every wire, and no target is asked for, so no pod starts",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"text\",\"upstream_model\":\"served-text\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"tool_calling\":\"absent\"},{\"alias\":\"undeclared\",\"upstream_model\":\"served-undeclared\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"text\\\",\\\"messages\\\":[],\\\"tools\\\":[{\\\"type\\\":\\\"function\\\",\\\"function\\\":{\\\"name\\\":\\\"shell\\\"}}]}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"text\\\",\\\"input\\\":\\\"hi\\\",\\\"tools\\\":[{\\\"type\\\":\\\"function\\\",\\\"name\\\":\\\"shell\\\"}]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"tools\\\":[{\\\"name\\\":\\\"shell\\\",\\\"input_schema\\\":{}}],\\\"model\\\":\\\"text\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"undeclared\\\",\\\"messages\\\":[],\\\"tools\\\":[{\\\"type\\\":\\\"function\\\",\\\"function\\\":{\\\"name\\\":\\\"shell\\\"}}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"tools-not-served\",\"message\":\"the model does not serve tool calls\"}}",
+                  "{\"error\":{\"code\":\"tools-not-served\",\"message\":\"the model does not serve tool calls\"}}",
+                  "{\"error\":{\"code\":\"tools-not-served\",\"message\":\"the model does not serve tool calls\"}}",
+                  "{\"error\":{\"code\":\"tools-not-served\",\"message\":\"the model does not serve tool calls\"}}"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 tools-not-served",
+                  "400 tools-not-served",
+                  "400 tools-not-served",
+                  "400 tools-not-served"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged": {
+      "purpose": "a body whose top-level tools is an empty array, for a model declaring tool calling absent, offers no tool and reaches the fixture pod with only its model rewritten",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"text\",\"upstream_model\":\"served-text\",\"wires\":[\"chat\"],\"tool_calling\":\"absent\"}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"empty\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"text\\\",\\\"messages\\\":[],\\\"tools\\\": [ ]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"empty\"}"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-text\",\"messages\":[],\"tools\": [ ]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },

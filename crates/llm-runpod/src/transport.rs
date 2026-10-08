@@ -2,13 +2,19 @@
 //!
 //! Every call a Runpod adapter makes goes through [`RunpodTransport`], so the lifecycle can be
 //! driven end to end by [`EmulatedRunpod`](crate::EmulatedRunpod) without a socket, an HTTP
-//! client or a credential. A production transport speaks Runpod's REST API
-//! (`GET/POST /v1/pods`, `DELETE /v1/pods/{id}`), its GraphQL runtime query and the pod's own
-//! `GET /v1/models`; none is written here, and nothing in this crate opens a connection.
+//! client or a credential. The production transport, [`ConnectorsRunpod`], reaches Runpod's
+//! control plane only through the `connectors` CLI and its Runpod catalog bundle
+//! (`spec/domains/runpod.yaml`, `ConnectorsOperation`), and probes a pod's own `GET <endpoint>models`
+//! over plain HTTP. It holds no HTTP client library and no control-plane credential.
+
+mod connectors;
+mod probe;
 
 use std::collections::BTreeMap;
 
 use crate::CloudType;
+
+pub use connectors::{ConnectorsBinding, ConnectorsRunpod, POD_CREATE_BODY_KEYS, started_at_ms};
 
 /// Runpod's own word for a pod's desired state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -91,6 +97,19 @@ pub enum Probe {
     Unreachable,
 }
 
+/// What a readiness probe is aimed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProbeTarget<'a> {
+    /// The pod's provider id.
+    pub pod_id: &'a str,
+    /// The declared model alias the pod serves, which selects its vLLM key; `None` for a pod of
+    /// no declared model.
+    pub model: Option<&'a str>,
+    /// The pod's inference base URL from llm's Runpod description, `/v1/` included; `None`
+    /// when the pod has none.
+    pub endpoint: Option<&'a str>,
+}
+
 /// The Runpod control plane and the pod probes, as calls.
 pub trait RunpodTransport {
     /// Lists pods in the account. Allocates nothing.
@@ -105,8 +124,9 @@ pub trait RunpodTransport {
     /// Terminates one pod by its provider id.
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer;
     /// Probes the pod's vLLM server. Allocates nothing.
-    fn probe_ready(&mut self, pod_id: &str) -> Probe;
-    /// Container uptime in seconds, or `None` while the runtime is unavailable. A value lower
-    /// than the previous one means the container restarted.
-    fn container_uptime(&mut self, pod_id: &str) -> Option<u64>;
+    fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe;
+    /// When the pod's container last started, in milliseconds since the Unix epoch (Runpod's
+    /// `lastStartedAt`), or `None` while that is unknown. A value later than the previous one
+    /// means the container restarted.
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64>;
 }

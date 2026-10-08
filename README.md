@@ -12,7 +12,7 @@ model; this repository answers them and, later, starts the pods they reach.
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.4.0, released 2026-10-08 as a source release; tested against in-process fakes and
+**Status: 0.5.0, released 2026-10-08 as a source release; tested against in-process fakes and
 loopback; nothing is deployed or qualified.**
 
 ## What it is not
@@ -20,10 +20,12 @@ loopback; nothing is deployed or qualified.**
 It is not a model client: the neutral turn, the protocol clients, credentials, routing and cost
 are llm's. The gateway library relays the owner's chat, responses and messages requests to a target
 its embedding hands out, and serves health and readiness probes and a read-only route inventory;
-it translates no protocol, and the binary does not relay yet, because no production transport
-reaches a pod. The hosting contract opens no socket and
-allocates nothing. The Runpod adapter has no production transport and runs only against the
-in-process `EmulatedRunpod`, and the Modal adapter exports nothing. No test makes a paid call or
+it translates no protocol, and the binary does not relay to a Runpod pod yet: it refuses a
+document that declares a `connectors` provider until it can reach the pod's `https` endpoint
+(story:pod-proxy-tls). The hosting contract opens no socket and
+allocates nothing. The Runpod adapter has a production transport that reaches Runpod only through the
+`connectors` CLI and that no binary uses yet; its tests run against `EmulatedRunpod` or a fixture
+of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
 provisions a resource.
 
 Nor does it replace llmgw yet. llmgw is the gateway this repository is meant to succeed, and it stays
@@ -36,7 +38,7 @@ in service until the capability matrix has no open gap and a cutover has been qu
 | `b10x-llm-gateway` | The single-owner gateway library: owner authentication, probes, route inventory, drain and stop |
 | `b10x-llm-gateway-cli` | The `b10x-llm-gateway` binary: one closed TOML deployment document, the gateway, a graceful stop on a signal |
 | `b10x-llm-provision` | The hosting lifecycle contract: resource identity, leases, stop obligations, and the in-process `FakeProvider` |
-| `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract, with the in-process `EmulatedRunpod` |
+| `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract: the in-process `EmulatedRunpod`, and `ConnectorsRunpod`, which reaches Runpod through the `connectors` CLI |
 | `b10x-llm-modal` | A Modal adapter; it exports nothing yet |
 
 Releases are source releases tagged `<version>` (the first is `0.1.0`); the crates are not

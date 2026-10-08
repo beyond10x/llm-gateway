@@ -1,7 +1,8 @@
 //! Runpod as an `llm_provision::HostingProvider`.
 //!
 //! Ported from `RunpodApi` and `PodManager::start` in llmgw `src/runpod.rs`: ordered GPU
-//! fallback, readiness probing and crash-loop detection by decreasing container uptime. What
+//! fallback, readiness probing and crash-loop detection, here by the container's start time
+//! (Runpod's `lastStartedAt`) moving forward where llmgw read a decreasing uptime. What
 //! changed is identity. llmgw adopted any pod whose name matched; here a pod is a resource key
 //! whose incarnation is the Runpod pod id, and whose owner, epoch and request id are read back
 //! from the environment it was created with. The hosting contract decides adoption from those.
@@ -18,8 +19,8 @@ use llm_provision::{
 };
 
 use crate::{
-    Clock, CreateAnswer, Pod, PodStatus, Probe, RunpodModel, RunpodTransport, TAG_EPOCH, TAG_OWNER,
-    TAG_REQUEST, TerminateAnswer,
+    Clock, CreateAnswer, Pod, PodStatus, Probe, ProbeTarget, RunpodModel, RunpodTransport,
+    TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
     request::{Tags, in_namespace, pod_request},
 };
 
@@ -38,7 +39,7 @@ pub enum Unserviceable {
 
 #[derive(Debug, Default)]
 struct Health {
-    last_uptime: Option<u64>,
+    last_started_at: Option<u64>,
     /// When each observed restart was seen, oldest first.
     restarts: VecDeque<u64>,
     refused: bool,
@@ -178,17 +179,28 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         })
     }
 
-    /// Polls one running pod: readiness, and the uptime that reveals a restart.
+    /// Polls one running pod: readiness, and the start time that reveals a restart.
     fn poll(&mut self, pod: &Pod) -> Probe {
-        let probe = self.transport.probe_ready(&pod.id);
-        let uptime = self.transport.container_uptime(&pod.id);
+        let endpoint = self
+            .description
+            .inference_base_url(&pod.id)
+            .ok()
+            .map(|url| url.as_str().to_owned());
+        let probe = self.transport.probe_ready(&ProbeTarget {
+            pod_id: &pod.id,
+            model: pod.name.strip_prefix(crate::POD_NAME_PREFIX),
+            endpoint: endpoint.as_deref(),
+        });
+        let started_at = self.transport.container_started_at(&pod.id);
         let now_ms = self.clock.now_ms();
         let window = self
             .key(pod)
             .and_then(|key| self.model_of(&key).map(|model| model.crash_window_ms));
         let health = self.health.entry(pod.id.clone()).or_default();
-        if let (Some(now), Some(before)) = (uptime, health.last_uptime)
-            && now < before
+        // Runpod reports no uptime, only `lastStartedAt`: a start later than the last one seen is
+        // one restart. The first value, an equal or an earlier one, or none, is not.
+        if let (Some(now), Some(before)) = (started_at, health.last_started_at)
+            && now > before
         {
             health.restarts.push_back(now_ms);
         }
@@ -196,8 +208,8 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         // holds at most the restarts of one window. The window's end is inclusive. A pod of no
         // declared model keeps none, because nothing could ever count them.
         prune_restarts(&mut health.restarts, now_ms, window.unwrap_or(0));
-        if uptime.is_some() {
-            health.last_uptime = uptime;
+        if started_at.is_some() {
+            health.last_started_at = started_at;
         }
         if probe == Probe::Refused {
             health.refused = true;

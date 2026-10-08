@@ -34,3 +34,13 @@ tracing-subscriber = { version = "0.3.23", default-features = false, features = 
 [dev-dependencies]
 rustix = { version = "1.1", features = ["process"] }
 sha2.workspace = true
+
+# A fixture of the `connectors` CLI, built from b10x-llm-runpod's own fixture source so that the
+# process tests can point the binary's document at it. Cargo builds a dependency's binaries for
+# no test of another package, so this package builds its own copy. It is a test helper: the
+# Dockerfile installs only `b10x-llm-gateway`.
+[[bin]]
+name = "gateway-connectors-fixture"
+path = "../llm-runpod/tests/fixture/connectors.rs"
+test = false
+doc = false

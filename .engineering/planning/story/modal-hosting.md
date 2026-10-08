@@ -7,7 +7,7 @@ title: Modal supplies the hosting contract without simulated capabilities
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
-revision: 1
+revision: 2
 ---
 ## Context
 
@@ -19,7 +19,7 @@ A documented Modal control-plane binding passes lifecycle fixtures and separatel
 
 ## Evidence
 
-Operator-approved design, 2026-09-19; docs/design.md; spec/system.yaml and spec/domains/catalog.yaml. Existing source references are listed under docs/design.md, Source evidence and draft limits.
+Operator-approved design, 2026-09-19. The design and catalog domain it was drafted from are llm's, not this repository's: `docs/design.md`, `spec/system.yaml` and `spec/domains/catalog.yaml` in https://github.com/beyond10x/llm at `8d8e752d`. In this repository the hosting contract is `docs/hosting.md` and `spec/domains/hosting.yaml`; Modal has no domain or contract here yet (`crates/llm-modal` exports nothing).
 
 ## Verification
 

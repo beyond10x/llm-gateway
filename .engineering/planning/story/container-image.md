@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:container-image
 kind: story
-status: draft
+status: active
 title: llm-gateway ships a container image definition and the proven model profiles
 relations:
 - decomposes: epic:gateway
@@ -14,7 +14,10 @@ scope:
   path: crates/llm-gateway-cli/tests/profiles.rs
 - confidence: inferred
   path: docs/model-profiles.md
-revision: 5
+revision: 7
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T14:33:53Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "proposed", to: "active", at: "2026-10-08T14:33:53Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":4}}}
 ---
 ## Outcome
 

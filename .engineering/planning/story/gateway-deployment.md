@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:gateway-deployment
 kind: story
-status: draft
+status: active
 title: The binary relays model calls to Runpod pods with the model's vLLM key
 relations:
 - decomposes: epic:gateway
@@ -25,7 +25,10 @@ scope:
   path: crates/llm-gateway/tests/wire_relay.rs
 - confidence: inferred
   path: spec/domains/gateway.yaml
-revision: 13
+revision: 15
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T14:33:53Z", actor: "human:timo", revision: 14, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "proposed", to: "active", at: "2026-10-08T14:33:53Z", actor: "human:timo", revision: 15, decided_on: {"recorded":{"review_outcome":2}}}
 ---
 ## Outcome
 

@@ -39,7 +39,7 @@ below is `covered` or `not needed`.
 | O | Observability | 3 | 0 | 0 | 3 | 0 | the 13 `# HELP` series in `src/lib.rs:144-180` and the log setup in `src/main.rs:29-33` |
 | D | Deployment and operation | 6 | 3 | 0 | 2 | 1 | the files at the root, `scripts/` and `docs/` of llmgw |
 
-Total: 83 rows. 59 covered, 10 partial, 9 gap, 5 not needed.
+Total: 83 rows. 61 covered, 10 partial, 7 gap, 5 not needed.
 
 ## Routes
 

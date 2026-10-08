@@ -1,8 +1,7 @@
 # Hand-over: llm-gateway session, 2026-10-06
 
 This session wrote the gateway feature research, hardened the ESS specification and re-planned and
-re-scoped the AEP store. It wrote no implementation code. It closes on conductor dispatch
-DSP-20261006-11 (decision DEC-20261006-06).
+re-scoped the AEP store. It wrote no implementation code.
 
 ## State
 
@@ -15,7 +14,6 @@ DSP-20261006-11 (decision DEC-20261006-06).
 | Unpushed commits | None |
 | Worktrees | `llm-gateway-plan` is finished with this hand-over. `llm-gateway-spec` was finished earlier and holds nothing. |
 | Primary checkout `~/beyond10x/llm-gateway` | Clean, at `76059a3`; fast-forward it before use |
-| Open dispatches | None besides DSP-20261006-11 |
 | Filed upstream | https://github.com/beyond10x/ess/issues/469 (`ess verify diff` reports an added domain as `unknown`) |
 | Build cache | `~/.cache/b10x-target/llm-gateway`, 1.2G, the repository's shared target directory |
 

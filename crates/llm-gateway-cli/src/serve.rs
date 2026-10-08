@@ -122,11 +122,17 @@ pub fn inventory(deployment: &Deployment) -> Result<RouteInventory, Refusal> {
 pub struct Running {
     handle: GatewayHandle,
     signals: Signals,
+    vllm_keys: crate::keys::VllmKeys,
 }
 
 impl Running {
     pub fn local_addr(&self) -> SocketAddr {
         self.handle.local_addr()
+    }
+
+    /// Each model's vLLM key, read once at startup.
+    pub fn vllm_keys(&self) -> &crate::keys::VllmKeys {
+        &self.vllm_keys
     }
 
     /// Blocks until SIGINT or SIGTERM, then drains and stops the gateway gracefully: every
@@ -156,9 +162,11 @@ impl Running {
 /// takes the graceful path.
 ///
 /// # Errors
-/// An `owner-secret:*`, `config:value`, `signal:install` or `listen:bind` [`Refusal`].
+/// An `owner-secret:*`, `vllm-api-key:*`, `config:value`, `signal:install` or `listen:bind`
+/// [`Refusal`].
 pub fn start(deployment: &Deployment) -> Result<Running, Refusal> {
     let verifier = owner_verifier(deployment)?;
+    let vllm_keys = crate::keys::vllm_keys(deployment)?;
     let inventory = inventory(deployment)?;
     let signals = Signals::new([SIGINT, SIGTERM])
         .map_err(|error| Refusal::new(StartupRefusal::SignalInstall, error.to_string()))?;
@@ -166,5 +174,9 @@ pub fn start(deployment: &Deployment) -> Result<Running, Refusal> {
     let handle = Gateway::bind(deployment.gateway.clone(), Arc::new(verifier), inventory)
         .map_err(|error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")))?;
     handle.mark_ready();
-    Ok(Running { handle, signals })
+    Ok(Running {
+        handle,
+        signals,
+        vllm_keys,
+    })
 }

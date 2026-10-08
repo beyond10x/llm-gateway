@@ -8,10 +8,12 @@
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
 mod config;
+mod keys;
 mod refusal;
 mod serve;
 mod trusted;
 
 pub use config::{Deployment, Model, Provider, ProviderKind, Wire, load};
+pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use refusal::{Refusal, Source, StartupRefusal};
 pub use serve::{Running, StopSignal, Stopped, inventory, owner_verifier, start};

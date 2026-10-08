@@ -38,8 +38,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "7250cc93b5f67c9acd4cf005309fe2064c918b1011dd5991b11b37d3467b2d0f",
-    "contract_digest": "slice-sha256/2:bee2f1602ebf78138743a0c2b4ca27b6abead740e0cc6fcda8036f8b826fc53f",
+    "source_digest": "10cc864999c395e2016cc4bfd77c1538a5704cb4634998b82a3a9262c0a2e9ff",
+    "contract_digest": "slice-sha256/2:c6c890bb5f96829b04094c9a018d2966b8e70972cbdf429ddec260f47d21530d",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -173,6 +173,9 @@
         },
         "start_wait_seconds": {
           "type": "integer"
+        },
+        "vllm_api_key_file": {
+          "type": "string"
         }
       },
       "required": [
@@ -259,6 +262,14 @@
         "OwnerSecretNotUtf8",
         "OwnerSecretNotAToken",
         "OwnerSecretTooShort",
+        "VllmApiKeyUnreadable",
+        "VllmApiKeySymlink",
+        "VllmApiKeyNotRegular",
+        "VllmApiKeyUntrustedOwner",
+        "VllmApiKeyUnsafeMode",
+        "VllmApiKeyTooLarge",
+        "VllmApiKeyNotUtf8",
+        "VllmApiKeyNotAToken",
         "ListenBind",
         "SignalInstall"
       ]

@@ -1,6 +1,6 @@
 //! The `b10x-llm-gateway` process, observed from outside: its command line, its refusals and its
-//! stop. Each test is named after the docs/llmgw-capability-matrix.md row it closes (C1, C2, C4,
-//! C5, K29, K30, D2). Only loopback sockets and files under `CARGO_TARGET_TMPDIR` are used.
+//! stop. Each test is named after the docs/llmgw-capability-matrix.md row it closes (B9, C1, C2,
+//! C4, C5, K29, K30, D2). Only loopback sockets and files under `CARGO_TARGET_TMPDIR` are used.
 //!
 //! Every refusal case has a positive control in the same file that serves from the same
 //! document with the one property changed back, so a refusal can be shown to fail.
@@ -19,7 +19,9 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use support::{CONFIG_LIMIT, Fixture, OWNER_SECRET, SECRET_LIMIT, document, mutate, padded};
+use support::{
+    CONFIG_LIMIT, Fixture, OWNER_SECRET, SECRET_LIMIT, VLLM_KEY, document, mutate, padded,
+};
 
 const PREFIX: &str = "b10x-llm-gateway: ";
 const LISTENING: &str = "b10x-llm-gateway: listening on ";
@@ -52,7 +54,12 @@ fn drain(mut reader: impl Read + Send + 'static) -> thread::JoinHandle<String> {
 /// Runs the binary to its exit. A process still running after [`EXIT`] is killed and the case
 /// fails: it served where it should have refused.
 fn run(args: &[&str]) -> Finished {
-    let mut child = Command::new(binary())
+    run_program(binary().as_os_str(), args)
+}
+
+/// [`run`] for any program: `unshare` wraps the binary in the owner-rule cases.
+fn run_program(program: &std::ffi::OsStr, args: &[&str]) -> Finished {
+    let mut child = Command::new(program)
         .args(args)
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -569,6 +576,214 @@ fn k30_an_owner_secret_over_4_kib_is_refused() {
         0o600,
     );
     assert_refused(&run_config(&config), "owner-secret:too-large");
+}
+
+// --- B9: each model's vLLM key, read through the trusted-file reader --------------------------
+
+/// [`assert_refused`] for a `vllm-api-key:<rule>` code, and the key's material is on neither
+/// stream: a refusal names the file and the rule, never the bytes.
+fn assert_refused_without_key(finished: &Finished, code: &str, material: &str) {
+    assert_refused(finished, code);
+    for (stream, text) in [("stderr", &finished.stderr), ("stdout", &finished.stdout)] {
+        assert!(
+            material.trim().is_empty() || !text.contains(material.trim()),
+            "{stream} quotes the key: {text:?}"
+        );
+    }
+}
+
+#[test]
+fn b9_a_model_naming_a_vllm_api_key_file_is_served_and_the_key_is_written_nowhere() {
+    let fixture = Fixture::new("b9-served");
+    let key = fixture.vllm_key();
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &key);
+    let mut child = Command::new(binary())
+        .args(["--config", config.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let stdout = drain(child.stdout.take().unwrap());
+    let mut stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut written = Vec::new();
+    let address = loop {
+        let mut line = String::new();
+        assert!(
+            stderr.read_line(&mut line).unwrap() > 0,
+            "the gateway exited before listening: {:?}",
+            String::from_utf8_lossy(&written)
+        );
+        written.extend_from_slice(line.as_bytes());
+        if let Some(address) = line.trim_end().strip_prefix(LISTENING) {
+            break address.parse::<SocketAddr>().unwrap();
+        }
+    };
+    let mut responses = String::new();
+    for (path, bearer) in [
+        ("/health", None),
+        ("/ready", None),
+        ("/v1/routes", None),
+        ("/v1/routes", Some(OWNER_SECRET)),
+        ("/v1/routes/small", Some(OWNER_SECRET)),
+        ("/v1/routes/large", Some(OWNER_SECRET)),
+        ("/v1/chat/completions", Some(OWNER_SECRET)),
+    ] {
+        responses.push_str(&get(address, path, bearer));
+    }
+    assert!(responses.contains("\"alias\":\"small\""), "{responses:?}");
+    kill_process(Pid::from_child(&child), Signal::TERM).unwrap();
+    stderr.read_to_end(&mut written).unwrap();
+    let status = child.wait().unwrap();
+    written.extend_from_slice(stdout.join().unwrap().as_bytes());
+    written.extend_from_slice(responses.as_bytes());
+    assert_eq!(status.code(), Some(0));
+    let needle = VLLM_KEY.as_bytes();
+    assert!(
+        !written.windows(needle.len()).any(|window| window == needle),
+        "the vLLM key appears in what the process wrote: {:?}",
+        String::from_utf8_lossy(&written)
+    );
+}
+
+#[test]
+fn b9_a_missing_vllm_api_key_file_is_refused() {
+    let fixture = Fixture::new("b9-missing");
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &fixture.path("absent-key"));
+    assert_refused(&run_config(&config), "vllm-api-key:unreadable");
+}
+
+#[test]
+fn b9_a_symlinked_vllm_api_key_file_is_refused() {
+    let fixture = Fixture::new("b9-symlink");
+    let real = fixture.vllm_key();
+    let link = fixture.path("key-link");
+    symlink(&real, &link).unwrap();
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &link);
+    assert_refused_without_key(&run_config(&config), "vllm-api-key:symlink", VLLM_KEY);
+    // Control: the file the link points at is served.
+    Server::start(&fixture.config_with_vllm_key("127.0.0.1:0", &real)).stop();
+}
+
+#[test]
+fn b9_a_vllm_api_key_file_that_is_not_a_regular_file_is_refused() {
+    let fixture = Fixture::new("b9-not-regular");
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &fixture.dir);
+    assert_refused(&run_config(&config), "vllm-api-key:not-regular");
+    // A FIFO is refused without blocking on the open.
+    let fifo = fixture.path("key.fifo");
+    let made = Command::new("mkfifo").arg(&fifo).status().unwrap();
+    assert!(made.success());
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &fifo);
+    assert_refused(&run_config(&config), "vllm-api-key:not-regular");
+}
+
+#[test]
+fn b9_a_vllm_api_key_file_owned_by_neither_this_user_nor_root_is_refused() {
+    // Inside a user namespace that maps this user to uid 4242, a root-owned file appears owned
+    // by the overflow uid, which is neither the effective user nor root.
+    let namespaces = Command::new("unshare")
+        .args(["--user", "--map-user=4242", "true"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success());
+    if !namespaces {
+        eprintln!("SKIPPED: this host refuses unprivileged user namespaces");
+        return;
+    }
+    let fixture = Fixture::new("b9-owner");
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", Path::new("/etc/passwd"));
+    let config = config.to_str().unwrap();
+    let binary = binary();
+    let binary = binary.to_str().unwrap();
+    let wrapped = ["--user", "--map-user=4242", binary, "--config", config];
+    let finished = run_program("unshare".as_ref(), &wrapped);
+    assert_refused(&finished, "vllm-api-key:untrusted-owner");
+    // Control: inside the same namespace, a key file this user owns passes the owner rule.
+    let own = fixture.config_with_vllm_key("127.0.0.1:0", &fixture.vllm_key());
+    let wrapped = [
+        "--user",
+        "--map-user=4242",
+        binary,
+        "--config",
+        own.to_str().unwrap(),
+    ];
+    let mut child = Command::new("unshare")
+        .args(wrapped)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut line = String::new();
+    BufReader::new(child.stderr.take().unwrap())
+        .read_line(&mut line)
+        .unwrap();
+    drop(child.kill());
+    drop(child.wait());
+    assert!(line.starts_with(LISTENING), "{line:?}");
+}
+
+#[test]
+fn b9_a_vllm_api_key_file_readable_by_others_is_refused() {
+    let fixture = Fixture::new("b9-mode");
+    let key = fixture.vllm_key();
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &key);
+    for mode in [0o640, 0o604, 0o644, 0o620, 0o602] {
+        fixture.write("vllm-key", format!("{VLLM_KEY}\n").as_bytes(), mode);
+        assert_refused_without_key(&run_config(&config), "vllm-api-key:unsafe-mode", VLLM_KEY);
+    }
+    // Control: the same key at 0600 is served.
+    fixture.vllm_key();
+    Server::start(&config).stop();
+}
+
+#[test]
+fn b9_a_vllm_api_key_over_4_kib_is_refused() {
+    let fixture = Fixture::new("b9-large");
+    let key = fixture.vllm_key();
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &key);
+    // Over the 4098-byte file bound.
+    let material = "k".repeat(SECRET_LIMIT + 3);
+    fixture.write("vllm-key", material.as_bytes(), 0o600);
+    assert_refused_without_key(&run_config(&config), "vllm-api-key:too-large", &material);
+    // Inside the file bound, but a 4097-byte key once trimmed.
+    let material = "k".repeat(SECRET_LIMIT + 1);
+    fixture.write("vllm-key", material.as_bytes(), 0o600);
+    assert_refused_without_key(&run_config(&config), "vllm-api-key:too-large", &material);
+    // Control: a 4096-byte key and its CRLF is served.
+    fixture.write(
+        "vllm-key",
+        format!("{}\r\n", "k".repeat(SECRET_LIMIT)).as_bytes(),
+        0o600,
+    );
+    Server::start(&config).stop();
+}
+
+#[test]
+fn b9_a_vllm_api_key_file_that_is_not_utf8_is_refused() {
+    let fixture = Fixture::new("b9-not-utf8");
+    let key = fixture.write("vllm-key", b"vllm-key-\xff\xfe\n", 0o600);
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &key);
+    assert_refused(&run_config(&config), "vllm-api-key:not-utf8");
+}
+
+#[test]
+fn b9_a_vllm_api_key_that_is_not_one_token_is_refused() {
+    // It is sent as a bearer: whitespace inside it, a control byte or nothing at all cannot be.
+    let fixture = Fixture::new("b9-token");
+    let key = fixture.vllm_key();
+    let config = fixture.config_with_vllm_key("127.0.0.1:0", &key);
+    for material in [
+        "\n".to_string(),
+        format!("{VLLM_KEY} {VLLM_KEY}\n"),
+        format!("{VLLM_KEY}\0"),
+        format!("{VLLM_KEY}\r\nInjected: header\n"),
+    ] {
+        fixture.write("vllm-key", material.as_bytes(), 0o600);
+        assert_refused_without_key(&run_config(&config), "vllm-api-key:not-a-token", &material);
+    }
 }
 
 // --- D2: graceful shutdown on SIGINT and SIGTERM ------------------------------------------------

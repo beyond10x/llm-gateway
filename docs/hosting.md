@@ -386,9 +386,9 @@ no key.
 
 `llm_gateway_cli::start_relaying` composes one `RunpodPool` from the deployment document and
 relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). Its
-tests run it over `EmulatedRunpod` and a loopback pod. The shipped binary composes the same pool
-through `llm_gateway_cli::start`, over `ConnectorsRunpod` only, for the one provider whose
-`[providers.<name>.connectors]` table names the connection:
+tests run it over `EmulatedRunpod` and a loopback pod. The composition the shipped binary is
+wired for, `llm_gateway_cli::start_connected`, runs the same pool over `ConnectorsRunpod` only, for
+the one provider whose `[providers.<name>.connectors]` table names the connection:
 
 ```toml
 [providers.runpod.connectors]
@@ -399,17 +399,24 @@ work_directory = "/var/lib/gateway/connectors"  # existing, owned by the gateway
 timeout_seconds = 60                       # 1..=600, default 60: one CLI call
 ```
 
-At start the binary checks the connection once: the work directory is private and one
-`pods.list` answers a complete listing. If not, it still starts, writes the `warn` event
-`connectors connection unreachable`, runs no further `connectors` call, and answers every model
-of that provider `target-unavailable`; a repaired connection takes a restart. A model whose
-provider declares no `connectors` is `target-unavailable` too. No option or document key selects
-`EmulatedRunpod`. Each connected model's vLLM key is handed to the transport by alias for the
-readiness probe. Until story:pod-proxy-tls, the binary cannot open the proxy's `https://`
-endpoint: the probe reports it unreachable and the pod connector refuses it, so a request for a
-connected model starts a pod, is held, and is answered `model-cold-start`, and the pod's startup
-deadline terminates it. `crates/llm-gateway-cli/tests/binary.rs` (`live_*`) and
-`tests/live_runpod.rs` prove this against the connectors CLI fixture and a loopback pod.
+**The wiring is inert in the shipped binary until story:pod-proxy-tls.** A pod is reached only at
+the Runpod proxy's `https://` endpoint, which the binary cannot open yet, so a pod it started
+would be billed and never serve. `b10x-llm-gateway` therefore refuses a document that declares a
+`connectors` table with `config:value` (`providers.<name>.connectors cannot be served until the
+binary speaks TLS to the pod endpoint`) before it reads any other file, runs any `connectors`
+call or binds anything. The table's own rules are still checked when the document is loaded.
+story:pod-proxy-tls removes the refusal.
+
+What `start_connected` does, proved at the library level: at start it checks the connection once
+(the work directory is private and one `pods.list` answers a complete listing). If not, it still
+starts, writes the `warn` event `connectors connection unreachable`, runs no further `connectors`
+call, and answers every model of that provider `target-unavailable`; a repaired connection takes a
+restart. Each connected model's vLLM key is handed to the transport by alias for the readiness
+probe. A model whose provider declares no `connectors` is `target-unavailable`, in the shipped
+binary too. No option or document key selects `EmulatedRunpod`.
+`crates/llm-gateway-cli/tests/binary.rs` (`live_*`) proves the refusal against the connectors CLI
+fixture, which records no invocation; `tests/live_runpod.rs` proves the composition against the
+fixture and a loopback pod.
 
 Every input is fixed or read from the document (`spec/domains/deployment.yaml`):
 

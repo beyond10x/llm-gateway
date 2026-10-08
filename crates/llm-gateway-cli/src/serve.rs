@@ -159,16 +159,40 @@ impl Running {
 
 /// Composes and starts the gateway as the shipped binary does: [`crate::start_connected`] over
 /// `ConnectorsRunpod` itself and [`crate::ProxyConnector`]. Signals are installed before binding.
+/// A document that declares `connectors` is refused first (`config:value`): the wiring is inert
+/// until the binary speaks TLS to the pod endpoint (story:pod-proxy-tls).
 ///
 /// # Errors
 /// An `owner-secret:*`, `vllm-api-key:*`, `config:value`, `signal:install` or `listen:bind`
 /// [`Refusal`].
 pub fn start(deployment: &Deployment) -> Result<crate::Relaying, Refusal> {
+    inert_until_tls(deployment)?;
     crate::start_connected(
         deployment,
         |transport| transport,
         std::sync::Arc::new(crate::ProxyConnector),
     )
+}
+
+/// Refuses a document in which a provider declares `connectors`: a pod it would start is reached
+/// only at the Runpod proxy's `https://` endpoint, which this binary cannot open, so it would be
+/// billed and never serve. Nothing is read, called or bound before this. story:pod-proxy-tls
+/// removes it.
+fn inert_until_tls(deployment: &Deployment) -> Result<(), Refusal> {
+    match deployment
+        .providers
+        .iter()
+        .find(|(_, provider)| provider.connectors.is_some())
+    {
+        Some((name, _)) => Err(Refusal::new(
+            StartupRefusal::ConfigValue,
+            format!(
+                "providers.{name}.connectors cannot be served until the binary speaks TLS to \
+                 the pod endpoint"
+            ),
+        )),
+        None => Ok(()),
+    }
 }
 
 impl Running {

@@ -61,15 +61,22 @@ domain: llm-gateway.deployment
 #     `connectors` call for the life of the process, and every model of that provider is
 #     answered `target-unavailable`. A connection repaired later takes a restart: a checked
 #     connection never changes under a running process.
-#   * The connection to a pod is the Runpod proxy's TLS endpoint, which the binary cannot open
-#     yet (story:pod-proxy-tls): the shipped pod connector refuses every connection, so no vLLM
-#     key leaves the process unencrypted, and the probe reports an `https://` endpoint
-#     `Unreachable`, so no pod becomes ready. Until that story lands a request for a connected
-#     model starts a pod, is held, and is answered `model-cold-start`; the pod's startup deadline
-#     then terminates it.
-#   * `llm_gateway_cli::start_connected` is the composition `start` runs, with the transport
-#     wrapped and the pod connector supplied by the caller; only tests call it with anything but
-#     the identity wrapper and the shipped connector, to reach a loopback pod.
+#   * The connection to a pod is the Runpod proxy's TLS endpoint (`https://`, from llm's Runpod
+#     description), which the binary cannot open yet (story:pod-proxy-tls): the shipped pod
+#     connector refuses every connection, so no vLLM key leaves the process unencrypted, and the
+#     probe reports an `https://` endpoint `Unreachable`, so no pod would ever become ready.
+#   * DECIDED 2026-10-08: so that the binary cannot create a billed pod that can never serve,
+#     the wiring is inert in the shipped binary until story:pod-proxy-tls. `start` refuses a
+#     document in which any provider declares `connectors` with `config:value`
+#     (`providers.<name>.connectors cannot be served until the binary speaks TLS to the pod
+#     endpoint`), as its first step: before the owner secret or any key file is read, before
+#     any `connectors` call and before anything is bound. The process exits 1 like any refused
+#     document. `load` still reads and checks the table, so the document's rules stay enforced
+#     and tested. story:pod-proxy-tls removes this refusal.
+#   * `llm_gateway_cli::start_connected` is the composition `start` will run once that refusal
+#     is gone, with the transport wrapped and the pod connector supplied by the caller. Only
+#     tests call it, to reach a loopback pod; it is not reachable from the shipped binary's
+#     document or command line.
 # The pool's inputs, each from the document or fixed:
 #   ComputeAuthorization  fixed: ledger `b10x-llm-gateway`, reservation `unmetered`. No budget
 #                         ledger is consulted yet; the pair only satisfies the hosting contract

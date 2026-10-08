@@ -434,7 +434,7 @@ fn row_14_a_body_trickled_past_one_read_timeout_is_body_incomplete() {
         String::from_utf8_lossy(&received)
     );
     assert!(
-        took < Duration::from_millis(50 * 40),
+        took < Duration::from_secs(2),
         "the refusal waited for the whole trickled body: {took:?}"
     );
     assert_eq!(source.acquired(), 0);
@@ -598,7 +598,7 @@ fn row_23_a_stop_waits_for_a_relayed_stream_to_end() {
     let (done, stopped) = mpsc::channel();
     let stopping = thread::spawn(move || {
         let report = handle.shutdown();
-        drop(done.send(()));
+        let _signalled = done.send(());
         report
     });
     // Three read timeouts: a stop bounded by `read_timeout` would have returned by now.

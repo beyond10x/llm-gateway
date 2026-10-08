@@ -339,6 +339,16 @@ impl Answer {
             .map_or("absent", |(_, value)| value.as_str())
     }
 
+    /// The `answer_headers` fact: the three headers every answer the gateway writes carries.
+    fn framing(&self) -> String {
+        format!(
+            "content-type={} cache-control={} connection={}",
+            self.header("content-type"),
+            self.header("cache-control"),
+            self.header("connection")
+        )
+    }
+
     fn summary(&self) -> String {
         let Some(status) = self.status else {
             return "no-response".to_owned();
@@ -424,12 +434,7 @@ fn run(program_json: &str) -> Value {
                     answer.header("www-authenticate"),
                     answer.header("allow")
                 ));
-                answer_headers.push(format!(
-                    "content-type={} cache-control={} connection={}",
-                    answer.header("content-type"),
-                    answer.header("cache-control"),
-                    answer.header("connection")
-                ));
+                answer_headers.push(answer.framing());
                 answer.summary()
             }
             (Step::MarkReady, None) => handle

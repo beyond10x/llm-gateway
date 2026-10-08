@@ -100,13 +100,16 @@ b10x-llm-gateway: stopped by SIGTERM accepted=2 completed=2
 
 The document is closed: an unknown key at any level is refused as `config:schema`, naming the line
 and the keys that are allowed. A relative `owner_secret_file` is resolved from the working
-directory. `spec/domains/deployment.yaml` holds every key, default and range.
+directory. At least one `[models.<alias>]` table is required (`config:value` otherwise).
+`spec/domains/deployment.yaml` holds every key, default and range.
 
-Every file the binary reads goes through a trusted-file reader. Each must be a regular file, not a
-symlink, owned by you or root. The document must be at most 256 KiB and not group- or
-world-writable. The owner secret must be one printable token of 32 to 4096 bytes (trailing ASCII
-whitespace is trimmed), with no group or world permission at all (mode & 0o077 is 0). Clients send
-it as `Authorization: Bearer <secret>`.
+Every file the binary reads goes through a trusted-file reader. It opens the file once, without
+following a symlink in its last component, and makes every check on that one open file; a file
+that grows past its bound after the check is still refused. Each must be a regular file, not a
+symlink, owned by you or root, and UTF-8 (`<source>:not-utf8`). The document must be at most
+256 KiB and not group- or world-writable. The owner secret must be one printable token of 32 to
+4096 bytes (trailing ASCII whitespace is trimmed), with no group or world permission at all
+(mode & 0o077 is 0). Clients send it as `Authorization: Bearer <secret>`.
 
 A `[models.<alias>]` table may name `vllm_api_key_file`: the file holding the key that model's
 pod's vLLM server expects, the same value stored as the model's Runpod secret. It is read once at
@@ -118,6 +121,14 @@ Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' 
 The gateway answers `GET /health` and `GET /ready` without a credential; the owner can read
 `GET /v1/routes`, `GET /v1/routes/<alias>` and `GET /metrics`, llmgw's 13 `llmgw_` counters as
 Prometheus text. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
+The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/responses` and
+`POST /v1/messages` for the wires each model declares, but relays none of them to a pod yet: a
+model whose provider declares no `connectors` is answered `503` `target-unavailable`, and a
+document in which a provider declares `connectors` is refused at startup until the binary can
+reach the pod's `https` endpoint (story:pod-proxy-tls).
+
+The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other
+argument is refused with exit status 2.
 
 `RUST_LOG` sets the level of the structured log events the process writes to standard error
 beside the lines below (default `info`); at the default level the binary writes only those lines.
@@ -127,6 +138,10 @@ beside the lines below (default `info`); at the default level the binary writes 
 | Serving | `b10x-llm-gateway: listening on <address>` | none yet |
 | Refused start | `b10x-llm-gateway: refused <source>:<rule>: <message>` | 1 |
 | SIGINT or SIGTERM | `b10x-llm-gateway: stopped by <signal> accepted=<n> completed=<n>` | 0 |
+
+`<source>` is `config`, `owner-secret`, `vllm-api-key`, `listen` or `signal`: a listen address
+that cannot be bound is refused as `listen:bind`, and signal handlers that cannot be installed as
+`signal:install`.
 
 A stop answers every request already accepted first, and takes at most twice the 10-second read
 timeout however slowly a client sends or reads.

@@ -17,7 +17,7 @@ beyond10x/connectors at tag `v0.36.0`, read from the release:
 | `docs/local-catalog-provider.md`, `docs/local-gitlab-merge.md` | `schema` and `revision` from `operations describe`; `result` and `mutation` on success, `error.data` on failure |
 | `ess/domains/cli.yaml`, `ess/domains/delegation.yaml`, `ess/domains/mutations.yaml` | the printed JSON: `preparation.subject_sha256`, `OperationInvokeResult`, `EffectKnowledge` |
 | `adapters/catalog/providers/runpod/operations.json` | the twelve `body_keys` |
-| `adapters/runpod/upstream/runpod-rest-v1.json` (SHA-256 `9500a898…b580db`) | `PodCreateInput` (`dockerStartCmd`, `networkVolumeId`), `Pod.lastStartedAt` (`2024-07-12T19:14:40.144Z`), `desiredStatus` |
+| `adapters/runpod/upstream/runpod-rest-v1.json` (SHA-256 `9500a898…b580db`) | `PodCreateInput` (`dockerEntrypoint`, `dockerStartCmd`, `networkVolumeId`), `Pod.lastStartedAt` (`2024-07-12T19:14:40.144Z`), `desiredStatus` |
 
 ## Commands
 
@@ -46,7 +46,7 @@ All in `crates/llm-runpod/tests/transport.rs`: 18 cases.
 
 | Acceptance | Cases |
 | --- | --- |
-| 1: create, list, get and terminate invoke `pod.create`, `pods.list`, `pods.list` with `id`, `pod.terminate`; each write carries a proof for its exact input | `create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_input`, `list_invokes_pods_list_and_reads_every_pod`, `get_is_pods_list_with_the_id_filter_and_reads_last_started_at`, `terminate_invokes_pod_terminate_with_a_proof_for_the_pod_id`, `the_create_body_maps_every_request_field_to_a_declared_key`, `the_body_key_constant_is_the_specified_pod_create_body` |
+| 1: create, list, get and terminate invoke `pod.create`, `pods.list`, `pods.list` with `id`, `pod.terminate`; each write carries a proof for its exact input | `create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_input`, `list_invokes_pods_list_and_reads_every_pod`, `get_is_pods_list_with_the_id_filter_and_reads_last_started_at`, `terminate_invokes_pod_terminate_with_a_proof_for_the_pod_id`, `the_create_body_maps_every_request_field_to_a_declared_key` (`dockerEntrypoint` is the argv, `dockerStartCmd` is `[]`), `the_body_key_constant_is_the_specified_pod_create_body` |
 | 2: `Refused` only for `refused`; `unknown`, a timeout, an unparseable answer are `Lost`; the GPU fallback both ways | `a_refused_create_is_refused`, `every_create_answer_that_is_not_a_definite_refusal_is_lost` (timeout, non-zero exit with no answer, unparseable, `not_attempted`, `applied` without a pod, no classification), `an_unknown_create_is_lost_after_one_listing_by_name_and_never_retried`, `an_unknown_create_that_the_listing_finds_is_created`, `an_unknown_create_through_the_provider_submits_no_second_create`, `a_refused_create_through_the_provider_tries_the_next_gpu` |
 | 3: `complete` only for a whole listing | `a_listing_that_is_not_whole_is_never_complete` (truncated, throttled, interrupted, killed, not an array, one unreadable pod, an unknown status) |
 | 4: the probe sends the vLLM key as a bearer to `<endpoint>models`; no file; `Debug` prints no key | `the_probe_sends_the_models_vllm_key_as_a_bearer_to_endpoint_models`, `the_probe_maps_each_answer`, `the_transport_debug_prints_no_key` |
@@ -73,8 +73,10 @@ was reverted.
 
 - That connectors v0.36.0 prints exactly these shapes: the fixture was written from the
   documents and ESS types above, not from a run of the real CLI.
-- That a create whose body carries `dockerStartCmd` or `networkVolumeId` succeeds: v0.36.0
-  refuses both keys. A connectors release admitting them is requested upstream.
+- That a create succeeds: its body always carries `dockerStartCmd: []` and, for a declared
+  model, `dockerEntrypoint` (the vLLM argv, as llmgw `src/runpod.rs:792-793` at `048ebd8`), and
+  `networkVolumeId` for a cached one; v0.36.0 refuses all three keys. A connectors release
+  admitting them is requested upstream.
 - That `lastStartedAt` moves when a container restarts, that Runpod returns a pod's `env` in a
   listing, or that a live pod's `https://` endpoint is reachable: the probe speaks plain HTTP only
   (story:pod-proxy-tls).

@@ -42,11 +42,12 @@ use crate::{
 /// (`llm-gateway.runpod.PodCreateBody`).
 ///
 /// Source: connectors v0.36.0, `adapters/catalog/providers/runpod/operations.json`, `pod.create`
-/// `body_keys` (the first twelve), plus `dockerStartCmd` and `networkVolumeId` from the pinned
-/// `PodCreateInput` (connectors `adapters/runpod/upstream/runpod-rest-v1.json`, SHA-256
-/// `9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db`). v0.36.0 refuses those
-/// two as `invalid_input` before any request; a connectors release admitting them is requested
-/// upstream. Move this list with the connectors release this crate is used with.
+/// `body_keys` (the first twelve), plus `dockerEntrypoint`, `dockerStartCmd` and `networkVolumeId`
+/// from the pinned `PodCreateInput` (connectors `adapters/runpod/upstream/runpod-rest-v1.json`,
+/// SHA-256 `9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db`), which llmgw sends
+/// (llmgw `src/runpod.rs:792-793` at `048ebd8`). v0.36.0 refuses those three as `invalid_input`
+/// before any request; the connectors release requested upstream admits all three. Move this
+/// list with the connectors release this crate is used with.
 pub const POD_CREATE_BODY_KEYS: &[&str] = &[
     "name",
     "imageName",
@@ -60,6 +61,7 @@ pub const POD_CREATE_BODY_KEYS: &[&str] = &[
     "cloudType",
     "dataCenterIds",
     "interruptible",
+    "dockerEntrypoint",
     "dockerStartCmd",
     "networkVolumeId",
 ];
@@ -467,12 +469,15 @@ fn create_input(request: &PodRequest) -> Value {
         body.insert("dataCenterIds".to_owned(), json!(request.data_center_ids));
     }
     body.insert("interruptible".to_owned(), json!(request.interruptible));
+    // As llmgw (`src/runpod.rs:792-793` at `048ebd8`): the vLLM argv (`vllm serve …`) is the
+    // entrypoint, and the image CMD is cleared so that it is not appended to it.
     if !request.docker_entrypoint.is_empty() {
         body.insert(
-            "dockerStartCmd".to_owned(),
+            "dockerEntrypoint".to_owned(),
             json!(request.docker_entrypoint),
         );
     }
+    body.insert("dockerStartCmd".to_owned(), json!([]));
     if let Some(volume) = &request.network_volume_id {
         body.insert("networkVolumeId".to_owned(), json!(volume));
     }

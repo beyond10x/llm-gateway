@@ -97,10 +97,12 @@ types:
   # `PodCreateInput` names it (connectors adapters/runpod/upstream/runpod-rest-v1.json, SHA-256
   # 9500a8989878d53d8731f27bf8dbbd57801b328c760bdb32c38ba36d5cb580db). The first twelve are
   # connectors v0.36.0's `pod.create` `body_keys` (adapters/catalog/providers/runpod/operations.json).
-  # DECIDED: `dockerStartCmd` carries the vLLM arguments and `networkVolumeId` the model cache
-  # volume. v0.36.0 refuses both as `invalid_input` before any request; a connectors release
-  # admitting them is requested upstream; until it lands, connectors creates no pod from a body
-  # carrying either. An optional key is left out, never sent empty.
+  # DECIDED: as llmgw does (llmgw src/runpod.rs:792-793 at 048ebd8), `dockerEntrypoint` carries
+  # the vLLM argv (`vllm serve …`), `dockerStartCmd` is always `[]` so the image's CMD is not
+  # appended, and `networkVolumeId` carries the model cache volume. v0.36.0 refuses all three
+  # as `invalid_input` before any request; a connectors release admitting them is requested
+  # upstream; until it lands, connectors creates no pod from such a body. Any other optional
+  # key is left out, never sent empty.
   - name: llm-gateway.runpod.PodCreateBody
     kind: struct
     fields:
@@ -116,7 +118,8 @@ types:
       - {name: cloudType, type: String}
       - {name: dataCenterIds, type: 'Optional<List<String>>'}
       - {name: interruptible, type: Boolean}
-      - {name: dockerStartCmd, type: 'Optional<List<String>>'}
+      - {name: dockerEntrypoint, type: 'Optional<List<String>>'}
+      - {name: dockerStartCmd, type: 'List<String>'}
       - {name: networkVolumeId, type: 'Optional<String>'}
   # The readiness probe: `GET <endpoint>models` with `Authorization: Bearer <vLLM key>`, where
   # the endpoint is the one llm's Runpod description builds for the pod and the key is the

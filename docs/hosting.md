@@ -339,9 +339,11 @@ an idempotency key; the transport never sends it again. `schema` and `revision` 
 timeout is killed, and its answer is lost.
 
 The `pod.create` body carries the keys `POD_CREATE_BODY_KEYS` names. connectors v0.36.0 admits
-twelve of them; the vLLM arguments travel as `dockerStartCmd` and the model cache volume as
-`networkVolumeId`, which v0.36.0 refuses as `invalid_input` before any request. Until a connectors
-release admits them, such a create starts no pod.
+twelve of them. As llmgw does (llmgw `src/runpod.rs:792-793` at `048ebd8`), the vLLM argv
+(`vllm serve …`) travels as `dockerEntrypoint`, `dockerStartCmd` is always `[]` so the image's CMD
+is not appended to it, and the model cache volume travels as `networkVolumeId`. v0.36.0 refuses
+all three as `invalid_input` before any request. Until a connectors release admits them, such a
+create starts no pod.
 
 The readiness probe goes to the pod, not to connectors: `GET <endpoint>models` with the model's
 vLLM key, handed to the transport by alias, as a bearer. `200` is ready with the served model

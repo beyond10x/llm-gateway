@@ -237,11 +237,14 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
     assert_eq!(body["env"], json!({"B10X_LLM_REQUEST": "req-1"}));
     assert_eq!(body["dataCenterIds"], json!(["EU-RO-1"]));
     assert_eq!(body["volumeMountPath"], "/workspace");
-    // Known gap, pending upstream: v0.36.0's body_keys admit neither, and they are not dropped.
+    // As llmgw (src/runpod.rs:792-793 at 048ebd8): the vLLM argv is the entrypoint, and the
+    // image CMD is cleared so `vllm serve` does not run twice. Known gap, pending upstream:
+    // v0.36.0's body_keys admit none of these three, and they are not dropped.
     assert_eq!(
-        body["dockerStartCmd"],
+        body["dockerEntrypoint"],
         json!(["vllm", "serve", "Qwen/Qwen3"])
     );
+    assert_eq!(body["dockerStartCmd"], json!([]));
     assert_eq!(body["networkVolumeId"], "vol123");
     for key in body.keys() {
         assert!(
@@ -250,7 +253,7 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
         );
     }
 
-    // An optional value that is absent is left out, never sent empty.
+    // An optional value that is absent is left out, never sent empty; the cleared CMD stays.
     let fixture = Fixture::new("create_body_minimal");
     fixture.script(&json!({"operations invoke pod.create": [failed("refused", "invalid_input")]}));
     let mut minimal = request("NVIDIA A40");
@@ -260,8 +263,9 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
     minimal.data_center_ids.clear();
     let _ = fixture.transport().create_pod(&minimal);
     let body = input(&fixture.calls_of("operations invoke pod.create")[0])["body"].clone();
+    assert_eq!(body["dockerStartCmd"], json!([]), "{body}");
     for absent in [
-        "dockerStartCmd",
+        "dockerEntrypoint",
         "networkVolumeId",
         "volumeMountPath",
         "dataCenterIds",

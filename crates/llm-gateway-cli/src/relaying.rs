@@ -104,9 +104,10 @@ fn identifier(value: &str, key: &str) -> Result<Identifier, Refusal> {
 /// The hosting policy: fixed values, and one pod per declared model.
 ///
 /// # Errors
-/// None for a loaded document; a `config:value` [`Refusal`] if a fixed value were invalid.
+/// A `config:value` [`Refusal`] if a fixed value were invalid, or for more models than one
+/// controller may hold.
 pub fn hosting_policy(deployment: &Deployment) -> Result<HostingPolicy, Refusal> {
-    Ok(HostingPolicy {
+    let policy = HostingPolicy {
         controller: identifier(CONTROLLER, "the controller")?,
         provider: identifier(PROVIDER, "the provider")?,
         account: identifier(ACCOUNT, "the account")?,
@@ -114,7 +115,15 @@ pub fn hosting_policy(deployment: &Deployment) -> Result<HostingPolicy, Refusal>
         max_active: u32::try_from(deployment.models.len()).unwrap_or(u32::MAX),
         max_lifetime_ms: MAX_LIFETIME_MS,
         lease_ms: LEASE_MS,
-    })
+    };
+    // The check the pool's controller makes, made here so that it is made before a transport.
+    policy.validate().map_err(|error| {
+        Refusal::new(
+            StartupRefusal::ConfigValue,
+            format!("the hosting policy cannot be run: {error}"),
+        )
+    })?;
+    Ok(policy)
 }
 
 /// The fixed authorization every pod is created under.
@@ -242,6 +251,43 @@ struct Relayed {
     hold: Duration,
 }
 
+/// What each model of `deployment` needs at acquisition: its alias, its vLLM key as the bearer,
+/// and its hold.
+///
+/// # Errors
+/// A `config:value` [`Refusal`] for a model that names no `vllm_api_key_file`: its pod always
+/// expects a key; `vllm-api-key:not-a-token` for a key a header cannot carry.
+fn relayed_models(
+    deployment: &Deployment,
+    keys: &VllmKeys,
+) -> Result<BTreeMap<String, Relayed>, Refusal> {
+    let mut models = BTreeMap::new();
+    for (alias, model) in &deployment.models {
+        let at = format!("models.{alias}.vllm_api_key_file");
+        let key = keys.get(alias).ok_or_else(|| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("{at} is required to relay to a Runpod pod"),
+            )
+        })?;
+        let bearer = TargetBearer::new(key.expose().to_vec()).map_err(|error| {
+            Refusal::new(
+                StartupRefusal::VllmApiKeyNotAToken,
+                format!("{at}: {error}"),
+            )
+        })?;
+        models.insert(
+            alias.clone(),
+            Relayed {
+                alias: identifier(alias, &format!("models.{alias}"))?,
+                bearer: Arc::new(bearer),
+                hold: Duration::from_secs(model.request_hold_seconds),
+            },
+        );
+    }
+    Ok(models)
+}
+
 /// The gateway's targets: the pod the pool hands out for each alias.
 pub(crate) struct PoolTargets<T> {
     pool: Arc<RunpodPool<T>>,
@@ -268,39 +314,33 @@ impl<T> PoolTargets<T> {
         stopping: Arc<AtomicBool>,
         metrics: Arc<Metrics>,
     ) -> Result<Self, Refusal> {
-        let mut models = BTreeMap::new();
-        for (alias, model) in &deployment.models {
-            let at = format!("models.{alias}.vllm_api_key_file");
-            let key = keys.get(alias).ok_or_else(|| {
-                Refusal::new(
-                    StartupRefusal::ConfigValue,
-                    format!("{at} is required to relay to a Runpod pod"),
-                )
-            })?;
-            let bearer = TargetBearer::new(key.expose().to_vec()).map_err(|error| {
-                Refusal::new(
-                    StartupRefusal::VllmApiKeyNotAToken,
-                    format!("{at}: {error}"),
-                )
-            })?;
-            models.insert(
-                alias.clone(),
-                Relayed {
-                    alias: identifier(alias, &format!("models.{alias}"))?,
-                    bearer: Arc::new(bearer),
-                    hold: Duration::from_secs(model.request_hold_seconds),
-                },
-            );
-        }
-        Ok(Self {
+        Ok(Self::from_relayed(
+            relayed_models(deployment, keys)?,
+            compute_authorization()?,
             pool,
-            authorization: compute_authorization()?,
+            connector,
+            stopping,
+            metrics,
+        ))
+    }
+
+    fn from_relayed(
+        models: BTreeMap<String, Relayed>,
+        authorization: ComputeAuthorization,
+        pool: Arc<RunpodPool<T>>,
+        connector: Arc<dyn PodConnector>,
+        stopping: Arc<AtomicBool>,
+        metrics: Arc<Metrics>,
+    ) -> Self {
+        Self {
+            pool,
+            authorization,
             models,
             connector,
             stopping,
             metrics,
             started: Mutex::new(BTreeMap::new()),
-        })
+        }
     }
 
     /// Counts the pod a hold bound to as started, once per deployment (row O1). The pool binds
@@ -654,9 +694,12 @@ fn reachable(binding: &ConnectorsBinding, transport: &mut ConnectorsRunpod) -> b
 /// connection is not reachable at start, no pool is composed, no further `connectors` call is
 /// made, and its models are `target-unavailable` too.
 ///
-/// `wrap` and `pods` are the seam a test moves the pod's address to a loopback pod with; the
-/// shipped binary passes the identity and [`ProxyConnector`]. No transport but
-/// `ConnectorsRunpod` can be composed here.
+/// `wrap` and `pods` are the seam a test moves the pod's address to a loopback pod with. `wrap`
+/// receives the `ConnectorsRunpod` built from the document and may return any
+/// `RunpodTransport`, including one that ignores it; the type does not hold the transport to
+/// `ConnectorsRunpod`. What does is the callers: [`crate::start`], the only composition the
+/// shipped binary reaches, passes the identity and [`ProxyConnector`], and only tests pass
+/// anything else. No document key and no option reaches `wrap` or `pods`.
 ///
 /// # Errors
 /// As [`start_relaying`], for the connected models.
@@ -679,23 +722,22 @@ where
     };
     let mut subset = deployment.clone();
     subset.models.retain(|_, model| &model.provider == provider);
-    // Checked before the connection is: whether a document is valid never depends on it.
-    for alias in subset.models.keys() {
-        if parts.vllm_keys.get(alias).is_none() {
-            return Err(Refusal::new(
-                StartupRefusal::ConfigValue,
-                format!("models.{alias}.vllm_api_key_file is required to relay to a Runpod pod"),
-            ));
-        }
+    if subset.models.is_empty() {
+        return compose(deployment, parts, Arc::new(Unconnected), None);
     }
+    // Every check the pool and its targets make, made before the transport is built: whether
+    // a document is valid never depends on the connection, and a refused document costs no
+    // `connectors` call.
+    let models = runpod_models(&subset)?;
+    let policy = hosting_policy(&subset)?;
+    let authorization = compute_authorization()?;
+    let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let mut transport = ConnectorsRunpod::new(binding.clone());
-    if subset.models.is_empty() || !reachable(&binding, &mut transport) {
-        if !subset.models.is_empty() {
-            tracing::warn!(
-                provider = provider.as_str(),
-                "connectors connection unreachable; its models answer target-unavailable"
-            );
-        }
+    if !reachable(&binding, &mut transport) {
+        tracing::warn!(
+            provider = provider.as_str(),
+            "connectors connection unreachable; its models answer target-unavailable"
+        );
         return compose(deployment, parts, Arc::new(Unconnected), None);
     }
     for alias in subset.models.keys() {
@@ -703,19 +745,28 @@ where
             transport.set_vllm_key(alias, key.expose().to_vec());
         }
     }
-    let pool = Arc::new(runpod_pool(
-        &subset,
+    let pool = RunpodPool::new(
+        policy,
+        Arc::new(LeaseRegistry::default()),
         wrap(transport),
+        models,
         Arc::new(WallClock::default()),
-    )?);
-    let targets = PoolTargets::new(
-        &subset,
-        &parts.vllm_keys,
+    )
+    .map_err(|error| {
+        Refusal::new(
+            StartupRefusal::ConfigValue,
+            format!("the Runpod pool cannot be composed: {error}"),
+        )
+    })?;
+    let pool = Arc::new(pool);
+    let targets = PoolTargets::from_relayed(
+        relayed,
+        authorization,
         Arc::clone(&pool),
         pods,
         Arc::clone(&parts.stopping),
         Arc::clone(&parts.metrics),
-    )?;
+    );
     let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
 }
@@ -728,11 +779,14 @@ struct Parts {
     vllm_keys: VllmKeys,
     stopping: Arc<AtomicBool>,
     metrics: Arc<Metrics>,
+    /// Every model as the relay serves it.
+    models: Vec<RelayModel>,
 }
 
 impl Parts {
     /// # Errors
-    /// An `owner-secret:*`, `vllm-api-key:*` or `config:value` [`Refusal`].
+    /// An `owner-secret:*`, `vllm-api-key:*` or `config:value` [`Refusal`]: every refusal the
+    /// document itself can earn, before any transport is built.
     fn read(deployment: &Deployment) -> Result<Self, Refusal> {
         Ok(Self {
             verifier: owner_verifier(deployment)?,
@@ -740,8 +794,32 @@ impl Parts {
             inventory: inventory(deployment)?,
             stopping: Arc::new(AtomicBool::new(false)),
             metrics: Arc::new(Metrics::default()),
+            models: relay_models(deployment)?,
         })
     }
+}
+
+/// Every model of the document as the relay serves it: on its wires, under its alias, with its
+/// `tool_calling`.
+fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
+    let mut models = Vec::with_capacity(deployment.models.len());
+    for (alias, model) in &deployment.models {
+        let wires = model.wires.iter().copied().map(relay_wire).collect();
+        // The pod serves the model under its alias (`--served-model-name`), so the upstream
+        // name is the alias too.
+        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires);
+        models.push(
+            relayed
+                .map_err(|error| {
+                    Refusal::new(
+                        StartupRefusal::ConfigValue,
+                        format!("models.{alias}: {error}"),
+                    )
+                })?
+                .with_tool_calling(model.tool_calling),
+        );
+    }
+    Ok(models)
 }
 
 /// One cleanup pass of a pool, counting what it stopped.
@@ -761,24 +839,8 @@ fn compose(
         vllm_keys,
         stopping,
         metrics,
+        models,
     } = parts;
-    let mut models = Vec::with_capacity(deployment.models.len());
-    for (alias, model) in &deployment.models {
-        let wires = model.wires.iter().copied().map(relay_wire).collect();
-        // The pod serves the model under its alias (`--served-model-name`), so the upstream
-        // name is the alias too.
-        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires);
-        models.push(
-            relayed
-                .map_err(|error| {
-                    Refusal::new(
-                        StartupRefusal::ConfigValue,
-                        format!("models.{alias}: {error}"),
-                    )
-                })?
-                .with_tool_calling(model.tool_calling),
-        );
-    }
     let relay = Relay::new(models, targets)
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
         .with_metrics(Arc::clone(&metrics))

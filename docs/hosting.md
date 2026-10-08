@@ -387,8 +387,11 @@ no key.
 `llm_gateway_cli::start_relaying` composes one `RunpodPool` from the deployment document and
 relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). Its
 tests run it over `EmulatedRunpod` and a loopback pod. The composition the shipped binary is
-wired for, `llm_gateway_cli::start_connected`, runs the same pool over `ConnectorsRunpod` only, for
-the one provider whose `[providers.<name>.connectors]` table names the connection:
+wired for, `llm_gateway_cli::start_connected`, builds a `ConnectorsRunpod` from the document and
+runs the same pool over what its caller's `wrap` returns: `llm_gateway_cli::start`, the shipped
+path, passes the identity, and only tests pass anything else. It serves the one provider whose
+`[providers.<name>.connectors]` table names the connection, and makes every document check
+before its first `connectors` call:
 
 ```toml
 [providers.runpod.connectors]

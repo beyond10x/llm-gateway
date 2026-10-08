@@ -53,6 +53,11 @@ domain: llm-gateway.deployment
 #     identity and account are fixed, so two pools would sweep each other's pods.
 #   * A model whose provider declares no `connectors` is answered `target-unavailable` on its
 #     wires; no pool is asked and no process is run for it.
+#   * DECIDED: every refusal the document can earn is decided before the first `connectors`
+#     call: the owner secret, the key files, the inventory, the relayed models, each connected
+#     model as the pool runs it (`RunpodModel`), the hosting policy and each model's bearer. A
+#     document's validity never depends on the connection, and a refused document costs no call.
+#     Only process facts (`signal:install`, `listen:bind`) are decided after it.
 #   * DECIDED: "reachable" is decided once, at start, before the gateway is marked ready: the work
 #     directory is an existing directory owned by the effective user with no group or world
 #     permission, and one `pods.list` through the transport answers a complete listing (exit 0,

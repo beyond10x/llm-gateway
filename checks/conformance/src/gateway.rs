@@ -339,6 +339,16 @@ impl Answer {
             .map_or("absent", |(_, value)| value.as_str())
     }
 
+    /// The `answer_headers` fact: the three headers every answer the gateway writes carries.
+    fn framing(&self) -> String {
+        format!(
+            "content-type={} cache-control={} connection={}",
+            self.header("content-type"),
+            self.header("cache-control"),
+            self.header("connection")
+        )
+    }
+
     fn summary(&self) -> String {
         let Some(status) = self.status else {
             return "no-response".to_owned();
@@ -373,7 +383,8 @@ fn padded(raw: &str, pad: Option<usize>) -> Option<String> {
 fn run(program_json: &str) -> Value {
     let mut facts = json!({
         "valid_program": false, "error_code": null, "results": [], "bodies": [],
-        "headers": [], "secret_on_wire": null, "ready": null, "shutdown": null
+        "headers": [], "answer_headers": [], "secret_on_wire": null, "ready": null,
+        "shutdown": null
     });
     if program_json.len() > MAX_PROGRAM_BYTES {
         return facts;
@@ -401,6 +412,7 @@ fn run(program_json: &str) -> Value {
     let secret = program.secret.as_bytes();
     let mut on_wire = false;
     let (mut results, mut bodies, mut headers) = (Vec::new(), Vec::new(), Vec::new());
+    let mut answer_headers = Vec::new();
     for step in &program.steps {
         let answer = match step {
             Step::Send { raw, pad_bytes } => padded(raw, *pad_bytes)
@@ -422,6 +434,7 @@ fn run(program_json: &str) -> Value {
                     answer.header("www-authenticate"),
                     answer.header("allow")
                 ));
+                answer_headers.push(answer.framing());
                 answer.summary()
             }
             (Step::MarkReady, None) => handle
@@ -457,6 +470,7 @@ fn run(program_json: &str) -> Value {
     facts["results"] = json!(results);
     facts["bodies"] = json!(bodies);
     facts["headers"] = json!(headers);
+    facts["answer_headers"] = json!(answer_headers);
     facts["secret_on_wire"] = json!(on_wire);
     facts["ready"] = json!(handle.as_ref().map(GatewayHandle::is_ready));
     if let Some(live) = handle {

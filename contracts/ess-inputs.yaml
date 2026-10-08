@@ -137,6 +137,10 @@ scenarios:
 - gateway/scenarios/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing.yaml
 - gateway/scenarios/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential.yaml
 - gateway/scenarios/head-inspection-answers-without-a-body.yaml
+- gateway/scenarios/inspection-a-query-string-is-discarded.yaml
+- gateway/scenarios/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent.yaml
+- gateway/scenarios/inspection-every-answer-is-json-no-store-and-closes-after-one-request.yaml
+- gateway/scenarios/inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve.yaml
 - gateway/scenarios/liveness-is-served-without-a-credential-and-readiness-starts-unready.yaml
 - gateway/scenarios/owner-material-that-is-empty-or-not-printable-is-refused.yaml
 - gateway/scenarios/owner-material-with-a-space-is-refused.yaml

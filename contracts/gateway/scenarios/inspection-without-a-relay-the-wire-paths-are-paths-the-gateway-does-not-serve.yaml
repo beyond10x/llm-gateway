@@ -1,0 +1,28 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve
+summary: a gateway bound without a relay answers the three wire paths as inspection answers any path it does not serve, after authentication
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"POST /v1/chat/completions HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\ncontent-length: 0\r\n\r\n"},{"step":"send","raw":"POST /v1/responses HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\ncontent-length: 0\r\n\r\n"},{"step":"send","raw":"GET /v1/messages HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"send","raw":"POST /v1/messages HTTP/1.1\r\ncontent-length: 0\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 405 method-not-allowed
+    - 405 method-not-allowed
+    - 404 path-unknown
+    - 401 credential-absent
+    headers:
+    - www-authenticate=absent allow=GET, HEAD
+    - www-authenticate=absent allow=GET, HEAD
+    - www-authenticate=absent allow=absent
+    - www-authenticate=Bearer allow=absent

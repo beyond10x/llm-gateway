@@ -40,6 +40,10 @@
       "llm-gateway.gateway/authored/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing",
       "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
+      "llm-gateway.gateway/authored/inspection-a-query-string-is-discarded",
+      "llm-gateway.gateway/authored/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent",
+      "llm-gateway.gateway/authored/inspection-every-answer-is-json-no-store-and-closes-after-one-request",
+      "llm-gateway.gateway/authored/inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve",
       "llm-gateway.gateway/authored/k11-a-model-repeating-a-wire-is-refused-at-composition",
       "llm-gateway.gateway/authored/k11-a-model-with-no-wire-is-refused-at-composition",
       "llm-gateway.gateway/authored/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target",
@@ -384,6 +388,26 @@
         "digest": "sha256:b127e678b9361d5ff60ff8de71882315c644ba75498a367542e8293d9ead1078",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/head-inspection-answers-without-a-body"
+      },
+      "gateway/scenarios/inspection-a-query-string-is-discarded.yaml": {
+        "digest": "sha256:9351f32e1268fa7e56dd652e70a22916973d0a8b43fd8bf6971dcac1bd0251d1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/inspection-a-query-string-is-discarded"
+      },
+      "gateway/scenarios/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent.yaml": {
+        "digest": "sha256:16e1988d42ce7c90aa92265f672517c4175748e63ae2c2441a50b2bedc7f14d2",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent"
+      },
+      "gateway/scenarios/inspection-every-answer-is-json-no-store-and-closes-after-one-request.yaml": {
+        "digest": "sha256:f33bc6e2de3e929397cd4627c8b85717f5166da871c9e64ebb58e7a452eed8eb",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/inspection-every-answer-is-json-no-store-and-closes-after-one-request"
+      },
+      "gateway/scenarios/inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve.yaml": {
+        "digest": "sha256:c3ea2380a1d84b007c8c9889ab25e713f4ec5d193a06b2e1e844693330a82bed",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve"
       },
       "gateway/scenarios/k11-a-model-repeating-a-wire-is-refused-at-composition.yaml": {
         "digest": "sha256:e664f4900e4cf3073e290424fe461529aca8dd4e0666a023a4ed276cfe94ef7e",
@@ -1127,7 +1151,7 @@
       }
     },
     "counts": {
-      "authored": 187,
+      "authored": 191,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1152,9 +1176,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "8e42fe2aed696783d96158ed85412820ad95e643f71df5c629de86571e05a8cb",
+    "contract_digest": "d2a3007fedb152126b47e850bebfd70a14e1bfc879a9aa1e490a6a226172bdf2",
     "scenario_initial_state": "empty",
-    "spec_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
+    "spec_digest": "58f21af44a3a0b8513ecaf7f230a70cc1cd1e57427ea4c3e562b5279b2b52f66",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -4469,6 +4493,368 @@
                 "value": [
                   "ok",
                   "200 no-body"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/inspection-a-query-string-is-discarded": {
+      "purpose": "a query string changes neither a probe nor an inspection; the path alone decides, and no parameter is decoded",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"send\",\"raw\":\"GET /health?probe=1 HTTP/1.1\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /ready?probe=1 HTTP/1.1\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /v1/routes/code?alias=other HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /v1/routes/other?alias=code HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"status\":\"live\"}",
+                  "{\"status\":\"ready\"}",
+                  "{\"route\":{\"route_id\":\"coding\",\"alias\":\"code\",\"fallback_enabled\":false,\"target_count\":2,\"targets\":[{\"target_id\":\"coding-primary\",\"position\":0,\"protocol\":\"chat-completions\",\"provider\":\"my-lab\",\"account\":\"remote\",\"endpoint\":\"remote-models\",\"model\":\"large\",\"binding_revision\":\"rev-1\",\"auth_kind\":\"bearer\",\"billing_kind\":\"metered\",\"context_window\":4096,\"max_output_tokens\":1024},{\"target_id\":\"coding-secondary\",\"position\":1,\"protocol\":\"chat-completions\",\"provider\":\"my-lab\",\"account\":\"remote\",\"endpoint\":\"remote-models\",\"model\":\"large\",\"binding_revision\":\"rev-1\",\"auth_kind\":\"bearer\",\"billing_kind\":\"metered\"}]}}",
+                  "{\"error\":{\"code\":\"route-unknown\",\"message\":\"no such route alias\"}}"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 live",
+                  "200 ready",
+                  "200 inspected",
+                  "404 route-unknown"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent": {
+      "purpose": "without the credential a POST to an unknown path is credential-absent; only the owner learns that the path takes no POST, and that it does not exist",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"send\",\"raw\":\"POST /v1/unknown HTTP/1.1\\r\\ncontent-length: 0\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"POST /v1/unknown HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\ncontent-length: 0\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /v1/unknown HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "www-authenticate=Bearer allow=absent",
+                  "www-authenticate=absent allow=GET, HEAD",
+                  "www-authenticate=absent allow=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "401 credential-absent",
+                  "405 method-not-allowed",
+                  "404 path-unknown"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/inspection-every-answer-is-json-no-store-and-closes-after-one-request": {
+      "purpose": "a probe, a HEAD probe, an inspection and a refusal are each application/json with cache-control no-store and connection close, and a second request pipelined on one connection is never answered",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"send\",\"raw\":\"GET /health HTTP/1.1\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"HEAD /health HTTP/1.1\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /v1/routes/code HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /v1/routes HTTP/1.1\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /health HTTP/1.1\\r\\n\\r\\nGET /ready HTTP/1.1\\r\\n\\r\\n\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "answer_headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store connection=close",
+                  "content-type=application/json cache-control=no-store connection=close",
+                  "content-type=application/json cache-control=no-store connection=close",
+                  "content-type=application/json cache-control=no-store connection=close",
+                  "content-type=application/json cache-control=no-store connection=close"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"status\":\"live\"}",
+                  "",
+                  "{\"route\":{\"route_id\":\"coding\",\"alias\":\"code\",\"fallback_enabled\":false,\"target_count\":2,\"targets\":[{\"target_id\":\"coding-primary\",\"position\":0,\"protocol\":\"chat-completions\",\"provider\":\"my-lab\",\"account\":\"remote\",\"endpoint\":\"remote-models\",\"model\":\"large\",\"binding_revision\":\"rev-1\",\"auth_kind\":\"bearer\",\"billing_kind\":\"metered\",\"context_window\":4096,\"max_output_tokens\":1024},{\"target_id\":\"coding-secondary\",\"position\":1,\"protocol\":\"chat-completions\",\"provider\":\"my-lab\",\"account\":\"remote\",\"endpoint\":\"remote-models\",\"model\":\"large\",\"binding_revision\":\"rev-1\",\"auth_kind\":\"bearer\",\"billing_kind\":\"metered\"}]}}",
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "{\"status\":\"live\"}"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 live",
+                  "200 no-body",
+                  "200 inspected",
+                  "401 credential-absent",
+                  "200 live"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve": {
+      "purpose": "a gateway bound without a relay answers the three wire paths as inspection answers any path it does not serve, after authentication",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"send\",\"raw\":\"POST /v1/chat/completions HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\ncontent-length: 0\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"POST /v1/responses HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\ncontent-length: 0\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /v1/messages HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"POST /v1/messages HTTP/1.1\\r\\ncontent-length: 0\\r\\n\\r\\n\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "www-authenticate=absent allow=GET, HEAD",
+                  "www-authenticate=absent allow=GET, HEAD",
+                  "www-authenticate=absent allow=absent",
+                  "www-authenticate=Bearer allow=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "405 method-not-allowed",
+                  "405 method-not-allowed",
+                  "404 path-unknown",
+                  "401 credential-absent"
                 ]
               }
             }

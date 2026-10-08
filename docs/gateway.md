@@ -81,6 +81,13 @@ from the rendered object. It never becomes `0` and never becomes a substituted c
 The same rule governs `config_digest`: a snapshot whose source reported no digest renders no
 digest, rather than an empty string.
 
+A snapshot that breaks the catalog's structural rules is not composed: a route with no target
+(`inventory:route-without-target`) or more than `targets-per-route` targets, target positions
+that do not run 0, 1, 2, … in order (`inventory:non-contiguous-positions`), one target
+identifier twice on a route (`inventory:duplicate-target`), two routes with one alias
+(`inventory:duplicate-alias`), more than `routes` routes, and a `config_digest` that is not
+exactly `digest-characters` lowercase hexadecimal characters (`inventory:malformed-digest`).
+
 ## The HTTP surface
 
 Every response is `cache-control: no-store` and `connection: close`, and every response the
@@ -114,6 +121,12 @@ to an unknown path is refused as `credential-absent`, not as `method-not-allowed
 discarded; this milestone decodes no request parameter. Only a relay reads a request body, and
 only after the owner is authenticated and the head has admitted it.
 
+A head that is not HTTP/1.x, a header whose name is followed by whitespace before its colon
+(RFC 9112 section 5.1), a CR, LF or NUL inside a line (RFC 9110 section 5.5), and a head that
+has not arrived whole when `read_timeout` passes are each `request-malformed`. The owner presents
+`authorization: Bearer <token>`, the scheme matched without regard to case. Every `401` carries
+`www-authenticate: Bearer`, and every `405` an `allow` header naming the methods the path takes.
+
 ## The relay
 
 `Gateway::bind_with_relay` composes the gateway with a `Relay`: the relayed models and an injected
@@ -125,7 +138,10 @@ out the `RelayTarget` serving an alias, and `invalidate` is told when a request 
 failed. A `RelayTarget` opens its own connection (`connect`), so the transport, TLS included,
 and its timeouts are the embedding's; this crate opens none. The specification is the `Relay`
 command of `spec/domains/gateway.yaml`, and `crates/llm-gateway/tests/wire_relay.rs` names each
-case after the row of the [capability matrix](llmgw-capability-matrix.md) it closes.
+case after the row of the [capability matrix](llmgw-capability-matrix.md) it closes. A gateway
+bound with `Gateway::bind`, without a relay, answers the three wire paths as it answers any
+path it does not serve: after authentication, `path-unknown` to `GET` and `HEAD`, and
+`method-not-allowed` with `allow: GET, HEAD` to any other method.
 
 A request to a wire path is decided in this order:
 

@@ -173,6 +173,11 @@ fn play(answer: &Value) -> ExitCode {
     } else if let Some(stdout) = answer.get("stdout") {
         println!("{stdout}");
     }
+    // connectors v0.36.0 `contracts/cli/v1alpha1/semantics.md`: a failure leaves stdout empty
+    // and writes its `{"ok":false,"error":…}` envelope to stderr.
+    if let Some(stderr) = answer.get("stderr") {
+        eprintln!("{stderr}");
+    }
     let code = answer.get("exit").and_then(Value::as_u64).unwrap_or(0);
     ExitCode::from(u8::try_from(code).unwrap_or(1))
 }

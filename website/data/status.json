@@ -1,0 +1,212 @@
+{
+  "asOf": "2026-10-08",
+  "format": "b10x-status/1",
+  "items": [
+    {
+      "area": "Gateway",
+      "detail": "Every route but the probes and the two public routes takes the owner's bearer credential, compared in constant time; a rejected credential is never echoed back.",
+      "href": "/docs/concepts/single-owner-gateway",
+      "label": "One authenticated owner",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "GET /health and GET /ready need no credential and are answered before load is shed.",
+      "href": "/docs/concepts/single-owner-gateway",
+      "label": "Liveness and readiness probes",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "GET /v1/routes and GET /v1/routes/<alias> render the operator's identifiers and nothing else; a limit the source did not report stays absent.",
+      "href": "/docs/concepts/single-owner-gateway",
+      "label": "Read-only route inspection",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "GET /v1/models lists each model with its wires and max_model_len, without a credential and without waking a pod. On main after 0.5.0.",
+      "href": "/docs/guides/set-up-a-client",
+      "label": "Public model listing",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "GET / answers the Codex, Claude Code or Loom settings for each model, chosen by User-Agent, and never the owner secret. On main after 0.5.0.",
+      "href": "/docs/guides/set-up-a-client",
+      "label": "Setup instructions per client",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "Every refusal code, status and message, and every numeric bound, is checked against the published contract.",
+      "href": "/docs/reference/refusals",
+      "label": "Published refusals and bounds",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "A drain reports unready while it keeps serving; a stop answers every accepted request before it returns.",
+      "href": "/docs/concepts/single-owner-gateway",
+      "label": "Graceful drain and stop",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "The gateway crate's whole dependency closure is itself: nothing in it can resolve a secret, reach an upstream or create a resource.",
+      "href": "/docs/concepts/single-owner-gateway",
+      "label": "No secret, upstream or provisioning in the gateway library",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "The owner's POST to /v1/chat/completions, /v1/responses or /v1/messages reaches the target the embedding hands out and streams back as it arrives; only the top-level model is rewritten.",
+      "href": "/docs/concepts/relay",
+      "label": "Chat, Responses and Messages wires relayed by the library",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "A non-empty top-level tools array for a model whose tool_calling is absent is tools-not-served, decided before any target is asked for.",
+      "href": "/docs/concepts/relay",
+      "label": "A tool request to a model without tool calling is refused before a pod starts",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
+      "href": "/docs/concepts/relay",
+      "label": "A failed target is dropped and replaced",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "A request for a model whose pod is starting waits up to request_hold_seconds, then is model-cold-start with retry-after 30. Tested through a seam: the shipped binary reaches no pod yet.",
+      "href": "/docs/concepts/relay",
+      "label": "Cold-start hold in the Runpod composition",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
+      "detail": "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",
+      "href": "/docs/reference/deployment-document",
+      "label": "One closed TOML deployment document",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
+      "detail": "The document, the owner secret and each vLLM key file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
+      "href": "/docs/reference/deployment-document",
+      "label": "Trusted-file reader",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
+      "detail": "A model may name vllm_api_key_file; the key is read once at startup and written nowhere.",
+      "href": "/docs/reference/deployment-document",
+      "label": "A vLLM key file per model",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
+      "detail": "The binary answers what it accepted, prints the accepted and completed counts, and exits 0.",
+      "href": "/docs/reference/cli",
+      "label": "Stop on SIGINT or SIGTERM",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
+      "detail": "The root Dockerfile builds a distroless, non-root image of b10x-llm-gateway on port 8080. No image is published.",
+      "label": "Container image definition",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "Prometheus text behind the owner credential, under llmgw's series names, so an llmgw scrape keeps working.",
+      "href": "/docs/guides/scrape-the-counters",
+      "label": "llmgw's 13 counters at /metrics",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
+      "href": "/docs/guides/scrape-the-counters",
+      "label": "One usage record per authenticated wire request",
+      "status": "shipped"
+    },
+    {
+      "area": "Hosting",
+      "detail": "Provider-assigned identity, one lease at a time, stop obligations that only a complete inventory discharges, and an in-process FakeProvider.",
+      "href": "/docs/concepts/hosting",
+      "label": "Hosting lifecycle contract",
+      "status": "shipped"
+    },
+    {
+      "area": "Hosting",
+      "detail": "One pod per model under concurrent first requests, GPU fallback in declared order, crash and deadline termination, idle reaping and an orphan sweep, against EmulatedRunpod.",
+      "href": "/docs/concepts/hosting",
+      "label": "Runpod vLLM pool over an emulator",
+      "status": "shipped"
+    },
+    {
+      "area": "Hosting",
+      "detail": "ConnectorsRunpod creates, lists and terminates pods only through the connectors CLI, each write with an approval proof for its exact input. Tested against a fixture of that CLI, not against Runpod.",
+      "href": "/docs/concepts/hosting",
+      "label": "Runpod transport through the connectors CLI",
+      "status": "shipped"
+    },
+    {
+      "area": "Specification",
+      "detail": "The system llm-gateway is specified in ESS; the gate answers at least 201 of 201 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+      "href": "/docs/guides/run-the-checks",
+      "label": "ESS specification and conformance suite",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "The binary refuses a document whose provider declares connectors until it reaches a pod's https proxy URL over verified TLS; until then a relayed model is target-unavailable.",
+      "href": "/docs/concepts/relay",
+      "label": "Relay to a Runpod pod from the binary",
+      "status": "planned"
+    },
+    {
+      "area": "Relay",
+      "detail": "A model with ordered targets tries the next one when an attempt fails before any answer byte reaches the client.",
+      "label": "Fallback to the next target",
+      "status": "planned"
+    },
+    {
+      "area": "Relay",
+      "detail": "Translating a supported subset between wires; the gateway translates nothing today.",
+      "label": "Protocol translation",
+      "status": "planned"
+    },
+    {
+      "area": "Relay",
+      "detail": "A model served by any server that speaks its wire at a declared base URL, not only by a Runpod pod.",
+      "label": "Hosted endpoints",
+      "status": "planned"
+    },
+    {
+      "area": "Observability",
+      "detail": "Each usage record carries the token counters and the model name the target reported; a count it did not report stays absent.",
+      "label": "Token counts in usage records",
+      "status": "planned"
+    },
+    {
+      "area": "Clients",
+      "detail": "One recorded live session per client against a model on a real Runpod pod through the binary. Nothing is qualified yet.",
+      "href": "/docs/guides/set-up-a-client",
+      "label": "Live sessions of Claude Code, Codex and Loom",
+      "status": "planned"
+    },
+    {
+      "area": "Hosting",
+      "detail": "b10x-llm-modal exports nothing yet.",
+      "href": "/docs/concepts/hosting",
+      "label": "Modal adapter",
+      "status": "planned"
+    }
+  ],
+  "source": "llm-gateway-docs, from its capability list; every shipped item names the test that holds it"
+}

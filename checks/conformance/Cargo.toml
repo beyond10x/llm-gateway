@@ -5,6 +5,7 @@ edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 publish = false
+description = "The ESS conformance runner: checks the generated suite and schemas against the specification and runs the scenarios against the crates."
 
 [lints]
 workspace = true

@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "Authenticated single-owner gateway composition and protocol translation."
+description = "The single-owner gateway library: owner authentication, probes, the public model listing, route inspection, the wire relay, counters, drain and stop."
 
 [lib]
 name = "llm_gateway"

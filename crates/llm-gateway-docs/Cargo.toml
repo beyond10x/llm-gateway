@@ -16,6 +16,3 @@ clap = { version = "4.5", features = ["derive"] }
 llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
 llm-gateway-cli = { package = "b10x-llm-gateway-cli", path = "../llm-gateway-cli" }
 serde_json.workspace = true
-
-[dev-dependencies]
-llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }

@@ -12,6 +12,7 @@ use std::{
 };
 
 use llm_gateway::RefusalCode;
+use llm_gateway_cli::StartupRefusal;
 
 const CLI_PAGE: &str = "website/docs/reference/cli.md";
 const CRATES_PAGE: &str = "website/docs/reference/crates.md";
@@ -98,7 +99,10 @@ fn check_passes_on_the_repository() {
         text(&out.stderr)
     );
     for file in GENERATED {
-        assert!(stdout.contains(file), "check does not report {file}: {stdout}");
+        assert!(
+            stdout.contains(file),
+            "check does not report {file}: {stdout}"
+        );
     }
 }
 
@@ -114,7 +118,10 @@ fn generated_pages_carry_the_generator_header() {
         );
     }
     let status = read(&root, STATUS_PAGE);
-    assert!(status.contains(MDX_HEADER), "{STATUS_PAGE} lacks the header");
+    assert!(
+        status.contains(MDX_HEADER),
+        "{STATUS_PAGE} lacks the header"
+    );
     assert!(status.contains("custom_edit_url: null"));
     assert!(status.contains("import status from '@site/data/status.json';"));
     assert!(status.contains("<StatusTable data={status} />"));
@@ -129,7 +136,9 @@ fn cli_reference_is_the_binary_s_clap_definition() {
         "{page}"
     );
     assert!(
-        page.contains("| `--config <CONFIG>` | yes | none | Path to the closed TOML deployment document. |"),
+        page.contains(
+            "| `--config <CONFIG>` | yes | none | Path to the closed TOML deployment document. |"
+        ),
         "{page}"
     );
     assert!(
@@ -145,6 +154,9 @@ fn cli_reference_is_the_binary_s_clap_definition() {
 fn refusal_reference_lists_every_code_the_gateway_can_emit() {
     let root = repository();
     let page = read(&root, REFUSALS_PAGE);
+    let (gateway, startup) = page
+        .split_once("## Startup refusals")
+        .expect("the page lists the binary's startup refusals");
     let mut missing = Vec::new();
     for code in RefusalCode::ALL {
         let row = format!(
@@ -153,13 +165,28 @@ fn refusal_reference_lists_every_code_the_gateway_can_emit() {
             code.status(),
             code.reason()
         );
-        if !page.contains(&row) {
+        if !gateway.contains(&row) {
+            missing.push(row);
+        }
+    }
+    for refusal in StartupRefusal::ALL {
+        let row = format!("| `{}` |", refusal.code());
+        if !startup.contains(&row) {
             missing.push(row);
         }
     }
     assert!(missing.is_empty(), "{REFUSALS_PAGE} lacks: {missing:?}");
-    let rows = page.lines().filter(|line| line.starts_with("| `")).count();
-    assert_eq!(rows, RefusalCode::ALL.len(), "one row per code, no other");
+    let rows = |part: &str| part.lines().filter(|line| line.starts_with("| `")).count();
+    assert_eq!(
+        rows(gateway),
+        RefusalCode::ALL.len(),
+        "one row per code, no other"
+    );
+    assert_eq!(
+        rows(startup),
+        StartupRefusal::ALL.len(),
+        "one row per startup code"
+    );
 }
 
 #[test]
@@ -167,7 +194,13 @@ fn crates_page_lists_every_workspace_package() {
     let root = repository();
     let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
     let out = Command::new(cargo)
-        .args(["metadata", "--no-deps", "--format-version", "1", "--offline"])
+        .args([
+            "metadata",
+            "--no-deps",
+            "--format-version",
+            "1",
+            "--offline",
+        ])
         .arg("--manifest-path")
         .arg(root.join("Cargo.toml"))
         .output()
@@ -176,7 +209,11 @@ fn crates_page_lists_every_workspace_package() {
     let metadata: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     let page = read(&root, CRATES_PAGE);
     let packages = metadata["packages"].as_array().unwrap();
-    assert!(packages.len() >= 7, "cargo metadata listed {}", packages.len());
+    assert!(
+        packages.len() >= 7,
+        "cargo metadata listed {}",
+        packages.len()
+    );
     let mut missing = Vec::new();
     for package in packages {
         let name = package["name"].as_str().unwrap();
@@ -199,12 +236,7 @@ fn status_marks_the_inert_runpod_relay_planned_and_names_tests_for_shipped_items
     assert_eq!(status["format"], "b10x-status/1");
     assert!(status["asOf"].as_str().is_some_and(|d| d.len() == 10));
     let items = status["items"].as_array().unwrap();
-    let count = |wanted: &str| {
-        items
-            .iter()
-            .filter(|item| item["status"] == wanted)
-            .count()
-    };
+    let count = |wanted: &str| items.iter().filter(|item| item["status"] == wanted).count();
     assert!(count("shipped") >= 10, "shipped: {}", count("shipped"));
     assert!(count("planned") >= 3, "planned: {}", count("planned"));
     for item in items {
@@ -264,7 +296,11 @@ fn check_fails_on_every_kind_of_drift() {
         }
         let out = check();
         assert!(!out.status.success(), "check passed after changing {file}");
-        assert!(text(&out.stderr).contains(file), "{file}: {}", text(&out.stderr));
+        assert!(
+            text(&out.stderr).contains(file),
+            "{file}: {}",
+            text(&out.stderr)
+        );
         let generate = docs(&["generate", "--root", at]);
         assert!(generate.status.success(), "{}", text(&generate.stderr));
         assert!(check().status.success(), "regenerate after {file}");

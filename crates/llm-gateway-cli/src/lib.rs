@@ -14,4 +14,6 @@ mod trusted;
 
 pub use config::{Deployment, Model, Provider, ProviderKind, Wire, load};
 pub use refusal::{Refusal, Source, StartupRefusal};
-pub use serve::{Running, StopSignal, Stopped, inventory, owner_verifier, start};
+pub use serve::{
+    Running, StopSignal, Stopped, VllmKey, VllmKeys, inventory, owner_verifier, start, vllm_keys,
+};

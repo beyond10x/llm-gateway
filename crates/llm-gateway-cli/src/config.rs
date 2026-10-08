@@ -94,6 +94,8 @@ struct ModelDocument {
     idle_timeout_minutes: u64,
     #[serde(default = "default_start_wait_seconds")]
     start_wait_seconds: u64,
+    #[serde(default)]
+    vllm_api_key_file: Option<PathBuf>,
 }
 
 fn default_max_num_seqs() -> u32 {
@@ -172,6 +174,9 @@ pub struct Model {
     pub data_center_ids: Vec<String>,
     pub idle_timeout_minutes: u64,
     pub start_wait_seconds: u64,
+    /// The file holding the key this model's pod's vLLM server expects (row B9). Only the path
+    /// is loaded here; [`crate::vllm_keys`] reads it.
+    pub vllm_api_key_file: Option<PathBuf>,
 }
 
 /// A loaded and validated deployment document.
@@ -462,5 +467,6 @@ fn into_model(model: ModelDocument) -> Model {
         data_center_ids: model.data_center_ids,
         idle_timeout_minutes: model.idle_timeout_minutes,
         start_wait_seconds: model.start_wait_seconds,
+        vllm_api_key_file: model.vllm_api_key_file,
     }
 }

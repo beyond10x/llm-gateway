@@ -257,7 +257,9 @@ pub fn connected_document(
     let text = mutate(
         &text,
         "max_model_len = 1024\n",
-        &format!("max_model_len = 1024\nstart_wait_seconds = 30\nrequest_hold_seconds = {hold_seconds}\n"),
+        &format!(
+            "max_model_len = 1024\nstart_wait_seconds = 30\nrequest_hold_seconds = {hold_seconds}\n"
+        ),
     );
     with_connectors(&text, &connectors.table())
 }

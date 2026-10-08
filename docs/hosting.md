@@ -335,21 +335,35 @@ control plane and no credential for it. `spec/domains/runpod.yaml` declares ever
 Each write is prepared and issued for its exact input (`approvals prepare`, `approvals issue`
 into a new file in the transport's private work directory, made absolute when the transport is
 built) and invoked once with that proof and an idempotency key; the transport never sends it
-again. `schema` and `revision` come from `operations describe`, read once per operation. The CLI
-runs in its own process group. When the binding's timeout passes before the CLI has exited and
-its output has closed, which a process it started can hold open, the group is killed and the
-answer is lost.
+again. `schema` and `revision` come from `operations describe` and are kept per operation until
+one of the refusals below drops them. The CLI runs in its own process group. When the binding's
+timeout passes before the CLI has exited and both its output streams have closed, which a process
+it started can hold open, the group is killed and the answer is lost.
 
-connectors' connection evidence expires: it lasts `evidence_lifetime_ms`, 60 s when omitted and
-at most 300 000 ms. After that an invoke is refused `not_granted` at `admission` with
-`next_action: revalidate_connection`, and "The invoke does not revalidate on its own"
-(connectors v0.36.0 `docs/local-catalog-provider.md:479-486`). An invoke refused `not_granted` at
-`admission`, with no classification or `not_attempted` (nothing was dispatched), makes the
-transport read the connection's revision with `connections describe`, run `connections
-revalidate` once, and repeat that one invoke once. A repeated write is a new attempt, with a fresh
-proof and its own idempotency key. A second refusal is mapped as usual (`Lost` for a write, an
-incomplete listing for a read), and a write refused at any other stage, or classified otherwise,
-is never repeated.
+Answers are read only in connectors' published framing (connectors v0.36.0
+`contracts/cli/v1alpha1/semantics.md:178-181`). A success is exit 0 with one
+`{"ok":true,"result":…}` envelope on stdout, and everything the transport reads (`schema`,
+`revision`, the approval's `subject_sha256`, the connection's revision, the invoke's `status`,
+`body` and `mutation.classification`) is inside its `result`. A failure is a non-zero exit with
+stdout empty and one `{"ok":false,"error":{"code":"failure","data":…}}` envelope on stderr, whose
+`data` is connectors' `Failure` (`code`, `stage`, `next_action`, and `mutation` when connectors
+observed one). Both streams are read under the call's deadline and an 8 MiB bound each. Anything
+else is unreadable: `Lost` for a write, an incomplete listing for a read. No part of either stream
+reaches the transport's `Debug`.
+
+An invoke refused with nothing dispatched (no classification, or `not_attempted`) is repeated
+once, after one recovery step, for three refusals:
+
+| `error.data` | Why (connectors v0.36.0) | Recovery |
+| --- | --- | --- |
+| `code: not_granted`, `stage: admission` | the connection's evidence expired: it lasts `evidence_lifetime_ms`, 60 s when omitted and at most 300 000 ms, and "The invoke does not revalidate on its own" (`docs/local-catalog-provider.md:479-486`, `semantics.md:748-753`) | `connections describe` for the connection's revision, then `connections revalidate` once |
+| `code: stale_description` | "schema/descriptor changed", answered "before provider dispatch" (`semantics.md:579-581`, `:606`) | drop the operation's cached `schema` and `revision`, run `operations describe` once |
+| `code: lifecycle_conflict`, `stage: admission` | "stale revision" (`semantics.md:601`), as after a configuration upgrade moves the descriptor revision (`docs/local-catalog-provider.md:396-399`, `semantics.md:759-764`) | the same refresh, and a revalidation too when `next_action` is `revalidate_connection` |
+
+A recovery step that fails ends there. A repeated write is a new attempt, with a fresh proof and
+its own idempotency key. A second refusal is mapped as usual (`Lost` for a write, an incomplete
+listing for a read), and a write refused any other way, or classified otherwise, is never
+repeated.
 
 The `pod.create` body carries the keys `POD_CREATE_BODY_KEYS` names, and follows llmgw's
 (`src/runpod.rs:781-799` at `048ebd8`). connectors v0.36.0 admits twelve of them. The vLLM argv

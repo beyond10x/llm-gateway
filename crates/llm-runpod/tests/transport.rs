@@ -883,3 +883,188 @@ fn a_write_refused_after_admission_or_classified_otherwise_is_never_repeated() {
         );
     }
 }
+
+// ---- connectors' published framing, and a stale descriptor ----
+//
+// connectors v0.36.0 `contracts/cli/v1alpha1/semantics.md:178-181`: a success is one
+// `{"ok":true,"result":…}` envelope on stdout; a failure leaves stdout empty and writes one
+// `{"ok":false,"error":{"code":"failure","data":…}}` envelope to stderr. The fixture frames the
+// bare answers the cases above script; these cases script the frames themselves.
+
+#[test]
+fn an_answer_outside_connectors_framing_is_not_read() {
+    // The `applied` create answer, unframed on stdout: not connectors' success framing.
+    let fixture = Fixture::new("unframed_success");
+    fixture.script(&json!({
+        "operations invoke pod.create": [{"raw": json!({
+            "result": {"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")},
+            "mutation": {"classification": "applied", "replayed": false},
+        }).to_string()}],
+        "operations invoke pods.list": [listed(&json!([]))],
+    }));
+    assert_eq!(
+        fixture.transport().create_pod(&request("NVIDIA A40")),
+        CreateAnswer::Lost
+    );
+
+    // A `refused` failure framed correctly but printed on stdout, not stderr.
+    let fixture = Fixture::new("failure_on_stdout");
+    fixture.script(
+        &json!({"operations invoke pod.create": [{"exit": 1, "raw": json!({
+        "ok": false, "error": {"code": "failure", "data": {
+            "code": "invalid_input", "stage": "dispatch",
+            "mutation": {"classification": "refused", "replayed": false}}},
+    }).to_string()}]}),
+    );
+    assert_eq!(
+        fixture.transport().create_pod(&request("NVIDIA A40")),
+        CreateAnswer::Lost,
+        "a failure is read from stderr only"
+    );
+}
+
+#[test]
+fn a_failure_on_stderr_reaches_no_debug_output() {
+    let fixture = Fixture::new("stderr_debug");
+    fixture.script(
+        &json!({"operations invoke pods.list": [{"exit": 1, "stderr": {
+            "ok": false, "error": {"code": "failure", "data": {
+                "code": "forbidden", "stage": "dispatch", "service_reason": KEY}},
+        }}]}),
+    );
+    let mut transport = fixture.transport();
+    transport.set_vllm_key("qwen", KEY.as_bytes().to_vec());
+    let complete = transport.list_pods().is_ok_and(|listing| listing.complete);
+    assert!(!complete);
+    let printed = format!("{transport:?}");
+    assert!(!printed.contains(KEY), "{printed}");
+}
+
+fn described(operation: &str, revision: &str) -> Value {
+    json!({"stdout": {
+        "adapter": "gpu", "revision": revision, "schema": format!("schema-{operation}-{revision}"),
+        "operation": {"id": operation}, "source": "owner", "stale": false,
+    }})
+}
+
+fn refused_before_dispatch(code: &str, stage: &str, next_action: &str) -> Value {
+    json!({"exit": 1, "stdout": {"error": {"code": "failure", "data": {
+        "kind": "operational", "code": code, "stage": stage, "next_action": next_action,
+    }}}})
+}
+
+#[test]
+fn a_stale_description_refreshes_the_descriptor_once_and_repeats_the_read_once() {
+    let fixture = Fixture::new("stale_description_read");
+    fixture.script(&json!({
+        "operations describe pods.list": [described("pods.list", "revision-7"), described("pods.list", "revision-8")],
+        "operations invoke pods.list": [
+            refused_before_dispatch("stale_description", "admission", "refresh_description"),
+            listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")])),
+        ],
+    }));
+    let listing = fixture.transport().list_pods().expect("listing");
+
+    assert!(listing.complete);
+    assert_eq!(fixture.calls_of("operations describe pods.list").len(), 2);
+    let invokes = fixture.calls_of("operations invoke pods.list");
+    assert_eq!(invokes.len(), 2);
+    assert_eq!(arg(&invokes[0], "--revision"), Some("revision-7"));
+    assert_eq!(
+        arg(&invokes[1], "--revision"),
+        Some("revision-8"),
+        "the refreshed revision"
+    );
+    assert_eq!(
+        arg(&invokes[1], "--schema"),
+        Some("schema-pods.list-revision-8")
+    );
+    assert!(fixture.calls_of("connections revalidate ").is_empty());
+}
+
+#[test]
+fn a_lifecycle_conflict_at_admission_refreshes_revalidates_and_repeats_a_create_once() {
+    let fixture = Fixture::new("lifecycle_conflict_create");
+    fixture.script(&json!({
+        "operations describe pod.create": [described("pod.create", "revision-7"), described("pod.create", "revision-8")],
+        "operations invoke pod.create": [
+            refused_before_dispatch("lifecycle_conflict", "admission", "revalidate_connection"),
+            invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
+        ],
+    }));
+    let answer = fixture.transport().create_pod(&request("NVIDIA A40"));
+
+    assert!(
+        matches!(&answer, CreateAnswer::Created(pod) if pod.id == "abc123"),
+        "{answer:?}"
+    );
+    let invokes = fixture.calls_of("operations invoke pod.create");
+    assert_eq!(invokes.len(), 2);
+    assert_eq!(arg(&invokes[1], "--revision"), Some("revision-8"));
+    assert_eq!(fixture.calls_of("connections revalidate ").len(), 1);
+    assert_eq!(
+        fixture.calls_of("approvals issue pod.create").len(),
+        2,
+        "a proof each"
+    );
+    let issued = fixture.calls_of("approvals issue pod.create");
+    assert_eq!(
+        arg(&issued[1], "--revision"),
+        Some("revision-8"),
+        "the proof is for the new revision"
+    );
+    for invoke in &invokes {
+        assert!(invoke.get("proof_mismatch").is_none(), "{invoke}");
+    }
+}
+
+#[test]
+fn a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again() {
+    // Refused again after the refresh: an incomplete listing, one refresh, two invokes.
+    let fixture = Fixture::new("stale_twice");
+    fixture.script(&json!({"operations invoke pods.list": [
+        refused_before_dispatch("stale_description", "admission", "refresh_description"),
+    ]}));
+    let complete = fixture
+        .transport()
+        .list_pods()
+        .is_ok_and(|listing| listing.complete);
+    assert!(!complete);
+    assert_eq!(fixture.calls_of("operations describe pods.list").len(), 2);
+    assert_eq!(fixture.calls_of("operations invoke pods.list").len(), 2);
+
+    // A lifecycle_conflict outside admission, and a stale_description that carries a dispatched
+    // classification: a write is never repeated.
+    let mut dispatched = refused_before_dispatch("stale_description", "dispatch", "none");
+    dispatched["stdout"]["error"]["data"]["mutation"] =
+        json!({"classification": "unknown", "replayed": false});
+    let cases = [
+        (
+            "conflict_later",
+            refused_before_dispatch("lifecycle_conflict", "dispatch", "stop_owner"),
+        ),
+        ("dispatched", dispatched),
+    ];
+    for (name, answer) in cases {
+        let fixture = Fixture::new(&format!("stale_never_{name}"));
+        fixture.script(&json!({
+            "operations invoke pod.create": [answer],
+            "operations invoke pods.list": [listed(&json!([]))],
+        }));
+        assert_eq!(
+            fixture.transport().create_pod(&request("NVIDIA A40")),
+            CreateAnswer::Lost,
+            "{name}"
+        );
+        assert_eq!(
+            fixture.calls_of("operations invoke pod.create").len(),
+            1,
+            "{name}"
+        );
+        assert_eq!(
+            fixture.calls_of("operations describe pod.create").len(),
+            1,
+            "{name}"
+        );
+    }
+}

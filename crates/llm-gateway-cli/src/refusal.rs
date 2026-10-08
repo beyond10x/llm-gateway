@@ -7,6 +7,8 @@ use std::fmt;
 pub enum Source {
     Config,
     OwnerSecret,
+    /// A file a model's `vllm_api_key_file` names.
+    VllmApiKey,
 }
 
 macro_rules! startup_refusals {
@@ -57,11 +59,19 @@ startup_refusals! {
     OwnerSecretNotUtf8 => "owner-secret:not-utf8",
     OwnerSecretNotAToken => "owner-secret:not-a-token",
     OwnerSecretTooShort => "owner-secret:too-short",
+    VllmApiKeyUnreadable => "vllm-api-key:unreadable",
+    VllmApiKeySymlink => "vllm-api-key:symlink",
+    VllmApiKeyNotRegular => "vllm-api-key:not-regular",
+    VllmApiKeyUntrustedOwner => "vllm-api-key:untrusted-owner",
+    VllmApiKeyUnsafeMode => "vllm-api-key:unsafe-mode",
+    VllmApiKeyTooLarge => "vllm-api-key:too-large",
+    VllmApiKeyNotUtf8 => "vllm-api-key:not-utf8",
+    VllmApiKeyNotAToken => "vllm-api-key:not-a-token",
     ListenBind => "listen:bind",
     SignalInstall => "signal:install",
 }
 
-/// The trusted-file rules, shared by both sources.
+/// The trusted-file rules, shared by every source.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FileRule {
     Unreadable,
@@ -92,12 +102,19 @@ impl FileRule {
             (Source::OwnerSecret, Self::UnsafeMode) => StartupRefusal::OwnerSecretUnsafeMode,
             (Source::OwnerSecret, Self::TooLarge) => StartupRefusal::OwnerSecretTooLarge,
             (Source::OwnerSecret, Self::NotUtf8) => StartupRefusal::OwnerSecretNotUtf8,
+            (Source::VllmApiKey, Self::Unreadable) => StartupRefusal::VllmApiKeyUnreadable,
+            (Source::VllmApiKey, Self::Symlink) => StartupRefusal::VllmApiKeySymlink,
+            (Source::VllmApiKey, Self::NotRegular) => StartupRefusal::VllmApiKeyNotRegular,
+            (Source::VllmApiKey, Self::UntrustedOwner) => StartupRefusal::VllmApiKeyUntrustedOwner,
+            (Source::VllmApiKey, Self::UnsafeMode) => StartupRefusal::VllmApiKeyUnsafeMode,
+            (Source::VllmApiKey, Self::TooLarge) => StartupRefusal::VllmApiKeyTooLarge,
+            (Source::VllmApiKey, Self::NotUtf8) => StartupRefusal::VllmApiKeyNotUtf8,
         }
     }
 }
 
 /// A refused start: the closed code and a one-line message. The message never quotes the
-/// owner secret.
+/// owner secret or a vLLM key.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Refusal {
     kind: StartupRefusal,
@@ -162,7 +179,7 @@ mod tests {
         for refusal in StartupRefusal::ALL {
             let (source, rule) = refusal.code().split_once(':').unwrap();
             assert!(
-                ["config", "owner-secret", "listen", "signal"].contains(&source),
+                ["config", "owner-secret", "vllm-api-key", "listen", "signal"].contains(&source),
                 "{refusal:?}"
             );
             assert!(!rule.is_empty(), "{refusal:?}");
@@ -183,6 +200,7 @@ mod tests {
         for (source, prefix) in [
             (Source::Config, "config:"),
             (Source::OwnerSecret, "owner-secret:"),
+            (Source::VllmApiKey, "vllm-api-key:"),
         ] {
             let codes: BTreeSet<&str> = rules.iter().map(|r| r.refusal(source).code()).collect();
             assert_eq!(codes.len(), rules.len());

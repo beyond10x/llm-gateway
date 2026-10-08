@@ -5,6 +5,7 @@ use crate::{
     auth::{Authenticated, OwnerToken, OwnerVerifier},
     error::RefusalCode,
     inventory::RouteInventory,
+    listing::{self, InstructionAnswer},
     metrics::{Disposition, Metrics, UsageRecord},
     relay::{self, Admitted, Call, Relay, Wire},
 };
@@ -77,6 +78,8 @@ pub struct ShutdownReport {
 
 struct Shared {
     config: GatewayConfig,
+    /// The address bound, the origin `GET /` falls back to.
+    local_addr: SocketAddr,
     verifier: Arc<dyn OwnerVerifier>,
     inventory: RouteInventory,
     relay: Option<Relay>,
@@ -137,6 +140,7 @@ impl Gateway {
         );
         let shared = Arc::new(Shared {
             config,
+            local_addr,
             verifier,
             inventory,
             relay,
@@ -273,6 +277,8 @@ fn accept_loop(listener: &TcpListener, shared: &Arc<Shared>) {
 /// A decided response, before it is written.
 enum Outcome {
     Served(String),
+    /// An answer to a public route, with its content type (rows R5, R1).
+    Public(&'static str, String),
     /// The counters, rendered as Prometheus text.
     Metrics(String),
     Probe(u16, String),
@@ -571,7 +577,7 @@ fn dispatch(head: &str, shared: &Shared) -> Decision {
 
 /// The outcome, and the wire when the request is an authenticated one to a relayed wire path.
 fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
-    // The unauthenticated surface is a closed set of two literal paths with two literal methods.
+    // The probes: two literal paths with two literal methods, matched before load is shed.
     if request.is_read() {
         match request.path {
             "/health" => return (Outcome::Probe(200, status_body("live")), None),
@@ -590,6 +596,11 @@ fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
     // because shedding has to be cheaper than the work it sheds.
     if shared.in_flight.load(Ordering::SeqCst) > shared.config.max_concurrent_requests {
         return (Outcome::Refused(RefusalCode::Overloaded), None);
+    }
+    // The public routes: two more literal paths with the same two methods, answered without a
+    // credential. Any other method goes on to authentication, so it cannot enumerate anything.
+    if request.is_read() && matches!(request.path, listing::MODELS | listing::INSTRUCTIONS) {
+        return (public(request, shared), None);
     }
     // Everything else establishes the authenticated context before decoding anything further.
     let owner = match authenticate(request, shared) {
@@ -618,6 +629,25 @@ fn scrape(request: &Request<'_>, shared: &Shared) -> Outcome {
         return Outcome::Refused(RefusalCode::Unavailable);
     }
     Outcome::Metrics(shared.metrics.render())
+}
+
+/// `GET /v1/models` (row R5) and `GET /` (row R1), under inspection's body and readiness rules.
+/// Both read the relayed models alone: never the inventory, the target source or a credential.
+fn public(request: &Request<'_>, shared: &Shared) -> Outcome {
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    if !serves_inspection(shared) {
+        return Outcome::Refused(RefusalCode::Unavailable);
+    }
+    let models = shared.relay.iter().flat_map(Relay::models);
+    if request.path == listing::MODELS {
+        return Outcome::Public(JSON, listing::models(models));
+    }
+    let answer = InstructionAnswer::choose(request.header("user-agent"));
+    let origin = listing::origin(request.header("host"), &shared.local_addr);
+    shared.metrics.count_instruction_view();
+    Outcome::Public(answer.content_type(), answer.render(models, &origin))
 }
 
 fn declares_body(request: &Request<'_>) -> bool {
@@ -706,7 +736,9 @@ fn status_body(status: &str) -> String {
 fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, deadline: Instant) {
     let refused = |code: RefusalCode| (code.status(), refusal_body(code), None);
     let (status, body, allow) = match outcome {
-        Outcome::Served(body) | Outcome::Metrics(body) => (200, body.clone(), None),
+        Outcome::Served(body) | Outcome::Metrics(body) | Outcome::Public(_, body) => {
+            (200, body.clone(), None)
+        }
         Outcome::Probe(status, body) => (*status, body.clone(), None),
         Outcome::Refused(code) => refused(*code),
         Outcome::NotAllowed(allow) => {
@@ -719,6 +751,7 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
     };
     let content_type = match outcome {
         Outcome::Metrics(_) => PROMETHEUS_TEXT,
+        Outcome::Public(content_type, _) => content_type,
         _ => JSON,
     };
     let mut head = String::new();

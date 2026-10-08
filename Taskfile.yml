@@ -1,15 +1,20 @@
 version: '3'
 tasks:
   check:
-    desc: Check the implementation and the specification, and run conformance
+    desc: Check the implementation, the documentation pages and the specification, and run conformance
     cmds:
       - task: rust
+      - task: docs
       - ess specify validate --path spec
       - task: conformance
   conformance:
     desc: Check ESS projection drift and run behavioral conformance three times
     cmds:
       - cargo run --locked -p b10x-llm-gateway-conformance -- check
+  docs:
+    desc: Check the generated documentation pages for drift and the hand-written ones for the public boundary
+    cmds:
+      - cargo run --locked -p llm-gateway-docs -- generate --check
   rust:
     cmds:
       - cargo test --workspace --locked

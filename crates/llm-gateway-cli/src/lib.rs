@@ -7,6 +7,7 @@
 //! `llm_gateway` gateway from it, serves, and stops gracefully on SIGINT or SIGTERM. Every
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
+pub mod cli;
 mod config;
 mod keys;
 mod logging;

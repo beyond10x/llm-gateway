@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.ListedModel.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
+    "contract_digest": "slice-sha256/2:cb466eeaf39e3dcf1c377ff3e2ccd863c4648de4ac352b5a510b1778d5bf14cf",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.ListedModel.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.gateway.ListedModel.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

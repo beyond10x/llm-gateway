@@ -16,6 +16,20 @@ domain: llm-gateway.deployment
 #   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
 #   stop (exit status 0). A command-line error is clap's (exit status 2).
+# The gateway is bound with `GatewayConfig::new`'s bounds: an 8192-byte head, 64 concurrent
+# requests and a ten-second read timeout (llm-gateway.gateway.Gateway). The document has no key
+# for any of them. A stop answers every connection already accepted first; how long that takes
+# is llm-gateway.gateway's stop rule: at most twice the read timeout for inspection and the
+# probes, and not bounded that way for a relay (llm-gateway.gateway.Gateway, ESS-LIMIT).
+# DECIDED 2026-10-08 (review row 38, read from the code at c63f07e): the binary serves the three
+# wire paths, `POST /v1/chat/completions`, `POST /v1/responses` and `POST /v1/messages`, under
+# the owner credential, for the wires each model declares; it relays none of them to a pod yet.
+# A model whose provider declares no `connectors` is answered `target-unavailable` (503) on its
+# wires, and a document in which a provider declares `connectors` is refused at start (the inert
+# wiring below), so no wire request reaches a pod until story:pod-proxy-tls
+# (`live_a_model_without_a_connection_is_target_unavailable` and
+# `live_a_connectors_document_is_refused_and_the_fixture_receives_nothing` in
+# crates/llm-gateway-cli/tests/binary.rs).
 # DECIDED 2026-10-08 (row O3, story:gateway-observability): beside those lines the process
 # writes `tracing` events to standard error, uncoloured, at the level `RUST_LOG` sets (`info`
 # when it is unset, empty or unreadable; a directive it cannot read is dropped without a line). The lines above are not events and stay as written at
@@ -168,7 +182,10 @@ types:
   #   `<source>:not-utf8`       the bytes are not UTF-8
   # Document rules:
   #   `config:schema`  not TOML, or not the closed DeploymentConfiguration: an unknown key at
-  #                    any level, a missing required key, or a value of the wrong type
+  #                    any level, a missing required key, or a value of the wrong type. The
+  #                    message is `line <n>: <reason>`, naming the line of the offending key
+  #                    and, for an unknown key, every key allowed where it stands
+  #                    (`k29_a_schema_refusal_names_its_line_and_the_keys_allowed_there`)
   #   `config:value`   a value outside its rule (the ranges on the types below)
   # Owner secret rules, after trailing ASCII whitespace is trimmed:
   #   `owner-secret:too-large`    a token over 4096 bytes (`token:too-large`)
@@ -305,7 +322,10 @@ types:
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
-  # becomes the gateway's shared-secret owner verifier; at least one model is required. Each
+  # becomes the gateway's shared-secret owner verifier. A relative `owner_secret_file` is
+  # resolved from the process's working directory, not from the document's directory
+  # (`k30_a_relative_owner_secret_file_is_read_from_the_working_directory` in
+  # crates/llm-gateway-cli/tests/binary.rs). At least one model is required. Each
   # model alias is served as one route of the inspection inventory, one target per wire, whose
   # `config_digest` is the SHA-256 of the exact document bytes read.
   - name: llm-gateway.deployment.DeploymentConfiguration

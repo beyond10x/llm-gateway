@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T21:10:30Z",
+  "actor": "human:timo",
+  "artifact": "story:public-model-listing",
+  "kind": "story",
+  "revision": 16,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway --locked --test public_listing; conformance check",
+    "reference": "f56b6ad+setters red (1 passed, 20 failed: HTTP/1.1 401 Unauthorized; conformance 196/201) vs 3f4de25 (21 passed; conformance 201/201 x3; ~/.cache/llm-gateway-w06/listing/)"
+  }
+}

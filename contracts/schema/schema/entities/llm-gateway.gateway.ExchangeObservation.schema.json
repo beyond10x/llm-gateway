@@ -32,6 +32,12 @@
         "type": "string"
       }
     },
+    "answer_headers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "secret_on_wire": {
       "type": "boolean"
     },
@@ -51,14 +57,15 @@
     "results",
     "bodies",
     "headers",
+    "answer_headers",
     "state"
   ],
   "additionalProperties": false,
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "c8cd5d4b0505a499e8f38718930ca3a408ff7ed9e8613ba87881d236a84a8047",
-    "contract_digest": "slice-sha256/2:f5fb6d957dcdb750440de318a4454f689cd284c584704a4868ec93eaa03607ff",
+    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
+    "contract_digest": "slice-sha256/2:1e07df735e78f7322369d7f8543475d7ef75b4e1e06edd1196dfc422d0b09e54",
     "regenerate": "ess generate"
   },
   "$defs": {

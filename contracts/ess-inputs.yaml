@@ -137,6 +137,10 @@ scenarios:
 - gateway/scenarios/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing.yaml
 - gateway/scenarios/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential.yaml
 - gateway/scenarios/head-inspection-answers-without-a-body.yaml
+- gateway/scenarios/inspection-a-query-string-is-discarded.yaml
+- gateway/scenarios/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent.yaml
+- gateway/scenarios/inspection-every-answer-is-json-no-store-and-closes-after-one-request.yaml
+- gateway/scenarios/inspection-without-a-relay-the-wire-paths-are-paths-the-gateway-does-not-serve.yaml
 - gateway/scenarios/liveness-is-served-without-a-credential-and-readiness-starts-unready.yaml
 - gateway/scenarios/owner-material-that-is-empty-or-not-printable-is-refused.yaml
 - gateway/scenarios/owner-material-with-a-space-is-refused.yaml
@@ -188,3 +192,9 @@ scenarios:
 - gateway/scenarios/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged.yaml
 - gateway/scenarios/tools-a-request-without-tools-to-a-model-without-tool-calling-is-relayed-unchanged.yaml
 - gateway/scenarios/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged.yaml
+- gateway/scenarios/r5-the-model-listing-answers-without-a-credential-and-asks-for-no-target.yaml
+- gateway/scenarios/r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked.yaml
+- gateway/scenarios/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile.yaml
+- gateway/scenarios/r1-r5-another-method-takes-the-credential-and-then-is-not-allowed.yaml
+- gateway/scenarios/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body.yaml
+- gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml

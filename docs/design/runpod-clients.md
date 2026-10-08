@@ -42,21 +42,22 @@ early refusal (tool calling, below).
 ## What exists and what is missing
 
 Every row of the chain below is a story already in the store, except the five this design adds.
+The State column was brought up to date on 2026-10-08, after `story:public-model-listing`.
 
 | Link | State | Story |
 | --- | --- | --- |
 | Owner bearer authentication, three wire paths, the untranslated relay | implemented | `story:gateway-auth`, `story:wire-relay` |
-| The binary reads one closed document and serves | implemented, but it does not relay: no production transport reaches a pod (`README.md:22-23`) | `story:gateway-binary` |
-| Runpod key and vLLM key read at startup | draft | `story:provider-key-files` |
-| The binary relays through `RunpodPool`, sending the vLLM key | draft | `story:gateway-deployment` |
-| Runpod REST create, list, terminate, uptime, readiness | draft | `story:runpod-production-transport` |
-| The binary starts real pods | draft | `story:live-runpod-wiring` |
-| The binary reaches a pod's proxy URL over TLS | **missing**: `RelayTarget::connect` leaves TLS to the embedding (`docs/gateway.md` "The relay"), and no story gives the binary a TLS client for `https://<pod>-8000.proxy.runpod.net` (`docs/hosting.md:326-330`) | **`story:pod-proxy-tls`** (new) |
-| A cold request waits for its pod; the reaper runs on a timer; orphans swept at startup | draft | `story:cold-start-hold` |
-| `GET /` setup instructions, `GET /v1/models` | draft | `story:public-model-listing` |
-| A model declares tool calling; a tool request to a model without it is refused before waking a pod | **missing** | **`story:model-tool-calling`** (new) |
-| The messages wire answers what Claude Code 2.1.293 sends | **missing** | **`story:claude-code-wire`** (new) |
-| One recorded live session per client against a real pod | **missing** | **`story:client-qualification`** (Claude Code, Codex) and **`story:loom-qualification`** (new) |
+| The binary reads one closed document and serves | implemented; it relays to no pod until the TLS row below lands | `story:gateway-binary` |
+| Runpod key and vLLM key read at startup | implemented | `story:provider-key-files` |
+| The binary relays through `RunpodPool`, sending the vLLM key | implemented | `story:gateway-deployment` |
+| Runpod REST create, list, terminate, uptime, readiness | implemented | `story:runpod-production-transport` |
+| The binary starts real pods | implemented, but inert: the binary refuses a `connectors` provider at load until the TLS row below lands | `story:live-runpod-wiring` |
+| The binary reaches a pod's proxy URL over TLS | draft: `RelayTarget::connect` leaves TLS to the embedding (`docs/gateway.md` "The relay"), and no story gives the binary a TLS client for `https://<pod>-8000.proxy.runpod.net` (`docs/hosting.md:326-330`) | **`story:pod-proxy-tls`** (new) |
+| A cold request waits for its pod; the reaper runs on a timer; orphans swept at startup | implemented | `story:cold-start-hold` |
+| `GET /` setup instructions, `GET /v1/models` | implemented | `story:public-model-listing` |
+| A model declares tool calling; a tool request to a model without it is refused before waking a pod | implemented | **`story:model-tool-calling`** (new) |
+| The messages wire answers what Claude Code 2.1.293 sends | draft | **`story:claude-code-wire`** (new) |
+| One recorded live session per client against a real pod | draft | **`story:client-qualification`** (Claude Code, Codex) and **`story:loom-qualification`** (new) |
 
 ## 1. Claude Code
 

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T21:43:28Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-spec-declarations",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "~/.cache/llm-gateway-w06/gate.sh on wave/2026-10-08-w06 (RUSTUP_TOOLCHAIN=1.98.0)",
+    "reference": "dfb9c4b: cargo test --workspace --no-fail-fast 54 targets 520 passed 0 failed (--list 520); fmt 0; clippy 0; ess specify validate 0; llm-gateway-docs generate --check 0; conformance 201/201 x3 (rerun after a watchdog pause failed run 3)"
+  }
+}

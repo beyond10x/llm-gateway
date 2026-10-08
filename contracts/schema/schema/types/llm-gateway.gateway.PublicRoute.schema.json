@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.PublicRoute",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
+    "contract_digest": "slice-sha256/2:53ca2cb25ee2e0cf70a5b0e61504281c8653ce64636736ccf8c357906db9d766",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.PublicRoute": {
+      "title": "PublicRoute",
+      "x-ess-name": "llm-gateway.gateway.PublicRoute",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Models",
+        "Instructions"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "path",
+          "type": "String",
+          "values": {
+            "Instructions": "/",
+            "Models": "/v1/models"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "content_type",
+          "type": "String",
+          "values": {
+            "Instructions": "chosen",
+            "Models": "application/json"
+          }
+        }
+      ]
+    }
+  }
+}

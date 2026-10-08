@@ -1,0 +1,36 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: inspection-every-answer-is-json-no-store-and-closes-after-one-request
+summary: a probe, a HEAD probe, an inspection and a refusal are each application/json with cache-control no-store and connection close, and a second request pipelined on one connection is never answered
+timeline:
+- at: '2026-10-08T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /health HTTP/1.1\r\n\r\n"},{"step":"send","raw":"HEAD /health HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /v1/routes/code HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\n\r\n"},{"step":"send","raw":"GET /health HTTP/1.1\r\n\r\nGET /ready HTTP/1.1\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    results:
+    - ok
+    - 200 live
+    - 200 no-body
+    - 200 inspected
+    - 401 credential-absent
+    - 200 live
+    bodies:
+    - '{"status":"live"}'
+    - ''
+    - '{"route":{"route_id":"coding","alias":"code","fallback_enabled":false,"target_count":2,"targets":[{"target_id":"coding-primary","position":0,"protocol":"chat-completions","provider":"my-lab","account":"remote","endpoint":"remote-models","model":"large","binding_revision":"rev-1","auth_kind":"bearer","billing_kind":"metered","context_window":4096,"max_output_tokens":1024},{"target_id":"coding-secondary","position":1,"protocol":"chat-completions","provider":"my-lab","account":"remote","endpoint":"remote-models","model":"large","binding_revision":"rev-1","auth_kind":"bearer","billing_kind":"metered"}]}}'
+    - '{"error":{"code":"credential-absent","message":"no owner credential was presented"}}'
+    - '{"status":"live"}'
+    answer_headers:
+    - content-type=application/json cache-control=no-store connection=close
+    - content-type=application/json cache-control=no-store connection=close
+    - content-type=application/json cache-control=no-store connection=close
+    - content-type=application/json cache-control=no-store connection=close
+    - content-type=application/json cache-control=no-store connection=close

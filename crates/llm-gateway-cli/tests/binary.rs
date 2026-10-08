@@ -60,8 +60,16 @@ fn run(args: &[&str]) -> Finished {
 
 /// [`run`] for any program: `unshare` wraps the binary in the owner-rule cases.
 fn run_program(program: &std::ffi::OsStr, args: &[&str]) -> Finished {
-    let mut child = Command::new(program)
-        .args(args)
+    run_command(Command::new(program).args(args), args)
+}
+
+/// [`run`] with `dir` as the working directory.
+fn run_in(dir: &Path, args: &[&str]) -> Finished {
+    run_command(Command::new(binary()).args(args).current_dir(dir), args)
+}
+
+fn run_command(command: &mut Command, args: &[&str]) -> Finished {
+    let mut child = command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -415,6 +423,58 @@ fn k29_an_unknown_key_is_refused() {
     let finished = run_config(&fixture.config(&text));
     assert_refused(&finished, "config:schema");
     assert!(finished.stderr.contains("listn"), "{:?}", finished.stderr);
+}
+
+/// Row 27 of docs/verification/spec-hardening-gateway-review.md: the `config:schema` message
+/// names the line of the unknown key and every key allowed where it stands.
+#[test]
+fn k29_a_schema_refusal_names_its_line_and_the_keys_allowed_there() {
+    let fixture = Fixture::new("k29-schema-line");
+    let secret = fixture.owner_secret();
+    let text = mutate(
+        &document("127.0.0.1:0", &secret),
+        "owner_secret_file = ",
+        "listn = \"127.0.0.1:0\"\nowner_secret_file = ",
+    );
+    let line = 1 + text
+        .lines()
+        .position(|candidate| candidate.starts_with("listn = "))
+        .unwrap();
+    let finished = run_config(&fixture.config(&text));
+    assert_refused(&finished, "config:schema");
+    let refusal = finished
+        .stderr
+        .lines()
+        .find(|candidate| candidate.starts_with(&format!("{PREFIX}refused config:schema: ")))
+        .unwrap();
+    assert!(refusal.contains(&format!("line {line}: ")), "{refusal}");
+    for key in ["listen", "owner_secret_file", "providers", "models"] {
+        assert!(refusal.contains(&format!("`{key}`")), "{key}: {refusal}");
+    }
+}
+
+/// Row 28 of docs/verification/spec-hardening-gateway-review.md: a relative
+/// `owner_secret_file` is resolved from the working directory, not from the document's own
+/// directory. The secret beside the document is valid and the one in the working directory is
+/// too short, so only the working directory's can produce this refusal.
+#[test]
+fn k30_a_relative_owner_secret_file_is_read_from_the_working_directory() {
+    let fixture = Fixture::new("k30-relative-secret");
+    let documents = fixture.path("documents");
+    std::fs::create_dir(&documents).unwrap();
+    fixture.write(
+        "documents/owner-secret",
+        format!("{OWNER_SECRET}\n").as_bytes(),
+        0o600,
+    );
+    fixture.write("owner-secret", b"too-short\n", 0o600);
+    let config = fixture.write(
+        "documents/gateway.toml",
+        document("127.0.0.1:0", Path::new("owner-secret")).as_bytes(),
+        0o600,
+    );
+    let finished = run_in(&fixture.dir, &["--config", config.to_str().unwrap()]);
+    assert_refused(&finished, "owner-secret:too-short");
 }
 
 #[test]

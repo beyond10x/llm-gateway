@@ -15,7 +15,10 @@ below is `covered` or `not needed`.
   and L15 cite the tree story:cold-start-hold landed and are closed by the cases named after them in
   `crates/llm-gateway-cli/tests/relaying.rs`, `crates/llm-gateway/tests/wire_relay.rs`,
   `crates/llm-runpod/tests/runpod.rs` and `crates/llm-gateway-cli/src/relaying.rs`, and the `w6-*`
-  scenarios.
+  scenarios. Rows R4, O1, O2 and O3 cite the tree story:gateway-observability landed and are
+  closed by the cases named after them in `crates/llm-gateway/tests/observability.rs`,
+  `crates/llm-gateway-cli/tests/observability.rs` and `crates/llm-gateway-cli/tests/relaying.rs`,
+  and the `r4-*` and `o1-o2-*` scenarios.
 - **covered**: llm-gateway's code does the same job, with tests, even where the mechanism
   differs (the note says how). **partial**: a building block exists and something llmgw does is
   missing. **gap**: nothing in llm-gateway does it. **not needed**: the note gives the reason.
@@ -34,16 +37,16 @@ below is `covered` or `not needed`.
 
 | Area | Name | Rows | Covered | Partial | Gap | Not needed | Row count checked against |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| R | Routes | 8 | 5 | 1 | 2 | 0 | the 8 `.route` calls in `router()`, `src/lib.rs:125-137` |
+| R | Routes | 8 | 6 | 1 | 1 | 0 | the 8 `.route` calls in `router()`, `src/lib.rs:125-137` |
 | W | Wire relay | 7 | 7 | 0 | 0 | 0 | no source table: the proxy path `src/lib.rs:510-699` and README `README.md:63-98` |
 | C | CLI | 5 | 4 | 0 | 0 | 1 | the built binary's `--help`: 4 options, no subcommand, plus the command |
 | K | Configuration | 30 | 26 | 0 | 1 | 3 | the 28 fields of the four serde structs in `src/config.rs:20-136`, plus 2 file-handling rows |
 | B | Backends | 9 | 4 | 5 | 0 | 0 | `ProviderKind` (1 variant, `src/config.rs:50-54`), the 5 `RunpodApi` calls, the pod URL, the inference call and the vLLM key |
 | L | Scale-to-zero and pod lifecycle | 15 | 15 | 0 | 0 | 0 | no source table: `PodManager` in `src/runpod.rs:286-695` and `src/main.rs:62-65` |
-| O | Observability | 3 | 0 | 0 | 3 | 0 | the 13 `# HELP` series in `src/lib.rs:144-180` and the log setup in `src/main.rs:29-33` |
+| O | Observability | 3 | 3 | 0 | 0 | 0 | the 13 `# HELP` series in `src/lib.rs:144-180` and the log setup in `src/main.rs:29-33` |
 | D | Deployment and operation | 6 | 3 | 0 | 2 | 1 | the files at the root, `scripts/` and `docs/` of llmgw |
 
-Total: 83 rows. 66 covered, 6 partial, 6 gap, 5 not needed.
+Total: 83 rows. 70 covered, 6 partial, 2 gap, 5 not needed.
 
 ## Routes
 
@@ -52,7 +55,7 @@ Total: 83 rows. 66 covered, 6 partial, 6 gap, 5 not needed.
 | R1 | `GET /`: setup instructions chosen by `User-Agent` (Codex profile, Claude Code variables, HTML page, plain text); never wakes a pod | `src/lib.rs:127` `src/lib.rs:231-265` | none | gap | |
 | R2 | `GET /livez`: liveness, `ok` | `src/lib.rs:128` `src/lib.rs:139-141` | `crates/llm-gateway/src/server.rs:384` | covered | Served as `GET /health`, so the probe path in the deployment changes. |
 | R3 | `GET /readyz`: readiness, the same handler as liveness | `src/lib.rs:129` `src/lib.rs:139-141` | `crates/llm-gateway/src/server.rs:385-391` | covered | Served as `GET /ready`, which is stronger: `503` before `mark_ready` and while draining. |
-| R4 | `GET /metrics`: Prometheus text | `src/lib.rs:130` `src/lib.rs:143-219` | none | gap | The series are rows O1 and O2. |
+| R4 | `GET /metrics`: Prometheus text | `src/lib.rs:130` `src/lib.rs:143-219` | `crates/llm-gateway/src/server.rs:602-621` `crates/llm-gateway/src/metrics.rs:193-219` `crates/llm-gateway/tests/observability.rs:341` `crates/llm-gateway/tests/observability.rs:370` `crates/llm-gateway-cli/tests/observability.rs:215` | covered | The series are rows O1 and O2, under llmgw's names, as `text/plain; version=0.0.4`. llmgw serves it unauthenticated; llm-gateway asks for the owner credential and readiness, like inspection (`observability.rs:341`), so the unauthenticated surface stays `/health` and `/ready`. A scrape configured for llmgw needs the owner's bearer token. The text is rendered inside the gateway crate, which takes no dependency for it. |
 | R5 | `GET /v1/models`: OpenAI-shaped registry listing with `max_model_len` and `wires`; unauthenticated; never wakes a pod | `src/lib.rs:131` `src/lib.rs:441-457` | `crates/llm-gateway/src/server.rs:441-443` `crates/llm-gateway/src/inventory.rs:306` | partial | `GET /v1/routes` lists routes with `context_window` and contacts nothing, but needs the owner credential, is not the OpenAI list shape and carries no wires. |
 | R6 | `POST /v1/chat/completions`: OpenAI chat completions, streaming and not | `src/lib.rs:132` `src/lib.rs:459-461` | `crates/llm-gateway/src/relay.rs:31-51` `crates/llm-gateway/src/server.rs:516-546` `crates/llm-gateway/tests/wire_relay.rs:708` | covered | Library behaviour (`Gateway::bind_with_relay`), relayed to the same path at the target. llmgw serves it unauthenticated; llm-gateway asks for the owner's bearer credential (`wire_relay.rs:747`) and refuses another method with `allow: POST` (`wire_relay.rs:779`). |
 | R7 | `POST /v1/responses`: the Codex wire | `src/lib.rs:133` `src/lib.rs:463-465` | `crates/llm-gateway/src/relay.rs:31-51` `crates/llm-gateway/tests/wire_relay.rs:721` | covered | As R6. |
@@ -163,9 +166,9 @@ below. The llm-gateway column mostly cites `RunpodModel` in `crates/llm-runpod/s
 
 | ID | llmgw capability | llmgw | llm-gateway | Status | Note |
 | --- | --- | --- | --- | --- | --- |
-| O1 | Process-wide counters, prefix `llmgw_`: `inference_requests_total`, `upstream_failures_total`, `instruction_views_total`, `pod_starts_total`, `pod_start_failures_total`, `pod_reaps_total`, `endpoint_invalidations_total`, `cold_start_wait_seconds_total` | `src/lib.rs:144-192` `src/runpod.rs:292-296` | `crates/llm-runpod/src/pool.rs:134-145` | gap | `CleanupReport` describes one reap pass. Nothing counts or exports. |
-| O2 | Per-model, per-wire counters, pre-registered at zero: `route_requests_total`, `route_refusals_total`, `route_upstream_status_failures_total`, `route_cold_start_holds_total`, `route_response_bytes_total` | `src/lib.rs:53-89` `src/lib.rs:170-179` `src/lib.rs:193-210` | none | gap | |
-| O3 | Structured logs through `tracing`, level from `RUST_LOG` (default `info`) | `src/main.rs:29-33` `src/runpod.rs:459` | none | gap | No crate in llm-gateway logs. |
+| O1 | Process-wide counters, prefix `llmgw_`: `inference_requests_total`, `upstream_failures_total`, `instruction_views_total`, `pod_starts_total`, `pod_start_failures_total`, `pod_reaps_total`, `endpoint_invalidations_total`, `cold_start_wait_seconds_total` | `src/lib.rs:144-192` `src/runpod.rs:292-296` | `crates/llm-gateway/src/metrics.rs:82-115` `crates/llm-gateway/src/server.rs:348` `crates/llm-gateway/src/relay.rs:687-705` `crates/llm-gateway-cli/src/relaying.rs:308-359` `crates/llm-gateway/tests/observability.rs:456` `crates/llm-gateway/tests/observability.rs:571` `crates/llm-gateway/tests/observability.rs:699` `crates/llm-gateway-cli/tests/relaying.rs:739` `crates/llm-gateway-cli/tests/relaying.rs:785` `crates/llm-gateway-cli/tests/relaying.rs:815` | covered | Same names. One `UsageRecord` per authenticated request to a wire path feeds `inference_requests_total`, and `upstream_failures_total` when no target answered it (unreachable, or closed without an answer), as llmgw `src/lib.rs:598-604`; the gateway counts `endpoint_invalidations_total` when it reports a target failed and `cold_start_wait_seconds_total` for a request held for a starting target. The binary counts the pod series from the pool's results: a request's hold binding to a new deployment is a start, `no-capacity`, `crash-loop`, `credential-refused` and `startup-deadline` are start failures, and every deployment or pod a cleanup pass stops is a reap. `instruction_views_total` stays 0 until `GET /` (R1). |
+| O2 | Per-model, per-wire counters, pre-registered at zero: `route_requests_total`, `route_refusals_total`, `route_upstream_status_failures_total`, `route_cold_start_holds_total`, `route_response_bytes_total` | `src/lib.rs:53-89` `src/lib.rs:170-179` `src/lib.rs:193-210` | `crates/llm-gateway/src/metrics.rs:118-139` `crates/llm-gateway/src/metrics.rs:222-256` `crates/llm-gateway/src/relay.rs:234-253` `crates/llm-gateway/tests/observability.rs:420` `crates/llm-gateway/tests/observability.rs:571` `crates/llm-gateway/tests/observability.rs:741` | covered | Labels `model` and `wire`, as llmgw. Every (model, wire) a relayed model declares is registered at zero when the relay is composed; a request on another pair feeds the process-wide series only. As llmgw `src/lib.rs:598-629`: `route_upstream_status_failures_total` counts every call whose target answered outside 2xx, a relayed 4xx or 500 and a 502, 503 or 504 answered `upstream-failed` alike, and `route_refusals_total` counts refusals and calls no target answered; `route_cold_start_holds_total` counts a request the source held for a starting target (`RelayTarget::held`) or answered `model-cold-start`. |
+| O3 | Structured logs through `tracing`, level from `RUST_LOG` (default `info`) | `src/main.rs:29-33` `src/runpod.rs:459` | `crates/llm-gateway-cli/src/logging.rs:19-70` `crates/llm-gateway-cli/src/main.rs:32` `crates/llm-gateway-cli/tests/observability.rs:86` `crates/llm-gateway-cli/tests/observability.rs:126` `crates/llm-gateway-cli/tests/observability.rs:191` `crates/llm-gateway-cli/tests/adversary_w04_observability.rs:24` | covered | Only the binary crate logs; the gateway crate hands records out through `UsageRecords` and still declares no dependency. Events go to standard error, uncoloured, beside the binary's three published lines, which are not events and are unchanged. Each usage record is one `info` event; a `RUST_LOG` directive it cannot read is dropped without a line (`adversary_w04_observability.rs:24`); pod starts, start failures and stopping cleanup passes are events too. The shipped binary relays nothing yet, so at the default level it writes only its published lines (`observability.rs:191`). |
 
 ## Deployment and operation
 
@@ -183,22 +186,13 @@ below. The llm-gateway column mostly cites `RunpodModel` in `crates/llm-runpod/s
 One line per gap or partial row, written as a story title.
 
 - llm-gateway answers `GET /` with setup instructions for the client that asks (R1)
-- llm-gateway serves Prometheus metrics at `GET /metrics` (R4)
 - llm-gateway lists its models in the OpenAI `/v1/models` shape, with their wires, without waking a pod (R5)
-- A cold start past its hold budget answers 503 with `Retry-After` (W6)
 - A production Runpod transport reads its API key from a trusted file (K7)
-- A model declares its request hold budget separately from its startup deadline (K28)
 - A production Runpod transport lists pods over the REST API (B2)
 - A production Runpod transport creates pods over the REST API (B3)
 - A production Runpod transport terminates pods over the REST API (B4)
 - A production Runpod transport reads container uptime over GraphQL (B5)
 - A production Runpod transport probes vLLM readiness at the pod (B6)
-- A request for a cold model is held until the pod serves, instead of being told to retry (L6)
-- A running gateway steps the reaper and orphan sweep on a fixed interval (L13)
-- The gateway sweeps orphaned pods once at startup (L15)
-- The gateway exports process-wide request and pod counters (O1)
-- The gateway exports per-model, per-wire counters pre-registered at zero (O2)
-- The gateway writes structured logs at a level set by `RUST_LOG` (O3)
 
 ## Not established
 

@@ -8,8 +8,8 @@
 //! command of `spec/domains/gateway.yaml`.
 
 use crate::{
-    body,
-    error::{RefusalCode, RelayError},
+    auth, body,
+    error::{RefusalCode, RelayError, TokenError},
     inventory::Label,
 };
 use std::{
@@ -69,11 +69,52 @@ pub trait RelayStream: Read + Write + Send {}
 
 impl<T: Read + Write + Send> RelayStream for T {}
 
+/// The credential a target expects as `authorization: Bearer <key>` (row B8): for a Runpod pod,
+/// the model's vLLM key. The embedding resolves it and builds this once; the gateway only
+/// writes it into the head it sends that target. It follows the owner material's rules, so it
+/// is one token wherever it is written. It is redacted in `Debug`, has no `Display` and no
+/// `Clone`, and its bytes are overwritten when it is dropped.
+pub struct TargetBearer(Vec<u8>);
+
+impl TargetBearer {
+    /// Accepts printable US-ASCII credential material of 1..=4096 bytes.
+    ///
+    /// # Errors
+    /// Returns [`TokenError`] for empty, oversized or non-printable material, naming the rule
+    /// and never the material.
+    pub fn new(material: Vec<u8>) -> Result<Self, TokenError> {
+        let bearer = Self(material);
+        auth::check_token(&bearer.0)?;
+        Ok(bearer)
+    }
+}
+
+impl fmt::Debug for TargetBearer {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("TargetBearer([REDACTED])")
+    }
+}
+
+impl Drop for TargetBearer {
+    fn drop(&mut self) {
+        // Best effort without a `zeroize` dependency, as `OwnerToken` does.
+        self.0.fill(0);
+        std::hint::black_box(&self.0);
+    }
+}
+
 /// One target, held for as long as a relayed answer streams and released when dropped.
 pub trait RelayTarget: Send {
     /// The target's `host[:port]`. It is sent as `host`, and it is what the gateway names back
     /// in [`RelayTargets::invalidate`] when a request through this target fails.
     fn authority(&self) -> &str;
+
+    /// The credential this target expects, sent as `authorization: Bearer <key>`. `None`, the
+    /// default, sends no `authorization`. The client's own headers are never forwarded, so the
+    /// owner's credential never reaches a target.
+    fn bearer(&self) -> Option<&TargetBearer> {
+        None
+    }
 
     /// Opens one connection to the target. Its read and write timeouts are the target's.
     ///
@@ -579,16 +620,34 @@ pub(crate) fn serve(
         RefusalCode::UpstreamFailed
     };
     let mut connection = target.connect().map_err(|_| failed())?;
-    let request = format!(
-        "POST {} HTTP/1.1\r\nhost: {}\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+    // The head is the gateway's own: no header of the client's request is forwarded, so the
+    // owner's credential never reaches a target. The target's bearer is one printable token
+    // (`TargetBearer::new`), so it cannot end the line it is written into.
+    let mut request = format!(
+        "POST {} HTTP/1.1\r\nhost: {}\r\n",
         admitted.wire.path(),
-        target.authority(),
-        rewritten.len()
+        target.authority()
+    )
+    .into_bytes();
+    if let Some(bearer) = target.bearer() {
+        request.extend_from_slice(b"authorization: Bearer ");
+        request.extend_from_slice(&bearer.0);
+        request.extend_from_slice(b"\r\n");
+    }
+    request.extend_from_slice(
+        format!(
+            "content-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            rewritten.len()
+        )
+        .as_bytes(),
     );
     let sent = connection
-        .write_all(request.as_bytes())
+        .write_all(&request)
         .and_then(|()| connection.write_all(&rewritten))
         .and_then(|()| connection.flush());
+    // The head holds the bearer's bytes: overwrite them as `TargetBearer` does its own.
+    request.fill(0);
+    std::hint::black_box(&request);
     drop(rewritten);
     if sent.is_err() {
         return Err(failed());

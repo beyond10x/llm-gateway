@@ -10,10 +10,17 @@
 mod config;
 mod keys;
 mod refusal;
+mod relaying;
 mod serve;
 mod trusted;
 
 pub use config::{Deployment, Model, Provider, ProviderKind, Wire, load};
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use refusal::{Refusal, Source, StartupRefusal};
+pub use relaying::{
+    ACCOUNT, CLEANUP_INTERVAL, CONTROLLER, CRASH_RESTART_LIMIT, CRASH_WINDOW_MS, LEASE_MS, LEDGER,
+    MAX_LIFETIME_MS, PROVIDER, PodConnector, RESERVATION, Relaying, WallClock,
+    compute_authorization, hosting_policy, idle_timeout_ms, runpod_models, runpod_pool,
+    secret_name, start_relaying,
+};
 pub use serve::{Running, StopSignal, Stopped, inventory, owner_verifier, start};

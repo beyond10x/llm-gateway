@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T15:14:42Z",
+  "actor": "human:timo",
+  "artifact": "story:container-image",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --locked --test dockerfile --test profiles",
+    "reference": "impl/container-image 18db48a red (0 passed; 5 failed / 0 passed; 3 failed) vs squash 6d88a65 (5 + 3 passed)"
+  }
+}

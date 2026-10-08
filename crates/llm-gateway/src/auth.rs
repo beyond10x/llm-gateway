@@ -28,15 +28,7 @@ impl OwnerToken {
     /// and never the material.
     pub fn new(material: Vec<u8>) -> Result<Self, TokenError> {
         let token = Self(material);
-        if token.0.is_empty() {
-            return Err(TokenError::Empty);
-        }
-        if token.0.len() > MAX_TOKEN_BYTES {
-            return Err(TokenError::TooLarge);
-        }
-        if !token.0.iter().all(u8::is_ascii_graphic) {
-            return Err(TokenError::NotPrintableAscii);
-        }
+        check_token(&token.0)?;
         Ok(token)
     }
 
@@ -48,6 +40,21 @@ impl OwnerToken {
     pub(crate) fn digest(&self) -> [u8; 32] {
         sha256(&self.0)
     }
+}
+
+/// The rules every credential this crate holds follows: 1..=4096 bytes of printable US-ASCII,
+/// so it is one token wherever it is written.
+pub(crate) fn check_token(material: &[u8]) -> Result<(), TokenError> {
+    if material.is_empty() {
+        return Err(TokenError::Empty);
+    }
+    if material.len() > MAX_TOKEN_BYTES {
+        return Err(TokenError::TooLarge);
+    }
+    if !material.iter().all(u8::is_ascii_graphic) {
+        return Err(TokenError::NotPrintableAscii);
+    }
+    Ok(())
 }
 
 impl fmt::Debug for OwnerToken {

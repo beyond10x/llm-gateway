@@ -4,11 +4,11 @@ id: epic:hosting
 kind: epic
 status: draft
 title: Provisioned inference
-revision: 1
+revision: 3
 ---
 ## Outcome
 
-Provisioned inference supplies its part of the full foundation described in docs/design.md.
+Provisioned inference supplies its part of the full foundation described in llm's `docs/design.md` (https://github.com/beyond10x/llm at `8d8e752d`); this repository's part is the hosting contract in `docs/hosting.md`.
 
 ## Done when
 
@@ -16,7 +16,7 @@ All child outcomes have retained verification evidence and their contracts are i
 
 ## Evidence
 
-Operator direction 2026-09-19; docs/design.md; spec/system.yaml.
+Operator direction 2026-09-19. The design it cites is llm's: `docs/design.md` and `spec/system.yaml` in https://github.com/beyond10x/llm at `8d8e752d`. In this repository the hosting contract is `docs/hosting.md`, the system is `spec/system.yaml` and the hosting domain is `spec/domains/hosting.yaml`.
 
 ## Moved
 

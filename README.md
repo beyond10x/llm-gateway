@@ -9,9 +9,10 @@ model; this repository answers them and, later, starts the pods they reach.
 [docs/gateway.md](docs/gateway.md) (the gateway's HTTP surface, refusals, lifecycle and bounds),
 [docs/hosting.md](docs/hosting.md) (the owned-resource hosting lifecycle) and
 [docs/llmgw-capability-matrix.md](docs/llmgw-capability-matrix.md) (what is still missing before
-it can replace llmgw, row by row).
+it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
+model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.2.0, released 2026-10-08 as a source release; tested against in-process fakes and
+**Status: 0.3.0, released 2026-10-08 as a source release; tested against in-process fakes and
 loopback; nothing is deployed or qualified.**
 
 ## What it is not

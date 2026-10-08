@@ -180,3 +180,43 @@ pub fn start(deployment: &Deployment) -> Result<Running, Refusal> {
         vllm_keys,
     })
 }
+
+impl Running {
+    /// Drains and stops the gateway gracefully now, without waiting for a signal.
+    pub fn shutdown(self) -> ShutdownReport {
+        self.handle.begin_drain();
+        self.handle.shutdown()
+    }
+
+    /// A running gateway from its parts, for the relay composition in `relaying.rs`.
+    pub(crate) fn from_parts(
+        handle: GatewayHandle,
+        signals: Signals,
+        vllm_keys: crate::keys::VllmKeys,
+    ) -> Self {
+        Self {
+            handle,
+            signals,
+            vllm_keys,
+        }
+    }
+
+    /// Blocks until SIGINT or SIGTERM and names it, as [`Self::wait_for_stop`] does, without
+    /// stopping anything.
+    pub(crate) fn wait_for_signal(&mut self) -> StopSignal {
+        self.signals
+            .forever()
+            .find_map(|signal| match signal {
+                SIGINT => Some(StopSignal::Sigint),
+                SIGTERM => Some(StopSignal::Sigterm),
+                _ => None,
+            })
+            .unwrap_or(StopSignal::Sigterm)
+    }
+
+    /// Installs the stop signals, as [`start`] does.
+    pub(crate) fn install_signals() -> Result<Signals, Refusal> {
+        Signals::new([SIGINT, SIGTERM])
+            .map_err(|error| Refusal::new(StartupRefusal::SignalInstall, error.to_string()))
+    }
+}

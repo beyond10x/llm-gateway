@@ -307,7 +307,7 @@ through `b10x-llm-providers`, and uses neither: it calls only `descriptions::run
 | request id | none | a readable prefix of at most 64 bytes (`request-<controller>-<alias>-<generation>-`, cut short when long) followed by a 128-bit digest of a length-prefixed encoding of controller, alias, generation, instant and a per-process nonce: at most 96 bytes, so it always fits the identifier limit. Two different tuples never share an encoding — `c-qwen`/`x` and `c`/`qwen-x` do not — so two request ids agree only if the digest collides. The digest is the standard library's hasher run twice, not a cryptographic hash; it has to avoid accidents, not an adversary |
 | pod status | — | only `TERMINATED` ends a resource. `EXITED` is a stopped pod that still exists and is billed: it is reported present-but-not-running, terminated, and replaced (`pod-exited`). An endpoint is reported only for a `RUNNING` pod; otherwise it is `None` |
 | endpoint | — | `https://<pod id>-8000.proxy.runpod.net/v1/`, `/v1/` included, built by llm's Runpod provider description (`b10x-llm-providers` 0.5.0, `descriptions::runpod().inference_base_url(<pod id>)`); this crate holds no URL format of its own. A running pod whose id the description refuses (anything but 1-48 bytes of `[a-z0-9]`) reports no endpoint, as a pod that is not running does, and is observed not ready whatever its probe answers: no ready lease is handed out without an endpoint, and the startup deadline terminates the pod (`startup-deadline`) like one that never becomes ready. `EmulatedRunpod` issues `pod1`, `pod2`, … |
-| vLLM key | derived from the Runpod API key and passed as `--api-key` | a Runpod secret reference in `VLLM_API_KEY` (`{{ RUNPOD_SECRET_<name> }}`); no value passes through this process |
+| vLLM key | derived from the Runpod API key and passed as `--api-key` | the pod gets a Runpod secret reference in `VLLM_API_KEY` (`{{ RUNPOD_SECRET_<name> }}`), and no key value passes through `b10x-llm-runpod`. The binary does hold the value: it reads each model's `vllm_api_key_file` at startup (`crates/llm-gateway-cli/src/keys.rs`) and the relay sends it to the pod as `authorization: Bearer <key>` (row B8) |
 
 Runpod settings — ordered GPU types, cloud type, disk, the mounted network volume and its
 `HF_HOME`, data-center pinning, startup deadline, idle timeout, crash-restart limit and every
@@ -316,6 +316,52 @@ declared one, or names an undeclared model, is not sent.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out.
+
+### The pool the binary composes
+
+`llm_gateway_cli::start_relaying` composes one `RunpodPool` from the deployment document and
+relays each model to the pod it hands out, with the model's vLLM key as the bearer (row B8). The
+shipped binary has no Runpod transport and never calls it; story:live-runpod-wiring supplies one.
+Its tests run it over `EmulatedRunpod` and a loopback pod. Every input is fixed or read from the
+document (`spec/domains/deployment.yaml`):
+
+| Input | Source | Value |
+| --- | --- | --- |
+| `ComputeAuthorization` | fixed | ledger `b10x-llm-gateway`, reservation `unmetered`; no budget ledger is consulted yet |
+| clock | fixed | `WallClock`: system time in Unix milliseconds, never moving backwards |
+| `LeaseRegistry` | fixed | one empty in-process registry per run |
+| `HostingPolicy` | fixed, and the document | controller `b10x-llm-gateway`, provider `runpod`, account `default`, ledger `b10x-llm-gateway`, `max_lifetime_ms` 86400000 (24 h), `lease_ms` 300000 (5 min); `max_active` is the number of declared models |
+| `RunpodModel` | the document, and fixed | `hf_model`, `image`, `gpu_types`, `disk_gb`, the volume, `data_center_ids` and the vLLM settings from `[models.<alias>]`; `cloud_type` from its provider; `startup_deadline_ms` from `start_wait_seconds`, which is also how long a request waits for the pod; `idle_timeout_ms` from `idle_timeout_minutes`. Fixed: `crash_restart_limit` 2, `crash_window_ms` 600000, and `api_key_secret` `vllm_<alias>` with every `-` and `.` written `_` |
+
+Every relayed model must name a `vllm_api_key_file` (`config:value` otherwise), because its pod
+always expects the key. The pool runs one cleanup pass before the gateway is marked ready, which
+sweeps what a previous run of this controller left, and then one every 60 seconds until the stop.
+
+**`idle_timeout_minutes = 0` means no idle grace** (row K27). The pod is stopped by the first
+cleanup pass that finds it with no request in flight, and never sooner than its measured cold
+start, the floor every idle limit has. `RunpodModel` takes no zero window, so 0 is written as
+1 ms. `k27_*` in `crates/llm-gateway-cli/tests/relaying.rs` prove both bounds.
+
+A pod counts as in use while a request holds it and while one waits for it: its idle clock starts
+no earlier than the step that first finds it ready, so the request that started it, still waiting
+in `acquire`, finds it standing (`l10_a_pod_is_idle_only_from_the_step_that_first_finds_it_ready`
+in `crates/llm-runpod/tests/runpod.rs`). A pod nobody comes back for is stopped once its idle limit
+has passed after that step.
+
+A request through the relay that fails drops its pod (row W7): the gateway reports the failed
+authority to `invalidate`, and `RunpodPool::invalidate` stops the model's current pod if its
+endpoint is that authority's, so the next request starts a replacement. A report about a pod
+already replaced stops nothing.
+
+During the stop a request may still use a pod that is ready now (`RunpodPool::ensure_running`),
+but starts no pod and waits for none: with no ready pod for its model, or still waiting for one
+when the stop begins, it is answered `target-unavailable` at once, so the graceful stop is not
+held for `start_wait_seconds`.
+
+**Pods outlive the process.** Stopping the gateway stops no pod: a pod created during the run keeps
+running, and billing, after the process has exited. The next start's cleanup pass, run before the
+gateway is marked ready, terminates every pod this controller created that no live record holds,
+which after a restart is all of them.
 
 **Open: orphan and inherited terminations bypass the controller.** An inherited pod whose record
 is parked in `ownership-lost` is terminated through the provider too, because the controller

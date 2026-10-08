@@ -472,12 +472,13 @@ mod relay {
     use ess_conformance::target::TargetError;
     use llm_gateway::{
         Gateway, GatewayConfig, GatewayHandle, OwnerToken, Relay, RelayError, RelayModel,
-        RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, Wire,
+        RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
+        Wire,
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
     use std::{
-        collections::VecDeque,
+        collections::{BTreeMap, VecDeque},
         io::{self, Read, Write},
         net::{Shutdown, SocketAddr, TcpListener, TcpStream},
         sync::{
@@ -522,6 +523,9 @@ mod relay {
         alias: String,
         upstream_model: String,
         wires: Vec<String>,
+        /// The key every target handed out for this model carries (row B8).
+        #[serde(default)]
+        bearer: Option<String>,
     }
 
     /// One scripted answer: a reply, or a transport failure.
@@ -619,6 +623,11 @@ mod relay {
     #[derive(Default)]
     struct Shared {
         upstream: Mutex<Vec<String>>,
+        /// Per request a pod received, its `authorization` value or `absent`.
+        authorizations: Mutex<Vec<String>>,
+        /// The owner secret, searched for in every byte a pod reads.
+        secret: Vec<u8>,
+        secret_upstream: AtomicBool,
         progress: Mutex<Arc<Progress>>,
         stopping: AtomicBool,
     }
@@ -671,10 +680,16 @@ mod relay {
         let Some(answer) = answer else {
             return;
         };
-        if let Some(seen) = read_request(&mut connection)
-            && let Ok(mut upstream) = shared.upstream.lock()
-        {
-            upstream.push(format!("{pod} {seen}"));
+        if let Some(seen) = read_request(&mut connection) {
+            if !shared.secret.is_empty() && find(&seen.raw, &shared.secret).is_some() {
+                shared.secret_upstream.store(true, Ordering::SeqCst);
+            }
+            if let Ok(mut upstream) = shared.upstream.lock() {
+                upstream.push(format!("{pod} {}", seen.summary));
+            }
+            if let Ok(mut authorizations) = shared.authorizations.lock() {
+                authorizations.push(seen.authorization.unwrap_or_else(|| "absent".to_owned()));
+            }
         }
         let Some(status) = answer.status else {
             // `closed`: the request was read, and no byte of answer follows.
@@ -734,8 +749,17 @@ mod relay {
         let _closed = connection.shutdown(Shutdown::Both);
     }
 
-    /// One request as `<method> <path> <body>`, reading a `content-length` body.
-    fn read_request(connection: &mut TcpStream) -> Option<String> {
+    /// One request a pod read.
+    struct Seen {
+        /// `<method> <path> <body>`.
+        summary: String,
+        authorization: Option<String>,
+        /// Every byte read for the request, head and body.
+        raw: Vec<u8>,
+    }
+
+    /// One request, reading a `content-length` body.
+    fn read_request(connection: &mut TcpStream) -> Option<Seen> {
         let mut buffer = Vec::new();
         let mut chunk = [0_u8; 16_384];
         let end = loop {
@@ -749,11 +773,15 @@ mod relay {
             buffer.extend_from_slice(&chunk[..read]);
         };
         let head = String::from_utf8_lossy(&buffer[..end]).into_owned();
-        let length: usize = head
-            .split("\r\n")
-            .filter_map(|line| line.split_once(':'))
-            .find(|(name, _)| name.trim().eq_ignore_ascii_case("content-length"))
-            .and_then(|(_, value)| value.trim().parse().ok())
+        let header = |wanted: &str| {
+            head.split("\r\n")
+                .skip(1)
+                .filter_map(|line| line.split_once(':'))
+                .find(|(name, _)| name.trim().eq_ignore_ascii_case(wanted))
+                .map(|(_, value)| value.trim().to_owned())
+        };
+        let length: usize = header("content-length")
+            .and_then(|value| value.parse().ok())
             .unwrap_or(0);
         let mut body = buffer[end + 4..].to_vec();
         while body.len() < length {
@@ -763,14 +791,19 @@ mod relay {
             }
             body.extend_from_slice(&chunk[..read]);
         }
+        let raw = [&buffer[..end + 4], body.as_slice()].concat();
         let mut start = head.split("\r\n").next()?.split(' ');
         let (method, path) = (start.next()?, start.next()?);
-        let body = if body.len() > RECORDED_BODY_BYTES {
+        let text = if body.len() > RECORDED_BODY_BYTES {
             format!("{} bytes", body.len())
         } else {
             String::from_utf8_lossy(&body).into_owned()
         };
-        Some(format!("{method} {path} {body}"))
+        Some(Seen {
+            summary: format!("{method} {path} {text}"),
+            authorization: header("authorization"),
+            raw,
+        })
     }
 
     fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
@@ -786,6 +819,8 @@ mod relay {
 
     struct Source {
         pods: Vec<PodSlot>,
+        /// Each model's bearer, set once the gateway is composed.
+        bearers: Mutex<BTreeMap<String, Arc<TargetBearer>>>,
         current: Mutex<usize>,
         acquired: AtomicUsize,
         released: Arc<AtomicUsize>,
@@ -795,17 +830,20 @@ mod relay {
     struct Target {
         authority: String,
         script: Arc<Mutex<VecDeque<AnswerInput>>>,
+        bearer: Option<Arc<TargetBearer>>,
         released: Arc<AtomicUsize>,
     }
 
     impl RelayTargets for Source {
-        fn acquire(&self, _alias: &str) -> Option<Box<dyn RelayTarget>> {
+        fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
             self.acquired.fetch_add(1, Ordering::SeqCst);
             let current = *self.current.lock().ok()?;
             let (_, authority, script) = self.pods.get(current)?;
+            let bearer = self.bearers.lock().ok()?.get(alias).cloned();
             Some(Box::new(Target {
                 authority: authority.clone(),
                 script: Arc::clone(script),
+                bearer,
                 released: Arc::clone(&self.released),
             }))
         }
@@ -828,6 +866,10 @@ mod relay {
     impl RelayTarget for Target {
         fn authority(&self) -> &str {
             &self.authority
+        }
+
+        fn bearer(&self) -> Option<&TargetBearer> {
+            self.bearer.as_deref()
         }
 
         fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -899,6 +941,18 @@ mod relay {
                     .map_err(relay_error)?,
             );
         }
+        let mut bearers = BTreeMap::new();
+        for model in &program.models {
+            if let Some(bearer) = &model.bearer {
+                let bearer = TargetBearer::new(bearer.as_bytes().to_vec())
+                    .map_err(|error| format!("bearer:{}", token_code(error)))?;
+                bearers.insert(model.alias.clone(), Arc::new(bearer));
+            }
+        }
+        *source
+            .bearers
+            .lock()
+            .map_err(|_| "fixture:bearers".to_owned())? = bearers;
         let relay = Relay::new(models, source).map_err(relay_error)?;
         let inventory =
             RouteInventory::new(Vec::new()).map_err(|_| "fixture:inventory".to_owned())?;
@@ -1078,7 +1132,7 @@ mod relay {
         let mut facts = json!({
             "valid_program": false, "error_code": null, "results": [], "bodies": [],
             "headers": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
-            "released": 0
+            "released": 0, "authorizations": [], "secret_upstream": false
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -1090,7 +1144,10 @@ mod relay {
             return facts;
         }
         facts["valid_program"] = json!(true);
-        let shared = Arc::new(Shared::default());
+        let shared = Arc::new(Shared {
+            secret: program.secret.as_bytes().to_vec(),
+            ..Shared::default()
+        });
         let mut pods = Vec::new();
         for (index, script) in program.pods.iter().enumerate() {
             let Ok(pod) = Pod::start(index, script.clone(), &shared) else {
@@ -1111,6 +1168,7 @@ mod relay {
                     )
                 })
                 .collect(),
+            bearers: Mutex::new(BTreeMap::new()),
             current: Mutex::new(0),
             acquired: AtomicUsize::new(0),
             released: Arc::new(AtomicUsize::new(0)),
@@ -1133,6 +1191,14 @@ mod relay {
                 .map(|seen| seen.clone())
                 .unwrap_or_default()
         );
+        facts["authorizations"] = json!(
+            shared
+                .authorizations
+                .lock()
+                .map(|seen| seen.clone())
+                .unwrap_or_default()
+        );
+        facts["secret_upstream"] = json!(shared.secret_upstream.load(Ordering::SeqCst));
         facts["acquired"] = json!(source.acquired.load(Ordering::SeqCst));
         facts["invalidated"] = json!(
             source

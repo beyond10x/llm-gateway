@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-08T15:09:07Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-deployment",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "impl/gateway-deployment cc152f8",
+    "review": "review-result:adversary-w03-gateway-deployment-pass-1",
+    "outcome": "fixed"
+  }
+}

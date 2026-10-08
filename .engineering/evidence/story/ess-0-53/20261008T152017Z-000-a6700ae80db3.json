@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T15:20:17Z",
+  "actor": "human:timo",
+  "artifact": "story:ess-0-53",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check steps on wave/2026-10-08-w03 5c434ed (Rust 1.98.0, ess 0.56.0)",
+    "reference": "test 35 targets 349 passed (rerun after one ConnectionReset in adversary_pass_2, 0/30 alone), fmt 0, clippy 0, validate 0, conformance total 181 passed 181 skipped 0 x3"
+  }
+}

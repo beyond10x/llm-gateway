@@ -421,6 +421,26 @@ impl<T: RunpodTransport> RunpodPool<T> {
         alias: &Identifier,
         authorization: &ComputeAuthorization,
     ) -> Result<StreamLease, PoolError> {
+        self.hand_out(alias, Some(authorization))
+    }
+
+    /// Hands out the model's pod only if it is ready now, and never starts one: when no pod is
+    /// live, or the live one is not ready, it is [`PoolError::Starting`] and nothing was
+    /// submitted. For a caller that is stopping and may still use what already serves.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::ensure`]; [`PoolError::Starting`] also when no pod is live.
+    pub fn ensure_running(&self, alias: &Identifier) -> Result<StreamLease, PoolError> {
+        self.hand_out(alias, None)
+    }
+
+    /// [`Self::ensure`] when `authorization` is given; without it, nothing is started.
+    fn hand_out(
+        &self,
+        alias: &Identifier,
+        authorization: Option<&ComputeAuthorization>,
+    ) -> Result<StreamLease, PoolError> {
         let mut inner = self.lock();
         if !inner.models.contains_key(alias) {
             return Err(PoolError::UnknownModel);
@@ -437,7 +457,10 @@ impl<T: RunpodTransport> RunpodPool<T> {
         inner.forget_terminal(alias);
         let current = inner.slots.get(alias).and_then(|slot| slot.current.clone());
         let Some(deployment) = current else {
-            return inner.start(now, alias, authorization);
+            return match authorization {
+                Some(authorization) => inner.start(now, alias, authorization),
+                None => Err(PoolError::Starting),
+            };
         };
         let record = inner.record(&deployment).ok_or(PoolError::Starting)?;
         match record.phase {
@@ -487,6 +510,51 @@ impl<T: RunpodTransport> RunpodPool<T> {
             inner.forget_terminal(&alias);
         }
         Ok(report)
+    }
+
+    /// Drops a model's current endpoint after a request through it failed (row W7): when the
+    /// current deployment's reported endpoint satisfies `failed`, its stop is requested and
+    /// submitted at once, so the next [`Self::ensure`] starts a replacement. A deployment that
+    /// already changed, or whose endpoint does not match, is left alone: a stale report never
+    /// stops the replacement. Returns whether a stop was requested.
+    ///
+    /// # Errors
+    ///
+    /// [`PoolError::UnknownModel`] for an undeclared alias, and [`PoolError::Hosting`] when the
+    /// controller refuses the clock.
+    pub fn invalidate(
+        &self,
+        alias: &Identifier,
+        failed: impl Fn(&str) -> bool,
+    ) -> Result<bool, PoolError> {
+        let mut inner = self.lock();
+        if !inner.models.contains_key(alias) {
+            return Err(PoolError::UnknownModel);
+        }
+        let now = self.clock.now_ms();
+        let current = inner.slots.get(alias).and_then(|slot| slot.current.clone());
+        let Some(record) = current.and_then(|deployment| inner.record(&deployment)) else {
+            return Ok(false);
+        };
+        let matches = record
+            .observed
+            .as_ref()
+            .and_then(|observed| observed.endpoint.as_deref())
+            .is_some_and(failed);
+        if !matches || !matches!(record.phase, Phase::Requested | Phase::Active) {
+            return Ok(false);
+        }
+        let requested = inner
+            .apply(
+                now,
+                HostingCommand::RequestStop {
+                    deployment: record.deployment.clone(),
+                },
+            )
+            .is_ok();
+        inner.submit_owed_stops(now);
+        inner.forget_terminal(alias);
+        Ok(requested)
     }
 
     /// The controller's view. Contacts nobody.
@@ -664,6 +732,11 @@ impl<T: RunpodTransport> Inner<T> {
         if ready_now(record, now) {
             if !slot.ready_seen && slot.created_here {
                 slot.measured_start_ms = Some(now.saturating_sub(slot.deadline_from_ms));
+            }
+            if !slot.ready_seen {
+                // A pod is idle only from the moment it could first serve: the request that
+                // started it may still be waiting for it, and must find it standing.
+                slot.usage.last_used_ms.fetch_max(now, Ordering::SeqCst);
             }
             slot.ready_seen = true;
             slot.last_ready_ms = Some(now);

@@ -43,7 +43,7 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 179 of at least 179 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 181 of at least 181 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
 | No test makes a paid call or provisions an external resource | no production transport exists; adding one is `story:runpod-production-transport` and must keep its tests on the emulator |
 
@@ -78,9 +78,9 @@ Never edit these by hand; change `spec/` or the scenarios and regenerate:
 | `contracts/suite.json` | `ess verify conform synthesize --path spec --suite-format 5 --target ir --scenarios contracts --out contracts/suite.json` |
 | `contracts/schema/schema/` | `ess generate --path spec --kind schema --out contracts/schema` |
 
-`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.52.0 release asset, checked
+`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.56.0 release asset, checked
 against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
-`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.52.0`. Move
+`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.56.0`. Move
 all three together, to the newest ESS release (workspace rule), and regenerate both files in the
 same commit.
 

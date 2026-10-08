@@ -1,0 +1,6 @@
+/target/
+/.engineering/
+/.git/
+/docs/
+/contracts/
+/spec/

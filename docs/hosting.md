@@ -353,8 +353,10 @@ authority to `invalidate`, and `RunpodPool::invalidate` stops the model's curren
 endpoint is that authority's, so the next request starts a replacement. A report about a pod
 already replaced stops nothing.
 
-A request still waiting for its pod when the gateway starts to stop gives up at once, answered
-`target-unavailable`, so the graceful stop is not held for `start_wait_seconds`.
+During the stop a request may still use a pod that is ready now (`RunpodPool::ensure_running`),
+but starts no pod and waits for none: with no ready pod for its model, or still waiting for one
+when the stop begins, it is answered `target-unavailable` at once, so the graceful stop is not
+held for `start_wait_seconds`.
 
 **Pods outlive the process.** Stopping the gateway stops no pod: a pod created during the run keeps
 running, and billing, after the process has exited. The next start's cleanup pass, run before the

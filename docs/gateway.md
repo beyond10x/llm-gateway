@@ -156,7 +156,9 @@ A request to a wire path is decided in this order:
    reaches a target. A `TargetBearer` follows the owner material's rules, refused as
    `bearer:empty`, `bearer:too-large` (over `owner-credential-bytes`) and
    `bearer:not-printable-ascii`, so it is one token in the line it is written into; it is
-   redacted in `Debug` and overwritten when dropped.
+   redacted in `Debug` and overwritten when dropped. The embedding decides what a stop does
+   to `acquire`: the Runpod composition hands out a pod that is ready now and answers
+   `target-unavailable` at once instead of starting or awaiting one (`docs/hosting.md`).
 8. A connection that fails, a request that cannot be written, an answer head that never arrives
    or is malformed, and a `502`, `503` or `504` answer each report the target to `invalidate` by
    its authority and answer `upstream-failed` (502). Naming the authority lets the pool drop the

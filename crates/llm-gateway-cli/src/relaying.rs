@@ -306,16 +306,20 @@ fn authority(endpoint: &str) -> Option<&str> {
 
 impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// Asks the pool for the model's ready pod, and while it is starting asks again until the
-    /// model's `start_wait_seconds` have passed. Once the gateway starts to stop, a waiting
-    /// request gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
+    /// model's `start_wait_seconds` have passed. Once the gateway starts to stop, a request may
+    /// still use a pod that is ready now, but starts none and waits for none: without a ready
+    /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
     fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
         let relayed = self.models.get(alias)?;
         let deadline = Instant::now() + relayed.wait;
         loop {
-            if self.stopping.load(Ordering::SeqCst) {
-                return None;
-            }
-            match self.pool.ensure(&relayed.alias, &self.authorization) {
+            let stopping = self.stopping.load(Ordering::SeqCst);
+            let asked = if stopping {
+                self.pool.ensure_running(&relayed.alias)
+            } else {
+                self.pool.ensure(&relayed.alias, &self.authorization)
+            };
+            match asked {
                 Ok(lease) => {
                     let authority = authority(lease.endpoint()?)?.to_owned();
                     return Some(Box::new(PodTarget {
@@ -325,7 +329,9 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         _lease: lease,
                     }));
                 }
-                Err(PoolError::Starting | PoolError::Stopping) if Instant::now() < deadline => {
+                Err(PoolError::Starting | PoolError::Stopping)
+                    if !stopping && Instant::now() < deadline =>
+                {
                     let next = (Instant::now() + POLL).min(deadline);
                     while Instant::now() < next && !self.stopping.load(Ordering::SeqCst) {
                         thread::sleep(

@@ -1288,3 +1288,17 @@ fn l10_a_pod_is_idle_only_from_the_step_that_first_finds_it_ready() {
     stack.clock.advance(5_000);
     assert_eq!(stack.pool.reap().unwrap().idle.len(), 1);
 }
+
+#[test]
+fn d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one() {
+    let stack = stack();
+    assert_eq!(
+        stack.pool.ensure_running(&id(ALIAS)).err(),
+        Some(PoolError::Starting)
+    );
+    assert_eq!(stack.runpod.create_calls(), 0, "a pod was started");
+    let endpoint = ready(&stack).endpoint().unwrap().to_owned();
+    let lease = stack.pool.ensure_running(&id(ALIAS)).unwrap();
+    assert_eq!(lease.endpoint(), Some(endpoint.as_str()));
+    assert_eq!(stack.runpod.create_calls(), 1);
+}

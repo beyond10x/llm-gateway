@@ -421,6 +421,26 @@ impl<T: RunpodTransport> RunpodPool<T> {
         alias: &Identifier,
         authorization: &ComputeAuthorization,
     ) -> Result<StreamLease, PoolError> {
+        self.hand_out(alias, Some(authorization))
+    }
+
+    /// Hands out the model's pod only if it is ready now, and never starts one: when no pod is
+    /// live, or the live one is not ready, it is [`PoolError::Starting`] and nothing was
+    /// submitted. For a caller that is stopping and may still use what already serves.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::ensure`]; [`PoolError::Starting`] also when no pod is live.
+    pub fn ensure_running(&self, alias: &Identifier) -> Result<StreamLease, PoolError> {
+        self.hand_out(alias, None)
+    }
+
+    /// [`Self::ensure`] when `authorization` is given; without it, nothing is started.
+    fn hand_out(
+        &self,
+        alias: &Identifier,
+        authorization: Option<&ComputeAuthorization>,
+    ) -> Result<StreamLease, PoolError> {
         let mut inner = self.lock();
         if !inner.models.contains_key(alias) {
             return Err(PoolError::UnknownModel);
@@ -437,7 +457,10 @@ impl<T: RunpodTransport> RunpodPool<T> {
         inner.forget_terminal(alias);
         let current = inner.slots.get(alias).and_then(|slot| slot.current.clone());
         let Some(deployment) = current else {
-            return inner.start(now, alias, authorization);
+            return match authorization {
+                Some(authorization) => inner.start(now, alias, authorization),
+                None => Err(PoolError::Starting),
+            };
         };
         let record = inner.record(&deployment).ok_or(PoolError::Starting)?;
         match record.phase {

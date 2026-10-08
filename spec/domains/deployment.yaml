@@ -59,9 +59,10 @@ domain: llm-gateway.deployment
 # a waiting request started before that request is served.
 # DECIDED: a request through the relay that fails stops the model's current pod if it is the one
 # that failed (row W7, `RunpodPool::invalidate`); the next request starts a replacement.
-# DECIDED: once the gateway starts to stop, a request still waiting for its pod is answered
-# `target-unavailable` at once. Stopping stops no pod: pods outlive the process, and the next
-# start's cleanup pass terminates them.
+# DECIDED: once the gateway starts to stop, a request may still use a pod that is ready now, but
+# starts no pod and waits for none: with no ready pod for its model, or still waiting for one
+# when the stop begins, it is answered `target-unavailable` at once. Stopping stops no pod: pods
+# outlive the process, and the next start's cleanup pass terminates them.
 # ESS-LIMIT: the binary is observed by the crate's row-named process tests
 # (crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/config.rs), not by a
 # conformance command: a signal, a file mode and a symlink are process-environment facts the

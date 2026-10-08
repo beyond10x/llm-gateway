@@ -17,9 +17,9 @@ assert:
   contains:
     results:
     - ready
-    - inserted:pod-2
+    - inserted:pod2
     - ok
     cleanups:
-    - idle=[] retired=[] replaced=[] orphans=[pod-2]
+    - idle=[] retired=[] replaced=[] orphans=[pod2]
     pods:
-    - pod-1:b10x-llm-qwen:running
+    - pod1:b10x-llm-qwen:running

@@ -22,4 +22,4 @@ assert:
     - ready
     create_calls: 1
     leases:
-    - https://pod-1-8000.proxy.runpod.net qwen
+    - https://pod1-8000.proxy.runpod.net/v1/ qwen

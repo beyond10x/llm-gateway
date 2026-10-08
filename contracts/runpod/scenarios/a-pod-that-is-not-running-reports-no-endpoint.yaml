@@ -6,7 +6,7 @@ timeline:
 - at: '2026-09-27T12:00:00Z'
   command: llm-gateway.runpod.Exercise
   input:
-    program_json: '{"models":{"qwen":{}},"steps":[{"step":"ensure","alias":"qwen"},{"step":"set_status","pod":"pod-1","status":"Created"},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"}]}'
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"ensure","alias":"qwen"},{"step":"set_status","pod":"pod1","status":"Created"},{"step":"advance","ms":1000},{"step":"ensure","alias":"qwen"}]}'
   outcome: observed
 assert:
 - view: llm-gateway.runpod.LastExecution

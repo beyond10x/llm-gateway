@@ -22,5 +22,5 @@ assert:
     create_calls: 1
     terminations: []
     leases:
-    - https://pod-1-8000.proxy.runpod.net qwen
-    - https://pod-1-8000.proxy.runpod.net qwen
+    - https://pod1-8000.proxy.runpod.net/v1/ qwen
+    - https://pod1-8000.proxy.runpod.net/v1/ qwen

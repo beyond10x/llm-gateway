@@ -20,4 +20,4 @@ assert:
     - err:starting
     - err:starting
     observed:
-    - qwen-1 ready=unreported served=unreported endpoint=https://pod-1-8000.proxy.runpod.net
+    - qwen-1 ready=unreported served=unreported endpoint=https://pod1-8000.proxy.runpod.net/v1/

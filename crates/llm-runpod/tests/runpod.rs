@@ -20,9 +20,10 @@ use llm_provision::{
     LeaseRegistry, Phase,
 };
 use llm_runpod::{
-    CloudType, EmulatedRunpod, LEGACY_POD_NAME_PREFIX, ManualClock, NetworkVolume, POD_NAME_PREFIX,
-    PodStatus, PoolError, RunpodModel, RunpodPool, RunpodProvider, TAG_EPOCH, TAG_OWNER,
-    TAG_REQUEST, Thinking, VllmSettings,
+    CloudType, CreateAnswer, EmulatedRunpod, LEGACY_POD_NAME_PREFIX, ManualClock, NetworkVolume,
+    POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe, RunpodModel,
+    RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST,
+    TerminateAnswer, Thinking, VllmSettings,
 };
 
 const ALIAS: &str = "qwen";
@@ -185,7 +186,7 @@ fn a_request_while_the_pod_starts_waits_on_it_instead_of_creating_another() {
     assert_eq!(stack.runpod.create_calls(), 1);
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-1-8000.proxy.runpod.net"),
+        Some("https://pod1-8000.proxy.runpod.net/v1/"),
         "the endpoint is derived from the pod the provider reported"
     );
     assert_eq!(lease.served_model(), Some(&id(ALIAS)));
@@ -352,7 +353,7 @@ fn a_lost_create_answer_is_never_retried_on_another_gpu_and_is_adopted_by_reques
     assert_eq!(stack.runpod.create_calls(), 1, "and it is never retried");
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-1-8000.proxy.runpod.net")
+        Some("https://pod1-8000.proxy.runpod.net/v1/")
     );
 }
 
@@ -387,14 +388,14 @@ fn a_crash_looping_pod_is_terminated_and_the_next_request_starts_a_fresh_one() {
         }
     }
     assert_eq!(refusal, Some(Err(PoolError::CrashLoop)));
-    assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
     assert_eq!(stack.runpod.pods(), [] as [llm_runpod::Pod; 0]);
     stack.runpod.ready_after(0);
     stack.runpod.uptimes(Vec::new());
     let lease = ready(&stack);
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-2-8000.proxy.runpod.net")
+        Some("https://pod2-8000.proxy.runpod.net/v1/")
     );
     assert_eq!(stack.runpod.create_calls(), 2);
 }
@@ -407,12 +408,12 @@ fn a_pod_that_refuses_its_credential_is_terminated() {
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
         Some(PoolError::Starting)
     );
-    stack.runpod.refuse_credential("pod-1");
+    stack.runpod.refuse_credential("pod1");
     assert_eq!(
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
         Some(PoolError::CredentialRefused)
     );
-    assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
 }
 
 #[test]
@@ -434,18 +435,18 @@ fn a_pod_that_misses_its_startup_deadline_is_terminated() {
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
         Some(PoolError::StartupDeadline)
     );
-    assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
 }
 
 #[test]
 fn a_pod_that_vanishes_out_of_band_is_replaced_on_the_next_request() {
     let stack = stack();
     drop(ready(&stack));
-    stack.runpod.vanish("pod-1");
+    stack.runpod.vanish("pod1");
     let lease = ready(&stack);
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-2-8000.proxy.runpod.net")
+        Some("https://pod2-8000.proxy.runpod.net/v1/")
     );
     assert_eq!(stack.runpod.create_calls(), 2);
     assert!(
@@ -459,7 +460,7 @@ fn a_partial_listing_neither_discharges_nor_replaces_a_running_pod() {
     let stack = stack();
     drop(ready(&stack));
     stack.runpod.partial_listing(true);
-    stack.runpod.vanish("pod-1");
+    stack.runpod.vanish("pod1");
     stack.clock.advance(1_000);
     assert_eq!(
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
@@ -502,7 +503,7 @@ fn a_restarted_pool_adopts_its_own_pod_by_exact_identity_without_creating() {
         .expect("adopted pod serves");
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-1-8000.proxy.runpod.net")
+        Some("https://pod1-8000.proxy.runpod.net/v1/")
     );
     assert_eq!(stack.runpod.create_calls(), 1, "adoption creates nothing");
     assert_eq!(stack.runpod.terminations(), [] as [String; 0]);
@@ -512,7 +513,7 @@ fn a_restarted_pool_adopts_its_own_pod_by_exact_identity_without_creating() {
 fn a_restarted_pool_does_not_adopt_a_pod_that_reused_its_name() {
     let stack = stack();
     drop(ready(&stack));
-    stack.runpod.vanish("pod-1");
+    stack.runpod.vanish("pod1");
     let foreign = stack.runpod.insert_pod(
         &format!("{POD_NAME_PREFIX}{ALIAS}"),
         BTreeMap::from([
@@ -534,7 +535,7 @@ fn a_restarted_pool_does_not_adopt_a_pod_that_reused_its_name() {
     };
     assert_ne!(
         lease.endpoint(),
-        Some(format!("https://{foreign}-8000.proxy.runpod.net").as_str()),
+        Some(format!("https://{foreign}-8000.proxy.runpod.net/v1/").as_str()),
         "the same name on a different pod is a different resource"
     );
     assert_eq!(stack.runpod.create_calls(), 2);
@@ -548,13 +549,13 @@ fn a_restarted_pool_does_not_adopt_a_pod_that_reused_its_name() {
 fn a_pod_retagged_by_a_newer_owner_is_handed_over_and_never_terminated() {
     let stack = stack();
     drop(ready(&stack));
-    stack.runpod.retag("pod-1", "controller-b", 99);
+    stack.runpod.retag("pod1", "controller-b", 99);
     stack.clock.advance(1_000);
     let _ = stack.pool.ensure(&id(ALIAS), &authorization());
     let report = stack.pool.reap().expect("reap");
     assert_eq!(report.orphans, [] as [llm_provision::Identifier; 0]);
     assert!(
-        !stack.runpod.terminations().contains(&"pod-1".to_owned()),
+        !stack.runpod.terminations().contains(&"pod1".to_owned()),
         "the newer owner's pod is not ours to stop"
     );
     assert!(
@@ -578,11 +579,11 @@ fn an_idle_pod_is_reaped_and_the_next_request_cold_starts_again() {
     stack.clock.advance(1);
     let report = stack.pool.reap().expect("reap");
     assert_eq!(report.idle, vec![id("qwen-1")]);
-    assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
     let lease = ready(&stack);
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-2-8000.proxy.runpod.net")
+        Some("https://pod2-8000.proxy.runpod.net/v1/")
     );
 }
 
@@ -660,7 +661,7 @@ fn the_orphan_sweep_terminates_only_this_controllers_unrecorded_pods() {
     let report = stack.pool.reap().expect("reap");
     assert_eq!(report.orphans, vec![id(&orphan)]);
     assert_eq!(stack.runpod.terminations(), vec![orphan]);
-    for kept in [foreign, untagged, unrelated, "pod-1".to_owned()] {
+    for kept in [foreign, untagged, unrelated, "pod1".to_owned()] {
         assert!(
             stack.runpod.pods().iter().any(|pod| pod.id == kept),
             "{kept} must survive the sweep"
@@ -707,7 +708,7 @@ fn a_model_removed_from_the_registry_has_its_pod_stopped_after_restart() {
     let restarted = restart(&stack, BTreeMap::new());
     let report = restarted.reap().expect("reap");
     assert_eq!(report.retired, vec![id("qwen-1")]);
-    assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
     assert_eq!(
         restarted.view().totals.stop_required,
         [] as [llm_provision::Identifier; 0]
@@ -889,7 +890,7 @@ fn ours(request: &str) -> BTreeMap<String, String> {
 fn every_create_carries_a_request_id_naming_this_controller_and_unique_to_it() {
     let stack = stack();
     drop(ready(&stack));
-    stack.runpod.vanish("pod-1");
+    stack.runpod.vanish("pod1");
     drop(ready(&stack));
     // A second pool for the same controller at the same instant: a restart whose snapshot was
     // lost. Its first create must not reuse either request id.
@@ -934,7 +935,7 @@ fn a_second_pod_carrying_a_recorded_request_id_under_another_key_is_an_orphan() 
     let report = stack.pool.reap().expect("reap");
     assert_eq!(report.orphans, vec![id(&duplicate)]);
     assert!(
-        stack.runpod.pods().iter().any(|pod| pod.id == "pod-1"),
+        stack.runpod.pods().iter().any(|pod| pod.id == "pod1"),
         "the recorded pod survives"
     );
 }
@@ -980,7 +981,7 @@ fn restarts_inside_the_crash_window_are_a_crash_loop() {
         Some(PoolError::CrashLoop),
         "both restarts fall inside the window, its end inclusive"
     );
-    assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
 }
 
 /// J3: an endpoint is reported only for a running pod.
@@ -991,7 +992,7 @@ fn a_pod_that_is_not_running_reports_no_endpoint() {
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
         Some(PoolError::Starting)
     );
-    stack.runpod.set_status("pod-1", PodStatus::Created);
+    stack.runpod.set_status("pod1", PodStatus::Created);
     stack.clock.advance(1_000);
     assert_eq!(
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
@@ -1005,12 +1006,12 @@ fn a_pod_that_is_not_running_reports_no_endpoint() {
         .observed
         .expect("observed");
     assert_eq!(observed.endpoint, None, "a created pod serves nothing yet");
-    stack.runpod.set_status("pod-1", PodStatus::Running);
+    stack.runpod.set_status("pod1", PodStatus::Running);
     stack.clock.advance(1_000);
     let lease = ready(&stack);
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-1-8000.proxy.runpod.net")
+        Some("https://pod1-8000.proxy.runpod.net/v1/")
     );
 }
 
@@ -1019,7 +1020,7 @@ fn a_pod_that_is_not_running_reports_no_endpoint() {
 fn a_stream_on_a_retired_pod_does_not_keep_its_replacement_from_being_reaped() {
     let stack = stack();
     let stale = ready(&stack);
-    stack.runpod.vanish("pod-1");
+    stack.runpod.vanish("pod1");
     drop(ready(&stack));
     stack.clock.advance(1_800_000);
     assert_eq!(
@@ -1035,16 +1036,129 @@ fn a_stream_on_a_retired_pod_does_not_keep_its_replacement_from_being_reaped() {
 fn an_exited_pod_is_terminated_and_replaced() {
     let stack = stack();
     drop(ready(&stack));
-    stack.runpod.set_status("pod-1", PodStatus::Exited);
+    stack.runpod.set_status("pod1", PodStatus::Exited);
     stack.clock.advance(1_000);
     assert_eq!(
         stack.pool.ensure(&id(ALIAS), &authorization()).err(),
         Some(PoolError::PodExited)
     );
-    assert_eq!(stack.runpod.terminations(), vec!["pod-1".to_owned()]);
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
     let lease = ready(&stack);
     assert_eq!(
         lease.endpoint(),
-        Some("https://pod-2-8000.proxy.runpod.net")
+        Some("https://pod2-8000.proxy.runpod.net/v1/")
     );
+}
+
+// --- the endpoint comes from llm's Runpod description ----------------------------------------
+
+/// A running pod's endpoint is the inference base URL llm's Runpod provider description builds
+/// from its id, `/v1/` included; this adapter keeps no format of its own.
+#[test]
+fn a_running_pods_endpoint_is_built_by_llms_runpod_description() {
+    let stack = stack();
+    let lease = ready(&stack);
+    let pod = stack.runpod.pods().remove(0).id;
+    let described = llm_providers::descriptions::runpod()
+        .inference_base_url(&pod)
+        .expect("the emulator issues ids the description accepts");
+    assert_eq!(lease.endpoint(), Some(described.as_str()));
+    assert_eq!(
+        lease.endpoint(),
+        Some("https://pod1-8000.proxy.runpod.net/v1/")
+    );
+}
+
+#[test]
+fn the_provider_source_holds_no_proxy_host() {
+    let source = include_str!("../src/provider.rs");
+    assert!(
+        !source.contains("proxy.runpod.net"),
+        "the endpoint form lives in llm's Runpod description, not in this adapter"
+    );
+}
+
+/// A transport listing fixed running pods that all serve, for ids the emulator never issues.
+#[derive(Debug)]
+struct Listing(Vec<String>);
+
+impl RunpodTransport for Listing {
+    fn list_pods(&mut self) -> Result<PodListing, ()> {
+        Ok(PodListing {
+            pods: self
+                .0
+                .iter()
+                .map(|pod| Pod {
+                    id: pod.clone(),
+                    name: format!("{POD_NAME_PREFIX}{ALIAS}"),
+                    status: PodStatus::Running,
+                    env: BTreeMap::new(),
+                    gpu_type: None,
+                })
+                .collect(),
+            complete: true,
+        })
+    }
+    fn create_pod(&mut self, _request: &PodRequest) -> CreateAnswer {
+        CreateAnswer::Refused
+    }
+    fn terminate_pod(&mut self, _pod_id: &str) -> TerminateAnswer {
+        TerminateAnswer::Refused
+    }
+    fn probe_ready(&mut self, _pod_id: &str) -> Probe {
+        Probe::Ready {
+            served_models: vec![ALIAS.to_owned()],
+        }
+    }
+    fn container_uptime(&mut self, _pod_id: &str) -> Option<u64> {
+        None
+    }
+}
+
+/// A running pod whose id the description refuses reports no endpoint, as a pod that is not
+/// running does; the adapter never builds an address from such an id.
+#[test]
+fn a_pod_whose_id_the_description_refuses_reports_no_endpoint() {
+    use llm_provision::HostingProvider as _;
+    let long_refused = "a".repeat(49);
+    let long_accepted = "a".repeat(48);
+    let refused = ["pod-1", "Pod1", "pod_1", "pod1.x", long_refused.as_str()];
+    let accepted = ["pod1", long_accepted.as_str()];
+    let mut provider = RunpodProvider::new(
+        Listing(
+            refused
+                .iter()
+                .chain(accepted.iter())
+                .map(|pod| (*pod).to_owned())
+                .collect(),
+        ),
+        id("runpod"),
+        id("account-1"),
+        models(),
+        Arc::new(ManualClock::new(0)),
+    );
+    let endpoints: BTreeMap<String, Option<String>> = provider
+        .inventory()
+        .resources
+        .into_iter()
+        .map(|resource| {
+            (
+                resource.key.incarnation.as_str().to_owned(),
+                resource.endpoint,
+            )
+        })
+        .collect();
+    for pod in refused {
+        assert_eq!(
+            endpoints.get(pod),
+            Some(&None),
+            "{pod} is listed and running but its id is refused, so it reports no endpoint"
+        );
+    }
+    for pod in accepted {
+        assert_eq!(
+            endpoints.get(pod),
+            Some(&Some(format!("https://{pod}-8000.proxy.runpod.net/v1/"))),
+        );
+    }
 }

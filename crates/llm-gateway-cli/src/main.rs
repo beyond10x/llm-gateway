@@ -3,21 +3,12 @@
 //! `b10x-llm-gateway`: one closed TOML deployment document, one gateway, a clean stop.
 
 use clap::Parser;
+use llm_gateway_cli::cli::Cli;
 use std::{
     fmt,
     io::{self, Write},
-    path::PathBuf,
     process::ExitCode,
 };
-
-/// The authenticated single-owner llm-gateway, configured by one closed TOML document.
-#[derive(Debug, Parser)]
-#[command(name = "b10x-llm-gateway", version)]
-struct Args {
-    /// Path to the closed TOML deployment document.
-    #[arg(long)]
-    config: PathBuf,
-}
 
 /// Writes one line to standard error. A standard error that is gone (a log reader that exited)
 /// changes nothing: the line is lost, and the exit status still says what happened.
@@ -26,9 +17,9 @@ fn report(line: fmt::Arguments<'_>) {
 }
 
 fn main() -> ExitCode {
-    let args = Args::parse();
+    let args = Cli::parse();
     // Events (row O3) go to standard error beside the lines `report` writes, which they leave
-    // unchanged; at the default level the shipped binary emits none.
+    // unchanged; at the default level they are one `usage` event per authenticated model call.
     llm_gateway_cli::install_logging();
     let running = match llm_gateway_cli::load(&args.config).and_then(|deployment| {
         tracing::debug!(

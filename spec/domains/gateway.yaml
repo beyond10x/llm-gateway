@@ -2,7 +2,8 @@ domain: llm-gateway.gateway
 
 # The authenticated single-owner gateway (crates/llm-gateway, docs/gateway.md). It admits one
 # owner through an injected verifier, serves a closed two-path liveness and readiness surface,
-# lets the owner read an immutable route inventory, drains and stops gracefully
+# lets the owner read an immutable route inventory and its counters (`GET /metrics`, row R4),
+# drains and stops gracefully
 # (crates/llm-gateway/src/lib.rs:5-18). The entities are verification-adapter observations of
 # the real `Gateway` bound to a loopback socket and exercised with raw HTTP/1.1 requests; they
 # are not a production event bus.
@@ -22,7 +23,7 @@ types:
   # The closed refusal set, with the wire code, status and fixed message the crate publishes
   # (crates/llm-gateway/src/error.rs:99-133).
   #
-  # The relay adds eight (rows W1, W3, W7, K11), each `{"error":{"code":..,"message":..}}` like
+  # The relay adds nine (rows W1, W3, W6, W7, K11), each `{"error":{"code":..,"message":..}}` like
   # every other refusal, with this fixed message:
   #   body-incomplete     400  a body that ended, or stalled past the read timeout, before it was
   #                            complete: "the request body ended or stalled before it was
@@ -38,15 +39,22 @@ types:
   #                            "the model is not served on this wire"
   #   target-unavailable  503  the embedding handed out no target for the model:
   #                            "no model target is available"
+  #   model-cold-start    503  the embedding reports the model's target still starting when the
+  #                            request's hold budget passed (row W6), with `retry-after: 30`:
+  #                            "the model is still starting; ask again after the retry-after
+  #                            delay"
   #   upstream-failed     502  the target could not be reached, closed without an answer, or
   #                            answered 502, 503 or 504: "the model target could not be reached
   #                            or failed; the next request asks for a replacement"
   # DECIDED: llmgw answers `{"error":{"type":..,"message":..}}` with `invalid_request_error`,
   # `model_not_found` and `upstream_error` (llmgw src/lib.rs:515-552, 686-691); llm-gateway keeps
   # its own published refusal shape and codes, so a client reads `error.code`, not `error.type`.
+  # DECIDED: llmgw's `model_cold_start` (llmgw src/lib.rs:567-576, 693-699) is `model-cold-start`,
+  # kebab-case like every other code here, with the same 503 and `retry-after: 30`. It is the only
+  # refusal that carries `retry-after`.
   - name: llm-gateway.gateway.Refusal
     kind: enum
-    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
+    variants: [BodyIncomplete, BodyNotAllowed, BodyNotJson, BodyTooLarge, CredentialAbsent, CredentialMalformed, CredentialRejected, MethodNotAllowed, ModelAbsent, ModelColdStart, ModelUnknown, Overloaded, PathUnknown, RequestMalformed, RequestTooLarge, RouteUnknown, TargetUnavailable, Unavailable, UpstreamFailed, WireNotServed]
   # A wire the gateway relays, each on its own path, to the same path at the target (rows R6-R8):
   # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
   # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
@@ -148,8 +156,13 @@ entities:
   #      src/lib.rs:470-504). Every other byte of the body reaches the target unchanged.
   #      DECIDED: llmgw re-serialises the parsed document (sorted keys, compact); llm-gateway
   #      rewrites only those string values in place.
-  #   7. The embedding's target source hands out the target serving the model; none is
-  #      `target-unavailable`. The request goes to the same path at the target, with a
+  #   7. The embedding's target source hands out the target serving the model, or says why it
+  #      hands out none: none can be had is `target-unavailable` (503); W6: the model's target
+  #      is still starting and the request's hold budget has passed is `model-cold-start` (503)
+  #      with `retry-after: 30`, so the client asks again later rather than treating the model
+  #      as down. How long a request is held for its target, and what a stop does to a held
+  #      request, are the embedding's (llm-gateway.deployment, rows L6 and K28); the gateway
+  #      holds nothing itself. The request goes to the same path at the target, with a
   #      `content-length`.
   #      B8: a target that carries a bearer (the model's vLLM key, which the embedding reads)
   #      is sent `authorization: Bearer <key>`; a target without one is sent no
@@ -167,6 +180,16 @@ entities:
   #      client is not sent a chunked answer (RFC 9112 section 6.1): it gets the bytes unframed,
   #      ended by closing the connection. Every head the target sends, interim 1xx heads
   #      included, and its trailer section share one head-sized budget.
+  #  10. O1, O2: every request to a wire path that passed step 1 makes one
+  #      llm-gateway.telemetry.UsageRecord once its answer or refusal is written, before the
+  #      connection is closed. The record feeds the counters llm-gateway.telemetry lists and
+  #      leaves the gateway through the embedding's `UsageRecords`.
+  # R4: `GET /metrics` (and `HEAD`) serves those counters as Prometheus text
+  # (`content-type: text/plain; version=0.0.4; charset=utf-8`), one `# HELP`, `# TYPE` pair and
+  # its samples per series, in llm-gateway.telemetry's order. It takes the owner credential and
+  # readiness like inspection: unauthenticated it is `credential-absent`, before `mark_ready` it
+  # is `unavailable`, and another method is `method-not-allowed` with `allow: GET, HEAD`. A
+  # gateway composed without a relay serves the process-wide series and no per-route one.
   - name: llm-gateway.gateway.RelayObservation
     identity: {name: observation_id, type: String}
     fields: &relay_facts
@@ -175,13 +198,17 @@ entities:
       # `label:<rule>` or `relay:<rule>`.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
-      # `<status> <refusal code>` for a refusal or `<status> relayed` for a relayed answer.
+      # `<status> <refusal code>` for a refusal or `<status> relayed` for a relayed answer, and
+      # for a scrape `<status> scraped` when served or `<status> <refusal code>`.
       - {name: results, type: 'List<String>'}
       # The body each request received, decoded from its HTTP framing, in order.
       - {name: bodies, type: 'List<String>'}
       # Per request, `content-type=<value> cache-control=<value> allow=<value>`, `absent` for a
       # header that was not sent.
       - {name: headers, type: 'List<String>'}
+      # Per request, the value of the `retry-after` header the client received, or `absent`
+      # when none was sent (row W6).
+      - {name: retry_after, type: 'List<String>'}
       # Per request, `streamed` when every chunk a pod released reached the client before the
       # pod released the next, `held` when one did not, `none` when no pod answered it.
       - {name: arrivals, type: 'List<String>'}
@@ -200,6 +227,20 @@ entities:
       - {name: authorizations, type: 'List<String>'}
       # Whether any byte any fixture pod received contains the owner secret.
       - {name: secret_upstream, type: Boolean}
+      # One entry per llm-gateway.telemetry.UsageRecord the gateway handed out, in order, as
+      # `model=<alias|absent> wire=<wire> disposition=<Relayed|Refused|UpstreamFailed>
+      # refusal=<code|absent> status=<n> target_status=<n|absent>
+      # response_bytes=<n> duration_ms=<check>
+      # tokens=<check>`. `duration_ms` is `bounded` when the record's value is at most the
+      # time the client took from sending the request to reading its last byte, and the value
+      # otherwise; `tokens` is `absent` when all five token counters are absent, and
+      # `reported` otherwise.
+      - {name: records, type: 'List<String>'}
+      # Per `scrape` step, in order: `<n> <status> content-type=<value>`, then for a served
+      # scrape every sample line of its body as `<n> <line>`, where `<n>` counts scrapes from 1.
+      # `llmgw_cold_start_wait_seconds_total` is measured, so its value is written `bounded`
+      # when it is at most the time the run has taken, and as served otherwise.
+      - {name: scrapes, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   - name: llm-gateway.gateway.Exchange
@@ -230,7 +271,11 @@ commands:
       #           the one before it, or after two seconds), or `{transport: refused}` (the
       #           connection is refused) or `{transport: closed}` (the request is read and the
       #           connection closed without an answer)
-      #   steps   in order: `{step: mark_ready}`, or `{step: request, path, body}` with
+      #   cold_starts  optional, default 0: the target source answers its first `cold_starts`
+      #           acquisitions with the model still starting past the request's hold budget
+      #           (row W6), and hands out the current pod after that
+      #   steps  in order: `{step: mark_ready}`, `{step: scrape}` (a `GET /metrics`, with
+      #           optional `credential`, default true), or `{step: request, path, body}` with
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
       #           `}` to exactly that many bytes) and `declare_bytes` (only a head declaring

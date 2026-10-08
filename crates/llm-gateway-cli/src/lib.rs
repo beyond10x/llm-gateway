@@ -9,6 +9,7 @@
 
 mod config;
 mod keys;
+mod logging;
 mod refusal;
 mod relaying;
 mod serve;
@@ -16,6 +17,7 @@ mod trusted;
 
 pub use config::{Deployment, Model, Provider, ProviderKind, Wire, load};
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
+pub use logging::{TracingRecords, install_logging, log_filter};
 pub use refusal::{Refusal, Source, StartupRefusal};
 pub use relaying::{
     ACCOUNT, CLEANUP_INTERVAL, CONTROLLER, CRASH_RESTART_LIMIT, CRASH_WINDOW_MS, LEASE_MS, LEDGER,

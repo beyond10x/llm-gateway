@@ -23,6 +23,9 @@
     "status": {
       "type": "integer"
     },
+    "target_status": {
+      "type": "integer"
+    },
     "reported_model": {
       "type": "string"
     },
@@ -64,8 +67,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "65376af2dfc735bf9f87fe036535c7a25219e829862c90d87c321ed9da49366e",
-    "contract_digest": "slice-sha256/2:86a85b3d64eb1c730783d96818e6edfea017a2b203a41898a9510510d6d7ff1d",
+    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
+    "contract_digest": "slice-sha256/2:6054f50392a91a2d65a05188f0a79809afd97c8a8289a537e68c8e1ee671294c",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -84,6 +87,7 @@
         "CredentialRejected",
         "MethodNotAllowed",
         "ModelAbsent",
+        "ModelColdStart",
         "ModelUnknown",
         "Overloaded",
         "PathUnknown",

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T17:04:45Z",
+  "actor": "human:timo",
+  "artifact": "story:cold-start-hold",
+  "kind": "story",
+  "revision": 56,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo run --locked -p b10x-llm-gateway-conformance -- check",
+    "reference": "wave/2026-10-08-w04 c0961cd (181 scenarios, no model-cold-start) vs impl/cold-start-hold 379e9cc (183 passed x3; red at 9b13a03: 181 passed, 2 failed)"
+  }
+}

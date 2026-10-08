@@ -27,9 +27,17 @@ fn report(line: fmt::Arguments<'_>) {
 
 fn main() -> ExitCode {
     let args = Args::parse();
-    let running = match llm_gateway_cli::load(&args.config)
-        .and_then(|deployment| llm_gateway_cli::start(&deployment))
-    {
+    // Events (row O3) go to standard error beside the lines `report` writes, which they leave
+    // unchanged; at the default level the shipped binary emits none.
+    llm_gateway_cli::install_logging();
+    let running = match llm_gateway_cli::load(&args.config).and_then(|deployment| {
+        tracing::debug!(
+            models = deployment.models.len(),
+            digest = %deployment.digest,
+            "deployment loaded"
+        );
+        llm_gateway_cli::start(&deployment)
+    }) {
         Ok(running) => running,
         Err(refusal) => {
             report(format_args!("refused {refusal}"));

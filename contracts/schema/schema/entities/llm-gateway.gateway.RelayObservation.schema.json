@@ -32,6 +32,12 @@
         "type": "string"
       }
     },
+    "retry_after": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "arrivals": {
       "type": "array",
       "items": {
@@ -65,6 +71,18 @@
     "secret_upstream": {
       "type": "boolean"
     },
+    "records": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "scrapes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "state": {
       "$ref": "#/$defs/llm-gateway.gateway.RelayObservation.State"
     }
@@ -75,6 +93,7 @@
     "results",
     "bodies",
     "headers",
+    "retry_after",
     "arrivals",
     "upstream",
     "acquired",
@@ -82,14 +101,16 @@
     "released",
     "authorizations",
     "secret_upstream",
+    "records",
+    "scrapes",
     "state"
   ],
   "additionalProperties": false,
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "65376af2dfc735bf9f87fe036535c7a25219e829862c90d87c321ed9da49366e",
-    "contract_digest": "slice-sha256/2:b07bcbf0b0abd9d37be5009079be5b388a637a56b88af7753094dd234b56796a",
+    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
+    "contract_digest": "slice-sha256/2:85252fc198502bfb8d1c58c75e0396481da644f83b057f089837bb02b12626e6",
     "regenerate": "ess generate"
   },
   "$defs": {

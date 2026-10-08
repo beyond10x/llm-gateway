@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-08T17:04:45Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-observability",
+  "kind": "story",
+  "revision": 63,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo run --locked -p b10x-llm-gateway-conformance -- check",
+    "reference": "wave/2026-10-08-w04 d57042a (183 scenarios, GET /metrics path-unknown) vs impl/gateway-observability b6a9140 (187 passed x3; red at d3813de: o1 tests 0 passed 3 failed)"
+  }
+}

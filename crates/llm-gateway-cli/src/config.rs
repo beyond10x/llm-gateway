@@ -94,6 +94,9 @@ struct ModelDocument {
     idle_timeout_minutes: u64,
     #[serde(default = "default_start_wait_seconds")]
     start_wait_seconds: u64,
+    /// Defaults to `start_wait_seconds` (row K28).
+    #[serde(default)]
+    request_hold_seconds: Option<u64>,
     #[serde(default)]
     vllm_api_key_file: Option<PathBuf>,
 }
@@ -173,7 +176,11 @@ pub struct Model {
     pub cache: Option<NetworkVolume>,
     pub data_center_ids: Vec<String>,
     pub idle_timeout_minutes: u64,
+    /// The pod's startup deadline.
     pub start_wait_seconds: u64,
+    /// How long one request waits for the pod: its own setting, at most `start_wait_seconds`,
+    /// which it defaults to (row K28).
+    pub request_hold_seconds: u64,
     /// The file holding the key this model's pod's vLLM server expects (row B9). Only the path
     /// is loaded here; [`crate::vllm_keys`] reads it.
     pub vllm_api_key_file: Option<PathBuf>,
@@ -343,6 +350,14 @@ fn check_serving(at: &str, model: &ModelDocument) -> Result<(), Refusal> {
         "start_wait_seconds",
         &model.start_wait_seconds,
         &(10..=3_600),
+    )?;
+    within(
+        at,
+        "request_hold_seconds",
+        &model
+            .request_hold_seconds
+            .unwrap_or(model.start_wait_seconds),
+        &(0..=model.start_wait_seconds),
     )
 }
 
@@ -467,6 +482,9 @@ fn into_model(model: ModelDocument) -> Model {
         data_center_ids: model.data_center_ids,
         idle_timeout_minutes: model.idle_timeout_minutes,
         start_wait_seconds: model.start_wait_seconds,
+        request_hold_seconds: model
+            .request_hold_seconds
+            .unwrap_or(model.start_wait_seconds),
         vllm_api_key_file: model.vllm_api_key_file,
     }
 }

@@ -84,7 +84,8 @@ digest, rather than an empty string.
 ## The HTTP surface
 
 Every response is `cache-control: no-store` and `connection: close`, and every response the
-gateway writes itself is `application/json`; a relayed answer keeps its target's content type.
+gateway writes itself is `application/json` except the counters at `/metrics`, which are
+Prometheus text; a relayed answer keeps its target's content type.
 The gateway serves one request per connection; keep-alive is not in this milestone.
 
 | Method | Path | Credential | Meaning |
@@ -93,6 +94,7 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `GET`, `HEAD` | `/ready` | none | Readiness. `200 {"status":"ready"}`, or `503 {"status":"unready"}` before `mark_ready` and while draining. |
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the snapshot. |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
+| `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
 | `POST` | `/v1/chat/completions` | owner | The `chat` wire, relayed ([the relay](#the-relay)). |
 | `POST` | `/v1/responses` | owner | The `responses` wire, relayed. |
 | `POST` | `/v1/messages` | owner | The `messages` wire, relayed. |
@@ -148,7 +150,13 @@ A request to a wire path is decided in this order:
    to `high` become `xhigh`, because the served chat template rejects `high` (llmgw
    `src/lib.rs:470-504`). Every other byte reaches the target unchanged: llmgw re-serialises the
    document with sorted keys, llm-gateway replaces those values in place.
-7. `acquire` (`target-unavailable` when it hands out none), then `POST` to the same path at the
+7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
+   `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
+   request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's
+   `model_cold_start` (row W6). It is the only refusal that carries `retry-after`. The embedding
+   holds the request while its target starts and owns the hold budget; the Runpod composition
+   asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
+   `docs/hosting.md`). Then `POST` to the same path at the
    target with `host` set to the target's authority and a `content-length`. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target without one is sent no `authorization`. The head is the
@@ -177,6 +185,46 @@ A refused relay closes gracefully: the refusal is written, the write side closed
 client still sends is read and discarded (up to `request-body-bytes`, within `read_timeout`), so
 a reset cannot destroy the refusal before the client reads it.
 
+## Counters and usage records
+
+Every request to a wire path that passed owner authentication makes one `UsageRecord` once its
+answer or refusal is written, before the connection is closed: the alias of the relayed model the
+body named (absent when it named none), the wire, its `Disposition` (`Relayed`, `Refused` or
+`UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
+status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
+request head to the last byte written. The token counters and the model the target reported are
+always absent for now. An unauthenticated or shed request makes no record. The record feeds the
+counters, then leaves the crate through the `UsageRecords` port the embedding implements
+(`Relay::with_records`); the binary writes each as one `tracing` event at `info`.
+
+`GET /metrics` serves llmgw's 13 counters under their llmgw names, so a scrape configured for
+llmgw keeps working. It takes the owner credential and readiness like inspection, and answers
+`content-type: text/plain; version=0.0.4; charset=utf-8`. The text is rendered inside this crate,
+which takes no dependency for it.
+
+| Series | Labels | Counts |
+| --- | --- | --- |
+| `llmgw_inference_requests_total` | | every usage record |
+| `llmgw_upstream_failures_total` | | every record no target answered: unreachable, or closed without an answer |
+| `llmgw_instruction_views_total` | | `GET /`, which is not served yet, so it stays 0 |
+| `llmgw_pod_starts_total` | | pod creates the embedding counts (`Metrics::count_pod_start`) |
+| `llmgw_pod_start_failures_total` | | pods the embedding counts as failed to start |
+| `llmgw_pod_reaps_total` | | deployments and pods the embedding's cleanup pass stopped |
+| `llmgw_endpoint_invalidations_total` | | each target reported to `invalidate` |
+| `llmgw_cold_start_wait_seconds_total` | | seconds `acquire` took for a request held for a starting target |
+| `llmgw_route_requests_total` | `model`, `wire` | records naming a relayed model on a wire it declares |
+| `llmgw_route_refusals_total` | `model`, `wire` | the same, refused or no target answered |
+| `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
+| `llmgw_route_cold_start_holds_total` | `model`, `wire` | requests held for a starting target: the target says it held them (`RelayTarget::held`), or `acquire` answered `model-cold-start` |
+| `llmgw_route_response_bytes_total` | `model`, `wire` | the records' response bytes |
+
+Every (model, wire) pair a relayed model declares is registered at zero when the relay is
+composed, so an uncalled route reads 0 instead of being absent; a request for another pair feeds
+the process-wide series only. A gateway composed without a relay serves the process-wide series
+alone. An embedding that counts pod events shares one `Metrics` with the relay
+(`Relay::with_metrics`). The upstream and status series count as llmgw does (llmgw
+`src/lib.rs:598-629` at `048ebd8`). The specification is `spec/domains/telemetry.yaml`.
+
 ## Refusals
 
 A refusal names its own stable code and a message this crate wrote. It quotes nothing the caller
@@ -198,6 +246,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `body-too-large` | 413 | the request body exceeds its byte bound |
 | `method-not-allowed` | 405 | this path does not accept that method |
 | `model-absent` | 400 | the request body names no model |
+| `model-cold-start` | 503 | the model is still starting; ask again after the retry-after delay |
 | `model-unknown` | 404 | no such model |
 | `overloaded` | 503 | the gateway is already serving its maximum concurrent requests |
 | `path-unknown` | 404 | no such gateway resource |
@@ -285,6 +334,12 @@ defaults to ten seconds, and its enforcement is measured with a short configured
 `a_stalled_head_is_refused_when_the_read_timeout_expires`,
 `a_trickled_head_is_refused_when_the_read_timeout_expires` and
 `a_peer_that_never_reads_its_answer_cannot_hold_the_stop`.
+
+`COLD_START_RETRY_AFTER_SECONDS` (30) is the `retry-after` a `model-cold-start` refusal carries. It
+is a hint to the client rather than a limit the gateway enforces, so it is not in this table
+either; `w6_a_model_still_starting_past_its_hold_budget_is_model_cold_start_with_retry_after_30`
+in `tests/wire_relay.rs` measures the header, and
+`every_refusal_code_has_a_request_that_provokes_it` checks that no other refusal carries one.
 
 ## Verification
 

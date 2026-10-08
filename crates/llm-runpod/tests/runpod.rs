@@ -20,9 +20,9 @@ use llm_provision::{
     LeaseRegistry, Phase,
 };
 use llm_runpod::{
-    CloudType, CreateAnswer, EmulatedRunpod, LEGACY_POD_NAME_PREFIX, ManualClock, NetworkVolume,
-    POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe, RunpodModel,
-    RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST,
+    CloudType, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX, ManualClock,
+    NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe,
+    RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER, TAG_REQUEST,
     TerminateAnswer, Thinking, VllmSettings,
 };
 
@@ -1300,5 +1300,132 @@ fn d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one() {
     let endpoint = ready(&stack).endpoint().unwrap().to_owned();
     let lease = stack.pool.ensure_running(&id(ALIAS)).unwrap();
     assert_eq!(lease.endpoint(), Some(endpoint.as_str()));
+    assert_eq!(stack.runpod.create_calls(), 1);
+}
+
+// --- L6, W6: callers held on one starting pod --------------------------------------------------
+
+/// Two holds bound to one pod that misses its startup deadline: the first caller's step retires
+/// it and gets the reason; the second learns its pod is gone too, instead of reading the stop as
+/// "still starting" and creating a second pod. Neither lost hold ever submits a create.
+#[test]
+fn l6_every_hold_on_a_pod_that_misses_its_startup_deadline_is_lost_and_starts_nothing() {
+    let stack = stack();
+    stack.runpod.ready_after(u32::MAX);
+    let (mut first, mut second) = (Hold::default(), Hold::default());
+    for hold in [&mut first, &mut second] {
+        assert_eq!(
+            stack
+                .pool
+                .ensure_held(&id(ALIAS), &authorization(), hold)
+                .err(),
+            Some(PoolError::Starting)
+        );
+        assert!(!hold.lost());
+    }
+    assert_eq!(stack.runpod.create_calls(), 1, "two holds, one pod");
+    stack.clock.advance(600_001);
+    assert_eq!(
+        stack
+            .pool
+            .ensure_held(&id(ALIAS), &authorization(), &mut first)
+            .err(),
+        Some(PoolError::StartupDeadline)
+    );
+    assert!(first.lost());
+    let told = stack
+        .pool
+        .ensure_held(&id(ALIAS), &authorization(), &mut second);
+    assert!(
+        !matches!(told, Ok(_) | Err(PoolError::Starting)),
+        "the second hold was told {:?}",
+        told.map(drop)
+    );
+    assert!(
+        second.lost(),
+        "the second hold did not learn its pod failed"
+    );
+    for hold in [&mut first, &mut second] {
+        assert!(
+            stack
+                .pool
+                .ensure_held(&id(ALIAS), &authorization(), hold)
+                .is_err()
+        );
+        assert!(hold.lost());
+    }
+    assert_eq!(stack.runpod.create_calls(), 1, "a lost hold created a pod");
+
+    // A new caller is not bound to the failed pod: it starts the replacement and is served.
+    stack.runpod.ready_after(0);
+    let mut fresh = Hold::default();
+    let lease = (0..10)
+        .find_map(|_| {
+            match stack
+                .pool
+                .ensure_held(&id(ALIAS), &authorization(), &mut fresh)
+            {
+                Ok(lease) => Some(lease),
+                Err(PoolError::Starting | PoolError::Stopping) => {
+                    stack.clock.advance(1_000);
+                    None
+                }
+                Err(other) => panic!("a new hold was refused: {}", other.code()),
+            }
+        })
+        .expect("the replacement never served");
+    assert!(!fresh.lost());
+    assert_eq!(
+        lease.endpoint(),
+        Some("https://pod2-8000.proxy.runpod.net/v1/")
+    );
+    assert_eq!(stack.runpod.create_calls(), 2);
+}
+
+/// One hold whose pod the cleanup pass retires between two of its asks: the next ask learns the
+/// pod is gone and creates nothing.
+#[test]
+fn l6_a_hold_whose_pod_the_cleanup_pass_retires_is_lost_and_starts_nothing() {
+    let stack = stack();
+    stack.runpod.ready_after(u32::MAX);
+    let mut hold = Hold::default();
+    assert_eq!(
+        stack
+            .pool
+            .ensure_held(&id(ALIAS), &authorization(), &mut hold)
+            .err(),
+        Some(PoolError::Starting)
+    );
+    stack.clock.advance(600_001);
+    drop(stack.pool.reap().expect("cleanup"));
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
+    let told = stack
+        .pool
+        .ensure_held(&id(ALIAS), &authorization(), &mut hold);
+    assert!(
+        !matches!(told, Ok(_) | Err(PoolError::Starting)),
+        "the hold was told {:?}",
+        told.map(drop)
+    );
+    assert!(hold.lost());
+    assert_eq!(stack.runpod.create_calls(), 1, "a lost hold created a pod");
+}
+
+/// A hold whose pod becomes ready is served from it, and stays bound to it.
+#[test]
+fn l6_a_hold_is_served_by_the_pod_it_waited_on() {
+    let stack = stack();
+    stack.runpod.ready_after(2);
+    let mut hold = Hold::default();
+    let lease = (0..10)
+        .find_map(|_| {
+            stack
+                .pool
+                .ensure_held(&id(ALIAS), &authorization(), &mut hold)
+                .ok()
+        })
+        .expect("never served");
+    assert!(!hold.lost());
+    assert_eq!(hold.deployment(), Some(lease.deployment()));
     assert_eq!(stack.runpod.create_calls(), 1);
 }

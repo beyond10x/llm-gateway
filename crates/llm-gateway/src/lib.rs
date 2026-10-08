@@ -31,14 +31,18 @@ mod body;
 mod error;
 mod inventory;
 mod json;
+mod metrics;
 mod relay;
 mod server;
 
 pub use auth::{Authenticated, OwnerToken, OwnerVerifier, SharedSecretVerifier, Verdict};
-pub use error::{InventoryError, LabelError, RefusalCode, RelayError, TokenError, VerifierError};
+pub use error::{
+    InventoryError, LabelError, RefusalCode, RelayError, TargetRefusal, TokenError, VerifierError,
+};
 pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,
 };
+pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
 pub use relay::{Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, TargetBearer, Wire};
 pub use server::{Gateway, GatewayConfig, GatewayHandle, ShutdownReport};

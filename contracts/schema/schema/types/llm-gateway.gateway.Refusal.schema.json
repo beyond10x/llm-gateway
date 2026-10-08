@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "65376af2dfc735bf9f87fe036535c7a25219e829862c90d87c321ed9da49366e",
-    "contract_digest": "slice-sha256/2:065b85d79df51251157da40c78c6d9d9bc546ea4ba34899e8cd9ff61eaf25dac",
+    "source_digest": "79f4c58fc1f36fe5d67e2af3d4f1ceb19b7cd20b26836f2a731debcc7edab2ca",
+    "contract_digest": "slice-sha256/2:d1b753d8df9b9ea55958c0776a13c09c16d3996cdd45c5fef2593c11548a0618",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -24,6 +24,7 @@
         "CredentialRejected",
         "MethodNotAllowed",
         "ModelAbsent",
+        "ModelColdStart",
         "ModelUnknown",
         "Overloaded",
         "PathUnknown",

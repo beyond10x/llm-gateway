@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:gateway-observability
 kind: story
-status: draft
+status: implemented
 title: llm-gateway exposes its counters and logs
 relations:
 - decomposes: epic:gateway
@@ -11,39 +11,47 @@ relations:
 scope:
 - confidence: cited
   path: checks/conformance/src/gateway.rs
-- confidence: inferred
-  path: checks/conformance/src/target.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/Cargo.toml
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway-cli/src/lib.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/logging.rs
+- confidence: cited
   path: crates/llm-gateway-cli/src/main.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/src/serve.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/tests/adversary.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/tests/binary.rs
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway-cli/src/relaying.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_w04_observability.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/observability.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/relaying.rs
+- confidence: cited
   path: crates/llm-gateway/src/lib.rs
+- confidence: cited
+  path: crates/llm-gateway/src/metrics.rs
 - confidence: cited
   path: crates/llm-gateway/src/relay.rs
 - confidence: cited
   path: crates/llm-gateway/src/server.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/tests/gateway.rs
 - confidence: cited
-  path: crates/llm-runpod/src/pool.rs
-- confidence: inferred
-  path: crates/llm-runpod/tests/runpod.rs
-- confidence: inferred
+  path: crates/llm-gateway/tests/observability.rs
+- confidence: cited
   path: docs/gateway.md
-- confidence: inferred
+- confidence: cited
   path: spec/domains/deployment.yaml
-- confidence: inferred
+- confidence: cited
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/telemetry.yaml
-revision: 25
+revision: 64
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 26, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "proposed", to: "active", at: "2026-10-08T15:31:44Z", actor: "human:timo", revision: 27, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-08T17:04:46Z", actor: "human:timo", revision: 64, decided_on: {"recorded":{"test_result":1,"review_outcome":6,"verification":1}}}
 ---
 ## Outcome
 

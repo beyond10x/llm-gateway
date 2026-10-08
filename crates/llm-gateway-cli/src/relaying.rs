@@ -17,12 +17,12 @@ use crate::{
     serve::{Running, Stopped, inventory, owner_verifier},
 };
 use llm_gateway::{
-    Gateway, Label, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, ShutdownReport,
-    TargetBearer,
+    Gateway, Label, Metrics, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    ShutdownReport, TargetBearer, TargetRefusal,
 };
 use llm_runpod::{
-    Clock, ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry, PoolError, RunpodModel,
-    RunpodPool, RunpodTransport, StreamLease,
+    CleanupReport, Clock, ComputeAuthorization, Hold, HostingPolicy, Identifier, LeaseRegistry,
+    PoolError, RunpodModel, RunpodPool, RunpodTransport, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -236,8 +236,8 @@ pub fn runpod_pool<T: RunpodTransport>(
 struct Relayed {
     alias: Identifier,
     bearer: Arc<TargetBearer>,
-    /// How long a request waits for the model's pod: `start_wait_seconds` (row K28).
-    wait: Duration,
+    /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
+    hold: Duration,
 }
 
 /// The gateway's targets: the pod the pool hands out for each alias.
@@ -248,6 +248,10 @@ pub(crate) struct PoolTargets<T> {
     connector: Arc<dyn PodConnector>,
     /// Set when the gateway starts to stop: a request still waiting for its pod gives up.
     stopping: Arc<AtomicBool>,
+    /// The pod counters (row O1), shared with the relay that serves them.
+    metrics: Arc<Metrics>,
+    /// Per alias, the last deployment counted as a pod start.
+    started: Mutex<BTreeMap<String, Identifier>>,
 }
 
 impl<T> PoolTargets<T> {
@@ -260,6 +264,7 @@ impl<T> PoolTargets<T> {
         pool: Arc<RunpodPool<T>>,
         connector: Arc<dyn PodConnector>,
         stopping: Arc<AtomicBool>,
+        metrics: Arc<Metrics>,
     ) -> Result<Self, Refusal> {
         let mut models = BTreeMap::new();
         for (alias, model) in &deployment.models {
@@ -281,7 +286,7 @@ impl<T> PoolTargets<T> {
                 Relayed {
                     alias: identifier(alias, &format!("models.{alias}"))?,
                     bearer: Arc::new(bearer),
-                    wait: Duration::from_secs(model.start_wait_seconds),
+                    hold: Duration::from_secs(model.request_hold_seconds),
                 },
             );
         }
@@ -291,7 +296,65 @@ impl<T> PoolTargets<T> {
             models,
             connector,
             stopping,
+            metrics,
+            started: Mutex::new(BTreeMap::new()),
         })
+    }
+
+    /// Counts the pod a hold bound to as started, once per deployment (row O1). The pool binds
+    /// a hold on the `starting` answer of the very ask that submitted the create, and names each
+    /// deployment it creates anew, so a deployment not yet counted for its alias is a create the
+    /// pool submitted. A request that binds to a pod another request started counts nothing.
+    fn count_start(&self, alias: &str, hold: &Hold) {
+        let Some(deployment) = hold.deployment() else {
+            return;
+        };
+        let mut started = self.started.lock().unwrap_or_else(PoisonError::into_inner);
+        if started.get(alias) != Some(deployment) {
+            started.insert(alias.to_owned(), deployment.clone());
+            drop(started);
+            self.metrics.count_pod_start();
+            tracing::info!(
+                model = alias,
+                deployment = deployment.as_str(),
+                "pod start submitted"
+            );
+        }
+    }
+
+    /// Counts a pool answer that says a pod could not be started or failed while starting
+    /// (row O1). The pool gives a failure's reason to exactly one ask, so each is counted once.
+    fn count_failure(&self, alias: &str, error: PoolError) {
+        if matches!(
+            error,
+            PoolError::NoCapacity
+                | PoolError::CrashLoop
+                | PoolError::CredentialRefused
+                | PoolError::StartupDeadline
+        ) {
+            self.metrics.count_pod_start_failure();
+            tracing::warn!(model = alias, reason = error.code(), "pod start failed");
+        }
+    }
+}
+
+/// Counts what one cleanup pass stopped (row O1): idle, retired and replaced deployments and
+/// orphaned pods. A refused pass stopped nothing it can name.
+fn count_reaps(metrics: &Metrics, pass: Result<CleanupReport, PoolError>) {
+    let Ok(report) = pass else {
+        return;
+    };
+    let stopped =
+        report.idle.len() + report.retired.len() + report.replaced.len() + report.orphans.len();
+    if stopped > 0 {
+        metrics.count_pod_reaps(u64::try_from(stopped).unwrap_or(u64::MAX));
+        tracing::info!(
+            idle = report.idle.len(),
+            retired = report.retired.len(),
+            replaced = report.replaced.len(),
+            orphans = report.orphans.len(),
+            "cleanup pass stopped pods"
+        );
     }
 }
 
@@ -305,33 +368,62 @@ fn authority(endpoint: &str) -> Option<&str> {
 }
 
 impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
-    /// Asks the pool for the model's ready pod, and while it is starting asks again until the
-    /// model's `start_wait_seconds` have passed. Once the gateway starts to stop, a request may
+    /// Asks the pool for the model's ready pod through one [`Hold`], and while the pool answers
+    /// `starting` (or `stopping`, before the hold is bound to a pod) holds the request, asking
+    /// again every 500 ms, until the model's `request_hold_seconds` have passed (row L6). Each
+    /// ask is one pool step under the pool's lock and the wait is outside it. The first ask may
+    /// start a pod; the hold then binds to the pod it found starting, so requests held together
+    /// start one pod. A bound pod still starting when the hold passes is `model-cold-start`
+    /// (row W6); a hold that passes still unbound, waiting out a previous pod's unconfirmed
+    /// stop, is `target-unavailable`. Once the bound pod is retired, marked stop-required or
+    /// gone from the slot, whichever step retired it, the hold is lost: the request is
+    /// `target-unavailable` at once and starts no replacement. Every other pool refusal is
+    /// `target-unavailable` too. Once the gateway starts to stop, a request may
     /// still use a pod that is ready now, but starts none and waits for none: without a ready
     /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
-    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>> {
-        let relayed = self.models.get(alias)?;
-        let deadline = Instant::now() + relayed.wait;
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        let relayed = self.models.get(alias).ok_or(TargetRefusal::Unavailable)?;
+        let deadline = Instant::now() + relayed.hold;
+        let mut hold = Hold::default();
         loop {
             let stopping = self.stopping.load(Ordering::SeqCst);
             let asked = if stopping {
                 self.pool.ensure_running(&relayed.alias)
             } else {
-                self.pool.ensure(&relayed.alias, &self.authorization)
+                self.pool
+                    .ensure_held(&relayed.alias, &self.authorization, &mut hold)
             };
+            self.count_start(alias, &hold);
+            if let Err(error) = &asked {
+                self.count_failure(alias, *error);
+            }
             match asked {
                 Ok(lease) => {
-                    let authority = authority(lease.endpoint()?)?.to_owned();
-                    return Some(Box::new(PodTarget {
+                    let authority = lease
+                        .endpoint()
+                        .and_then(authority)
+                        .ok_or(TargetRefusal::Unavailable)?
+                        .to_owned();
+                    return Ok(Box::new(PodTarget {
                         authority,
                         bearer: Arc::clone(&relayed.bearer),
                         connector: Arc::clone(&self.connector),
+                        // A hold binds only to a pod it found starting (rows O1, O2).
+                        held: hold.deployment().is_some(),
                         _lease: lease,
                     }));
                 }
-                Err(PoolError::Starting | PoolError::Stopping)
-                    if !stopping && Instant::now() < deadline =>
-                {
+                Err(PoolError::Starting | PoolError::Stopping) if !stopping && !hold.lost() => {
+                    if Instant::now() >= deadline {
+                        // Only a request bound to a pod still starting is told to come back;
+                        // one still waiting out a previous pod's unconfirmed stop had no pod
+                        // starting for it (row W6).
+                        return Err(if hold.deployment().is_some() {
+                            TargetRefusal::ColdStart
+                        } else {
+                            TargetRefusal::Unavailable
+                        });
+                    }
                     let next = (Instant::now() + POLL).min(deadline);
                     while Instant::now() < next && !self.stopping.load(Ordering::SeqCst) {
                         thread::sleep(
@@ -339,7 +431,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         );
                     }
                 }
-                Err(_) => return None,
+                Err(_) => return Err(TargetRefusal::Unavailable),
             }
         }
     }
@@ -361,6 +453,8 @@ struct PodTarget {
     authority: String,
     bearer: Arc<TargetBearer>,
     connector: Arc<dyn PodConnector>,
+    /// The request was held while this pod started.
+    held: bool,
     _lease: StreamLease,
 }
 
@@ -373,19 +467,24 @@ impl RelayTarget for PodTarget {
         Some(&self.bearer)
     }
 
+    fn held(&self) -> bool {
+        self.held
+    }
+
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
         self.connector.connect(&self.authority)
     }
 }
 
-/// The pool's cleanup pass, run every [`CLEANUP_INTERVAL`] on its own thread until stopped.
+/// The pool's cleanup pass, run every `interval` ([`CLEANUP_INTERVAL`] when relaying, row L13)
+/// on its own thread until stopped.
 struct Cleanup {
     stop: Arc<(Mutex<bool>, Condvar)>,
     thread: JoinHandle<()>,
 }
 
 impl Cleanup {
-    fn start(pass: impl Fn() + Send + 'static) -> Self {
+    fn start(interval: Duration, pass: impl Fn() + Send + 'static) -> Self {
         let stop = Arc::new((Mutex::new(false), Condvar::new()));
         let stopped = Arc::clone(&stop);
         let thread = thread::spawn(move || {
@@ -393,7 +492,7 @@ impl Cleanup {
             let mut stopping = lock.lock().unwrap_or_else(PoisonError::into_inner);
             loop {
                 let (next, _) = wake
-                    .wait_timeout_while(stopping, CLEANUP_INTERVAL, |stop| !*stop)
+                    .wait_timeout_while(stopping, interval, |stop| !*stop)
                     .unwrap_or_else(PoisonError::into_inner);
                 if *next {
                     return;
@@ -487,12 +586,14 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     let inventory = inventory(deployment)?;
     let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
     let stopping = Arc::new(AtomicBool::new(false));
+    let metrics = Arc::new(Metrics::default());
     let targets = PoolTargets::new(
         deployment,
         &vllm_keys,
         Arc::clone(&pool),
         pods,
         Arc::clone(&stopping),
+        Arc::clone(&metrics),
     )?;
     let mut models = Vec::with_capacity(deployment.models.len());
     for (alias, model) in &deployment.models {
@@ -508,7 +609,9 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
         })?);
     }
     let relay = Relay::new(models, Arc::new(targets))
-        .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?;
+        .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
+        .with_metrics(Arc::clone(&metrics))
+        .with_records(Arc::new(crate::logging::TracingRecords));
     let signals = Running::install_signals()?;
     let bind = deployment.gateway.bind;
     let handle = Gateway::bind_with_relay(
@@ -520,9 +623,9 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     .map_err(|error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")))?;
     // One pass before serving: it sweeps the pods a previous run of this controller left. A
     // refused pass changes nothing, and the next one runs on time.
-    let _swept = pool.reap();
-    let cleanup = Cleanup::start(move || {
-        let _report = pool.reap();
+    count_reaps(&metrics, pool.reap());
+    let cleanup = Cleanup::start(CLEANUP_INTERVAL, move || {
+        count_reaps(&metrics, pool.reap());
     });
     handle.mark_ready();
     Ok(Relaying {
@@ -534,7 +637,50 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
 
 #[cfg(test)]
 mod tests {
-    use super::{authority, idle_timeout_ms, secret_name};
+    use super::{Cleanup, authority, idle_timeout_ms, secret_name};
+    use std::{
+        sync::{
+            Arc,
+            atomic::{AtomicUsize, Ordering},
+        },
+        thread,
+        time::{Duration, Instant},
+    };
+
+    /// Row L13 on the timer itself, at a 50 ms interval instead of 60 s: no pass before the
+    /// first interval, one per interval after it, and none once stopped. The stop does not wait
+    /// for the next interval.
+    #[test]
+    fn l13_the_cleanup_pass_runs_on_its_interval_until_it_is_stopped() {
+        let passes = Arc::new(AtomicUsize::new(0));
+        let counting = Arc::clone(&passes);
+        let cleanup = Cleanup::start(Duration::from_millis(50), move || {
+            counting.fetch_add(1, Ordering::SeqCst);
+        });
+        thread::sleep(Duration::from_millis(20));
+        assert_eq!(
+            passes.load(Ordering::SeqCst),
+            0,
+            "a pass ran before its interval"
+        );
+        thread::sleep(Duration::from_millis(400));
+        let ran = passes.load(Ordering::SeqCst);
+        assert!(ran >= 2, "{ran} passes in 420 ms at a 50 ms interval");
+        let stopping = Instant::now();
+        cleanup.stop();
+        assert!(
+            stopping.elapsed() < Duration::from_millis(45),
+            "the stop waited {:?} for the next interval",
+            stopping.elapsed()
+        );
+        let stopped = passes.load(Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(150));
+        assert_eq!(
+            passes.load(Ordering::SeqCst),
+            stopped,
+            "a pass ran after the stop"
+        );
+    }
 
     #[test]
     fn the_authority_is_the_endpoints_host_and_port() {

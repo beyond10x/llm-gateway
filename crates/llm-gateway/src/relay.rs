@@ -9,8 +9,9 @@
 
 use crate::{
     auth, body,
-    error::{RefusalCode, RelayError, TokenError},
+    error::{RefusalCode, RelayError, TargetRefusal, TokenError},
     inventory::Label,
+    metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
 };
 use std::{
     collections::BTreeMap,
@@ -116,6 +117,14 @@ pub trait RelayTarget: Send {
         None
     }
 
+    /// Whether the source held the request while this target started (rows L6, W6). The gateway
+    /// counts such a request in `llmgw_route_cold_start_holds_total`, and the time `acquire`
+    /// took in `llmgw_cold_start_wait_seconds_total`. `false`, the default, is a target that
+    /// was serving when asked.
+    fn held(&self) -> bool {
+        false
+    }
+
     /// Opens one connection to the target. Its read and write timeouts are the target's.
     ///
     /// # Errors
@@ -125,9 +134,15 @@ pub trait RelayTarget: Send {
 
 /// Where a model's requests go. The embedding implements this over its pool.
 pub trait RelayTargets: Send + Sync {
-    /// The target serving `alias` now, starting one when none is live, or `None` when none can
-    /// be had.
-    fn acquire(&self, alias: &str) -> Option<Box<dyn RelayTarget>>;
+    /// The target serving `alias` now, starting one when none is live. The embedding may hold
+    /// the request while the target starts (row L6); how long, and what a stop does to a held
+    /// request, are its own. The gateway holds nothing itself.
+    ///
+    /// # Errors
+    /// [`TargetRefusal::Unavailable`] when none can be had, answered `target-unavailable`;
+    /// [`TargetRefusal::ColdStart`] when the target is still starting and the request's hold
+    /// budget has passed, answered `model-cold-start` with `retry-after: 30` (row W6).
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal>;
 
     /// A request for `alias` through the target at `authority` failed (row W7): drop that
     /// endpoint if it is still the current one, so the next acquisition starts a replacement.
@@ -175,13 +190,19 @@ impl RelayModel {
     }
 }
 
-/// The relayed models and the target source, composed once.
+/// The relayed models and the target source, composed once, with the counters its calls feed
+/// and the port its usage records leave through.
 pub struct Relay {
     models: BTreeMap<String, RelayModel>,
     targets: Arc<dyn RelayTargets>,
+    metrics: Arc<Metrics>,
+    records: Arc<dyn UsageRecords>,
 }
 
 impl Relay {
+    /// Every (model, wire) pair is registered at zero in the relay's own [`Metrics`]; records
+    /// go nowhere until [`Self::with_records`].
+    ///
     /// # Errors
     /// [`RelayError::DuplicateModel`] for two models with one alias.
     pub fn new(
@@ -197,10 +218,48 @@ impl Relay {
                 return Err(RelayError::DuplicateModel);
             }
         }
-        Ok(Self {
+        let relay = Self {
             models: indexed,
             targets,
-        })
+            metrics: Arc::new(Metrics::default()),
+            records: Arc::new(NoRecords),
+        };
+        relay.register();
+        Ok(relay)
+    }
+
+    /// Counts into `metrics` instead, registering every (model, wire) pair in it at zero. An
+    /// embedding that counts pod events itself shares one [`Metrics`] with the relay this way.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
+        self.metrics = metrics;
+        self.register();
+        self
+    }
+
+    /// Hands every [`UsageRecord`] to `records` (row O3: the binary logs each).
+    #[must_use]
+    pub fn with_records(mut self, records: Arc<dyn UsageRecords>) -> Self {
+        self.records = records;
+        self
+    }
+
+    fn register(&self) {
+        for model in self.models.values() {
+            for wire in &model.wires {
+                self.metrics.register(model.alias.as_str(), *wire);
+            }
+        }
+    }
+
+    pub(crate) fn metrics(&self) -> &Arc<Metrics> {
+        &self.metrics
+    }
+
+    /// Feeds a record to the counters, then hands it to the embedding.
+    pub(crate) fn observe(&self, record: &UsageRecord) {
+        self.metrics.record(record);
+        self.records.record(record);
     }
 }
 
@@ -573,14 +632,27 @@ pub(crate) struct Limits {
     pub(crate) timeout: Duration,
 }
 
-/// Relays one admitted request. A refusal is returned for the caller to write; once the
-/// answer's head has been written, nothing more is refused.
+/// What a relay learned about its call, for the usage record.
+#[derive(Debug, Default)]
+pub(crate) struct Call {
+    /// The relayed model the body named, once it is known.
+    pub(crate) model: Option<String>,
+    /// The status the target answered with, once its answer head arrived; `None` when no
+    /// target answered (llmgw `src/lib.rs:598-629` at 048ebd8).
+    pub(crate) target_status: Option<u16>,
+    /// Decoded body bytes of the answer written to the client.
+    pub(crate) response_bytes: u64,
+}
+
+/// Relays one admitted request, filling `call` as it learns. A refusal is returned for the
+/// caller to write; once the answer's head has been written, nothing more is refused.
 pub(crate) fn serve(
     stream: &mut TcpStream,
     leftover: Vec<u8>,
     admitted: Admitted,
     relay: &Relay,
     limits: &Limits,
+    call: &mut Call,
 ) -> Result<(), RefusalCode> {
     let deadline = Instant::now() + limits.timeout;
     if admitted.expects_continue
@@ -601,6 +673,7 @@ pub(crate) fn serve(
         .models
         .get(&analysis.model)
         .ok_or(RefusalCode::ModelUnknown)?;
+    call.model = Some(model.alias.as_str().to_string());
     if !model.wires.contains(&admitted.wire) {
         return Err(RefusalCode::WireNotServed);
     }
@@ -611,12 +684,23 @@ pub(crate) fn serve(
     );
     drop(body);
     let alias = model.alias.as_str();
-    let target = relay
-        .targets
-        .acquire(alias)
-        .ok_or(RefusalCode::TargetUnavailable)?;
+    let asked = Instant::now();
+    let acquired = relay.targets.acquire(alias);
+    // A request held for a starting target is counted on its route, with the time it waited
+    // (rows O1, O2): the target says it held it, or the source gave up past its hold budget.
+    let cold_start = match &acquired {
+        Ok(target) => target.held(),
+        Err(refusal) => *refusal == TargetRefusal::ColdStart,
+    };
+    if cold_start {
+        relay
+            .metrics
+            .count_cold_start_hold(alias, admitted.wire, asked.elapsed());
+    }
+    let target = acquired.map_err(TargetRefusal::refusal)?;
     let failed = || {
         relay.targets.invalidate(alias, target.authority());
+        relay.metrics.count_invalidation();
         RefusalCode::UpstreamFailed
     };
     let mut connection = target.connect().map_err(|_| failed())?;
@@ -660,12 +744,13 @@ pub(crate) fn serve(
     let Ok(mut head) = read_answer_head(&mut input, limits.line_bytes) else {
         return Err(failed());
     };
+    call.target_status = Some(head.status);
     // A gateway status from the target means the pod behind it is gone or unreachable; a
     // model error arrives as 4xx or 500 instead (llmgw `src/lib.rs:629-643`).
     if matches!(head.status, 502..=504) {
         return Err(failed());
     }
-    stream_answer(
+    call.response_bytes = stream_answer(
         stream,
         &mut input,
         &mut head,
@@ -682,13 +767,14 @@ pub(crate) fn serve(
 /// Writes the answer's head, then each decoded piece as it arrives: as one chunk each when
 /// `chunked`, so a failure on either side ends the answer without its last chunk and the client
 /// sees it cut short; unframed for an HTTP/1.0 client, ended by closing the connection.
+/// Returns the decoded body bytes written to the client.
 fn stream_answer(
     stream: &mut TcpStream,
     input: &mut Buffered<'_>,
     head: &mut Head,
     limits: &Limits,
     chunked: bool,
-) {
+) -> u64 {
     let phrase = crate::server::relayed_phrase(head.status);
     let content_type = head
         .content_type
@@ -703,12 +789,14 @@ fn stream_answer(
         "HTTP/1.1 {} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
         head.status
     );
+    let mut written: u64 = 0;
     if !crate::server::write_by(stream, start.as_bytes(), Instant::now() + limits.timeout) {
-        return;
+        return written;
     }
     loop {
         match next_piece(input, &mut head.framing, limits.line_bytes) {
             Ok(Some(piece)) => {
+                let size = u64::try_from(piece.len()).unwrap_or(u64::MAX);
                 let framed = if chunked {
                     let mut framed = format!("{:x}\r\n", piece.len()).into_bytes();
                     framed.extend_from_slice(&piece);
@@ -720,16 +808,17 @@ fn stream_answer(
                 // Each write has its own deadline: a stream may last as long as the model
                 // talks, but a client that stops reading cannot hold the connection.
                 if !crate::server::write_by(stream, &framed, Instant::now() + limits.timeout) {
-                    return;
+                    return written;
                 }
+                written = written.saturating_add(size);
             }
             Ok(None) => {
                 if chunked {
                     crate::server::write_by(stream, b"0\r\n\r\n", Instant::now() + limits.timeout);
                 }
-                return;
+                return written;
             }
-            Err(_) => return,
+            Err(_) => return written,
         }
     }
 }
@@ -737,17 +826,33 @@ fn stream_answer(
 #[cfg(test)]
 mod tests {
     use super::{Framing, MAX_REQUEST_BODY_BYTES, Relay, RelayModel, RelayTargets, Wire, framing};
-    use crate::{error::RefusalCode, error::RelayError, inventory::Label};
+    use crate::{
+        error::{RefusalCode, RelayError, TargetRefusal},
+        inventory::Label,
+    };
     use std::sync::Arc;
 
     struct NoTargets;
 
     impl RelayTargets for NoTargets {
-        fn acquire(&self, _alias: &str) -> Option<Box<dyn super::RelayTarget>> {
-            None
+        fn acquire(&self, _alias: &str) -> Result<Box<dyn super::RelayTarget>, TargetRefusal> {
+            Err(TargetRefusal::Unavailable)
         }
 
         fn invalidate(&self, _alias: &str, _authority: &str) {}
+    }
+
+    /// Each way `acquire` can refuse has its own 503 refusal, and no two share one.
+    #[test]
+    fn every_target_refusal_is_answered_with_its_own_503() {
+        for &refusal in TargetRefusal::ALL {
+            let expected = match refusal {
+                TargetRefusal::Unavailable => RefusalCode::TargetUnavailable,
+                TargetRefusal::ColdStart => RefusalCode::ModelColdStart,
+            };
+            assert_eq!(refusal.refusal(), expected);
+            assert_eq!(expected.status(), 503);
+        }
     }
 
     fn model(alias: &str, wires: Vec<Wire>) -> Result<RelayModel, RelayError> {

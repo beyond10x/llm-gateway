@@ -12,7 +12,7 @@ model; this repository answers them and, later, starts the pods they reach.
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.3.0, released 2026-10-08 as a source release; tested against in-process fakes and
+**Status: 0.4.0, released 2026-10-08 as a source release; tested against in-process fakes and
 loopback; nothing is deployed or qualified.**
 
 ## What it is not
@@ -114,8 +114,11 @@ Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' 
 ([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1).
 
 The gateway answers `GET /health` and `GET /ready` without a credential; the owner can read
-`GET /v1/routes` and `GET /v1/routes/<alias>`. [docs/gateway.md](docs/gateway.md) has the full
-surface and every refusal code.
+`GET /v1/routes`, `GET /v1/routes/<alias>` and `GET /metrics`, llmgw's 13 `llmgw_` counters as
+Prometheus text. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
+
+`RUST_LOG` sets the level of the structured log events the process writes to standard error
+beside the lines below (default `info`); at the default level the binary writes only those lines.
 
 | Event | Line on standard error | Exit status |
 | --- | --- | --- |

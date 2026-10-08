@@ -1,7 +1,9 @@
 //! The binary's relay to Runpod pods, composed in process through the `start_relaying` seam with
 //! `EmulatedRunpod` and a loopback pod (row B8), and the pool's inputs from the deployment
-//! document, `idle_timeout_minutes = 0` included (row K27). No pod is started, no Runpod API is
-//! called and nothing leaves the loopback interface.
+//! document, `idle_timeout_minutes = 0` included (row K27), the hold of a request for a pod that
+//! is still starting (rows L6, W6, K28), and the cleanup pass before serving and on its timer
+//! (rows L15, L13), and the pod and hold counters `GET /metrics` serves (rows O1, O2). No pod is
+//! started, no Runpod API is called and nothing leaves the loopback interface.
 
 mod support;
 
@@ -13,7 +15,7 @@ use std::{
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use support::{Fixture, OWNER_SECRET, VLLM_KEY, document, mutate, with_vllm_key};
 
@@ -452,4 +454,391 @@ fn k27_each_pool_input_is_fixed_or_read_from_the_document() {
     assert_eq!(model.crash_restart_limit, 2);
     assert_eq!(model.crash_window_ms, 600_000);
     assert_eq!(model.vllm, deployment.models["small"].vllm);
+}
+
+// --- L6, W6, K28: a request for a pod that is still starting -----------------------------------
+
+const CHAT: &str = "/v1/chat/completions";
+const SMALL_CHAT: &str = "{\"model\":\"small\",\"messages\":[]}";
+
+fn loopback(pod: &Pod) -> Arc<dyn PodConnector> {
+    Arc::new(Loopback {
+        pod: pod.address,
+        asked: Mutex::new(Vec::new()),
+    })
+}
+
+/// The deployment with `lines` added to its `[models.small]` table.
+fn with_model_lines(fixture: &Fixture, lines: &str) -> Deployment {
+    deployment(fixture, |text| {
+        mutate(
+            &text,
+            "max_model_len = 1024\n",
+            &format!("max_model_len = 1024\n{lines}"),
+        )
+    })
+}
+
+/// Posts one chat request and measures how long the answer took.
+fn timed_chat(address: SocketAddr) -> (String, Duration) {
+    let started = Instant::now();
+    let answer = post(address, CHAT, OWNER_SECRET, SMALL_CHAT);
+    (answer, started.elapsed())
+}
+
+#[test]
+fn l6_a_request_for_a_pod_still_starting_is_held_until_the_pod_serves() {
+    let fixture = Fixture::new("l6-held");
+    let deployment = deployment(&fixture, |text| text);
+    let mut pod = Pod::start(1, "{\"id\":\"held\"}");
+    let runpod = EmulatedRunpod::new();
+    // Three probes answer "not ready": the pod takes at least three of the relay's asks to
+    // serve, each 500 ms apart.
+    runpod.ready_after(3);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, held) = timed_chat(running.local_addr());
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(answer.contains("{\"id\":\"held\"}"), "{answer}");
+    assert!(
+        held >= Duration::from_secs(1),
+        "answered after {held:?}: the request was not held while the pod started"
+    );
+    assert_eq!(
+        runpod.create_calls(),
+        1,
+        "a held request started a second pod"
+    );
+    assert_eq!(pod.received().len(), 1);
+}
+
+#[test]
+fn l6_requests_held_together_wait_on_one_pod() {
+    let fixture = Fixture::new("l6-together");
+    let deployment = deployment(&fixture, |text| text);
+    let mut pod = Pod::start(3, "{\"id\":\"shared\"}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(3);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let waiting: Vec<_> = (0..3)
+        .map(|_| thread::spawn(move || timed_chat(address)))
+        .collect();
+    let answers: Vec<(String, Duration)> = waiting
+        .into_iter()
+        .map(|thread| thread.join().unwrap())
+        .collect();
+    running.shutdown();
+    for (answer, _) in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    assert_eq!(
+        runpod.create_calls(),
+        1,
+        "held requests started more than one pod"
+    );
+    assert_eq!(pod.received().len(), 3);
+}
+
+#[test]
+fn w6_a_pod_still_starting_past_the_hold_budget_is_model_cold_start_with_retry_after_30() {
+    let fixture = Fixture::new("w6-cold");
+    let deployment = with_model_lines(&fixture, "request_hold_seconds = 1\n");
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    // The pod never serves within this test.
+    runpod.ready_after(u32::MAX);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (first, held) = timed_chat(running.local_addr());
+    let (second, _) = timed_chat(running.local_addr());
+    running.shutdown();
+    for answer in [&first, &second] {
+        assert!(answer.starts_with("HTTP/1.1 503 "), "{answer}");
+        assert!(answer.contains("\"code\":\"model-cold-start\""), "{answer}");
+        assert_eq!(header(answer, "retry-after"), Some("30"), "{answer}");
+    }
+    assert!(
+        held >= Duration::from_secs(1),
+        "answered after {held:?}, before its 1 s hold budget"
+    );
+    assert!(
+        held < Duration::from_secs(4),
+        "answered after {held:?}, long past its 1 s hold budget"
+    );
+    // The pod keeps starting: the second request waited on it and started no other.
+    assert_eq!(runpod.create_calls(), 1);
+    assert!(runpod.terminations().is_empty());
+    assert!(pod.received().is_empty());
+}
+
+#[test]
+fn k28_the_request_hold_is_its_own_setting_and_defaults_to_start_wait_seconds() {
+    let fixture = Fixture::new("k28-default");
+    let unnamed = deployment(&fixture, |text| text);
+    assert_eq!(unnamed.models["small"].start_wait_seconds, 600);
+    assert_eq!(unnamed.models["small"].request_hold_seconds, 600);
+    let longer = with_model_lines(&fixture, "start_wait_seconds = 90\n");
+    assert_eq!(longer.models["small"].request_hold_seconds, 90);
+
+    let named = with_model_lines(
+        &fixture,
+        "start_wait_seconds = 900\nrequest_hold_seconds = 45\n",
+    );
+    assert_eq!(named.models["small"].request_hold_seconds, 45);
+    // The hold bounds a request, never the pod: the startup deadline is start_wait_seconds.
+    let models = llm_gateway_cli::runpod_models(&named).unwrap();
+    assert_eq!(models[&small()].startup_deadline_ms, 900_000);
+}
+
+#[test]
+fn k28_the_request_hold_is_within_zero_and_the_startup_deadline() {
+    let fixture = Fixture::new("k28-range");
+    for admitted in ["0", "90"] {
+        let lines = format!("start_wait_seconds = 90\nrequest_hold_seconds = {admitted}\n");
+        let deployment = with_model_lines(&fixture, &lines);
+        assert_eq!(
+            deployment.models["small"].request_hold_seconds.to_string(),
+            admitted
+        );
+    }
+    let secret = fixture.owner_secret();
+    let over = mutate(
+        &document("127.0.0.1:0", &secret),
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nstart_wait_seconds = 90\nrequest_hold_seconds = 91\n",
+    );
+    let refused = load(&fixture.config(&over)).err().unwrap();
+    assert_eq!(refused.kind(), StartupRefusal::ConfigValue);
+    assert_eq!(
+        refused.message(),
+        "models.small.request_hold_seconds must be within 0..=90",
+    );
+}
+
+#[test]
+fn k28_a_hold_of_zero_answers_model_cold_start_at_once_and_still_starts_the_pod() {
+    let fixture = Fixture::new("k28-zero");
+    let deployment = with_model_lines(&fixture, "request_hold_seconds = 0\n");
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(u32::MAX);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, held) = timed_chat(running.local_addr());
+    running.shutdown();
+    assert!(answer.contains("\"code\":\"model-cold-start\""), "{answer}");
+    assert_eq!(header(&answer, "retry-after"), Some("30"));
+    assert!(
+        held < Duration::from_millis(500),
+        "a hold of 0 waited {held:?}"
+    );
+    assert_eq!(
+        runpod.create_calls(),
+        1,
+        "the request did not start the pod"
+    );
+    assert!(pod.received().is_empty());
+}
+
+// --- L15, L13: the cleanup pass ----------------------------------------------------------------
+
+#[test]
+fn l15_the_startup_sweep_terminates_a_previous_runs_pod_before_serving() {
+    let fixture = Fixture::new("l15-sweep");
+    let deployment = deployment(&fixture, |text| text);
+    let runpod = EmulatedRunpod::new();
+    // A previous run of this controller starts a pod and stops; the pod outlives it.
+    let mut pod = Pod::start(1, "{\"id\":\"first-run\"}");
+    let first = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, _) = timed_chat(first.local_addr());
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    first.shutdown();
+    assert_eq!(pod.received().len(), 1);
+    // Somebody else's pod is never swept.
+    let foreign = runpod.insert_pod("someone-elses-pod", std::collections::BTreeMap::new());
+    assert!(runpod.terminations().is_empty(), "stopping stops no pod");
+
+    // The next run sweeps it before it serves anything: no request is made, and the timer's
+    // first pass is a minute away.
+    let second = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(2_000)),
+    )
+    .unwrap();
+    let swept = runpod.terminations();
+    second.shutdown();
+    assert_eq!(swept, vec!["pod1".to_owned()]);
+    assert!(!swept.contains(&foreign));
+}
+
+#[test]
+fn l13_the_cleanup_pass_runs_every_60_seconds_well_inside_the_lease() {
+    assert_eq!(llm_gateway_cli::CLEANUP_INTERVAL, Duration::from_secs(60));
+    assert!(
+        llm_gateway_cli::CLEANUP_INTERVAL.as_millis() * 5 <= u128::from(llm_gateway_cli::LEASE_MS),
+        "five passes must fit in one lease, so a missed pass cannot lose it"
+    );
+}
+
+// --- O1, O2: the binary's pod counters and the hold, read from `GET /metrics` ------------------
+
+/// The samples of one `GET /metrics` the owner makes, `name{labels}` to value.
+fn scrape(address: SocketAddr) -> std::collections::BTreeMap<String, String> {
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    write!(
+        stream,
+        "GET /metrics HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+    )
+    .unwrap();
+    let mut answer = String::new();
+    drop(stream.read_to_string(&mut answer));
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    let (_, body) = answer.split_once("\r\n\r\n").unwrap();
+    body.lines()
+        .filter(|line| !line.starts_with('#'))
+        .map(|line| {
+            let (series, value) = line.rsplit_once(' ').unwrap();
+            (series.to_owned(), value.to_owned())
+        })
+        .collect()
+}
+
+#[test]
+fn o1_o2_a_pod_start_and_the_request_held_on_it_are_counted() {
+    let fixture = Fixture::new("o1-start");
+    let deployment = deployment(&fixture, |text| text);
+    let mut pod = Pod::start(1, "{\"id\":\"held\"}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(3);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let before = scrape(running.local_addr());
+    assert_eq!(before["llmgw_pod_starts_total"], "0");
+    assert_eq!(
+        before["llmgw_route_cold_start_holds_total{model=\"small\",wire=\"chat\"}"],
+        "0"
+    );
+    let (answer, held) = timed_chat(running.local_addr());
+    let after = scrape(running.local_addr());
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert_eq!(runpod.create_calls(), 1);
+    assert_eq!(pod.received().len(), 1);
+    assert_eq!(after["llmgw_pod_starts_total"], "1");
+    assert_eq!(after["llmgw_pod_start_failures_total"], "0");
+    assert_eq!(after["llmgw_inference_requests_total"], "1");
+    assert_eq!(
+        after["llmgw_route_requests_total{model=\"small\",wire=\"chat\"}"],
+        "1"
+    );
+    assert_eq!(
+        after["llmgw_route_cold_start_holds_total{model=\"small\",wire=\"chat\"}"],
+        "1"
+    );
+    let waited: f64 = after["llmgw_cold_start_wait_seconds_total"]
+        .parse()
+        .unwrap();
+    assert!(
+        waited >= 1.0 && waited <= held.as_secs_f64(),
+        "waited {waited} s of a request held {held:?}"
+    );
+}
+
+#[test]
+fn o1_a_pod_start_refused_for_capacity_is_a_pod_start_failure() {
+    let fixture = Fixture::new("o1-capacity");
+    let deployment = deployment(&fixture, |text| text);
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    runpod.refuse_gpu("NVIDIA L40S");
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, _) = timed_chat(running.local_addr());
+    let after = scrape(running.local_addr());
+    running.shutdown();
+    assert!(
+        answer.contains("\"code\":\"target-unavailable\""),
+        "{answer}"
+    );
+    assert_eq!(after["llmgw_pod_start_failures_total"], "1");
+    assert_eq!(after["llmgw_pod_starts_total"], "0");
+    assert_eq!(
+        after["llmgw_route_refusals_total{model=\"small\",wire=\"chat\"}"],
+        "1"
+    );
+    assert!(pod.received().is_empty());
+}
+
+#[test]
+fn o1_the_startup_sweep_counts_each_pod_it_stops_as_a_reap() {
+    let fixture = Fixture::new("o1-reap");
+    let deployment = deployment(&fixture, |text| text);
+    let runpod = EmulatedRunpod::new();
+    let mut pod = Pod::start(1, "{\"id\":\"first-run\"}");
+    let first = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, _) = timed_chat(first.local_addr());
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert_eq!(scrape(first.local_addr())["llmgw_pod_reaps_total"], "0");
+    first.shutdown();
+    assert_eq!(pod.received().len(), 1);
+    let second = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(2_000)),
+    )
+    .unwrap();
+    let scraped = scrape(second.local_addr());
+    second.shutdown();
+    assert_eq!(runpod.terminations(), vec!["pod1".to_owned()]);
+    assert_eq!(scraped["llmgw_pod_reaps_total"], "1");
+    assert_eq!(scraped["llmgw_pod_starts_total"], "0");
 }

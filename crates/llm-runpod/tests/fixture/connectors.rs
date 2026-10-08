@@ -6,7 +6,9 @@
 //! `approvals prepare` and `approvals issue` by default, and `operations invoke` only from the
 //! script. An issued proof records the exact input it was issued for, and an invoke of a write
 //! whose proof was issued for another input, or that names no proof, is refused the way
-//! connectors refuses it, and recorded as `proof_mismatch`. It opens no socket and reads no key.
+//! connectors refuses it, and recorded as `proof_mismatch`. Every answer goes out in connectors'
+//! published framing (`succeed`, `fail`): a script may write the bare `result` or `error`, and
+//! the fixture frames it; `raw` is printed as given. It opens no socket and reads no key.
 
 use std::{
     collections::hash_map::DefaultHasher,
@@ -37,9 +39,36 @@ fn subject(input: &str) -> String {
     format!("{:016x}{:016x}", hasher.finish(), input.len())
 }
 
+/// connectors' failure framing (v0.36.0 `contracts/cli/v1alpha1/semantics.md:178-181`): stdout
+/// stays empty and stderr gets one `{"ok":false,"error":{"code":"failure","data":…}}` envelope,
+/// whose `data` is the `Failure` (`code`, `stage`, `next_action`, `mutation`). A script
+/// writes a failure as `{"error":{"code":…,"data":…}}`; this is where it is framed.
 fn fail(code: u8, error: &Value) -> ExitCode {
-    println!("{error}");
+    let inner = error.get("error").unwrap_or(error);
+    let mut data = inner.get("data").cloned().unwrap_or_else(|| json!({}));
+    if data.get("code").is_none()
+        && let Some(object) = data.as_object_mut()
+    {
+        object.insert(
+            "code".to_owned(),
+            inner.get("code").cloned().unwrap_or(Value::Null),
+        );
+    }
+    eprintln!(
+        "{}",
+        json!({"ok": false, "error": {"code": "failure", "data": data}})
+    );
     ExitCode::from(code)
+}
+
+/// connectors' success framing: one `{"ok":true,"result":…}` envelope on stdout. A script
+/// writes a success as the bare `result`; an answer that already carries `ok` is printed as is.
+fn succeed(result: &Value) {
+    if result.get("ok").is_some() {
+        println!("{result}");
+    } else {
+        println!("{}", json!({"ok": true, "result": result}));
+    }
 }
 
 fn main() -> ExitCode {
@@ -138,7 +167,7 @@ fn main() -> ExitCode {
     }
     match answer {
         Some(answer) if answer.get("error").is_none() => {
-            println!("{answer}");
+            succeed(&answer);
             ExitCode::SUCCESS
         }
         Some(error) => fail(2, &error),
@@ -168,18 +197,22 @@ fn play(answer: &Value) -> ExitCode {
     if let Some(ms) = answer.get("sleep_ms").and_then(Value::as_u64) {
         thread::sleep(Duration::from_millis(ms));
     }
+    let code = answer.get("exit").and_then(Value::as_u64).unwrap_or(0);
+    let code = u8::try_from(code).unwrap_or(1);
     if let Some(raw) = answer.get("raw").and_then(Value::as_str) {
         print!("{raw}");
     } else if let Some(stdout) = answer.get("stdout") {
-        println!("{stdout}");
+        if stdout.get("error").is_some() && stdout.get("ok").is_none() {
+            return fail(if code == 0 { 1 } else { code }, stdout);
+        }
+        succeed(stdout);
     }
     // connectors v0.36.0 `contracts/cli/v1alpha1/semantics.md`: a failure leaves stdout empty
     // and writes its `{"ok":false,"error":…}` envelope to stderr.
     if let Some(stderr) = answer.get("stderr") {
         eprintln!("{stderr}");
     }
-    let code = answer.get("exit").and_then(Value::as_u64).unwrap_or(0);
-    ExitCode::from(u8::try_from(code).unwrap_or(1))
+    ExitCode::from(code)
 }
 
 fn issue(args: &[String], input: Option<&str>, record: &mut Value) -> Value {

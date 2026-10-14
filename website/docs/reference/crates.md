@@ -21,4 +21,6 @@ The workspace holds 7 packages at version `0.6.0`. None is published to a regist
 | `b10x-llm-provision` | `llm_provision` | — | `crates/llm-provision` | Hosting lifecycle ports and resource ownership contracts. |
 | `b10x-llm-runpod` | `llm_runpod` | `connectors-fixture` | `crates/llm-runpod` | Runpod vLLM adapter behind the hosting lifecycle contract: EmulatedRunpod for tests, and ConnectorsRunpod, which reaches Runpod only through the connectors CLI. |
 
-No package declares an optional feature.
+## Optional features
+
+- `b10x-llm-gateway-cli`: `test-seam`

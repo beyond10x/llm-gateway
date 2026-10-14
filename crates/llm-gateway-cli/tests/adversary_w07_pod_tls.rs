@@ -66,9 +66,13 @@ impl Ca {
 
 /// Leaf parameters for `names`, a server-auth certificate valid now.
 fn leaf(names: &[&str], common_name: &str) -> CertificateParams {
-    let mut params =
-        CertificateParams::new(names.iter().map(|name| (*name).to_owned()).collect::<Vec<_>>())
-            .unwrap();
+    let mut params = CertificateParams::new(
+        names
+            .iter()
+            .map(|name| (*name).to_owned())
+            .collect::<Vec<_>>(),
+    )
+    .unwrap();
     params
         .distinguished_name
         .push(DnType::CommonName, common_name);
@@ -215,7 +219,10 @@ fn adversary_w07_every_bad_certificate_fails_both_connections_and_the_pod_reads_
         stream.flush().unwrap();
         let mut answer = Vec::new();
         drop(stream.read_to_end(&mut answer));
-        assert!(answer.starts_with(b"HTTP/1.1 200 "), "{names:?}: {answer:?}");
+        assert!(
+            answer.starts_with(b"HTTP/1.1 200 "),
+            "{names:?}: {answer:?}"
+        );
     }
 }
 
@@ -262,10 +269,7 @@ impl Plain {
                         if read == 0 {
                             break;
                         }
-                        recording
-                            .lock()
-                            .unwrap()
-                            .extend_from_slice(&buffer[..read]);
+                        recording.lock().unwrap().extend_from_slice(&buffer[..read]);
                         if first && matches!(answer, Answer::AfterHello) {
                             drop(connection.write_all(http));
                         }
@@ -297,9 +301,11 @@ fn adversary_w07_a_plain_http_answer_on_the_https_port_opens_no_connection() {
     for answer in [Answer::AtOnce, Answer::AfterHello, Answer::Close] {
         for probe in [false, true] {
             let plain = Plain::start(answer);
-            let connector =
-                ProxyConnector::with_test_seam(std::slice::from_ref(&root.der), Some(plain.address))
-                    .unwrap();
+            let connector = ProxyConnector::with_test_seam(
+                std::slice::from_ref(&root.der),
+                Some(plain.address),
+            )
+            .unwrap();
             let opened = if probe {
                 connector
                     .connect_probe(POD_HOST, Duration::from_secs(5))
@@ -307,7 +313,10 @@ fn adversary_w07_a_plain_http_answer_on_the_https_port_opens_no_connection() {
             } else {
                 connector.connect(POD_HOST).is_ok()
             };
-            assert!(!opened, "{answer:?} (probe: {probe}): the connection opened");
+            assert!(
+                !opened,
+                "{answer:?} (probe: {probe}): the connection opened"
+            );
             thread::sleep(Duration::from_millis(100));
             let received = plain.received();
             for needle in [
@@ -358,13 +367,9 @@ fn adversary_w07_an_untrusted_pod_is_probed_without_a_byte_or_a_key() {
         "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
         "operations invoke pod.create": [created(&running_small_pod())],
     }));
-    let deployment = load(&fixture.config(&connected_document(
-        &fixture,
-        "127.0.0.1:0",
-        &connectors,
-        3,
-    )))
-    .unwrap();
+    let deployment =
+        load(&fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 3)))
+            .unwrap();
     let trusted = Ca::new("adversary-w07 trusted root");
     let stranger = Ca::new("adversary-w07 stranger root");
     let pod = TlsPod::start(issued(&stranger, &leaf(&[POD_HOST], POD_HOST)), None);

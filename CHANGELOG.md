@@ -16,6 +16,10 @@ Nothing in any release is deployed or qualified against a live client.
   start-time refusal of a document that declares a `connectors` provider is gone, so the binary
   now starts and relays to pods. `b10x-llm-runpod`'s probe takes its TLS connection from the
   embedding (`ConnectorsRunpod::set_tls`, `PodTls`).
+- A pod connection's 10 s connect bound covers the TLS handshake as one deadline; the handshake
+  no longer waits under the 120 s read timeout. The `gateway-tls-seam` test program is built only
+  with the test-only `test-seam` feature, so the release build writes `b10x-llm-gateway` and no
+  program that trusts a root from its environment.
 
 ## 0.6.0 (2026-10-08)
 

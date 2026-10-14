@@ -88,8 +88,10 @@ domain: llm-gateway.deployment
 #     inside the opening of the connection (`RelayTarget::connect`, the probe's connect), so a
 #     certificate that does not verify ends that connection with no byte of the request and no
 #     key sent. The relayed request is then answered `upstream-failed`, and the probe
-#     `Unreachable`. A pod connection gives up connecting after 10 s; a relayed connection's
-#     reads and writes each time out after 120 s, the probe's after its own 10 s. An `http://`
+#     `Unreachable`. A pod connection gives up connecting after 10 s: one deadline over the
+#     whole opening, the TCP connection and the TLS handshake together, so an endpoint that
+#     answers slowly or not at all cannot stretch it; a relayed connection's reads and writes,
+#     after the opening, each time out after 120 s, the probe's after its own 10 s. An `http://`
 #     endpoint is never relayed to by the shipped binary: its pod connector speaks only TLS.
 #   * DECIDED 2026-10-14, the TLS client and its trust roots: the client is `rustls` with its
 #     `ring` provider, in `b10x-llm-gateway-cli` only. The gateway crate links no TLS crate
@@ -105,8 +107,10 @@ domain: llm-gateway.deployment
 #     over other roots and may map every pod host to one loopback address, while the
 #     certificate is still verified for the pod's own host name. Only tests reach it, through
 #     the library or through the `gateway-tls-seam` test program, which runs the shipped
-#     `main` with it. The shipped binary's document, command line and environment cannot reach
-#     it. `llm_gateway_cli::start_connected` is the composition `start` runs, with the
+#     `main` with it. That program is built only with the test-only `test-seam` feature, which
+#     the package's tests enable and the release build does not, so the documented
+#     `cargo build --release -p b10x-llm-gateway-cli` writes no program that trusts another
+#     root. The shipped binary's document, command line and environment cannot reach it. `llm_gateway_cli::start_connected` is the composition `start` runs, with the
 #     transport wrapped and the pod connector supplied by the caller; `start` passes the
 #     identity and `ProxyConnector::shipped()`.
 # The pool's inputs, each from the document or fixed:

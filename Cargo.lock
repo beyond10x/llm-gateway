@@ -138,6 +138,7 @@ name = "b10x-llm-gateway-cli"
 version = "0.6.0"
 dependencies = [
  "b10x-llm-gateway",
+ "b10x-llm-gateway-cli",
  "b10x-llm-runpod",
  "clap",
  "rcgen",

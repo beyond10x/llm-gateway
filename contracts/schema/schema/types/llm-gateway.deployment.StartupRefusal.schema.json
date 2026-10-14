@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
-    "contract_digest": "slice-sha256/2:a3b8bc5da425e3a4ca30badfae1041de5006f4a9d00282d9fc5649697ed69037",
+    "source_digest": "c6f1f59d2554e8fe5fca3cd999798bc4ae05a80532c2edc8c0a24f77526e1590",
+    "contract_digest": "slice-sha256/2:deb3457500d707e959b8593df0e93c97b5b3a71b610069ab03faca5772e71f58",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -41,6 +41,14 @@
         "VllmApiKeyTooLarge",
         "VllmApiKeyNotUtf8",
         "VllmApiKeyNotAToken",
+        "EndpointCredentialUnreadable",
+        "EndpointCredentialSymlink",
+        "EndpointCredentialNotRegular",
+        "EndpointCredentialUntrustedOwner",
+        "EndpointCredentialUnsafeMode",
+        "EndpointCredentialTooLarge",
+        "EndpointCredentialNotUtf8",
+        "EndpointCredentialNotAToken",
         "ListenBind",
         "SignalInstall"
       ]

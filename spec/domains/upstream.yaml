@@ -1,14 +1,16 @@
 domain: llm-gateway.upstream
 
-# PLANNED: no code implements this domain yet, and checks/conformance observes none of it. It is
-# the typed home of the nouns story:hosted-endpoints and story:target-fallback introduce. Each
-# story adds the observation entity and the scenarios that hold its implementation to these
-# declarations.
+# The typed home of the nouns story:hosted-endpoints and story:target-fallback introduce.
+# HostedEndpoint is implemented (crates/llm-gateway-cli/src/hosted.rs) and observed through the
+# `Relay` and `Exchange` commands of llm-gateway.gateway (HostedEndpoint says how).
+# PLANNED: TargetAttempt; no code implements it yet and checks/conformance observes none of it.
+# story:target-fallback adds its observation and the scenarios that hold its implementation to
+# these declarations.
 #
 # Today a relayed model is served by whatever single target the embedding's target source hands
-# out, and the only provider kind the deployment document admits is `runpod-vllm`
-# (llm-gateway.deployment.ProviderKind; llm-gateway.gateway RelayObservation, steps 7-8). The
-# route inventory the owner reads already describes more: an ordered target list per route,
+# out: a Runpod pod (llm-gateway.deployment.ProviderKind) or a hosted endpoint
+# (llm-gateway.deployment.HostedDeclaration; llm-gateway.gateway RelayObservation, steps 7-8).
+# The route inventory the owner reads already describes more: an ordered target list per route,
 # positions contiguous from zero, a `fallback_enabled` flag, and per target the authentication
 # and billing kinds below (crates/llm-gateway/src/inventory.rs:58-138). Nothing acts on a
 # position after 0.
@@ -50,36 +52,67 @@ entities:
   # A model endpoint the gateway reaches over the network that no hosting controller owns: a
   # vendor API or an OpenAI-compatible server somebody else runs. Nothing is provisioned or
   # stopped for it, so it has no llm-gateway.hosting record.
+  #
+  # DECIDED 2026-10-14 (story:hosted-endpoints), the declaration: a section of its own. The
+  # closed deployment document declares each model a hosted endpoint serves as one
+  # `[hosted.<alias>]` table (llm-gateway.deployment.HostedDeclaration), beside the Runpod
+  # models of `[models.<alias>]`; `endpoint_id` is that alias. A provider kind beside
+  # `runpod-vllm` would have kept the Runpod model table, whose `hf_model`, `image`,
+  # `gpu_types` and `max_model_len` a hosted model does not have.
+  #
+  # How a relayed request reaches it (llm-gateway.gateway `Relay`, steps 7-8): the request goes
+  # to the same path at the endpoint's authority, `host` set to that authority, on each wire the
+  # model declares; the endpoint is handed out at once, never held, and is kept when a request
+  # through it fails (`upstream-failed`): there is nothing to replace. An `http` endpoint is
+  # reached over plain TCP; an `https` endpoint over the binary's one TLS client with the
+  # shipped trust roots, the handshake and the certificate's verification, chain and host name,
+  # completing before any request byte is written, so a certificate the gateway does not trust
+  # ends the request `upstream-failed` with no request byte and no credential sent
+  # (llm-gateway.deployment, the TLS client and its trust roots). Either connection gives up
+  # connecting after 10 s, and its reads and writes each time out after 120 s.
+  #
+  # Observed through llm-gateway.gateway: a `Relay` program's model may name an `endpoint`, and
+  # is then served by the binary's own hosted target source (`llm_gateway_cli::HostedTargets`)
+  # reaching a fixture pod over plain TCP or TLS; RelayObservation's `connections` and
+  # `received_heads` record what each endpoint accepted and received. An `Exchange` program may
+  # name a `document`, whose route inventory the binary builds, and `withheld` strings no answer
+  # may carry. The startup refusals of a credential file are process facts
+  # (llm-gateway.deployment ESS-LIMIT), proved by `hosted_*` in
+  # crates/llm-gateway-cli/tests/hosted.rs.
   - name: llm-gateway.upstream.HostedEndpoint
     identity: {name: endpoint_id, type: String}
     fields:
-      # The one wire the endpoint speaks. The gateway relays without translating (story
-      # gateway-translation is deferred), so a model is served on this wire only.
-      - {name: wire, type: llm-gateway.gateway.Wire}
-      # Where requests go, `http` or `https`. An `https` endpoint is reached over TLS with its
-      # certificate verified. Never rendered by the route inventory, which carries
-      # `endpoint_id` (docs/gateway.md "The route inventory").
+      # The wires the model is served on. The gateway relays without translating (story
+      # gateway-translation is deferred), so the endpoint must speak each of them at its path.
+      # DECIDED 2026-10-14: a list, as a Runpod model's `wires`, rather than one wire: one
+      # vendor API commonly serves several (`chat` and `responses`).
+      - {name: wires, type: 'List<llm-gateway.gateway.Wire>'}
+      # The model name the endpoint expects; the alias unless the declaration names another.
+      # The relay rewrites the request's `model` to it (row W2).
+      - {name: upstream_model, type: String}
+      # Where requests go: `http://` or `https://` and an authority `host[:port]`, nothing else
+      # but an optional final `/` (no path, query, fragment or user information). The port
+      # defaults to 80 for `http` and 443 for `https`. Never rendered by the route inventory,
+      # which carries `endpoint_id` (docs/gateway.md "The route inventory").
       - {name: base_url, type: String}
       - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
-      # The file holding the credential, read once through the trusted-file reader as
-      # `owner_secret_file` is (llm-gateway.deployment.StartupRefusal). Absent exactly when
-      # `auth_kind` is `Anonymous`.
+      # The file holding the credential, read once at start through the trusted-file reader as
+      # `owner_secret_file` is (`endpoint-credential:<rule>`,
+      # llm-gateway.deployment.StartupRefusal). Absent exactly when `auth_kind` is `Anonymous`.
       - {name: credential_file, type: 'Optional<String>'}
       # The request header that carries the credential when `auth_kind` is `ApiKey`, whose
-      # value is the credential itself. Present exactly when `auth_kind` is `ApiKey`. A `Bearer`
-      # endpoint gets `authorization: Bearer <credential>`. The owner's own credential is never
-      # sent to any endpoint.
+      # value is the credential itself, with no `authorization` header. Present exactly when
+      # `auth_kind` is `ApiKey`. A `Bearer` endpoint gets `authorization: Bearer <credential>`,
+      # and an `Anonymous` one neither. The owner's own credential is never sent to any
+      # endpoint.
       # DECIDED 2026-10-06: the header is declared because vendors disagree on its name; no
       # source here fixes one.
       - {name: credential_header, type: 'Optional<String>'}
       - {name: billing_kind, type: llm-gateway.upstream.BillingKind}
     # DECIDED 2026-10-06: any endpoint that speaks one of the three wires is in scope, with no
     # vendor-specific code: the relay does not translate, so an endpoint is described by its
-    # wire, its base URL and how it authenticates. A vendor that needs more than that is a
+    # wires, its base URL and how it authenticates. A vendor that needs more than that is a
     # translation question (story:gateway-translation).
-    # UNMAPPED: how the closed deployment document declares an endpoint: a provider kind beside
-    # `runpod-vllm`, or a section of its own. The document refuses both today. Owner:
-    # story:hosted-endpoints.
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   # One position of one route, tried or not, for one request.
   #

@@ -1,0 +1,35 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-an-https-endpoint-whose-certificate-is-not-trusted-is-upstream-failed-and-reads-no-byte
+summary: an https endpoint presenting a certificate from a root the client does not trust ends each request upstream-failed with no request byte read, and the endpoint is kept and asked again
+timeline:
+- at: '2026-10-14T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"remote","upstream_model":"vendor-remote","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"https","certificate":"untrusted","auth_kind":"bearer","credential":"endpoint-bearer-0123456789abcdef"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"never\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"never\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"remote\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"remote\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '502 upstream-failed'
+    - '502 upstream-failed'
+    upstream: []
+    authorizations: []
+    received_heads: []
+    connections:
+    - 'pod-1 tls-refused nothing'
+    - 'pod-1 tls-refused nothing'
+    secret_upstream: false
+    acquired: 2
+    released: 2
+    invalidated:
+    - 'pod-1'
+    - 'pod-1'

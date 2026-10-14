@@ -1,0 +1,36 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-an-https-endpoint-is-reached-over-verified-tls
+summary: an https endpoint whose certificate the client's trust roots issued for its address is reached over TLS, and the request and its credential travel inside it
+timeline:
+- at: '2026-10-14T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"remote","upstream_model":"vendor-remote","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"https","auth_kind":"bearer","credential":"endpoint-bearer-0123456789abcdef"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-tls\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"remote\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    bodies:
+    - '{"id":"chat-tls"}'
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"vendor-remote","messages":[]}'
+    authorizations:
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    received_heads:
+    - 'authorization: Bearer endpoint-bearer-0123456789abcdef | content-type: application/json | content-length: 39 | connection: close'
+    connections:
+    - 'pod-1 tls request'
+    secret_upstream: false
+    acquired: 1
+    released: 1
+    invalidated: []

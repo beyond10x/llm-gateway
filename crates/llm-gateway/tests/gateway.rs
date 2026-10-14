@@ -4,10 +4,10 @@
 //! upstream credential appearing on the wire and without any secret source being consulted.
 
 use llm_gateway::{
-    AuthKind, BillingKind, Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, RefusalCode,
-    Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, RouteSummary,
-    SharedSecretVerifier, ShutdownReport, TargetLimits, TargetProvenance, TargetRefusal,
-    TargetSummary, Verdict, Wire,
+    AuthKind, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle, Label,
+    OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, TargetLimits,
+    TargetProvenance, TargetRefusal, TargetSummary, Verdict, Wire,
 };
 use std::{
     collections::BTreeSet,
@@ -950,6 +950,14 @@ fn enforced_bounds() -> Vec<Bound> {
             value: 256,
             direction: Direction::Maximum,
             admits: Box::new(|n| Label::new("x".repeat(usize::try_from(n).unwrap())).is_ok()),
+        },
+        Bound {
+            name: "credential-header-bytes",
+            value: 64,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| {
+                CredentialHeader::new(&"x".repeat(usize::try_from(n).unwrap())).is_ok()
+            }),
         },
         Bound {
             name: "targets-per-route",

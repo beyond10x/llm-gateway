@@ -9,8 +9,8 @@
 
 mod support;
 
-use llm_gateway::ToolCalling;
-use llm_gateway_cli::{load, vllm_keys};
+use llm_gateway::{AuthKind, BillingKind, CredentialHeader, ToolCalling};
+use llm_gateway_cli::{Wire, load, vllm_keys};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking};
 use std::{
     net::SocketAddr,
@@ -18,7 +18,8 @@ use std::{
     time::Duration,
 };
 use support::{
-    Fixture, VLLM_KEY, connectors_table, document, mutate, with_connectors, with_vllm_key,
+    Fixture, VLLM_KEY, api_key_keys, bearer_keys, connectors_table, document, hosted_document,
+    hosted_table, mutate, with_connectors, with_vllm_key,
 };
 
 fn base(fixture: &Fixture) -> String {
@@ -917,4 +918,388 @@ fn tls_no_document_key_adds_a_trust_root_or_disables_verification() {
         }
     }
     assert!(accepted.is_empty(), "accepted: {accepted:?}");
+}
+
+// --- Hosted endpoints (story:hosted-endpoints) ---------------------------------------------
+
+/// A document serving the hosted model `remote` at `https://api.example.test/` with `keys`,
+/// and the Runpod model `small` of the base document beside it.
+fn hosted(fixture: &Fixture, keys: &str) -> String {
+    format!(
+        "{}\n{}",
+        base(fixture),
+        hosted_table("remote", "https://api.example.test/", keys)
+    )
+}
+
+#[test]
+fn hosted_a_declared_endpoint_loads_with_every_default_applied() {
+    let fixture = Fixture::new("hosted-defaults");
+    let credential = fixture.endpoint_credential();
+    let deployment = load(&fixture.config(&hosted(&fixture, &bearer_keys(&credential)))).unwrap();
+    assert_eq!(
+        deployment.models.len(),
+        1,
+        "the Runpod model is still served"
+    );
+    let remote = &deployment.hosted["remote"];
+    assert_eq!(remote.wires, vec![Wire::Chat, Wire::Messages]);
+    assert_eq!(remote.base_url, "https://api.example.test/");
+    assert_eq!(remote.auth_kind, AuthKind::Bearer);
+    assert_eq!(
+        remote.credential_file.as_deref(),
+        Some(credential.as_path())
+    );
+    assert_eq!(remote.credential_header, None);
+    assert_eq!(remote.billing_kind, BillingKind::Metered);
+    assert_eq!(remote.upstream_model, "remote");
+    assert_eq!(remote.context_window, None);
+    assert_eq!(remote.tool_calling, ToolCalling::Absent);
+}
+
+#[test]
+fn hosted_explicit_values_replace_the_defaults() {
+    let fixture = Fixture::new("hosted-explicit");
+    let credential = fixture.endpoint_credential();
+    let keys = format!(
+        "{}billing_kind = \"subscription\"\nupstream_model = \"vendor/model-1\"\ncontext_window = 128000\ntool_calling = \"parsed\"\n",
+        api_key_keys(&credential, "X-Api-Key")
+    );
+    let deployment = load(&fixture.config(&hosted(&fixture, &keys))).unwrap();
+    let remote = &deployment.hosted["remote"];
+    assert_eq!(remote.auth_kind, AuthKind::ApiKey);
+    assert_eq!(
+        remote
+            .credential_header
+            .as_ref()
+            .map(CredentialHeader::as_str),
+        Some("x-api-key")
+    );
+    assert_eq!(remote.billing_kind, BillingKind::Subscription);
+    assert_eq!(remote.upstream_model, "vendor/model-1");
+    assert_eq!(remote.context_window, Some(128_000));
+    assert_eq!(remote.tool_calling, ToolCalling::Parsed);
+    // An anonymous endpoint names neither a file nor a header, and needs no Runpod model.
+    let secret = fixture.owner_secret();
+    let only = hosted_document(
+        "127.0.0.1:0",
+        &secret,
+        &hosted_table(
+            "open",
+            "http://127.0.0.1:8000",
+            "auth_kind = \"anonymous\"\nbilling_kind = \"self-hosted\"\n",
+        ),
+    );
+    let deployment = load(&fixture.config(&only)).unwrap();
+    assert!(deployment.models.is_empty() && deployment.providers.is_empty());
+    let open = &deployment.hosted["open"];
+    assert_eq!(open.auth_kind, AuthKind::Anonymous);
+    assert_eq!(open.credential_file, None);
+    assert_eq!(open.billing_kind, BillingKind::SelfHosted);
+}
+
+/// Criterion 6, first half: an endpoint whose `auth_kind` is not `anonymous` but which names no
+/// `credential_file` is refused as `config:value`.
+#[test]
+fn hosted_an_endpoint_that_needs_a_credential_but_names_no_file_is_refused_as_a_value() {
+    let fixture = Fixture::new("hosted-no-file");
+    let credential = fixture.endpoint_credential();
+    for (case, control, keys) in [
+        (
+            "bearer",
+            bearer_keys(&credential),
+            "auth_kind = \"bearer\"\n".to_owned(),
+        ),
+        (
+            "api-key",
+            api_key_keys(&credential, "x-api-key"),
+            "auth_kind = \"api-key\"\ncredential_header = \"x-api-key\"\n".to_owned(),
+        ),
+    ] {
+        assert!(
+            load(&fixture.config(&hosted(&fixture, &control))).is_ok(),
+            "{case}: the control is refused"
+        );
+        let refusal = load(&fixture.config(&hosted(&fixture, &keys))).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}");
+        assert!(
+            refusal.message().contains("hosted.remote.credential_file"),
+            "{case}: {}",
+            refusal.message()
+        );
+    }
+}
+
+/// Criterion 6, second half: an `api-key` endpoint that names no `credential_header` is
+/// refused as `config:value`.
+#[test]
+fn hosted_an_api_key_endpoint_that_names_no_credential_header_is_refused_as_a_value() {
+    let fixture = Fixture::new("hosted-no-header");
+    let credential = fixture.endpoint_credential();
+    let keys = format!(
+        "auth_kind = \"api-key\"\ncredential_file = \"{}\"\n",
+        credential.display()
+    );
+    let refusal = load(&fixture.config(&hosted(&fixture, &keys))).unwrap_err();
+    assert_eq!(refusal.code(), "config:value");
+    assert!(
+        refusal
+            .message()
+            .contains("hosted.remote.credential_header"),
+        "{}",
+        refusal.message()
+    );
+}
+
+/// Every other rule of `[hosted.<alias>]` (llm-gateway.deployment.HostedDeclaration), each
+/// broken on its own against a control that loads.
+#[test]
+fn hosted_every_value_outside_its_rule_is_refused() {
+    let fixture = Fixture::new("hosted-out-of-rule");
+    let credential = fixture.endpoint_credential();
+    let bearer = bearer_keys(&credential);
+    let control = hosted(&fixture, &bearer);
+    assert!(
+        load(&fixture.config(&control)).is_ok(),
+        "the control is refused"
+    );
+    let base_url = "base_url = \"https://api.example.test/\"";
+    let cases: Vec<(&str, String, String)> = vec![
+        (
+            "an anonymous endpoint naming a file",
+            bearer.clone(),
+            format!(
+                "auth_kind = \"anonymous\"\ncredential_file = \"{}\"\n",
+                credential.display()
+            ),
+        ),
+        (
+            "a bearer endpoint naming a header",
+            bearer.clone(),
+            format!("{bearer}credential_header = \"x-api-key\"\n"),
+        ),
+        (
+            "an anonymous endpoint naming a header",
+            bearer.clone(),
+            "auth_kind = \"anonymous\"\ncredential_header = \"x-api-key\"\n".to_owned(),
+        ),
+        (
+            "a reserved credential header",
+            bearer.clone(),
+            api_key_keys(&credential, "authorization"),
+        ),
+        (
+            "a framing credential header",
+            bearer.clone(),
+            api_key_keys(&credential, "content-length"),
+        ),
+        (
+            "a credential header with a space",
+            bearer.clone(),
+            api_key_keys(&credential, "x api key"),
+        ),
+        (
+            "a credential header over 64 bytes",
+            bearer.clone(),
+            api_key_keys(&credential, &"k".repeat(65)),
+        ),
+        (
+            "another scheme",
+            base_url.to_owned(),
+            "base_url = \"ftp://api.example.test/\"".to_owned(),
+        ),
+        (
+            "no scheme",
+            base_url.to_owned(),
+            "base_url = \"api.example.test\"".to_owned(),
+        ),
+        (
+            "a path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/v1\"".to_owned(),
+        ),
+        (
+            "a query",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/?a=1\"".to_owned(),
+        ),
+        (
+            "a fragment",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test#a\"".to_owned(),
+        ),
+        (
+            "user information",
+            base_url.to_owned(),
+            "base_url = \"https://user:pw@api.example.test/\"".to_owned(),
+        ),
+        (
+            "no authority",
+            base_url.to_owned(),
+            "base_url = \"https:///\"".to_owned(),
+        ),
+        (
+            "a port out of range",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test:65536\"".to_owned(),
+        ),
+        (
+            "a port that is not a number",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test:x\"".to_owned(),
+        ),
+        (
+            "a space",
+            base_url.to_owned(),
+            "base_url = \"https://api example.test\"".to_owned(),
+        ),
+        (
+            "an https host no certificate can name",
+            base_url.to_owned(),
+            "base_url = \"https://-bad-.example.test\"".to_owned(),
+        ),
+        (
+            "an authority over 256 bytes",
+            base_url.to_owned(),
+            format!("base_url = \"http://{}.test\"", "a.".repeat(126)),
+        ),
+        (
+            "no wire",
+            "wires = [\"chat\", \"messages\"]".to_owned(),
+            "wires = []".to_owned(),
+        ),
+        (
+            "a repeated wire",
+            "wires = [\"chat\", \"messages\"]".to_owned(),
+            "wires = [\"chat\", \"chat\"]".to_owned(),
+        ),
+        (
+            "an alias that is not a closed name",
+            "[hosted.remote]".to_owned(),
+            "[hosted.Remote]".to_owned(),
+        ),
+        (
+            "an alias a Runpod model already has",
+            "[hosted.remote]".to_owned(),
+            "[hosted.small]".to_owned(),
+        ),
+        (
+            "an empty upstream model",
+            bearer.clone(),
+            format!("{bearer}upstream_model = \"\"\n"),
+        ),
+        (
+            "an upstream model over 256 bytes",
+            bearer.clone(),
+            format!("{bearer}upstream_model = \"{}\"\n", "m".repeat(257)),
+        ),
+        (
+            "a context window under 4096",
+            bearer.clone(),
+            format!("{bearer}context_window = 4095\n"),
+        ),
+        (
+            "a context window over 2000000",
+            bearer.clone(),
+            format!("{bearer}context_window = 2000001\n"),
+        ),
+    ];
+    for (case, find, replace) in cases {
+        let text = mutate(&control, &find, &replace);
+        match load(&fixture.config(&text)) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:value", "{case}: {refusal}"),
+        }
+    }
+    // Each boundary on its own side is accepted.
+    for (case, replace) in [
+        (
+            "a 64-byte credential header",
+            api_key_keys(&credential, &"k".repeat(64)),
+        ),
+        (
+            "a context window of 4096",
+            format!("{bearer}context_window = 4096\n"),
+        ),
+        (
+            "a context window of 2000000",
+            format!("{bearer}context_window = 2000000\n"),
+        ),
+        (
+            "a 256-byte upstream model",
+            format!("{bearer}upstream_model = \"{}\"\n", "m".repeat(256)),
+        ),
+    ] {
+        let text = mutate(&control, &bearer, &replace);
+        assert!(load(&fixture.config(&text)).is_ok(), "{case}: refused");
+    }
+    for url in [
+        "http://127.0.0.1:8000",
+        "http://localhost",
+        "https://api.example.test",
+        "https://api.example.test:8443/",
+        "https://[::1]:8443",
+        "https://127.0.0.1:443",
+    ] {
+        let text = mutate(&control, base_url, &format!("base_url = \"{url}\""));
+        assert!(load(&fixture.config(&text)).is_ok(), "{url}: refused");
+    }
+}
+
+/// An unknown key, a missing required key and a closed value outside its set leave the closed
+/// document (`config:schema`).
+#[test]
+fn hosted_an_unknown_missing_or_mistyped_key_is_refused_as_schema() {
+    let fixture = Fixture::new("hosted-schema");
+    let credential = fixture.endpoint_credential();
+    let bearer = bearer_keys(&credential);
+    let control = hosted(&fixture, &bearer);
+    for (case, find, replace) in [
+        (
+            "an unknown key",
+            bearer.clone(),
+            format!("{bearer}api_base = \"x\"\n"),
+        ),
+        (
+            "a trust root",
+            bearer.clone(),
+            format!("{bearer}ca_file = \"/etc/ssl/ca.pem\"\n"),
+        ),
+        (
+            "no base_url",
+            "base_url = \"https://api.example.test/\"\n".to_owned(),
+            String::new(),
+        ),
+        (
+            "no auth_kind",
+            "auth_kind = \"bearer\"\n".to_owned(),
+            String::new(),
+        ),
+        (
+            "no wires",
+            "wires = [\"chat\", \"messages\"]\n".to_owned(),
+            String::new(),
+        ),
+        (
+            "an auth_kind outside its set",
+            "auth_kind = \"bearer\"".to_owned(),
+            "auth_kind = \"token\"".to_owned(),
+        ),
+        (
+            "a billing_kind outside its set",
+            bearer.clone(),
+            format!("{bearer}billing_kind = \"free\"\n"),
+        ),
+        (
+            "a mistyped context_window",
+            bearer.clone(),
+            format!("{bearer}context_window = \"large\"\n"),
+        ),
+    ] {
+        let text = mutate(&control, &find, &replace);
+        match load(&fixture.config(&text)) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:schema", "{case}: {refusal}"),
+        }
+    }
 }

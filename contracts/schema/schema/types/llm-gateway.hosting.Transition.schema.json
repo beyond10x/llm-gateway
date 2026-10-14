@@ -1,0 +1,100 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.Transition",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "28757a6d73a82c2fae0e655d56ca171358a87eb81672bec78f8fc1d06a5ac0ca",
+    "contract_digest": "slice-sha256/2:d8a29075745357dd6fb33dab72365580899310dde9eca76a12a12b12ac2b24b8",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.Transition": {
+      "title": "Transition",
+      "x-ess-name": "llm-gateway.hosting.Transition",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "DeclaredRequested",
+        "DeclaredUncertain",
+        "DeclaredCancelled",
+        "RequestedRequested",
+        "RequestedActive",
+        "RequestedStopRequired",
+        "RequestedStopped",
+        "RequestedDisowned",
+        "ActiveActive",
+        "ActiveStopRequired",
+        "ActiveStopped",
+        "ActiveDisowned",
+        "UncertainUncertain",
+        "UncertainRequested",
+        "UncertainActive",
+        "UncertainStopRequired",
+        "UncertainStopped",
+        "UncertainDisowned",
+        "StopRequiredStopRequired",
+        "StopRequiredStopped",
+        "StopRequiredDisowned"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "from",
+          "type": "llm-gateway.hosting.Phase",
+          "values": {
+            "ActiveActive": "Active",
+            "ActiveDisowned": "Active",
+            "ActiveStopRequired": "Active",
+            "ActiveStopped": "Active",
+            "DeclaredCancelled": "Declared",
+            "DeclaredRequested": "Declared",
+            "DeclaredUncertain": "Declared",
+            "RequestedActive": "Requested",
+            "RequestedDisowned": "Requested",
+            "RequestedRequested": "Requested",
+            "RequestedStopRequired": "Requested",
+            "RequestedStopped": "Requested",
+            "StopRequiredDisowned": "StopRequired",
+            "StopRequiredStopRequired": "StopRequired",
+            "StopRequiredStopped": "StopRequired",
+            "UncertainActive": "Uncertain",
+            "UncertainDisowned": "Uncertain",
+            "UncertainRequested": "Uncertain",
+            "UncertainStopRequired": "Uncertain",
+            "UncertainStopped": "Uncertain",
+            "UncertainUncertain": "Uncertain"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "to",
+          "type": "llm-gateway.hosting.Phase",
+          "values": {
+            "ActiveActive": "Active",
+            "ActiveDisowned": "Disowned",
+            "ActiveStopRequired": "StopRequired",
+            "ActiveStopped": "Stopped",
+            "DeclaredCancelled": "Cancelled",
+            "DeclaredRequested": "Requested",
+            "DeclaredUncertain": "Uncertain",
+            "RequestedActive": "Active",
+            "RequestedDisowned": "Disowned",
+            "RequestedRequested": "Requested",
+            "RequestedStopRequired": "StopRequired",
+            "RequestedStopped": "Stopped",
+            "StopRequiredDisowned": "Disowned",
+            "StopRequiredStopRequired": "StopRequired",
+            "StopRequiredStopped": "Stopped",
+            "UncertainActive": "Active",
+            "UncertainDisowned": "Disowned",
+            "UncertainRequested": "Requested",
+            "UncertainStopRequired": "StopRequired",
+            "UncertainStopped": "Stopped",
+            "UncertainUncertain": "Uncertain"
+          }
+        }
+      ]
+    }
+  }
+}

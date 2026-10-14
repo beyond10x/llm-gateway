@@ -7,6 +7,11 @@ domain: llm-gateway.runpod
 # The entities are verification-adapter observations of the real `RunpodPool` driving the real
 # `RunpodProvider` over the crate's in-process `EmulatedRunpod`; no socket, credential or cloud
 # resource is involved (crates/llm-runpod/src/emulated.rs:1-7).
+# ESS-LIMIT: the crate links `b10x-llm-credentials` and `tokio` through `b10x-llm-providers` and
+# uses neither; the one thing it takes from `b10x-llm-providers` is the Runpod description
+# (`descriptions::runpod`, `inference_base_url`). What a crate links is no ESS construct;
+# `the_crate_uses_nothing_of_llm_providers_but_the_runpod_description` in
+# crates/llm-runpod/tests/runpod.rs holds it.
 #
 # DECIDED 2026-10-08 (D1 = A, docs/design/runpod-clients.md § 4): the production transport,
 # `ConnectorsRunpod` (crates/llm-runpod/src/transport/connectors.rs), reaches Runpod's control
@@ -37,13 +42,105 @@ types:
   # reason if that step retired it, `stopping` otherwise, submits nothing, and every later call
   # through that hold does the same. Every caller held on a pod that failed learns it failed, not
   # only the one whose step retired it.
+  # Each variant carries the code `PoolError::code` answers;
+  # `every_pool_and_config_refusal_is_declared_with_its_code` (crates/llm-runpod/tests/runpod.rs)
+  # holds them to the crate.
+  # DECIDED 2026-10-14: the five retire codes `crash-loop`, `credential-refused`,
+  # `startup-deadline`, `pod-exited` and `stopped-serving` are refusals a caller receives. A
+  # pool step that retires the slot's current deployment answers its reason to the one call of
+  # `ensure`, `ensure_running` or `ensure_held` that made the step. A caller held on that
+  # deployment whose own step did not retire it is answered `stopping` (the `Hold` rule above),
+  # and a later caller as the slot then stands: `stopping` while the stop is unconfirmed, a new
+  # start after it (crates/llm-runpod/src/pool.rs `hand_out`). A retirement made by a cleanup
+  # pass (`reap`) is reported in its `replaced` list and refuses nobody. The gateway's relay
+  # answers every one of them `target-unavailable` (crates/llm-gateway-cli/src/relaying.rs).
+  # Observed by
+  # `an-exited-pod-is-terminated-and-replaced` (`err:pod-exited`) and
+  # `a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline`
+  # (`err:stopped-serving`).
   - name: llm-gateway.runpod.PoolRefusal
     kind: enum
-    variants: [UnknownModel, InvalidModel, Starting, Stopping, NoCapacity, CrashLoop, CredentialRefused, StartupDeadline, PodExited, StoppedServing, Hosting]
-  # Why a model declaration is refused (crates/llm-runpod/src/config.rs:88-126).
+    attributes:
+      - {name: code, type: String}
+    variants:
+      # No model is declared under the alias; Runpod is not contacted
+      # (`an-unknown-model-is-refused-without-contacting-runpod`).
+      - {name: UnknownModel, attributes: {code: unknown-model}}
+      # A declaration the pool was built from is refused; the code is `invalid-model:<ConfigRefusal>`.
+      - {name: InvalidModel, attributes: {code: invalid-model}}
+      - {name: Starting, attributes: {code: starting}}
+      # The slot's deployment owes a stop that is not confirmed yet; nothing new is created
+      # meanwhile (`an-unresolved-lost-create-blocks-a-second-pod-until-it-is-resolved`).
+      - {name: Stopping, attributes: {code: stopping}}
+      # The GPU types are tried one create at a time, in declared order; a refused create tries
+      # the next one, and this is the answer when every one refused: nothing was created and the
+      # deployment is withdrawn (`a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order`,
+      # `every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod`). A lost create
+      # answer ends the attempt instead: no further GPU is tried, because Runpod takes no
+      # idempotency key and `honours_idempotency_key` is `false`; the record is uncertain and
+      # is resolved by its request id (`a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id`,
+      # `runpod_does_not_promise_idempotent_creates`).
+      - {name: NoCapacity, attributes: {code: no-capacity}}
+      # A restart is the pod's `lastStartedAt` moving forward (see the note after `ProbeAnswer`).
+      # DECIDED 2026-10-14: the crash-restart limit is configurable per model,
+      # `RunpodModel.crash_restart_limit` (at least 1; 0 is `ZeroSetting`), not fixed at two:
+      # a pod is a crash loop once the restarts observed inside its `crash_window_ms` (window
+      # end inclusive) reach the limit, at any time in its life, and is terminated; the next
+      # request starts a new deployment. llmgw's "two decreasing uptimes" is the limit 2, which
+      # the shipped binary fixes, with a 600 000 ms window (llm-gateway.deployment).
+      # (`the-crash-restart-limit-is-reached-at-exactly-its-count`,
+      # `one-restart-below-the-crash-limit-is-not-a-crash-loop`,
+      # `restarts-inside-the-crash-window-are-a-crash-loop`,
+      # `restarts-spread-over-more-than-the-crash-window-are-not-a-crash-loop`,
+      # `a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one`).
+      - {name: CrashLoop, attributes: {code: crash-loop}}
+      # The pod refused its vLLM key (`401`/`403` to the probe); it is terminated
+      # (`a-pod-that-refuses-its-credential-is-terminated`).
+      - {name: CredentialRefused, attributes: {code: credential-refused}}
+      # The pod did not serve within `startup_deadline_ms` of its start; it is terminated, because
+      # it is billed and serves nobody (`a-pod-that-misses-its-startup-deadline-is-terminated`).
+      - {name: StartupDeadline, attributes: {code: startup-deadline}}
+      # Only `TERMINATED` ends a resource. A pod Runpod reports `EXITED` still exists and is billed:
+      # it is reported present-but-not-running (llm-gateway.hosting `ProviderState` `Pending`),
+      # terminated and replaced. An endpoint is reported only for a `RUNNING` pod
+      # (`an-exited-pod-is-terminated-and-replaced`, `a-pod-that-is-not-running-reports-no-endpoint`).
+      - {name: PodExited, attributes: {code: pod-exited}}
+      # A pod that served and then answers a definite "not ready" gets the startup deadline again,
+      # counted from the last time it was seen ready; unknown readiness neither starts nor ends that
+      # clock (`a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline`,
+      # `a_pod_whose_readiness_is_unknown_after_serving_is_not_retired_by_the_deadline` in
+      # tests/round2.rs).
+      - {name: StoppedServing, attributes: {code: stopped-serving}}
+      # The hosting controller refused; the code is `hosting`.
+      - {name: Hosting, attributes: {code: hosting}}
+  # Why a model declaration is refused (crates/llm-runpod/src/config.rs `RunpodModel::validate`),
+  # the first that applies, in this order. The message never quotes the refused value
+  # (`a_model_declaration_without_a_usable_setting_is_refused`,
+  # `every_refused_setting_is_refused_on_its_own` in tests/adversary.rs).
   - name: llm-gateway.runpod.ConfigRefusal
     kind: enum
-    variants: [NoGpu, GpuUtilization, ZeroSetting, SecretReference, UnsafeText]
+    attributes:
+      - {name: code, type: String}
+    variants:
+      # No GPU type is declared (`a-model-without-a-gpu-type-is-refused`).
+      - {name: NoGpu, attributes: {code: no-gpu}}
+      # `gpu_memory_utilization` is not a finite value in (0, 1]
+      # (`a-gpu-memory-utilization-of-exactly-one-is-admitted`,
+      # `a-gpu-memory-utilization-above-one-is-refused`,
+      # `runpod-a-gpu-memory-utilization-of-zero-is-refused`).
+      - {name: GpuUtilization, attributes: {code: gpu-utilization}}
+      # `max_model_len`, `max_num_seqs`, `container_disk_gb`, `startup_deadline_ms`,
+      # `idle_timeout_ms`, `crash_restart_limit` or `crash_window_ms` is zero
+      # (`a-zero-crash-window-is-refused`).
+      - {name: ZeroSetting, attributes: {code: zero-setting}}
+      # `api_key_secret` is empty or not `[A-Za-z0-9_]+`, so it cannot sit in a Runpod secret
+      # template (`a-secret-name-unusable-in-a-runpod-template-is-refused`).
+      - {name: SecretReference, attributes: {code: secret-reference}}
+      # A value that reaches the pod's command line or environment is empty or not printable
+      # ASCII: the checkpoint, data-center ids and the cache volume as single tokens, the GPU
+      # types, extra vLLM arguments and sampling as printable text; a reasoning effort is
+      # alphanumeric (`a-model-value-that-is-not-printable-is-refused`).
+      - {name: UnsafeText, attributes: {code: unsafe-text}}
   # What the production transport is built from. `executable` is the `connectors` binary,
   # `adapter` the alias its configuration binds the Runpod catalog provider to (connectors
   # docs/catalog-runpod.md "Authentication", e.g. `gpu`), `connection` the saved connection id.
@@ -80,6 +177,11 @@ types:
   # and carries `mutation` when connectors observed one. Both streams are read under the same
   # deadline and size bound. Anything else, top-level fields outside an envelope included, is
   # unreadable: `Lost` for a write, an incomplete listing for a read.
+  # ESS-LIMIT: the size bound is 8 MiB per stream, 8 388 608 bytes read and one more unreadable,
+  # and no part of either stream reaches the transport's `Debug`. No scenario observes the
+  # transport; `a_stream_is_read_up_to_eight_mebibytes_and_not_one_byte_more`
+  # (src/transport/connectors.rs) and `a_failure_on_stderr_reaches_no_debug_output`
+  # (tests/transport.rs) hold them.
   # DECIDED: each write (`pod.create`, `pod.terminate`) is first `approvals prepare`d and
   # `approvals issue`d for its exact input document, then invoked with `--approval-file
   # <proof> --idempotency-key <key>`. The transport never sends a write twice.
@@ -181,6 +283,69 @@ types:
   # one restart; the first value, an equal one, an earlier one or none is not.
 entities:
   # One pool: one `llm-gateway.hosting.Controller` scope, one slot per declared model alias.
+  # Identity: a pod's resource key is (provider, account, pod name, pod id); the incarnation is
+  # the Runpod pod id. Every create writes the owner (`B10X_LLM_OWNER`), the epoch
+  # (`B10X_LLM_EPOCH`) and the request id (`B10X_LLM_REQUEST`) into the pod environment, and the
+  # listing reads them back as the resource's owner, epoch and request id. A restarted pool adopts
+  # only the durable record's exact key, or its request id; a pod labelled for another owner is
+  # not adopted, and one taken over at a newer epoch is reported transferred
+  # (`the-create-request-carries-the-declared-vllm-settings`,
+  # `a-restarted-pool-adopts-its-own-pod-by-exact-identity-without-creating`,
+  # `a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name`,
+  # `a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated`).
+  # Namespace: pods are named `b10x-llm-<alias>`. A pod whose name starts with `llmgw-` is never
+  # listed, adopted, swept or terminated (`the-orphan-sweep-never-selects-a-legacy-llmgw-pod`,
+  # `an_llmgw_pod_does_not_keep_a_lost_create_unresolved` in tests/adversary.rs).
+  # Inherited pods: after a takeover (the snapshot's lease holder gone and its claim expired) the
+  # new owner finds its inherited pods still labelled for that holder, because Runpod cannot
+  # relabel a pod; the controller parks such a record in `ownership-lost`, and the pool
+  # terminates the pod itself, only while its label names exactly the holder the snapshot
+  # records. A pod labelled for any other controller is never terminated
+  # (`a_pod_inherited_through_a_lease_takeover_is_served_or_stopped_by_its_new_owner` in
+  # tests/adversary2.rs, `a_takeover_never_terminates_a_pod_a_third_controller_has_retagged` in
+  # tests/round2.rs).
+  # Creates: a create whose image differs from the model's declared one, or that names an
+  # undeclared model, is not sent (`a_create_whose_image_differs_or_names_an_undeclared_model_is_not_sent`
+  # in tests/runpod.rs). The pod's `VLLM_API_KEY` is the Runpod secret reference
+  # `{{ RUNPOD_SECRET_<api_key_secret> }}`; no key value passes through this crate
+  # (`the-create-request-carries-the-declared-vllm-settings`).
+  # ESS-LIMIT: the request id is a readable prefix of at most 64 bytes
+  # (`request-<controller>-<alias>-<generation>-`, cut short when long) followed by a 128-bit
+  # digest of a length-prefixed encoding of controller, alias, generation, instant and a
+  # per-process nonce: at most 96 bytes, and two different tuples never share an encoding. Its
+  # value carries the nonce, so the scenarios observe it only as `recorded` or `unrecorded`
+  # (`last_env`); `request_ids_differ_across_controller_and_alias_splits` and
+  # `a_request_id_always_fits_the_identifier_limit` (src/pool.rs) and
+  # `every_create_carries_a_request_id_naming_this_controller_and_unique_to_it` hold it.
+  # Idle reaper: a pod is stopped once idle past `idle_timeout_ms`, never below its measured
+  # cold start and never with a request in flight. A `StreamLease` holds the pod until it is
+  # dropped; in-flight accounting is per deployment, so a lease on a retired pod does not hold
+  # its replacement; the idle clock starts no earlier than the step that first finds the pod
+  # ready (`an-idle-pod-is-reaped-and-the-next-request-cold-starts-again`,
+  # `an-open-stream-lease-keeps-the-pod-from-being-reaped`,
+  # `the-idle-limit-is-never-below-the-measured-cold-start`,
+  # `a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped`,
+  # `l10_a_pod_is_idle_only_from_the_step_that_first_finds_it_ready`).
+  # Orphan sweep: pods in `b10x-llm-` carrying this controller's owner tag that no live record
+  # holds, by exact key, or by request id for a record that holds no key yet; a record whose
+  # model left the registry is stopped through the controller
+  # (`the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods`,
+  # `a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan`,
+  # `a-model-removed-from-the-registry-has-its-pod-stopped-after-restart`).
+  # Leases: the pool keeps a live claim on every record that may hold a pod, and must be stepped
+  # (`ensure`, `reap`) more often than the policy's `lease_ms`: an expired lease is a stop
+  # obligation (llm-gateway.hosting `StopReason.LeaseExpired`), and the next step carries it out
+  # under a reacquired claim (`an_expired_lease_is_a_stop_obligation_the_pool_carries_out` in
+  # tests/runpod.rs).
+  # The embedding's calls, declared where the binary composes the pool (llm-gateway.deployment):
+  # `invalidate` stops the model's current pod only when its endpoint is the failed authority's,
+  # and a report about a replaced pod stops nothing
+  # (`w7_invalidating_the_current_endpoint_stops_its_pod_and_the_next_ensure_starts_a_replacement`,
+  # `w7_a_report_about_an_endpoint_that_is_not_current_stops_nothing`); `ensure_running` hands out
+  # only a pod that is ready now and starts none
+  # (`d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one`). Dropping a pool stops no
+  # pod: pods outlive the process, and a pool started with no records sweeps every pod its
+  # controller created as an orphan in its first cleanup pass (`the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods`).
   - name: llm-gateway.runpod.Pool
     identity: {name: id, type: String}
     fields:

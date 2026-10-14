@@ -35,7 +35,8 @@ mod spec;
 
 pub use controller::{
     Controller, DeploymentRecord, EVIDENCE_ABSENT_FROM_COMPLETE_INVENTORY,
-    EVIDENCE_PROVIDER_TERMINATED, HostingCommand, HostingReceipt, HostingTotals, HostingView,
+    EVIDENCE_PROVIDER_TERMINATED, EvidenceKind, HostingCommand, HostingReceipt, HostingTotals,
+    HostingView,
 };
 pub use error::HostingError;
 pub use fake::{AmbiguousCreate, FakeProvider};

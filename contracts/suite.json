@@ -88,6 +88,7 @@
       "llm-gateway.gateway/authored/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502",
       "llm-gateway.gateway/authored/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement",
       "llm-gateway.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create",
+      "llm-gateway.hosting/authored/a-create-taken-over-before-any-listing-confirmed-it-is-disowned",
       "llm-gateway.hosting/authored/a-create-that-never-left-the-process-allocates-nothing",
       "llm-gateway.hosting/authored/a-create-the-provider-refused-allocates-nothing",
       "llm-gateway.hosting/authored/a-deployment-identifier-of-the-maximum-length-is-declared",
@@ -634,6 +635,11 @@
         "digest": "sha256:549f141aa28732dd000fe453ce6721a549db813b798748285df8ad5552fb7382",
         "disposition": "accepted",
         "scenario": "llm-gateway.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create"
+      },
+      "hosting/scenarios/a-create-taken-over-before-any-listing-confirmed-it-is-disowned.yaml": {
+        "digest": "sha256:ca59c4224c0e2694a6aee9bf855382fd1395197f8c7867d567a68882806dfa1f",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.hosting/authored/a-create-taken-over-before-any-listing-confirmed-it-is-disowned"
       },
       "hosting/scenarios/a-create-that-never-left-the-process-allocates-nothing.yaml": {
         "digest": "sha256:40c30a2c038a281f0ac24d3bef7bd989b3606fa716aabcabfa9af2ba61e84282",
@@ -1187,7 +1193,7 @@
       }
     },
     "counts": {
-      "authored": 197,
+      "authored": 198,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1212,9 +1218,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "6c36e26191d653305e3398f45ca0fc00e87465906f6909915c2e00cc7ccd37c4",
+    "contract_digest": "4d961f4e868ff876b2e1e8944edf5329e4f96babe5622f56836b84c3c6422c69",
     "scenario_initial_state": "empty",
-    "spec_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
+    "spec_digest": "28757a6d73a82c2fae0e655d56ca171358a87eb81672bec78f8fc1d06a5ac0ca",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -9349,6 +9355,140 @@
                   "at_capacity": false,
                   "stop_required": [],
                   "transferred": [],
+                  "unknown_count": 0.0
+                }
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.hosting/authored/a-create-taken-over-before-any-listing-confirmed-it-is-disowned": {
+      "purpose": "a create the provider accepted, retagged at a strictly newer epoch before any listing confirmed it, goes from requested to disowned, attaches no evidence and is never stopped",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.hosting"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.DeploymentFact"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.Totals"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.TransitionFact"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Exercise"
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.hosting.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.hosting.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"policy\":{\"controller\":\"controller-a\",\"provider\":\"fake\",\"account\":\"account-1\",\"ledger\":\"scope\",\"max_active\":2,\"max_lifetime_ms\":10000,\"lease_ms\":1000},\"steps\":[{\"step\":\"declare\",\"at_ms\":1,\"spec\":{\"id\":\"d1\",\"provider\":\"fake\",\"account\":\"account-1\",\"model\":\"requested-model\",\"image\":\"requested-image\",\"resource_name\":\"pool-slot\",\"requested_lifetime_ms\":5000},\"request_id\":\"request-d1\",\"authorization\":{\"ledger\":\"scope\",\"reservation\":\"reservation-a\"}},{\"step\":\"acquire\",\"at_ms\":1,\"deployment\":\"d1\"},{\"step\":\"provision\",\"at_ms\":1,\"deployment\":\"d1\"},{\"step\":\"retag\",\"name\":\"pool-slot\",\"owner\":\"controller-b\",\"epoch\":2},{\"step\":\"observe\",\"at_ms\":2},{\"step\":\"stop\",\"at_ms\":3,\"deployment\":\"d1\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "allocations": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "deployments": {
+                "kind": "literal",
+                "value": [
+                  {
+                    "connected": false,
+                    "id": "d1",
+                    "lease_epoch": 1.0,
+                    "lease_expires_at_ms": "1001",
+                    "lease_owner": "controller-a",
+                    "ledger": "scope",
+                    "observed_endpoint": "http://fake.invalid/fake-incarnation-1",
+                    "observed_incarnation": "fake-incarnation-1",
+                    "observed_model": "fake-served-model",
+                    "observed_name": "pool-slot",
+                    "observed_ready": true,
+                    "observed_state": "running",
+                    "phase": "disowned",
+                    "request_id": "request-d1",
+                    "requested_image": "requested-image",
+                    "requested_lifetime_ms": "5000",
+                    "requested_model": "requested-model",
+                    "requested_name": "pool-slot",
+                    "reservation": "reservation-a",
+                    "stop_evidence": null,
+                    "stop_reason": null
+                  }
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "ok",
+                  "ok",
+                  "fixture-ready",
+                  "ok",
+                  "err:wrong-phase"
+                ]
+              },
+              "stops": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "submits": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "totals": {
+                "kind": "literal",
+                "value": {
+                  "active_count": 0.0,
+                  "at_capacity": false,
+                  "stop_required": [],
+                  "transferred": [
+                    "d1"
+                  ],
                   "unknown_count": 0.0
                 }
               },

@@ -15,7 +15,13 @@ Nothing in any release is deployed or qualified against a live client.
   `upstream-failed`. No document key or option adds a root or disables verification. The
   start-time refusal of a document that declares a `connectors` provider is gone, so the binary
   now starts and relays to pods. `b10x-llm-runpod`'s probe takes its TLS connection from the
-  embedding (`ConnectorsRunpod::set_tls`, `PodTls`).
+  embedding (`ConnectorsRunpod::set_tls`, `PodTls`). A binary started with a `connectors` provider
+  and real Runpod credentials starts real, billed pods; no test reaches Runpod.
+- `spec/domains/hosting.yaml` and `spec/domains/runpod.yaml` declare every rule the hosting
+  contract promises: the hosting refusals with their codes and messages, the transition table,
+  the evidence routes and listing completeness as typed enums, and the Runpod pool and
+  declaration refusals with their codes. `b10x-llm-provision` publishes the evidence routes as
+  `EvidenceKind`. The conformance suite holds 202 scenarios (was 201).
 
 ## 0.6.0 (2026-10-08)
 

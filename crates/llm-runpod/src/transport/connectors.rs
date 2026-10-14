@@ -810,3 +810,24 @@ impl RunpodTransport for ConnectorsRunpod {
             .and_then(started_at_ms)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::bounded_reader;
+
+    /// The published bound, at the literal number and one past it: a constant measured against
+    /// itself could not notice it moving.
+    #[test]
+    fn a_stream_is_read_up_to_eight_mebibytes_and_not_one_byte_more() {
+        for (length, readable) in [(8_388_608, true), (8_388_609, false)] {
+            let read = bounded_reader(std::io::Cursor::new(vec![b'x'; length]))
+                .recv()
+                .expect("the reader answers");
+            assert_eq!(
+                read.map(|bytes| bytes.len()),
+                readable.then_some(length),
+                "{length} bytes"
+            );
+        }
+    }
+}

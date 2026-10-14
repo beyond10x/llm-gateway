@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:gateway-translation
 kind: story
-status: draft
+status: proposed
 title: The gateway translates only the supported protocol subset
 relations:
 - decomposes: epic:gateway
@@ -35,7 +35,9 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/upstream.yaml
-revision: 17
+revision: 18
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-14T14:31:57Z", actor: "human:timo", revision: 18, decided_on: {"recorded":{"review_outcome":3}}}
 ---
 ## Context
 

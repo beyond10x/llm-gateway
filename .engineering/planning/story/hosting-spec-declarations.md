@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:hosting-spec-declarations
 kind: story
-status: draft
+status: active
 title: hosting.yaml and runpod.yaml declare every rule docs/hosting.md promises
 relations:
 - decomposes: epic:spec-hardening
@@ -22,7 +22,10 @@ scope:
   path: spec/domains/hosting.yaml
 - confidence: cited
   path: spec/domains/runpod.yaml
-revision: 10
+revision: 12
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-14T14:31:56Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "proposed", to: "active", at: "2026-10-14T14:31:58Z", actor: "human:timo", revision: 12, decided_on: {"recorded":{"review_outcome":2}}}
 ---
 ## Outcome
 

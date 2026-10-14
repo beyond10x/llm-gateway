@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:hosted-endpoints
 kind: story
-status: draft
+status: active
 title: A relayed model can be served by a hosted endpoint, not only a Runpod pod
 relations:
 - decomposes: epic:gateway-features
@@ -11,7 +11,6 @@ relations:
 - depends_on: story:cold-start-hold
 - depends_on: story:gateway-observability
 - depends_on: story:pod-proxy-tls
-- depends_on: story:claude-code-wire
 scope:
 - confidence: inferred
   path: checks/conformance/Cargo.toml
@@ -43,7 +42,10 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/upstream.yaml
-revision: 25
+revision: 28
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-14T14:31:57Z", actor: "human:timo", revision: 27, decided_on: {"recorded":{"review_outcome":5}}}
+- {from: "proposed", to: "active", at: "2026-10-14T14:31:58Z", actor: "human:timo", revision: 28, decided_on: {"recorded":{"review_outcome":5}}}
 ---
 ## Outcome
 
@@ -152,5 +154,7 @@ This story reuses the binary's TLS client and its test-root seam from `story:pod
 shipped binary takes no trust-root key in the document (`story:pod-proxy-tls` acceptance 3), so
 case 4's fixture gets its root through that seam. This story adds no TLS dependency of its own.
 
-It also comes after `story:claude-code-wire`: both change `crates/llm-gateway/src/relay.rs` and
-`docs/gateway.md`.
+Order changed 2026-10-14: this story comes before `story:claude-code-wire`, not after it. Both change
+`crates/llm-gateway/src/relay.rs` and `docs/gateway.md`, so one must follow the other, and
+`story:claude-code-wire` waits on a live qualification run (`story:client-qualification`) that the
+unfunded Runpod account blocks, while this story is proved against loopback fixtures alone.

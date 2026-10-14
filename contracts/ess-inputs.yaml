@@ -205,3 +205,4 @@ scenarios:
 - gateway/scenarios/hosted-an-https-endpoint-whose-certificate-is-not-trusted-is-upstream-failed-and-reads-no-byte.yaml
 - gateway/scenarios/hosted-a-hosted-model-beside-a-pod-model-and-a-failed-endpoint-is-kept.yaml
 - gateway/scenarios/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing.yaml
+- gateway/scenarios/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing.yaml

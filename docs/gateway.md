@@ -217,7 +217,18 @@ A request to a wire path is decided in this order:
    `docs/hosting.md`). Then `POST` to the same path at the
    target with `host` set to the target's authority and a `content-length`. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
-   the model's vLLM key. A target without one is sent no `authorization`. The head is the
+   the model's vLLM key. A target whose `credential_header` also names a `CredentialHeader`
+   (an `api-key` hosted endpoint) is sent `<header>: <key>` instead, and no `authorization`; a
+   `CredentialHeader` is one RFC 9110 token of at most `credential-header-bytes`, held
+   lowercase, and never a header the gateway writes itself or one that frames a message
+   (`host`, `authorization`, `content-type`, `content-length`, `connection`,
+   `transfer-encoding`, `te`, `trailer`, `upgrade`, `expect`, `keep-alive`,
+   `proxy-authorization`, `proxy-connection`), refused as `CredentialHeaderError::Length`,
+   `NotAToken` and `Reserved`. A target without one is sent no `authorization`. The binary
+   never sends a hosted endpoint's credential in cleartext to a remote host: a `bearer` or
+   `api-key` endpoint whose base URL is `http` and whose host is not a loopback literal
+   (`127.0.0.0/8`, `::1`) or `localhost` is refused when the document is loaded
+   (`config:value`, naming the endpoint and quoting no credential). The head is the
    gateway's own and forwards no header of the client's request, so the owner's credential never
    reaches a target. A `TargetBearer` follows the owner material's rules, refused as
    `bearer:empty`, `bearer:too-large` (over `owner-credential-bytes`) and
@@ -231,10 +242,12 @@ A request to a wire path is decided in this order:
    endpoint only if it is still the current one. Any other status, `500` and `4xx` included, is
    the model's own answer and is relayed.
 9. The target's status, its `content-type` and its decoded body bytes are relayed as they
-   arrive, as `transfer-encoding: chunked` with `cache-control: no-store`; an answer cut short
-   on either side ends without its last chunk, so the client sees it cut. An HTTP/1.0 client
-   may not be sent a chunked answer (RFC 9112 section 6.1), so it gets the bytes unframed and
-   the end of the answer is the end of the connection. The target is held until the last byte
+   arrive, as `transfer-encoding: chunked` with `cache-control: no-store`. The gateway relays
+   answer bodies unchanged and does not rewrite them, so whatever an upstream puts in its answer
+   body reaches the client. An answer cut short on either side ends without its last chunk, so
+   the client sees it cut. An HTTP/1.0 client may not be sent a chunked answer (RFC 9112
+   section 6.1), so it gets the bytes unframed and the end of the answer is the end of the
+   connection. The target is held until the last byte
    is relayed, then released. Every head the target sends, interim `1xx` heads included, comes
    out of one `request-head-bytes` budget, and so does its trailer section, so a target cannot
    grow the gateway's memory.
@@ -363,6 +376,7 @@ list written by hand.
 | `owner-credential-bytes` | `MAX_TOKEN_BYTES` | 4096 |
 | `shared-secret-bytes` | `MIN_SHARED_SECRET_BYTES` | 32 |
 | `label-bytes` | `MAX_LABEL_BYTES` | 256 |
+| `credential-header-bytes` | `MAX_CREDENTIAL_HEADER_BYTES` | 64 |
 | `targets-per-route` | `MAX_TARGETS_PER_ROUTE` | 64 |
 | `routes` | `MAX_ROUTES` | 4096 |
 | `digest-characters` | `DIGEST_CHARACTERS` | 64 |
@@ -380,8 +394,8 @@ one past it, through the public API or over a socket, never by reading a configu
 not a bound has to be named in the exemption list in `tests/gateway.rs` with a reason, rather
 than being invisible.
 
-`owner-credential-bytes`, `label-bytes`, `targets-per-route`, `routes`, `request-head-bytes`,
-`concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
+`owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `targets-per-route`, `routes`,
+`request-head-bytes`, `concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
 `digest-characters` is an exact length. `request-head-bytes` and `concurrent-requests` are
 `GatewayConfig` defaults an embedding may override; they and `request-body-bytes` (32 MiB, as
 llmgw) are measured by enforcement over a real socket rather than by reading a field.

@@ -3,7 +3,7 @@ title: The deployment document
 sidebar_position: 2
 description: Every key of the closed TOML document b10x-llm-gateway reads, with its default and its rule, and how each file it names is read.
 lede: One closed TOML document configures the binary; an unknown key at any level refuses the start, naming its line and the keys allowed there.
-source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/tests/config.rs and crates/llm-gateway-cli/tests/binary.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
+source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/binary.rs and crates/llm-gateway-cli/tests/hosted.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
 ---
 
 # The deployment document
@@ -28,7 +28,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `listen` | yes | A socket address, `127.0.0.1:8080`. An address that cannot be bound is refused as `listen:bind`. |
 | `owner_secret_file` | yes | The file holding the owner's secret. A relative path is read from the working directory. |
 | `[providers.<name>]` | no | Providers models name. A name is 1 to 64 of `a-z`, `0-9`, `-`, `_`, `.`, without a leading dash. |
-| `[models.<alias>]` | at least one | The relayed models, under the same naming rule. |
+| `[models.<alias>]` | at least one model, here or in `hosted` | The models Runpod pods serve, under the same naming rule. |
+| `[hosted.<alias>]` | at least one model, here or in `models` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
 
 ## `[providers.<name>]`
 
@@ -38,11 +39,12 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `cloud_type` | `SECURE` | `SECURE` or `COMMUNITY` |
 | `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one. |
 
-:::caution[Planned: a connectors provider refuses the start]
-The binary checks a `connectors` table's rules and then refuses the whole document as
-`config:value`, because it cannot reach a pod's `https` endpoint yet. The keys are `executable`
-(an absolute path), `adapter`, `connection` (1 to 128 printable ASCII characters, no space or leading
-dash), `work_directory` (an absolute path) and `timeout_seconds` (1 to 600, default 60).
+:::caution[A connectors provider starts real, billed pods]
+With a `connectors` table and real Runpod credentials, the binary creates pods on that account
+and reaches each one at its `https` proxy endpoint, with the certificate verified. The keys are
+`executable` (an absolute path), `adapter`, `connection` (1 to 128 printable ASCII characters, no
+space or leading dash), `work_directory` (an absolute path) and `timeout_seconds` (1 to 600,
+default 60).
 :::
 
 ## `[models.<alias>]`
@@ -76,6 +78,44 @@ The Runpod settings reach a pod only once the binary can start one; today they a
 held. Two proven model declarations are in
 [`docs/model-profiles.md`](https://github.com/beyond10x/llm-gateway/blob/main/docs/model-profiles.md).
 
+## `[hosted.<alias>]` {#hosted-models}
+
+A model served by a hosted endpoint: any server that speaks the model's wires, a vendor API or an
+OpenAI-compatible server somebody else runs. Nothing is started or stopped for it. A request goes
+to the same path at the endpoint, and the route inventory lists each of its targets with its
+`auth_kind` and `billing_kind`, never its URL or credential.
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `wires` | required | A non-empty set of `chat`, `responses`, `messages`, none repeated. |
+| `base_url` | required | `http://` or `https://` and a `host[:port]` of at most 256 characters, then at most a final `/`: no path, query, fragment or user information. An `http` URL for a `bearer` or `api-key` endpoint must name a loopback host (`127.0.0.0/8`, `::1` or `localhost`): a credential is never sent in cleartext to a remote host. |
+| `auth_kind` | required | `anonymous`, `bearer` or `api-key`. |
+| `credential_file` | absent | The file holding the credential: required unless `auth_kind` is `anonymous`, and refused when it is. |
+| `credential_header` | absent | The header an `api-key` endpoint receives the credential in, 1 to 64 token characters: required for `api-key`, refused otherwise, and never `authorization`, `host` or a header that frames a message. |
+| `billing_kind` | `metered` | `metered`, `subscription` or `self-hosted`. |
+| `upstream_model` | the alias | The model name the endpoint expects, 1 to 256 printable ASCII characters. |
+| `context_window` | absent | 4096 to 2000000 tokens, what the public routes publish. |
+| `tool_calling` | `absent` | `parsed` or `absent`. |
+
+A `bearer` endpoint is sent `authorization: Bearer <credential>`, an `api-key` endpoint
+`<credential_header>: <credential>` and no `authorization`, and an `anonymous` one neither. A
+credential travels over `https`, or over plain `http` only to the same machine: a `bearer` or
+`api-key` endpoint at an `http` base URL whose host is not `127.0.0.0/8`, `::1` or `localhost`
+is refused at start as `config:value`, naming the endpoint and quoting no credential. An
+`https` endpoint is reached over the same TLS client as a pod, verified against the same roots
+compiled into the binary; a certificate that does not verify is `upstream-failed` before any byte
+of the request is sent. A failed endpoint is kept: the next request asks it again.
+
+```toml
+[hosted.vendor-large]
+wires = ["chat", "responses"]
+base_url = "https://api.example.test"
+auth_kind = "api-key"
+credential_file = "/etc/llm-gateway/vendor-key"
+credential_header = "x-api-key"
+upstream_model = "vendor-large-2"
+```
+
 ## The files it reads
 
 Every file goes through one trusted-file reader. It opens the file once, without following a
@@ -88,9 +128,10 @@ and UTF-8.
 | the document | at most 256 KiB | not group- or world-writable | TOML |
 | `owner_secret_file` | 32 to 4096 bytes | no group or other permission at all | one printable token; trailing ASCII whitespace is trimmed |
 | `vllm_api_key_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
+| `credential_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 
-A broken rule is refused as `<source>:<rule>`, the source being `config`, `owner-secret` or
-`vllm-api-key`:
+A broken rule is refused as `<source>:<rule>`, the source being `config`, `owner-secret`,
+`vllm-api-key` or `endpoint-credential`:
 
 ```text
 b10x-llm-gateway: refused owner-secret:unsafe-mode: owner-secret: has mode 644; none of 077 may be set

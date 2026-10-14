@@ -16,6 +16,15 @@ Nothing in any release is deployed or qualified against a live client.
   start-time refusal of a document that declares a `connectors` provider is gone, so the binary
   now starts and relays to pods. `b10x-llm-runpod`'s probe takes its TLS connection from the
   embedding (`ConnectorsRunpod::set_tls`, `PodTls`).
+- Hosted endpoints: a model declared as `[hosted.<alias>]` is relayed to any server that speaks
+  its wires at an `http` or `https` base URL (`base_url`, no path), as `bearer`, as `api-key` in
+  the header its `credential_header` names, or `anonymous`, with the credential read once from
+  `credential_file` through the trusted-file reader (`endpoint-credential:<rule>`). `https` uses
+  the pod connection's TLS client and roots. A `bearer` or `api-key` endpoint at an `http` base
+  URL whose host is not loopback (`127.0.0.0/8`, `::1`, `localhost`) is refused as
+  `config:value`, so no credential is sent in cleartext to a remote host. The route inventory lists each hosted target's
+  `auth_kind` and `billing_kind`, never its URL or credential. The gateway library gains
+  `CredentialHeader` and `RelayTarget::credential_header` (`credential-header-bytes`, 64).
 
 ## 0.6.0 (2026-10-08)
 

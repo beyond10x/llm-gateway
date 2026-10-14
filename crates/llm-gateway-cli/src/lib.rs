@@ -9,6 +9,7 @@
 
 pub mod cli;
 mod config;
+mod hosted;
 mod keys;
 mod logging;
 mod refusal;
@@ -17,7 +18,11 @@ mod serve;
 mod tls;
 mod trusted;
 
-pub use config::{Deployment, Model, Provider, ProviderKind, Wire, load};
+pub use config::{Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
+pub use hosted::{
+    BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
+    HostedEndpoint, HostedTargets, Scheme,
+};
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use logging::{TracingRecords, install_logging, log_filter};
 pub use refusal::{Refusal, Source, StartupRefusal};

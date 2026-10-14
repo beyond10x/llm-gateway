@@ -73,5 +73,13 @@ Before it serves, the binary refuses a start with one line on standard error, `b
 | `vllm-api-key:too-large` |
 | `vllm-api-key:not-utf8` |
 | `vllm-api-key:not-a-token` |
+| `endpoint-credential:unreadable` |
+| `endpoint-credential:symlink` |
+| `endpoint-credential:not-regular` |
+| `endpoint-credential:untrusted-owner` |
+| `endpoint-credential:unsafe-mode` |
+| `endpoint-credential:too-large` |
+| `endpoint-credential:not-utf8` |
+| `endpoint-credential:not-a-token` |
 | `listen:bind` |
 | `signal:install` |

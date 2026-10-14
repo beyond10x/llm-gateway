@@ -14,6 +14,7 @@
 
 use crate::{
     config::{Deployment, Model, Wire},
+    hosted::{HostedEndpoint, HostedTargets, hosted_endpoints},
     keys::VllmKeys,
     refusal::{Refusal, StartupRefusal},
     serve::{Running, Stopped, inventory, owner_verifier},
@@ -655,7 +656,7 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     pods: Arc<dyn PodConnector>,
     clock: Arc<dyn Clock>,
 ) -> Result<Relaying, Refusal> {
-    let parts = Parts::read(deployment)?;
+    let parts = Parts::read(deployment, &pods)?;
     let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
     let targets = PoolTargets::new(
         deployment,
@@ -729,7 +730,7 @@ where
     W: RunpodTransport + Send + 'static,
     F: FnOnce(ConnectorsRunpod) -> W,
 {
-    let parts = Parts::read(deployment)?;
+    let parts = Parts::read(deployment, &pods)?;
     let connected = deployment
         .providers
         .iter()
@@ -795,6 +796,10 @@ struct Parts {
     verifier: SharedSecretVerifier,
     inventory: RouteInventory,
     vllm_keys: VllmKeys,
+    /// Each hosted model's endpoint, its credential read (story:hosted-endpoints).
+    hosted: BTreeMap<String, HostedEndpoint>,
+    /// The connector an `https` hosted endpoint is reached through: the pod connector.
+    tls: Arc<dyn PodConnector>,
     stopping: Arc<AtomicBool>,
     metrics: Arc<Metrics>,
     /// Every model as the relay serves it.
@@ -803,12 +808,14 @@ struct Parts {
 
 impl Parts {
     /// # Errors
-    /// An `owner-secret:*`, `vllm-api-key:*` or `config:value` [`Refusal`]: every refusal the
-    /// document itself can earn, before any transport is built.
-    fn read(deployment: &Deployment) -> Result<Self, Refusal> {
+    /// An `owner-secret:*`, `vllm-api-key:*`, `endpoint-credential:*` or `config:value`
+    /// [`Refusal`]: every refusal the document itself can earn, before any transport is built.
+    fn read(deployment: &Deployment, tls: &Arc<dyn PodConnector>) -> Result<Self, Refusal> {
         Ok(Self {
             verifier: owner_verifier(deployment)?,
             vllm_keys: crate::keys::vllm_keys(deployment)?,
+            hosted: hosted_endpoints(deployment)?,
+            tls: Arc::clone(tls),
             inventory: inventory(deployment)?,
             stopping: Arc::new(AtomicBool::new(false)),
             metrics: Arc::new(Metrics::default()),
@@ -819,9 +826,29 @@ impl Parts {
 
 /// Every model of the document as the relay serves it: on its wires, under its alias, with its
 /// `tool_calling`, and with the `max_model_len` and `context_window` the public routes publish
-/// (rows R5, R1).
+/// (rows R5, R1). A hosted model is relayed under its `upstream_model`, and publishes the
+/// `context_window` it declares and no `max_model_len`.
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
-    let mut models = Vec::with_capacity(deployment.models.len());
+    let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
+    for (alias, hosted) in &deployment.hosted {
+        let wires = hosted.wires.iter().copied().map(relay_wire).collect();
+        let relayed = RelayModel::new(
+            relay_label(alias)?,
+            relay_label(&hosted.upstream_model)?,
+            wires,
+        )
+        .map_err(|error| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("hosted.{alias}: {error}"),
+            )
+        })?
+        .with_tool_calling(hosted.tool_calling);
+        models.push(match hosted.context_window {
+            Some(window) => relayed.with_context_window(u64::from(window)),
+            None => relayed,
+        });
+    }
     for (alias, model) in &deployment.models {
         let wires = model.wires.iter().copied().map(relay_wire).collect();
         // The pod serves the model under its alias (`--served-model-name`), so the upstream
@@ -858,10 +885,14 @@ fn compose(
         verifier,
         inventory,
         vllm_keys,
+        hosted,
+        tls,
         stopping,
         metrics,
         models,
     } = parts;
+    // Every composition serves its hosted models from their endpoints, whatever serves the rest.
+    let targets: Arc<dyn RelayTargets> = Arc::new(HostedTargets::new(hosted, tls, targets));
     let relay = Relay::new(models, targets)
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
         .with_metrics(Arc::clone(&metrics))

@@ -92,8 +92,12 @@ entities:
       - {name: upstream_model, type: String}
       # Where requests go: `http://` or `https://` and an authority `host[:port]`, nothing else
       # but an optional final `/` (no path, query, fragment or user information). The port
-      # defaults to 80 for `http` and 443 for `https`. Never rendered by the route inventory,
-      # which carries `endpoint_id` (docs/gateway.md "The route inventory").
+      # defaults to 80 for `http` and 443 for `https`. An `http` endpoint whose `auth_kind` is
+      # not `Anonymous` must be on a loopback literal (`127.0.0.0/8`, `::1`) or `localhost`:
+      # a credential is never sent in cleartext to a remote host, and the document is refused
+      # `config:value` otherwise (llm-gateway.deployment `HostedDeclaration`). Never rendered
+      # by the route inventory, which carries `endpoint_id` (docs/gateway.md "The route
+      # inventory").
       - {name: base_url, type: String}
       - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
       # The file holding the credential, read once at start through the trusted-file reader as

@@ -6,7 +6,7 @@ use crate::{
     refusal::{Refusal, StartupRefusal},
     trusted,
 };
-use std::{collections::BTreeMap, fmt};
+use std::{collections::BTreeMap, fmt, path::Path};
 
 /// The largest vLLM key, after trailing ASCII whitespace is trimmed: the owner token's bound.
 const MAX_VLLM_KEY_BYTES: usize = 4096;
@@ -72,38 +72,56 @@ pub fn vllm_keys(deployment: &Deployment) -> Result<VllmKeys, Refusal> {
         let Some(path) = &model.vllm_api_key_file else {
             continue;
         };
-        let key = format!("models.{alias}.vllm_api_key_file");
-        // The reader's own message is `<path>: <detail>`; the model goes in front of it.
-        let mut read = trusted::read(path, &trusted::VLLM_API_KEY)
-            .map_err(|refusal| {
-                Refusal::new(refusal.kind(), format!("{key} {}", refusal.message()))
-            })?
-            .into_bytes();
-        let refuse =
-            |kind, rule: &str| Refusal::new(kind, format!("{key} {}: {rule}", path.display()));
-        // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
-        let end = read
-            .iter()
-            .rposition(|byte| !byte.is_ascii_whitespace())
-            .map_or(0, |last| last + 1);
-        let material = &read[..end];
-        let held = if material.len() > MAX_VLLM_KEY_BYTES {
-            Err(refuse(
+        let material = read_token(
+            path,
+            &format!("models.{alias}.vllm_api_key_file"),
+            &trusted::VLLM_API_KEY,
+            (
                 StartupRefusal::VllmApiKeyTooLarge,
-                &format!("the key exceeds {MAX_VLLM_KEY_BYTES} bytes"),
-            ))
-        } else if material.is_empty() || !material.iter().all(u8::is_ascii_graphic) {
-            Err(refuse(
                 StartupRefusal::VllmApiKeyNotAToken,
-                "the key must be one non-empty printable ASCII token",
-            ))
-        } else {
-            Ok(VllmKey(material.to_vec()))
-        };
-        // The bytes read are overwritten whichever way the rules went.
-        read.fill(0);
-        std::hint::black_box(&read);
-        keys.insert(alias.clone(), held?);
+            ),
+        )?;
+        keys.insert(alias.clone(), VllmKey(material));
     }
     Ok(VllmKeys(keys))
+}
+
+/// Reads one credential file through the trusted-file reader as `policy` admits it, and returns
+/// its one printable ASCII token of at most 4096 bytes once trailing ASCII whitespace is
+/// trimmed: refused as the `rules`' `(too_large, not_a_token)` otherwise. Every message starts
+/// `<key> <path>:` and never quotes the bytes, and the bytes read are overwritten whichever
+/// way the rules went. A vLLM key (row B9) and a hosted endpoint's credential are read so.
+pub(crate) fn read_token(
+    path: &Path,
+    key: &str,
+    policy: &trusted::Policy,
+    (too_large, not_a_token): (StartupRefusal, StartupRefusal),
+) -> Result<Vec<u8>, Refusal> {
+    // The reader's own message is `<path>: <detail>`; the declaration goes in front of it.
+    let mut read = trusted::read(path, policy)
+        .map_err(|refusal| Refusal::new(refusal.kind(), format!("{key} {}", refusal.message())))?
+        .into_bytes();
+    let refuse = |kind, rule: &str| Refusal::new(kind, format!("{key} {}: {rule}", path.display()));
+    // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
+    let end = read
+        .iter()
+        .rposition(|byte| !byte.is_ascii_whitespace())
+        .map_or(0, |last| last + 1);
+    let material = &read[..end];
+    let held = if material.len() > MAX_VLLM_KEY_BYTES {
+        Err(refuse(
+            too_large,
+            &format!("the credential exceeds {MAX_VLLM_KEY_BYTES} bytes"),
+        ))
+    } else if material.is_empty() || !material.iter().all(u8::is_ascii_graphic) {
+        Err(refuse(
+            not_a_token,
+            "the credential must be one non-empty printable ASCII token",
+        ))
+    } else {
+        Ok(material.to_vec())
+    };
+    read.fill(0);
+    std::hint::black_box(&read);
+    held
 }

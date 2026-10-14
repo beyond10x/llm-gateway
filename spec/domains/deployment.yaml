@@ -362,10 +362,15 @@ types:
   #   base_url           `http://` or `https://` and an authority `host[:port]` of at most 256
   #                      printable ASCII bytes, then nothing but an optional final `/`: no path,
   #                      query, fragment or user information. An `https` host is a DNS name or
-  #                      an IP address the TLS client can verify a certificate for
+  #                      an IP address the TLS client can verify a certificate for. An `http`
+  #                      host is a loopback literal (`127.0.0.0/8`, `::1`) or `localhost`
+  #                      unless `auth_kind` is `anonymous`: no credential is sent in cleartext
+  #                      to a remote host. The refusal names `hosted.<alias>.base_url` and
+  #                      quotes no credential
   #   auth_kind          `anonymous`, `bearer` or `api-key`
   #   credential_file    absent exactly when `auth_kind` is `anonymous`; read through the
-  #                      trusted-file reader (`endpoint-credential:<rule>`)
+  #                      trusted-file reader (`endpoint-credential:<rule>`). A credential goes
+  #                      over `https`, or over `http` to a loopback host only (`base_url`)
   #   credential_header  present exactly when `auth_kind` is `api-key`: 1..=64 RFC 9110 token
   #                      characters, matched without regard to case, and none of the headers
   #                      the gateway writes or that frame a message (`host`, `authorization`,

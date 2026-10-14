@@ -41,6 +41,7 @@
       "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
       "llm-gateway.gateway/authored/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing",
+      "llm-gateway.gateway/authored/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-document-whose-api-key-endpoint-names-no-credential-header-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-hosted-model-beside-a-pod-model-and-a-failed-endpoint-is-kept",
       "llm-gateway.gateway/authored/hosted-an-https-endpoint-is-reached-over-verified-tls",
@@ -407,6 +408,11 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing"
       },
+      "gateway/scenarios/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing.yaml": {
+        "digest": "sha256:b8ab67d798cd56babe8bdf6d97df90392d983f5995caaae0fd3808225bd13a3c",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing"
+      },
       "gateway/scenarios/hosted-a-document-whose-api-key-endpoint-names-no-credential-header-composes-nothing.yaml": {
         "digest": "sha256:feeaa8b7f6e72d75ab689431ac345d8c53d33ead68ac3459b640d5011dffb48e",
         "disposition": "accepted",
@@ -433,7 +439,7 @@
         "scenario": "llm-gateway.gateway/authored/hosted-each-endpoint-receives-its-credential-as-its-auth-kind-says-and-never-the-owners"
       },
       "gateway/scenarios/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file.yaml": {
-        "digest": "sha256:854f19e8bbbd85a88489307b44cbd1d25241c83e0735d0b8c6e2a85b4127a629",
+        "digest": "sha256:84456784e0beae134c59c8f99a6980a31e7c8507981a65f867f15450101c0ce7",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file"
       },
@@ -1229,7 +1235,7 @@
       }
     },
     "counts": {
-      "authored": 204,
+      "authored": 205,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -4673,6 +4679,95 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing": {
+      "purpose": "the binary refuses a document whose bearer endpoint is a remote host over plain http as config:value, so no credential is sent in cleartext, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.remote]\\nwires = [\\\"chat\\\", \\\"responses\\\"]\\nbase_url = \\\"http://api.example.test:8080/\\\"\\nauth_kind = \\\"bearer\\\"\\ncredential_file = \\\"/run/credentials/remote\\\"\\nbilling_kind = \\\"subscription\\\"\\nupstream_model = \\\"vendor-large\\\"\\n\\n[hosted.local]\\nwires = [\\\"chat\\\"]\\nbase_url = \\\"http://127.0.0.1:8000/\\\"\\nauth_kind = \\\"bearer\\\"\\ncredential_file = \\\"/run/credentials/local\\\"\\n\\n[hosted.open]\\nwires = [\\\"messages\\\"]\\nbase_url = \\\"http://10.0.0.7:8000/\\\"\\nauth_kind = \\\"anonymous\\\"\\n\",\"withheld\":[\"api.example.test\",\"/run/credentials/remote\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "secret_on_wire": {
+                "kind": "literal",
+                "value": null
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              },
+              "withheld_on_wire": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/hosted-a-document-whose-api-key-endpoint-names-no-credential-header-composes-nothing": {
       "purpose": "the binary refuses a document whose api-key endpoint names no credential header as config:value, and nothing is composed",
       "source": [
@@ -5357,7 +5452,7 @@
                 "kind": "literal",
                 "value": [
                   "{\"config_digest\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"route_count\":2,\"routes\":[{\"route_id\":\"open\",\"alias\":\"open\",\"fallback_enabled\":false,\"target_count\":1,\"targets\":[{\"target_id\":\"open.messages\",\"position\":0,\"protocol\":\"messages\",\"provider\":\"hosted\",\"account\":\"hosted\",\"endpoint\":\"open\",\"model\":\"open\",\"binding_revision\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"auth_kind\":\"anonymous\",\"billing_kind\":\"metered\"}]},{\"route_id\":\"remote\",\"alias\":\"remote\",\"fallback_enabled\":false,\"target_count\":2,\"targets\":[{\"target_id\":\"remote.chat\",\"position\":0,\"protocol\":\"chat\",\"provider\":\"hosted\",\"account\":\"hosted\",\"endpoint\":\"remote\",\"model\":\"vendor-large\",\"binding_revision\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"auth_kind\":\"api-key\",\"billing_kind\":\"subscription\",\"context_window\":128000},{\"target_id\":\"remote.responses\",\"position\":1,\"protocol\":\"responses\",\"provider\":\"hosted\",\"account\":\"hosted\",\"endpoint\":\"remote\",\"model\":\"vendor-large\",\"binding_revision\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"auth_kind\":\"api-key\",\"billing_kind\":\"subscription\",\"context_window\":128000}]}]}",
-                  "{\"route\":{\"route_id\":\"remote\",\"alias\":\"remote\",\"fallback_enabled\":false,\"target_count\":2,\"targets\":[{\"target_id\":\"remote.chat\",\"position\":0,\"protocol\":\"chat\",\"provider\":\"hosted\",\"account\":\"hosted\",\"endpoint\":\"remote\",\"model\":\"vendor-large\",\"binding_revision\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"auth_kind\":\"api-key\",\"billing_kind\":\"subscription\",\"context_window\":128000},{\"target_id\":\"remote.responses\",\"position\":1,\"protocol\":\"responses\",\"provider\":\"hosted\",\"account\":\"hosted\",\"endpoint\":\"remote\",\"model\":\"vendor-large\",\"binding_revision\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"auth_kind\":\"api-key\",\"billing_kind\":\"subscription\",\"context_window\":128000}]}}"
+                  "{\"config_digest\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"route\":{\"route_id\":\"remote\",\"alias\":\"remote\",\"fallback_enabled\":false,\"target_count\":2,\"targets\":[{\"target_id\":\"remote.chat\",\"position\":0,\"protocol\":\"chat\",\"provider\":\"hosted\",\"account\":\"hosted\",\"endpoint\":\"remote\",\"model\":\"vendor-large\",\"binding_revision\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"auth_kind\":\"api-key\",\"billing_kind\":\"subscription\",\"context_window\":128000},{\"target_id\":\"remote.responses\",\"position\":1,\"protocol\":\"responses\",\"provider\":\"hosted\",\"account\":\"hosted\",\"endpoint\":\"remote\",\"model\":\"vendor-large\",\"binding_revision\":\"e208c089f630e50872bf00cdca51663570ac50e89bf079b8a6ce7a1d11c1d539\",\"auth_kind\":\"api-key\",\"billing_kind\":\"subscription\",\"context_window\":128000}]}}"
                 ]
               },
               "error_code": {

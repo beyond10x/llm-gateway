@@ -18,8 +18,8 @@ use std::{
     time::Duration,
 };
 use support::{
-    Fixture, VLLM_KEY, api_key_keys, bearer_keys, connectors_table, document, hosted_document,
-    hosted_table, mutate, with_connectors, with_vllm_key,
+    ENDPOINT_CREDENTIAL, Fixture, VLLM_KEY, api_key_keys, bearer_keys, connectors_table, document,
+    hosted_document, hosted_table, mutate, with_connectors, with_vllm_key,
 };
 
 fn base(fixture: &Fixture) -> String {
@@ -1051,23 +1051,122 @@ fn hosted_an_api_key_endpoint_that_names_no_credential_header_is_refused_as_a_va
     );
 }
 
-/// Every other rule of `[hosted.<alias>]` (llm-gateway.deployment.HostedDeclaration), each
-/// broken on its own against a control that loads.
+/// A credential is never sent in cleartext to a remote host: an `http` endpoint whose
+/// `auth_kind` is not `anonymous` and whose host is not a loopback literal or `localhost` is
+/// refused as `config:value`, naming the endpoint and quoting no credential.
 #[test]
-fn hosted_every_value_outside_its_rule_is_refused() {
-    let fixture = Fixture::new("hosted-out-of-rule");
+fn hosted_a_credential_over_http_to_a_remote_host_is_refused_as_a_value() {
+    let fixture = Fixture::new("hosted-cleartext-refused");
     let credential = fixture.endpoint_credential();
+    let secret = fixture.owner_secret();
     let bearer = bearer_keys(&credential);
-    let control = hosted(&fixture, &bearer);
-    assert!(
-        load(&fixture.config(&control)).is_ok(),
-        "the control is refused"
-    );
-    let base_url = "base_url = \"https://api.example.test/\"";
-    let cases: Vec<(&str, String, String)> = vec![
+    let api_key = api_key_keys(&credential, "x-api-key");
+    for (case, url, keys) in [
+        ("bearer to a public address", "http://203.0.113.10", &bearer),
+        (
+            "bearer to a public address and port",
+            "http://203.0.113.10:8000/",
+            &bearer,
+        ),
+        ("bearer to a DNS name", "http://api.example.test/", &bearer),
+        (
+            "bearer to a private address",
+            "http://10.0.0.7:8000",
+            &bearer,
+        ),
+        (
+            "bearer to a non-loopback IPv6 address",
+            "http://[2001:db8::1]:8000",
+            &bearer,
+        ),
+        (
+            "bearer to a name that only starts with localhost",
+            "http://localhost.example.test",
+            &bearer,
+        ),
+        (
+            "api-key to a DNS name",
+            "http://api.example.test:8080/",
+            &api_key,
+        ),
+        (
+            "api-key to a public address",
+            "http://203.0.113.10",
+            &api_key,
+        ),
+    ] {
+        let document = hosted_document("127.0.0.1:0", &secret, &hosted_table("remote", url, keys));
+        let refusal = load(&fixture.config(&document))
+            .err()
+            .unwrap_or_else(|| panic!("{case}: {url} admitted"));
+        assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+        let message = refusal.message();
+        assert!(message.contains("hosted.remote"), "{case}: {message}");
+        assert!(!message.contains(ENDPOINT_CREDENTIAL), "{case}: {message}");
+    }
+}
+
+/// The controls of the cleartext rule: an anonymous endpoint may be anywhere over `http`, a
+/// credential may go over `http` to a loopback literal or `localhost`, and over `https` to any
+/// host.
+#[test]
+fn hosted_a_credential_over_http_is_admitted_only_to_loopback() {
+    let fixture = Fixture::new("hosted-cleartext-admitted");
+    let credential = fixture.endpoint_credential();
+    let secret = fixture.owner_secret();
+    let anonymous = "auth_kind = \"anonymous\"\n".to_owned();
+    let bearer = bearer_keys(&credential);
+    let api_key = api_key_keys(&credential, "x-api-key");
+    for (case, url, keys) in [
+        (
+            "anonymous to a public address",
+            "http://203.0.113.10",
+            &anonymous,
+        ),
+        (
+            "anonymous to a DNS name",
+            "http://api.example.test:8080/",
+            &anonymous,
+        ),
+        ("bearer to 127.0.0.1", "http://127.0.0.1:8000", &bearer),
+        (
+            "bearer to the 127/8 block",
+            "http://127.200.3.4:8000/",
+            &bearer,
+        ),
+        ("bearer to ::1", "http://[::1]:8000", &bearer),
+        ("bearer to localhost", "http://localhost:8000/", &bearer),
+        ("api-key to localhost", "http://localhost", &api_key),
+        (
+            "bearer over https to a DNS name",
+            "https://api.example.test/",
+            &bearer,
+        ),
+        (
+            "bearer over https to a public address",
+            "https://203.0.113.10",
+            &bearer,
+        ),
+        (
+            "api-key over https to a DNS name",
+            "https://api.example.test:8443",
+            &api_key,
+        ),
+    ] {
+        let document = hosted_document("127.0.0.1:0", &secret, &hosted_table("remote", url, keys));
+        if let Err(refusal) = load(&fixture.config(&document)) {
+            panic!("{case}: {url} refused: {refusal}");
+        }
+    }
+}
+
+/// The out-of-rule cases of a hosted endpoint's credential keys, each a `(case, find, replace)`
+/// on the `bearer` control.
+fn credential_cases(credential: &Path, bearer: &str) -> Vec<(&'static str, String, String)> {
+    vec![
         (
             "an anonymous endpoint naming a file",
-            bearer.clone(),
+            bearer.to_owned(),
             format!(
                 "auth_kind = \"anonymous\"\ncredential_file = \"{}\"\n",
                 credential.display()
@@ -1075,34 +1174,41 @@ fn hosted_every_value_outside_its_rule_is_refused() {
         ),
         (
             "a bearer endpoint naming a header",
-            bearer.clone(),
+            bearer.to_owned(),
             format!("{bearer}credential_header = \"x-api-key\"\n"),
         ),
         (
             "an anonymous endpoint naming a header",
-            bearer.clone(),
+            bearer.to_owned(),
             "auth_kind = \"anonymous\"\ncredential_header = \"x-api-key\"\n".to_owned(),
         ),
         (
             "a reserved credential header",
-            bearer.clone(),
-            api_key_keys(&credential, "authorization"),
+            bearer.to_owned(),
+            api_key_keys(credential, "authorization"),
         ),
         (
             "a framing credential header",
-            bearer.clone(),
-            api_key_keys(&credential, "content-length"),
+            bearer.to_owned(),
+            api_key_keys(credential, "content-length"),
         ),
         (
             "a credential header with a space",
-            bearer.clone(),
-            api_key_keys(&credential, "x api key"),
+            bearer.to_owned(),
+            api_key_keys(credential, "x api key"),
         ),
         (
             "a credential header over 64 bytes",
-            bearer.clone(),
-            api_key_keys(&credential, &"k".repeat(65)),
+            bearer.to_owned(),
+            api_key_keys(credential, &"k".repeat(65)),
         ),
+    ]
+}
+
+/// The out-of-rule cases of a hosted endpoint's `base_url`, each a `(case, find, replace)` on the
+/// control's `base_url` line.
+fn base_url_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
+    vec![
         (
             "another scheme",
             base_url.to_owned(),
@@ -1163,6 +1269,13 @@ fn hosted_every_value_outside_its_rule_is_refused() {
             base_url.to_owned(),
             format!("base_url = \"http://{}.test\"", "a.".repeat(126)),
         ),
+    ]
+}
+
+/// The out-of-rule cases of a hosted endpoint's wires, alias, upstream model and context window,
+/// each a `(case, find, replace)` on the control.
+fn declaration_cases(bearer: &str) -> Vec<(&'static str, String, String)> {
+    vec![
         (
             "no wire",
             "wires = [\"chat\", \"messages\"]".to_owned(),
@@ -1185,25 +1298,46 @@ fn hosted_every_value_outside_its_rule_is_refused() {
         ),
         (
             "an empty upstream model",
-            bearer.clone(),
+            bearer.to_owned(),
             format!("{bearer}upstream_model = \"\"\n"),
         ),
         (
             "an upstream model over 256 bytes",
-            bearer.clone(),
+            bearer.to_owned(),
             format!("{bearer}upstream_model = \"{}\"\n", "m".repeat(257)),
         ),
         (
             "a context window under 4096",
-            bearer.clone(),
+            bearer.to_owned(),
             format!("{bearer}context_window = 4095\n"),
         ),
         (
             "a context window over 2000000",
-            bearer.clone(),
+            bearer.to_owned(),
             format!("{bearer}context_window = 2000001\n"),
         ),
-    ];
+    ]
+}
+
+/// Every other rule of `[hosted.<alias>]` (llm-gateway.deployment.HostedDeclaration), each
+/// broken on its own against a control that loads.
+#[test]
+fn hosted_every_value_outside_its_rule_is_refused() {
+    let fixture = Fixture::new("hosted-out-of-rule");
+    let credential = fixture.endpoint_credential();
+    let bearer = bearer_keys(&credential);
+    let control = hosted(&fixture, &bearer);
+    assert!(
+        load(&fixture.config(&control)).is_ok(),
+        "the control is refused"
+    );
+    let base_url = "base_url = \"https://api.example.test/\"";
+    let cases = [
+        credential_cases(&credential, &bearer),
+        base_url_cases(base_url),
+        declaration_cases(&bearer),
+    ]
+    .concat();
     for (case, find, replace) in cases {
         let text = mutate(&control, &find, &replace);
         match load(&fixture.config(&text)) {

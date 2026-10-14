@@ -79,6 +79,12 @@ struct Program {
     max_concurrent_requests: Option<u64>,
     #[serde(default)]
     inventory: Option<InventoryInput>,
+    /// A deployment document's text: the inventory is the one the binary builds from it.
+    #[serde(default)]
+    document: Option<String>,
+    /// Strings no byte the gateway writes may contain (`withheld_on_wire`).
+    #[serde(default)]
+    withheld: Vec<String>,
     steps: Vec<Step>,
 }
 
@@ -275,7 +281,13 @@ fn compose(program: &Program) -> Result<GatewayHandle, String> {
         .map_err(|error| format!("token:{}", token_code(error)))?;
     let verifier = SharedSecretVerifier::new(token)
         .map_err(|error| format!("verifier:{}", verifier_code(error)))?;
-    let snapshot = inventory(program.inventory.as_ref().unwrap_or(&default_inventory()))?;
+    let snapshot = match &program.document {
+        // The binary's own loader and inventory; no file the document names is read.
+        Some(document) => llm_gateway_cli::parse(document)
+            .and_then(|deployment| llm_gateway_cli::inventory(&deployment))
+            .map_err(|refusal| refusal.code().to_owned())?,
+        None => inventory(program.inventory.as_ref().unwrap_or(&default_inventory()))?,
+    };
     let bind = "127.0.0.1:0"
         .parse()
         .map_err(|_| "fixture:bind-address".to_owned())?;
@@ -380,26 +392,35 @@ fn padded(raw: &str, pad: Option<usize>) -> Option<String> {
     Some(format!("{head}x-pad: {}\r\n\r\n", "a".repeat(pad)))
 }
 
-fn run(program_json: &str) -> Value {
-    let mut facts = json!({
-        "valid_program": false, "error_code": null, "results": [], "bodies": [],
-        "headers": [], "answer_headers": [], "secret_on_wire": null, "ready": null,
-        "shutdown": null
-    });
+/// The program `program_json` holds, or `None` when it is over its bounds, unparsed or names
+/// both a document and an inventory.
+fn valid_program(program_json: &str) -> Option<Program> {
     if program_json.len() > MAX_PROGRAM_BYTES {
-        return facts;
+        return None;
     }
-    let Ok(program) = serde_json::from_str::<Program>(program_json) else {
-        return facts;
-    };
+    let program = serde_json::from_str::<Program>(program_json).ok()?;
     if program.steps.len() > MAX_STEPS
+        || (program.document.is_some() && program.inventory.is_some())
+        || program.withheld.iter().any(String::is_empty)
         || program
             .inventory
             .as_ref()
             .is_some_and(|inventory| inventory.generated_routes > MAX_GENERATED_ROUTES)
     {
-        return facts;
+        return None;
     }
+    Some(program)
+}
+
+fn run(program_json: &str) -> Value {
+    let mut facts = json!({
+        "valid_program": false, "error_code": null, "results": [], "bodies": [],
+        "headers": [], "answer_headers": [], "secret_on_wire": null, "withheld_on_wire": null,
+        "ready": null, "shutdown": null
+    });
+    let Some(program) = valid_program(program_json) else {
+        return facts;
+    };
     facts["valid_program"] = json!(true);
     let mut handle = match compose(&program) {
         Ok(handle) => Some(handle),
@@ -411,6 +432,7 @@ fn run(program_json: &str) -> Value {
     let addr = handle.as_ref().map(GatewayHandle::local_addr);
     let secret = program.secret.as_bytes();
     let mut on_wire = false;
+    let mut withheld_on_wire = false;
     let (mut results, mut bodies, mut headers) = (Vec::new(), Vec::new(), Vec::new());
     let mut answer_headers = Vec::new();
     for step in &program.steps {
@@ -428,6 +450,12 @@ fn run(program_json: &str) -> Value {
                         .raw
                         .windows(secret.len())
                         .any(|window| window == secret);
+                withheld_on_wire |= program.withheld.iter().any(|withheld| {
+                    answer
+                        .raw
+                        .windows(withheld.len())
+                        .any(|window| window == withheld.as_bytes())
+                });
                 bodies.push(answer.body.clone());
                 headers.push(format!(
                     "www-authenticate={} allow={}",
@@ -472,6 +500,7 @@ fn run(program_json: &str) -> Value {
     facts["headers"] = json!(headers);
     facts["answer_headers"] = json!(answer_headers);
     facts["secret_on_wire"] = json!(on_wire);
+    facts["withheld_on_wire"] = json!(withheld_on_wire);
     facts["ready"] = json!(handle.as_ref().map(GatewayHandle::is_ready));
     if let Some(live) = handle {
         live.shutdown();
@@ -485,9 +514,21 @@ mod relay {
     use super::{Observed, label, token_code, unavailable, verifier_code};
     use ess_conformance::target::TargetError;
     use llm_gateway::{
-        Disposition, Gateway, GatewayConfig, GatewayHandle, OwnerToken, Relay, RelayError,
-        RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier,
-        TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
+        CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
+        GatewayHandle, OwnerToken, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
+        RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer, TargetRefusal,
+        ToolCalling, UsageRecord, UsageRecords, Wire,
+    };
+    use llm_gateway_cli::{
+        EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProxyConnector,
+    };
+    use rcgen::{
+        BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer,
+        KeyPair, KeyUsagePurpose,
+    };
+    use rustls::{
+        ServerConfig, ServerConnection, StreamOwned,
+        pki_types::{PrivateKeyDer, PrivatePkcs8KeyDer},
     };
     use serde::Deserialize;
     use serde_json::{Value, json};
@@ -553,6 +594,59 @@ mod relay {
         /// What `GET /` tells each client as its context window (row R1).
         #[serde(default)]
         context_window: Option<u64>,
+        /// Served by this hosted endpoint, through the binary's hosted target source, instead
+        /// of the source's current pod.
+        #[serde(default)]
+        endpoint: Option<EndpointInput>,
+    }
+
+    /// A hosted endpoint at a fixture pod's address (llm-gateway.upstream.HostedEndpoint).
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct EndpointInput {
+        /// The pod at the endpoint's authority: `pod-1`, `pod-2`, …
+        pod: String,
+        /// `http` or `https`; an `https` endpoint's pod serves TLS.
+        scheme: String,
+        /// `trusted`, the default, or `untrusted`: whose root issued the pod's certificate.
+        #[serde(default)]
+        certificate: Option<String>,
+        auth_kind: String,
+        /// The credential's material.
+        #[serde(default)]
+        credential: Option<String>,
+        #[serde(default)]
+        credential_header: Option<String>,
+    }
+
+    impl EndpointInput {
+        /// The pod's index, when `pod` names one of `pods` of them.
+        fn pod_index(&self, pods: usize) -> Option<usize> {
+            let number: usize = self.pod.strip_prefix("pod-")?.parse().ok()?;
+            (1..=pods).contains(&number).then(|| number - 1)
+        }
+
+        /// Whose root issued the pod's certificate, for an `https` endpoint.
+        fn tls(&self) -> Option<bool> {
+            (self.scheme == "https").then(|| self.certificate.as_deref() != Some("untrusted"))
+        }
+
+        fn valid(&self, pods: usize) -> bool {
+            let credential = match self.auth_kind.as_str() {
+                "anonymous" => self.credential.is_none() && self.credential_header.is_none(),
+                "bearer" => self.credential.is_some() && self.credential_header.is_none(),
+                "api-key" => self.credential.is_some() && self.credential_header.is_some(),
+                _ => false,
+            };
+            credential
+                && self.pod_index(pods).is_some()
+                && matches!(self.scheme.as_str(), "http" | "https")
+                && match self.certificate.as_deref() {
+                    None => true,
+                    Some("trusted" | "untrusted") => self.scheme == "https",
+                    Some(_) => false,
+                }
+        }
     }
 
     /// One scripted answer: a reply, or a transport failure.
@@ -660,6 +754,10 @@ mod relay {
         upstream: Mutex<Vec<String>>,
         /// Per request a pod received, its `authorization` value or `absent`.
         authorizations: Mutex<Vec<String>>,
+        /// Per request a pod received, its header lines but `host`, joined by ` | `.
+        received_heads: Mutex<Vec<String>>,
+        /// Per connection a pod accepted, `<pod> <transport> <request|nothing>`.
+        connections: Mutex<Vec<String>>,
         /// The owner secret, searched for in every byte a pod reads.
         secret: Vec<u8>,
         secret_upstream: AtomicBool,
@@ -675,7 +773,14 @@ mod relay {
     }
 
     impl Pod {
-        fn start(index: usize, script: Vec<AnswerInput>, shared: &Arc<Shared>) -> io::Result<Self> {
+        /// A loopback pod; with `tls`, every connection is served over TLS with that
+        /// configuration.
+        fn start(
+            index: usize,
+            script: Vec<AnswerInput>,
+            shared: &Arc<Shared>,
+            tls: Option<Arc<ServerConfig>>,
+        ) -> io::Result<Self> {
             let listener = TcpListener::bind("127.0.0.1:0")?;
             let authority = listener.local_addr()?.to_string();
             let name = format!("pod-{}", index + 1);
@@ -690,7 +795,7 @@ mod relay {
                         .lock()
                         .ok()
                         .and_then(|mut script| script.pop_front());
-                    answer_one(connection, answer, &pod, &recording);
+                    answer_one(connection, answer, &pod, &recording, tls.as_ref());
                 }
             });
             Ok(Self {
@@ -702,33 +807,149 @@ mod relay {
         }
     }
 
+    /// One accepted connection, plain or TLS.
+    enum Connection {
+        Plain(TcpStream),
+        Tls(Box<StreamOwned<ServerConnection, TcpStream>>),
+    }
+
+    impl Read for Connection {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            match self {
+                Self::Plain(stream) => stream.read(buffer),
+                Self::Tls(stream) => stream.read(buffer),
+            }
+        }
+    }
+
+    impl Write for Connection {
+        fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+            match self {
+                Self::Plain(stream) => stream.write(buffer),
+                Self::Tls(stream) => stream.write(buffer),
+            }
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            match self {
+                Self::Plain(stream) => stream.flush(),
+                Self::Tls(stream) => stream.flush(),
+            }
+        }
+    }
+
+    impl Connection {
+        fn transport(&self) -> &'static str {
+            match self {
+                Self::Plain(_) => "plain",
+                Self::Tls(_) => "tls",
+            }
+        }
+
+        /// Ends the connection: a TLS close first, then both directions of the socket.
+        fn close(self) {
+            let socket = match self {
+                Self::Plain(stream) => stream,
+                Self::Tls(mut stream) => {
+                    stream.conn.send_close_notify();
+                    let _flushed = stream.flush();
+                    stream.sock
+                }
+            };
+            let _closed = socket.shutdown(Shutdown::Both);
+        }
+    }
+
+    fn record(list: &Mutex<Vec<String>>, entry: String) {
+        if let Ok(mut list) = list.lock() {
+            list.push(entry);
+        }
+    }
+
+    /// The TLS handshake on `socket`; on failure the connection is recorded `tls-refused` with
+    /// whatever request bytes were decrypted (none are expected) and `None` returned.
+    fn handshake(
+        socket: TcpStream,
+        config: &Arc<ServerConfig>,
+        pod: &str,
+        shared: &Shared,
+    ) -> Option<Connection> {
+        let refused = |read: bool| {
+            record(
+                &shared.connections,
+                format!(
+                    "{pod} tls-refused {}",
+                    if read { "request" } else { "nothing" }
+                ),
+            );
+        };
+        let Ok(server) = ServerConnection::new(Arc::clone(config)) else {
+            refused(false);
+            return None;
+        };
+        let mut stream = StreamOwned::new(server, socket);
+        while stream.conn.is_handshaking() {
+            if stream.conn.complete_io(&mut stream.sock).is_err() {
+                let mut decrypted = Vec::new();
+                let _read = stream.conn.reader().read_to_end(&mut decrypted);
+                refused(!decrypted.is_empty());
+                let _closed = stream.sock.shutdown(Shutdown::Both);
+                return None;
+            }
+        }
+        Some(Connection::Tls(Box::new(stream)))
+    }
+
     /// Reads one request, records it, and answers it as scripted.
     fn answer_one(
-        mut connection: TcpStream,
+        socket: TcpStream,
         answer: Option<AnswerInput>,
         pod: &str,
         shared: &Shared,
+        tls: Option<&Arc<ServerConfig>>,
     ) {
-        let _timeouts = connection
+        let _timeouts = socket
             .set_read_timeout(Some(WAIT))
-            .and_then(|()| connection.set_write_timeout(Some(WAIT)));
-        let Some(answer) = answer else {
+            .and_then(|()| socket.set_write_timeout(Some(WAIT)));
+        // Past the script, or a refused connection: closed unread and not recorded. A source's
+        // target refuses such a connection before it is opened; a hosted endpoint opens it.
+        let Some(answer) = answer.filter(|answer| answer.transport.as_deref() != Some("refused"))
+        else {
+            let _closed = socket.shutdown(Shutdown::Both);
             return;
         };
-        if let Some(seen) = read_request(&mut connection) {
+        let mut connection = match tls {
+            Some(config) => {
+                let Some(connection) = handshake(socket, config, pod, shared) else {
+                    return;
+                };
+                connection
+            }
+            None => Connection::Plain(socket),
+        };
+        let (seen, read) = read_request(&mut connection);
+        record(
+            &shared.connections,
+            format!(
+                "{pod} {} {}",
+                connection.transport(),
+                if read { "request" } else { "nothing" }
+            ),
+        );
+        if let Some(seen) = seen {
             if !shared.secret.is_empty() && find(&seen.raw, &shared.secret).is_some() {
                 shared.secret_upstream.store(true, Ordering::SeqCst);
             }
-            if let Ok(mut upstream) = shared.upstream.lock() {
-                upstream.push(format!("{pod} {}", seen.summary));
-            }
-            if let Ok(mut authorizations) = shared.authorizations.lock() {
-                authorizations.push(seen.authorization.unwrap_or_else(|| "absent".to_owned()));
-            }
+            record(&shared.upstream, format!("{pod} {}", seen.summary));
+            record(
+                &shared.authorizations,
+                seen.authorization.unwrap_or_else(|| "absent".to_owned()),
+            );
+            record(&shared.received_heads, seen.head_lines);
         }
         let Some(status) = answer.status else {
             // `closed`: the request was read, and no byte of answer follows.
-            let _closed = connection.shutdown(Shutdown::Both);
+            connection.close();
             return;
         };
         let progress = shared
@@ -781,7 +1002,7 @@ mod relay {
         if chunked {
             let _end = connection.write_all(b"0\r\n\r\n");
         }
-        let _closed = connection.shutdown(Shutdown::Both);
+        connection.close();
     }
 
     /// One request a pod read.
@@ -789,16 +1010,23 @@ mod relay {
         /// `<method> <path> <body>`.
         summary: String,
         authorization: Option<String>,
+        /// Every header line but `host`, as received and in order, joined by ` | `.
+        head_lines: String,
         /// Every byte read for the request, head and body.
         raw: Vec<u8>,
     }
 
-    /// One request, reading a `content-length` body.
-    fn read_request(connection: &mut TcpStream) -> Option<Seen> {
+    /// One request, reading a `content-length` body, and whether any byte was read at all.
+    fn read_request(connection: &mut impl Read) -> (Option<Seen>, bool) {
         let mut buffer = Vec::new();
+        let seen = read_into(connection, &mut buffer);
+        (seen, !buffer.is_empty())
+    }
+
+    fn read_into(connection: &mut impl Read, buffer: &mut Vec<u8>) -> Option<Seen> {
         let mut chunk = [0_u8; 16_384];
         let end = loop {
-            if let Some(end) = find(&buffer, b"\r\n\r\n") {
+            if let Some(end) = find(buffer, b"\r\n\r\n") {
                 break end;
             }
             let read = connection.read(&mut chunk).ok()?;
@@ -834,9 +1062,19 @@ mod relay {
         } else {
             String::from_utf8_lossy(&body).into_owned()
         };
+        let head_lines = head
+            .split("\r\n")
+            .skip(1)
+            .filter(|line| {
+                line.split_once(':')
+                    .is_none_or(|(name, _)| !name.trim().eq_ignore_ascii_case("host"))
+            })
+            .collect::<Vec<_>>()
+            .join(" | ");
         Some(Seen {
             summary: format!("{method} {path} {text}"),
             authorization: header("authorization"),
+            head_lines,
             raw,
         })
     }
@@ -919,21 +1157,16 @@ mod relay {
         bearers: Mutex<BTreeMap<String, Arc<TargetBearer>>>,
         current: Mutex<usize>,
         cold: AtomicUsize,
-        acquired: AtomicUsize,
-        released: Arc<AtomicUsize>,
-        invalidated: Mutex<Vec<String>>,
     }
 
     struct Target {
         authority: String,
         script: Arc<Mutex<VecDeque<AnswerInput>>>,
         bearer: Option<Arc<TargetBearer>>,
-        released: Arc<AtomicUsize>,
     }
 
     impl RelayTargets for Source {
         fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
-            self.acquired.fetch_add(1, Ordering::SeqCst);
             if self
                 .cold
                 .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
@@ -959,17 +1192,11 @@ mod relay {
                 authority: authority.clone(),
                 script: Arc::clone(script),
                 bearer,
-                released: Arc::clone(&self.released),
             }))
         }
 
         fn invalidate(&self, _alias: &str, authority: &str) {
             let named = self.pods.iter().position(|(_, pod, _)| pod == authority);
-            if let Ok(mut invalidated) = self.invalidated.lock() {
-                invalidated.push(
-                    named.map_or_else(|| authority.to_string(), |index| self.pods[index].0.clone()),
-                );
-            }
             if let Ok(mut current) = self.current.lock()
                 && named == Some(*current)
             {
@@ -1007,10 +1234,124 @@ mod relay {
         }
     }
 
-    impl Drop for Target {
+    /// What the gateway asked of its target source, counted where the gateway asks it: above
+    /// the binary's hosted target source, which serves the hosted models and hands every other
+    /// alias to [`Source`].
+    struct Counting {
+        inner: Arc<dyn RelayTargets>,
+        /// Each pod's name and authority, to name an invalidated one.
+        names: Vec<(String, String)>,
+        acquired: AtomicUsize,
+        released: Arc<AtomicUsize>,
+        invalidated: Mutex<Vec<String>>,
+    }
+
+    /// A target the gateway holds, counted released when it is dropped.
+    struct Counted {
+        inner: Box<dyn RelayTarget>,
+        released: Arc<AtomicUsize>,
+    }
+
+    impl RelayTargets for Counting {
+        fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+            self.acquired.fetch_add(1, Ordering::SeqCst);
+            let inner = self.inner.acquire(alias)?;
+            Ok(Box::new(Counted {
+                inner,
+                released: Arc::clone(&self.released),
+            }))
+        }
+
+        fn invalidate(&self, alias: &str, authority: &str) {
+            let named = self
+                .names
+                .iter()
+                .find(|(_, pod)| pod == authority)
+                .map_or_else(|| authority.to_owned(), |(name, _)| name.clone());
+            record(&self.invalidated, named);
+            self.inner.invalidate(alias, authority);
+        }
+    }
+
+    impl RelayTarget for Counted {
+        fn authority(&self) -> &str {
+            self.inner.authority()
+        }
+
+        fn bearer(&self) -> Option<&TargetBearer> {
+            self.inner.bearer()
+        }
+
+        fn credential_header(&self) -> Option<&CredentialHeader> {
+            self.inner.credential_header()
+        }
+
+        fn held(&self) -> bool {
+            self.inner.held()
+        }
+
+        fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
+            self.inner.connect()
+        }
+    }
+
+    impl Drop for Counted {
         fn drop(&mut self) {
             self.released.fetch_add(1, Ordering::SeqCst);
         }
+    }
+
+    /// The run's TLS material: one test root, the only root the client trusts, and server
+    /// configurations presenting a certificate for `127.0.0.1` from it and from a stranger root.
+    struct Certificates {
+        root: Vec<u8>,
+        trusted: Arc<ServerConfig>,
+        untrusted: Arc<ServerConfig>,
+    }
+
+    fn authority_root(name: &str) -> Option<(Vec<u8>, Issuer<'static, KeyPair>)> {
+        let mut params = CertificateParams::new(Vec::<String>::new()).ok()?;
+        params.is_ca = IsCa::Ca(BasicConstraints::Unconstrained);
+        params.distinguished_name.push(DnType::CommonName, name);
+        params.key_usages = vec![
+            KeyUsagePurpose::KeyCertSign,
+            KeyUsagePurpose::CrlSign,
+            KeyUsagePurpose::DigitalSignature,
+        ];
+        let key = KeyPair::generate().ok()?;
+        let certificate = params.self_signed(&key).ok()?;
+        Some((certificate.der().to_vec(), Issuer::new(params, key)))
+    }
+
+    fn server_for_loopback(issuer: &Issuer<'static, KeyPair>) -> Option<Arc<ServerConfig>> {
+        let mut params = CertificateParams::new(vec!["127.0.0.1".to_owned()]).ok()?;
+        params
+            .distinguished_name
+            .push(DnType::CommonName, "127.0.0.1");
+        params.extended_key_usages = vec![ExtendedKeyUsagePurpose::ServerAuth];
+        let key = KeyPair::generate().ok()?;
+        let certificate = params.signed_by(&key, issuer).ok()?;
+        let config =
+            ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider()))
+                .with_safe_default_protocol_versions()
+                .ok()?
+                .with_no_client_auth()
+                .with_single_cert(
+                    vec![certificate.der().clone()],
+                    PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(key.serialize_der())),
+                )
+                .ok()?;
+        Some(Arc::new(config))
+    }
+
+    fn certificates() -> Option<Certificates> {
+        let (root, issuer) = authority_root("conformance trusted root")?;
+        let (_, stranger) = authority_root("conformance untrusted root")?;
+        Some(Certificates {
+            root,
+            trusted: server_for_loopback(&issuer)?,
+            untrusted: server_for_loopback(&stranger)?,
+        })
     }
 
     pub(super) fn exercise(input: &Value) -> Result<Observed, TargetError> {
@@ -1038,10 +1379,59 @@ mod relay {
         }
     }
 
+    fn credential_header_code(error: CredentialHeaderError) -> &'static str {
+        match error {
+            CredentialHeaderError::Length => "length",
+            CredentialHeaderError::NotAToken => "not-a-token",
+            CredentialHeaderError::Reserved => "reserved",
+        }
+    }
+
+    /// Each hosted model's endpoint, at its pod's address, as the binary builds one.
+    fn endpoints(
+        program: &Program,
+        authorities: &[String],
+    ) -> Result<BTreeMap<String, HostedEndpoint>, String> {
+        let bearer = |material: Option<&String>| {
+            TargetBearer::new(material.map_or_else(Vec::new, |text| text.as_bytes().to_vec()))
+                .map_err(|error| format!("bearer:{}", token_code(error)))
+        };
+        let mut endpoints = BTreeMap::new();
+        for model in &program.models {
+            let Some(endpoint) = &model.endpoint else {
+                continue;
+            };
+            let credential = match endpoint.auth_kind.as_str() {
+                "anonymous" => EndpointCredential::Anonymous,
+                "bearer" => EndpointCredential::Bearer(bearer(endpoint.credential.as_ref())?),
+                _ => EndpointCredential::ApiKey {
+                    header: CredentialHeader::new(
+                        endpoint.credential_header.as_deref().unwrap_or_default(),
+                    )
+                    .map_err(|error| {
+                        format!("credential-header:{}", credential_header_code(error))
+                    })?,
+                    key: bearer(endpoint.credential.as_ref())?,
+                },
+            };
+            let authority = endpoint
+                .pod_index(authorities.len())
+                .and_then(|index| authorities.get(index))
+                .ok_or_else(|| "fixture:endpoint-pod".to_owned())?;
+            let base_url = format!("{}://{authority}", endpoint.scheme);
+            let hosted = HostedEndpoint::new(&base_url, credential)
+                .map_err(|_| "endpoint:base-url".to_owned())?;
+            endpoints.insert(model.alias.clone(), hosted);
+        }
+        Ok(endpoints)
+    }
+
     fn compose(
         program: &Program,
         source: Arc<Source>,
+        counting: &mut Option<Arc<Counting>>,
         records: Arc<Records>,
+        tls_root: Option<&[u8]>,
     ) -> Result<GatewayHandle, String> {
         let token = OwnerToken::new(program.secret.as_bytes().to_vec())
             .map_err(|error| format!("token:{}", token_code(error)))?;
@@ -1084,7 +1474,31 @@ mod relay {
             .bearers
             .lock()
             .map_err(|_| "fixture:bearers".to_owned())? = bearers;
-        let relay = Relay::new(models, source)
+        let names: Vec<(String, String)> = source
+            .pods
+            .iter()
+            .map(|(name, authority, _)| (name.clone(), authority.clone()))
+            .collect();
+        let authorities: Vec<String> = names.iter().map(|(_, pod)| pod.clone()).collect();
+        let endpoints = endpoints(program, &authorities)?;
+        // The binary's TLS client over the run's test root: the seam the shipped binary cannot
+        // reach. A run with no https endpoint trusts nothing, and connects over TLS to nothing.
+        let tls: Arc<dyn PodConnector> = match tls_root {
+            Some(root) => Arc::new(
+                ProxyConnector::with_test_seam(&[root.to_vec()], None)
+                    .map_err(|_| "fixture:tls-root".to_owned())?,
+            ),
+            None => Arc::new(ProxyConnector::shipped()),
+        };
+        let targets = Arc::new(Counting {
+            inner: Arc::new(HostedTargets::new(endpoints, tls, source)),
+            names,
+            acquired: AtomicUsize::new(0),
+            released: Arc::new(AtomicUsize::new(0)),
+            invalidated: Mutex::new(Vec::new()),
+        });
+        *counting = Some(Arc::clone(&targets));
+        let relay = Relay::new(models, targets)
             .map_err(relay_error)?
             .with_records(records);
         let inventory =
@@ -1256,9 +1670,24 @@ mod relay {
     }
 
     fn valid(program: &Program) -> bool {
-        program.steps.len() <= MAX_STEPS
+        let pods = program.pods.len();
+        // A pod serves one transport: every endpoint naming it agrees on its TLS.
+        let mut tls: BTreeMap<usize, Option<bool>> = BTreeMap::new();
+        let endpoints_agree = program.models.iter().all(|model| {
+            let Some(endpoint) = &model.endpoint else {
+                return true;
+            };
+            let Some(index) = endpoint.pod_index(pods) else {
+                return false;
+            };
+            endpoint.valid(pods)
+                && model.bearer.is_none()
+                && *tls.entry(index).or_insert_with(|| endpoint.tls()) == endpoint.tls()
+        });
+        endpoints_agree
+            && program.steps.len() <= MAX_STEPS
             && program.cold_starts <= MAX_STEPS
-            && program.pods.len() <= MAX_PODS
+            && pods <= MAX_PODS
             && program
                 .pods
                 .iter()
@@ -1271,12 +1700,42 @@ mod relay {
             })
     }
 
+    /// Per pod, the TLS configuration it serves with, when an `https` endpoint names it.
+    fn pod_tls(
+        program: &Program,
+        certificates: Option<&Certificates>,
+    ) -> Vec<Option<Arc<ServerConfig>>> {
+        let mut served = vec![None; program.pods.len()];
+        for endpoint in program
+            .models
+            .iter()
+            .filter_map(|model| model.endpoint.as_ref())
+        {
+            if let (Some(index), Some(trusted), Some(certificates)) = (
+                endpoint.pod_index(program.pods.len()),
+                endpoint.tls(),
+                certificates,
+            ) {
+                served[index] = Some(Arc::clone(if trusted {
+                    &certificates.trusted
+                } else {
+                    &certificates.untrusted
+                }));
+            }
+        }
+        served
+    }
+
+    fn taken(list: &Mutex<Vec<String>>) -> Vec<String> {
+        list.lock().map(|seen| seen.clone()).unwrap_or_default()
+    }
+
     fn run(program_json: &str) -> Value {
         let mut facts = json!({
             "valid_program": false, "error_code": null, "results": [], "bodies": [],
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
-            "scrapes": []
+            "scrapes": [], "connections": [], "received_heads": []
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -1292,9 +1751,25 @@ mod relay {
             secret: program.secret.as_bytes().to_vec(),
             ..Shared::default()
         });
+        let needs_tls = program.models.iter().any(|model| {
+            model
+                .endpoint
+                .as_ref()
+                .is_some_and(|endpoint| endpoint.tls().is_some())
+        });
+        let certificates = if needs_tls {
+            let Some(certificates) = certificates() else {
+                facts["error_code"] = json!("fixture:certificates");
+                return facts;
+            };
+            Some(certificates)
+        } else {
+            None
+        };
         let mut pods = Vec::new();
-        for (index, script) in program.pods.iter().enumerate() {
-            let Ok(pod) = Pod::start(index, script.clone(), &shared) else {
+        let served = pod_tls(&program, certificates.as_ref());
+        for (index, (script, tls)) in program.pods.iter().zip(served).enumerate() {
+            let Ok(pod) = Pod::start(index, script.clone(), &shared, tls) else {
                 facts["error_code"] = json!("fixture:pod");
                 stop(&shared, pods);
                 return facts;
@@ -1315,12 +1790,13 @@ mod relay {
             bearers: Mutex::new(BTreeMap::new()),
             current: Mutex::new(0),
             cold: AtomicUsize::new(program.cold_starts),
-            acquired: AtomicUsize::new(0),
-            released: Arc::new(AtomicUsize::new(0)),
-            invalidated: Mutex::new(Vec::new()),
         });
         let records = Arc::new(Records::default());
-        match compose(&program, Arc::clone(&source), Arc::clone(&records)) {
+        let mut counting = None;
+        let root = certificates
+            .as_ref()
+            .map(|certificates| certificates.root.as_slice());
+        match compose(&program, source, &mut counting, Arc::clone(&records), root) {
             Ok(handle) => {
                 steps(&program, &handle, &shared, &records, &mut facts);
                 handle.shutdown();
@@ -1330,30 +1806,16 @@ mod relay {
             }
         }
         stop(&shared, pods);
-        facts["upstream"] = json!(
-            shared
-                .upstream
-                .lock()
-                .map(|seen| seen.clone())
-                .unwrap_or_default()
-        );
-        facts["authorizations"] = json!(
-            shared
-                .authorizations
-                .lock()
-                .map(|seen| seen.clone())
-                .unwrap_or_default()
-        );
+        facts["upstream"] = json!(taken(&shared.upstream));
+        facts["authorizations"] = json!(taken(&shared.authorizations));
+        facts["received_heads"] = json!(taken(&shared.received_heads));
+        facts["connections"] = json!(taken(&shared.connections));
         facts["secret_upstream"] = json!(shared.secret_upstream.load(Ordering::SeqCst));
-        facts["acquired"] = json!(source.acquired.load(Ordering::SeqCst));
-        facts["invalidated"] = json!(
-            source
-                .invalidated
-                .lock()
-                .map(|seen| seen.clone())
-                .unwrap_or_default()
-        );
-        facts["released"] = json!(source.released.load(Ordering::SeqCst));
+        if let Some(counting) = counting {
+            facts["acquired"] = json!(counting.acquired.load(Ordering::SeqCst));
+            facts["invalidated"] = json!(taken(&counting.invalidated));
+            facts["released"] = json!(counting.released.load(Ordering::SeqCst));
+        }
         facts
     }
 

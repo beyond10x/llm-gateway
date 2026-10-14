@@ -30,7 +30,7 @@ pub const POD_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long one read or one write on a relayed pod connection may wait.
 pub const POD_IO_TIMEOUT: Duration = Duration::from_secs(120);
 /// The port of an `https://` authority that names none.
-const HTTPS_PORT: u16 = 443;
+pub(crate) const HTTPS_PORT: u16 = 443;
 
 /// Opens TLS connections to pods: the shipped binary's pod connector.
 #[derive(Clone)]
@@ -123,7 +123,7 @@ impl ProxyConnector {
         io: Duration,
     ) -> io::Result<StreamOwned<ClientConnection, TcpStream>> {
         let (host, port) =
-            split(authority).ok_or_else(|| invalid("not a host[:port] authority"))?;
+            split(authority, HTTPS_PORT).ok_or_else(|| invalid("not a host[:port] authority"))?;
         let name = ServerName::try_from(host.to_owned())
             .map_err(|_| invalid("the pod host is not a server name"))?;
         let mut socket = match self.loopback {
@@ -142,8 +142,9 @@ impl ProxyConnector {
     }
 }
 
-/// `host` and port of `host[:port]`; an IPv6 literal is written `[addr]:port`.
-fn split(authority: &str) -> Option<(&str, u16)> {
+/// `host` and port of `host[:port]`, the port `default` when none is written; an IPv6 literal is
+/// written `[addr]:port`.
+pub(crate) fn split(authority: &str, default: u16) -> Option<(&str, u16)> {
     if authority.is_empty() || authority.contains(['/', '@', ' ']) {
         return None;
     }
@@ -151,7 +152,7 @@ fn split(authority: &str) -> Option<(&str, u16)> {
         let (host, after) = rest.split_once(']')?;
         let port = match after.strip_prefix(':') {
             Some(port) => port.parse().ok()?,
-            None if after.is_empty() => HTTPS_PORT,
+            None if after.is_empty() => default,
             None => return None,
         };
         return Some((host, port));
@@ -159,12 +160,12 @@ fn split(authority: &str) -> Option<(&str, u16)> {
     match authority.rsplit_once(':') {
         Some((host, port)) if !host.contains(':') => Some((host, port.parse().ok()?)),
         Some(_) => None,
-        None => Some((authority, HTTPS_PORT)),
+        None => Some((authority, default)),
     }
 }
 
 /// Resolves `host` and connects to the first address that answers within `timeout`.
-fn dial(host: &str, port: u16, timeout: Duration) -> io::Result<TcpStream> {
+pub(crate) fn dial(host: &str, port: u16, timeout: Duration) -> io::Result<TcpStream> {
     let mut last = io::Error::new(io::ErrorKind::NotFound, "the pod host has no address");
     for address in (host, port).to_socket_addrs()? {
         match TcpStream::connect_timeout(&address, timeout) {
@@ -200,14 +201,14 @@ mod tests {
     #[test]
     fn an_authority_is_a_host_and_a_port_that_defaults_to_443() {
         assert_eq!(
-            split("pod1-8000.proxy.runpod.net"),
+            split("pod1-8000.proxy.runpod.net", 443),
             Some(("pod1-8000.proxy.runpod.net", 443))
         );
-        assert_eq!(split("localhost:8443"), Some(("localhost", 8443)));
-        assert_eq!(split("[::1]:8443"), Some(("::1", 8443)));
-        assert_eq!(split("[::1]"), Some(("::1", 443)));
+        assert_eq!(split("localhost:8443", 443), Some(("localhost", 8443)));
+        assert_eq!(split("[::1]:8443", 443), Some(("::1", 8443)));
+        assert_eq!(split("[::1]", 443), Some(("::1", 443)));
         for refused in ["", "a:b", "user@pod:443", "pod/v1", "::1", "pod:99999"] {
-            assert_eq!(split(refused), None, "{refused:?}");
+            assert_eq!(split(refused, 443), None, "{refused:?}");
         }
     }
 }

@@ -158,11 +158,14 @@ name = "b10x-llm-gateway-conformance"
 version = "0.6.0"
 dependencies = [
  "b10x-llm-gateway",
+ "b10x-llm-gateway-cli",
  "b10x-llm-provision",
  "b10x-llm-runpod",
  "clap",
  "ess-conformance",
  "ess-primitives",
+ "rcgen",
+ "rustls",
  "serde",
  "serde_json",
  "sha2",

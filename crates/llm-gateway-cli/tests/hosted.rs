@@ -1,6 +1,6 @@
 //! story:hosted-endpoints: a relayed model served by a hosted endpoint declared in the
-//! deployment document (`[hosted.<alias>]`, spec/domains/deployment.yaml HostedDeclaration and
-//! spec/domains/upstream.yaml HostedEndpoint), observed from outside the process.
+//! deployment document (`[hosted.<alias>]`, `spec/domains/deployment.yaml` `HostedDeclaration`
+//! and `spec/domains/upstream.yaml` `HostedEndpoint`), observed from outside the process.
 //!
 //! Every endpoint is a loopback fixture: a plain `http` server recording each request, or the
 //! `https` fixture pod of `support::tls_pod` with a certificate a test root issued for
@@ -90,7 +90,10 @@ impl Server {
             let Ok(line) = lines.recv_timeout(left) else {
                 drop(child.kill());
                 drop(child.wait());
-                panic!("{program:?} never reported {LISTENING:?}; stderr: {written:?}");
+                panic!(
+                    "{} never reported {LISTENING:?}; stderr: {written:?}",
+                    program.display()
+                );
             };
             written.push(line.clone());
             if let Some(address) = line.strip_prefix(LISTENING) {
@@ -394,16 +397,16 @@ fn hosted_the_binary_starts_and_lists_each_target_with_its_kinds_and_no_url_or_c
 
 // --- Criteria 2 and 3: each auth kind, on the same path, never the owner's credential ----------
 
-/// Criteria 2 and 3: a relayed request for a hosted model reaches its endpoint at the declared
-/// base URL on the same path, with its `model` rewritten to the upstream name. A `bearer`
-/// endpoint receives `authorization: Bearer <credential>`; an `api-key` endpoint the credential
-/// as its `credential_header`'s value and no `authorization`; an `anonymous` endpoint neither.
-/// No byte any endpoint receives holds the owner's credential.
-#[test]
-fn hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path() {
-    let fixture = Fixture::new("hosted-relay");
+/// The document of three hosted models: `remote` (`bearer`, upstream `vendor/remote-1`) at
+/// `bearer`, `keyed` (`api-key` in `X-Api-Key`) at `api_key`, and `open` (`anonymous`) at
+/// `anonymous`.
+fn relay_config(
+    fixture: &Fixture,
+    bearer: &Endpoint,
+    api_key: &Endpoint,
+    anonymous: &Endpoint,
+) -> PathBuf {
     let credential = fixture.endpoint_credential();
-    let (bearer, api_key, anonymous) = (Endpoint::start(), Endpoint::start(), Endpoint::start());
     let tables = format!(
         "{}{}{}",
         hosted_table(
@@ -421,11 +424,23 @@ fn hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path() {
         ),
         hosted_table("open", &anonymous.base_url(), "auth_kind = \"anonymous\"\n"),
     );
-    let config = fixture.config(&hosted_document(
+    fixture.config(&hosted_document(
         "127.0.0.1:0",
         &fixture.owner_secret(),
         &tables,
-    ));
+    ))
+}
+
+/// Criteria 2 and 3: a relayed request for a hosted model reaches its endpoint at the declared
+/// base URL on the same path, with its `model` rewritten to the upstream name. A `bearer`
+/// endpoint receives `authorization: Bearer <credential>`; an `api-key` endpoint the credential
+/// as its `credential_header`'s value and no `authorization`; an `anonymous` endpoint neither.
+/// No byte any endpoint receives holds the owner's credential.
+#[test]
+fn hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path() {
+    let fixture = Fixture::new("hosted-relay");
+    let (bearer, api_key, anonymous) = (Endpoint::start(), Endpoint::start(), Endpoint::start());
+    let config = relay_config(&fixture, &bearer, &api_key, &anonymous);
     let server = Server::start(&shipped(), &config, None);
     let mut answers = Vec::new();
     for (alias, path) in [
@@ -519,8 +534,8 @@ fn hosted_a_failed_endpoint_is_upstream_failed_and_kept_beside_an_unchanged_runp
     // A listener that closes its first connection unanswered, then serves.
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
-    let served = Arc::new(Mutex::new(0_usize));
-    let counting = Arc::clone(&served);
+    let reached = Arc::new(Mutex::new(0_usize));
+    let counting = Arc::clone(&reached);
     thread::spawn(move || {
         for (index, connection) in listener.incoming().enumerate() {
             let Ok(mut connection) = connection else {
@@ -566,7 +581,7 @@ fn hosted_a_failed_endpoint_is_upstream_failed_and_kept_beside_an_unchanged_runp
     assert!(first.contains("upstream-failed"), "{first}");
     assert!(second.starts_with("HTTP/1.1 200 "), "{second}");
     assert!(second.contains(ENDPOINT_ANSWER), "{second}");
-    assert_eq!(*served.lock().unwrap(), 2);
+    assert_eq!(*reached.lock().unwrap(), 2);
     assert!(runpod.starts_with("HTTP/1.1 503 "), "{runpod}");
     assert!(runpod.contains("target-unavailable"), "{runpod}");
 }

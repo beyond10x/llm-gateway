@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:hosted-endpoints
 kind: story
-status: active
+status: implemented
 title: A relayed model can be served by a hosted endpoint, not only a Runpod pod
 relations:
 - decomposes: epic:gateway-features
@@ -42,10 +42,11 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/upstream.yaml
-revision: 28
+revision: 29
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-14T14:31:57Z", actor: "human:timo", revision: 27, decided_on: {"recorded":{"review_outcome":5}}}
 - {from: "proposed", to: "active", at: "2026-10-14T14:31:58Z", actor: "human:timo", revision: 28, decided_on: {"recorded":{"review_outcome":5}}}
+- {from: "active", to: "implemented", at: "2026-10-14T21:30:36Z", actor: "human:timo", revision: 29, decided_on: {"recorded":{"test_result":1,"review_outcome":7,"verification":1}}}
 ---
 ## Outcome
 

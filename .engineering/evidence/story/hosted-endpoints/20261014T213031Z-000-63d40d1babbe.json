@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-14T21:30:31Z",
+  "actor": "human:timo",
+  "artifact": "story:hosted-endpoints",
+  "kind": "story",
+  "revision": 28,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --test hosted --test config --test security_w07_hosted; 8 hosted- conformance scenarios"
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-14T21:30:31Z",
+  "actor": "human:timo",
+  "artifact": "story:pod-proxy-tls",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --test pod_tls --test adversary_w07_pod_tls --test adversary_w07_pod_tls_red; cargo build --release -p b10x-llm-gateway-cli writes no seam program"
+  }
+}

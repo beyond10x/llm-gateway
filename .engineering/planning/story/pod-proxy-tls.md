@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:pod-proxy-tls
 kind: story
-status: active
+status: implemented
 title: The binary reaches a pod's https proxy URL over verified TLS
 relations:
 - decomposes: epic:client-access
@@ -30,10 +30,11 @@ scope:
   path: docs/hosting.md
 - confidence: cited
   path: spec/domains/deployment.yaml
-revision: 9
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-14T14:31:56Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-10-14T14:31:58Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-10-14T21:30:35Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1,"review_outcome":6,"verification":1}}}
 ---
 ## Outcome
 

@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-14T21:30:33Z",
+  "actor": "human:timo",
+  "artifact": "story:pod-proxy-tls",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "adv w07 1: handshake under the connect deadline",
+    "review": "review-result:adversary-w07-pod-proxy-tls-pass-1",
+    "outcome": "fixed"
+  }
+}

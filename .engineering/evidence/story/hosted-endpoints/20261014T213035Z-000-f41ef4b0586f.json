@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-14T21:30:35Z",
+  "actor": "human:timo",
+  "artifact": "story:hosted-endpoints",
+  "kind": "story",
+  "revision": 28,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "sec w07 1: cleartext credential to a non-loopback http host refused as config:value",
+    "review": "review-result:security-w07-hosted-endpoints-pass-1",
+    "outcome": "fixed"
+  }
+}

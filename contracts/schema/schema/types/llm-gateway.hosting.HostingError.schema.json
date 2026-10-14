@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.HostingError",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "28757a6d73a82c2fae0e655d56ca171358a87eb81672bec78f8fc1d06a5ac0ca",
+    "contract_digest": "slice-sha256/2:2f9505699349ddd855b9a64a4fcd66686c195d3f16d3bdc0fcee2ebb53bb3f53",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.HostingError": {
+      "title": "HostingError",
+      "x-ess-name": "llm-gateway.hosting.HostingError",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "InvalidPolicy",
+        "InvalidSpec",
+        "Unauthorized",
+        "Duplicate",
+        "Missing",
+        "WrongPhase",
+        "ClockReversed",
+        "CapacityExceeded",
+        "LeaseHeld",
+        "LeaseLost",
+        "StaleEpoch",
+        "ForeignResource",
+        "AmbiguousMutation",
+        "IdempotencyUnsupported"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "AmbiguousMutation": "ambiguous-mutation",
+            "CapacityExceeded": "capacity-exceeded",
+            "ClockReversed": "clock-reversed",
+            "Duplicate": "duplicate",
+            "ForeignResource": "foreign-resource",
+            "IdempotencyUnsupported": "idempotency-unsupported",
+            "InvalidPolicy": "invalid-policy",
+            "InvalidSpec": "invalid-spec",
+            "LeaseHeld": "lease-held",
+            "LeaseLost": "lease-lost",
+            "Missing": "missing",
+            "StaleEpoch": "stale-epoch",
+            "Unauthorized": "unauthorized",
+            "WrongPhase": "wrong-phase"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "message",
+          "type": "String",
+          "values": {
+            "AmbiguousMutation": "the mutation outcome is unknown",
+            "CapacityExceeded": "resource ceiling would be exceeded",
+            "ClockReversed": "hosting clock moved backwards",
+            "Duplicate": "deployment identifier already exists",
+            "ForeignResource": "the observed resource is not the one owned here",
+            "IdempotencyUnsupported": "the provider does not honour a repeated request id",
+            "InvalidPolicy": "invalid hosting policy",
+            "InvalidSpec": "deployment specification is outside this scope",
+            "LeaseHeld": "another controller holds the ownership lease",
+            "LeaseLost": "this controller holds no current lease",
+            "Missing": "deployment does not exist",
+            "StaleEpoch": "a newer epoch owns this resource",
+            "Unauthorized": "compute authorization names a different budget ledger",
+            "WrongPhase": "operation is not valid in this phase"
+          }
+        }
+      ]
+    }
+  }
+}

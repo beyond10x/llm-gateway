@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
-    "contract_digest": "slice-sha256/2:4a2c84ff1273ae7e3891b2f23d3cd20cae1ff22ea48330d2cc26e90535df04e0",
+    "source_digest": "28757a6d73a82c2fae0e655d56ca171358a87eb81672bec78f8fc1d06a5ac0ca",
+    "contract_digest": "slice-sha256/2:db984cfb0477fa29787b291f8e6d219216281afb195c15c353f10d41eb072448",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -23,6 +23,38 @@
         "Stopped",
         "Cancelled",
         "Disowned"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "boolean",
+          "name": "owes_a_stop",
+          "type": "Boolean",
+          "values": {
+            "Active": false,
+            "Cancelled": false,
+            "Declared": false,
+            "Disowned": false,
+            "Requested": false,
+            "StopRequired": true,
+            "Stopped": false,
+            "Uncertain": true
+          }
+        },
+        {
+          "kind": "boolean",
+          "name": "occupies_a_slot",
+          "type": "Boolean",
+          "values": {
+            "Active": true,
+            "Cancelled": false,
+            "Declared": false,
+            "Disowned": false,
+            "Requested": true,
+            "StopRequired": true,
+            "Stopped": false,
+            "Uncertain": true
+          }
+        }
       ]
     }
   }

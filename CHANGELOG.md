@@ -8,6 +8,11 @@ Nothing in any release is deployed or qualified against a live client.
 
 - The documentation site is published at <https://beyond10x.github.io/llm-gateway/>; README
   links it instead of the pages in the tree.
+- `spec/domains/hosting.yaml` and `spec/domains/runpod.yaml` declare every rule the hosting
+  contract promises: the hosting refusals with their codes and messages, the transition table,
+  the evidence routes and listing completeness as typed enums, and the Runpod pool and
+  declaration refusals with their codes. `b10x-llm-provision` publishes the evidence routes as
+  `EvidenceKind`. The conformance suite holds 202 scenarios (was 201).
 
 ## 0.6.0 (2026-10-08)
 

@@ -2,6 +2,7 @@ format: ess-inputs/1
 specification: []
 scenarios:
 - hosting/scenarios/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create.yaml
+- hosting/scenarios/a-create-taken-over-before-any-listing-confirmed-it-is-disowned.yaml
 - hosting/scenarios/a-create-that-never-left-the-process-allocates-nothing.yaml
 - hosting/scenarios/a-create-the-provider-refused-allocates-nothing.yaml
 - hosting/scenarios/a-deployment-identifier-of-the-maximum-length-is-declared.yaml

@@ -691,7 +691,9 @@ fn phase(phase: Phase) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{MAX_CONCURRENT, MAX_PROGRAM_BYTES, MAX_STEPS, run, transitions, within_size};
-    use llm_provision::{Dispatch, Phase, ProviderState, StopReason};
+    use llm_provision::{
+        Completeness, Dispatch, EvidenceKind, HostingError, Phase, ProviderState, StopReason,
+    };
     use serde_json::{Value, json};
 
     const POLICY: &str = r#"{"controller":"controller-a","provider":"fake","account":"account-1","ledger":"scope","max_active":2,"max_lifetime_ms":10000,"lease_ms":1000}"#;
@@ -798,25 +800,83 @@ mod tests {
 
     // --- the specification and the Rust inventories name the same values -------------------------
 
-    /// The variant list a domain declares for one type, read out of the specification.
-    fn declared(type_name: &str) -> Vec<String> {
-        let source = include_str!("../../../spec/domains/hosting.yaml");
-        let mut lines = source
+    const SPEC: &str = include_str!("../../../spec/domains/hosting.yaml");
+
+    /// One declared variant: its name and its attributes, in declaration order.
+    type Variant = (String, Vec<(String, String)>);
+
+    /// The variants a domain declares for one enum type, read out of the specification, in
+    /// either form ESS takes: `variants: [A, B]`, or one `- {name: A, attributes: {..}}` line
+    /// per variant.
+    fn declared_variants(type_name: &str) -> Vec<Variant> {
+        let start = SPEC
+            .find(&format!("  - name: {type_name}\n"))
+            .unwrap_or_else(|| panic!("spec/domains/hosting.yaml declares no {type_name}"));
+        let rest = &SPEC[start + 1..];
+        let end = [
+            rest.find("\n  - name: "),
+            rest.find("\n  #"),
+            rest.find("\nentities:"),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(rest.len());
+        let block = &rest[..end];
+        if let Some(inline) = block
             .lines()
-            .skip_while(|line| line.trim() != format!("- name: {type_name}"));
-        lines.next().expect("the type is declared");
-        let variants = lines
-            .find_map(|line| {
-                line.trim()
-                    .strip_prefix("variants: [")
-                    .map(ToOwned::to_owned)
+            .find_map(|line| line.trim().strip_prefix("variants: ["))
+        {
+            return inline
+                .trim_end_matches(']')
+                .split(',')
+                .map(|name| (name.trim().to_owned(), Vec::new()))
+                .collect();
+        }
+        let (_, listed) = block
+            .split_once("\n    variants:")
+            .unwrap_or_else(|| panic!("{type_name} declares no variants"));
+        listed
+            .lines()
+            .filter_map(|line| line.trim().strip_prefix("- {name: "))
+            .map(|line| match line.split_once(", attributes: {") {
+                Some((name, attributes)) => (
+                    name.to_owned(),
+                    attribute_pairs(attributes.trim_end_matches('}')),
+                ),
+                None => (line.trim_end_matches('}').to_owned(), Vec::new()),
             })
-            .expect("the type declares variants");
-        variants
-            .trim_end_matches(']')
-            .split(',')
-            .map(|name| kebab(name.trim()))
             .collect()
+    }
+
+    /// `k: v, k: "v, with a comma"` as ordered pairs, quotes removed.
+    fn attribute_pairs(mut text: &str) -> Vec<(String, String)> {
+        let mut pairs = Vec::new();
+        while let Some((key, after)) = text.split_once(':') {
+            let after = after.trim_start();
+            let (value, remainder) = if let Some(quoted) = after.strip_prefix('"') {
+                let close = quoted.find('"').expect("a closing quote");
+                (&quoted[..close], &quoted[close + 1..])
+            } else {
+                let stop = after.find(',').unwrap_or(after.len());
+                (&after[..stop], &after[stop..])
+            };
+            pairs.push((key.trim().to_owned(), value.trim().to_owned()));
+            text = remainder.trim_start_matches(|c: char| c == ',' || c.is_whitespace());
+        }
+        pairs
+    }
+
+    /// The kebab-case codes of a declared enum, as the crate's `code()` spells them.
+    fn declared(type_name: &str) -> Vec<String> {
+        declared_variants(type_name)
+            .into_iter()
+            .map(|(name, _)| kebab(&name))
+            .collect()
+    }
+
+    fn codes<T: Copy>(all: &[T], code: fn(T) -> &'static str) -> Vec<String> {
+        all.iter().map(|value| code(*value).to_owned()).collect()
     }
 
     fn kebab(name: &str) -> String {
@@ -831,39 +891,36 @@ mod tests {
     }
 
     /// The macro in `closed.rs` makes each inventory un-driftable inside Rust. It cannot see
-    /// `spec/domains/hosting.yaml`, which re-declares the same four vocabularies by hand, so
-    /// this is the comparison that closes that gap: a variant added, renamed or removed on
-    /// either side without the other fails here.
+    /// `spec/domains/hosting.yaml`, which re-declares the same vocabularies by hand, so this is
+    /// the comparison that closes that gap: a variant added, renamed or removed on either side
+    /// without the other fails here.
     #[test]
     fn every_vocabulary_is_declared_identically_in_rust_and_in_the_specification() {
-        let pairs: [(&str, Vec<String>); 4] = [
-            (
-                "llm-gateway.hosting.Phase",
-                Phase::ALL
-                    .iter()
-                    .map(|value| value.code().to_owned())
-                    .collect(),
-            ),
+        let pairs: [(&str, Vec<String>); 7] = [
+            ("llm-gateway.hosting.Phase", codes(Phase::ALL, Phase::code)),
             (
                 "llm-gateway.hosting.StopReason",
-                StopReason::ALL
-                    .iter()
-                    .map(|value| value.code().to_owned())
-                    .collect(),
+                codes(StopReason::ALL, StopReason::code),
             ),
             (
                 "llm-gateway.hosting.Dispatch",
-                Dispatch::ALL
-                    .iter()
-                    .map(|value| value.code().to_owned())
-                    .collect(),
+                codes(Dispatch::ALL, Dispatch::code),
             ),
             (
                 "llm-gateway.hosting.ProviderState",
-                ProviderState::ALL
-                    .iter()
-                    .map(|value| value.code().to_owned())
-                    .collect(),
+                codes(ProviderState::ALL, ProviderState::code),
+            ),
+            (
+                "llm-gateway.hosting.HostingError",
+                codes(HostingError::ALL, HostingError::code),
+            ),
+            (
+                "llm-gateway.hosting.EvidenceKind",
+                codes(EvidenceKind::ALL, EvidenceKind::code),
+            ),
+            (
+                "llm-gateway.hosting.Completeness",
+                codes(Completeness::ALL, Completeness::code),
             ),
         ];
         for (type_name, mut rust) in pairs {
@@ -872,6 +929,101 @@ mod tests {
             spec.sort();
             assert_eq!(spec, rust, "{type_name}");
         }
+    }
+
+    /// Row 12: every refusal is declared with the code and the fixed message the crate
+    /// publishes, so a reader of the specification is shown what a caller reads.
+    #[test]
+    fn every_hosting_refusal_is_declared_with_its_code_and_message() {
+        let declared = declared_variants("llm-gateway.hosting.HostingError");
+        let expected: Vec<Variant> = HostingError::ALL
+            .iter()
+            .map(|error| {
+                (
+                    format!("{error:?}"),
+                    vec![
+                        ("code".to_owned(), error.code().to_owned()),
+                        ("message".to_owned(), error.to_string()),
+                    ],
+                )
+            })
+            .collect();
+        assert_eq!(declared, expected);
+    }
+
+    /// Rows 9 and 10: the evidence routes and the two completeness words carry the codes the
+    /// crate attaches and reads.
+    #[test]
+    fn every_evidence_kind_and_completeness_is_declared_with_its_code() {
+        for (type_name, rust) in [
+            (
+                "llm-gateway.hosting.EvidenceKind",
+                codes(EvidenceKind::ALL, EvidenceKind::code),
+            ),
+            (
+                "llm-gateway.hosting.Completeness",
+                codes(Completeness::ALL, Completeness::code),
+            ),
+        ] {
+            let declared: Vec<String> = declared_variants(type_name)
+                .into_iter()
+                .map(|(name, attributes)| {
+                    assert_eq!(
+                        attributes.first().map(|(key, _)| key.as_str()),
+                        Some("code"),
+                        "{type_name}.{name}"
+                    );
+                    attributes[0].1.clone()
+                })
+                .collect();
+            assert_eq!(declared, rust, "{type_name}");
+        }
+    }
+
+    /// Row 13 and the slot rule: which phases owe a stop and which occupy a slot against the
+    /// resource ceiling are declared as the crate decides them.
+    #[test]
+    fn every_phase_declares_whether_it_owes_a_stop_and_occupies_a_slot() {
+        let declared = declared_variants("llm-gateway.hosting.Phase");
+        let expected: Vec<Variant> = Phase::ALL
+            .iter()
+            .map(|phase| {
+                (
+                    format!("{phase:?}"),
+                    vec![
+                        ("owes_a_stop".to_owned(), phase.owes_a_stop().to_string()),
+                        (
+                            "occupies_a_slot".to_owned(),
+                            phase.occupies_a_slot().to_string(),
+                        ),
+                    ],
+                )
+            })
+            .collect();
+        assert_eq!(declared, expected);
+    }
+
+    /// Row 11: the table is declared, edge by edge and in order, as `TRANSITIONS` holds it,
+    /// so an edge removed from the library fails here as well as in the table scenario.
+    #[test]
+    fn the_declared_transition_table_is_the_published_constant() {
+        let declared: Vec<(String, String)> = declared_variants("llm-gateway.hosting.Transition")
+            .into_iter()
+            .map(|(name, attributes)| {
+                let value = |key: &str| {
+                    attributes.iter().find(|(name, _)| name == key).map_or_else(
+                        || panic!("{name} declares no {key}"),
+                        |(_, value)| kebab(value),
+                    )
+                };
+                (value("from"), value("to"))
+            })
+            .collect();
+        let published: Vec<(String, String)> = llm_provision::TRANSITIONS
+            .iter()
+            .map(|(from, to)| (from.code().to_owned(), to.code().to_owned()))
+            .collect();
+        assert_eq!(declared, published);
     }
 
     #[test]

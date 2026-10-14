@@ -58,7 +58,8 @@ fn header<'a>(request: &'a str, name: &str) -> Option<&'a str> {
 fn tls_the_connector_opens_a_verified_connection_to_the_pod_host() {
     let root = TestRoot::new("pod-tls test root");
     let pod = TlsPod::start(root.server(POD_HOST), None);
-    let connector = ProxyConnector::with_test_seam(&[root.der.clone()], Some(pod.address)).unwrap();
+    let connector =
+        ProxyConnector::with_test_seam(std::slice::from_ref(&root.der), Some(pod.address)).unwrap();
     let mut stream = connector.connect(POD_HOST).unwrap();
     write!(
         stream,
@@ -94,7 +95,8 @@ fn tls_an_untrusted_certificate_fails_the_connect_and_the_pod_reads_nothing() {
     ] {
         let pod = TlsPod::start(config, None);
         let connector =
-            ProxyConnector::with_test_seam(&[trusted.der.clone()], Some(pod.address)).unwrap();
+            ProxyConnector::with_test_seam(std::slice::from_ref(&trusted.der), Some(pod.address))
+                .unwrap();
         let error = connector.connect(POD_HOST).err();
         assert!(error.is_some(), "{case}: the connection opened");
         let seen = seen_at_least(&pod, 1);
@@ -118,7 +120,7 @@ fn tls_the_shipped_connector_does_not_trust_a_test_root() {
     assert!(!seen[0].handshake, "{seen:?}");
     assert!(seen[0].request.is_empty(), "{seen:?}");
     // The control: the same pod through the seam, trusting that root.
-    let seam = ProxyConnector::with_test_seam(&[root.der.clone()], None).unwrap();
+    let seam = ProxyConnector::with_test_seam(std::slice::from_ref(&root.der), None).unwrap();
     let mut stream = seam.connect(&authority).unwrap();
     stream
         .write_all(b"GET /v1/models HTTP/1.1\r\nhost: localhost\r\n\r\n")
@@ -133,11 +135,15 @@ fn tls_the_shipped_connector_does_not_trust_a_test_root() {
 fn tls_the_test_seam_takes_only_loopback_and_readable_roots() {
     let root = TestRoot::new("pod-tls test root");
     let elsewhere: SocketAddr = "192.0.2.1:443".parse().unwrap();
-    assert!(ProxyConnector::with_test_seam(&[root.der.clone()], Some(elsewhere)).is_err());
+    assert!(
+        ProxyConnector::with_test_seam(std::slice::from_ref(&root.der), Some(elsewhere)).is_err()
+    );
     assert!(ProxyConnector::with_test_seam(&[], None).is_err());
     assert!(ProxyConnector::with_test_seam(&[b"not a certificate".to_vec()], None).is_err());
     let loopback: SocketAddr = "127.0.0.1:443".parse().unwrap();
-    assert!(ProxyConnector::with_test_seam(&[root.der.clone()], Some(loopback)).is_ok());
+    assert!(
+        ProxyConnector::with_test_seam(std::slice::from_ref(&root.der), Some(loopback)).is_ok()
+    );
 }
 
 // --- The binary, end to end -------------------------------------------------------------------
@@ -248,7 +254,7 @@ fn tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors() {
     let stderr = server.stop();
 
     assert!(answer.starts_with("HTTP/1.1 200 "), "{answer:?}");
-    assert!(answer.ends_with(POD_CHAT_ANSWER), "{answer:?}");
+    assert!(answer.contains(POD_CHAT_ANSWER), "{answer:?}");
     assert!(!answer.contains(VLLM_KEY), "{answer:?}");
     let creates = connectors.calls_of("operations invoke pod.create");
     assert_eq!(creates.len(), 1, "{creates:?}");

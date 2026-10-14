@@ -20,8 +20,7 @@ use std::{
     time::{Duration, Instant},
 };
 use support::{
-    CONFIG_LIMIT, Connectors, Fixture, OWNER_SECRET, SECRET_LIMIT, VLLM_KEY, connected_document,
-    created, document, listed, mutate, padded, running_small_pod,
+    CONFIG_LIMIT, Fixture, OWNER_SECRET, SECRET_LIMIT, VLLM_KEY, document, mutate, padded,
 };
 
 const PREFIX: &str = "b10x-llm-gateway: ";

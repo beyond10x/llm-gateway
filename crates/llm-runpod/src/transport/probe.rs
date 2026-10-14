@@ -16,6 +16,25 @@ use serde_json::Value;
 
 use crate::Probe;
 
+/// One open connection to a pod: what [`PodTls::connect`] hands the probe.
+pub trait PodStream: Read + Write + Send {}
+
+impl<T: Read + Write + Send> PodStream for T {}
+
+/// Opens the readiness probe's connection to a pod's `https://` endpoint. This crate has no TLS
+/// client: the embedding hands one in ([`ConnectorsRunpod::set_tls`](crate::ConnectorsRunpod::set_tls)),
+/// and without one an `https://` endpoint is `Unreachable`.
+pub trait PodTls: Send + Sync {
+    /// One connection to `authority`, the `host[:port]` of the endpoint (port 443 when it names
+    /// none), whose certificate has been verified for that host before this returns: the probe
+    /// writes its request, and the model's key, only to what this returns. `timeout` bounds the
+    /// connect and each read and write.
+    ///
+    /// # Errors
+    /// Any failure to connect or to verify; the probe answers it `Unreachable`.
+    fn connect(&self, authority: &str, timeout: Duration) -> std::io::Result<Box<dyn PodStream>>;
+}
+
 /// The most of an answer the probe reads.
 const MAX_ANSWER_BYTES: usize = 1024 * 1024;
 

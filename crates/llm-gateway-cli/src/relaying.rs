@@ -640,21 +640,6 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
 }
 
-/// The shipped pod connector. A pod is reached at the Runpod proxy's TLS endpoint, and the
-/// binary has no TLS client yet (story:pod-proxy-tls), so it refuses every connection: no vLLM
-/// key leaves the process unencrypted.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ProxyConnector;
-
-impl PodConnector for ProxyConnector {
-    fn connect(&self, _authority: &str) -> io::Result<Box<dyn RelayStream>> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "the Runpod proxy needs TLS, which this binary does not speak yet",
-        ))
-    }
-}
-
 /// Targets for models no pool serves: every acquisition is `target-unavailable`.
 struct Unconnected;
 

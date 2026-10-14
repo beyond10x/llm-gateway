@@ -166,8 +166,13 @@ types:
   # the endpoint is the one llm's Runpod description builds for the pod and the key is the
   # model's, handed to the transport by alias. The transport reads no file, and its `Debug`
   # prints no key. DECIDED: `200` is `Ready` with the `data[].id` names, `401`/`403`
-  # `Refused`, any other answer `NotReady`, no answer `Unreachable`. Only `http://` endpoints
-  # are probed; `https://` is `Unreachable` until a TLS client exists (story:pod-proxy-tls).
+  # `Refused`, any other answer `NotReady`, no answer `Unreachable`. DECIDED 2026-10-14
+  # (story:pod-proxy-tls): an `http://` endpoint is probed over a plain socket; an `https://`
+  # endpoint over the TLS connection the embedding hands the transport
+  # (`ConnectorsRunpod::set_tls`, `PodTls`), opened with the certificate verified before the
+  # request is written. Without one, or when the handshake fails, it is `Unreachable`, and the
+  # key is not sent. This crate links no TLS crate; the binary's client is in
+  # llm-gateway.deployment.
   - name: llm-gateway.runpod.ProbeAnswer
     kind: enum
     variants: [Ready, NotReady, Refused, Unreachable]

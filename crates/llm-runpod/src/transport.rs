@@ -4,8 +4,10 @@
 //! driven end to end by [`EmulatedRunpod`](crate::EmulatedRunpod) without a socket, an HTTP
 //! client or a credential. The production transport, [`ConnectorsRunpod`], reaches Runpod's
 //! control plane only through the `connectors` CLI and its Runpod catalog bundle
-//! (`spec/domains/runpod.yaml`, `ConnectorsOperation`), and probes a pod's own `GET <endpoint>models`
-//! over plain HTTP. It holds no HTTP client library and no control-plane credential.
+//! (`spec/domains/runpod.yaml`, `ConnectorsOperation`), and probes a pod's own `GET <endpoint>models`:
+//! an `http://` endpoint over a plain socket, an `https://` one over the TLS connection its
+//! embedding hands in ([`PodTls`]). It holds no HTTP client library, no TLS client and no
+//! control-plane credential.
 
 mod connectors;
 mod probe;
@@ -15,6 +17,7 @@ use std::collections::BTreeMap;
 use crate::CloudType;
 
 pub use connectors::{ConnectorsBinding, ConnectorsRunpod, POD_CREATE_BODY_KEYS, started_at_ms};
+pub use probe::{PodStream, PodTls};
 
 /// Runpod's own word for a pod's desired state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

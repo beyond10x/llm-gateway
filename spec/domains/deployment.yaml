@@ -23,13 +23,12 @@ domain: llm-gateway.deployment
 # probes, and not bounded that way for a relay (llm-gateway.gateway.Gateway, ESS-LIMIT).
 # DECIDED 2026-10-08 (review row 38, read from the code at c63f07e): the binary serves the three
 # wire paths, `POST /v1/chat/completions`, `POST /v1/responses` and `POST /v1/messages`, under
-# the owner credential, for the wires each model declares; it relays none of them to a pod yet.
-# A model whose provider declares no `connectors` is answered `target-unavailable` (503) on its
-# wires, and a document in which a provider declares `connectors` is refused at start (the inert
-# wiring below), so no wire request reaches a pod until story:pod-proxy-tls
-# (`live_a_model_without_a_connection_is_target_unavailable` and
-# `live_a_connectors_document_is_refused_and_the_fixture_receives_nothing` in
-# crates/llm-gateway-cli/tests/binary.rs).
+# the owner credential, for the wires each model declares. A model whose provider declares no
+# `connectors` is answered `target-unavailable` (503) on its wires
+# (`live_a_model_without_a_connection_is_target_unavailable` in
+# crates/llm-gateway-cli/tests/binary.rs). Amended 2026-10-14 (story:pod-proxy-tls): a model whose
+# provider declares `connectors` is relayed to its pod over verified TLS (the pod endpoint rule
+# below); the start-time refusal of such a document is gone.
 # DECIDED 2026-10-08 (row O3, story:gateway-observability): beside those lines the process
 # writes `tracing` events to standard error, uncoloured, at the level `RUST_LOG` sets (`info`
 # when it is unset, empty or unreadable; a directive it cannot read is dropped without a line). The lines above are not events and stay as written at
@@ -80,22 +79,36 @@ domain: llm-gateway.deployment
 #     `connectors` call for the life of the process, and every model of that provider is
 #     answered `target-unavailable`. A connection repaired later takes a restart: a checked
 #     connection never changes under a running process.
-#   * The connection to a pod is the Runpod proxy's TLS endpoint (`https://`, from llm's Runpod
-#     description), which the binary cannot open yet (story:pod-proxy-tls): the shipped pod
-#     connector refuses every connection, so no vLLM key leaves the process unencrypted, and the
-#     probe reports an `https://` endpoint `Unreachable`, so no pod would ever become ready.
-#   * DECIDED 2026-10-08: so that the binary cannot create a billed pod that can never serve,
-#     the wiring is inert in the shipped binary until story:pod-proxy-tls. `start` refuses a
-#     document in which any provider declares `connectors` with `config:value`
-#     (`providers.<name>.connectors cannot be served until the binary speaks TLS to the pod
-#     endpoint`), as its first step: before the owner secret or any key file is read, before
-#     any `connectors` call and before anything is bound. The process exits 1 like any refused
-#     document. `load` still reads and checks the table, so the document's rules stay enforced
-#     and tested. story:pod-proxy-tls removes this refusal.
-#   * `llm_gateway_cli::start_connected` is the composition `start` will run once that refusal
-#     is gone, with the transport wrapped and the pod connector supplied by the caller. Only
-#     tests call it, to reach a loopback pod; it is not reachable from the shipped binary's
-#     document or command line.
+#   * DECIDED 2026-10-14 (story:pod-proxy-tls), the pod endpoint rule: a pod is reached only at
+#     the Runpod proxy's endpoint llm's Runpod description gives,
+#     `https://<pod id>-8000.proxy.runpod.net/v1/` (port 443 when the URL names none), over TLS
+#     1.2 or 1.3, and the server's certificate is verified, chain and host name, against the
+#     shipped trust roots before any request byte is written. This holds for the readiness
+#     probe's `GET <endpoint>models` and for every relayed request: the handshake completes
+#     inside the opening of the connection (`RelayTarget::connect`, the probe's connect), so a
+#     certificate that does not verify ends that connection with no byte of the request and no
+#     key sent. The relayed request is then answered `upstream-failed`, and the probe
+#     `Unreachable`. A pod connection gives up connecting after 10 s; a relayed connection's
+#     reads and writes each time out after 120 s, the probe's after its own 10 s. An `http://`
+#     endpoint is never relayed to by the shipped binary: its pod connector speaks only TLS.
+#   * DECIDED 2026-10-14, the TLS client and its trust roots: the client is `rustls` with its
+#     `ring` provider, in `b10x-llm-gateway-cli` only. The gateway crate links no TLS crate
+#     (crates/llm-gateway/tests/dependency_boundary.rs) and `b10x-llm-runpod` none either: the
+#     probe takes its TLS connection from the binary (`ConnectorsRunpod::set_tls`). The shipped
+#     binary trusts exactly the Mozilla root program as the `webpki-roots` crate compiles it
+#     into the binary, and nothing of the host: no system certificate store, no
+#     `SSL_CERT_FILE` or other environment variable. No document key and no command-line option
+#     adds a trust root, names a certificate, or disables or weakens verification; the closed
+#     document refuses every such key `config:schema` and the command line every such option
+#     (`tls_*` in crates/llm-gateway-cli/tests/config.rs and tests/binary.rs).
+#   * The test seam: `llm_gateway_cli::ProxyConnector::with_test_seam` builds the same client
+#     over other roots and may map every pod host to one loopback address, while the
+#     certificate is still verified for the pod's own host name. Only tests reach it, through
+#     the library or through the `gateway-tls-seam` test program, which runs the shipped
+#     `main` with it. The shipped binary's document, command line and environment cannot reach
+#     it. `llm_gateway_cli::start_connected` is the composition `start` runs, with the
+#     transport wrapped and the pod connector supplied by the caller; `start` passes the
+#     identity and `ProxyConnector::shipped()`.
 # The pool's inputs, each from the document or fixed:
 #   ComputeAuthorization  fixed: ledger `b10x-llm-gateway`, reservation `unmetered`. No budget
 #                         ledger is consulted yet; the pair only satisfies the hosting contract

@@ -166,12 +166,51 @@ impl Running {
 /// An `owner-secret:*`, `vllm-api-key:*`, `config:value`, `signal:install` or `listen:bind`
 /// [`Refusal`].
 pub fn start(deployment: &Deployment) -> Result<crate::Relaying, Refusal> {
+    start_with(deployment, crate::ProxyConnector::shipped())
+}
+
+/// [`start`] over `pods`.
+///
+/// # Errors
+/// As [`start`].
+pub fn start_with(
+    deployment: &Deployment,
+    pods: crate::ProxyConnector,
+) -> Result<crate::Relaying, Refusal> {
     inert_until_tls(deployment)?;
-    crate::start_connected(
-        deployment,
-        |transport| transport,
-        std::sync::Arc::new(crate::ProxyConnector),
-    )
+    crate::start_connected(deployment, |transport| transport, std::sync::Arc::new(pods))
+}
+
+/// The binary's `main` over `pods`.
+pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
+    use clap::Parser as _;
+    use std::io::Write as _;
+    fn report(line: fmt::Arguments<'_>) {
+        drop(writeln!(std::io::stderr(), "b10x-llm-gateway: {line}"));
+    }
+    let args = crate::cli::Cli::parse();
+    crate::install_logging();
+    let running = match crate::load(&args.config).and_then(|deployment| {
+        tracing::debug!(
+            models = deployment.models.len(),
+            digest = %deployment.digest,
+            "deployment loaded"
+        );
+        start_with(&deployment, pods)
+    }) {
+        Ok(running) => running,
+        Err(refusal) => {
+            report(format_args!("refused {refusal}"));
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    report(format_args!("listening on {}", running.local_addr()));
+    let stopped = running.wait_for_stop();
+    report(format_args!(
+        "stopped by {} accepted={} completed={}",
+        stopped.signal, stopped.report.accepted, stopped.report.completed
+    ));
+    std::process::ExitCode::SUCCESS
 }
 
 /// Refuses a document in which a provider declares `connectors`: a pod it would start is reached

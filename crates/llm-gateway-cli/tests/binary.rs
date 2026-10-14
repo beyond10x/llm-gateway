@@ -907,7 +907,7 @@ fn d2_sigint_stops_the_server() {
     );
 }
 
-// --- story:live-runpod-wiring: inert in the shipped binary until story:pod-proxy-tls ----------
+// --- story:live-runpod-wiring and story:pod-proxy-tls: the shipped binary's pod connection -----
 
 const CHAT_BODY: &str = r#"{"model":"small","messages":[{"role":"user","content":"hi"}]}"#;
 
@@ -923,58 +923,44 @@ fn post_chat(address: SocketAddr) -> String {
     )
 }
 
-/// The binary cannot open the pod's `https://` endpoint yet, so a pod it started would be
-/// billed and never serve: a document that declares a `connectors` connection is refused
-/// `config:value` before anything is read, called or bound, and the connectors fixture receives
-/// no invocation at all (no `pods.list`, no `pod.create`). The fixture is scripted to answer a
-/// listing and a create, so a binary that called it would be seen. Nothing secret reaches
-/// standard error (criterion 2). Criterion 1 is proved at the library level by
-/// `tests/live_runpod.rs`, which no document reaches.
+/// story:pod-proxy-tls, criterion 3: no command-line option adds a trust root, names a
+/// certificate, or disables or weakens the pod connection's verification. Each is a
+/// command-line error (exit 2), and `--help` offers none.
 #[test]
-fn live_a_connectors_document_is_refused_and_the_fixture_receives_nothing() {
-    let fixture = Fixture::new("live-inert");
-    let connectors = Connectors::new(&fixture);
-    connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
-        "operations invoke pod.create": [created(&running_small_pod())],
-    }));
-    for hold in [0, 5] {
-        let config = fixture.config(&connected_document(
-            &fixture,
-            "127.0.0.1:0",
-            &connectors,
-            hold,
-        ));
-        let finished = run_config(&config);
-        assert_refused(&finished, "config:value");
-        assert!(
-            finished.stderr.contains(
-                "providers.runpod.connectors cannot be served until the binary speaks TLS"
-            ),
-            "{:?}",
+fn tls_no_option_adds_a_trust_root_or_disables_verification() {
+    let fixture = Fixture::new("tls-no-option");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let config = config.to_str().unwrap();
+    let root = fixture.write("root.pem", b"not a certificate\n", 0o600);
+    let root = root.to_str().unwrap();
+    for args in [
+        &["--insecure"][..],
+        &["-k"],
+        &["--no-verify"],
+        &["--tls-no-verify"],
+        &["--danger-accept-invalid-certs"],
+        &["--ca-file", root],
+        &["--cacert", root],
+        &["--ca-certificates", root],
+        &["--trust-root", root],
+        &["--root-certificate", root],
+        &["--tls-ca", root],
+        &["--ssl-cert-file", root],
+    ] {
+        let mut with_config = vec!["--config", config];
+        with_config.extend_from_slice(args);
+        let finished = run(&with_config);
+        assert_eq!(
+            finished.status.code(),
+            Some(2),
+            "{args:?}: {:?}",
             finished.stderr
         );
-        assert!(
-            !finished.stderr.contains("listening on"),
-            "{:?}",
-            finished.stderr
-        );
-        for secret in [VLLM_KEY, OWNER_SECRET] {
-            assert!(!finished.stderr.contains(secret), "{:?}", finished.stderr);
-            assert!(!finished.stdout.contains(secret), "{:?}", finished.stdout);
-        }
     }
-    assert!(
-        connectors.calls().is_empty(),
-        "the fixture received {:?}",
-        connectors.calls()
-    );
-    // The control: the same document without its `connectors` table serves.
-    let text = connected_document(&fixture, "127.0.0.1:0", &connectors, 0);
-    let table = format!("\n[providers.runpod.connectors]\n{}", connectors.table());
-    let server = Server::start(&fixture.config(&mutate(&text, &table, "")));
-    server.stop();
-    assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
+    let help = run(&["--help"]).stdout.to_ascii_lowercase();
+    for absent in ["insecure", "verify", "cert", "trust", "root", "tls", "ssl"] {
+        assert!(!help.contains(absent), "--help offers {absent:?}: {help}");
+    }
 }
 
 /// A model whose provider declares no connection is answered `target-unavailable`: the shipped

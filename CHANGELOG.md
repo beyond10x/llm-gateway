@@ -21,11 +21,21 @@ Nothing in any release is deployed or qualified against a live client.
   contract promises: the hosting refusals with their codes and messages, the transition table,
   the evidence routes and listing completeness as typed enums, and the Runpod pool and
   declaration refusals with their codes. `b10x-llm-provision` publishes the evidence routes as
-  `EvidenceKind`. The conformance suite holds 202 scenarios (was 201).
+  `EvidenceKind`.
 - A pod connection's 10 s connect bound covers the TLS handshake as one deadline; the handshake
   no longer waits under the 120 s read timeout. The `gateway-tls-seam` test program is built only
   with the test-only `test-seam` feature, so the release build writes `b10x-llm-gateway` and no
   program that trusts a root from its environment.
+- Hosted endpoints: a model declared as `[hosted.<alias>]` is relayed to any server that speaks
+  its wires at an `http` or `https` base URL (`base_url`, no path), as `bearer`, as `api-key` in
+  the header its `credential_header` names, or `anonymous`, with the credential read once from
+  `credential_file` through the trusted-file reader (`endpoint-credential:<rule>`). `https` uses
+  the pod connection's TLS client and roots. A `bearer` or `api-key` endpoint at an `http` base
+  URL whose host is not loopback (`127.0.0.0/8`, `::1`, `localhost`) is refused as
+  `config:value`, so no credential is sent in cleartext to a remote host. The route inventory
+  lists each hosted target's
+  `auth_kind` and `billing_kind`, never its URL or credential. The gateway library gains
+  `CredentialHeader` and `RelayTarget::credential_header` (`credential-header-bytes`, 64).
 
 ## 0.6.0 (2026-10-08)
 

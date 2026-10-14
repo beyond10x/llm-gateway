@@ -164,6 +164,13 @@ pub const CAPABILITIES: &[Capability] = &[
         RELAY,
     ),
     shipped(
+        "Relay",
+        "Hosted endpoints",
+        "A model declared as [hosted.<alias>] is relayed to any server that speaks its wire at an http or https base URL, with a bearer, an API key in a named header, or no credential, read from a file. https is verified against the same roots as a pod. Tested against loopback endpoints, not against a vendor API.",
+        "crates/llm-gateway-cli/tests/hosted.rs::hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path",
+        DOCUMENT,
+    ),
+    shipped(
         "Binary",
         "One closed TOML deployment document",
         "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",
@@ -173,7 +180,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Binary",
         "Trusted-file reader",
-        "The document, the owner secret and each vLLM key file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
+        "The document, the owner secret, each vLLM key file and each hosted endpoint's credential file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
         "crates/llm-gateway-cli/tests/binary.rs::k30_a_symlinked_owner_secret_is_refused",
         DOCUMENT,
     ),
@@ -236,7 +243,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Specification",
         "ESS specification and conformance suite",
-        "The system llm-gateway is specified in ESS; the gate answers at least 201 of 201 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+        "The system llm-gateway is specified in ESS; the gate answers at least 210 of 210 scenarios, skips none, and fails on drift between the specification and its generated suite.",
         "checks/conformance/src/gate.rs::every_authored_scenario_is_declared",
         Some("/docs/guides/run-the-checks"),
     ),
@@ -250,12 +257,6 @@ pub const CAPABILITIES: &[Capability] = &[
         "Relay",
         "Protocol translation",
         "Translating a supported subset between wires; the gateway translates nothing today.",
-        None,
-    ),
-    planned(
-        "Relay",
-        "Hosted endpoints",
-        "A model served by any server that speaks its wire at a declared base URL, not only by a Runpod pod.",
         None,
     ),
     planned(

@@ -9,9 +9,10 @@
 //! machine, and no provider is involved.
 
 use llm_gateway::{
-    Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay, RelayError, RelayModel,
-    RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
-    TargetRefusal, TokenError, ToolCalling, Wire,
+    CredentialHeader, CredentialHeaderError, Gateway, GatewayConfig, GatewayHandle, Label,
+    OwnerToken, Relay, RelayError, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    RouteInventory, SharedSecretVerifier, TargetBearer, TargetRefusal, TokenError, ToolCalling,
+    Wire,
 };
 use std::{
     io::{self, Read, Write},
@@ -303,6 +304,8 @@ struct Slot {
     authority: String,
     refuses: bool,
     bearer: Option<Arc<TargetBearer>>,
+    /// The header the bearer is sent in instead of `authorization` (an `api-key` endpoint).
+    header: Option<CredentialHeader>,
 }
 
 /// The fake target source: hands out the current slot, and moves to the next one when the
@@ -371,6 +374,7 @@ fn listening(pod: &Pod) -> Slot {
         authority: pod.authority.clone(),
         refuses: false,
         bearer: None,
+        header: None,
     }
 }
 
@@ -379,6 +383,7 @@ fn refusing(name: &str) -> Slot {
         authority: format!("{name}.invalid:8000"),
         refuses: true,
         bearer: None,
+        header: None,
     }
 }
 
@@ -434,6 +439,10 @@ impl RelayTarget for Target {
 
     fn bearer(&self) -> Option<&TargetBearer> {
         self.slot.bearer.as_deref()
+    }
+
+    fn credential_header(&self) -> Option<&CredentialHeader> {
+        self.slot.header.as_ref()
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -1645,6 +1654,95 @@ fn b8_a_bearer_follows_the_owner_material_rules() {
     }
     let bearer = TargetBearer::new(VLLM_KEY.as_bytes().to_vec()).unwrap();
     assert!(!format!("{bearer:?}").contains(VLLM_KEY));
+}
+
+// --- Hosted endpoints: a credential sent in a header the target names -------------------------
+
+/// story:hosted-endpoints, criterion 2 at the head the gateway writes: a target naming a
+/// credential header (an `api-key` endpoint) receives its key as that header's value and no
+/// `authorization`, on every wire, and never the owner's credential. The control is
+/// `b8_a_target_with_a_bearer_receives_it_and_never_the_owners_credential`.
+#[test]
+fn hosted_a_target_naming_a_credential_header_receives_its_key_there_and_no_authorization() {
+    let pod = Pod::start(vec![
+        ok_json("{\"id\":\"one\"}"),
+        stream(&["data: [DONE]\n\n"]),
+    ]);
+    let mut slot = listening(&pod);
+    slot.bearer = Some(Arc::new(
+        TargetBearer::new(VLLM_KEY.as_bytes().to_vec()).unwrap(),
+    ));
+    slot.header = Some(CredentialHeader::new("X-Api-Key").unwrap());
+    let source = Source::new(vec![slot]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    for (path, body) in [
+        ("/v1/chat/completions", "{\"model\":\"code\"}"),
+        ("/v1/messages", "{\"model\":\"code\",\"stream\":true}"),
+    ] {
+        assert_eq!(gateway.post_text(path, body).status, 200, "{path}");
+    }
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    for request in &seen {
+        let head = String::from_utf8_lossy(&request.raw).into_owned();
+        let head = head.split("\r\n\r\n").next().unwrap();
+        assert_eq!(request.authorization, None, "{head}");
+        assert_eq!(
+            header_of(head, "x-api-key").as_deref(),
+            Some(VLLM_KEY),
+            "{head}"
+        );
+        assert!(
+            head.contains(&format!("\r\nx-api-key: {VLLM_KEY}\r\n")),
+            "{head}"
+        );
+        assert!(find(&request.raw, OWNER.as_bytes()).is_none(), "{head}");
+    }
+}
+
+/// A credential header is one RFC 9110 token of at most `credential-header-bytes` (64), held
+/// lowercase, and never a header the gateway writes itself or one that frames a message: it
+/// can neither end its line nor smuggle a second framing or `authorization`.
+#[test]
+fn hosted_a_credential_header_is_one_token_and_never_one_the_gateway_writes() {
+    for name in [
+        "x-api-key",
+        "api-key",
+        "X-Goog-Api-Key",
+        "a",
+        &"k".repeat(64),
+        "x!#$%&'*+.^_`|~1",
+    ] {
+        let header =
+            CredentialHeader::new(name).unwrap_or_else(|error| panic!("{name:?}: {error}"));
+        assert_eq!(header.as_str(), name.to_ascii_lowercase());
+    }
+    for (name, rule) in [
+        (String::new(), CredentialHeaderError::Length),
+        ("k".repeat(65), CredentialHeaderError::Length),
+        ("x api key".to_owned(), CredentialHeaderError::NotAToken),
+        ("x-api-key:".to_owned(), CredentialHeaderError::NotAToken),
+        (
+            "x-api-key\r\nx-injected".to_owned(),
+            CredentialHeaderError::NotAToken,
+        ),
+        ("x-äpi".to_owned(), CredentialHeaderError::NotAToken),
+        ("Authorization".to_owned(), CredentialHeaderError::Reserved),
+        ("host".to_owned(), CredentialHeaderError::Reserved),
+        ("Content-Length".to_owned(), CredentialHeaderError::Reserved),
+        (
+            "transfer-encoding".to_owned(),
+            CredentialHeaderError::Reserved,
+        ),
+        ("content-type".to_owned(), CredentialHeaderError::Reserved),
+        ("connection".to_owned(), CredentialHeaderError::Reserved),
+        (
+            "proxy-authorization".to_owned(),
+            CredentialHeaderError::Reserved,
+        ),
+    ] {
+        assert_eq!(CredentialHeader::new(&name).err(), Some(rule), "{name:?}");
+    }
 }
 
 // --- Tool calling: a tool request to a model that cannot parse tool calls --------------------

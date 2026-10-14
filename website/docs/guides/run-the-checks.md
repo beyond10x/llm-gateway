@@ -80,15 +80,15 @@ cargo run --locked -p b10x-llm-gateway-conformance -- check
 ```
 
 ```text
-{"total":201,"passed":201,"failed":0,"error":0,"unsupported":0,"skipped":0}
-{"total":201,"passed":201,"failed":0,"error":0,"unsupported":0,"skipped":0}
-{"total":201,"passed":201,"failed":0,"error":0,"unsupported":0,"skipped":0}
+{"total":210,"passed":210,"failed":0,"error":0,"unsupported":0,"skipped":0}
+{"total":210,"passed":210,"failed":0,"error":0,"unsupported":0,"skipped":0}
+{"total":210,"passed":210,"failed":0,"error":0,"unsupported":0,"skipped":0}
 ```
 
 The runner first checks that `contracts/suite.json` and the generated schemas equal what ESS
 generates from `spec/`, then runs the authored scenarios under `contracts/` against the crates
 three times. It fails when the answered or total count falls below the floor in
-`contracts/baseline.json` (201 of 201), when a scenario is skipped, or when the three runs
+`contracts/baseline.json` (210 of 210), when a scenario is skipped, or when the three runs
 disagree. It runs only from the repository root and writes its reports to `target/conformance/`.
 
 ## What a green gate does not establish

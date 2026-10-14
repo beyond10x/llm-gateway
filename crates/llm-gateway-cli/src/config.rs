@@ -7,7 +7,7 @@ use crate::{
     refusal::{Refusal, StartupRefusal},
     trusted,
 };
-use llm_gateway::{GatewayConfig, ToolCalling};
+use llm_gateway::{AuthKind, BillingKind, CredentialHeader, GatewayConfig, ToolCalling};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -51,7 +51,52 @@ struct Document {
     providers: BTreeMap<String, ProviderDocument>,
     #[serde(default)]
     models: BTreeMap<String, ModelDocument>,
+    #[serde(default)]
+    hosted: BTreeMap<String, HostedDocument>,
 }
+
+/// `[hosted.<alias>]`: a model a hosted endpoint serves (`llm-gateway.deployment.HostedDeclaration`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct HostedDocument {
+    wires: Vec<Wire>,
+    base_url: String,
+    auth_kind: AuthKindDocument,
+    #[serde(default)]
+    credential_file: Option<PathBuf>,
+    #[serde(default)]
+    credential_header: Option<String>,
+    #[serde(default)]
+    billing_kind: BillingKindDocument,
+    #[serde(default)]
+    upstream_model: Option<String>,
+    #[serde(default)]
+    context_window: Option<u32>,
+    #[serde(default)]
+    tool_calling: ToolCallingDocument,
+}
+
+enum AuthKindDocument {
+    Anonymous,
+    Bearer,
+    ApiKey,
+}
+
+from_string_only!(AuthKindDocument {
+    "anonymous" => Anonymous, "bearer" => Bearer, "api-key" => ApiKey
+});
+
+#[derive(Default)]
+enum BillingKindDocument {
+    #[default]
+    Metered,
+    Subscription,
+    SelfHosted,
+}
+
+from_string_only!(BillingKindDocument {
+    "metered" => Metered, "subscription" => Subscription, "self-hosted" => SelfHosted
+});
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -242,6 +287,28 @@ pub struct Model {
     pub tool_calling: ToolCalling,
 }
 
+/// `[hosted.<alias>]`, with every default applied and every rule checked: a model a hosted
+/// endpoint serves (`llm-gateway.upstream.HostedEndpoint`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Hosted {
+    pub wires: Vec<Wire>,
+    /// `http://` or `https://` and an authority, nothing else but an optional final `/`. Never
+    /// rendered by the route inventory.
+    pub base_url: String,
+    pub auth_kind: AuthKind,
+    /// The file holding the credential; absent exactly when `auth_kind` is `Anonymous`. Only
+    /// the path is loaded here; the composition reads it.
+    pub credential_file: Option<PathBuf>,
+    /// The header an `ApiKey` endpoint receives the credential in; present exactly then.
+    pub credential_header: Option<CredentialHeader>,
+    pub billing_kind: BillingKind,
+    /// The model name the endpoint expects: the alias unless the declaration names another.
+    pub upstream_model: String,
+    /// What the public routes publish, when declared.
+    pub context_window: Option<u32>,
+    pub tool_calling: ToolCalling,
+}
+
 /// A loaded and validated deployment document.
 #[derive(Debug, Clone)]
 pub struct Deployment {
@@ -249,6 +316,8 @@ pub struct Deployment {
     pub owner_secret_file: PathBuf,
     pub providers: BTreeMap<String, Provider>,
     pub models: BTreeMap<String, Model>,
+    /// The models hosted endpoints serve, by alias. No alias is in both tables.
+    pub hosted: BTreeMap<String, Hosted>,
     /// SHA-256 of the exact document bytes read, as 64 lowercase hex characters.
     pub digest: String,
 }
@@ -281,15 +350,24 @@ fn schema_refusal(text: &str, error: &toml::de::Error) -> Refusal {
     }
 }
 
-fn parse(text: &str) -> Result<Deployment, Refusal> {
+/// Loads the closed document from its text, as [`load`] does once the trusted-file reader has
+/// read it. No file the document names is read.
+///
+/// # Errors
+/// `config:schema` for anything outside the closed document, or `config:value` for a value
+/// outside its rule.
+pub fn parse(text: &str) -> Result<Deployment, Refusal> {
     let document: Document = toml::from_str(text).map_err(|error| schema_refusal(text, &error))?;
     let mut digest = String::with_capacity(64);
     for byte in Sha256::digest(text.as_bytes()) {
         digest.push(char::from(HEX[usize::from(byte >> 4)]));
         digest.push(char::from(HEX[usize::from(byte & 0x0f)]));
     }
-    if document.models.is_empty() {
-        return Err(value("models", "at least one model is required"));
+    if document.models.is_empty() && document.hosted.is_empty() {
+        return Err(value(
+            "models",
+            "at least one model, of models or hosted, is required",
+        ));
     }
     let mut providers = BTreeMap::new();
     for (name, provider) in document.providers {
@@ -332,12 +410,104 @@ fn parse(text: &str) -> Result<Deployment, Refusal> {
         }
         models.insert(alias, validate_model(&at, model)?);
     }
+    let mut hosted = BTreeMap::new();
+    for (alias, declared) in document.hosted {
+        let at = format!("hosted.{alias}");
+        closed_name(&at, &alias)?;
+        ensure(
+            !models.contains_key(&alias),
+            &at,
+            "names an alias models already declares",
+        )?;
+        let loaded = validate_hosted(&at, &alias, declared)?;
+        hosted.insert(alias, loaded);
+    }
     Ok(Deployment {
         gateway: GatewayConfig::new(document.listen),
         owner_secret_file: document.owner_secret_file,
         providers,
         models,
+        hosted,
         digest,
+    })
+}
+
+/// `[hosted.<alias>]`, checked (`llm-gateway.deployment.HostedDeclaration`).
+fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Hosted, Refusal> {
+    let key = |name: &str| format!("{at}.{name}");
+    ensure(
+        !declared.wires.is_empty(),
+        &key("wires"),
+        "must not be empty",
+    )?;
+    let unique: BTreeSet<Wire> = declared.wires.iter().copied().collect();
+    ensure(
+        unique.len() == declared.wires.len(),
+        &key("wires"),
+        "must not repeat a wire",
+    )?;
+    let auth_kind = match declared.auth_kind {
+        AuthKindDocument::Anonymous => AuthKind::Anonymous,
+        AuthKindDocument::Bearer => AuthKind::Bearer,
+        AuthKindDocument::ApiKey => AuthKind::ApiKey,
+    };
+    match crate::hosted::HostedEndpoint::check(&declared.base_url, auth_kind) {
+        Ok(_) => {}
+        Err(crate::hosted::BaseUrlError::Malformed) => {
+            return Err(value(
+                &key("base_url"),
+                "must be http:// or https:// and a host[:port] of at most 256 printable ASCII \
+                 characters, with no path, query, fragment or user information",
+            ));
+        }
+        Err(crate::hosted::BaseUrlError::CleartextCredential) => {
+            return Err(value(
+                &key("base_url"),
+                "must be https:// for a credential sent to a host that is not loopback \
+                 (127.0.0.0/8, ::1 or localhost): a credential is never sent in cleartext",
+            ));
+        }
+    }
+    ensure(
+        declared.credential_file.is_some() != (auth_kind == AuthKind::Anonymous),
+        &key("credential_file"),
+        "is required unless auth_kind is anonymous, and absent when it is",
+    )?;
+    ensure(
+        declared.credential_header.is_some() == (auth_kind == AuthKind::ApiKey),
+        &key("credential_header"),
+        "is required when auth_kind is api-key, and absent otherwise",
+    )?;
+    let credential_header = declared
+        .credential_header
+        .as_deref()
+        .map(|name| {
+            CredentialHeader::new(name)
+                .map_err(|error| value(&key("credential_header"), &error.to_string()))
+        })
+        .transpose()?;
+    let upstream_model = declared.upstream_model.unwrap_or_else(|| alias.to_owned());
+    bounded_text(&key("upstream_model"), &upstream_model, 256)?;
+    if let Some(window) = declared.context_window {
+        within(at, "context_window", &window, &(4_096..=2_000_000))?;
+    }
+    Ok(Hosted {
+        wires: declared.wires,
+        base_url: declared.base_url,
+        auth_kind,
+        credential_file: declared.credential_file,
+        credential_header,
+        billing_kind: match declared.billing_kind {
+            BillingKindDocument::Metered => BillingKind::Metered,
+            BillingKindDocument::Subscription => BillingKind::Subscription,
+            BillingKindDocument::SelfHosted => BillingKind::SelfHosted,
+        },
+        upstream_model,
+        context_window: declared.context_window,
+        tool_calling: match declared.tool_calling {
+            ToolCallingDocument::Parsed => ToolCalling::Parsed,
+            ToolCallingDocument::Absent => ToolCalling::Absent,
+        },
     })
 }
 

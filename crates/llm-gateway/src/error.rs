@@ -210,6 +210,18 @@ closed_enum! {
 }
 
 closed_enum! {
+    /// Why a [`crate::CredentialHeader`] cannot be built. The rejected name is never quoted.
+    CredentialHeaderError {
+        /// Empty, or longer than 64 bytes.
+        Length => "a credential header name must be 1..=64 bytes";
+        /// Holds a byte that is not an RFC 9110 token character.
+        NotAToken => "a credential header name must be one RFC 9110 token";
+        /// A header the gateway writes itself, or one that frames a message.
+        Reserved => "a credential header cannot be one the gateway writes or one that frames a message";
+    }
+}
+
+closed_enum! {
     /// Why relayed models cannot be composed (row K11).
     RelayError {
         /// A model that declares no wire.

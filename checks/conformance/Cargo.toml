@@ -13,6 +13,13 @@ workspace = true
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 llm-gateway = { package = "b10x-llm-gateway", path = "../../crates/llm-gateway" }
+# The binary's own deployment loader, inventory and hosted target source, and its TLS client
+# with the test seam (spec/domains/upstream.yaml HostedEndpoint).
+llm-gateway-cli = { package = "b10x-llm-gateway-cli", path = "../../crates/llm-gateway-cli" }
+# The loopback https fixture pods: a rustls server on ring, as the client, with certificates a
+# per-run test root issues. Both are the versions the binary and its tests already lock.
+rcgen = { version = "0.14.10", default-features = false, features = ["ring"] }
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 llm-provision = { package = "b10x-llm-provision", path = "../../crates/llm-provision" }
 llm-runpod = { package = "b10x-llm-runpod", path = "../../crates/llm-runpod" }
 serde.workspace = true

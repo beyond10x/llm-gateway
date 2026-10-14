@@ -1,0 +1,41 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-a-hosted-model-beside-a-pod-model-and-a-failed-endpoint-is-kept
+summary: a pod model is served by its pod beside a hosted model served by its endpoint, and a hosted endpoint that drops a request is upstream-failed and asked again
+timeline:
+- at: '2026-10-14T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat"],"bearer":"vllm-key-code-0123456789abcdef"},{"alias":"remote","upstream_model":"vendor-remote","wires":["chat"],"endpoint":{"pod":"pod-2","scheme":"http","auth_kind":"bearer","credential":"endpoint-bearer-0123456789abcdef"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"pod-chat\"}"]}],[{"transport":"closed"},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"hosted-chat\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"remote\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"remote\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '502 upstream-failed'
+    - '200 relayed'
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code","messages":[]}'
+    - 'pod-2 POST /v1/chat/completions {"model":"vendor-remote","messages":[]}'
+    - 'pod-2 POST /v1/chat/completions {"model":"vendor-remote","messages":[]}'
+    authorizations:
+    - 'Bearer vllm-key-code-0123456789abcdef'
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    connections:
+    - 'pod-1 plain request'
+    - 'pod-2 plain request'
+    - 'pod-2 plain request'
+    secret_upstream: false
+    acquired: 3
+    released: 3
+    invalidated:
+    - 'pod-2'

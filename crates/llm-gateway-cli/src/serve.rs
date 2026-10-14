@@ -80,8 +80,8 @@ fn inventory_refusal(error: &impl fmt::Display) -> Refusal {
     Refusal::new(StartupRefusal::ConfigValue, format!("inventory: {error}"))
 }
 
-/// The inspection inventory: one route per model alias, one target per declared wire, under
-/// the digest of the exact document bytes.
+/// The inspection inventory: one route per model alias, Runpod or hosted, one target per wire,
+/// under the digest of the exact document bytes.
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] when the document cannot be represented as an inventory.
@@ -113,7 +113,7 @@ pub fn inventory(deployment: &Deployment) -> Result<RouteInventory, Refusal> {
             .map_err(|error| inventory_refusal(&error))?;
         routes.push(route);
     }
-    RouteInventory::new(routes)
+    RouteInventory::new(crate::hosted::routes(deployment, routes)?)
         .and_then(|inventory| inventory.with_config_digest(&deployment.digest))
         .map_err(|error| inventory_refusal(&error))
 }

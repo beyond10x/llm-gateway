@@ -9,7 +9,7 @@
 
 use crate::{
     auth, body,
-    error::{RefusalCode, RelayError, TargetRefusal, TokenError},
+    error::{CredentialHeaderError, RefusalCode, RelayError, TargetRefusal, TokenError},
     inventory::Label,
     metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
 };
@@ -104,6 +104,62 @@ impl Drop for TargetBearer {
     }
 }
 
+/// The longest credential header name: `credential-header-bytes`.
+const MAX_CREDENTIAL_HEADER_BYTES: usize = 64;
+
+/// The headers a credential header may not be: those the gateway writes into every request it
+/// relays, and those that frame or route a message, so a credential can neither replace them
+/// nor add a second one.
+const RESERVED_HEADERS: [&str; 13] = [
+    "host",
+    "authorization",
+    "content-type",
+    "content-length",
+    "connection",
+    "transfer-encoding",
+    "te",
+    "trailer",
+    "upgrade",
+    "expect",
+    "keep-alive",
+    "proxy-authorization",
+    "proxy-connection",
+];
+
+/// The header a target expects its credential in, instead of `authorization: Bearer` (an
+/// `api-key` hosted endpoint, `llm-gateway.upstream.HostedEndpoint`). It is one RFC 9110 token
+/// of at most 64 bytes, held lowercase, and none of the headers the gateway writes itself or
+/// that frame a message, so it cannot end its line or add a second framing header.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CredentialHeader(String);
+
+impl CredentialHeader {
+    /// Accepts 1..=64 RFC 9110 token characters (`credential-header-bytes`) naming no reserved
+    /// header, without regard to case.
+    ///
+    /// # Errors
+    /// [`CredentialHeaderError`] naming the rule and never the name.
+    pub fn new(name: &str) -> Result<Self, CredentialHeaderError> {
+        if name.is_empty() || name.len() > MAX_CREDENTIAL_HEADER_BYTES {
+            return Err(CredentialHeaderError::Length);
+        }
+        let token = |byte: u8| byte.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&byte);
+        if !name.bytes().all(token) {
+            return Err(CredentialHeaderError::NotAToken);
+        }
+        let name = name.to_ascii_lowercase();
+        if RESERVED_HEADERS.contains(&name.as_str()) {
+            return Err(CredentialHeaderError::Reserved);
+        }
+        Ok(Self(name))
+    }
+
+    /// The name, lowercase, as it is written into the head.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
 /// One target, held for as long as a relayed answer streams and released when dropped.
 pub trait RelayTarget: Send {
     /// The target's `host[:port]`. It is sent as `host`, and it is what the gateway names back
@@ -114,6 +170,13 @@ pub trait RelayTarget: Send {
     /// default, sends no `authorization`. The client's own headers are never forwarded, so the
     /// owner's credential never reaches a target.
     fn bearer(&self) -> Option<&TargetBearer> {
+        None
+    }
+
+    /// The header the [`Self::bearer`] is sent in instead, as `<header>: <key>` with no
+    /// `authorization` (an `api-key` hosted endpoint). `None`, the default, sends a bearer as
+    /// `authorization: Bearer <key>`. Without a bearer it sends nothing.
+    fn credential_header(&self) -> Option<&CredentialHeader> {
         None
     }
 
@@ -783,7 +846,8 @@ pub(crate) fn serve(
     let mut connection = target.connect().map_err(|_| failed())?;
     // The head is the gateway's own: no header of the client's request is forwarded, so the
     // owner's credential never reaches a target. The target's bearer is one printable token
-    // (`TargetBearer::new`), so it cannot end the line it is written into.
+    // (`TargetBearer::new`) and its credential header one token naming no header written here
+    // (`CredentialHeader::new`), so neither can end the line it is written into.
     let mut request = format!(
         "POST {} HTTP/1.1\r\nhost: {}\r\n",
         admitted.wire.path(),
@@ -791,7 +855,13 @@ pub(crate) fn serve(
     )
     .into_bytes();
     if let Some(bearer) = target.bearer() {
-        request.extend_from_slice(b"authorization: Bearer ");
+        match target.credential_header() {
+            Some(header) => {
+                request.extend_from_slice(header.as_str().as_bytes());
+                request.extend_from_slice(b": ");
+            }
+            None => request.extend_from_slice(b"authorization: Bearer "),
+        }
         request.extend_from_slice(&bearer.0);
         request.extend_from_slice(b"\r\n");
     }
@@ -904,7 +974,7 @@ fn stream_answer(
 mod tests {
     use super::{Framing, MAX_REQUEST_BODY_BYTES, Relay, RelayModel, RelayTargets, Wire, framing};
     use crate::{
-        error::{RefusalCode, RelayError, TargetRefusal},
+        error::{CredentialHeaderError, RefusalCode, RelayError, TargetRefusal},
         inventory::Label,
     };
     use std::sync::Arc;
@@ -938,6 +1008,22 @@ mod tests {
             Label::new("served").unwrap(),
             wires,
         )
+    }
+
+    #[test]
+    fn every_credential_header_error_has_a_name_that_provokes_it() {
+        for expected in CredentialHeaderError::ALL {
+            let name = match expected {
+                CredentialHeaderError::Length => "k".repeat(65),
+                CredentialHeaderError::NotAToken => "x-api key".to_owned(),
+                CredentialHeaderError::Reserved => "Transfer-Encoding".to_owned(),
+            };
+            assert_eq!(
+                super::CredentialHeader::new(&name).err(),
+                Some(*expected),
+                "{name:?}"
+            );
+        }
     }
 
     #[test]

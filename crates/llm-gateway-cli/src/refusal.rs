@@ -9,6 +9,8 @@ pub enum Source {
     OwnerSecret,
     /// A file a model's `vllm_api_key_file` names.
     VllmApiKey,
+    /// A file a hosted model's `credential_file` names.
+    EndpointCredential,
 }
 
 macro_rules! startup_refusals {
@@ -67,6 +69,14 @@ startup_refusals! {
     VllmApiKeyTooLarge => "vllm-api-key:too-large",
     VllmApiKeyNotUtf8 => "vllm-api-key:not-utf8",
     VllmApiKeyNotAToken => "vllm-api-key:not-a-token",
+    EndpointCredentialUnreadable => "endpoint-credential:unreadable",
+    EndpointCredentialSymlink => "endpoint-credential:symlink",
+    EndpointCredentialNotRegular => "endpoint-credential:not-regular",
+    EndpointCredentialUntrustedOwner => "endpoint-credential:untrusted-owner",
+    EndpointCredentialUnsafeMode => "endpoint-credential:unsafe-mode",
+    EndpointCredentialTooLarge => "endpoint-credential:too-large",
+    EndpointCredentialNotUtf8 => "endpoint-credential:not-utf8",
+    EndpointCredentialNotAToken => "endpoint-credential:not-a-token",
     ListenBind => "listen:bind",
     SignalInstall => "signal:install",
 }
@@ -109,6 +119,27 @@ impl FileRule {
             (Source::VllmApiKey, Self::UnsafeMode) => StartupRefusal::VllmApiKeyUnsafeMode,
             (Source::VllmApiKey, Self::TooLarge) => StartupRefusal::VllmApiKeyTooLarge,
             (Source::VllmApiKey, Self::NotUtf8) => StartupRefusal::VllmApiKeyNotUtf8,
+            (Source::EndpointCredential, Self::Unreadable) => {
+                StartupRefusal::EndpointCredentialUnreadable
+            }
+            (Source::EndpointCredential, Self::Symlink) => {
+                StartupRefusal::EndpointCredentialSymlink
+            }
+            (Source::EndpointCredential, Self::NotRegular) => {
+                StartupRefusal::EndpointCredentialNotRegular
+            }
+            (Source::EndpointCredential, Self::UntrustedOwner) => {
+                StartupRefusal::EndpointCredentialUntrustedOwner
+            }
+            (Source::EndpointCredential, Self::UnsafeMode) => {
+                StartupRefusal::EndpointCredentialUnsafeMode
+            }
+            (Source::EndpointCredential, Self::TooLarge) => {
+                StartupRefusal::EndpointCredentialTooLarge
+            }
+            (Source::EndpointCredential, Self::NotUtf8) => {
+                StartupRefusal::EndpointCredentialNotUtf8
+            }
         }
     }
 }
@@ -179,7 +210,15 @@ mod tests {
         for refusal in StartupRefusal::ALL {
             let (source, rule) = refusal.code().split_once(':').unwrap();
             assert!(
-                ["config", "owner-secret", "vllm-api-key", "listen", "signal"].contains(&source),
+                [
+                    "config",
+                    "owner-secret",
+                    "vllm-api-key",
+                    "endpoint-credential",
+                    "listen",
+                    "signal"
+                ]
+                .contains(&source),
                 "{refusal:?}"
             );
             assert!(!rule.is_empty(), "{refusal:?}");
@@ -201,6 +240,7 @@ mod tests {
             (Source::Config, "config:"),
             (Source::OwnerSecret, "owner-secret:"),
             (Source::VllmApiKey, "vllm-api-key:"),
+            (Source::EndpointCredential, "endpoint-credential:"),
         ] {
             let codes: BTreeSet<&str> = rules.iter().map(|r| r.refusal(source).code()).collect();
             assert_eq!(codes.len(), rules.len());

@@ -199,3 +199,11 @@ scenarios:
 - gateway/scenarios/r1-r5-another-method-takes-the-credential-and-then-is-not-allowed.yaml
 - gateway/scenarios/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body.yaml
 - gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml
+- gateway/scenarios/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file.yaml
+- gateway/scenarios/hosted-a-document-whose-api-key-endpoint-names-no-credential-header-composes-nothing.yaml
+- gateway/scenarios/hosted-each-endpoint-receives-its-credential-as-its-auth-kind-says-and-never-the-owners.yaml
+- gateway/scenarios/hosted-an-https-endpoint-is-reached-over-verified-tls.yaml
+- gateway/scenarios/hosted-an-https-endpoint-whose-certificate-is-not-trusted-is-upstream-failed-and-reads-no-byte.yaml
+- gateway/scenarios/hosted-a-hosted-model-beside-a-pod-model-and-a-failed-endpoint-is-kept.yaml
+- gateway/scenarios/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing.yaml
+- gateway/scenarios/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing.yaml

@@ -1,4 +1,5 @@
-//! The same-handle, bounded trusted-file reader (rows K30 and B9; llmgw `src/trusted.rs:21-42`).
+//! The same-handle, bounded trusted-file reader (rows K30 and B9; llmgw `src/trusted.rs:21-42`),
+//! for the document, the owner secret, each vLLM key and each hosted endpoint's credential.
 //!
 //! The file is opened once without following a final symlink, and every check reads that handle:
 //! a path swapped between a check and the read cannot substitute another file.
@@ -46,6 +47,13 @@ pub(crate) const OWNER_SECRET: Policy = Policy {
 /// secret's rules.
 pub(crate) const VLLM_API_KEY: Policy = Policy {
     source: Source::VllmApiKey,
+    ..OWNER_SECRET
+};
+
+/// A hosted endpoint's credential: sent upstream as a bearer or an API key, held to the owner
+/// secret's rules.
+pub(crate) const ENDPOINT_CREDENTIAL: Policy = Policy {
+    source: Source::EndpointCredential,
     ..OWNER_SECRET
 };
 

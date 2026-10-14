@@ -4,7 +4,7 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.7.0 (2026-10-14)
 
 - The documentation site is published at <https://beyond10x.github.io/llm-gateway/>; README
   links it instead of the pages in the tree.

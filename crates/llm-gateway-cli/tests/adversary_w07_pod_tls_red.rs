@@ -45,9 +45,9 @@ fn adversary_w07_a_silent_handshake_gives_up_within_the_connect_bound() {
     });
     match finished.recv_timeout(Duration::from_secs(15)) {
         Ok(opened) => assert!(!opened, "a silent endpoint opened a connection"),
-        Err(_) => panic!(
-            "the relay's connect to a silent pod endpoint was still waiting after {:?}; the \
-             spec bounds connecting at 10 s",
+        Err(error) => panic!(
+            "the relay's connect to a silent pod endpoint was still waiting after {:?} \
+             ({error}); the spec bounds connecting at 10 s",
             started.elapsed()
         ),
     }

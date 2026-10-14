@@ -334,11 +334,35 @@ fn b8_the_shipped_binary_composes_no_emulator_and_no_relay_seam() {
             }
         }
     }
+    // A feature could select the emulator. The one feature the manifest declares, `test-seam`,
+    // only builds the `gateway-tls-seam` test program: it enables no dependency, and no source
+    // file of the library or `main` reads a feature.
     let manifest = include_str!("../Cargo.toml");
-    assert!(
-        !manifest.contains("[features]"),
+    let features = manifest
+        .split_once("\n[features]\n")
+        .map(|(_, rest)| rest.split_once("\n[").map_or(rest, |(table, _)| table));
+    let declared: Vec<&str> = features
+        .into_iter()
+        .flat_map(str::lines)
+        .map(str::trim)
+        .filter(|line| !line.is_empty() && !line.starts_with('#'))
+        .collect();
+    assert_eq!(
+        declared,
+        ["test-seam = []"],
         "a feature could select the emulator"
     );
+    let rest = [
+        ("cli.rs", include_str!("../src/cli.rs")),
+        ("logging.rs", include_str!("../src/logging.rs")),
+        ("tls.rs", include_str!("../src/tls.rs")),
+    ];
+    for (name, source) in sources.into_iter().chain(rest) {
+        assert!(
+            !source.contains("cfg(feature"),
+            "src/{name} reads a feature"
+        );
+    }
 }
 
 // --- K27 and the pool's inputs ------------------------------------------------------------------

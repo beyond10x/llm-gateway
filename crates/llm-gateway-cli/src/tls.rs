@@ -19,15 +19,16 @@ use rustls::{
     pki_types::{CertificateDer, ServerName},
 };
 use std::{
-    fmt, io,
+    fmt,
+    io::{self, Read, Write},
     net::{SocketAddr, TcpStream, ToSocketAddrs},
     sync::Arc,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
-/// How long opening a TCP connection to a pod may take.
+/// How long opening a pod connection may take, the TCP connection and the TLS handshake together.
 pub const POD_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
-/// How long one read or one write on a relayed pod connection may wait.
+/// How long one read or one write on a relayed pod connection may wait, once it is open.
 pub const POD_IO_TIMEOUT: Duration = Duration::from_secs(120);
 /// The port of an `https://` authority that names none.
 const HTTPS_PORT: u16 = 443;
@@ -115,30 +116,79 @@ impl ProxyConnector {
 
     /// Opens one TLS connection to `authority` (`host[:port]`) and completes its handshake,
     /// certificate verification included, before returning: nothing else is written to the pod
-    /// before this returns. `io` bounds each read and write, the handshake's included.
+    /// before this returns. `connect` is one deadline over the whole opening, the TCP connection
+    /// and every handshake read and write together, so a peer that answers slowly or not at all
+    /// cannot stretch it; `io` bounds each read and write after the opening.
     fn open(
         &self,
         authority: &str,
         connect: Duration,
         io: Duration,
     ) -> io::Result<StreamOwned<ClientConnection, TcpStream>> {
+        let deadline = Instant::now() + connect;
         let (host, port) =
             split(authority).ok_or_else(|| invalid("not a host[:port] authority"))?;
         let name = ServerName::try_from(host.to_owned())
             .map_err(|_| invalid("the pod host is not a server name"))?;
         let mut socket = match self.loopback {
-            Some(address) => TcpStream::connect_timeout(&address, connect)?,
-            None => dial(host, port, connect)?,
+            Some(address) => TcpStream::connect_timeout(&address, remaining(deadline)?)?,
+            None => dial(host, port, deadline)?,
         };
-        socket.set_read_timeout(Some(io))?;
-        socket.set_write_timeout(Some(io))?;
         socket.set_nodelay(true)?;
         let mut connection = ClientConnection::new(Arc::clone(&self.config), name)
             .map_err(|error| io::Error::other(error.to_string()))?;
-        while connection.is_handshaking() {
-            connection.complete_io(&mut socket)?;
+        {
+            let mut bounded = Deadlined {
+                socket: &mut socket,
+                deadline,
+            };
+            while connection.is_handshaking() {
+                connection.complete_io(&mut bounded)?;
+            }
         }
+        socket.set_read_timeout(Some(io))?;
+        socket.set_write_timeout(Some(io))?;
         Ok(StreamOwned::new(connection, socket))
+    }
+}
+
+/// What is left of `deadline`; `TimedOut` once it has passed.
+fn remaining(deadline: Instant) -> io::Result<Duration> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        Err(io::Error::new(
+            io::ErrorKind::TimedOut,
+            "opening the pod connection took longer than its connect bound",
+        ))
+    } else {
+        Ok(left)
+    }
+}
+
+/// The socket during the handshake: each read and write waits at most what is left of the
+/// opening's deadline, so the handshake as a whole ends by it.
+struct Deadlined<'a> {
+    socket: &'a mut TcpStream,
+    deadline: Instant,
+}
+
+impl Read for Deadlined<'_> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.socket
+            .set_read_timeout(Some(remaining(self.deadline)?))?;
+        self.socket.read(buffer)
+    }
+}
+
+impl Write for Deadlined<'_> {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.socket
+            .set_write_timeout(Some(remaining(self.deadline)?))?;
+        self.socket.write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.socket.flush()
     }
 }
 
@@ -163,11 +213,11 @@ fn split(authority: &str) -> Option<(&str, u16)> {
     }
 }
 
-/// Resolves `host` and connects to the first address that answers within `timeout`.
-fn dial(host: &str, port: u16, timeout: Duration) -> io::Result<TcpStream> {
+/// Resolves `host` and connects to the first address that answers before `deadline`.
+fn dial(host: &str, port: u16, deadline: Instant) -> io::Result<TcpStream> {
     let mut last = io::Error::new(io::ErrorKind::NotFound, "the pod host has no address");
     for address in (host, port).to_socket_addrs()? {
-        match TcpStream::connect_timeout(&address, timeout) {
+        match TcpStream::connect_timeout(&address, remaining(deadline)?) {
             Ok(socket) => return Ok(socket),
             Err(error) => last = error,
         }

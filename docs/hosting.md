@@ -438,9 +438,12 @@ crate compiles it in: no system certificate store, file or environment variable.
 chain and host name verification included, completes before any request byte or key is written,
 so a pod whose certificate does not verify reads nothing: the relayed request is answered
 `upstream-failed`, and the probe reports the pod unreachable. A pod connection gives up connecting
-after 10 s, and a relayed one's reads and writes each time out after 120 s. No document key and
-no option adds a root or disables verification; the closed document refuses any such key as
-`config:schema`.
+after 10 s, one deadline over the TCP connection and the handshake together, so a pod that
+answers slowly or not at all cannot stretch it; once open, a relayed connection's reads and writes
+each time out after 120 s. No document key and no option adds a root or disables verification;
+the closed document refuses any such key as `config:schema`. The `gateway-tls-seam` test program,
+which trusts a root its environment names, is built only with the test-only `test-seam` feature
+that the package's tests enable: `cargo build --release -p b10x-llm-gateway-cli` does not build it.
 
 What `start_connected` does, proved at the library level: at start it checks the connection once
 (the work directory is private and one `pods.list` answers a complete listing). If not, it still

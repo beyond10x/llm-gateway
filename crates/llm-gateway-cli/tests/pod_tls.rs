@@ -256,17 +256,16 @@ fn tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors() {
     let seen = pod.seen();
     let relayed = seen
         .iter()
-        .find(|connection| {
-            connection
-                .text()
-                .starts_with("POST /v1/chat/completions ")
-        })
+        .find(|connection| connection.text().starts_with("POST /v1/chat/completions "))
         .unwrap_or_else(|| panic!("the pod never received the relayed request: {seen:?}"));
     let probes: Vec<&Seen> = seen
         .iter()
         .filter(|connection| connection.text().starts_with("GET /v1/models "))
         .collect();
-    assert!(!probes.is_empty(), "no readiness probe reached the pod: {seen:?}");
+    assert!(
+        !probes.is_empty(),
+        "no readiness probe reached the pod: {seen:?}"
+    );
     for connection in probes.iter().copied().chain([relayed]) {
         assert!(connection.handshake, "{connection:?}");
         assert_eq!(connection.server_name.as_deref(), Some(POD_HOST));
@@ -280,7 +279,10 @@ fn tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors() {
         assert!(!request.contains(OWNER_SECRET), "{request:?}");
     }
     for line in &stderr {
-        assert!(!line.contains(VLLM_KEY) && !line.contains(OWNER_SECRET), "{line}");
+        assert!(
+            !line.contains(VLLM_KEY) && !line.contains(OWNER_SECRET),
+            "{line}"
+        );
     }
 }
 
@@ -326,10 +328,14 @@ fn tls_an_untrusted_pod_certificate_is_upstream_failed_and_the_pod_reads_nothing
     let seen = pod.seen();
     assert!(
         seen.iter()
-            .any(|connection| connection.handshake && connection.text().starts_with("GET /v1/models ")),
+            .any(|connection| connection.handshake
+                && connection.text().starts_with("GET /v1/models ")),
         "the pod was never probed ready: {seen:?}"
     );
-    let untrusted: Vec<&Seen> = seen.iter().filter(|connection| connection.switched).collect();
+    let untrusted: Vec<&Seen> = seen
+        .iter()
+        .filter(|connection| connection.switched)
+        .collect();
     assert!(
         !untrusted.is_empty(),
         "the relay never connected to the untrusted pod: {seen:?}"
@@ -345,6 +351,9 @@ fn tls_an_untrusted_pod_certificate_is_upstream_failed_and_the_pod_reads_nothing
         "a request reached the pod: {seen:?}"
     );
     for line in &stderr {
-        assert!(!line.contains(VLLM_KEY) && !line.contains(OWNER_SECRET), "{line}");
+        assert!(
+            !line.contains(VLLM_KEY) && !line.contains(OWNER_SECRET),
+            "{line}"
+        );
     }
 }

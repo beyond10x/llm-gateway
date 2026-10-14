@@ -800,7 +800,7 @@ impl RunpodTransport for ConnectorsRunpod {
             return Probe::Unreachable;
         };
         let key = target.model.and_then(|model| self.keys.get(model));
-        probe::models(endpoint, key, PROBE_TIMEOUT)
+        probe::models(endpoint, key, PROBE_TIMEOUT, self.tls.as_deref())
     }
 
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {

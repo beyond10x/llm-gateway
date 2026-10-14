@@ -8,8 +8,9 @@
 //!
 //! The pool needs a Runpod transport and a way to open a connection to a pod. The shipped
 //! binary ([`crate::start`]) composes it over the production transport, `ConnectorsRunpod`, for
-//! the provider that declares a `connectors` connection; [`crate::start_relaying`] takes any
-//! transport, and only tests call it, with `EmulatedRunpod` and loopback pods.
+//! the provider that declares a `connectors` connection, and reaches each pod over verified TLS
+//! ([`crate::ProxyConnector`]); [`crate::start_relaying`] takes any transport, and only tests
+//! call it, with `EmulatedRunpod` and loopback pods.
 
 use crate::{
     config::{Deployment, Model, Wire},
@@ -23,8 +24,8 @@ use llm_gateway::{
 };
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
-    HostingPolicy, Identifier, LeaseRegistry, PodListing, PoolError, RunpodModel, RunpodPool,
-    RunpodTransport, StreamLease,
+    HostingPolicy, Identifier, LeaseRegistry, PodListing, PodStream, PodTls, PoolError,
+    RunpodModel, RunpodPool, RunpodTransport, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -63,8 +64,9 @@ const POLL: Duration = Duration::from_millis(500);
 /// How often a waiting request looks for the stop between two asks.
 const STOP_CHECK: Duration = Duration::from_millis(20);
 
-/// Opens connections to pods. The production one speaks TLS to the Runpod proxy
-/// (story:live-runpod-wiring); a test's reaches a loopback pod.
+/// Opens connections to pods. The production one, [`crate::ProxyConnector`], speaks TLS to the
+/// Runpod proxy and verifies the pod's certificate before it returns; a test's may reach a
+/// loopback pod.
 pub trait PodConnector: Send + Sync {
     /// Opens one connection to the pod at `authority`, the `host[:port]` of the endpoint the
     /// pool reported. Its read and write timeouts are the connector's.
@@ -72,6 +74,33 @@ pub trait PodConnector: Send + Sync {
     /// # Errors
     /// The connection's own error; the gateway answers it `upstream-failed`.
     fn connect(&self, authority: &str) -> io::Result<Box<dyn RelayStream>>;
+
+    /// Opens the readiness probe's connection to the pod at `authority` of an `https://`
+    /// endpoint, `timeout` bounding the connect and each read and write. The default opens none,
+    /// and the probe answers such an endpoint unreachable.
+    ///
+    /// # Errors
+    /// The connection's own error; the probe answers it unreachable.
+    fn connect_probe(
+        &self,
+        _authority: &str,
+        _timeout: Duration,
+    ) -> io::Result<Box<dyn RelayStream>> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "this pod connector opens no probe connection",
+        ))
+    }
+}
+
+/// The transport's readiness probe over a [`PodConnector`]: the TLS connection
+/// `ConnectorsRunpod` probes an `https://` endpoint through.
+struct ProbeOver(Arc<dyn PodConnector>);
+
+impl PodTls for ProbeOver {
+    fn connect(&self, authority: &str, timeout: Duration) -> io::Result<Box<dyn PodStream>> {
+        Ok(Box::new(self.0.connect_probe(authority, timeout)?))
+    }
 }
 
 /// System time in Unix milliseconds that never moves backwards: a step back reads as the last
@@ -679,12 +708,15 @@ fn reachable(binding: &ConnectorsBinding, transport: &mut ConnectorsRunpod) -> b
 /// connection is not reachable at start, no pool is composed, no further `connectors` call is
 /// made, and its models are `target-unavailable` too.
 ///
-/// `wrap` and `pods` are the seam a test moves the pod's address to a loopback pod with. `wrap`
-/// receives the `ConnectorsRunpod` built from the document and may return any
-/// `RunpodTransport`, including one that ignores it; the type does not hold the transport to
-/// `ConnectorsRunpod`. What does is the callers: [`crate::start`], the only composition the
-/// shipped binary reaches, passes the identity and [`ProxyConnector`], and only tests pass
-/// anything else. No document key and no option reaches `wrap` or `pods`.
+/// `pods` opens every connection to a pod: the relay's, and the readiness probe's to an
+/// `https://` endpoint ([`PodConnector::connect_probe`], handed to the transport as its TLS
+/// connection before `wrap`). `wrap` and `pods` are the seam a test moves the pod's address to
+/// a loopback pod with. `wrap` receives the `ConnectorsRunpod` built from the document and may
+/// return any `RunpodTransport`, including one that ignores it; the type does not hold the
+/// transport to `ConnectorsRunpod`. What does is the callers: [`crate::start`], the only
+/// composition the shipped binary reaches, passes the identity and
+/// [`crate::ProxyConnector::shipped`], and only tests pass anything else. No document key and no
+/// option reaches `wrap` or `pods`.
 ///
 /// # Errors
 /// As [`start_relaying`], for the connected models.
@@ -718,6 +750,7 @@ where
     let authorization = compute_authorization()?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let mut transport = ConnectorsRunpod::new(binding.clone());
+    transport.set_tls(Arc::new(ProbeOver(Arc::clone(&pods))));
     if !reachable(&binding, &mut transport) {
         tracing::warn!(
             provider = provider.as_str(),

@@ -8,6 +8,14 @@ Nothing in any release is deployed or qualified against a live client.
 
 - The documentation site is published at <https://beyond10x.github.io/llm-gateway/>; README
   links it instead of the pages in the tree.
+- Pod proxy TLS: the binary reaches a Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/`
+  over TLS (`rustls` on `ring`, in `b10x-llm-gateway-cli` only), the readiness probe and every
+  relayed request alike, with the certificate verified against the Mozilla roots `webpki-roots`
+  compiles in before any request byte is written. A certificate that does not verify is
+  `upstream-failed`. No document key or option adds a root or disables verification. The
+  start-time refusal of a document that declares a `connectors` provider is gone, so the binary
+  now starts and relays to pods. `b10x-llm-runpod`'s probe takes its TLS connection from the
+  embedding (`ConnectorsRunpod::set_tls`, `PodTls`).
 
 ## 0.6.0 (2026-10-08)
 

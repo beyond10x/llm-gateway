@@ -32,7 +32,11 @@ fn adversary_w05_a_document_the_pool_refuses_is_refused_before_any_connectors_ca
         "operations invoke pods.list": [listed(&serde_json::json!([]))],
     }));
     let deployment = load(&fixture.config(&unrunnable(&fixture, &connectors))).unwrap();
-    match start_connected(&deployment, |transport| transport, Arc::new(ProxyConnector::shipped())) {
+    match start_connected(
+        &deployment,
+        |transport| transport,
+        Arc::new(ProxyConnector::shipped()),
+    ) {
         Ok(relaying) => {
             relaying.shutdown();
             panic!("a model the pool cannot run was served");
@@ -54,7 +58,11 @@ fn adversary_w05_a_document_the_pool_refuses_is_refused_with_the_connection_down
     let connectors = Connectors::new(&fixture);
     // No script: the reachability `pods.list` fails.
     let deployment = load(&fixture.config(&unrunnable(&fixture, &connectors))).unwrap();
-    match start_connected(&deployment, |transport| transport, Arc::new(ProxyConnector::shipped())) {
+    match start_connected(
+        &deployment,
+        |transport| transport,
+        Arc::new(ProxyConnector::shipped()),
+    ) {
         Ok(relaying) => {
             relaying.shutdown();
             panic!(

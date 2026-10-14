@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod tls_pod;
+
 use std::{
     fs,
     os::unix::fs::PermissionsExt,

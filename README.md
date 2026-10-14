@@ -29,12 +29,11 @@ It is not a model client: the neutral turn, the protocol clients, credentials, r
 are llm's. The gateway library relays the owner's chat, responses and messages requests to a target
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
-it translates no protocol, and the binary does not relay to a Runpod pod yet: it refuses a
-document that declares a `connectors` provider until it can reach the pod's `https` endpoint
-(story:pod-proxy-tls). The hosting contract opens no socket and
-allocates nothing. The Runpod adapter has a production transport that reaches Runpod only through the
-`connectors` CLI and that no binary uses yet; its tests run against `EmulatedRunpod` or a fixture
-of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
+it translates no protocol. The binary relays to a Runpod pod at its `https` proxy URL over
+TLS, but that path has run only against a fixture of the `connectors` CLI and a loopback pod,
+never against Runpod. The hosting contract opens no socket and allocates nothing. The Runpod
+adapter's production transport reaches Runpod only through the `connectors` CLI; its tests run
+against `EmulatedRunpod` or a fixture of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
 provisions a resource.
 
 Nor does it replace llmgw yet. llmgw is the gateway this repository is meant to succeed, and it stays
@@ -134,10 +133,11 @@ chosen by `User-Agent`) without a credential; the owner can read
 `GET /v1/routes`, `GET /v1/routes/<alias>` and `GET /metrics`, llmgw's 13 `llmgw_` counters as
 Prometheus text. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
 The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/responses` and
-`POST /v1/messages` for the wires each model declares, but relays none of them to a pod yet: a
-model whose provider declares no `connectors` is answered `503` `target-unavailable`, and a
-document in which a provider declares `connectors` is refused at startup until the binary can
-reach the pod's `https` endpoint (story:pod-proxy-tls).
+`POST /v1/messages` for the wires each model declares. A model whose provider declares
+`connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` over
+TLS, with the pod's certificate verified against the Mozilla roots compiled into the binary before
+any request byte is sent; no document key or option adds a root or turns verification off. A
+model whose provider declares no `connectors` is answered `503` `target-unavailable`.
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other
 argument is refused with exit status 2.

@@ -12,12 +12,11 @@ Model targets run on billed compute. `b10x-llm-provision` is the lifecycle every
 is held to, and `b10x-llm-runpod` is the first adapter behind it. Neither the contract nor the
 gateway library opens a socket to a cloud API.
 
-:::caution[Planned: the binary starts no pod yet]
+:::caution[Not run against Runpod]
 The Runpod pool and its production transport are built and tested against `EmulatedRunpod` and a
-fixture of the `connectors` CLI. The shipped binary refuses a document that declares a
-`connectors` provider, because a pod is reached at its `https` proxy URL and the binary has no TLS
-client for it yet. Until that lands, the binary creates no pod and relays to none. The transport
-has not run against the real `connectors` CLI.
+fixture of the `connectors` CLI. The shipped binary starts a model's pod through that transport
+and reaches it at its `https` proxy URL over verified TLS, tested against a loopback pod only. The
+transport has not run against the real `connectors` CLI, and no pod has been started.
 :::
 
 ## Three rules of the contract

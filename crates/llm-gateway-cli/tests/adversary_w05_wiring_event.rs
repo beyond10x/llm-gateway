@@ -55,9 +55,13 @@ fn adversary_w05_the_unreachable_event_is_written_and_carries_no_secret() {
             .with_writer(move || writer.clone())
             .finish();
         tracing::subscriber::with_default(subscriber, || {
-            start_connected(&deployment, |transport| transport, Arc::new(ProxyConnector))
-                .unwrap()
-                .shutdown();
+            start_connected(
+                &deployment,
+                |transport| transport,
+                Arc::new(ProxyConnector::shipped()),
+            )
+            .unwrap()
+            .shutdown();
         });
         let text = captured.text();
         let events: Vec<&str> = text

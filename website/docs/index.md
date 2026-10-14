@@ -24,10 +24,9 @@ llm-gateway is the **serving side** of llm. It is a Rust workspace with one bina
 
 :::caution[Not deployed, not qualified]
 Everything here is tested against in-process fakes, loopback sockets, the Runpod emulator and a
-fixture of the `connectors` CLI. The shipped binary does **not** relay a request to a Runpod pod
-yet: it refuses a document that declares a `connectors` provider until it can reach a pod's
-`https` endpoint over verified TLS, so a relayed model is answered `target-unavailable`. No client
-has run a live session against it. Read [Status](/docs/status) before you build on it.
+fixture of the `connectors` CLI. The shipped binary relays to a Runpod pod at its `https` proxy
+URL over verified TLS, but that path has run only against a fixture of the `connectors` CLI and a
+loopback pod, never against Runpod. No client has run a live session against it. Read [Status](/docs/status) before you build on it.
 :::
 
 ## What it is not

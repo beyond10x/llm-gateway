@@ -23,6 +23,9 @@ clap = { version = "4.5", features = ["derive"] }
 llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
 llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
 rustix = { version = "1.1", features = ["fs", "process"] }
+# The pod connection's TLS client (spec/domains/deployment.yaml, the pod endpoint rule): rustls
+# on its ring provider, never aws-lc-rs, trusting the roots webpki-roots compiles in.
+rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -30,8 +33,11 @@ signal-hook = "0.4"
 toml = "1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
+webpki-roots = "1.0.9"
 
 [dev-dependencies]
+# Test certificates for the loopback https fixture pods, on ring like the client.
+rcgen = { version = "0.14.10", default-features = false, features = ["ring"] }
 rustix = { version = "1.1", features = ["process"] }
 sha2.workspace = true
 
@@ -42,5 +48,15 @@ sha2.workspace = true
 [[bin]]
 name = "gateway-connectors-fixture"
 path = "../llm-runpod/tests/fixture/connectors.rs"
+test = false
+doc = false
+
+# The shipped `main` with the TLS test seam (spec/domains/deployment.yaml): other trust roots and
+# every pod host mapped to one loopback address, both read from its environment. A test helper
+# for the process tests in tests/pod_tls.rs; the Dockerfile installs only `b10x-llm-gateway`, which
+# reads neither.
+[[bin]]
+name = "gateway-tls-seam"
+path = "tests/fixture/tls_seam.rs"
 test = false
 doc = false

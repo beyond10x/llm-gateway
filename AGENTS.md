@@ -13,7 +13,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | Path | What it is |
 | --- | --- |
 | `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency |
-| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`). It carries the dependencies the gateway crate must not have |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), and the pod connection's TLS client (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots). It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests, `ConnectorsRunpod` the production transport, which reaches the control plane only through the `connectors` CLI |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |

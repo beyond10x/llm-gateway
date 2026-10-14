@@ -230,7 +230,7 @@ fn crates_page_lists_every_workspace_package() {
 }
 
 #[test]
-fn status_marks_the_inert_runpod_relay_planned_and_names_tests_for_shipped_items() {
+fn status_marks_the_runpod_relay_shipped_and_names_tests_for_shipped_items() {
     let root = repository();
     let status: serde_json::Value = serde_json::from_str(&read(&root, STATUS_DATA)).unwrap();
     assert_eq!(status["format"], "b10x-status/1");
@@ -259,7 +259,10 @@ fn status_marks_the_inert_runpod_relay_planned_and_names_tests_for_shipped_items
                 .is_some_and(|label| label.contains("Relay to a Runpod pod"))
         })
         .expect("the Runpod relay is listed");
-    assert_eq!(relay["status"], "planned", "the binary refuses connectors");
+    assert_eq!(
+        relay["status"], "shipped",
+        "the binary reaches a pod over TLS"
+    );
 }
 
 #[test]

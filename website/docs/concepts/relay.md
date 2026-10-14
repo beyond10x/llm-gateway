@@ -21,12 +21,16 @@ the embedding; the gateway crate opens none.
 | `responses` | `POST /v1/responses` | Codex |
 | `messages` | `POST /v1/messages` | Claude Code |
 
-:::caution[Planned: the binary relays to no pod yet]
-The library relays, and the binary composes the relay, but the binary has no production target
-yet. A model whose provider declares no `connectors` table is answered `target-unavailable`. A
-document whose provider declares one is refused at startup as `config:value`, because a pod is
-reached at its `https` proxy URL and the binary does not speak TLS to it yet. The Runpod pool
-behind the relay is tested through a seam in the binary's own tests.
+The binary's targets are Runpod pods. A pod is reached at its `https` proxy URL,
+`https://<pod id>-8000.proxy.runpod.net/v1/`, over TLS: the binary's client verifies the pod's
+certificate, chain and host name, against the Mozilla roots compiled into the binary before it
+writes any byte of the request, and a certificate that does not verify is `upstream-failed`. No
+document key or option adds a root or turns verification off. A model whose provider declares no
+`connectors` table is answered `target-unavailable`.
+
+:::caution[Not run against Runpod]
+The relay to a pod is tested end to end against a fixture of the `connectors` CLI and a loopback
+`https` pod whose certificate a test root issued, never against Runpod.
 :::
 
 ## The order a wire request is decided in

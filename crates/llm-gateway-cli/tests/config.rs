@@ -858,3 +858,63 @@ fn connectors_no_document_key_selects_the_emulator() {
     }
     assert!(accepted.is_empty(), "accepted: {accepted:?}");
 }
+
+/// story:pod-proxy-tls, criterion 3: no document key adds a trust root, names a certificate, or
+/// disables or weakens the pod connection's certificate verification. Every spelling a reader
+/// might try, at every level, and as a table of its own, is outside the closed document
+/// (`config:schema`).
+#[test]
+fn tls_no_document_key_adds_a_trust_root_or_disables_verification() {
+    let fixture = Fixture::new("tls-no-key");
+    let text = connected(&fixture, &table());
+    assert!(
+        load(&fixture.config(&text)).is_ok(),
+        "the control is refused"
+    );
+    let keys = [
+        "ca_file",
+        "ca_certificates",
+        "ca_bundle",
+        "trust_roots",
+        "root_certificates",
+        "extra_roots",
+        "ssl_cert_file",
+        "tls_ca_file",
+        "certificate",
+        "insecure",
+        "tls_insecure",
+        "insecure_skip_verify",
+        "danger_accept_invalid_certs",
+        "verify_tls",
+        "tls_verify",
+        "verify_certificates",
+        "pod_ca_file",
+        "tls",
+    ];
+    let mut accepted = Vec::new();
+    for key in keys {
+        for (level, find) in [
+            ("top level", "listen = "),
+            ("provider", "kind = \"runpod-vllm\"\n"),
+            ("connectors", "adapter = \"gpu\"\n"),
+            ("model", "max_model_len = 1024\n"),
+        ] {
+            for value in ["true", "false", "\"/etc/ssl/certs/ca.pem\""] {
+                let line = format!("{key} = {value}\n");
+                let mutated = mutate(&text, find, &format!("{line}{find}"));
+                match load(&fixture.config(&mutated)) {
+                    Ok(_) => accepted.push(format!("{level}: {line}")),
+                    Err(refusal) => {
+                        assert_eq!(refusal.code(), "config:schema", "{level}: {line}");
+                    }
+                }
+            }
+        }
+        let table = format!("{text}\n[{key}]\nenabled = false\n");
+        match load(&fixture.config(&table)) {
+            Ok(_) => accepted.push(format!("table [{key}]")),
+            Err(refusal) => assert_eq!(refusal.code(), "config:schema", "table [{key}]"),
+        }
+    }
+    assert!(accepted.is_empty(), "accepted: {accepted:?}");
+}

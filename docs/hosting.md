@@ -378,10 +378,12 @@ says `[]` "keeps the image's" (`docs/catalog-runpod.md:84`).
 
 The readiness probe goes to the pod, not to connectors: `GET <endpoint>models` with the model's
 vLLM key, handed to the transport by alias, as a bearer. `200` is ready with the served model
-names, `401`/`403` refused, any other answer not ready, no answer unreachable. The probe speaks
-plain HTTP only: an `https://` endpoint, which is what a live pod has, is unreachable until the
-crate gets a TLS client (story:pod-proxy-tls). The transport reads no file, and its `Debug` prints
-no key.
+names, `401`/`403` refused, any other answer not ready, no answer unreachable. An `http://`
+endpoint is probed over a plain socket. An `https://` endpoint, which is what a live pod has, is
+probed over the TLS connection the embedding hands the transport (`ConnectorsRunpod::set_tls`):
+this crate links no TLS client, and the binary's verifies the certificate before the probe writes
+its request or the key. Without one, or when the handshake fails, the endpoint is unreachable. The
+transport reads no file, and its `Debug` prints no key.
 
 ### The pool the binary composes
 
@@ -403,13 +405,17 @@ work_directory = "/var/lib/gateway/connectors"  # existing, owned by the gateway
 timeout_seconds = 60                       # 1..=600, default 60: one CLI call
 ```
 
-**The wiring is inert in the shipped binary until story:pod-proxy-tls.** A pod is reached only at
-the Runpod proxy's `https://` endpoint, which the binary cannot open yet, so a pod it started
-would be billed and never serve. `b10x-llm-gateway` therefore refuses a document that declares a
-`connectors` table with `config:value` (`providers.<name>.connectors cannot be served until the
-binary speaks TLS to the pod endpoint`) before it reads any other file, runs any `connectors`
-call or binds anything. The table's own rules are still checked when the document is loaded.
-story:pod-proxy-tls removes the refusal.
+**A pod is reached over verified TLS.** The shipped binary reaches a pod only at the Runpod
+proxy's `https://<pod id>-8000.proxy.runpod.net/v1/` (port 443), for the readiness probe and for
+every relayed request. Its TLS client is `rustls` on the `ring` provider, in
+`b10x-llm-gateway-cli` only, and it trusts exactly the Mozilla root program as the `webpki-roots`
+crate compiles it in: no system certificate store, file or environment variable. The handshake,
+chain and host name verification included, completes before any request byte or key is written,
+so a pod whose certificate does not verify reads nothing: the relayed request is answered
+`upstream-failed`, and the probe reports the pod unreachable. A pod connection gives up connecting
+after 10 s, and a relayed one's reads and writes each time out after 120 s. No document key and
+no option adds a root or disables verification; the closed document refuses any such key as
+`config:schema`.
 
 What `start_connected` does, proved at the library level: at start it checks the connection once
 (the work directory is private and one `pods.list` answers a complete listing). If not, it still
@@ -418,9 +424,10 @@ call, and answers every model of that provider `target-unavailable`; a repaired 
 restart. Each connected model's vLLM key is handed to the transport by alias for the readiness
 probe. A model whose provider declares no `connectors` is `target-unavailable`, in the shipped
 binary too. No option or document key selects `EmulatedRunpod`.
-`crates/llm-gateway-cli/tests/binary.rs` (`live_*`) proves the refusal against the connectors CLI
-fixture, which records no invocation; `tests/live_runpod.rs` proves the composition against the
-fixture and a loopback pod.
+`crates/llm-gateway-cli/tests/pod_tls.rs` proves the binary end to end against the connectors CLI
+fixture and a loopback `https` pod, through a test program that runs the shipped `main` with a
+test root and the pod's proxy host mapped to loopback; `tests/live_runpod.rs` proves the
+composition against the fixture and a plain loopback pod.
 
 Every input is fixed or read from the document (`spec/domains/deployment.yaml`):
 
@@ -501,7 +508,8 @@ deployment — and is recorded as an open finding for the operator.
 
 What this does **not** establish: that Runpod's REST listing returns the `env` a pod was created
 with, that `{{ RUNPOD_SECRET_<name> }}` is substituted into `VLLM_API_KEY`, that a `DELETE` stops
-billing, or that the proxy URL `https://<pod id>-8000.proxy.runpod.net/v1/` is the one to serve from.
+billing, or that the proxy URL `https://<pod id>-8000.proxy.runpod.net/v1/` is the one to serve from
+and presents a certificate that chains to a root the binary ships.
 Nor does it establish that `lastStartedAt` moves when a container restarts. Those are properties
 of the live control plane; the production transport has run only against a fixture of the
 `connectors` CLI and no paid call has been made. [Runpod verification](verification/runpod.md)

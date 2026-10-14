@@ -18,7 +18,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.mdx";
 
 /// The date the list below was last checked against the code.
-const AS_OF: &str = "2026-10-08";
+const AS_OF: &str = "2026-10-14";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -152,8 +152,15 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Cold-start hold in the Runpod composition",
-        "A request for a model whose pod is starting waits up to request_hold_seconds, then is model-cold-start with retry-after 30. Tested through a seam: the shipped binary reaches no pod yet.",
+        "A request for a model whose pod is starting waits up to request_hold_seconds, then is model-cold-start with retry-after 30. Tested through a seam over the emulator.",
         "crates/llm-gateway-cli/tests/relaying.rs::l6_a_request_for_a_pod_still_starting_is_held_until_the_pod_serves",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
+        "Relay to a Runpod pod from the binary over verified TLS",
+        "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
+        "crates/llm-gateway-cli/tests/pod_tls.rs::tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors",
         RELAY,
     ),
     shipped(
@@ -232,12 +239,6 @@ pub const CAPABILITIES: &[Capability] = &[
         "The system llm-gateway is specified in ESS; the gate answers at least 201 of 201 scenarios, skips none, and fails on drift between the specification and its generated suite.",
         "checks/conformance/src/gate.rs::every_authored_scenario_is_declared",
         Some("/docs/guides/run-the-checks"),
-    ),
-    planned(
-        "Relay",
-        "Relay to a Runpod pod from the binary",
-        "The binary refuses a document whose provider declares connectors until it reaches a pod's https proxy URL over verified TLS; until then a relayed model is target-unavailable.",
-        RELAY,
     ),
     planned(
         "Relay",

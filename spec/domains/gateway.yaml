@@ -69,6 +69,7 @@ types:
       - {name: BodyNotAllowed, attributes: {code: body-not-allowed, status: 400, message: "the inspection surface accepts no request body"}}
       - {name: BodyNotJson, attributes: {code: body-not-json, status: 400, message: "the request body is not one JSON object"}}
       - {name: BodyTooLarge, attributes: {code: body-too-large, status: 413, message: "the request body exceeds its byte bound"}}
+      - {name: ContextExceeded, attributes: {code: context-exceeded, status: 400, message: "prompt is too long: the input leaves no room for output in the model context window"}}
       - {name: CredentialAbsent, attributes: {code: credential-absent, status: 401, message: "no owner credential was presented"}}
       - {name: CredentialMalformed, attributes: {code: credential-malformed, status: 401, message: "the owner credential is not a bearer token"}}
       - {name: CredentialRejected, attributes: {code: credential-rejected, status: 401, message: "the presented owner credential was rejected"}}
@@ -400,6 +401,35 @@ entities:
   #      header), so the forward-verbatim rule of Claude Code's gateway protocol page, written
   #      for an Anthropic upstream, has nothing to serve here (scenario
   #      claude-code-anthropic-headers-never-reach-the-target).
+  #      The output clamp, on the messages wire only, after the target is handed out and before
+  #      the request is relayed to it. The model's window `w` is its declared `max_model_len`
+  #      (`RelayModel::with_max_model_len`), else its declared `context_window`, else it has
+  #      none: the binary declares a Runpod model's `max_model_len`, what `vllm serve` is started
+  #      with, and a hosted model's `context_window` and never its `max_model_len`, so a hosted
+  #      model declaring no `context_window` has no window. For a model with a window and a body
+  #      whose top-level `max_tokens` is one non-negative JSON integer (digits only, named once
+  #      at the top level), the gateway first sends `POST /v1/messages/count_tokens` to the same
+  #      target over a connection of its own, with the head and credential of the relayed
+  #      request and the body step 6 wrote. A count answered 2xx whose body is one JSON object
+  #      with one top-level non-negative integer `input_tokens` = `n` decides: `w - n < 1` is
+  #      `context-exceeded` (400) and nothing is relayed; a `max_tokens` above `w - n` is
+  #      rewritten in place to `w - n`, and one at or below it is unchanged. A count that fails
+  #      (no connection, a request that cannot be written, an answer head that never arrives or
+  #      is malformed, a status outside 2xx, an answer body longer than the head bound, or
+  #      a body without such an `input_tokens`) relays the request unchanged, reports nothing to
+  #      the target source and counts no series. A body without such a `max_tokens`, a model
+  #      without a window, and the chat and responses wires are relayed without a count. The
+  #      count runs only on a target `acquire` handed out, so it never wakes a pod the relay
+  #      would not have woken.
+  #      DECIDED 2026-10-15 (story:max-tokens-clamp): a consumer's Claude Code 2.1.300 against
+  #      vLLM v0.27.1 `--max-model-len 65536` spent its whole 32000 `max_tokens` on a first
+  #      turn, and the continuation's input plus `max_tokens` passed the window, which vLLM
+  #      answered 500. vLLM v0.27.1 serves `POST /v1/messages/count_tokens` and answers
+  #      `{"input_tokens":n}` for a messages body (vllm/entrypoints/anthropic/api_router.py
+  #      lines 95-133). The refusal's message starts `prompt is too long`: Claude Code 2.1.301
+  #      lowercases an API error's message and tests it for `prompt is too long`, which it
+  #      classes `prompt_too_long` and answers by compacting (its bundled client, read
+  #      2026-10-15) (scenarios clamp-*).
   #   8. W7: a target that cannot be connected to, a request that cannot be written to it, an
   #      answer head that never arrives or is malformed, and an answer of 502, 503 or 504 are
   #      each reported failed to the target source by the authority of the endpoint that served
@@ -584,7 +614,8 @@ commands:
       #           every target the source hands out for that model carries (row B8); the
       #           optional `tool_calling` is `parsed` or `absent`, default `absent`, as the
       #           deployment document's; the optional `max_model_len` and `context_window` are
-      #           what the public routes render (rows R5, R1), absent unless given; the
+      #           what the public routes render (rows R5, R1), absent unless given, and the
+      #           first of them given is the model's window for the output clamp (step 7); the
       #           optional `reasoning_effort` is `low`, `medium` or `xhigh`, the effort the model
       #           declares (step 6), none unless given, and any other value makes the program
       #           invalid;

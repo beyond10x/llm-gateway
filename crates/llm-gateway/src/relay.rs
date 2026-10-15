@@ -1,8 +1,10 @@
 //! Relaying the three model-call wires to a target the embedding selects (story:wire-relay).
 //!
 //! The gateway reads and checks the request, rewrites `model` (and on the messages wire the
-//! reasoning effort, or gives a request naming none the model's declared one), asks the injected [`RelayTargets`] for a target, sends the request over
-//! the connection that target opens, and relays the answer as it arrives. It never opens a
+//! reasoning effort, or gives a request naming none the model's declared one), asks the injected
+//! [`RelayTargets`] for a target, on the messages wire counts the input at that target and lowers
+//! a `max_tokens` the model's window has no room for, sends the request over the connection
+//! that target opens, and relays the answer as it arrives. It never opens a
 //! connection itself: the target does, so the transport — plain TCP to a loopback fixture, TLS
 //! to a pod proxy — and its timeouts belong to the embedding. The specification is the `Relay`
 //! command of `spec/domains/gateway.yaml`.
@@ -26,6 +28,9 @@ use std::{
 pub(crate) const MAX_REQUEST_BODY_BYTES: u64 = 33_554_432;
 /// The size of one internal read while relaying. Not a limit on anything.
 const RELAY_CHUNK: usize = 16_384;
+/// Where the output clamp counts a messages request's input at its target (vLLM v0.27.1,
+/// `vllm/entrypoints/anthropic/api_router.py` lines 95-133).
+const COUNT_TOKENS_PATH: &str = "/v1/messages/count_tokens";
 
 /// A wire the gateway relays. Each has its own path, and the target is asked on the same path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -339,6 +344,13 @@ impl RelayModel {
 
     pub fn context_window(&self) -> Option<u64> {
         self.context_window
+    }
+
+    /// The window the output clamp keeps a messages request within: the declared
+    /// `max_model_len`, else the declared `context_window`, else none, and a model without one
+    /// is never counted.
+    pub fn window(&self) -> Option<u64> {
+        self.max_model_len.or(self.context_window)
     }
 
     pub fn alias(&self) -> &Label {
@@ -862,13 +874,14 @@ pub(crate) fn serve(
     let analysis = body::analyse(&body)?;
     let model = served_model(relay, &analysis, admitted.wire, call)?;
     let messages = admitted.wire == Wire::Messages;
-    let rewritten = analysis.rewrite(
+    let mut rewritten = analysis.rewritten(
         &body,
         model.upstream_model.as_str(),
         messages,
         model.reasoning_effort.filter(|_| messages),
     );
     drop(body);
+    let window = model.window().filter(|_| messages);
     let alias = model.alias.as_str();
     let asked = Instant::now();
     let acquired = relay.targets.acquire(alias);
@@ -884,47 +897,30 @@ pub(crate) fn serve(
             .count_cold_start_hold(alias, admitted.wire, asked.elapsed());
     }
     let target = acquired.map_err(TargetRefusal::refusal)?;
+    // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
+    // never wakes a pod the relay would not have woken. A count that fails decides nothing.
+    if let (Some(window), Some(_)) = (window, rewritten.max_tokens())
+        && let Some(counted) = count_input(target.as_ref(), &rewritten.bytes, limits)
+    {
+        let room = window.saturating_sub(counted);
+        if room < 1 {
+            return Err(RefusalCode::ContextExceeded);
+        }
+        rewritten.clamp_max_tokens(room);
+    }
+    let rewritten = rewritten.bytes;
     let failed = || {
         relay.targets.invalidate(alias, target.authority());
         relay.metrics.count_invalidation();
         RefusalCode::UpstreamFailed
     };
     let mut connection = target.connect().map_err(|_| failed())?;
-    // The head is the gateway's own: no header of the client's request is forwarded, so the
-    // owner's credential never reaches a target. The target's bearer is one printable token
-    // (`TargetBearer::new`) and its credential header one token naming no header written here
-    // (`CredentialHeader::new`), so neither can end the line it is written into.
-    let mut request = format!(
-        "POST {} HTTP/1.1\r\nhost: {}\r\n",
+    let sent = write_request(
+        connection.as_mut(),
+        target.as_ref(),
         admitted.wire.path(),
-        target.authority()
-    )
-    .into_bytes();
-    if let Some(bearer) = target.bearer() {
-        match target.credential_header() {
-            Some(header) => {
-                request.extend_from_slice(header.as_str().as_bytes());
-                request.extend_from_slice(b": ");
-            }
-            None => request.extend_from_slice(b"authorization: Bearer "),
-        }
-        request.extend_from_slice(&bearer.0);
-        request.extend_from_slice(b"\r\n");
-    }
-    request.extend_from_slice(
-        format!(
-            "content-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-            rewritten.len()
-        )
-        .as_bytes(),
+        &rewritten,
     );
-    let sent = connection
-        .write_all(&request)
-        .and_then(|()| connection.write_all(&rewritten))
-        .and_then(|()| connection.flush());
-    // The head holds the bearer's bytes: overwrite them as `TargetBearer` does its own.
-    request.fill(0);
-    std::hint::black_box(&request);
     drop(rewritten);
     if sent.is_err() {
         return Err(failed());
@@ -955,6 +951,75 @@ pub(crate) fn serve(
     drop(connection);
     drop(target);
     Ok(())
+}
+
+/// Writes `body` to `target` as `POST <path>` under the gateway's own head. No header of the
+/// client's request is forwarded, so the owner's credential never reaches a target. The target's
+/// bearer is one printable token (`TargetBearer::new`) and its credential header one token
+/// naming no header written here (`CredentialHeader::new`), so neither can end the line it is
+/// written into.
+fn write_request(
+    connection: &mut dyn RelayStream,
+    target: &dyn RelayTarget,
+    path: &str,
+    body: &[u8],
+) -> io::Result<()> {
+    let mut request =
+        format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority()).into_bytes();
+    if let Some(bearer) = target.bearer() {
+        match target.credential_header() {
+            Some(header) => {
+                request.extend_from_slice(header.as_str().as_bytes());
+                request.extend_from_slice(b": ");
+            }
+            None => request.extend_from_slice(b"authorization: Bearer "),
+        }
+        request.extend_from_slice(&bearer.0);
+        request.extend_from_slice(b"\r\n");
+    }
+    request.extend_from_slice(
+        format!(
+            "content-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            body.len()
+        )
+        .as_bytes(),
+    );
+    let sent = connection
+        .write_all(&request)
+        .and_then(|()| connection.write_all(body))
+        .and_then(|()| connection.flush());
+    // The head holds the bearer's bytes: overwrite them as `TargetBearer` does its own.
+    request.fill(0);
+    std::hint::black_box(&request);
+    sent
+}
+
+/// The output clamp's count: `body`, the request as it is about to be relayed, sent to the same
+/// target's `POST /v1/messages/count_tokens` over a connection of its own, and the
+/// `input_tokens` of a 2xx answer. `None` for a count that fails: no connection, a request that
+/// cannot be written, an answer head that never arrives or is malformed, a status outside 2xx,
+/// an answer body longer than the head bound or one without such an `input_tokens`. A failed
+/// count reports nothing to the target source, and is counted in no series.
+fn count_input(target: &dyn RelayTarget, body: &[u8], limits: &Limits) -> Option<u64> {
+    let mut connection = target.connect().ok()?;
+    write_request(connection.as_mut(), target, COUNT_TOKENS_PATH, body).ok()?;
+    let mut input = Buffered {
+        source: Source::Target(connection.as_mut()),
+        buffer: Vec::new(),
+        start: 0,
+    };
+    let mut head = read_answer_head(&mut input, limits.line_bytes).ok()?;
+    if !(200..300).contains(&head.status) {
+        return None;
+    }
+    let mut answer = Vec::new();
+    while let Some(piece) = next_piece(&mut input, &mut head.framing, limits.line_bytes).ok()? {
+        answer.extend_from_slice(&piece);
+        if answer.len() > limits.line_bytes {
+            return None;
+        }
+    }
+    body::input_tokens(&answer)
 }
 
 /// Writes the answer's head, then each decoded piece as it arrives: as one chunk each when

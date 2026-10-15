@@ -169,8 +169,9 @@ given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_vie
 `RelayTargets`. A `RelayModel` is an alias, the model name its target expects, a non-empty set
 of distinct `Wire`s (`relay:no-wire`, `relay:repeated-wire`; two models with one alias are
 `relay:duplicate-model`), its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
-`with_tool_calling` says otherwise, and an optional `ReasoningEffort` (`with_reasoning_effort`,
-step 6). The embedding implements `RelayTargets` over its pool: `acquire` hands
+`with_tool_calling` says otherwise, an optional `ReasoningEffort` (`with_reasoning_effort`,
+step 6), and the optional `max_model_len` and `context_window` the public routes publish, the
+first of which declared is its window (`RelayModel::window`, step 7). The embedding implements `RelayTargets` over its pool: `acquire` hands
 out the `RelayTarget` serving an alias, and `invalidate` is told when a request through one
 failed. A `RelayTarget` opens its own connection (`connect`), so the transport, TLS included,
 and its timeouts are the embedding's; this crate opens none. The specification is the `Relay`
@@ -234,7 +235,28 @@ A request to a wire path is decided in this order:
    `model_cold_start` (row W6). It is the only refusal that carries `retry-after`. The embedding
    holds the request while its target starts and owns the hold budget; the Runpod composition
    asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
-   `docs/hosting.md`). Then `POST` to the same path at the
+   `docs/hosting.md`). Then, on the messages wire only, the output clamp. A model's window `w`
+   is its `max_model_len`, else its `context_window`, else it has none: the binary declares a
+   Runpod model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
+   `context_window` and never its `max_model_len`, so a hosted model without a `context_window`
+   has no window. For a model with a window and a body whose top-level `max_tokens` is one
+   non-negative JSON integer (digits only, named once at the top level), the gateway first sends
+   `POST /v1/messages/count_tokens` to the target `acquire` handed out, over a connection of its
+   own, with the head and credential described below and the body step 6 wrote; vLLM v0.27.1
+   answers it `{"input_tokens":n}` (`vllm/entrypoints/anthropic/api_router.py` lines 95-133). A
+   2xx answer whose body is one JSON object with one top-level non-negative integer
+   `input_tokens` = `n` decides: `w - n < 1` is `context-exceeded` (400) and nothing is
+   relayed; a `max_tokens` above `w - n` is rewritten in place to `w - n`, and one at or below it
+   is unchanged. The refusal's message starts `prompt is too long`, which Claude Code (2.1.301)
+   classes as a prompt that is too long and answers by compacting its conversation, where a vLLM
+   500 for a request past its window ends the turn. A count that fails (no connection, a request
+   that cannot be written, an answer head that never arrives or is malformed, a status outside
+   2xx, an answer body longer than `request-head-bytes`, or a body without such an
+   `input_tokens`) relays the request unchanged, reports nothing to `invalidate` and counts no
+   series. A body without such a `max_tokens`, a model without a window, and the chat and
+   responses wires are relayed without a count. The count runs only on a target `acquire`
+   handed out, so it never wakes a pod the relay would not have woken. Then `POST` to the same
+   path at the
    target with `host` set to the target's authority and a `content-length`. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target whose `credential_header` also names a `CredentialHeader`
@@ -382,6 +404,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `credential-rejected` | 401 | the presented owner credential was rejected |
 | `body-not-json` | 400 | the request body is not one JSON object |
 | `body-too-large` | 413 | the request body exceeds its byte bound |
+| `context-exceeded` | 400 | prompt is too long: the input leaves no room for output in the model context window |
 | `method-not-allowed` | 405 | this path does not accept that method |
 | `model-absent` | 400 | the request body names no model |
 | `model-cold-start` | 503 | the model is still starting; ask again after the retry-after delay |

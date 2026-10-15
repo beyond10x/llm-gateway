@@ -1,0 +1,42 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged
+summary: on the messages wire the gateway counts the input at the target and lowers a max_tokens above the room max_model_len leaves to that room, and relays one at or below it unchanged
+timeline:
+- at: '2026-10-15T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","messages"],"bearer":"vllm-key-code-0123456789abcdef","max_model_len":1000,"context_window":65536}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":900}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":900}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":900}"]},{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":101,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":100,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":99,\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    upstream:
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":101,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":100,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":100,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":100,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":99,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":99,"messages":[]}'
+    authorizations:
+    - 'Bearer vllm-key-code-0123456789abcdef'
+    - 'Bearer vllm-key-code-0123456789abcdef'
+    - 'Bearer vllm-key-code-0123456789abcdef'
+    - 'Bearer vllm-key-code-0123456789abcdef'
+    - 'Bearer vllm-key-code-0123456789abcdef'
+    - 'Bearer vllm-key-code-0123456789abcdef'
+    secret_upstream: false
+    acquired: 3
+    released: 3
+    invalidated: []

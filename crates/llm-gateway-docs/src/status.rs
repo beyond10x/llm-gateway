@@ -158,6 +158,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "A Messages request never asks for more output than the window has room for",
+        "For a model with a window (a Runpod model's max_model_len, a hosted model's context_window), the input is counted at the target's /v1/messages/count_tokens; a max_tokens above the room left is lowered to it, and an input that leaves none is context-exceeded, whose message Claude Code compacts on. A count that fails relays the request unchanged. Settled from vLLM v0.27.1's source, not a live session.",
+        "crates/llm-gateway/tests/wire_relay.rs::clamp_a_max_tokens_above_the_room_left_is_lowered_to_it_and_one_at_or_below_is_unchanged",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
         "A failed target is dropped and replaced",
         "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
         "crates/llm-gateway/tests/wire_relay.rs::w7_an_upstream_502_503_or_504_drops_that_endpoint_and_the_next_request_reaches_a_replacement",

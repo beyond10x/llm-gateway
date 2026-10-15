@@ -19,6 +19,14 @@ Nothing in any release is deployed or qualified against a live client.
   started by hand no longer thinks at its chat template's `xhigh` default when Claude Code sends
   no effort. A request that names one keeps it; the Chat and Responses wires and Runpod models,
   whose effort is the pod's own default, are unchanged.
+- A Messages request never asks for more output than the model's window has room for. For a
+  model with a window (a Runpod model's `max_model_len`, a hosted model's `context_window`), a
+  request with a top-level integer `max_tokens` is first counted at the same target's
+  `POST /v1/messages/count_tokens`; a `max_tokens` above the room the input leaves is lowered
+  to it, and an input that leaves none is refused `context-exceeded` (400), whose message starts
+  `prompt is too long` so Claude Code compacts instead of meeting vLLM's 500. A count that fails
+  relays the request unchanged; a hosted model without a `context_window`, and the Chat and
+  Responses wires, are not counted.
 
 ## 0.7.0 (2026-10-14)
 

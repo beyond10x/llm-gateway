@@ -1,0 +1,34 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted
+summary: a hosted model's window is its context_window; a hosted model declaring none, a body without max_tokens and the chat wire are relayed without a count
+timeline:
+- at: '2026-10-15T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"open","upstream_model":"vendor-open","wires":["chat","messages"],"context_window":4096,"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous"}},{"alias":"bare","upstream_model":"vendor-bare","wires":["messages"],"endpoint":{"pod":"pod-2","scheme":"http","auth_kind":"anonymous"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":4000}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]}],[{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"open\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"bare\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"open\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"open\",\"max_tokens\":32000,\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    upstream:
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"vendor-open","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"vendor-open","max_tokens":96,"messages":[]}'
+    - 'pod-2 POST /v1/messages {"model":"vendor-bare","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"vendor-open","messages":[]}'
+    - 'pod-1 POST /v1/chat/completions {"model":"vendor-open","max_tokens":32000,"messages":[]}'
+    acquired: 4
+    released: 4
+    invalidated: []

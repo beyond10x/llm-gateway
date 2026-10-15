@@ -1,0 +1,41 @@
+# AUTHORED from published sources, NOT captured from Claude Code or a pod.
+# A request carrying `output_config.format`, which Claude Code 2.1.293 sends paired with its own
+# beta header, unless `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` or
+# `CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1` is set. Which Claude Code feature sends it is not
+# published; this one is shaped as a short side request (a session title), not streamed.
+# Derived from https://code.claude.com/docs/en/llm-gateway-protocol (read 2026-10-15),
+# "Feature pass-through" (effort and structured outputs share `output_config`) and
+# https://platform.claude.com/docs/en/build-with-claude/structured-outputs (the shape
+# `output_config.format = {"type": "json_schema", "schema": {...}}`; the deprecated top-level
+# `output_format` is the beta's). vLLM v0.27.1 reads that shape
+# (https://github.com/vllm-project/vllm/blob/v0.27.1/vllm/entrypoints/anthropic/protocol.py:104-115)
+# and serves it as structured output (vllm/entrypoints/anthropic/serving.py:505-512).
+POST /v1/messages?beta=true HTTP/1.1
+content-type: application/json
+anthropic-version: 2023-06-01
+anthropic-beta: structured-outputs-2025-11-13
+x-claude-code-session-id: 6f1c2a9e-3b7d-4e58-9a21-0c4d8e7f5b13
+
+{
+  "model": "code",
+  "max_tokens": 512,
+  "thinking": {"type": "adaptive"},
+  "output_config": {
+    "effort": "medium",
+    "format": {
+      "type": "json_schema",
+      "schema": {
+        "type": "object",
+        "properties": {"title": {"type": "string"}},
+        "required": ["title"],
+        "additionalProperties": false
+      }
+    }
+  },
+  "system": [
+    {"type": "text", "text": "Write a short title for this conversation."}
+  ],
+  "messages": [
+    {"role": "user", "content": "What does /tmp/a.txt say?"}
+  ]
+}

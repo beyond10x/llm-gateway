@@ -1,0 +1,49 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a pod.
+# The event stream `vllm/vllm-openai:v0.27.1` (`--enable-auto-tool-choice --tool-call-parser
+# qwen3_coder`) answers 1-tool-turn.request.txt with, as its source writes it. Sources under
+# https://github.com/vllm-project/vllm/blob/v0.27.1/ (tag v0.27.1, commit 6e448d0ea9bf):
+#   vllm/entrypoints/anthropic/serving.py:95-96 (`event: <type>\ndata: <json>\n\n`);
+#   serving.py:673-996 (message_stream_converter: message_start from the first chunk, a thinking
+#   block, its `signature_delta` written only when the block closes, serving.py:719-747, then a
+#   tool_use block opened by the delta carrying id and name, `message_delta` with
+#   `stop_reason` `tool_use`, then `message_stop`); no `ping` event is ever written;
+#   vllm/entrypoints/anthropic/protocol.py:181-218 (field order of the compact JSON,
+#   `model_dump_json(exclude_unset=True)`).
+# The ids, the signature (a fresh uuid4 hex, serving.py:701), the token counts and the split of
+# `partial_json` are illustrative; `model` is the served model name.
+event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-9f2c4e1ab37d0c55","type":"message","role":"assistant","content":[],"model":"Qwen/Qwen3.8-27B-FP8","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1234,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"thinking","thinking":""},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"The user wants the file."},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":" I'll read it."},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"signature_delta","signature":"3b1f0c9e8a7d4c2b9e6f5a4d3c2b1a09"},"index":0}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"tool_use","id":"chatcmpl-tool-a1b2c3d4e5f60718","name":"Read","input":{}},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":"{\"file_path\": \"/tmp/a"},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"input_json_delta","partial_json":".txt\"}"},"index":1}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"tool_use"},"usage":{"input_tokens":1234,"output_tokens":56}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

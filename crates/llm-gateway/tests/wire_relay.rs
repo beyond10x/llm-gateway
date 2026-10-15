@@ -1,6 +1,7 @@
 //! The relay of the three model-call wires (story:wire-relay), one test per behaviour, each
 //! named after the row of `docs/llmgw-capability-matrix.md` it closes: R6, R7, R8, W1, W2, W3,
-//! W4, W5, W6, W7, K11 and B8, and tool calling (`tools_*`). The specification is the `Relay`
+//! W4, W5, W6, W7, K11 and B8, and tool calling (`tools_*`), and what Claude Code sends on the
+//! messages wire (`claude_code_*`, story:claude-code-wire). The specification is the `Relay`
 //! command of `spec/domains/gateway.yaml`.
 //!
 //! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
@@ -1853,4 +1854,341 @@ fn tools_a_request_offering_no_tool_to_a_model_without_tool_calling_is_relayed_u
         .map(|body| body.replacen("\"text\"", "\"served-text\"", 1))
         .collect();
     assert_eq!(seen, expected);
+}
+
+// --- W4: an effort of `max` ---------------------------------------------------------------------
+
+#[test]
+fn w4_on_the_messages_wire_effort_max_reaches_the_target_as_xhigh() {
+    rewrites(
+        "/v1/messages",
+        &[
+            (
+                "{\"model\":\"code\",\"output_config\":{\"effort\":\"max\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"max\"}}",
+                "{\"model\":\"served-code\",\"output_config\":{\"effort\":\"xhigh\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+            ),
+            (
+                "{\"output_config\":{\"format\":{\"type\":\"json_schema\"},\"effort\":\"m\\u0061x\"},\"model\":\"code\"}",
+                "{\"output_config\":{\"format\":{\"type\":\"json_schema\"},\"effort\":\"xhigh\"},\"model\":\"served-code\"}",
+            ),
+            (
+                "{\"model\":\"code\",\"output_config\":{\"effort\":\"high\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"max\"}}",
+                "{\"model\":\"served-code\",\"output_config\":{\"effort\":\"xhigh\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+            ),
+        ],
+    );
+}
+
+#[test]
+fn w4_low_medium_xhigh_and_any_other_effort_reach_the_target_unchanged() {
+    rewrites(
+        "/v1/messages",
+        &[
+            (
+                "{\"model\":\"code\",\"output_config\":{\"effort\":\"low\"}}",
+                "{\"model\":\"served-code\",\"output_config\":{\"effort\":\"low\"}}",
+            ),
+            (
+                "{\"model\":\"code\",\"output_config\":{\"effort\":\"medium\"}}",
+                "{\"model\":\"served-code\",\"output_config\":{\"effort\":\"medium\"}}",
+            ),
+            (
+                "{\"model\":\"code\",\"output_config\":{\"effort\":\"xhigh\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+                "{\"model\":\"served-code\",\"output_config\":{\"effort\":\"xhigh\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+            ),
+            (
+                "{\"model\":\"code\",\"output_config\":{\"effort\":\"MAX\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"maximum\"},\"effort\":\"max\"}",
+                "{\"model\":\"served-code\",\"output_config\":{\"effort\":\"MAX\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"maximum\"},\"effort\":\"max\"}",
+            ),
+        ],
+    );
+}
+
+#[test]
+fn w4_on_the_chat_and_responses_wires_effort_max_passes_unchanged() {
+    let messages_fields = "\"output_config\":{\"effort\":\"max\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"max\"}";
+    rewrites(
+        "/v1/chat/completions",
+        &[(
+            &format!("{{\"model\":\"code\",\"reasoning_effort\":\"max\",{messages_fields}}}"),
+            &format!(
+                "{{\"model\":\"served-code\",\"reasoning_effort\":\"max\",{messages_fields}}}"
+            ),
+        )],
+    );
+    rewrites(
+        "/v1/responses",
+        &[(
+            &format!(
+                "{{\"model\":\"code\",\"reasoning\":{{\"effort\":\"max\"}},{messages_fields}}}"
+            ),
+            &format!(
+                "{{\"model\":\"served-code\",\"reasoning\":{{\"effort\":\"max\"}},{messages_fields}}}"
+            ),
+        )],
+    );
+}
+
+// --- Claude Code on the messages wire -----------------------------------------------------------
+//
+// The fixtures under `tests/fixtures/claude-code/` are authored from Claude Code's published
+// gateway protocol and from vLLM v0.27.1's source, not captured; each is headed by its sources
+// and `tests/fixtures/claude-code/README.md` describes their format.
+
+/// The name the pinned vLLM serves the model under, as its answers in the fixtures carry it.
+const SERVED_QWEN: &str = "Qwen/Qwen3.8-27B-FP8";
+
+const TOOL_TURN_REQUEST: &str = include_str!("fixtures/claude-code/1-tool-turn.request.txt");
+const TOOL_TURN_RESPONSE: &str = include_str!("fixtures/claude-code/1-tool-turn.response.txt");
+const TOOL_RESULT_REQUEST: &str = include_str!("fixtures/claude-code/2-tool-result.request.txt");
+const TOOL_RESULT_RESPONSE: &str = include_str!("fixtures/claude-code/2-tool-result.response.txt");
+const STRUCTURED_REQUEST: &str =
+    include_str!("fixtures/claude-code/3-structured-output.request.txt");
+const STRUCTURED_RESPONSE: &str =
+    include_str!("fixtures/claude-code/3-structured-output.response.txt");
+
+/// A fixture without its provenance header: every leading line that starts with `#`.
+fn fixture(text: &'static str) -> &'static str {
+    let mut rest = text;
+    while rest.starts_with('#') {
+        rest = rest.split_once('\n').map_or("", |(_, after)| after);
+    }
+    rest
+}
+
+/// A request fixture as Claude Code sends it.
+struct ClaudeCodeRequest {
+    path: &'static str,
+    headers: Vec<&'static str>,
+    body: &'static str,
+}
+
+impl ClaudeCodeRequest {
+    fn parse(text: &'static str) -> Self {
+        let (head, body) = fixture(text).split_once("\n\n").unwrap();
+        let mut lines = head.lines();
+        let path = lines
+            .next()
+            .and_then(|line| line.strip_prefix("POST "))
+            .and_then(|line| line.strip_suffix(" HTTP/1.1"))
+            .unwrap();
+        Self {
+            path,
+            headers: lines.collect(),
+            body,
+        }
+    }
+
+    /// The request on the wire, with the owner's credential and the body's length added.
+    fn raw(&self) -> Vec<u8> {
+        let mut raw = format!(
+            "POST {} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER}\r\n",
+            self.path
+        );
+        for line in &self.headers {
+            raw.push_str(line);
+            raw.push_str("\r\n");
+        }
+        raw.push_str(&format!("content-length: {}\r\n\r\n", self.body.len()));
+        let mut raw = raw.into_bytes();
+        raw.extend_from_slice(self.body.as_bytes());
+        raw
+    }
+}
+
+/// The model Claude Code reaches: alias `code`, served as the pinned vLLM names it, with tool
+/// calling parsed.
+fn claude_code_model() -> RelayModel {
+    RelayModel::new(label("code"), label(SERVED_QWEN), vec![Wire::Messages])
+        .unwrap()
+        .with_tool_calling(ToolCalling::Parsed)
+}
+
+/// Every header name of a request head a pod received, lowercase, in order.
+fn header_names(raw: &[u8]) -> Vec<String> {
+    let end = find(raw, b"\r\n\r\n").unwrap();
+    String::from_utf8(raw[..end].to_vec())
+        .unwrap()
+        .split("\r\n")
+        .skip(1)
+        .filter_map(|line| line.split_once(':'))
+        .map(|(name, _)| name.trim().to_ascii_lowercase())
+        .collect()
+}
+
+/// Relays each request fixture to a pod answering the matching response fixture, and checks
+/// the pod received the fixture's body with only `model` and `max_effort` rewritten, under the
+/// gateway's own head, and the client received the response fixture byte for byte.
+fn relays_claude_code(exchanges: &[(&'static str, &'static str, &'static str)]) {
+    let pod = Pod::start(
+        exchanges
+            .iter()
+            .map(|(_, response, content_type)| {
+                let body = fixture(response);
+                if *content_type == "text/event-stream" {
+                    stream(&body.split_inclusive("\n\n").collect::<Vec<_>>())
+                } else {
+                    reply(200, content_type, body.as_bytes())
+                }
+            })
+            .collect(),
+    );
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![claude_code_model()], &source);
+    let mut expected_bodies = Vec::new();
+    for (request, response, content_type) in exchanges {
+        let request = ClaudeCodeRequest::parse(request);
+        assert!(request.path.ends_with("?beta=true"), "{}", request.path);
+        for name in ["anthropic-version", "anthropic-beta"] {
+            assert!(
+                request
+                    .headers
+                    .iter()
+                    .any(|line| line.starts_with(&format!("{name}: "))),
+                "the fixture sends {name}"
+            );
+        }
+        let answer = send(gateway.addr, &request.raw());
+        assert_eq!(answer.status, 200, "{:?}", answer.code());
+        assert_eq!(answer.header("content-type"), Some(*content_type));
+        assert_eq!(
+            answer.text(),
+            fixture(response),
+            "the client receives the target's answer byte for byte"
+        );
+        expected_bodies.push(
+            request
+                .body
+                .replacen(
+                    "\"model\": \"code\"",
+                    &format!("\"model\": \"{SERVED_QWEN}\""),
+                    1,
+                )
+                .replacen("\"effort\": \"max\"", "\"effort\": \"xhigh\"", 1),
+        );
+    }
+    let seen = pod.seen();
+    assert_eq!(seen.len(), exchanges.len());
+    for (received, expected) in seen.iter().zip(&expected_bodies) {
+        assert_eq!(received.method, "POST");
+        assert_eq!(
+            received.path, "/v1/messages",
+            "the query is discarded and the target asked on the wire's path"
+        );
+        assert_eq!(&received.body_text(), expected);
+        assert_eq!(
+            header_names(&received.raw),
+            ["host", "content-type", "content-length", "connection"],
+            "no header of Claude Code's reaches the target: not anthropic-version, \
+             anthropic-beta or x-claude-code-session-id"
+        );
+    }
+    assert_eq!(source.acquired().len(), exchanges.len());
+}
+
+#[test]
+fn claude_code_a_tool_turn_and_its_tool_result_reach_the_pod_mapped_and_stream_back_unchanged() {
+    for request in [TOOL_TURN_REQUEST, TOOL_RESULT_REQUEST] {
+        let body = ClaudeCodeRequest::parse(request).body;
+        for part in [
+            "\"thinking\": {\"type\": \"adaptive\"}",
+            "\"output_config\": {\"effort\": \"max\"}",
+            "\"cache_control\": {\"type\": \"ephemeral\"}",
+            "\"tools\": [",
+        ] {
+            assert!(body.contains(part), "the fixture carries {part}");
+        }
+    }
+    assert!(
+        ClaudeCodeRequest::parse(TOOL_RESULT_REQUEST)
+            .body
+            .contains("\"type\": \"tool_result\"")
+    );
+    for part in [
+        "\"type\":\"thinking\"",
+        "\"type\":\"signature_delta\"",
+        "\"type\":\"tool_use\"",
+        "\"stop_reason\":\"tool_use\"",
+    ] {
+        assert!(
+            fixture(TOOL_TURN_RESPONSE).contains(part),
+            "the stream carries {part}"
+        );
+    }
+    relays_claude_code(&[
+        (TOOL_TURN_REQUEST, TOOL_TURN_RESPONSE, "text/event-stream"),
+        (
+            TOOL_RESULT_REQUEST,
+            TOOL_RESULT_RESPONSE,
+            "text/event-stream",
+        ),
+    ]);
+}
+
+#[test]
+fn claude_code_adaptive_thinking_reaches_the_pod_unchanged() {
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![claude_code_model()], &source);
+    let body = "{\"model\":\"code\",\"thinking\":{\"type\":\"adaptive\"},\"messages\":[]}";
+    assert_eq!(gateway.post_text("/v1/messages", body).status, 200);
+    let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    assert_eq!(
+        bodies,
+        [format!(
+            "{{\"model\":\"{SERVED_QWEN}\",\"thinking\":{{\"type\":\"adaptive\"}},\"messages\":[]}}"
+        )]
+    );
+}
+
+#[test]
+fn claude_code_structured_output_reaches_the_pod_with_its_format_unchanged() {
+    let format = "\"format\": {\n      \"type\": \"json_schema\",\n      \"schema\": {";
+    assert!(
+        ClaudeCodeRequest::parse(STRUCTURED_REQUEST)
+            .body
+            .contains(format)
+    );
+    relays_claude_code(&[(STRUCTURED_REQUEST, STRUCTURED_RESPONSE, "application/json")]);
+}
+
+#[test]
+fn claude_code_the_startup_probe_head_api_hello_is_refused_and_asks_for_no_target() {
+    let pod = Pod::start(Vec::new());
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![claude_code_model()], &source);
+    let head_of = |raw: &str| {
+        let mut stream = TcpStream::connect(gateway.addr).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        stream.write_all(raw.as_bytes()).unwrap();
+        let mut received = Vec::new();
+        drop(stream.read_to_end(&mut received));
+        let end = find(&received, b"\r\n\r\n").unwrap();
+        assert_eq!(received.len(), end + 4, "an answer to HEAD has no body");
+        String::from_utf8(received[..end].to_vec()).unwrap()
+    };
+    let anonymous = head_of(
+        "HEAD /api/hello HTTP/1.1\r\nhost: gateway\r\nanthropic-version: 2023-06-01\r\n\r\n",
+    );
+    assert!(anonymous.starts_with("HTTP/1.1 401 "), "{anonymous}");
+    assert_eq!(
+        header_of(&anonymous, "www-authenticate").as_deref(),
+        Some("Bearer")
+    );
+    let owner = head_of(&format!(
+        "HEAD /api/hello HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER}\r\n\r\n"
+    ));
+    assert!(owner.starts_with("HTTP/1.1 404 "), "{owner}");
+    // The bodies a GET would carry name the codes.
+    let get = |bearer| send(gateway.addr, &request("GET", "/api/hello", bearer, b""));
+    assert_eq!(
+        get(None).refused(),
+        (401, Some("credential-absent".to_string()))
+    );
+    assert_eq!(
+        get(Some(OWNER)).refused(),
+        (404, Some("path-unknown".to_string()))
+    );
+    assert!(source.acquired().is_empty());
+    assert!(pod.seen().is_empty());
 }

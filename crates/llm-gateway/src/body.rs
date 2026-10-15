@@ -451,4 +451,23 @@ mod tests {
             r#"{"output_config":{"effort":"hig\u0068"},"model":"up","x":{"effort":"high"}}"#
         );
     }
+
+    #[test]
+    fn an_effort_of_max_is_recorded_as_high_is_and_no_other() {
+        let body = br#"{"model":"m","output_config":{"effort":"max"},"chat_template_kwargs":{"reasoning_effort":"max"}}"#;
+        let analysis = analyse(body).unwrap();
+        assert_eq!(
+            String::from_utf8(analysis.rewrite(body, "up", true)).unwrap(),
+            r#"{"model":"up","output_config":{"effort":"xhigh"},"chat_template_kwargs":{"reasoning_effort":"xhigh"}}"#
+        );
+        for effort in ["low", "medium", "xhigh", "MAX", "maximum", " max", "none"] {
+            let body = format!(r#"{{"model":"m","output_config":{{"effort":"{effort}"}}}}"#);
+            let analysis = analyse(body.as_bytes()).unwrap();
+            assert_eq!(
+                String::from_utf8(analysis.rewrite(body.as_bytes(), "m", true)).unwrap(),
+                body,
+                "{effort}"
+            );
+        }
+    }
 }

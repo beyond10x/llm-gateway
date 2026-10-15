@@ -1,0 +1,56 @@
+# AUTHORED from published sources, NOT captured from Claude Code or a pod.
+# The follow-up Claude Code 2.1.293 sends once the Read tool of 1-tool-turn.response.txt ran: the
+# assistant turn as the stream assembled it (the thinking block with vLLM's signature, the
+# tool_use block), then the user turn carrying the `tool_result` with `cache_control`.
+# Derived from https://code.claude.com/docs/en/llm-gateway-protocol (read 2026-10-15), as
+# 1-tool-turn.request.txt; vLLM v0.27.1 admits each block type used here
+# (https://github.com/vllm-project/vllm/blob/v0.27.1/vllm/entrypoints/anthropic/protocol.py:34-62).
+POST /v1/messages?beta=true HTTP/1.1
+content-type: application/json
+anthropic-version: 2023-06-01
+anthropic-beta: context-management-2025-06-27,structured-outputs-2025-11-13
+x-claude-code-session-id: 6f1c2a9e-3b7d-4e58-9a21-0c4d8e7f5b13
+
+{
+  "model": "code",
+  "max_tokens": 32000,
+  "stream": true,
+  "thinking": {"type": "adaptive"},
+  "output_config": {"effort": "max"},
+  "system": [
+    {"type": "text", "text": "[attribution block: client version and conversation fingerprint]"},
+    {"type": "text", "text": "You are Claude Code, an interactive command line tool.", "cache_control": {"type": "ephemeral"}}
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "What does /tmp/a.txt say?"}
+      ]
+    },
+    {
+      "role": "assistant",
+      "content": [
+        {"type": "thinking", "thinking": "The user wants the file. I'll read it.", "signature": "3b1f0c9e8a7d4c2b9e6f5a4d3c2b1a09"},
+        {"type": "tool_use", "id": "chatcmpl-tool-a1b2c3d4e5f60718", "name": "Read", "input": {"file_path": "/tmp/a.txt"}}
+      ]
+    },
+    {
+      "role": "user",
+      "content": [
+        {"type": "tool_result", "tool_use_id": "chatcmpl-tool-a1b2c3d4e5f60718", "content": "     1\thello from a.txt\n", "cache_control": {"type": "ephemeral"}}
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "Read",
+      "description": "Reads a file from the local filesystem.",
+      "input_schema": {
+        "type": "object",
+        "properties": {"file_path": {"type": "string", "description": "The absolute path to the file to read"}},
+        "required": ["file_path"]
+      }
+    }
+  ]
+}

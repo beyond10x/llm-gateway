@@ -22,7 +22,7 @@ of the file, every byte of it.
 | `1-tool-turn.request.txt` | `1-tool-turn.response.txt` | `?beta=true`, `anthropic-version`, `anthropic-beta`, adaptive `thinking`, `output_config.effort` `max`, a tool and `cache_control`; answered by a thinking block, a `signature_delta` and a `tool_use` block ending in `stop_reason` `tool_use` |
 | `2-tool-result.request.txt` | `2-tool-result.response.txt` | the follow-up carrying the `tool_result`; answered by a thinking block and a text block ending in `end_turn` |
 | `3-structured-output.request.txt` | `3-structured-output.response.txt` | `output_config.format` with a JSON schema beside effort `medium`, not streamed; answered by one JSON message whose text is the schema's JSON |
-| `2-tool-result.request.txt`, as the gateway counts it at `POST /v1/messages/count_tokens` | `4-count-tokens.response.txt` | the count vLLM answers the gateway's output clamp with: `{"input_tokens":n}` |
+| `2-tool-result.request.txt`, as the gateway counts it at `POST /v1/messages/count_tokens` | `4-count-tokens.response.txt` | the count vLLM answers the gateway's output clamp with: `{"input_tokens":n,"context_management":{"original_input_tokens":n}}`, of which the gateway reads the top-level `input_tokens` |
 
 Upstream sources, all read on 2026-10-15:
 

@@ -17,6 +17,9 @@
     "read_timeout_ms": {
       "type": "integer"
     },
+    "count_timeout_ms": {
+      "type": "integer"
+    },
     "ready": {
       "type": "boolean"
     },
@@ -32,6 +35,7 @@
     "max_head_bytes",
     "max_concurrent_requests",
     "read_timeout_ms",
+    "count_timeout_ms",
     "ready",
     "draining",
     "state"
@@ -40,8 +44,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "913f8a44b25242c45b80fd45f78f0c95e1ae766651dd813c568d2f42c3cdcbde",
-    "contract_digest": "slice-sha256/2:19670cf662d20b31805f76b310d902b1efefe2fcac38d5d8a65b79bfca548203",
+    "source_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
+    "contract_digest": "slice-sha256/2:ceada420cc3e5f5250cb293ebd28dbd1b3172ce74eee15859dce14539f6fe756",
     "regenerate": "ess generate"
   },
   "$defs": {

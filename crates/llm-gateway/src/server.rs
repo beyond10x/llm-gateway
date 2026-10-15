@@ -27,6 +27,9 @@ const DEFAULT_MAX_HEAD_BYTES: usize = 8192;
 const DEFAULT_MAX_CONCURRENT_REQUESTS: u64 = 64;
 /// A timeout, not a size bound. Its enforcement is measured with a short configured value.
 const DEFAULT_READ_TIMEOUT_SECONDS: u64 = 10;
+/// The output clamp's count deadline. A timeout, not a size bound; its enforcement is measured
+/// with a short configured value.
+const DEFAULT_COUNT_TIMEOUT_SECONDS: u64 = 10;
 /// The `retry-after` a `model-cold-start` refusal carries, in seconds, as llmgw (row W6). A hint
 /// to the client, not a bound.
 const COLD_START_RETRY_AFTER_SECONDS: u64 = 30;
@@ -50,6 +53,10 @@ pub struct GatewayConfig {
     pub max_head_bytes: usize,
     /// How long one connection may take to deliver its head.
     pub read_timeout: Duration,
+    /// How long the output clamp's count may take, from the moment its connection to the target
+    /// is open, to be written and answered. A count not answered by then fails, and the request
+    /// is relayed unchanged; the target's own read timeout never holds it longer.
+    pub count_timeout: Duration,
     /// Connections served at once. Beyond it a request is refused as unavailable.
     pub max_concurrent_requests: u64,
 }
@@ -60,6 +67,7 @@ impl GatewayConfig {
             bind,
             max_head_bytes: DEFAULT_MAX_HEAD_BYTES,
             read_timeout: Duration::from_secs(DEFAULT_READ_TIMEOUT_SECONDS),
+            count_timeout: Duration::from_secs(DEFAULT_COUNT_TIMEOUT_SECONDS),
             max_concurrent_requests: DEFAULT_MAX_CONCURRENT_REQUESTS,
         }
     }

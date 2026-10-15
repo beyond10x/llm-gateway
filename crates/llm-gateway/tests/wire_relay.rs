@@ -489,6 +489,15 @@ impl Relayed {
     }
 
     fn compose(models: Vec<RelayModel>, source: &Arc<Source>, ready: bool) -> Self {
+        Self::configured(models, source, ready, |_| {})
+    }
+
+    fn configured(
+        models: Vec<RelayModel>,
+        source: &Arc<Source>,
+        ready: bool,
+        configure: impl FnOnce(&mut GatewayConfig),
+    ) -> Self {
         let verifier = Arc::new(
             SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
         );
@@ -496,6 +505,7 @@ impl Relayed {
         let relay = Relay::new(models, targets).unwrap();
         let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
         config.read_timeout = WAIT;
+        configure(&mut config);
         let handle = Gateway::bind_with_relay(
             config,
             verifier,
@@ -2390,15 +2400,20 @@ fn count_answer() -> Answer {
     ok_json(fixture(COUNT_TOKENS).trim_end())
 }
 
-/// The count the fixture answers.
+/// The count the fixture answers: its top-level `input_tokens`, which vLLM repeats as
+/// `context_management.original_input_tokens`.
 fn counted() -> u64 {
-    fixture(COUNT_TOKENS)
-        .trim_end()
+    let answer = fixture(COUNT_TOKENS).trim_end();
+    let (count, rest) = answer
         .strip_prefix("{\"input_tokens\":")
-        .and_then(|rest| rest.strip_suffix('}'))
-        .unwrap()
-        .parse()
-        .unwrap()
+        .and_then(|rest| rest.split_once(','))
+        .unwrap();
+    assert_eq!(
+        rest,
+        format!("\"context_management\":{{\"original_input_tokens\":{count}}}}}"),
+        "the fixture is vLLM's shape"
+    );
+    count.parse().unwrap()
 }
 
 /// Claude Code's tool-result turn asking for `max_tokens`.
@@ -2606,6 +2621,76 @@ fn clamp_a_count_that_fails_relays_the_request_unchanged() {
         );
         assert_eq!(source.acquired().len(), 1, "{name}");
     }
+}
+
+/// The count has its own deadline, `GatewayConfig::count_timeout`: a target that takes the count
+/// and never answers it holds the request that long and no longer, however long the target's
+/// own read timeout is, and the request is then relayed unchanged to the same target as for any
+/// count that fails.
+#[test]
+fn clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes() {
+    let deadline = Duration::from_millis(500);
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let authority = listener.local_addr().unwrap().to_string();
+    let (release, released) = mpsc::channel::<()>();
+    let pod = thread::spawn(move || {
+        // The count is read and never answered; the relay that follows is answered while the
+        // count's connection is still held open.
+        let (mut count, _) = listener.accept().unwrap();
+        count.set_read_timeout(Some(WAIT)).unwrap();
+        let counted = read_request(&mut count).unwrap();
+        let (mut relay, _) = listener.accept().unwrap();
+        relay.set_read_timeout(Some(WAIT)).unwrap();
+        let relayed = read_request(&mut relay).unwrap();
+        answer_with(&mut relay, ok_json("{}"));
+        let _held = released.recv_timeout(WAIT);
+        drop(count);
+        (counted, relayed)
+    });
+    let slot = Slot {
+        authority,
+        refuses: false,
+        bearer: None,
+        header: None,
+        refuse_first: Arc::new(AtomicUsize::new(0)),
+    };
+    let source = Source::new(vec![slot]);
+    let gateway = Relayed::configured(
+        vec![code_model().with_max_model_len(100)],
+        &source,
+        true,
+        |config| config.count_timeout = deadline,
+    );
+    let asked = Instant::now();
+    let answer = gateway.post_text(
+        "/v1/messages",
+        "{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}",
+    );
+    let took = asked.elapsed();
+    drop(release.send(()));
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    assert_eq!(answer.text(), "{}");
+    assert!(
+        took < deadline + Duration::from_secs(3),
+        "a count that never answered held the request {took:?}, past its deadline of {deadline:?}"
+    );
+    assert!(
+        took >= deadline,
+        "the request was relayed after {took:?}, before the count's deadline of {deadline:?}"
+    );
+    let (counted, relayed) = pod.join().unwrap();
+    assert_eq!(counted.path, "/v1/messages/count_tokens");
+    assert_eq!(relayed.path, "/v1/messages");
+    assert_eq!(
+        relayed.body_text(),
+        "{\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+        "relayed unchanged"
+    );
+    assert!(
+        source.invalidated().is_empty(),
+        "no target is reported failed"
+    );
+    assert_eq!(source.acquired().len(), 1);
 }
 
 /// Criteria 1 and 5: no count is asked for a model without a window, for a body without one

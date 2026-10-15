@@ -2937,3 +2937,303 @@ fn effort_adv_chat_and_responses_bodies_at_the_bound_gain_no_effort() {
         );
     }
 }
+
+// --- Adversarial cases for the output clamp (story:max-tokens-clamp) ----------------------------
+//
+// Each drives the relay from what vLLM v0.27.1 sends and accepts, read from its source
+// (`vllm/entrypoints/anthropic/{api_router,protocol,serving}.py`, tag v0.27.1).
+
+/// A relayed request's body and the `content-length` it was sent with agree.
+fn length_matches(seen: &Seen) {
+    assert_eq!(
+        seen.content_length.as_deref(),
+        Some(seen.body.len().to_string().as_str()),
+        "{}",
+        seen.path
+    );
+}
+
+/// vLLM v0.27.1 answers the count with `model_dump(exclude_none=True)` of
+/// `AnthropicCountTokensResponse`, which carries `context_management` beside `input_tokens`
+/// (`serving.py:1020-1025`, `api_router.py:133`); the fixture's compact `{"input_tokens":n}` is
+/// not what a pod writes. The real shape must decide the clamp just the same.
+#[test]
+fn adversary_mtc_the_count_vllm_really_writes_with_context_management_is_read() {
+    let pod = Pod::start(vec![
+        ok_json("{\"input_tokens\":900,\"context_management\":{\"original_input_tokens\":900}}"),
+        ok_json("{}"),
+    ]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model().with_max_model_len(1_000)], &source);
+    let answer = gateway.post_text(
+        "/v1/messages",
+        "{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}",
+    );
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    assert_eq!(
+        seen[1].body_text(),
+        "{\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}"
+    );
+    length_matches(&seen[1]);
+}
+
+/// A key spelled with an escape is the same key to vLLM's JSON parser, so
+/// `"max_tokens"` is the request's `max_tokens` and is lowered in place, its spelling and
+/// every other byte kept, and the `content-length` follows.
+#[test]
+fn adversary_mtc_an_escaped_max_tokens_key_is_counted_and_lowered_in_place() {
+    let pod = Pod::start(vec![ok_json("{\"input_tokens\":900}"), ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model().with_max_model_len(1_000)], &source);
+    let answer = gateway.post_text(
+        "/v1/messages",
+        "{\"model\":\"code\", \"max\\u005ftokens\" :\n 32000 \n,\"messages\":[]}",
+    );
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2, "a count, then the request");
+    assert_eq!(seen[0].path, "/v1/messages/count_tokens");
+    assert_eq!(
+        seen[1].body_text(),
+        "{\"model\":\"served-code\", \"max\\u005ftokens\" :\n 100 \n,\"messages\":[]}"
+    );
+    length_matches(&seen[0]);
+    length_matches(&seen[1]);
+}
+
+/// Both rewrites in one body: the declared effort inserted before, after or beside
+/// `max_tokens`, effort `max` mapped to `xhigh`, and the clamp, each byte-exact. The count is
+/// asked with the body as step 6 wrote it, before the clamp.
+#[test]
+fn adversary_mtc_the_declared_effort_and_the_clamp_rewrite_one_body_byte_exact() {
+    let cases = [
+        (
+            r#"{"output_config":{},"max_tokens":32000,"model":"code","messages":[]}"#,
+            r#"{"output_config":{"effort":"low"},"max_tokens":32000,"model":"served-code","messages":[]}"#,
+            r#"{"output_config":{"effort":"low"},"max_tokens":100,"model":"served-code","messages":[]}"#,
+        ),
+        (
+            r#"{"model":"code","messages":[],"max_tokens":32000}"#,
+            r#"{"model":"served-code","messages":[],"max_tokens":32000,"output_config":{"effort":"low"}}"#,
+            r#"{"model":"served-code","messages":[],"max_tokens":100,"output_config":{"effort":"low"}}"#,
+        ),
+        (
+            r#"{"output_config":{"format":{"type":"json_schema"}},"model":"code","max_tokens":32000 }"#,
+            r#"{"output_config":{"format":{"type":"json_schema"},"effort":"low"},"model":"served-code","max_tokens":32000 }"#,
+            r#"{"output_config":{"format":{"type":"json_schema"},"effort":"low"},"model":"served-code","max_tokens":100 }"#,
+        ),
+        (
+            r#"{"output_config":{"effort":"max"},"chat_template_kwargs":{"reasoning_effort":"max"},"max_tokens":32000,"model":"code"}"#,
+            r#"{"output_config":{"effort":"xhigh"},"chat_template_kwargs":{"reasoning_effort":"xhigh"},"max_tokens":32000,"model":"served-code"}"#,
+            r#"{"output_config":{"effort":"xhigh"},"chat_template_kwargs":{"reasoning_effort":"xhigh"},"max_tokens":100,"model":"served-code"}"#,
+        ),
+    ];
+    let pod = Pod::start(
+        cases
+            .iter()
+            .flat_map(|_| [ok_json("{\"input_tokens\":900}"), ok_json("{}")])
+            .collect(),
+    );
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![
+            code_model()
+                .with_max_model_len(1_000)
+                .with_reasoning_effort(ReasoningEffort::Low),
+        ],
+        &source,
+    );
+    for (sent, _, _) in &cases {
+        assert_eq!(
+            gateway.post_text("/v1/messages", sent).status,
+            200,
+            "{sent}"
+        );
+    }
+    let seen = pod.seen();
+    assert_eq!(seen.len(), cases.len() * 2);
+    for (index, (sent, counted, relayed)) in cases.iter().enumerate() {
+        let (count, relay) = (&seen[index * 2], &seen[index * 2 + 1]);
+        assert_eq!(count.path, "/v1/messages/count_tokens", "{sent}");
+        assert_eq!(count.body_text(), *counted, "{sent}");
+        assert_eq!(relay.path, "/v1/messages", "{sent}");
+        assert_eq!(relay.body_text(), *relayed, "{sent}");
+        length_matches(count);
+        length_matches(relay);
+    }
+}
+
+/// A count answered chunked, in pieces that split the number, or framed by the pod closing
+/// the connection, decides the clamp as one framed by `content-length` does.
+#[test]
+fn adversary_mtc_a_chunked_or_close_framed_count_is_read_whole() {
+    let framed = |framing| Answer::Reply {
+        status: 200,
+        content_type: "application/json",
+        chunks: vec![
+            b"{\"input_".to_vec(),
+            b"tokens\":9".to_vec(),
+            b"00}".to_vec(),
+        ],
+        framing,
+        hold_head: None,
+        hold_chunks: None,
+    };
+    let pod = Pod::start(vec![
+        framed(Framing::Chunked),
+        ok_json("{}"),
+        framed(Framing::Close),
+        ok_json("{}"),
+    ]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model().with_max_model_len(1_000)], &source);
+    for _ in 0..2 {
+        let answer = gateway.post_text(
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}",
+        );
+        assert_eq!(answer.status, 200, "{:?}", answer.code());
+    }
+    let relayed: Vec<String> = pod
+        .seen()
+        .iter()
+        .filter(|seen| seen.path == "/v1/messages")
+        .map(Seen::body_text)
+        .collect();
+    assert_eq!(
+        relayed,
+        [
+            "{\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}",
+            "{\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}",
+        ]
+    );
+}
+
+/// A streamed request is counted (vLLM's count ignores `stream`) and lowered, and its answer
+/// still streams to the client chunk by chunk.
+#[test]
+fn adversary_mtc_a_streamed_request_is_counted_lowered_and_still_streamed() {
+    let pod = Pod::start(vec![
+        ok_json("{\"input_tokens\":900}"),
+        stream(&["event: message_start\ndata: {}\n\n", "data: [DONE]\n\n"]),
+    ]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model().with_max_model_len(1_000)], &source);
+    let answer = gateway.post_text(
+        "/v1/messages",
+        "{\"model\":\"code\",\"stream\":true,\"max_tokens\":32000,\"messages\":[]}",
+    );
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    assert_eq!(answer.header("content-type"), Some("text/event-stream"));
+    assert_eq!(
+        answer.text(),
+        "event: message_start\ndata: {}\n\ndata: [DONE]\n\n"
+    );
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    assert_eq!(
+        seen[1].body_text(),
+        "{\"model\":\"served-code\",\"stream\":true,\"max_tokens\":100,\"messages\":[]}"
+    );
+}
+
+/// The count of an `api-key` endpoint carries its key in the endpoint's own header and no
+/// `authorization`, exactly as the relayed request does, and never the owner's credential.
+#[test]
+fn adversary_mtc_the_count_of_a_credential_header_endpoint_carries_its_key_there() {
+    let pod = Pod::start(vec![ok_json("{\"input_tokens\":900}"), ok_json("{}")]);
+    let mut slot = listening(&pod);
+    slot.bearer = Some(Arc::new(
+        TargetBearer::new(VLLM_KEY.as_bytes().to_vec()).unwrap(),
+    ));
+    slot.header = Some(CredentialHeader::new("X-Api-Key").unwrap());
+    let source = Source::new(vec![slot]);
+    let gateway = Relayed::start(vec![code_model().with_context_window(1_000)], &source);
+    let answer = gateway.post_text(
+        "/v1/messages",
+        "{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}",
+    );
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    for request in &seen {
+        let text = String::from_utf8_lossy(&request.raw).into_owned();
+        let head = text.split("\r\n\r\n").next().unwrap();
+        assert_eq!(request.authorization, None, "{head}");
+        assert!(
+            head.contains(&format!("\r\nx-api-key: {VLLM_KEY}\r\n")),
+            "{head}"
+        );
+        assert!(find(&request.raw, OWNER.as_bytes()).is_none(), "{head}");
+    }
+    assert_eq!(
+        seen[1].body_text(),
+        "{\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}"
+    );
+}
+
+/// A body of exactly the 32 MiB bound is counted whole and relayed whole with only its
+/// `model` and `max_tokens` changed.
+#[test]
+fn adversary_mtc_a_body_at_the_32_mib_bound_is_counted_and_lowered_whole() {
+    let pod = Pod::start(vec![ok_json("{\"input_tokens\":900}"), ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model().with_max_model_len(1_000)], &source);
+    let body = pad_to("{\"model\":\"code\",\"max_tokens\":32000", BODY_BOUND);
+    let answer = gateway.post("/v1/messages", &body);
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    let counted = pad_to(
+        "{\"model\":\"served-code\",\"max_tokens\":32000",
+        BODY_BOUND + 7,
+    );
+    let relayed = pad_to(
+        "{\"model\":\"served-code\",\"max_tokens\":100",
+        BODY_BOUND + 7 - 2,
+    );
+    assert!(
+        seen[0].body.as_slice().eq(counted.as_slice()),
+        "the count's body"
+    );
+    assert!(
+        seen[1].body.as_slice().eq(relayed.as_slice()),
+        "the relayed body"
+    );
+    length_matches(&seen[0]);
+    length_matches(&seen[1]);
+}
+
+/// The count is counted in no series: a clamped request and one whose count answered 500 are
+/// two inference requests, neither an upstream failure nor a status failure.
+#[test]
+fn adversary_mtc_the_count_feeds_no_metric_series() {
+    let pod = Pod::start(vec![
+        ok_json("{\"input_tokens\":900}"),
+        ok_json("{}"),
+        reply(500, "application/json", b"{\"error\":\"boom\"}"),
+        ok_json("{}"),
+    ]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model().with_max_model_len(1_000)], &source);
+    for _ in 0..2 {
+        let answer = gateway.post_text(
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}",
+        );
+        assert_eq!(answer.status, 200, "{:?}", answer.code());
+    }
+    let scrape = send(gateway.addr, &request("GET", "/metrics", Some(OWNER), b"")).text();
+    for line in [
+        "\nllmgw_inference_requests_total 2\n",
+        "\nllmgw_upstream_failures_total 0\n",
+        "\nllmgw_endpoint_invalidations_total 0\n",
+        "\nllmgw_route_requests_total{model=\"code\",wire=\"messages\"} 2\n",
+        "\nllmgw_route_refusals_total{model=\"code\",wire=\"messages\"} 0\n",
+        "\nllmgw_route_upstream_status_failures_total{model=\"code\",wire=\"messages\"} 0\n",
+    ] {
+        assert!(scrape.contains(line), "{line:?} not in\n{scrape}");
+    }
+}

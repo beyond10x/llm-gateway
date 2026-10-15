@@ -1040,7 +1040,7 @@ fn count_input(target: &dyn RelayTarget, body: &Arc<Vec<u8>>, limits: &Limits) -
             drop(head);
             drop(body);
             drop(connection);
-            drop(answer.send(counted));
+            let _answered = answer.send(counted);
         })
         .ok()?;
     let left = limits.count_timeout.saturating_sub(opened.elapsed());

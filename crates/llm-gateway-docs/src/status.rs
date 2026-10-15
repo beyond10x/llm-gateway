@@ -151,6 +151,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "A hosted model's declared effort reaches its endpoint when a request names none",
+        "A hosted model may declare reasoning_effort low, medium or xhigh; a Messages request that names no effort reaches the endpoint with output_config.effort set to it, so a server started by hand does not think at its template's xhigh default. A named effort, the other wires and Runpod models are unchanged.",
+        "crates/llm-gateway/tests/wire_relay.rs::effort_a_messages_request_naming_none_reaches_the_pod_with_the_models_declared_effort",
+        Some("/docs/reference/deployment-document"),
+    ),
+    shipped(
+        "Relay",
         "A failed target is dropped and replaced",
         "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
         "crates/llm-gateway/tests/wire_relay.rs::w7_an_upstream_502_503_or_504_drops_that_endpoint_and_the_next_request_reaches_a_replacement",

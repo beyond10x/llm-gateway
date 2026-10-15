@@ -213,3 +213,5 @@ scenarios:
 - gateway/scenarios/claude-code-anthropic-headers-never-reach-the-target.yaml
 - gateway/scenarios/claude-code-structured-output-format-reaches-the-target-unchanged.yaml
 - gateway/scenarios/claude-code-the-startup-probe-head-api-hello-is-refused.yaml
+- gateway/scenarios/hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none.yaml
+- gateway/scenarios/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire.yaml

@@ -1,7 +1,7 @@
 //! Relaying the three model-call wires to a target the embedding selects (story:wire-relay).
 //!
 //! The gateway reads and checks the request, rewrites `model` (and on the messages wire the
-//! reasoning effort), asks the injected [`RelayTargets`] for a target, sends the request over
+//! reasoning effort, or gives a request naming none the model's declared one), asks the injected [`RelayTargets`] for a target, sends the request over
 //! the connection that target opens, and relays the answer as it arrives. It never opens a
 //! connection itself: the target does, so the transport — plain TCP to a loopback fixture, TLS
 //! to a pod proxy — and its timeouts belong to the embedding. The specification is the `Relay`
@@ -225,8 +225,38 @@ pub enum ToolCalling {
     Absent,
 }
 
+/// A reasoning effort a model declares (`llm-gateway.deployment.HostedReasoningEffort`): one the
+/// served Qwen3.8 chat template accepts. A messages-wire request that names no effort reaches
+/// the target with it as `output_config.effort` (`docs/gateway.md` "The relay", step 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ReasoningEffort {
+    Low,
+    Medium,
+    Xhigh,
+}
+
+impl ReasoningEffort {
+    /// Every declarable effort.
+    pub const ALL: [Self; 3] = [Self::Low, Self::Medium, Self::Xhigh];
+
+    /// The effort as the request carries it: `low`, `medium` or `xhigh`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::Xhigh => "xhigh",
+        }
+    }
+
+    /// The effort `text` names exactly, if it is one of [`Self::ALL`].
+    pub fn from_name(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|effort| effort.as_str() == text)
+    }
+}
+
 /// A model the gateway relays: its alias, the model name its target expects, its wires,
-/// whether it serves tool calls, and the two lengths the public routes publish (rows R5, R1).
+/// whether it serves tool calls, the two lengths the public routes publish (rows R5, R1), and
+/// the effort a messages request naming none is given.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayModel {
     alias: Label,
@@ -235,6 +265,7 @@ pub struct RelayModel {
     tool_calling: ToolCalling,
     max_model_len: Option<u64>,
     context_window: Option<u64>,
+    reasoning_effort: Option<ReasoningEffort>,
 }
 
 impl RelayModel {
@@ -259,7 +290,20 @@ impl RelayModel {
             tool_calling: ToolCalling::default(),
             max_model_len: None,
             context_window: None,
+            reasoning_effort: None,
         })
+    }
+
+    /// Declares the effort a messages-wire request that names none reaches the target with,
+    /// as `output_config.effort`. Undeclared, such a request is relayed without one.
+    #[must_use]
+    pub fn with_reasoning_effort(mut self, effort: ReasoningEffort) -> Self {
+        self.reasoning_effort = Some(effort);
+        self
+    }
+
+    pub fn reasoning_effort(&self) -> Option<ReasoningEffort> {
+        self.reasoning_effort
     }
 
     /// Declares whether the model's server parses tool calls.
@@ -817,10 +861,12 @@ pub(crate) fn serve(
     };
     let analysis = body::analyse(&body)?;
     let model = served_model(relay, &analysis, admitted.wire, call)?;
+    let messages = admitted.wire == Wire::Messages;
     let rewritten = analysis.rewrite(
         &body,
         model.upstream_model.as_str(),
-        admitted.wire == Wire::Messages,
+        messages,
+        model.reasoning_effort.filter(|_| messages),
     );
     drop(body);
     let alias = model.alias.as_str();

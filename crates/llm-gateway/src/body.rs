@@ -1,16 +1,18 @@
 //! Reading a relayed request body as JSON without deserialising it.
 //!
-//! The relay changes at most three string values of a body (rows W2 and W4) and must pass every
-//! other byte through unchanged. So the body is scanned, not parsed into a tree: the scan
-//! validates the whole document against RFC 8259, records where the values it may rewrite lie and
-//! whether a top-level `tools` array is non-empty (the tool-calling refusal). The rewrite then
-//! replaces exactly those byte ranges.
+//! The relay changes at most three string values of a body (rows W2 and W4), may add one
+//! `output_config.effort` member (a model's declared effort), and must pass every other byte
+//! through unchanged. So the body is scanned, not parsed into a tree: the scan validates the
+//! whole document against RFC 8259, records where the values it may rewrite lie, whether the body
+//! names an effort and where one would be added, and whether a top-level `tools` array is
+//! non-empty (the tool-calling refusal). The rewrite then replaces exactly those byte ranges and
+//! inserts at most that one member.
 //!
 //! The scan keeps its nesting on an explicit stack rather than the call stack, so a body that is
 //! nothing but `[[[[…` costs memory bounded by the body bound and cannot overflow a thread's
 //! stack.
 
-use crate::{error::RefusalCode, json::Writer};
+use crate::{error::RefusalCode, json::Writer, relay::ReasoningEffort};
 use std::ops::Range;
 
 /// The client efforts the served chat template rejects: `high` (llmgw `src/lib.rs:37`) and
@@ -33,12 +35,34 @@ pub(crate) struct Analysis {
     /// Whether a top-level `tools` member is a non-empty array: the body offers the model a
     /// tool. With `tools` named twice at the top level, either one counts.
     pub(crate) offers_tools: bool,
+    /// Where a declared effort would be written, or `None` when the body names an effort
+    /// already or its top-level `output_config` is not an object.
+    effort_slot: Option<EffortSlot>,
+}
+
+/// Where a declared effort is written into a body that names none.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum EffortSlot {
+    /// Into the last top-level `output_config` object, as its last member: at the byte offset
+    /// of its closing brace, or just after its last member's value, with a `,` before.
+    Object { at: usize, after_member: bool },
+    /// No top-level `output_config`: a new last member of the top-level object, after its last
+    /// member's value.
+    Top { at: usize },
 }
 
 impl Analysis {
-    /// The body with `model` set to `upstream_model` and, when `map_effort`, every recorded
-    /// effort set to `xhigh`. Nothing else changes.
-    pub(crate) fn rewrite(&self, body: &[u8], upstream_model: &str, map_effort: bool) -> Vec<u8> {
+    /// The body with `model` set to `upstream_model`; when `map_effort`, every recorded effort
+    /// set to `xhigh`; and when `declared` is given and the body names no effort, its
+    /// `output_config.effort` set to `declared` by inserting that one member. Nothing else
+    /// changes.
+    pub(crate) fn rewrite(
+        &self,
+        body: &[u8],
+        upstream_model: &str,
+        map_effort: bool,
+        declared: Option<ReasoningEffort>,
+    ) -> Vec<u8> {
         let mut writer = Writer::new();
         writer.string(upstream_model);
         let model = writer.finish();
@@ -48,6 +72,21 @@ impl Analysis {
             for span in &self.efforts {
                 replacements.push((span.clone(), SERVED_EFFORT.as_bytes()));
             }
+        }
+        let inserted = declared
+            .zip(self.effort_slot)
+            .map(|(effort, slot)| match slot {
+                EffortSlot::Object { at, after_member } => {
+                    let comma = if after_member { "," } else { "" };
+                    (at, format!("{comma}\"effort\":\"{}\"", effort.as_str()))
+                }
+                EffortSlot::Top { at } => (
+                    at,
+                    format!(",\"output_config\":{{\"effort\":\"{}\"}}", effort.as_str()),
+                ),
+            });
+        if let Some((at, member)) = &inserted {
+            replacements.push((*at..*at, member.as_bytes()));
         }
         replacements.sort_by_key(|(span, _)| span.start);
         let mut out = Vec::with_capacity(body.len() + model.len());
@@ -107,7 +146,7 @@ impl Slot {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Frame {
     Object(Role),
     Array,
@@ -123,6 +162,17 @@ enum Next {
     AfterValue,
 }
 
+/// What the scan knows of the top-level `output_config` members.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum OutputConfig {
+    #[default]
+    Absent,
+    /// Where an effort would be written into the last one, an object.
+    Object(EffortSlot),
+    /// One of them was not an object, so no effort is written.
+    NotObject,
+}
+
 /// What the scan has seen of the top-level `model` member.
 #[derive(Default)]
 struct Found {
@@ -132,10 +182,19 @@ struct Found {
     /// The array just opened is a top-level `tools`; its first element decides `offers_tools`.
     tools_opened: bool,
     offers_tools: bool,
+    /// A top-level `output_config.effort` or `chat_template_kwargs.reasoning_effort` member was
+    /// seen, whatever its value.
+    names_effort: bool,
+    output_config: OutputConfig,
+    /// Where the top-level object's last member's value ends.
+    top_end: Option<usize>,
 }
 
 impl Found {
     fn value(&mut self, slot: Slot, span: Range<usize>, text: Option<String>) {
+        if slot == Slot::Effort {
+            self.names_effort = true;
+        }
         match slot {
             Slot::Model => {
                 self.models += 1;
@@ -151,9 +210,82 @@ impl Found {
             _ => {}
         }
     }
+
+    /// Notes that the value about to be scanned for `slot` starts with `byte`.
+    fn opens(&mut self, slot: Slot, byte: Option<u8>) {
+        if slot == Slot::OutputConfig && byte != Some(b'{') {
+            self.output_config = OutputConfig::NotObject;
+        }
+    }
+
+    /// Notes that the frame on top of `stack` closes. For an object, `at` is where a member
+    /// would be added, after its last member when `after_member`.
+    fn closes(&mut self, stack: &[Frame], at: usize, after_member: bool) {
+        match stack.last() {
+            Some(Frame::Object(Role::OutputConfig)) => {
+                if self.output_config != OutputConfig::NotObject {
+                    self.output_config =
+                        OutputConfig::Object(EffortSlot::Object { at, after_member });
+                }
+            }
+            Some(Frame::Object(_)) if stack.len() == 1 => self.top_end = Some(at),
+            _ => {}
+        }
+    }
+
+    /// Where a declared effort is written, or `None` when the body names one or its top-level
+    /// `output_config` is not an object.
+    fn effort_slot(&self) -> Option<EffortSlot> {
+        if self.names_effort {
+            return None;
+        }
+        match self.output_config {
+            OutputConfig::Object(slot) => Some(slot),
+            OutputConfig::NotObject => None,
+            OutputConfig::Absent => self.top_end.map(|at| EffortSlot::Top { at }),
+        }
+    }
 }
 
 const NOT_JSON: RefusalCode = RefusalCode::BodyNotJson;
+
+/// Scans the value starting at `position` for `slot`; returns where the scan continues and
+/// what it expects there.
+fn value_token(
+    text: &str,
+    position: usize,
+    slot: Slot,
+    stack: &mut Vec<Frame>,
+    found: &mut Found,
+) -> Result<(usize, Next), RefusalCode> {
+    let bytes = text.as_bytes();
+    let byte = bytes.get(position).copied();
+    found.opens(slot, byte);
+    match byte {
+        Some(b'{') => {
+            found.value(slot, position..position + 1, None);
+            stack.push(Frame::Object(slot.role()));
+            Ok((position + 1, Next::FirstMember))
+        }
+        Some(b'[') => {
+            found.value(slot, position..position + 1, None);
+            found.tools_opened = slot == Slot::Tools;
+            stack.push(Frame::Array);
+            Ok((position + 1, Next::FirstElement))
+        }
+        Some(b'"') => {
+            let (end, value) = string(text, position)?;
+            found.value(slot, position..end, Some(value));
+            Ok((end, Next::AfterValue))
+        }
+        Some(_) => {
+            let end = scalar(bytes, position)?;
+            found.value(slot, position..end, None);
+            Ok((end, Next::AfterValue))
+        }
+        None => Err(NOT_JSON),
+    }
+}
 
 /// Scans `body` and reports the relay's view of it.
 ///
@@ -172,38 +304,18 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
     let mut found = Found::default();
     let mut next = Next::Value(Slot::Root);
     loop {
+        // Where the last value ended, before the whitespace that follows it.
+        let value_end = position;
         position = skip_whitespace(bytes, position);
         let byte = bytes.get(position).copied();
         next = match next {
-            Next::Value(slot) => match byte {
-                Some(b'{') => {
-                    found.value(slot, position..position + 1, None);
-                    stack.push(Frame::Object(slot.role()));
-                    position += 1;
-                    Next::FirstMember
-                }
-                Some(b'[') => {
-                    found.value(slot, position..position + 1, None);
-                    found.tools_opened = slot == Slot::Tools;
-                    stack.push(Frame::Array);
-                    position += 1;
-                    Next::FirstElement
-                }
-                Some(b'"') => {
-                    let (end, value) = string(text, position)?;
-                    found.value(slot, position..end, Some(value));
-                    position = end;
-                    Next::AfterValue
-                }
-                Some(_) => {
-                    let end = scalar(bytes, position)?;
-                    found.value(slot, position..end, None);
-                    position = end;
-                    Next::AfterValue
-                }
-                None => return Err(NOT_JSON),
-            },
+            Next::Value(slot) => {
+                let (end, after) = value_token(text, position, slot, &mut stack, &mut found)?;
+                position = end;
+                after
+            }
             Next::FirstMember if byte == Some(b'}') => {
+                found.closes(&stack, position, false);
                 stack.pop();
                 position += 1;
                 Next::AfterValue
@@ -244,6 +356,7 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
                     Next::Value(Slot::Other)
                 }
                 (Some(Frame::Object(_)), Some(b'}')) | (Some(Frame::Array), Some(b']')) => {
+                    found.closes(&stack, value_end, true);
                     stack.pop();
                     position += 1;
                     Next::AfterValue
@@ -255,12 +368,14 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
     if found.models > 1 {
         return Err(NOT_JSON);
     }
+    let effort_slot = found.effort_slot();
     let (model_span, model) = found.model.ok_or(RefusalCode::ModelAbsent)?;
     Ok(Analysis {
         model,
         model_span,
         efforts: found.efforts,
         offers_tools: found.offers_tools,
+        effort_slot,
     })
 }
 
@@ -393,7 +508,7 @@ fn scalar(bytes: &[u8], start: usize) -> Result<usize, RefusalCode> {
 #[cfg(test)]
 mod tests {
     use super::analyse;
-    use crate::error::RefusalCode;
+    use crate::{error::RefusalCode, relay::ReasoningEffort};
 
     fn model(body: &str) -> Result<String, RefusalCode> {
         analyse(body.as_bytes()).map(|analysis| analysis.model)
@@ -451,11 +566,11 @@ mod tests {
         let body = br#"{"output_config":{"effort":"hig\u0068"},"model":"m","x":{"effort":"high"}}"#;
         let analysis = analyse(body).unwrap();
         assert_eq!(
-            String::from_utf8(analysis.rewrite(body, "up\"s", true)).unwrap(),
+            String::from_utf8(analysis.rewrite(body, "up\"s", true, None)).unwrap(),
             r#"{"output_config":{"effort":"xhigh"},"model":"up\"s","x":{"effort":"high"}}"#
         );
         assert_eq!(
-            String::from_utf8(analysis.rewrite(body, "up", false)).unwrap(),
+            String::from_utf8(analysis.rewrite(body, "up", false, None)).unwrap(),
             r#"{"output_config":{"effort":"hig\u0068"},"model":"up","x":{"effort":"high"}}"#
         );
     }
@@ -465,17 +580,71 @@ mod tests {
         let body = br#"{"model":"m","output_config":{"effort":"max"},"chat_template_kwargs":{"reasoning_effort":"max"}}"#;
         let analysis = analyse(body).unwrap();
         assert_eq!(
-            String::from_utf8(analysis.rewrite(body, "up", true)).unwrap(),
+            String::from_utf8(analysis.rewrite(body, "up", true, None)).unwrap(),
             r#"{"model":"up","output_config":{"effort":"xhigh"},"chat_template_kwargs":{"reasoning_effort":"xhigh"}}"#
         );
         for effort in ["low", "medium", "xhigh", "MAX", "maximum", " max", "none"] {
             let body = format!(r#"{{"model":"m","output_config":{{"effort":"{effort}"}}}}"#);
             let analysis = analyse(body.as_bytes()).unwrap();
             assert_eq!(
-                String::from_utf8(analysis.rewrite(body.as_bytes(), "m", true)).unwrap(),
+                String::from_utf8(analysis.rewrite(body.as_bytes(), "m", true, None)).unwrap(),
                 body,
                 "{effort}"
             );
+        }
+    }
+
+    #[test]
+    fn a_declared_effort_is_inserted_only_into_a_body_naming_none() {
+        let declared = |body: &str| {
+            let analysis = analyse(body.as_bytes()).unwrap();
+            String::from_utf8(analysis.rewrite(
+                body.as_bytes(),
+                "up",
+                true,
+                Some(ReasoningEffort::Medium),
+            ))
+            .unwrap()
+        };
+        for (body, expected) in [
+            (
+                r#"{"model":"m"}"#,
+                r#"{"model":"up","output_config":{"effort":"medium"}}"#,
+            ),
+            (
+                "{\"model\":\"m\" ,\n \"x\" : [1] \n}",
+                "{\"model\":\"up\" ,\n \"x\" : [1],\"output_config\":{\"effort\":\"medium\"} \n}",
+            ),
+            (
+                r#"{"output_config":{ },"model":"m"}"#,
+                r#"{"output_config":{ "effort":"medium"},"model":"up"}"#,
+            ),
+            (
+                r#"{"output_config":{"format":{"type":"text"}} ,"model":"m"}"#,
+                r#"{"output_config":{"format":{"type":"text"},"effort":"medium"} ,"model":"up"}"#,
+            ),
+            (
+                r#"{"model":"m","chat_template_kwargs":{"other":1}}"#,
+                r#"{"model":"up","chat_template_kwargs":{"other":1},"output_config":{"effort":"medium"}}"#,
+            ),
+            (
+                r#"{"model":"m","output_config":{"effort":"high"}}"#,
+                r#"{"model":"up","output_config":{"effort":"xhigh"}}"#,
+            ),
+            (
+                r#"{"model":"m","chat_template_kwargs":{"reasoning_effort":7}}"#,
+                r#"{"model":"up","chat_template_kwargs":{"reasoning_effort":7}}"#,
+            ),
+            (
+                r#"{"model":"m","output_config":null}"#,
+                r#"{"model":"up","output_config":null}"#,
+            ),
+            (
+                r#"{"model":"m","output_config":[{"effort":"low"}]}"#,
+                r#"{"model":"up","output_config":[{"effort":"low"}]}"#,
+            ),
+        ] {
+            assert_eq!(declared(body), expected, "{body}");
         }
     }
 }

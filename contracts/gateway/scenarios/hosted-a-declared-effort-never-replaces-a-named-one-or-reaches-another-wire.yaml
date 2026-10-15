@@ -1,0 +1,42 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire
+summary: a named effort keeps the W4 mapping; a non-object output_config, the chat and responses wires and an undeclared model relay as before
+timeline:
+- at: '2026-10-15T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"],"reasoning_effort":"low","endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous"}},{"alias":"plain","upstream_model":"served-plain","wires":["messages"],"endpoint":{"pod":"pod-2","scheme":"http","auth_kind":"anonymous"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{}"]}],[{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"output_config\":{\"effort\":\"max\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"output_config\":{\"effort\":\"medium\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"chat_template_kwargs\":{\"reasoning_effort\":\"high\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"chat_template_kwargs\":{\"reasoning_effort\":\"medium\"}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"output_config\":{\"effort\":null}}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"output_config\":\"none\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"x\":{\"output_config\":{\"effort\":\"high\"}}}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[]}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"code\",\"input\":\"hi\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"plain\",\"max_tokens\":8,\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    upstream:
+    - 'pod-1 POST /v1/messages {"model":"served-code","output_config":{"effort":"xhigh"}}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","output_config":{"effort":"medium"}}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","chat_template_kwargs":{"reasoning_effort":"xhigh"}}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","chat_template_kwargs":{"reasoning_effort":"medium"}}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","output_config":{"effort":null}}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","output_config":"none"}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","x":{"output_config":{"effort":"high"}},"output_config":{"effort":"low"}}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code","messages":[]}'
+    - 'pod-1 POST /v1/responses {"model":"served-code","input":"hi"}'
+    - 'pod-2 POST /v1/messages {"model":"served-plain","max_tokens":8,"messages":[]}'

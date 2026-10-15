@@ -18,7 +18,7 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-use support::{Fixture, OWNER_SECRET, VLLM_KEY, document, mutate, with_vllm_key};
+use support::{Fixture, OWNER_SECRET, VLLM_KEY, document, hosted_table, mutate, with_vllm_key};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -1010,4 +1010,91 @@ fn r5_r1_the_binary_lists_and_profiles_each_model_from_the_document_and_starts_n
             assert!(!answer.contains(owner_only), "{owner_only:?} in {answer}");
         }
     }
+}
+
+// --- A declared effort reaches a hosted endpoint, never a Runpod pod (story:effort-default) ---
+
+/// A messages request naming no effort reaches the hosted model `open`, which declares
+/// `reasoning_effort = "low"`, with `output_config.effort` `low`, and reaches the Runpod model
+/// `small`, which declares `reasoning_effort = "medium"` as its server's chat-template default,
+/// with only its `model` as sent: the binary gives a declared effort to a hosted model only. A
+/// request naming an effort keeps it, and the chat wire gains none.
+#[test]
+fn effort_a_hosted_model_gives_its_declared_effort_and_a_runpod_model_never_does() {
+    let fixture = Fixture::new("effort-default");
+    let mut endpoint = Pod::start(3, "{\"id\":\"hosted-1\"}");
+    let base_url = format!("http://{}", endpoint.address);
+    let deployment = deployment(&fixture, |text| {
+        let text = mutate(
+            &text,
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nreasoning_effort = \"medium\"\n",
+        );
+        format!(
+            "{text}\n{}",
+            hosted_table(
+                "open",
+                &base_url,
+                "auth_kind = \"anonymous\"\nreasoning_effort = \"low\"\n"
+            )
+        )
+    });
+    let mut pod = Pod::start(1, "{\"id\":\"pod-1\"}");
+    let loopback = Arc::new(Loopback {
+        pod: pod.address,
+        asked: Mutex::new(Vec::new()),
+    });
+    let running = start_relaying(
+        &deployment,
+        EmulatedRunpod::new(),
+        Arc::clone(&loopback) as Arc<dyn PodConnector>,
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let answers = [
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"small\",\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"open\",\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"open\",\"output_config\":{\"effort\":\"medium\"},\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/chat/completions",
+            OWNER_SECRET,
+            "{\"model\":\"open\",\"messages\":[]}",
+        ),
+    ];
+    running.shutdown();
+    for answer in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    let body = |raw: &Vec<u8>| {
+        let text = String::from_utf8(raw.clone()).unwrap();
+        text.split_once("\r\n\r\n").unwrap().1.to_owned()
+    };
+    let runpod: Vec<String> = pod.received().iter().map(body).collect();
+    assert_eq!(runpod, ["{\"model\":\"small\",\"messages\":[]}"]);
+    let hosted: Vec<String> = endpoint.received().iter().map(body).collect();
+    assert_eq!(
+        hosted,
+        [
+            "{\"model\":\"open\",\"messages\":[],\"output_config\":{\"effort\":\"low\"}}",
+            "{\"model\":\"open\",\"output_config\":{\"effort\":\"medium\"},\"messages\":[]}",
+            "{\"model\":\"open\",\"messages\":[]}",
+        ]
+    );
 }

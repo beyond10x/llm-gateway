@@ -81,6 +81,13 @@
     },
     {
       "area": "Relay",
+      "detail": "A hosted model may declare reasoning_effort low, medium or xhigh; a Messages request that names no effort reaches the endpoint with output_config.effort set to it, so a server started by hand does not think at its template's xhigh default. A named effort, the other wires and Runpod models are unchanged.",
+      "href": "/docs/reference/deployment-document",
+      "label": "A hosted model's declared effort reaches its endpoint when a request names none",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
       "href": "/docs/concepts/relay",
       "label": "A failed target is dropped and replaced",

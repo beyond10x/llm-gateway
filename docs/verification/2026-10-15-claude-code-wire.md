@@ -60,6 +60,9 @@ Code 2.1.293 against a pod.
    `output_config.effort`) may not fire.
 4. Which Claude Code feature sends `output_config.format`, and with which `anthropic-beta` value.
    Neither is published; the fixture shapes it as a side request.
+5. How Claude Code treats `405 method-not-allowed` on `POST /v1/messages/count_tokens`: the
+   protocol page says it falls back to estimated counts when the endpoint is missing, which a
+   `404` would say; the gateway answers `405` and relays nothing (`adversary_claude_code_wire.rs`).
 
 Also unsettled, and outside the gateway: whether vLLM applies the structured-output grammar only
 after the model's reasoning ends for this model, and the HTTP status a template `raise_exception`

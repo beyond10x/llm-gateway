@@ -292,6 +292,11 @@ the sources and what a live record still has to show. The cases are the `claude_
   (`vllm/entrypoints/anthropic/serving.py:505-512`), and ignores the deprecated top-level
   `output_format`, which it does not declare; the gateway relays that unchanged too. Claude Code
   stops sending the format under `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`.
+- **`POST /v1/messages/count_tokens`.** Not relayed, although vLLM v0.27.1 serves it
+  (`vllm/entrypoints/anthropic/api_router.py:95-96`): with the owner credential, a `POST` to a
+  path that is not a wire path is `method-not-allowed` (405), and no target is asked for. The
+  protocol page says Claude Code falls back to estimated counts when the endpoint is missing;
+  whether it treats a 405 as it treats a 404 is for the live record.
 - **Headers.** `anthropic-version` and `anthropic-beta` are dropped, as every header of the
   client's request is (step 7). vLLM v0.27.1 reads neither: its messages router and serving code
   read no request header (`vllm/entrypoints/anthropic/api_router.py`,

@@ -338,9 +338,24 @@ entities:
   #   6. W2: the top-level `model` value is rewritten to the model's upstream name on every wire,
   #      written as a JSON string (a `"` or `\` in the name is escaped).
   #      W4: on the messages wire only, `output_config.effort` and
-  #      `chat_template_kwargs.reasoning_effort` equal to `high` become `xhigh`; any other value,
-  #      and these fields on the chat and responses wires, pass unchanged (llmgw
-  #      src/lib.rs:470-504). Every other byte of the body reaches the target unchanged.
+  #      `chat_template_kwargs.reasoning_effort` equal to `high` or `max` become `xhigh`; any
+  #      other value (`low`, `medium` and `xhigh` among them), and these fields on the chat and
+  #      responses wires, pass unchanged (llmgw src/lib.rs:470-504 for `high`). DECIDED
+  #      2026-10-15 (story:claude-code-wire): `max` too. Claude Code sends
+  #      `low|medium|high|xhigh|max` (https://code.claude.com/docs/en/llm-gateway-protocol,
+  #      "Feature pass-through"), vLLM v0.27.1 admits all five and hands the value to the chat
+  #      template as `reasoning_effort` (vllm/entrypoints/anthropic/protocol.py line 114,
+  #      serving.py lines 513-514), and the served Qwen3.8 template accepts only `xhigh`,
+  #      `medium` and `low` and raises on any other (Qwen/Qwen3.8-27B-FP8 `chat_template.jinja`
+  #      lines 46-49), which fails the turn. `xhigh` is the template's deepest effort, the
+  #      nearest to both (scenario w4-on-the-messages-wire-effort-max-reaches-the-target-as-xhigh).
+  #      The structured-output request `output_config.format` is relayed unchanged, beside the
+  #      effort and on every wire: vLLM v0.27.1 serves `{"type":"json_schema","schema":…}` as
+  #      structured output (serving.py lines 505-512) and ignores the deprecated top-level
+  #      `output_format`, which is relayed unchanged too (scenario
+  #      claude-code-structured-output-format-reaches-the-target-unchanged). Every other byte of
+  #      the body reaches the target unchanged, `thinking` included
+  #      (llm-gateway.clients.ThinkingHandling `Relayed`).
   #      DECIDED: llmgw re-serialises the parsed document (sorted keys, compact); llm-gateway
   #      rewrites only those string values in place.
   #   7. The embedding's target source hands out the target serving the model, or says why it
@@ -358,7 +373,12 @@ entities:
   #      endpoint, llm-gateway.upstream.HostedEndpoint) is sent `<header>: <key>` instead, and
   #      no `authorization`. The head the target receives is built by the gateway alone: no
   #      header of the client's request is forwarded, so the owner's credential never reaches
-  #      a target, in the head or anywhere else.
+  #      a target, in the head or anywhere else. Claude Code's `anthropic-version` and
+  #      `anthropic-beta` are dropped with the rest: vLLM v0.27.1's messages endpoint reads
+  #      neither (vllm/entrypoints/anthropic/api_router.py and serving.py read no request
+  #      header), so the forward-verbatim rule of Claude Code's gateway protocol page, written
+  #      for an Anthropic upstream, has nothing to serve here (scenario
+  #      claude-code-anthropic-headers-never-reach-the-target).
   #   8. W7: a target that cannot be connected to, a request that cannot be written to it, an
   #      answer head that never arrives or is malformed, and an answer of 502, 503 or 504 are
   #      each reported failed to the target source by the authority of the endpoint that served
@@ -497,6 +517,12 @@ commands:
   #      method, is `credential-absent`, and the surface cannot be enumerated without the
   #      credential (scenarios authentication-comes-before-the-path-is-decided,
   #      inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent).
+  #      DECIDED 2026-10-15 (story:claude-code-wire, design choice D2 = A): Claude Code's
+  #      connection-warming `HEAD /api/hello` gets no route of its own. Without the owner
+  #      credential it is `credential-absent`, with it `path-unknown` at step 8, each without
+  #      a body; Claude Code's gateway protocol page calls it startup traffic "a gateway can
+  #      reject without breaking anything" (https://code.claude.com/docs/en/llm-gateway-protocol,
+  #      read 2026-10-15) (scenario claude-code-the-startup-probe-head-api-hello-is-refused).
   #   6. A wire path of a gateway composed with a relay goes on to the `Relay` order below.
   #   7. `/metrics`, R4 (see RelayObservation).
   #   8. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
@@ -566,9 +592,11 @@ commands:
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
       #           `}` to exactly that many bytes), `declare_bytes` (only a head declaring
-      #           that `content-length` is sent, never a body) and `user_agent` (sent as the
-      #           request's `user-agent`; none is sent without it). Every request carries
-      #           `host: gateway`.
+      #           that `content-length` is sent, never a body), `user_agent` (sent as the
+      #           request's `user-agent`; none is sent without it) and `headers` (a list of
+      #           `<name>: <value>` lines sent after `host`, as a client such as Claude Code
+      #           adds `anthropic-version`; a line holding a CR or LF makes the program
+      #           invalid). Every request carries `host: gateway`.
       - {name: program_json, type: String}
     outcomes:
       - name: observed

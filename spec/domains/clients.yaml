@@ -1,6 +1,7 @@
 domain: llm-gateway.clients
 
-# PLANNED: apart from ToolCalling and ClientProfile, no code implements this domain yet. It is
+# PLANNED: apart from ToolCalling, ClientProfile and ThinkingHandling, no code implements this
+# domain yet. It is
 # the typed home of the nouns docs/design/runpod-clients.md introduces:
 # the three clients the operator points at a Runpod-hosted model through this gateway (Claude
 # Code, Codex and a Loom run through llm), what each must be told to reach it, and the one model
@@ -72,11 +73,20 @@ types:
     kind: enum
     variants: [Parsed, Absent]
   # What the messages wire does with Claude Code's `thinking` object for a model id Claude Code
-  # does not recognise. `Relayed`: unchanged, as today. `Mapped`: rewritten in place, as the
-  # messages-wire effort already is (docs/gateway.md "The relay", step 6; matrix row W4).
-  # UNMAPPED: whether the pinned vLLM (`vllm/vllm-openai:v0.27.1`, llmgw docs/model-profiles.md)
-  # accepts `{"type":"adaptive"}`. No source here shows it either way. Owner:
-  # story:claude-code-wire, which settles it from a recorded vLLM answer before choosing.
+  # does not recognise. `Relayed`: unchanged. `Mapped`: rewritten in place, as the
+  # messages-wire effort is (docs/gateway.md "The relay", step 6; matrix row W4).
+  # DECIDED 2026-10-15 (story:claude-code-wire): `Relayed`. The pinned vLLM
+  # (`vllm/vllm-openai:v0.27.1`, llmgw docs/model-profiles.md) declares no `thinking` field on
+  # its messages request model, a pydantic model that drops unknown keys, so every `thinking`
+  # value, `{"type":"adaptive"}` included, is ignored there and never refused
+  # (https://github.com/vllm-project/vllm/blob/v0.27.1/vllm/entrypoints/anthropic/protocol.py,
+  # lines 118-178). What switches the served model's thinking on is `output_config.effort`
+  # (vllm/entrypoints/anthropic/serving.py lines 513-514, which sets `reasoning_effort`, and
+  # vllm/entrypoints/openai/chat_completion/protocol.py lines 564-573, which turns
+  # `enable_thinking` on for any effort but `none`), which the gateway already maps. A mapping
+  # would rewrite a field the target ignores. Settled from those sources, not from a recorded
+  # answer: docs/verification/2026-10-15-claude-code-wire.md lists what a live record checks.
+  # Observed by the `Relay` scenario claude-code-adaptive-thinking-reaches-the-target-unchanged.
   - name: llm-gateway.clients.ThinkingHandling
     kind: enum
     variants: [Relayed, Mapped]

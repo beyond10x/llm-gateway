@@ -62,13 +62,17 @@ Nothing before step 6 asks for a target, so a refused request never wakes a pod.
 ## What reaches the target
 
 - The top-level `model` value becomes the target's model name. On the Messages wire,
-  `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal to `high` become
-  `xhigh`. Every other byte reaches the target unchanged.
+  `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal to `high` or `max`
+  become `xhigh`, the deepest effort the served Qwen3.8 chat template accepts; `low`, `medium`
+  and `xhigh` pass unchanged. Every other byte reaches the target unchanged, Claude Code's
+  adaptive `thinking` and its structured-output `output_config.format` included: the pinned
+  vLLM ignores the first and serves the second as structured output.
 - The head is the gateway's own: `host` is the target's authority, and a target with a bearer is
   sent `authorization: Bearer <key>` (for a Runpod pod, the model's vLLM key). An `api-key`
   hosted endpoint is sent its credential in the header its table names instead, and no
   `authorization`. No header of the client's request is forwarded, so the owner's credential
-  never reaches a target.
+  never reaches a target. Claude Code's `anthropic-version` and `anthropic-beta` are dropped
+  with the rest; the pinned vLLM reads neither.
 - The target's status, `content-type` and body are relayed as they arrive, chunked, so a stream
   reaches the client event by event. The body is not rewritten: whatever a target puts in its
   answer body reaches the client. An answer cut short reaches the client cut.

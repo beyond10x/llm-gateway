@@ -688,6 +688,10 @@ mod relay {
             /// Sent as the request's `user-agent` (row R1); none is sent without it.
             #[serde(default)]
             user_agent: Option<String>,
+            /// `<name>: <value>` lines sent after `host`, as a client such as Claude Code adds
+            /// `anthropic-version`.
+            #[serde(default)]
+            headers: Vec<String>,
         },
     }
 
@@ -1522,6 +1526,7 @@ mod relay {
             pad_to_bytes,
             declare_bytes,
             user_agent,
+            headers,
         } = step
         else {
             return None;
@@ -1541,9 +1546,14 @@ mod relay {
         let agent = user_agent
             .as_ref()
             .map_or_else(String::new, |agent| format!("user-agent: {agent}\r\n"));
+        let extra = headers.iter().fold(String::new(), |mut extra, line| {
+            extra.push_str(line);
+            extra.push_str("\r\n");
+            extra
+        });
         let length = declare_bytes.unwrap_or(u64::try_from(body.len()).ok()?);
         let mut raw = format!(
-            "{} {path} HTTP/1.1\r\nhost: gateway\r\n{agent}{auth}content-type: application/json\r\ncontent-length: {length}\r\n\r\n",
+            "{} {path} HTTP/1.1\r\nhost: gateway\r\n{extra}{agent}{auth}content-type: application/json\r\ncontent-length: {length}\r\n\r\n",
             method.as_deref().unwrap_or("POST")
         )
         .into_bytes();
@@ -1694,8 +1704,13 @@ mod relay {
                 .all(|pod| pod.len() <= MAX_ANSWERS && pod.iter().all(AnswerInput::valid))
             && program.steps.iter().all(|step| match step {
                 Step::MarkReady | Step::Scrape { .. } => true,
-                Step::Request { pad_to_bytes, .. } => {
+                Step::Request {
+                    pad_to_bytes,
+                    headers,
+                    ..
+                } => {
                     pad_to_bytes.is_none_or(|bytes| bytes <= MAX_PAD_BYTES)
+                        && headers.iter().all(|line| !line.contains(['\r', '\n']))
                 }
             })
     }

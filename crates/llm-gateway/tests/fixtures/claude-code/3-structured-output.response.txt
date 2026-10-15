@@ -1,0 +1,12 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a pod.
+# The JSON document vLLM v0.27.1 answers 3-structured-output.request.txt with (not streamed):
+# a thinking block with its signature (effort turns thinking on), then the text the structured
+# output produced, `stop_reason` `end_turn`; `stop_sequence` and the vLLM extras are absent
+# because the answer is dumped with `exclude_none=True`. Sources under
+# https://github.com/vllm-project/vllm/blob/v0.27.1/ (tag v0.27.1, commit 6e448d0ea9bf):
+#   vllm/entrypoints/anthropic/serving.py:617-671 (messages_full_converter: order thinking, text,
+#   tool_use; signature a fresh uuid4 hex), vllm/entrypoints/anthropic/api_router.py:88-90
+#   (`model_dump(exclude_none=True)`, a compact JSONResponse), protocol.py:221-240 (field order).
+# The id, the signature and the token counts are illustrative; the file's final newline is not
+# part of vLLM's answer, which the test does not depend on.
+{"id":"chatcmpl-0b6e2f9d17a4c358","type":"message","role":"assistant","content":[{"type":"thinking","thinking":"A short title about reading a file.","signature":"5e2a9c0d7b4f41a8b3c6e1f0a2d4b6c8"},{"type":"text","text":"{\"title\":\"Reading /tmp/a.txt\"}"}],"model":"Qwen/Qwen3.8-27B-FP8","stop_reason":"end_turn","usage":{"input_tokens":64,"output_tokens":18}}

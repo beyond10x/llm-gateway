@@ -4,6 +4,17 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- Claude Code on the Messages wire: an effort of `max` (`output_config.effort` or
+  `chat_template_kwargs.reasoning_effort`) now reaches the model as `xhigh`, as `high` already
+  did, because the served Qwen3.8 chat template accepts only `xhigh`, `medium` and `low`.
+  Adaptive `thinking`, `output_config.format` and the deprecated `output_format` are relayed
+  unchanged, `anthropic-version` and `anthropic-beta` are dropped like every client header, and
+  `HEAD /api/hello` stays refused; `docs/gateway.md` "The relay" says why for each, from vLLM
+  v0.27.1's source and Claude Code's published gateway protocol. Settled from those sources and
+  authored fixtures, not from a live session (`docs/verification/2026-10-15-claude-code-wire.md`).
+
 ## 0.7.0 (2026-10-14)
 
 - The documentation site is published at <https://beyond10x.github.io/llm-gateway/>; README

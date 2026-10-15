@@ -19,7 +19,7 @@
 //!   reporting unready, followed by a graceful stop that reports what was in flight.
 //! - **Relay three model-call wires.** Composed with a [`Relay`], the gateway relays the owner's
 //!   `chat`, `responses` and `messages` requests to the target an injected [`RelayTargets`]
-//!   hands out, rewriting only `model` (and on the messages wire a `high` effort), and streams
+//!   hands out, rewriting only `model` (and on the messages wire a `high` or `max` effort), and streams
 //!   the answer back as it arrives. The target opens its own connection; this crate opens none.
 //!
 //! What it deliberately does not do: protocol translation between wires, resolving a secret,

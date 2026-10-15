@@ -1,0 +1,50 @@
+# AUTHORED from published sources, NOT captured from Claude Code or a pod.
+# The first turn of a Claude Code 2.1.293 session that names a model id Claude Code does not
+# recognise (the gateway alias `code`), over `ANTHROPIC_BASE_URL`.
+# Derived from https://code.claude.com/docs/en/llm-gateway-protocol (read 2026-10-15):
+#   "Inference requests post to `/v1/messages?beta=true`"; the "Request headers" table
+#   (`anthropic-version` "currently `2023-06-01`", `anthropic-beta`, `x-claude-code-session-id`);
+#   the "Feature pass-through" table (adaptive reasoning sends `thinking: {"type": "adaptive"}` to
+#   model names it does not recognise; `output_config` carries effort; `cache_control` on
+#   `system` blocks and `messages` entries); "System prompt attribution block" (a block first in
+#   `system`, whose exact text is not published).
+# The `anthropic-beta` values are illustrative: the page does not publish Claude Code's set.
+# Effort `max` is one of Claude Code's five levels (low|medium|high|xhigh|max); vLLM v0.27.1
+# admits it (vllm/entrypoints/anthropic/protocol.py:114) and the served Qwen3.8 chat template
+# does not, so the gateway relays it as `xhigh`.
+POST /v1/messages?beta=true HTTP/1.1
+content-type: application/json
+anthropic-version: 2023-06-01
+anthropic-beta: context-management-2025-06-27,structured-outputs-2025-11-13
+x-claude-code-session-id: 6f1c2a9e-3b7d-4e58-9a21-0c4d8e7f5b13
+
+{
+  "model": "code",
+  "max_tokens": 32000,
+  "stream": true,
+  "thinking": {"type": "adaptive"},
+  "output_config": {"effort": "max"},
+  "system": [
+    {"type": "text", "text": "[attribution block: client version and conversation fingerprint]"},
+    {"type": "text", "text": "You are Claude Code, an interactive command line tool.", "cache_control": {"type": "ephemeral"}}
+  ],
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {"type": "text", "text": "What does /tmp/a.txt say?", "cache_control": {"type": "ephemeral"}}
+      ]
+    }
+  ],
+  "tools": [
+    {
+      "name": "Read",
+      "description": "Reads a file from the local filesystem.",
+      "input_schema": {
+        "type": "object",
+        "properties": {"file_path": {"type": "string", "description": "The absolute path to the file to read"}},
+        "required": ["file_path"]
+      }
+    }
+  ]
+}

@@ -144,6 +144,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "Claude Code's Messages requests reach vLLM in a form it serves",
+        "An effort of high or max becomes xhigh, the deepest the served Qwen3.8 template accepts; adaptive thinking and output_config.format pass unchanged; anthropic-version and anthropic-beta are dropped. Settled from Claude Code's documentation and vLLM v0.27.1's source, not a live session.",
+        "crates/llm-gateway/tests/wire_relay.rs::claude_code_a_tool_turn_and_its_tool_result_reach_the_pod_mapped_and_stream_back_unchanged",
+        Some("/docs/guides/set-up-a-client"),
+    ),
+    shipped(
+        "Relay",
         "A failed target is dropped and replaced",
         "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
         "crates/llm-gateway/tests/wire_relay.rs::w7_an_upstream_502_503_or_504_drops_that_endpoint_and_the_next_request_reaches_a_replacement",

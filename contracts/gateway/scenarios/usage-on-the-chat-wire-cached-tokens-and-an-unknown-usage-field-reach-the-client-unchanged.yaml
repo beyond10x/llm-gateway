@@ -1,0 +1,37 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged
+summary: a chat answer and a chat stream's final usage chunk, cached_tokens and an unknown usage field included, reach the client byte for byte; the record's token counters stay absent
+timeline:
+- at: '2026-10-15T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"Qwen/Qwen3.8-27B-FP8","wires":["chat"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chatcmpl-5d1e8a3c0f7b4e92\",\"object\":\"chat.completion\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Hello.\",\"refusal\":null,\"annotations\":null,\"audio\":null,\"function_call\":null,\"reasoning\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"stop_reason\":null,\"token_ids\":null,\"routed_experts\":null}],\"service_tier\":null,\"system_fingerprint\":null,\"usage\":{\"prompt_tokens\":1234,\"total_tokens\":1240,\"completion_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":1024,\"created_cache_tokens\":192,\"multimodal_tokens\":null},\"future_usage_field\":{\"kept\":true}},\"prompt_logprobs\":null,\"prompt_token_ids\":null,\"prompt_text\":null,\"kv_transfer_params\":null,\"ec_transfer_params\":null,\"metrics\":null}\n"]},{"status":200,"content_type":"text/event-stream","framing":"chunked","chunks":["data: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}],\"prompt_token_ids\":null,\"prompt_text\":null}\n\n","data: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\n","data: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"logprobs\":null,\"finish_reason\":\"stop\",\"stop_reason\":null,\"token_ids\":null}]}\n\n","data: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[],\"usage\":{\"prompt_tokens\":1234,\"total_tokens\":1240,\"completion_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":1024,\"created_cache_tokens\":192},\"future_usage_field\":{\"kept\":true}}}\n\n","data: [DONE]\n\n"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    bodies:
+    - "{\"id\":\"chatcmpl-5d1e8a3c0f7b4e92\",\"object\":\"chat.completion\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Hello.\",\"refusal\":null,\"annotations\":null,\"audio\":null,\"function_call\":null,\"reasoning\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"stop_reason\":null,\"token_ids\":null,\"routed_experts\":null}],\"service_tier\":null,\"system_fingerprint\":null,\"usage\":{\"prompt_tokens\":1234,\"total_tokens\":1240,\"completion_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":1024,\"created_cache_tokens\":192,\"multimodal_tokens\":null},\"future_usage_field\":{\"kept\":true}},\"prompt_logprobs\":null,\"prompt_token_ids\":null,\"prompt_text\":null,\"kv_transfer_params\":null,\"ec_transfer_params\":null,\"metrics\":null}\n"
+    - "data: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}],\"prompt_token_ids\":null,\"prompt_text\":null}\n\ndata: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"logprobs\":null,\"finish_reason\":\"stop\",\"stop_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[],\"usage\":{\"prompt_tokens\":1234,\"total_tokens\":1240,\"completion_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":1024,\"created_cache_tokens\":192},\"future_usage_field\":{\"kept\":true}}}\n\ndata: [DONE]\n\n"
+    headers:
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=text/event-stream cache-control=no-store allow=absent
+    upstream:
+    - "pod-1 POST /v1/chat/completions {\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+    - "pod-1 POST /v1/chat/completions {\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+    acquired: 2
+    invalidated: []
+    released: 2
+    records:
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=756 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1092 duration_ms=bounded tokens=absent

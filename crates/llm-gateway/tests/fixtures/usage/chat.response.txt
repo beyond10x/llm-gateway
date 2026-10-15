@@ -1,0 +1,17 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a server.
+# The JSON document `vllm/vllm-openai:v0.27.1` started with `--enable-prompt-tokens-details`
+# answers a chat completion with (not streamed): every field of ChatCompletionResponse, nulls
+# included, because the route dumps it with `model_dump()`, as a compact JSONResponse. Sources
+# under https://github.com/vllm-project/vllm/blob/v0.27.1/ (tag v0.27.1, commit 6e448d0ea9bf):
+#   vllm/entrypoints/openai/chat_completion/api_router.py:68-72 (`model_dump()`);
+#   vllm/entrypoints/openai/chat_completion/protocol.py:61-148 (ChatMessage, without an empty
+#   `tool_calls`; ChatCompletionResponseChoice; ChatCompletionResponse, field order);
+#   vllm/entrypoints/openai/engine/protocol.py:105-119 (PromptTokenUsageInfo, UsageInfo: field
+#   order prompt_tokens, total_tokens, completion_tokens, prompt_tokens_details);
+#   vllm/entrypoints/openai/chat_completion/serving.py:86-106 and 1061-1070 (the details carry
+#   the cached and created cache tokens when the flag is on).
+# NOT from vLLM: `usage.future_usage_field`, a field no server defines, standing for one the
+# gateway does not know; UsageInfo allows extra fields, which pydantic dumps after the declared
+# ones. The id, `created`, the text and the token counts are illustrative; `model` is the
+# served model name. The file's final newline is not part of vLLM's answer.
+{"id":"chatcmpl-5d1e8a3c0f7b4e92","object":"chat.completion","created":1792051200,"model":"Qwen/Qwen3.8-27B-FP8","choices":[{"index":0,"message":{"role":"assistant","content":"Hello.","refusal":null,"annotations":null,"audio":null,"function_call":null,"reasoning":null},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null,"routed_experts":null}],"service_tier":null,"system_fingerprint":null,"usage":{"prompt_tokens":1234,"total_tokens":1240,"completion_tokens":6,"prompt_tokens_details":{"cached_tokens":1024,"created_cache_tokens":192,"multimodal_tokens":null},"future_usage_field":{"kept":true}},"prompt_logprobs":null,"prompt_token_ids":null,"prompt_text":null,"kv_transfer_params":null,"ec_transfer_params":null,"metrics":null}

@@ -1,0 +1,16 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a server.
+# The JSON document `vllm/vllm-openai:v0.27.1` started with `--enable-prompt-tokens-details`
+# answers a Messages request with (not streamed). Its usage is built from the chat usage:
+# `cache_read_input_tokens` is `prompt_tokens_details.cached_tokens`,
+# `cache_creation_input_tokens` is `created_cache_tokens`, and `input_tokens` is the prompt
+# less both (1234 - 1024 - 192 = 18). Sources under
+# https://github.com/vllm-project/vllm/blob/v0.27.1/ (tag v0.27.1, commit 6e448d0ea9bf):
+#   vllm/entrypoints/anthropic/serving.py:56-92 (_build_anthropic_usage), 617-671
+#   (messages_full_converter); vllm/entrypoints/anthropic/api_router.py:88-90
+#   (`model_dump(exclude_none=True)`, a compact JSONResponse);
+#   vllm/entrypoints/anthropic/protocol.py:25-31 (AnthropicUsage field order) and 221-240.
+# NOT from vLLM: `usage.future_usage_field`, a field no server defines, standing for one the
+# gateway does not know; vLLM's AnthropicUsage never writes one. The id, the text and the token
+# counts are illustrative; `model` is the served model name. The file's final newline is not
+# part of vLLM's answer.
+{"id":"chatcmpl-3c8f1a6e2d9b4071","type":"message","role":"assistant","content":[{"type":"text","text":"Hello."}],"model":"Qwen/Qwen3.8-27B-FP8","stop_reason":"end_turn","usage":{"input_tokens":18,"output_tokens":6,"cache_creation_input_tokens":192,"cache_read_input_tokens":1024,"future_usage_field":{"kept":true}}}

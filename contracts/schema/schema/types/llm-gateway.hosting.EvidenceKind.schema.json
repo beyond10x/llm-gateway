@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.EvidenceKind",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "contract_digest": "slice-sha256/2:565e1723e6d4c983b784ec20703e5b56d5321b5ff0570a95db54ffca083a20e2",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.EvidenceKind": {
+      "title": "EvidenceKind",
+      "x-ess-name": "llm-gateway.hosting.EvidenceKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "InventoryCompleteAbsent",
+        "ProviderTerminated",
+        "ProviderReference",
+        "CallerReference"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "CallerReference": "caller-reference",
+            "InventoryCompleteAbsent": "inventory-complete-absent",
+            "ProviderReference": "provider-reference",
+            "ProviderTerminated": "provider-terminated"
+          }
+        }
+      ]
+    }
+  }
+}

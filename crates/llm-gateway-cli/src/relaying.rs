@@ -8,11 +8,13 @@
 //!
 //! The pool needs a Runpod transport and a way to open a connection to a pod. The shipped
 //! binary ([`crate::start`]) composes it over the production transport, `ConnectorsRunpod`, for
-//! the provider that declares a `connectors` connection; [`crate::start_relaying`] takes any
-//! transport, and only tests call it, with `EmulatedRunpod` and loopback pods.
+//! the provider that declares a `connectors` connection, and reaches each pod over verified TLS
+//! ([`crate::ProxyConnector`]); [`crate::start_relaying`] takes any transport, and only tests
+//! call it, with `EmulatedRunpod` and loopback pods.
 
 use crate::{
     config::{Deployment, Model, Wire},
+    hosted::{HostedEndpoint, HostedTargets, hosted_endpoints},
     keys::VllmKeys,
     refusal::{Refusal, StartupRefusal},
     serve::{Running, Stopped, inventory, owner_verifier},
@@ -23,8 +25,8 @@ use llm_gateway::{
 };
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
-    HostingPolicy, Identifier, LeaseRegistry, PodListing, PoolError, RunpodModel, RunpodPool,
-    RunpodTransport, StreamLease,
+    HostingPolicy, Identifier, LeaseRegistry, PodListing, PodStream, PodTls, PoolError,
+    RunpodModel, RunpodPool, RunpodTransport, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -63,8 +65,9 @@ const POLL: Duration = Duration::from_millis(500);
 /// How often a waiting request looks for the stop between two asks.
 const STOP_CHECK: Duration = Duration::from_millis(20);
 
-/// Opens connections to pods. The production one speaks TLS to the Runpod proxy
-/// (story:live-runpod-wiring); a test's reaches a loopback pod.
+/// Opens connections to pods. The production one, [`crate::ProxyConnector`], speaks TLS to the
+/// Runpod proxy and verifies the pod's certificate before it returns; a test's may reach a
+/// loopback pod.
 pub trait PodConnector: Send + Sync {
     /// Opens one connection to the pod at `authority`, the `host[:port]` of the endpoint the
     /// pool reported. Its read and write timeouts are the connector's.
@@ -72,6 +75,33 @@ pub trait PodConnector: Send + Sync {
     /// # Errors
     /// The connection's own error; the gateway answers it `upstream-failed`.
     fn connect(&self, authority: &str) -> io::Result<Box<dyn RelayStream>>;
+
+    /// Opens the readiness probe's connection to the pod at `authority` of an `https://`
+    /// endpoint, `timeout` bounding the connect and each read and write. The default opens none,
+    /// and the probe answers such an endpoint unreachable.
+    ///
+    /// # Errors
+    /// The connection's own error; the probe answers it unreachable.
+    fn connect_probe(
+        &self,
+        _authority: &str,
+        _timeout: Duration,
+    ) -> io::Result<Box<dyn RelayStream>> {
+        Err(io::Error::new(
+            io::ErrorKind::Unsupported,
+            "this pod connector opens no probe connection",
+        ))
+    }
+}
+
+/// The transport's readiness probe over a [`PodConnector`]: the TLS connection
+/// `ConnectorsRunpod` probes an `https://` endpoint through.
+struct ProbeOver(Arc<dyn PodConnector>);
+
+impl PodTls for ProbeOver {
+    fn connect(&self, authority: &str, timeout: Duration) -> io::Result<Box<dyn PodStream>> {
+        Ok(Box::new(self.0.connect_probe(authority, timeout)?))
+    }
 }
 
 /// System time in Unix milliseconds that never moves backwards: a step back reads as the last
@@ -626,7 +656,7 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     pods: Arc<dyn PodConnector>,
     clock: Arc<dyn Clock>,
 ) -> Result<Relaying, Refusal> {
-    let parts = Parts::read(deployment)?;
+    let parts = Parts::read(deployment, &pods)?;
     let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
     let targets = PoolTargets::new(
         deployment,
@@ -638,21 +668,6 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     )?;
     let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
-}
-
-/// The shipped pod connector. A pod is reached at the Runpod proxy's TLS endpoint, and the
-/// binary has no TLS client yet (story:pod-proxy-tls), so it refuses every connection: no vLLM
-/// key leaves the process unencrypted.
-#[derive(Debug, Default, Clone, Copy)]
-pub struct ProxyConnector;
-
-impl PodConnector for ProxyConnector {
-    fn connect(&self, _authority: &str) -> io::Result<Box<dyn RelayStream>> {
-        Err(io::Error::new(
-            io::ErrorKind::Unsupported,
-            "the Runpod proxy needs TLS, which this binary does not speak yet",
-        ))
-    }
 }
 
 /// Targets for models no pool serves: every acquisition is `target-unavailable`.
@@ -694,12 +709,15 @@ fn reachable(binding: &ConnectorsBinding, transport: &mut ConnectorsRunpod) -> b
 /// connection is not reachable at start, no pool is composed, no further `connectors` call is
 /// made, and its models are `target-unavailable` too.
 ///
-/// `wrap` and `pods` are the seam a test moves the pod's address to a loopback pod with. `wrap`
-/// receives the `ConnectorsRunpod` built from the document and may return any
-/// `RunpodTransport`, including one that ignores it; the type does not hold the transport to
-/// `ConnectorsRunpod`. What does is the callers: [`crate::start`], the only composition the
-/// shipped binary reaches, passes the identity and [`ProxyConnector`], and only tests pass
-/// anything else. No document key and no option reaches `wrap` or `pods`.
+/// `pods` opens every connection to a pod: the relay's, and the readiness probe's to an
+/// `https://` endpoint ([`PodConnector::connect_probe`], handed to the transport as its TLS
+/// connection before `wrap`). `wrap` and `pods` are the seam a test moves the pod's address to
+/// a loopback pod with. `wrap` receives the `ConnectorsRunpod` built from the document and may
+/// return any `RunpodTransport`, including one that ignores it; the type does not hold the
+/// transport to `ConnectorsRunpod`. What does is the callers: [`crate::start`], the only
+/// composition the shipped binary reaches, passes the identity and
+/// [`crate::ProxyConnector::shipped`], and only tests pass anything else. No document key and no
+/// option reaches `wrap` or `pods`.
 ///
 /// # Errors
 /// As [`start_relaying`], for the connected models.
@@ -712,7 +730,7 @@ where
     W: RunpodTransport + Send + 'static,
     F: FnOnce(ConnectorsRunpod) -> W,
 {
-    let parts = Parts::read(deployment)?;
+    let parts = Parts::read(deployment, &pods)?;
     let connected = deployment
         .providers
         .iter()
@@ -733,6 +751,7 @@ where
     let authorization = compute_authorization()?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let mut transport = ConnectorsRunpod::new(binding.clone());
+    transport.set_tls(Arc::new(ProbeOver(Arc::clone(&pods))));
     if !reachable(&binding, &mut transport) {
         tracing::warn!(
             provider = provider.as_str(),
@@ -777,6 +796,10 @@ struct Parts {
     verifier: SharedSecretVerifier,
     inventory: RouteInventory,
     vllm_keys: VllmKeys,
+    /// Each hosted model's endpoint, its credential read (story:hosted-endpoints).
+    hosted: BTreeMap<String, HostedEndpoint>,
+    /// The connector an `https` hosted endpoint is reached through: the pod connector.
+    tls: Arc<dyn PodConnector>,
     stopping: Arc<AtomicBool>,
     metrics: Arc<Metrics>,
     /// Every model as the relay serves it.
@@ -785,12 +808,14 @@ struct Parts {
 
 impl Parts {
     /// # Errors
-    /// An `owner-secret:*`, `vllm-api-key:*` or `config:value` [`Refusal`]: every refusal the
-    /// document itself can earn, before any transport is built.
-    fn read(deployment: &Deployment) -> Result<Self, Refusal> {
+    /// An `owner-secret:*`, `vllm-api-key:*`, `endpoint-credential:*` or `config:value`
+    /// [`Refusal`]: every refusal the document itself can earn, before any transport is built.
+    fn read(deployment: &Deployment, tls: &Arc<dyn PodConnector>) -> Result<Self, Refusal> {
         Ok(Self {
             verifier: owner_verifier(deployment)?,
             vllm_keys: crate::keys::vllm_keys(deployment)?,
+            hosted: hosted_endpoints(deployment)?,
+            tls: Arc::clone(tls),
             inventory: inventory(deployment)?,
             stopping: Arc::new(AtomicBool::new(false)),
             metrics: Arc::new(Metrics::default()),
@@ -801,9 +826,29 @@ impl Parts {
 
 /// Every model of the document as the relay serves it: on its wires, under its alias, with its
 /// `tool_calling`, and with the `max_model_len` and `context_window` the public routes publish
-/// (rows R5, R1).
+/// (rows R5, R1). A hosted model is relayed under its `upstream_model`, and publishes the
+/// `context_window` it declares and no `max_model_len`.
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
-    let mut models = Vec::with_capacity(deployment.models.len());
+    let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
+    for (alias, hosted) in &deployment.hosted {
+        let wires = hosted.wires.iter().copied().map(relay_wire).collect();
+        let relayed = RelayModel::new(
+            relay_label(alias)?,
+            relay_label(&hosted.upstream_model)?,
+            wires,
+        )
+        .map_err(|error| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("hosted.{alias}: {error}"),
+            )
+        })?
+        .with_tool_calling(hosted.tool_calling);
+        models.push(match hosted.context_window {
+            Some(window) => relayed.with_context_window(u64::from(window)),
+            None => relayed,
+        });
+    }
     for (alias, model) in &deployment.models {
         let wires = model.wires.iter().copied().map(relay_wire).collect();
         // The pod serves the model under its alias (`--served-model-name`), so the upstream
@@ -840,10 +885,14 @@ fn compose(
         verifier,
         inventory,
         vllm_keys,
+        hosted,
+        tls,
         stopping,
         metrics,
         models,
     } = parts;
+    // Every composition serves its hosted models from their endpoints, whatever serves the rest.
+    let targets: Arc<dyn RelayTargets> = Arc::new(HostedTargets::new(hosted, tls, targets));
     let relay = Relay::new(models, targets)
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
         .with_metrics(Arc::clone(&metrics))

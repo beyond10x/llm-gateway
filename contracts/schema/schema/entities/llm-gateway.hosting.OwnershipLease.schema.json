@@ -11,6 +11,9 @@
     "controller_id": {
       "type": "string"
     },
+    "deployment_id": {
+      "type": "string"
+    },
     "owner_id": {
       "type": "string"
     },
@@ -27,6 +30,7 @@
   "required": [
     "id",
     "controller_id",
+    "deployment_id",
     "owner_id",
     "epoch",
     "expires_at_ms",
@@ -36,8 +40,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
-    "contract_digest": "slice-sha256/2:b27d5aca42030bf0a6248fbb32c923a30c38640e588905ad7520d7c30d2130cb",
+    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "contract_digest": "slice-sha256/2:8087c36da347a0f0868871b73bb6190bb3c30f976d80c951732b67344945780e",
     "regenerate": "ess generate"
   },
   "$defs": {

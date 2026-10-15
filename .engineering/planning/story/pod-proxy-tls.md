@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:pod-proxy-tls
 kind: story
-status: draft
+status: implemented
 title: The binary reaches a pod's https proxy URL over verified TLS
 relations:
 - decomposes: epic:client-access
@@ -30,7 +30,11 @@ scope:
   path: docs/hosting.md
 - confidence: cited
   path: spec/domains/deployment.yaml
-revision: 6
+revision: 10
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-14T14:31:56Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "proposed", to: "active", at: "2026-10-14T14:31:58Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"review_outcome":3}}}
+- {from: "active", to: "implemented", at: "2026-10-14T21:30:35Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1,"review_outcome":6,"verification":1}}}
 ---
 ## Outcome
 
@@ -64,6 +68,14 @@ certificate, and which trust roots the shipped binary uses, before any code.
    gateway crate's closure.
 5. `spec/domains/deployment.yaml` carries a `DECIDED` line naming the verified-certificate rule and
    the trust roots of the shipped binary, and `ess specify validate --path spec` passes.
+6. The load-time refusal of a `connectors` provider (`inert_until_tls` in
+   `crates/llm-gateway-cli/src/serve.rs`) is removed. A process test starts the binary with a
+   `connectors` provider against the `connectors-fixture` binary, and relays a chat request to a
+   loopback `https` fixture pod at the address the provider description gives, reached through a
+   test seam that maps the pod's proxy host to loopback: the fixture pod receives the request with
+   the model's vLLM key, and the client receives its answer.
+7. No test makes a paid call or reaches Runpod: every test runs against the `connectors-fixture`
+   binary, `EmulatedRunpod` or a loopback fixture (`AGENTS.md` "Invariants").
 
 ## Depends on
 

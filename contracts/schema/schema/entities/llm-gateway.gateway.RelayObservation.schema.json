@@ -71,6 +71,18 @@
     "secret_upstream": {
       "type": "boolean"
     },
+    "connections": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "received_heads": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "records": {
       "type": "array",
       "items": {
@@ -101,6 +113,8 @@
     "released",
     "authorizations",
     "secret_upstream",
+    "connections",
+    "received_heads",
     "records",
     "scrapes",
     "state"
@@ -109,8 +123,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
-    "contract_digest": "slice-sha256/2:286f97483a83eba96c7f8ab75fed4da3dfe8eac216c36069bf62c63614bd7fd7",
+    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "contract_digest": "slice-sha256/2:19941a3506cd6fbb6e55102fcfd81ae6d6f60c9607ca661502aea2b5b89827b6",
     "regenerate": "ess generate"
   },
   "$defs": {

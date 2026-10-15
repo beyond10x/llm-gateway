@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-14T21:30:31Z",
+  "actor": "human:timo",
+  "artifact": "story:pod-proxy-tls",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "~/.cache/llm-gateway-w07/int-gate.sh on wave/2026-10-14-w01 at 29135c4 (RUSTUP_TOOLCHAIN=1.98.0): clippy and tests of six crates, 576 passed; conformance 210 of 210 three runs"
+  }
+}

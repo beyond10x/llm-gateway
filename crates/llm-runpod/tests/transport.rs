@@ -23,8 +23,9 @@ use llm_provision::{
 };
 use llm_runpod::{
     CloudType, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, ManualClock, NetworkVolume,
-    POD_CREATE_BODY_KEYS, PodRequest, PodStatus, Probe, ProbeTarget, RunpodModel, RunpodProvider,
-    RunpodTransport, TerminateAnswer, Thinking, Unserviceable, VllmSettings, started_at_ms,
+    POD_CREATE_BODY_KEYS, PodRequest, PodStatus, PodStream, PodTls, Probe, ProbeTarget,
+    RunpodModel, RunpodProvider, RunpodTransport, TerminateAnswer, Thinking, Unserviceable,
+    VllmSettings, started_at_ms,
 };
 use serde_json::{Value, json};
 
@@ -713,6 +714,108 @@ fn the_probe_maps_each_answer() {
     assert_eq!(
         probe(&mut transport, "https://abc123-8000.proxy.runpod.net/v1/"),
         Probe::Unreachable
+    );
+}
+
+/// What a [`PodTls`] stand-in was asked for, and where it connects instead: a plain loopback
+/// socket. This crate has no TLS client; the binary hands in its own (`ConnectorsRunpod::set_tls`).
+struct LoopbackTls {
+    pod: Option<std::net::SocketAddr>,
+    asked: std::sync::Mutex<Vec<(String, Duration)>>,
+}
+
+impl PodTls for LoopbackTls {
+    fn connect(&self, authority: &str, timeout: Duration) -> std::io::Result<Box<dyn PodStream>> {
+        self.asked
+            .lock()
+            .expect("asked")
+            .push((authority.to_owned(), timeout));
+        match self.pod {
+            Some(pod) => Ok(Box::new(std::net::TcpStream::connect(pod)?)),
+            None => Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "the certificate did not verify",
+            )),
+        }
+    }
+}
+
+/// story:pod-proxy-tls: an `https://` endpoint is probed over the TLS connection the embedding
+/// hands the transport, at the endpoint's own authority, with the model's key, and within the
+/// probe's timeout.
+#[test]
+fn an_https_probe_goes_through_the_tls_connection_the_embedding_hands_in() {
+    let fixture = Fixture::new("probe_tls");
+    let mut transport = fixture.transport();
+    transport.set_vllm_key("qwen", KEY.as_bytes().to_vec());
+    let (plain, server) = serve_once("200 OK", r#"{"object":"list","data":[{"id":"qwen"}]}"#);
+    let pod = plain
+        .strip_prefix("http://")
+        .and_then(|rest| rest.strip_suffix("/v1/"))
+        .and_then(|address| address.parse().ok());
+    let tls = Arc::new(LoopbackTls {
+        pod,
+        asked: std::sync::Mutex::new(Vec::new()),
+    });
+    transport.set_tls(tls.clone());
+    assert_eq!(
+        probe(&mut transport, "https://abc123-8000.proxy.runpod.net/v1/"),
+        Probe::Ready {
+            served_models: vec!["qwen".to_owned()]
+        }
+    );
+    let request = server.join().expect("server");
+    assert!(
+        request.starts_with("GET /v1/models HTTP/1.1\r\n"),
+        "{request}"
+    );
+    assert!(
+        request
+            .lines()
+            .any(|line| line.eq_ignore_ascii_case("host: abc123-8000.proxy.runpod.net")),
+        "{request}"
+    );
+    assert!(
+        request
+            .lines()
+            .any(|line| line.eq_ignore_ascii_case(&format!("authorization: Bearer {KEY}"))),
+        "{request}"
+    );
+    let asked = tls.asked.lock().expect("asked").clone();
+    assert_eq!(asked.len(), 1, "{asked:?}");
+    assert_eq!(asked[0].0, "abc123-8000.proxy.runpod.net");
+    assert!(asked[0].1 <= Duration::from_secs(10), "{asked:?}");
+}
+
+/// A TLS connection that cannot be opened (a certificate that does not verify) is `Unreachable`,
+/// and an `http://` endpoint never goes through the TLS connection.
+#[test]
+fn an_https_probe_whose_tls_connection_fails_is_unreachable() {
+    let fixture = Fixture::new("probe_tls_refused");
+    let mut transport = fixture.transport();
+    transport.set_vllm_key("qwen", KEY.as_bytes().to_vec());
+    let tls = Arc::new(LoopbackTls {
+        pod: None,
+        asked: std::sync::Mutex::new(Vec::new()),
+    });
+    transport.set_tls(tls.clone());
+    assert_eq!(
+        probe(&mut transport, "https://abc123-8000.proxy.runpod.net/v1/"),
+        Probe::Unreachable
+    );
+    assert_eq!(tls.asked.lock().expect("asked").len(), 1);
+    let (endpoint, server) = serve_once("200 OK", r#"{"object":"list","data":[{"id":"qwen"}]}"#);
+    assert_eq!(
+        probe(&mut transport, &endpoint),
+        Probe::Ready {
+            served_models: vec!["qwen".to_owned()]
+        }
+    );
+    server.join().expect("server");
+    assert_eq!(
+        tls.asked.lock().expect("asked").len(),
+        1,
+        "an http:// endpoint went through the TLS connection"
     );
 }
 

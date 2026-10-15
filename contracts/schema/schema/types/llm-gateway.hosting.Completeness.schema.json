@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.Completeness",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "contract_digest": "slice-sha256/2:c0c4047a7f07fcbf8119ec55004edec194a178b3c9721663009e22a0d703b35f",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.Completeness": {
+      "title": "Completeness",
+      "x-ess-name": "llm-gateway.hosting.Completeness",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Complete",
+        "Partial"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "Complete": "complete",
+            "Partial": "partial"
+          }
+        }
+      ]
+    }
+  }
+}

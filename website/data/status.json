@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-10-08",
+  "asOf": "2026-10-14",
   "format": "b10x-status/1",
   "items": [
     {
@@ -81,9 +81,23 @@
     },
     {
       "area": "Relay",
-      "detail": "A request for a model whose pod is starting waits up to request_hold_seconds, then is model-cold-start with retry-after 30. Tested through a seam: the shipped binary reaches no pod yet.",
+      "detail": "A request for a model whose pod is starting waits up to request_hold_seconds, then is model-cold-start with retry-after 30. Tested through a seam over the emulator.",
       "href": "/docs/concepts/relay",
       "label": "Cold-start hold in the Runpod composition",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
+      "href": "/docs/concepts/relay",
+      "label": "Relay to a Runpod pod from the binary over verified TLS",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "A model declared as [hosted.<alias>] is relayed to any server that speaks its wire at an http or https base URL, with a bearer, an API key in a named header, or no credential, read from a file. https is verified against the same roots as a pod. Tested against loopback endpoints, not against a vendor API.",
+      "href": "/docs/reference/deployment-document",
+      "label": "Hosted endpoints",
       "status": "shipped"
     },
     {
@@ -95,7 +109,7 @@
     },
     {
       "area": "Binary",
-      "detail": "The document, the owner secret and each vLLM key file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
+      "detail": "The document, the owner secret, each vLLM key file and each hosted endpoint's credential file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
       "href": "/docs/reference/deployment-document",
       "label": "Trusted-file reader",
       "status": "shipped"
@@ -157,17 +171,10 @@
     },
     {
       "area": "Specification",
-      "detail": "The system llm-gateway is specified in ESS; the gate answers at least 201 of 201 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+      "detail": "The system llm-gateway is specified in ESS; the gate answers at least 210 of 210 scenarios, skips none, and fails on drift between the specification and its generated suite.",
       "href": "/docs/guides/run-the-checks",
       "label": "ESS specification and conformance suite",
       "status": "shipped"
-    },
-    {
-      "area": "Relay",
-      "detail": "The binary refuses a document whose provider declares connectors until it reaches a pod's https proxy URL over verified TLS; until then a relayed model is target-unavailable.",
-      "href": "/docs/concepts/relay",
-      "label": "Relay to a Runpod pod from the binary",
-      "status": "planned"
     },
     {
       "area": "Relay",
@@ -179,12 +186,6 @@
       "area": "Relay",
       "detail": "Translating a supported subset between wires; the gateway translates nothing today.",
       "label": "Protocol translation",
-      "status": "planned"
-    },
-    {
-      "area": "Relay",
-      "detail": "A model served by any server that speaks its wire at a declared base URL, not only by a Runpod pod.",
-      "label": "Hosted endpoints",
       "status": "planned"
     },
     {

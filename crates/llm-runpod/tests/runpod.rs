@@ -20,10 +20,10 @@ use llm_provision::{
     LeaseRegistry, Phase,
 };
 use llm_runpod::{
-    CloudType, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX, ManualClock,
-    NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError, Probe,
-    ProbeTarget, RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH, TAG_OWNER,
-    TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
+    CloudType, ConfigError, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX,
+    ManualClock, NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError,
+    Probe, ProbeTarget, RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH,
+    TAG_OWNER, TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
 };
 
 const ALIAS: &str = "qwen";
@@ -1433,4 +1433,212 @@ fn l6_a_hold_is_served_by_the_pod_it_waited_on() {
     assert!(!hold.lost());
     assert_eq!(hold.deployment(), Some(lease.deployment()));
     assert_eq!(stack.runpod.create_calls(), 1);
+}
+
+// --- rules spec/domains/runpod.yaml declares (story:hosting-spec-declarations) ----------------
+
+/// Row 38: a create whose image is not the model's declared one, or that names a model nobody
+/// declared, is not sent. The provider answers `not-sent` and Runpod sees no call.
+#[test]
+fn a_create_whose_image_differs_or_names_an_undeclared_model_is_not_sent() {
+    use llm_provision::{CreateRequest, DeploymentSpec, Dispatch, HostingProvider as _};
+    let runpod = EmulatedRunpod::new();
+    let mut provider = RunpodProvider::new(
+        runpod.clone(),
+        id("runpod"),
+        id("account-1"),
+        models(),
+        Arc::new(ManualClock::new(0)),
+    );
+    let request = |model: &str, image: &str| CreateRequest {
+        spec: DeploymentSpec {
+            id: id("d1"),
+            provider: id("runpod"),
+            account: id("account-1"),
+            model: id(model),
+            image: id(image),
+            resource_name: id(&format!("{POD_NAME_PREFIX}{model}")),
+            requested_lifetime_ms: 60_000,
+        },
+        request_id: id("request-d1"),
+        owner: id("controller-a"),
+        epoch: 1,
+    };
+    for (model, image) in [
+        (ALIAS, "vllm/vllm-openai:v0.27.0"),
+        ("absent", "vllm/vllm-openai:v0.27.1"),
+    ] {
+        let outcome = provider.create(&request(model, image));
+        assert_eq!(outcome.dispatch, Dispatch::NotSent, "{model} {image}");
+        assert_eq!(outcome.resource, None);
+    }
+    assert_eq!(runpod.create_calls(), 0, "nothing reached Runpod");
+    let declared = provider.create(&request(ALIAS, "vllm/vllm-openai:v0.27.1"));
+    assert_eq!(
+        declared.dispatch,
+        Dispatch::Accepted,
+        "the declared image is sent"
+    );
+    assert_eq!(runpod.create_calls(), 1);
+}
+
+/// Row 39: a pool stepped after its lease ran out treats the expiry as a stop obligation and
+/// carries it out: the pod is terminated, under a reacquired claim, and the record keeps
+/// `lease-expired` as its reason.
+#[test]
+fn an_expired_lease_is_a_stop_obligation_the_pool_carries_out() {
+    let runpod = EmulatedRunpod::new();
+    let clock = ManualClock::new(1_000);
+    let leases = Arc::new(LeaseRegistry::default());
+    let pool = RunpodPool::new(
+        HostingPolicy {
+            lease_ms: 10_000,
+            ..policy()
+        },
+        Arc::clone(&leases),
+        runpod.clone(),
+        models(),
+        Arc::new(clock.clone()),
+    )
+    .expect("pool");
+    let stack = Stack {
+        runpod,
+        clock,
+        leases,
+        pool: Arc::new(pool),
+    };
+    drop(ready(&stack));
+    assert!(stack.runpod.terminations().is_empty());
+    // Past the claim, well inside the idle limit and the lifetime ceiling.
+    stack.clock.advance(10_001);
+    stack.pool.reap().expect("cleanup pass");
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
+    let record = stack
+        .pool
+        .view()
+        .deployments
+        .into_iter()
+        .next()
+        .expect("the record");
+    assert_eq!(record.phase, Phase::Stopped);
+    assert_eq!(
+        record.stop_reason,
+        Some(llm_provision::StopReason::LeaseExpired)
+    );
+    assert_eq!(record.stop_evidence, Some(id("runpod-terminated-pod1")));
+}
+
+/// The `code` of every variant `spec/domains/runpod.yaml` declares for one enum, in order.
+fn declared_codes(type_name: &str) -> Vec<(String, String)> {
+    const SPEC: &str = include_str!("../../../spec/domains/runpod.yaml");
+    let start = SPEC
+        .find(&format!("  - name: {type_name}\n"))
+        .unwrap_or_else(|| panic!("spec/domains/runpod.yaml declares no {type_name}"));
+    let rest = &SPEC[start + 1..];
+    let end = [
+        rest.find("\n  - name: "),
+        rest.find("\n  # "),
+        rest.find("\nentities:"),
+    ]
+    .into_iter()
+    .flatten()
+    .min()
+    .unwrap_or(rest.len());
+    rest[..end]
+        .lines()
+        .filter_map(|line| line.trim().strip_prefix("- {name: "))
+        .filter_map(|line| line.split_once(", attributes: {code: "))
+        .map(|(name, code)| (name.to_owned(), code.trim_end_matches('}').to_owned()))
+        .collect()
+}
+
+/// Rows 42, 45 and 46: every refusal the pool and a model declaration can answer is declared,
+/// in order, with the code the crate answers. The match is exhaustive, so a variant added to
+/// `PoolError` without a declaration does not compile here.
+#[test]
+fn every_pool_and_config_refusal_is_declared_with_its_code() {
+    let name = |error: PoolError| match error {
+        PoolError::UnknownModel => "UnknownModel",
+        PoolError::InvalidModel(_) => "InvalidModel",
+        PoolError::Starting => "Starting",
+        PoolError::Stopping => "Stopping",
+        PoolError::NoCapacity => "NoCapacity",
+        PoolError::CrashLoop => "CrashLoop",
+        PoolError::CredentialRefused => "CredentialRefused",
+        PoolError::StartupDeadline => "StartupDeadline",
+        PoolError::PodExited => "PodExited",
+        PoolError::StoppedServing => "StoppedServing",
+        PoolError::Hosting(_) => "Hosting",
+    };
+    let pool: Vec<(String, String)> = [
+        PoolError::UnknownModel,
+        PoolError::InvalidModel(ConfigError::NoGpu),
+        PoolError::Starting,
+        PoolError::Stopping,
+        PoolError::NoCapacity,
+        PoolError::CrashLoop,
+        PoolError::CredentialRefused,
+        PoolError::StartupDeadline,
+        PoolError::PodExited,
+        PoolError::StoppedServing,
+        PoolError::Hosting(HostingError::WrongPhase),
+    ]
+    .into_iter()
+    .map(|error| (name(error).to_owned(), error.code().to_owned()))
+    .collect();
+    assert_eq!(declared_codes("llm-gateway.runpod.PoolRefusal"), pool);
+    let config: Vec<(String, String)> = ConfigError::ALL
+        .iter()
+        .map(|error| (format!("{error:?}"), error.code().to_owned()))
+        .collect();
+    assert_eq!(declared_codes("llm-gateway.runpod.ConfigRefusal"), config);
+}
+
+/// Every Rust source file under `dir`, recursively.
+fn sources(dir: &std::path::Path, found: &mut Vec<std::path::PathBuf>) {
+    for entry in std::fs::read_dir(dir).expect("source directory") {
+        let path = entry.expect("entry").path();
+        if path.is_dir() {
+            sources(&path, found);
+        } else if path.extension().is_some_and(|extension| extension == "rs") {
+            found.push(path);
+        }
+    }
+}
+
+/// The crate links `b10x-llm-credentials` and `tokio` through `b10x-llm-providers` and uses
+/// neither: no source names either crate, and the one thing it takes from `b10x-llm-providers`
+/// is the Runpod description, `descriptions::runpod`.
+#[test]
+fn the_crate_uses_nothing_of_llm_providers_but_the_runpod_description() {
+    let mut found = Vec::new();
+    sources(
+        &std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src"),
+        &mut found,
+    );
+    assert!(found.len() >= 9, "every source file was read: {found:?}");
+    let mut imports = Vec::new();
+    let mut calls = Vec::new();
+    for path in &found {
+        let text = std::fs::read_to_string(path).expect("source");
+        for line in text
+            .lines()
+            .filter(|line| !line.trim_start().starts_with("//"))
+        {
+            for forbidden in ["tokio", "llm_credentials"] {
+                assert!(!line.contains(forbidden), "{}: {line}", path.display());
+            }
+            if line.contains("llm_providers") {
+                imports.push(line.trim().to_owned());
+            }
+            if line.contains("descriptions::") {
+                calls.push(line.trim().to_owned());
+            }
+        }
+    }
+    assert_eq!(
+        imports,
+        ["use llm_providers::{ProviderDescription, descriptions};"]
+    );
+    assert_eq!(calls, ["description: descriptions::runpod(),"]);
 }

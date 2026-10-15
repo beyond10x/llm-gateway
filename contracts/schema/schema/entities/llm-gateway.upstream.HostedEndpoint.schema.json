@@ -8,8 +8,14 @@
     "endpoint_id": {
       "type": "string"
     },
-    "wire": {
-      "$ref": "#/$defs/llm-gateway.gateway.Wire"
+    "wires": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/llm-gateway.gateway.Wire"
+      }
+    },
+    "upstream_model": {
+      "type": "string"
     },
     "base_url": {
       "type": "string"
@@ -32,7 +38,8 @@
   },
   "required": [
     "endpoint_id",
-    "wire",
+    "wires",
+    "upstream_model",
     "base_url",
     "auth_kind",
     "billing_kind",
@@ -42,8 +49,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
-    "contract_digest": "slice-sha256/2:65f267b3d7b3f7c98f97b7f9612e02d8dc4c83715e14d0b8161554d367503f55",
+    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "contract_digest": "slice-sha256/2:a0285f9b687aaa4e77d7da158726e79e9ba6c1b0fe9d6a38d3815e0932ebdb0c",
     "regenerate": "ess generate"
   },
   "$defs": {

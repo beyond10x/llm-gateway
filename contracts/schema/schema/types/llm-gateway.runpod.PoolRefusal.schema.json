@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
-    "contract_digest": "slice-sha256/2:f1d18ec35c3ebd9a484b9e68e8c350f58ff75e9eb74fdd25e8646fbf33eb119b",
+    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "contract_digest": "slice-sha256/2:31978336d307e9dd0cd620559d4f45e49a52f0b20a8c5ff069b9bf84b11e6cfa",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -26,6 +26,26 @@
         "PodExited",
         "StoppedServing",
         "Hosting"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "CrashLoop": "crash-loop",
+            "CredentialRefused": "credential-refused",
+            "Hosting": "hosting",
+            "InvalidModel": "invalid-model",
+            "NoCapacity": "no-capacity",
+            "PodExited": "pod-exited",
+            "Starting": "starting",
+            "StartupDeadline": "startup-deadline",
+            "StoppedServing": "stopped-serving",
+            "Stopping": "stopping",
+            "UnknownModel": "unknown-model"
+          }
+        }
       ]
     }
   }

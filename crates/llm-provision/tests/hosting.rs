@@ -6,8 +6,8 @@ use std::sync::{Arc, Barrier};
 
 use llm_provision::{
     AmbiguousCreate, Completeness, ComputeAuthorization, Controller, DeploymentSpec, Dispatch,
-    FakeProvider, HostingCommand, HostingError, HostingPolicy, HostingProvider, Idempotency,
-    Identifier, LeaseRegistry, Phase, ProviderState, StopReason,
+    EvidenceKind, FakeProvider, HostingCommand, HostingError, HostingPolicy, HostingProvider,
+    Idempotency, Identifier, LeaseRegistry, Phase, ProviderState, StopReason,
 };
 
 fn id(value: &str) -> Identifier {
@@ -1998,4 +1998,139 @@ fn a_command_whose_only_phase_change_is_forbidden_is_refused_rather_than_reporte
     }
     assert_eq!(fake.stops(), 0);
     assert_eq!(fake.submits(), 0);
+}
+
+// ---------------------------------------------------------------------------------------------
+// Rules `spec/domains/hosting.yaml` declares, pinned here (story:hosting-spec-declarations).
+// ---------------------------------------------------------------------------------------------
+
+/// Closes one obligation by the route `kind` names, through real public calls only, and returns
+/// the evidence the record carries afterwards.
+///
+/// The match is exhaustive, so an evidence kind added to the vocabulary without a route that
+/// attaches it does not compile.
+fn attach(kind: EvidenceKind) -> Option<Identifier> {
+    let mut controller = open();
+    let mut fake = provider();
+    provisioned(&mut controller, &mut fake, "d1");
+    controller
+        .apply(2, &mut fake, HostingCommand::Observe)
+        .expect("inventory");
+    let command = match kind {
+        EvidenceKind::InventoryCompleteAbsent => {
+            fake.vanish(&id("pool-slot"));
+            HostingCommand::Observe
+        }
+        EvidenceKind::ProviderTerminated => {
+            fake.terminate(&id("pool-slot"));
+            HostingCommand::Observe
+        }
+        EvidenceKind::ProviderReference => HostingCommand::Stop {
+            deployment: id("d1"),
+        },
+        EvidenceKind::CallerReference => {
+            controller
+                .apply(
+                    3,
+                    &mut fake,
+                    HostingCommand::RequestStop {
+                        deployment: id("d1"),
+                    },
+                )
+                .expect("request stop");
+            HostingCommand::ConfirmStopped {
+                deployment: id("d1"),
+                evidence: id("invoice-line-7"),
+            }
+        }
+    };
+    controller.apply(4, &mut fake, command).expect("closed");
+    let record = state(&controller, "d1");
+    assert_eq!(
+        record.phase,
+        Phase::Stopped,
+        "{kind:?} closes the obligation"
+    );
+    record.stop_evidence
+}
+
+#[test]
+fn every_evidence_kind_is_attached_by_some_real_sequence_of_calls() {
+    for kind in EvidenceKind::ALL {
+        let evidence = attach(*kind);
+        match kind {
+            // The two fixed kinds attach their own code, and the published constants are it.
+            EvidenceKind::InventoryCompleteAbsent | EvidenceKind::ProviderTerminated => {
+                assert_eq!(evidence, Some(id(kind.code())), "{kind:?}");
+            }
+            // The provider's own reference for the accepted stop, never a fixed word.
+            EvidenceKind::ProviderReference => {
+                assert_eq!(evidence, Some(id("fake-stop-1")), "{kind:?}");
+            }
+            // The caller's reference, exactly as handed in.
+            EvidenceKind::CallerReference => {
+                assert_eq!(evidence, Some(id("invoice-line-7")), "{kind:?}");
+            }
+        }
+    }
+    assert_eq!(
+        llm_provision::EVIDENCE_ABSENT_FROM_COMPLETE_INVENTORY,
+        EvidenceKind::InventoryCompleteAbsent.code()
+    );
+    assert_eq!(
+        llm_provision::EVIDENCE_PROVIDER_TERMINATED,
+        EvidenceKind::ProviderTerminated.code()
+    );
+}
+
+/// A create the provider accepted, taken over at a strictly newer epoch
+/// before any listing confirmed it, goes from `Requested` straight to `Disowned`, attaches no
+/// evidence and is reported transferred.
+#[test]
+fn a_submitted_create_taken_over_before_it_was_observed_is_disowned() {
+    let mut controller = open();
+    let mut fake = provider();
+    provisioned(&mut controller, &mut fake, "d1");
+    assert_eq!(state(&controller, "d1").phase, Phase::Requested);
+    fake.retag(&id("pool-slot"), &id("controller-b"), 2);
+    controller
+        .apply(2, &mut fake, HostingCommand::Observe)
+        .expect("inventory");
+    let record = state(&controller, "d1");
+    assert_eq!(record.phase, Phase::Disowned);
+    assert_eq!(record.stop_evidence, None);
+    assert_eq!(controller.view().totals.transferred, vec![id("d1")]);
+    assert_eq!(fake.stops(), 0);
+}
+
+/// Row 5: the crate opens no socket, reads no credential or file, starts no process and holds
+/// no cloud SDK. It declares no dependency, and no source file names the standard library's
+/// network, file-system, process or environment modules.
+#[test]
+fn row_5_the_hosting_crate_declares_no_dependency_and_names_no_io() {
+    let manifest = include_str!("../Cargo.toml");
+    for table in ["[dependencies]", "[build-dependencies]", "[target."] {
+        assert!(!manifest.contains(table), "Cargo.toml declares {table}");
+    }
+    let sources = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let mut read = 0;
+    for entry in std::fs::read_dir(&sources).expect("src") {
+        let path = entry.expect("entry").path();
+        let text = std::fs::read_to_string(&path).expect("source");
+        for forbidden in [
+            "std::net",
+            "std::fs",
+            "std::process",
+            "std::env",
+            "extern crate",
+        ] {
+            assert!(
+                !text.contains(forbidden),
+                "{} names {forbidden}",
+                path.display()
+            );
+        }
+        read += 1;
+    }
+    assert!(read >= 11, "every source file was read, {read} of them");
 }

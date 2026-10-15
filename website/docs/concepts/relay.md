@@ -3,7 +3,7 @@ title: The relay
 sidebar_position: 2
 description: How the owner's Chat Completions, Responses and Messages requests reach a model target, what is refused first, and what the binary does with them today.
 lede: A wire request is admitted, checked against its model, and only then handed to a target the embedding chose; a refused request never wakes a pod.
-source: docs/gateway.md (The relay), crates/llm-gateway/src/relay.rs, crates/llm-gateway/tests/wire_relay.rs, crates/llm-gateway-cli/src/serve.rs, crates/llm-gateway-cli/tests/relaying.rs
+source: docs/gateway.md (The relay), crates/llm-gateway/src/relay.rs, crates/llm-gateway/tests/wire_relay.rs, crates/llm-gateway-cli/src/serve.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/tests/relaying.rs, crates/llm-gateway-cli/tests/hosted.rs
 ---
 
 # The relay
@@ -21,12 +21,22 @@ the embedding; the gateway crate opens none.
 | `responses` | `POST /v1/responses` | Codex |
 | `messages` | `POST /v1/messages` | Claude Code |
 
-:::caution[Planned: the binary relays to no pod yet]
-The library relays, and the binary composes the relay, but the binary has no production target
-yet. A model whose provider declares no `connectors` table is answered `target-unavailable`. A
-document whose provider declares one is refused at startup as `config:value`, because a pod is
-reached at its `https` proxy URL and the binary does not speak TLS to it yet. The Runpod pool
-behind the relay is tested through a seam in the binary's own tests.
+The binary's targets are Runpod pods and hosted endpoints. A hosted endpoint is any server that
+speaks the model's wires at the `http` or `https` base URL its `[hosted.<alias>]` table declares
+([the deployment document](../reference/deployment-document.md#hosted-models)); it is asked on the
+same path, with a bearer, an API key in the header the table names, or no credential, and an
+`https` one is verified as a pod is. A credential is never sent in cleartext to another machine:
+an endpoint with a credential at an `http` base URL must be on a loopback host. A pod is reached at its `https` proxy URL,
+`https://<pod id>-8000.proxy.runpod.net/v1/`, over TLS: the binary's client verifies the pod's
+certificate, chain and host name, against the Mozilla roots compiled into the binary before it
+writes any byte of the request, and a certificate that does not verify is `upstream-failed`. No
+document key or option adds a root or turns verification off. A model whose provider declares no
+`connectors` table is answered `target-unavailable`.
+
+:::caution[Not run against Runpod]
+The relay to a pod is tested end to end against a fixture of the `connectors` CLI and a loopback
+`https` pod whose certificate a test root issued, never against Runpod. The relay to a hosted
+endpoint is tested against loopback endpoints only, never against a vendor API.
 :::
 
 ## The order a wire request is decided in
@@ -55,17 +65,21 @@ Nothing before step 6 asks for a target, so a refused request never wakes a pod.
   `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal to `high` become
   `xhigh`. Every other byte reaches the target unchanged.
 - The head is the gateway's own: `host` is the target's authority, and a target with a bearer is
-  sent `authorization: Bearer <key>` (for a Runpod pod, the model's vLLM key). No header of the
-  client's request is forwarded, so the owner's credential never reaches a target.
+  sent `authorization: Bearer <key>` (for a Runpod pod, the model's vLLM key). An `api-key`
+  hosted endpoint is sent its credential in the header its table names instead, and no
+  `authorization`. No header of the client's request is forwarded, so the owner's credential
+  never reaches a target.
 - The target's status, `content-type` and body are relayed as they arrive, chunked, so a stream
-  reaches the client event by event. An answer cut short reaches the client cut.
+  reaches the client event by event. The body is not rewritten: whatever a target puts in its
+  answer body reaches the client. An answer cut short reaches the client cut.
 
 ## When a target fails
 
 A connection that fails, an answer head that never arrives or is malformed, and a `502`, `503` or
 `504` each tell `invalidate` which endpoint served the request and answer `upstream-failed`
-(`502`); the next request asks for a replacement. Any other status, a `500` or a `4xx` included,
-is the model's own answer and is relayed with its body.
+(`502`); the next request asks for a replacement. A hosted endpoint has no replacement, so it is
+kept and the next request asks it again. Any other status, a `500` or a `4xx` included, is the
+model's own answer and is relayed with its body.
 
 Fallback to another target on the same request is planned, not built.
 

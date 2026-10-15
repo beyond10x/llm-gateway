@@ -3,6 +3,8 @@
 
 #![allow(dead_code)]
 
+pub mod tls_pod;
+
 use std::{
     fs,
     os::unix::fs::PermissionsExt,
@@ -236,6 +238,54 @@ pub fn running_small_pod() -> serde_json::Value {
         "env": {}, "gpu": {"id": "NVIDIA L40S", "count": 1},
         "lastStartedAt": "2026-10-08T10:00:00.000Z",
     })
+}
+
+/// A hosted endpoint's credential (story:hosted-endpoints). Written with a trailing newline,
+/// which the reader trims.
+pub const ENDPOINT_CREDENTIAL: &str = "hosted-endpoint-test-credential-not-a-secret";
+
+impl Fixture {
+    /// [`ENDPOINT_CREDENTIAL`] and its newline at `endpoint-credential`, mode 0600.
+    pub fn endpoint_credential(&self) -> PathBuf {
+        self.write(
+            "endpoint-credential",
+            format!("{ENDPOINT_CREDENTIAL}\n").as_bytes(),
+            0o600,
+        )
+    }
+}
+
+/// A document serving only hosted models: `tables` holds each `[hosted.<alias>]` table, and no
+/// provider or Runpod model is declared.
+pub fn hosted_document(listen: &str, owner_secret_file: &Path, tables: &str) -> String {
+    format!(
+        "listen = \"{listen}\"\nowner_secret_file = \"{}\"\n\n{tables}",
+        owner_secret_file.display()
+    )
+}
+
+/// One `[hosted.<alias>]` table on the `chat` and `messages` wires at `base_url`, with
+/// `lines` (the authentication keys and anything else) after them.
+pub fn hosted_table(alias: &str, base_url: &str, lines: &str) -> String {
+    format!(
+        "[hosted.{alias}]\nwires = [\"chat\", \"messages\"]\nbase_url = \"{base_url}\"\n{lines}\n"
+    )
+}
+
+/// The authentication keys of a `bearer` endpoint reading `credential`.
+pub fn bearer_keys(credential: &Path) -> String {
+    format!(
+        "auth_kind = \"bearer\"\ncredential_file = \"{}\"\n",
+        credential.display()
+    )
+}
+
+/// The authentication keys of an `api-key` endpoint reading `credential` into `header`.
+pub fn api_key_keys(credential: &Path, header: &str) -> String {
+    format!(
+        "auth_kind = \"api-key\"\ncredential_file = \"{}\"\ncredential_header = \"{header}\"\n",
+        credential.display()
+    )
 }
 
 /// [`document`] with the model `small` relayed through `connectors`: its vLLM key file, two GPU

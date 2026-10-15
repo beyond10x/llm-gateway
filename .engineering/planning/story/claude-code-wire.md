@@ -9,6 +9,7 @@ relations:
 - serves: vision:portable-model-inference
 - depends_on: story:client-qualification
 - depends_on: story:public-model-listing
+- depends_on: story:hosted-endpoints
 scope:
 - confidence: inferred
   path: checks/conformance/src/gateway.rs

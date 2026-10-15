@@ -170,9 +170,17 @@ types:
   # `bearer:empty`, `bearer:too-large` (over 4096 bytes), `bearer:not-printable-ascii`. A bearer
   # is checked when the embedding builds it, so no relayed request can carry a CR, LF or space
   # into the head it is written to.
+  #
+  # A target's credential header (relay.rs CredentialHeader::new; the `credential_header` of
+  # llm-gateway.upstream.HostedEndpoint): `credential-header:length` for an empty name or one
+  # over 64 bytes (`credential-header-bytes`), `credential-header:not-a-token` for a byte that is
+  # no RFC 9110 token character, `credential-header:reserved` for a header the gateway writes
+  # itself or that frames a message (llm-gateway.deployment.HostedDeclaration lists them). It is
+  # checked when the embedding builds it, so it can neither end its line nor add a second
+  # framing or `authorization` header to the head.
   - name: llm-gateway.gateway.CompositionRefusal
     kind: enum
-    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii]
+    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii, CredentialHeaderLength, CredentialHeaderNotAToken, CredentialHeaderReserved]
 entities:
   # One gateway: one owner verifier, one route inventory snapshot, one listener
   # (server.rs GatewayConfig, GatewayHandle).
@@ -243,7 +251,7 @@ entities:
     fields: &exchange_facts
       - {name: valid_program, type: Boolean}
       # Why the gateway could not be composed: `token:<rule>`, `verifier:<rule>`,
-      # `label:<rule>` or `inventory:<rule>`.
+      # `label:<rule>`, `inventory:<rule>`, or a document's `config:<rule>`.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order. An exchange is `<status> <refusal code>` for a refusal,
       # `<status> <probe status>` for a probe, `<status> inspected` for a served inspection and
@@ -278,6 +286,9 @@ entities:
       # Whether any byte the gateway wrote contains the owner secret. Absent when no gateway
       # was composed.
       - {name: secret_on_wire, type: 'Optional<Boolean>'}
+      # Whether any byte the gateway wrote contains any of the program's `withheld` strings.
+      # Absent when no gateway was composed.
+      - {name: withheld_on_wire, type: 'Optional<Boolean>'}
       # `GatewayHandle::is_ready` after the last step; absent once the gateway is stopped.
       - {name: ready, type: 'Optional<Boolean>'}
       # The graceful stop's report, as `accepted=<n> completed=<n>`.
@@ -343,7 +354,9 @@ entities:
   #      tests/wire_relay.rs).
   #      B8: a target that carries a bearer (the model's vLLM key, which the embedding reads)
   #      is sent `authorization: Bearer <key>`; a target without one is sent no
-  #      `authorization`. The head the target receives is built by the gateway alone: no
+  #      `authorization`. A target that also names a credential header (an `api-key` hosted
+  #      endpoint, llm-gateway.upstream.HostedEndpoint) is sent `<header>: <key>` instead, and
+  #      no `authorization`. The head the target receives is built by the gateway alone: no
   #      header of the client's request is forwarded, so the owner's credential never reaches
   #      a target, in the head or anywhere else.
   #   8. W7: a target that cannot be connected to, a request that cannot be written to it, an
@@ -383,7 +396,8 @@ entities:
     fields: &relay_facts
       - {name: valid_program, type: Boolean}
       # Why the gateway could not be composed: `token:<rule>`, `verifier:<rule>`,
-      # `label:<rule>` or `relay:<rule>`.
+      # `label:<rule>`, `relay:<rule>`, `bearer:<rule>`, `credential-header:<rule>`, or
+      # `endpoint:base-url` for an endpoint the binary refuses.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
       # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer and
@@ -414,8 +428,19 @@ entities:
       # Per request a fixture pod received, in the order of `upstream`, the value of its
       # `authorization` header as received, or `absent` when it carried none.
       - {name: authorizations, type: 'List<String>'}
-      # Whether any byte any fixture pod received contains the owner secret.
+      # Whether any byte any fixture pod received contains the owner secret. A TLS pod's bytes
+      # are searched as it decrypted them.
       - {name: secret_upstream, type: Boolean}
+      # Every connection a fixture pod accepted, in order, as `<pod> <transport> <read>`: the
+      # transport is `plain`, `tls` for a completed TLS handshake or `tls-refused` for one the
+      # client abandoned, and `<read>` is `request` when the pod read any request byte
+      # (decrypted, for TLS) and `nothing` when it read none. A connection past the pod's
+      # script, or answered `{transport: refused}`, is closed unread and not recorded.
+      - {name: connections, type: 'List<String>'}
+      # Per request a fixture pod received, in the order of `upstream`, every header line of
+      # its head but `host` (whose port is the fixture's), as received and in order, each
+      # `<name>: <value>`, joined by ` | `.
+      - {name: received_heads, type: 'List<String>'}
       # One entry per llm-gateway.telemetry.UsageRecord the gateway handed out, in order, as
       # `model=<alias|absent> wire=<wire> disposition=<Relayed|Refused|UpstreamFailed>
       # refusal=<code|absent> status=<n> target_status=<n|absent>
@@ -488,7 +513,12 @@ commands:
   - name: llm-gateway.gateway.Exchange
     input:
       # A bounded fixture program: the owner secret, the listener bounds, an optional route
-      # inventory, and the raw requests sent to the loopback socket.
+      # inventory, and the raw requests sent to the loopback socket. Instead of an inventory it
+      # may name a `document`, the text of a deployment document (llm-gateway.deployment), whose
+      # route inventory the binary builds from it (`llm_gateway_cli::parse` and `inventory`;
+      # no file it names is read). A document the binary refuses composes nothing, its
+      # `error_code` the refusal's `<source>:<rule>`. `withheld` names strings no byte the
+      # gateway writes may contain (`withheld_on_wire`).
       - {name: program_json, type: String}
     outcomes:
       - name: observed
@@ -507,7 +537,18 @@ commands:
       #           every target the source hands out for that model carries (row B8); the
       #           optional `tool_calling` is `parsed` or `absent`, default `absent`, as the
       #           deployment document's; the optional `max_model_len` and `context_window` are
-      #           what the public routes render (rows R5, R1), absent unless given
+      #           what the public routes render (rows R5, R1), absent unless given;
+      #           the optional `endpoint` serves the model by a hosted endpoint
+      #           (llm-gateway.upstream.HostedEndpoint) instead of the source's current pod:
+      #           `{pod, scheme, certificate, auth_kind, credential, credential_header}`, where
+      #           `pod` names the fixture pod at the endpoint's authority (`pod-1`, …),
+      #           `scheme` is `http` or `https` (that pod then serves TLS), `certificate` is
+      #           `trusted` (the default: a certificate for the pod's address from the run's
+      #           test root, the only root the client trusts) or `untrusted` (one from a root it
+      #           does not), and `auth_kind`, `credential` and `credential_header` are the
+      #           endpoint's (the credential's material, not a file). Such a model is served by
+      #           the binary's own hosted target source, `llm_gateway_cli::HostedTargets`, over
+      #           the binary's TLS client with the test seam's root, and takes no `bearer`
       #   pods    one script per fixture pod, `pod-1` first. The target source hands out the
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a

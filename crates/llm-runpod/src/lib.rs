@@ -52,5 +52,6 @@ pub use request::{
 };
 pub use transport::{
     ConnectorsBinding, ConnectorsRunpod, CreateAnswer, POD_CREATE_BODY_KEYS, Pod, PodListing,
-    PodRequest, PodStatus, Probe, ProbeTarget, RunpodTransport, TerminateAnswer, started_at_ms,
+    PodRequest, PodStatus, PodStream, PodTls, Probe, ProbeTarget, RunpodTransport, TerminateAnswer,
+    started_at_ms,
 };

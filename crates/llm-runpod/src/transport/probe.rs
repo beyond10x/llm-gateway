@@ -1,9 +1,11 @@
 //! The readiness probe: `GET <endpoint>models` to the pod's vLLM server, with the model's vLLM
 //! key as a bearer (`llm-gateway.runpod.ProbeAnswer`).
 //!
-//! It speaks plain HTTP/1.1 over a `std` socket and nothing else. An `https://` endpoint, which
-//! is what llm's Runpod description builds for a live pod, answers `Unreachable`: this crate has
-//! no TLS client, and giving the binary one is `story:pod-proxy-tls`'s.
+//! It speaks HTTP/1.1: to an `http://` endpoint over a plain `std` socket, and to an `https://`
+//! endpoint, which is what llm's Runpod description builds for a live pod, over the TLS
+//! connection its embedding hands in ([`PodTls`]), whose certificate is verified before the
+//! request, and the key, is written. This crate has no TLS client: without one, an `https://`
+//! endpoint answers `Unreachable`.
 
 use std::{
     fmt,
@@ -15,6 +17,25 @@ use std::{
 use serde_json::Value;
 
 use crate::Probe;
+
+/// One open connection to a pod: what [`PodTls::connect`] hands the probe.
+pub trait PodStream: Read + Write + Send {}
+
+impl<T: Read + Write + Send> PodStream for T {}
+
+/// Opens the readiness probe's connection to a pod's `https://` endpoint. This crate has no TLS
+/// client: the embedding hands one in ([`ConnectorsRunpod::set_tls`](crate::ConnectorsRunpod::set_tls)),
+/// and without one an `https://` endpoint is `Unreachable`.
+pub trait PodTls: Send + Sync {
+    /// One connection to `authority`, the `host[:port]` of the endpoint (port 443 when it names
+    /// none), whose certificate has been verified for that host before this returns: the probe
+    /// writes its request, and the model's key, only to what this returns. `timeout` bounds the
+    /// connect and each read and write.
+    ///
+    /// # Errors
+    /// Any failure to connect or to verify; the probe answers it `Unreachable`.
+    fn connect(&self, authority: &str, timeout: Duration) -> std::io::Result<Box<dyn PodStream>>;
+}
 
 /// The most of an answer the probe reads.
 const MAX_ANSWER_BYTES: usize = 1024 * 1024;
@@ -48,12 +69,25 @@ impl Drop for BearerKey {
 }
 
 /// Probes `<endpoint>models`. `200` is `Ready` with the served model names, `401`/`403`
-/// `Refused`, any other answer `NotReady`, and no answer `Unreachable`.
-pub(super) fn models(endpoint: &str, key: Option<&BearerKey>, timeout: Duration) -> Probe {
-    let Some((authority, path)) = endpoint
-        .strip_prefix("http://")
-        .and_then(|rest| rest.split_once('/'))
-    else {
+/// `Refused`, any other answer `NotReady`, and no answer `Unreachable`. An `https://` endpoint
+/// is probed through `tls`, and is `Unreachable` without it.
+pub(super) fn models(
+    endpoint: &str,
+    key: Option<&BearerKey>,
+    timeout: Duration,
+    tls: Option<&dyn PodTls>,
+) -> Probe {
+    let (tls, rest) = if let Some(rest) = endpoint.strip_prefix("http://") {
+        (None, rest)
+    } else if let Some(rest) = endpoint.strip_prefix("https://") {
+        let Some(tls) = tls else {
+            return Probe::Unreachable;
+        };
+        (Some(tls), rest)
+    } else {
+        return Probe::Unreachable;
+    };
+    let Some((authority, path)) = rest.split_once('/') else {
         return Probe::Unreachable;
     };
     if authority.is_empty() || authority.contains('@') {
@@ -71,7 +105,10 @@ pub(super) fn models(endpoint: &str, key: Option<&BearerKey>, timeout: Duration)
         request.push_str("\r\n");
     }
     request.push_str("\r\n");
-    let answer = exchange(authority, request.as_bytes(), timeout);
+    let answer = match tls {
+        Some(tls) => exchange_tls(tls, authority, request.as_bytes(), timeout),
+        None => exchange(authority, request.as_bytes(), timeout),
+    };
     request.clear();
     let Some(answer) = answer else {
         return Probe::Unreachable;
@@ -100,13 +137,40 @@ fn exchange(authority: &str, request: &[u8], timeout: Duration) -> Option<Vec<u8
         .find_map(|address| TcpStream::connect_timeout(&address, timeout).ok())?;
     stream.set_write_timeout(Some(timeout)).ok()?;
     stream.write_all(request).ok()?;
+    read_answer(&mut &stream, deadline, |left| {
+        stream
+            .set_read_timeout(Some(left.max(Duration::from_millis(1))))
+            .ok()
+    })
+}
+
+/// [`exchange`] over the TLS connection `tls` opens, which bounds each read and write by
+/// `timeout`; the whole answer is read inside the same deadline.
+fn exchange_tls(
+    tls: &dyn PodTls,
+    authority: &str,
+    request: &[u8],
+    timeout: Duration,
+) -> Option<Vec<u8>> {
+    let deadline = Instant::now() + timeout;
+    let mut stream = tls.connect(authority, timeout).ok()?;
+    stream.write_all(request).ok()?;
+    stream.flush().ok()?;
+    read_answer(&mut *stream, deadline, |_| Some(()))
+}
+
+/// Reads the answer to its end, or to a complete `Content-Length` body, inside `deadline`.
+/// `before_read` is told the time left before each read.
+fn read_answer(
+    stream: &mut dyn Read,
+    deadline: Instant,
+    mut before_read: impl FnMut(Duration) -> Option<()>,
+) -> Option<Vec<u8>> {
     let mut answer = Vec::new();
     let mut buffer = [0_u8; 8192];
     loop {
         let left = deadline.checked_duration_since(Instant::now())?;
-        stream
-            .set_read_timeout(Some(left.max(Duration::from_millis(1))))
-            .ok()?;
+        before_read(left)?;
         match stream.read(&mut buffer) {
             Ok(0) => return Some(answer),
             Ok(read) => {

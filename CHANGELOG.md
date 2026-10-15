@@ -4,10 +4,38 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.7.0 (2026-10-14)
 
 - The documentation site is published at <https://beyond10x.github.io/llm-gateway/>; README
   links it instead of the pages in the tree.
+- Pod proxy TLS: the binary reaches a Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/`
+  over TLS (`rustls` on `ring`, in `b10x-llm-gateway-cli` only), the readiness probe and every
+  relayed request alike, with the certificate verified against the Mozilla roots `webpki-roots`
+  compiles in before any request byte is written. A certificate that does not verify is
+  `upstream-failed`. No document key or option adds a root or disables verification. The
+  start-time refusal of a document that declares a `connectors` provider is gone, so the binary
+  now starts and relays to pods. `b10x-llm-runpod`'s probe takes its TLS connection from the
+  embedding (`ConnectorsRunpod::set_tls`, `PodTls`). A binary started with a `connectors` provider
+  and real Runpod credentials starts real, billed pods; no test reaches Runpod.
+- `spec/domains/hosting.yaml` and `spec/domains/runpod.yaml` declare every rule the hosting
+  contract promises: the hosting refusals with their codes and messages, the transition table,
+  the evidence routes and listing completeness as typed enums, and the Runpod pool and
+  declaration refusals with their codes. `b10x-llm-provision` publishes the evidence routes as
+  `EvidenceKind`.
+- A pod connection's 10 s connect bound covers the TLS handshake as one deadline; the handshake
+  no longer waits under the 120 s read timeout. The `gateway-tls-seam` test program is built only
+  with the test-only `test-seam` feature, so the release build writes `b10x-llm-gateway` and no
+  program that trusts a root from its environment.
+- Hosted endpoints: a model declared as `[hosted.<alias>]` is relayed to any server that speaks
+  its wires at an `http` or `https` base URL (`base_url`, no path), as `bearer`, as `api-key` in
+  the header its `credential_header` names, or `anonymous`, with the credential read once from
+  `credential_file` through the trusted-file reader (`endpoint-credential:<rule>`). `https` uses
+  the pod connection's TLS client and roots. A `bearer` or `api-key` endpoint at an `http` base
+  URL whose host is not loopback (`127.0.0.0/8`, `::1`, `localhost`) is refused as
+  `config:value`, so no credential is sent in cleartext to a remote host. The route inventory
+  lists each hosted target's
+  `auth_kind` and `billing_kind`, never its URL or credential. The gateway library gains
+  `CredentialHeader` and `RelayTarget::credential_header` (`credential-header-bytes`, 64).
 
 ## 0.6.0 (2026-10-08)
 

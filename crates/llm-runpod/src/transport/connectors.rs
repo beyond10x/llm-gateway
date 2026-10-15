@@ -33,6 +33,7 @@ use std::{
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{
+        Arc,
         atomic::{AtomicU64, Ordering},
         mpsc,
     },
@@ -43,7 +44,7 @@ use std::{
 use rustix::process::{Pid, Signal, kill_process_group};
 use serde_json::{Map, Value, json};
 
-use super::probe::{self, BearerKey};
+use super::probe::{self, BearerKey, PodTls};
 use crate::{
     CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget, RunpodTransport,
     TerminateAnswer,
@@ -111,6 +112,8 @@ pub struct ConnectorsRunpod {
     keys: BTreeMap<String, BearerKey>,
     /// `(schema, revision)` per operation, from `operations describe`.
     described: BTreeMap<&'static str, (String, String)>,
+    /// The probe's TLS connection to an `https://` endpoint, from the embedding.
+    tls: Option<Arc<dyn PodTls>>,
 }
 
 impl fmt::Debug for ConnectorsRunpod {
@@ -119,6 +122,7 @@ impl fmt::Debug for ConnectorsRunpod {
             .debug_struct("ConnectorsRunpod")
             .field("binding", &self.binding)
             .field("keys", &self.keys.keys().collect::<Vec<_>>())
+            .field("tls", &self.tls.is_some())
             .finish_non_exhaustive()
     }
 }
@@ -267,6 +271,7 @@ impl ConnectorsRunpod {
             binding,
             keys: BTreeMap::new(),
             described: BTreeMap::new(),
+            tls: None,
         }
     }
 
@@ -274,6 +279,12 @@ impl ConnectorsRunpod {
     /// sends as a bearer. Replaces any earlier key for the alias.
     pub fn set_vllm_key(&mut self, alias: &str, key: Vec<u8>) {
         self.keys.insert(alias.to_owned(), BearerKey::new(key));
+    }
+
+    /// Hands the transport the TLS connection its readiness probe opens to a pod's `https://`
+    /// endpoint. This crate links no TLS client; without one such an endpoint is `Unreachable`.
+    pub fn set_tls(&mut self, tls: Arc<dyn PodTls>) {
+        self.tls = Some(tls);
     }
 
     /// Runs the CLI once with these arguments, after `--output json`, within the timeout. The
@@ -789,7 +800,7 @@ impl RunpodTransport for ConnectorsRunpod {
             return Probe::Unreachable;
         };
         let key = target.model.and_then(|model| self.keys.get(model));
-        probe::models(endpoint, key, PROBE_TIMEOUT)
+        probe::models(endpoint, key, PROBE_TIMEOUT, self.tls.as_deref())
     }
 
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
@@ -797,5 +808,26 @@ impl RunpodTransport for ConnectorsRunpod {
             .get("lastStartedAt")
             .and_then(Value::as_str)
             .and_then(started_at_ms)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::bounded_reader;
+
+    /// The published bound, at the literal number and one past it: a constant measured against
+    /// itself could not notice it moving.
+    #[test]
+    fn a_stream_is_read_up_to_eight_mebibytes_and_not_one_byte_more() {
+        for (length, readable) in [(8_388_608, true), (8_388_609, false)] {
+            let read = bounded_reader(std::io::Cursor::new(vec![b'x'; length]))
+                .recv()
+                .expect("the reader answers");
+            assert_eq!(
+                read.map(|bytes| bytes.len()),
+                readable.then_some(length),
+                "{length} bytes"
+            );
+        }
     }
 }

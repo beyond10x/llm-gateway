@@ -80,8 +80,8 @@ fn inventory_refusal(error: &impl fmt::Display) -> Refusal {
     Refusal::new(StartupRefusal::ConfigValue, format!("inventory: {error}"))
 }
 
-/// The inspection inventory: one route per model alias, one target per declared wire, under
-/// the digest of the exact document bytes.
+/// The inspection inventory: one route per model alias, Runpod or hosted, one target per wire,
+/// under the digest of the exact document bytes.
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] when the document cannot be represented as an inventory.
@@ -113,7 +113,7 @@ pub fn inventory(deployment: &Deployment) -> Result<RouteInventory, Refusal> {
             .map_err(|error| inventory_refusal(&error))?;
         routes.push(route);
     }
-    RouteInventory::new(routes)
+    RouteInventory::new(crate::hosted::routes(deployment, routes)?)
         .and_then(|inventory| inventory.with_config_digest(&deployment.digest))
         .map_err(|error| inventory_refusal(&error))
 }
@@ -157,42 +157,68 @@ impl Running {
     }
 }
 
-/// Composes and starts the gateway as the shipped binary does: [`crate::start_connected`] over
-/// `ConnectorsRunpod` itself and [`crate::ProxyConnector`]. Signals are installed before binding.
-/// A document that declares `connectors` is refused first (`config:value`): the wiring is inert
-/// until the binary speaks TLS to the pod endpoint (story:pod-proxy-tls).
+/// Composes and starts the gateway as the shipped binary does: [`start_with`] the shipped pod
+/// connector, [`crate::ProxyConnector::shipped`], which reaches each pod over TLS verified
+/// against the roots compiled into the binary.
 ///
 /// # Errors
 /// An `owner-secret:*`, `vllm-api-key:*`, `config:value`, `signal:install` or `listen:bind`
 /// [`Refusal`].
 pub fn start(deployment: &Deployment) -> Result<crate::Relaying, Refusal> {
-    inert_until_tls(deployment)?;
-    crate::start_connected(
-        deployment,
-        |transport| transport,
-        std::sync::Arc::new(crate::ProxyConnector),
-    )
+    start_with(deployment, crate::ProxyConnector::shipped())
 }
 
-/// Refuses a document in which a provider declares `connectors`: a pod it would start is reached
-/// only at the Runpod proxy's `https://` endpoint, which this binary cannot open, so it would be
-/// billed and never serve. Nothing is read, called or bound before this. story:pod-proxy-tls
-/// removes it.
-fn inert_until_tls(deployment: &Deployment) -> Result<(), Refusal> {
-    match deployment
-        .providers
-        .iter()
-        .find(|(_, provider)| provider.connectors.is_some())
-    {
-        Some((name, _)) => Err(Refusal::new(
-            StartupRefusal::ConfigValue,
-            format!(
-                "providers.{name}.connectors cannot be served until the binary speaks TLS to \
-                 the pod endpoint"
-            ),
-        )),
-        None => Ok(()),
-    }
+/// [`crate::start_connected`] over `ConnectorsRunpod` itself and `pods`. Signals are installed
+/// before binding. [`start`] passes the shipped connector; only tests pass one built by
+/// [`crate::ProxyConnector::with_test_seam`].
+///
+/// # Errors
+/// As [`start`].
+pub fn start_with(
+    deployment: &Deployment,
+    pods: crate::ProxyConnector,
+) -> Result<crate::Relaying, Refusal> {
+    crate::start_connected(deployment, |transport| transport, std::sync::Arc::new(pods))
+}
+
+/// Writes one line to standard error. A standard error that is gone (a log reader that exited)
+/// changes nothing: the line is lost, and the exit status still says what happened.
+fn report(line: fmt::Arguments<'_>) {
+    use std::io::Write as _;
+    drop(writeln!(std::io::stderr(), "b10x-llm-gateway: {line}"));
+}
+
+/// The `b10x-llm-gateway` process over `pods`: parse the command line, install logging, load the
+/// document, [`start_with`] `pods`, serve until SIGINT or SIGTERM, and stop gracefully, writing
+/// the lines `spec/domains/deployment.yaml` names. The shipped binary's `main` passes
+/// [`crate::ProxyConnector::shipped`]; only the `gateway-tls-seam` test program passes another.
+pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
+    use clap::Parser as _;
+    let args = crate::cli::Cli::parse();
+    // Events (row O3) go to standard error beside the lines `report` writes, which they leave
+    // unchanged; at the default level they are one `usage` event per authenticated model call.
+    crate::install_logging();
+    let running = match crate::load(&args.config).and_then(|deployment| {
+        tracing::debug!(
+            models = deployment.models.len(),
+            digest = %deployment.digest,
+            "deployment loaded"
+        );
+        start_with(&deployment, pods)
+    }) {
+        Ok(running) => running,
+        Err(refusal) => {
+            report(format_args!("refused {refusal}"));
+            return std::process::ExitCode::FAILURE;
+        }
+    };
+    report(format_args!("listening on {}", running.local_addr()));
+    let stopped = running.wait_for_stop();
+    report(format_args!(
+        "stopped by {} accepted={} completed={}",
+        stopped.signal, stopped.report.accepted, stopped.report.completed
+    ));
+    std::process::ExitCode::SUCCESS
 }
 
 impl Running {

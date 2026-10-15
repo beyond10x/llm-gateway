@@ -18,7 +18,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.mdx";
 
 /// The date the list below was last checked against the code.
-const AS_OF: &str = "2026-10-08";
+const AS_OF: &str = "2026-10-14";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -152,9 +152,23 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Cold-start hold in the Runpod composition",
-        "A request for a model whose pod is starting waits up to request_hold_seconds, then is model-cold-start with retry-after 30. Tested through a seam: the shipped binary reaches no pod yet.",
+        "A request for a model whose pod is starting waits up to request_hold_seconds, then is model-cold-start with retry-after 30. Tested through a seam over the emulator.",
         "crates/llm-gateway-cli/tests/relaying.rs::l6_a_request_for_a_pod_still_starting_is_held_until_the_pod_serves",
         RELAY,
+    ),
+    shipped(
+        "Relay",
+        "Relay to a Runpod pod from the binary over verified TLS",
+        "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
+        "crates/llm-gateway-cli/tests/pod_tls.rs::tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
+        "Hosted endpoints",
+        "A model declared as [hosted.<alias>] is relayed to any server that speaks its wire at an http or https base URL, with a bearer, an API key in a named header, or no credential, read from a file. https is verified against the same roots as a pod. Tested against loopback endpoints, not against a vendor API.",
+        "crates/llm-gateway-cli/tests/hosted.rs::hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path",
+        DOCUMENT,
     ),
     shipped(
         "Binary",
@@ -166,7 +180,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Binary",
         "Trusted-file reader",
-        "The document, the owner secret and each vLLM key file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
+        "The document, the owner secret, each vLLM key file and each hosted endpoint's credential file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
         "crates/llm-gateway-cli/tests/binary.rs::k30_a_symlinked_owner_secret_is_refused",
         DOCUMENT,
     ),
@@ -229,15 +243,9 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Specification",
         "ESS specification and conformance suite",
-        "The system llm-gateway is specified in ESS; the gate answers at least 201 of 201 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+        "The system llm-gateway is specified in ESS; the gate answers at least 210 of 210 scenarios, skips none, and fails on drift between the specification and its generated suite.",
         "checks/conformance/src/gate.rs::every_authored_scenario_is_declared",
         Some("/docs/guides/run-the-checks"),
-    ),
-    planned(
-        "Relay",
-        "Relay to a Runpod pod from the binary",
-        "The binary refuses a document whose provider declares connectors until it reaches a pod's https proxy URL over verified TLS; until then a relayed model is target-unavailable.",
-        RELAY,
     ),
     planned(
         "Relay",
@@ -249,12 +257,6 @@ pub const CAPABILITIES: &[Capability] = &[
         "Relay",
         "Protocol translation",
         "Translating a supported subset between wires; the gateway translates nothing today.",
-        None,
-    ),
-    planned(
-        "Relay",
-        "Hosted endpoints",
-        "A model served by any server that speaks its wire at a declared base URL, not only by a Runpod pod.",
         None,
     ),
     planned(

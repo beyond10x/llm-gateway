@@ -38,8 +38,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "fb1424108864858277137bebb3eec6da8eac3bd8f4cf3bacbe91257c25f2a2f6",
-    "contract_digest": "slice-sha256/2:53df0a27a5c1b8f13b3850a01dec68ffe1ef67dbc501e2500dec3aff84f84741",
+    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "contract_digest": "slice-sha256/2:99098997664b72c7d7838b525dd735da9ed5373057a28756b4351eda5679b9eb",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -119,13 +119,21 @@
             "$ref": "#/$defs/llm-gateway.deployment.ModelDeclaration"
           },
           "x-ess-map-key": "String"
+        },
+        "hosted": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.HostedDeclaration"
+          },
+          "x-ess-map-key": "String"
         }
       },
       "required": [
         "listen",
         "owner_secret_file",
         "providers",
-        "models"
+        "models",
+        "hosted"
       ],
       "additionalProperties": false
     },
@@ -137,6 +145,53 @@
       "enum": [
         "Declared"
       ]
+    },
+    "llm-gateway.deployment.HostedDeclaration": {
+      "title": "HostedDeclaration",
+      "x-ess-name": "llm-gateway.deployment.HostedDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "wires": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/llm-gateway.deployment.Wire"
+          }
+        },
+        "base_url": {
+          "type": "string"
+        },
+        "auth_kind": {
+          "$ref": "#/$defs/llm-gateway.upstream.AuthKind"
+        },
+        "credential_file": {
+          "type": "string"
+        },
+        "credential_header": {
+          "type": "string"
+        },
+        "billing_kind": {
+          "$ref": "#/$defs/llm-gateway.upstream.BillingKind"
+        },
+        "upstream_model": {
+          "type": "string"
+        },
+        "context_window": {
+          "type": "integer"
+        },
+        "tool_calling": {
+          "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
+        }
+      },
+      "required": [
+        "wires",
+        "base_url",
+        "auth_kind",
+        "billing_kind",
+        "upstream_model",
+        "tool_calling"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.ModelDeclaration": {
       "title": "ModelDeclaration",
@@ -322,6 +377,14 @@
         "VllmApiKeyTooLarge",
         "VllmApiKeyNotUtf8",
         "VllmApiKeyNotAToken",
+        "EndpointCredentialUnreadable",
+        "EndpointCredentialSymlink",
+        "EndpointCredentialNotRegular",
+        "EndpointCredentialUntrustedOwner",
+        "EndpointCredentialUnsafeMode",
+        "EndpointCredentialTooLarge",
+        "EndpointCredentialNotUtf8",
+        "EndpointCredentialNotAToken",
         "ListenBind",
         "SignalInstall"
       ]
@@ -355,6 +418,28 @@
         "Chat",
         "Responses",
         "Messages"
+      ]
+    },
+    "llm-gateway.upstream.AuthKind": {
+      "title": "AuthKind",
+      "x-ess-name": "llm-gateway.upstream.AuthKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Anonymous",
+        "Bearer",
+        "ApiKey"
+      ]
+    },
+    "llm-gateway.upstream.BillingKind": {
+      "title": "BillingKind",
+      "x-ess-name": "llm-gateway.upstream.BillingKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Metered",
+        "Subscription",
+        "SelfHosted"
       ]
     }
   }

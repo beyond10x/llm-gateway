@@ -19,7 +19,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.6.0, released 2026-10-08 as a source release; tested against in-process fakes and
+**Status: 0.7.0, released 2026-10-14 as a source release; tested against in-process fakes and
 loopback; nothing is deployed or qualified.** [CHANGELOG.md](CHANGELOG.md) lists every release
 and what is unreleased.
 
@@ -29,12 +29,13 @@ It is not a model client: the neutral turn, the protocol clients, credentials, r
 are llm's. The gateway library relays the owner's chat, responses and messages requests to a target
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
-it translates no protocol, and the binary does not relay to a Runpod pod yet: it refuses a
-document that declares a `connectors` provider until it can reach the pod's `https` endpoint
-(story:pod-proxy-tls). The hosting contract opens no socket and
-allocates nothing. The Runpod adapter has a production transport that reaches Runpod only through the
-`connectors` CLI and that no binary uses yet; its tests run against `EmulatedRunpod` or a fixture
-of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
+it translates no protocol. The binary relays to a Runpod pod at its `https` proxy URL over
+TLS, but that path has run only against a fixture of the `connectors` CLI and a loopback pod,
+never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a hosted endpoint
+at an `http` or `https` base URL; that path has run only against loopback endpoints, never
+against a vendor API. The hosting contract opens no socket and allocates nothing. The Runpod
+adapter's production transport reaches Runpod only through the `connectors` CLI; its tests run
+against `EmulatedRunpod` or a fixture of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
 provisions a resource.
 
 Nor does it replace llmgw yet. llmgw is the gateway this repository is meant to succeed, and it stays
@@ -110,7 +111,8 @@ b10x-llm-gateway: stopped by SIGTERM accepted=2 completed=2
 
 The document is closed: an unknown key at any level is refused as `config:schema`, naming the line
 and the keys that are allowed. A relative `owner_secret_file` is resolved from the working
-directory. At least one `[models.<alias>]` table is required (`config:value` otherwise).
+directory. At least one `[models.<alias>]` or `[hosted.<alias>]` table is required
+(`config:value` otherwise).
 `spec/domains/deployment.yaml` holds every key, default and range.
 
 Every file the binary reads goes through a trusted-file reader. It opens the file once, without
@@ -128,16 +130,28 @@ bytes is accepted; a broken rule refuses the start as `vllm-api-key:<rule>`. The
 Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' keyring
 ([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1).
 
+A `[hosted.<alias>]` table serves a model from a hosted endpoint instead of a pod: `wires`,
+`base_url` (`http://` or `https://` and a `host[:port]`, no path), `auth_kind` (`anonymous`,
+`bearer` or `api-key`), `credential_file` unless anonymous, `credential_header` for `api-key`,
+and optionally `billing_kind`, `upstream_model`, `context_window` and `tool_calling`. The
+credential file is read once at startup under the owner secret's rules (`endpoint-credential:<rule>`);
+a `bearer` endpoint is sent `authorization: Bearer <credential>`, an `api-key` endpoint the
+credential in its named header. An `https` endpoint is verified against the same compiled-in
+roots as a pod. A credential goes over plain `http` only to a loopback host (`127.0.0.0/8`,
+`::1`, `localhost`); any other `http` endpoint that is not `anonymous` is refused as
+`config:value`.
+
 The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model with its
 `max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,
 chosen by `User-Agent`) without a credential; the owner can read
 `GET /v1/routes`, `GET /v1/routes/<alias>` and `GET /metrics`, llmgw's 13 `llmgw_` counters as
 Prometheus text. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
 The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/responses` and
-`POST /v1/messages` for the wires each model declares, but relays none of them to a pod yet: a
-model whose provider declares no `connectors` is answered `503` `target-unavailable`, and a
-document in which a provider declares `connectors` is refused at startup until the binary can
-reach the pod's `https` endpoint (story:pod-proxy-tls).
+`POST /v1/messages` for the wires each model declares. A model whose provider declares
+`connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` over
+TLS, with the pod's certificate verified against the Mozilla roots compiled into the binary before
+any request byte is sent; no document key or option adds a root or turns verification off. A
+model whose provider declares no `connectors` is answered `503` `target-unavailable`.
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other
 argument is refused with exit status 2.

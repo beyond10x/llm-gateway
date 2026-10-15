@@ -5,13 +5,34 @@ use std::{collections::BTreeMap, sync::Arc};
 use crate::{
     ComputeAuthorization, CreateRequest, DeploymentSpec, Dispatch, HostingPolicy, HostingProvider,
     Identifier, Inventory, Lease, LeaseRegistry, ObservedResource, Phase, ProviderState,
-    ProvisionedDeployment, ResourceKey, StopReason, error::HostingError,
+    ProvisionedDeployment, ResourceKey, StopReason, closed::closed_enum, error::HostingError,
 };
 
+closed_enum! {
+    /// The four routes that close a stop obligation. Nothing else closes one, and every one of
+    /// them attaches evidence to the record.
+    ///
+    /// The two fixed routes attach their own code as the evidence; the other two attach a
+    /// reference somebody else chose. A record taken over at a newer epoch is not on this list:
+    /// it becomes `Disowned` with no evidence, because nothing stopped.
+    EvidenceKind {
+        /// Absent from a listing that can answer for the record.
+        InventoryCompleteAbsent =>
+            "inventory-complete-absent", "absent from a listing that can answer for it";
+        /// The provider itself reported the resource terminated.
+        ProviderTerminated => "provider-terminated", "the provider reported it terminated";
+        /// An accepted stop mutation; the evidence is the provider's own reference.
+        ProviderReference => "provider-reference", "the provider accepted the stop";
+        /// `ConfirmStopped` with an external observation; the evidence is the caller's reference.
+        CallerReference => "caller-reference", "the caller confirmed the stop";
+    }
+}
+
 /// Evidence that a resource is absent from a listing that claimed to be complete.
-pub const EVIDENCE_ABSENT_FROM_COMPLETE_INVENTORY: &str = "inventory-complete-absent";
+pub const EVIDENCE_ABSENT_FROM_COMPLETE_INVENTORY: &str =
+    EvidenceKind::InventoryCompleteAbsent.code();
 /// Evidence that the provider itself reported the resource terminated.
-pub const EVIDENCE_PROVIDER_TERMINATED: &str = "provider-terminated";
+pub const EVIDENCE_PROVIDER_TERMINATED: &str = EvidenceKind::ProviderTerminated.code();
 
 /// Everything durable about one deployment.
 ///

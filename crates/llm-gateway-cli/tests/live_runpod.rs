@@ -2,10 +2,11 @@
 //! runs (`start_connected`), over the production transport `ConnectorsRunpod` and a fixture of
 //! the `connectors` CLI, with only the pod's address moved to a loopback pod.
 //!
-//! The binary reaches a pod at the Runpod proxy's `https://` endpoint, which it cannot open yet
-//! (story:pod-proxy-tls), and no document key or option may point it elsewhere. So this test
-//! wraps the transport in [`LoopbackProbe`], which hands the transport's own probe a loopback
-//! `http://` endpoint and changes nothing else, and connects the relay to the loopback pod.
+//! The binary reaches a pod only at the Runpod proxy's `https://` endpoint, and no document key
+//! or option may point it elsewhere. This test wraps the transport in [`LoopbackProbe`], which
+//! hands the transport's own probe a loopback `http://` endpoint and changes nothing else, and
+//! connects the relay to a plain loopback pod. The same path over TLS, through the binary, is
+//! `tests/pod_tls.rs`.
 //! Everything else is the shipped composition: the binding from the document, each model's
 //! vLLM key handed to the transport by alias, the reachability check, the pool and the relay.
 //! Nothing leaves the loopback interface and no `connectors` but the fixture runs.
@@ -249,7 +250,7 @@ fn start_shipped(text: &str, fixture: &Fixture) -> Result<llm_gateway_cli::Relay
     start_connected(
         &deployment,
         |transport| transport,
-        Arc::new(llm_gateway_cli::ProxyConnector),
+        Arc::new(llm_gateway_cli::ProxyConnector::shipped()),
     )
     .map_err(|refusal| refusal.to_string())
 }
@@ -350,22 +351,5 @@ fn live_a_connected_model_without_a_vllm_key_file_is_refused() {
         refused.starts_with("config:value: models.small.vllm_api_key_file is required"),
         "{refused}"
     );
-    assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
-}
-
-/// The shipped `start` refuses what `start_connected` composes: the wiring is inert in the
-/// binary until story:pod-proxy-tls, and the refusal comes before any connectors call.
-#[test]
-fn live_start_refuses_a_connectors_document_before_any_call() {
-    let fixture = Fixture::new("live-start-inert");
-    let connectors = Connectors::new(&fixture);
-    connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([]))],
-    }));
-    let deployment =
-        load(&fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 5)))
-            .unwrap();
-    let refused = llm_gateway_cli::start(&deployment).err().unwrap();
-    assert_eq!(refused.code(), "config:value", "{refused}");
     assert!(connectors.calls().is_empty(), "{:?}", connectors.calls());
 }

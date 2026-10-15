@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-14T21:30:31Z",
+  "actor": "human:timo",
+  "artifact": "story:hosting-spec-declarations",
+  "kind": "story",
+  "revision": 12,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "conformance check 202 of 202; with (Requested, Disowned) deleted from TRANSITIONS, 2 scenarios fail (docs/verification/2026-10-14-hosting-spec-declarations.md)"
+  }
+}

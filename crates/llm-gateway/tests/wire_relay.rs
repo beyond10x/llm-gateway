@@ -2667,7 +2667,7 @@ fn clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes(
         "{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}",
     );
     let took = asked.elapsed();
-    drop(release.send(()));
+    let _released = release.send(());
     assert_eq!(answer.status, 200, "{:?}", answer.code());
     assert_eq!(answer.text(), "{}");
     assert!(

@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.HostedReasoningEffort",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "f4afcf5e4e226953cd521331c7ccd1cd81ac292b7054345502e387fb181af57a",
+    "contract_digest": "slice-sha256/2:16a5c1642d2d51f501ed04bc846be5936bdb32379919d316f419c384991677b3",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.HostedReasoningEffort": {
+      "title": "HostedReasoningEffort",
+      "x-ess-name": "llm-gateway.deployment.HostedReasoningEffort",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Low",
+        "Medium",
+        "Xhigh"
+      ]
+    }
+  }
+}

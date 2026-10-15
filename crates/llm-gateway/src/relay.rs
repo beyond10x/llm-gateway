@@ -225,8 +225,38 @@ pub enum ToolCalling {
     Absent,
 }
 
+/// A reasoning effort a model declares (`llm-gateway.deployment.HostedReasoningEffort`): one the
+/// served Qwen3.8 chat template accepts. A messages-wire request that names no effort reaches
+/// the target with it as `output_config.effort` (`docs/gateway.md` "The relay", step 6).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ReasoningEffort {
+    Low,
+    Medium,
+    Xhigh,
+}
+
+impl ReasoningEffort {
+    /// Every declarable effort.
+    pub const ALL: [Self; 3] = [Self::Low, Self::Medium, Self::Xhigh];
+
+    /// The effort as the request carries it: `low`, `medium` or `xhigh`.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Low => "low",
+            Self::Medium => "medium",
+            Self::Xhigh => "xhigh",
+        }
+    }
+
+    /// The effort `text` names exactly, if it is one of [`Self::ALL`].
+    pub fn from_name(text: &str) -> Option<Self> {
+        Self::ALL.into_iter().find(|effort| effort.as_str() == text)
+    }
+}
+
 /// A model the gateway relays: its alias, the model name its target expects, its wires,
-/// whether it serves tool calls, and the two lengths the public routes publish (rows R5, R1).
+/// whether it serves tool calls, the two lengths the public routes publish (rows R5, R1), and
+/// the effort a messages request naming none is given.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RelayModel {
     alias: Label,
@@ -235,6 +265,7 @@ pub struct RelayModel {
     tool_calling: ToolCalling,
     max_model_len: Option<u64>,
     context_window: Option<u64>,
+    reasoning_effort: Option<ReasoningEffort>,
 }
 
 impl RelayModel {
@@ -259,7 +290,20 @@ impl RelayModel {
             tool_calling: ToolCalling::default(),
             max_model_len: None,
             context_window: None,
+            reasoning_effort: None,
         })
+    }
+
+    /// Declares the effort a messages-wire request that names none reaches the target with,
+    /// as `output_config.effort`. Undeclared, such a request is relayed without one.
+    #[must_use]
+    pub fn with_reasoning_effort(mut self, effort: ReasoningEffort) -> Self {
+        self.reasoning_effort = Some(effort);
+        self
+    }
+
+    pub fn reasoning_effort(&self) -> Option<ReasoningEffort> {
+        self.reasoning_effort
     }
 
     /// Declares whether the model's server parses tool calls.

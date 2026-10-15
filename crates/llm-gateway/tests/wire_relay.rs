@@ -11,9 +11,9 @@
 
 use llm_gateway::{
     CredentialHeader, CredentialHeaderError, Gateway, GatewayConfig, GatewayHandle, Label,
-    OwnerToken, Relay, RelayError, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    RouteInventory, SharedSecretVerifier, TargetBearer, TargetRefusal, TokenError, ToolCalling,
-    Wire,
+    OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
+    RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer, TargetRefusal, TokenError,
+    ToolCalling, Wire,
 };
 use std::{
     io::{self, Read, Write},
@@ -2193,4 +2193,171 @@ fn claude_code_the_startup_probe_head_api_hello_is_refused_and_asks_for_no_targe
     );
     assert!(source.acquired().is_empty());
     assert!(pod.seen().is_empty());
+}
+
+// --- A model's declared effort (story:effort-default) ----------------------------------------
+
+/// Claude Code's first turn with its effort removed: `output_config` gone (`missing`), or left
+/// as an empty object (`empty`).
+fn tool_turn_without_effort() -> (ClaudeCodeRequest, ClaudeCodeRequest) {
+    let named = "  \"output_config\": {\"effort\": \"max\"},\n";
+    let request = ClaudeCodeRequest::parse(TOOL_TURN_REQUEST);
+    assert!(request.body.contains(named), "the fixture names effort max");
+    let missing = request.body.replacen(named, "", 1);
+    let empty = request
+        .body
+        .replacen(named, "  \"output_config\": {},\n", 1);
+    let leak = |body: String| -> &'static str { Box::leak(body.into_boxed_str()) };
+    let with = |body| ClaudeCodeRequest {
+        path: request.path,
+        headers: request.headers.clone(),
+        body: leak(body),
+    };
+    (with(missing), with(empty))
+}
+
+/// Criterion 2: on the messages wire, Claude Code's turn naming no effort, sent to a model that
+/// declares one, reaches the pod with `output_config.effort` equal to it, once per declarable
+/// effort: a missing `output_config` is added as the last top-level member, an empty one gains
+/// the key, and every other byte is unchanged.
+#[test]
+fn effort_a_messages_request_naming_none_reaches_the_pod_with_the_models_declared_effort() {
+    let (missing, empty) = tool_turn_without_effort();
+    for effort in ReasoningEffort::ALL {
+        let pod = Pod::start(vec![ok_json("{}"), ok_json("{}")]);
+        let source = Source::of(&[&pod]);
+        let gateway = Relayed::start(
+            vec![claude_code_model().with_reasoning_effort(effort)],
+            &source,
+        );
+        for request in [&missing, &empty] {
+            let answer = send(gateway.addr, &request.raw());
+            assert_eq!(answer.status, 200, "{effort:?}: {:?}", answer.code());
+        }
+        let served = |body: &str| {
+            body.replacen(
+                "\"model\": \"code\"",
+                &format!("\"model\": \"{SERVED_QWEN}\""),
+                1,
+            )
+        };
+        let value = effort.as_str();
+        let added = served(missing.body).replacen(
+            "\n  ]\n}\n",
+            &format!("\n  ],\"output_config\":{{\"effort\":\"{value}\"}}\n}}\n"),
+            1,
+        );
+        let gained = served(empty.body).replacen(
+            "\"output_config\": {}",
+            &format!("\"output_config\": {{\"effort\":\"{value}\"}}"),
+            1,
+        );
+        assert_ne!(added, served(missing.body));
+        let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+        assert_eq!(bodies, [added, gained], "{effort:?}");
+    }
+}
+
+/// Criterion 3: a request that names an effort in either key, whatever its value, keeps the W4
+/// mapping and never the declared effort. A top-level `output_config` that is not an object
+/// gains nothing; one below the top level names no effort, so the top level gains one; a
+/// top-level `output_config` named twice gains the key in the last.
+#[test]
+fn effort_a_declared_effort_never_replaces_a_named_one() {
+    let pod = Pod::start((0..9).map(|_| ok_json("{}")).collect());
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![code_model().with_reasoning_effort(ReasoningEffort::Low)],
+        &source,
+    );
+    let cases = [
+        (
+            r#"{"model":"code","output_config":{"effort":"max"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":"xhigh"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":"medium"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":"medium"}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{"reasoning_effort":"high"}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"reasoning_effort":"xhigh"}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{"reasoning_effort":"xhigh"}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"reasoning_effort":"xhigh"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":null}}"#,
+            r#"{"model":"served-code","output_config":{"effort":null}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":"none"}"#,
+            r#"{"model":"served-code","output_config":"none"}"#,
+        ),
+        (
+            r#"{"model":"code","x":{"output_config":{"effort":"high"}}}"#,
+            r#"{"model":"served-code","x":{"output_config":{"effort":"high"}},"output_config":{"effort":"low"}}"#,
+        ),
+        (
+            r#"{"output_config":{"a":1},"model":"code","output_config":{"b":2}}"#,
+            r#"{"output_config":{"a":1},"model":"served-code","output_config":{"b":2,"effort":"low"}}"#,
+        ),
+        (
+            "{ \"model\" : \"code\" , \"output_config\" : { } }",
+            "{ \"model\" : \"served-code\" , \"output_config\" : { \"effort\":\"low\"} }",
+        ),
+    ];
+    for (sent, _) in &cases {
+        assert_eq!(
+            gateway.post_text("/v1/messages", sent).status,
+            200,
+            "{sent}"
+        );
+    }
+    let seen: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    let expected: Vec<&str> = cases.iter().map(|(_, rewritten)| *rewritten).collect();
+    assert_eq!(seen, expected);
+}
+
+/// Criterion 3: a model that declares no effort relays Claude Code's turn naming none with
+/// only `model` rewritten.
+#[test]
+fn effort_a_model_declaring_none_relays_a_request_naming_none_unchanged() {
+    let (missing, _) = tool_turn_without_effort();
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![claude_code_model()], &source);
+    assert_eq!(send(gateway.addr, &missing.raw()).status, 200);
+    let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    assert_eq!(
+        bodies,
+        [missing.body.replacen(
+            "\"model\": \"code\"",
+            &format!("\"model\": \"{SERVED_QWEN}\""),
+            1
+        )]
+    );
+}
+
+/// Criterion 3: on the chat and responses wires a declared effort is never given.
+#[test]
+fn effort_on_the_chat_and_responses_wires_a_declared_effort_is_not_given() {
+    let pod = Pod::start(vec![ok_json("{}"), ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![code_model().with_reasoning_effort(ReasoningEffort::Medium)],
+        &source,
+    );
+    let chat = gateway.post_text("/v1/chat/completions", r#"{"model":"code","messages":[]}"#);
+    let responses = gateway.post_text("/v1/responses", r#"{"model":"code","input":"hi"}"#);
+    assert_eq!((chat.status, responses.status), (200, 200));
+    let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    assert_eq!(
+        bodies,
+        [
+            r#"{"model":"served-code","messages":[]}"#,
+            r#"{"model":"served-code","input":"hi"}"#
+        ]
+    );
 }

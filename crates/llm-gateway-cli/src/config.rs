@@ -7,7 +7,9 @@ use crate::{
     refusal::{Refusal, StartupRefusal},
     trusted,
 };
-use llm_gateway::{AuthKind, BillingKind, CredentialHeader, GatewayConfig, ToolCalling};
+use llm_gateway::{
+    AuthKind, BillingKind, CredentialHeader, GatewayConfig, ReasoningEffort, ToolCalling,
+};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -307,6 +309,8 @@ pub struct Hosted {
     /// What the public routes publish, when declared.
     pub context_window: Option<u32>,
     pub tool_calling: ToolCalling,
+    /// The effort a messages-wire request naming none is given, when declared.
+    pub reasoning_effort: Option<ReasoningEffort>,
 }
 
 /// A loaded and validated deployment document.
@@ -508,6 +512,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
             ToolCallingDocument::Parsed => ToolCalling::Parsed,
             ToolCallingDocument::Absent => ToolCalling::Absent,
         },
+        reasoning_effort: None,
     })
 }
 

@@ -48,7 +48,7 @@ pub use inventory::{
 };
 pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
 pub use relay::{
-    CredentialHeader, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, TargetBearer,
-    ToolCalling, Wire,
+    CredentialHeader, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    TargetBearer, ToolCalling, Wire,
 };
 pub use server::{Gateway, GatewayConfig, GatewayHandle, ShutdownReport};

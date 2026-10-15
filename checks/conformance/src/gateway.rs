@@ -515,9 +515,9 @@ mod relay {
     use ess_conformance::target::TargetError;
     use llm_gateway::{
         CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
-        GatewayHandle, OwnerToken, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
-        RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer, TargetRefusal,
-        ToolCalling, UsageRecord, UsageRecords, Wire,
+        GatewayHandle, OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
+        RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
+        TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
     };
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProxyConnector,
@@ -594,6 +594,9 @@ mod relay {
         /// What `GET /` tells each client as its context window (row R1).
         #[serde(default)]
         context_window: Option<u64>,
+        /// `low`, `medium` or `xhigh`: the effort a messages request naming none is given.
+        #[serde(default)]
+        reasoning_effort: Option<String>,
         /// Served by this hosted endpoint, through the binary's hosted target source, instead
         /// of the source's current pod.
         #[serde(default)]
@@ -1464,6 +1467,11 @@ mod relay {
             if let Some(window) = model.context_window {
                 relayed = relayed.with_context_window(window);
             }
+            if let Some(effort) = model.reasoning_effort.as_deref() {
+                let effort = ReasoningEffort::from_name(effort)
+                    .ok_or_else(|| "fixture:unknown-reasoning-effort".to_owned())?;
+                relayed = relayed.with_reasoning_effort(effort);
+            }
             models.push(relayed);
         }
         let mut bearers = BTreeMap::new();
@@ -1694,7 +1702,14 @@ mod relay {
                 && model.bearer.is_none()
                 && *tls.entry(index).or_insert_with(|| endpoint.tls()) == endpoint.tls()
         });
+        let efforts_known = program.models.iter().all(|model| {
+            model
+                .reasoning_effort
+                .as_deref()
+                .is_none_or(|effort| ReasoningEffort::from_name(effort).is_some())
+        });
         endpoints_agree
+            && efforts_known
             && program.steps.len() <= MAX_STEPS
             && program.cold_starts <= MAX_STEPS
             && pods <= MAX_PODS

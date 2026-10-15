@@ -356,8 +356,29 @@ entities:
   #      claude-code-structured-output-format-reaches-the-target-unchanged). Every other byte of
   #      the body reaches the target unchanged, `thinking` included
   #      (llm-gateway.clients.ThinkingHandling `Relayed`).
+  #      Declared effort: on the messages wire only, a body that names no effort (no member
+  #      `effort` in a top-level `output_config` object and no member `reasoning_effort` in a
+  #      top-level `chat_template_kwargs` object, whatever such a member's value), sent to a
+  #      model that declares a reasoning effort (`RelayModel::with_reasoning_effort`: `low`,
+  #      `medium` or `xhigh`), reaches the target with `output_config.effort` equal to it: a
+  #      top-level `output_config` object gains `"effort":"<v>"` as its last member (the last
+  #      such object, when the key is named twice), and a body without one gains
+  #      `"output_config":{"effort":"<v>"}` as its last top-level member. A body whose top-level
+  #      `output_config` is not an object gains nothing. A body that names an effort keeps the
+  #      W4 mapping above and never the declared value; a model that declares none, and the
+  #      chat and responses wires, are relayed as before. The binary declares a hosted model's
+  #      `reasoning_effort` (llm-gateway.deployment.HostedDeclaration) and never a Runpod
+  #      model's, whose effort is already its server's default chat-template argument.
+  #      DECIDED 2026-10-15 (story:effort-default): Claude Code 2.1.300 sent no effort to a
+  #      hand-started vLLM v0.27.1, whose Qwen3.8 template then defaults to `xhigh`
+  #      (`chat_template.jinja` lines 46-49), and the first turn thought for its whole
+  #      `max_tokens`; vLLM hands `output_config.effort` to the template as `reasoning_effort`
+  #      (vllm/entrypoints/anthropic/serving.py lines 513-514), so the request is where a
+  #      server the gateway did not start is told the operator's effort (scenarios
+  #      hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none,
+  #      hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire).
   #      DECIDED: llmgw re-serialises the parsed document (sorted keys, compact); llm-gateway
-  #      rewrites only those string values in place.
+  #      rewrites only those string values in place, and inserts only that member.
   #   7. The embedding's target source hands out the target serving the model, or says why it
   #      hands out none: none can be had is `target-unavailable` (503); W6: the model's target
   #      is still starting and the request's hold budget has passed is `model-cold-start` (503)
@@ -558,12 +579,15 @@ commands:
       # A bounded fixture program:
       #   secret  the owner secret
       #   models  `[{alias, upstream_model, wires, bearer, tool_calling, max_model_len,
-      #           context_window}]`, the relayed models;
+      #           context_window, reasoning_effort}]`, the relayed models;
       #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key
       #           every target the source hands out for that model carries (row B8); the
       #           optional `tool_calling` is `parsed` or `absent`, default `absent`, as the
       #           deployment document's; the optional `max_model_len` and `context_window` are
-      #           what the public routes render (rows R5, R1), absent unless given;
+      #           what the public routes render (rows R5, R1), absent unless given; the
+      #           optional `reasoning_effort` is `low`, `medium` or `xhigh`, the effort the model
+      #           declares (step 6), none unless given, and any other value makes the program
+      #           invalid;
       #           the optional `endpoint` serves the model by a hosted endpoint
       #           (llm-gateway.upstream.HostedEndpoint) instead of the source's current pod:
       #           `{pod, scheme, certificate, auth_kind, credential, credential_header}`, where

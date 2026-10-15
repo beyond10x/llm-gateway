@@ -66,7 +66,9 @@ After the head, the probes, shedding and owner authentication of
    A `max_tokens` above the room the counted input leaves is lowered to that room; an input that
    leaves no room is `context-exceeded` (400), whose message starts `prompt is too long`, the
    phrase Claude Code compacts its conversation on. A count that fails relays the request
-   unchanged.
+   unchanged, and so does one not answered within ten seconds of its connection opening (the
+   embedding may set another deadline): a target that never answers the count holds the
+   request no longer than that.
 
 Nothing before step 6 asks for a target, so a refused request never wakes a pod, and the count
 of step 7 asks only the target step 6 handed out.

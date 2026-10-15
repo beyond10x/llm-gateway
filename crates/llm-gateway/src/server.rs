@@ -320,6 +320,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
             let limits = relay::Limits {
                 line_bytes: shared.config.max_head_bytes,
                 timeout,
+                count_timeout: shared.config.count_timeout,
             };
             match relay::serve(&mut stream, leftover, admitted, relay, &limits, &mut call) {
                 Ok(()) => {

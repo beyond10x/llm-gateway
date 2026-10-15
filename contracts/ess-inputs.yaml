@@ -219,3 +219,5 @@ scenarios:
 - gateway/scenarios/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed.yaml
 - gateway/scenarios/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted.yaml
 - gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml
+- gateway/scenarios/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml
+- gateway/scenarios/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml

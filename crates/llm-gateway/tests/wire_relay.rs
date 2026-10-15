@@ -2,7 +2,8 @@
 //! named after the row of `docs/llmgw-capability-matrix.md` it closes: R6, R7, R8, W1, W2, W3,
 //! W4, W5, W6, W7, K11 and B8, and tool calling (`tools_*`), and what Claude Code sends on the
 //! messages wire (`claude_code_*`, story:claude-code-wire), a model's declared effort
-//! (`effort_*`) and the output clamp (`clamp_*`, story:max-tokens-clamp). The specification is
+//! (`effort_*`), the output clamp (`clamp_*`, story:max-tokens-clamp) and the usage block of an
+//! answer (`usage_*`, story:usage-details-pass-through). The specification is
 //! the `Relay` command of `spec/domains/gateway.yaml`.
 //!
 //! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
@@ -3236,4 +3237,122 @@ fn adversary_mtc_the_count_feeds_no_metric_series() {
     ] {
         assert!(scrape.contains(line), "{line:?} not in\n{scrape}");
     }
+}
+
+// --- Usage details (story:usage-details-pass-through) ------------------------------------------
+//
+// The fixtures under `tests/fixtures/usage/` are authored from vLLM v0.27.1's usage models, not
+// captured; each is headed by its sources and `tests/fixtures/usage/README.md` describes them.
+// Every usage block carries `future_usage_field`, a field no server defines, so a relay that
+// parsed and re-wrote usage would drop it.
+
+const USAGE_CHAT: &str = include_str!("fixtures/usage/chat.response.txt");
+const USAGE_CHAT_STREAM: &str = include_str!("fixtures/usage/chat-stream.response.txt");
+const USAGE_MESSAGES: &str = include_str!("fixtures/usage/messages.response.txt");
+const USAGE_MESSAGES_STREAM: &str = include_str!("fixtures/usage/messages-stream.response.txt");
+const UNKNOWN_USAGE_FIELD: &str = "\"future_usage_field\":{\"kept\":true}";
+
+/// Relays `request` on `path` to a pod answering the usage fixture `response`, and checks the
+/// client received the fixture byte for byte under the pod's content type, and the pod the
+/// request with only `model` rewritten. The model declares no window, so nothing is counted.
+fn relays_usage(path: &str, request: &str, response: &'static str, carries: &[&str]) {
+    let body = fixture(response);
+    for part in carries.iter().chain(&[UNKNOWN_USAGE_FIELD]) {
+        assert!(body.contains(part), "the fixture carries {part}");
+    }
+    let streamed = request.contains("\"stream\":true");
+    let answer = if streamed {
+        stream(&body.split_inclusive("\n\n").collect::<Vec<_>>())
+    } else {
+        reply(200, "application/json", body.as_bytes())
+    };
+    let pod = Pod::start(vec![answer]);
+    let source = Source::of(&[&pod]);
+    let model = RelayModel::new(
+        label("code"),
+        label(SERVED_QWEN),
+        vec![Wire::Chat, Wire::Messages],
+    )
+    .unwrap();
+    let gateway = Relayed::start(vec![model], &source);
+
+    let answered = gateway.post_text(path, request);
+    assert_eq!(answered.status, 200, "{:?}", answered.code());
+    assert_eq!(
+        answered.header("content-type"),
+        Some(if streamed {
+            "text/event-stream"
+        } else {
+            "application/json"
+        })
+    );
+    assert!(
+        answered.body.as_slice() == body.as_bytes(),
+        "the client receives the target's answer byte for byte, usage included:\n{}",
+        answered.text()
+    );
+    let bodies: Vec<String> = pod.seen().iter().map(Seen::body_text).collect();
+    assert_eq!(
+        bodies,
+        [request.replacen(
+            "\"model\":\"code\"",
+            &format!("\"model\":\"{SERVED_QWEN}\""),
+            1
+        )]
+    );
+    assert_eq!(source.acquired(), ["code"]);
+    assert!(source.released_reaches(1));
+}
+
+#[test]
+fn usage_a_chat_answer_reaches_the_client_with_its_cached_tokens_and_an_unknown_field() {
+    relays_usage(
+        "/v1/chat/completions",
+        "{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+        USAGE_CHAT,
+        &["\"prompt_tokens_details\":{\"cached_tokens\":1024,"],
+    );
+}
+
+#[test]
+fn usage_a_chat_stream_reaches_the_client_with_its_final_usage_chunk_unchanged() {
+    relays_usage(
+        "/v1/chat/completions",
+        "{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+        USAGE_CHAT_STREAM,
+        &[
+            "\"choices\":[],\"usage\":{",
+            "\"prompt_tokens_details\":{\"cached_tokens\":1024,",
+            "data: [DONE]\n\n",
+        ],
+    );
+}
+
+#[test]
+fn usage_a_messages_answer_reaches_the_client_with_its_cache_tokens_and_an_unknown_field() {
+    relays_usage(
+        "/v1/messages",
+        "{\"model\":\"code\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+        USAGE_MESSAGES,
+        &[
+            "\"cache_creation_input_tokens\":192",
+            "\"cache_read_input_tokens\":1024",
+        ],
+    );
+}
+
+#[test]
+fn usage_a_messages_stream_reaches_the_client_with_its_start_and_delta_usage_unchanged() {
+    relays_usage(
+        "/v1/messages",
+        "{\"model\":\"code\",\"max_tokens\":16,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+        USAGE_MESSAGES_STREAM,
+        &[
+            "\"type\":\"message_start\"",
+            "\"usage\":{\"input_tokens\":1234,\"output_tokens\":0,\"future_usage_field\"",
+            "\"type\":\"message_delta\"",
+            "\"cache_creation_input_tokens\":192",
+            "\"cache_read_input_tokens\":1024",
+        ],
+    );
 }

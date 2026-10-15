@@ -95,6 +95,13 @@
     },
     {
       "area": "Relay",
+      "detail": "The usage block of a target's answer reaches the client byte for byte on the Chat and Messages wires, streamed or not: vLLM's cached_tokens, cache_read_input_tokens and cache_creation_input_tokens, and any field the gateway does not know. Settled from vLLM v0.27.1's source and authored answers, not a live server.",
+      "href": "/docs/concepts/relay",
+      "label": "Usage details reach the client unchanged",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
       "href": "/docs/concepts/relay",
       "label": "A failed target is dropped and replaced",

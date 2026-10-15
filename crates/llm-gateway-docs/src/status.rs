@@ -165,6 +165,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "Usage details reach the client unchanged",
+        "The usage block of a target's answer reaches the client byte for byte on the Chat and Messages wires, streamed or not: vLLM's cached_tokens, cache_read_input_tokens and cache_creation_input_tokens, and any field the gateway does not know. Settled from vLLM v0.27.1's source and authored answers, not a live server.",
+        "crates/llm-gateway/tests/wire_relay.rs::usage_a_messages_stream_reaches_the_client_with_its_start_and_delta_usage_unchanged",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
         "A failed target is dropped and replaced",
         "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
         "crates/llm-gateway/tests/wire_relay.rs::w7_an_upstream_502_503_or_504_drops_that_endpoint_and_the_next_request_reaches_a_replacement",

@@ -1,0 +1,38 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a server.
+# The event stream `vllm/vllm-openai:v0.27.1` started with `--enable-prompt-tokens-details`
+# answers a Messages request with `"stream": true`. vLLM streams the chat completion with
+# `include_usage` and `continuous_usage_stats` on (serving.py:526-529). `message_start` takes
+# its usage from the first chunk, whose usage has no details, so it carries the whole prompt
+# as `input_tokens` and no cache field; `message_delta` takes it from the final usage chunk, so
+# it carries `cache_read_input_tokens` and `cache_creation_input_tokens` and the prompt less
+# both as `input_tokens`. Sources under https://github.com/vllm-project/vllm/blob/v0.27.1/
+# (tag v0.27.1, commit 6e448d0ea9bf):
+#   vllm/entrypoints/anthropic/serving.py:56-92 (_build_anthropic_usage), 95-96 (`event:
+#   <type>\ndata: <json>\n\n`), 795-833 (message_start from the first chunk, message_delta from
+#   the chunk with no choice, both `model_dump_json(exclude_unset=True)`);
+#   vllm/entrypoints/openai/chat_completion/serving.py:533-538 (the first chunk's usage);
+#   vllm/entrypoints/anthropic/protocol.py:25-31 (AnthropicUsage field order) and 181-218.
+# NOT from vLLM: `usage.future_usage_field` in both events, a field no server defines,
+# standing for one the gateway does not know. The id, the text and the token counts are
+# illustrative; `model` is the served model name.
+event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-8e4d2b7a1c6f3095","type":"message","role":"assistant","content":[],"model":"Qwen/Qwen3.8-27B-FP8","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1234,"output_tokens":0,"future_usage_field":{"kept":true}}}}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"text","text":""},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"."},"index":0}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":18,"output_tokens":6,"cache_creation_input_tokens":192,"cache_read_input_tokens":1024,"future_usage_field":{"kept":true}}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

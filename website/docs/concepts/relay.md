@@ -64,7 +64,9 @@ Nothing before step 6 asks for a target, so a refused request never wakes a pod.
 - The top-level `model` value becomes the target's model name. On the Messages wire,
   `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal to `high` or `max`
   become `xhigh`, the deepest effort the served Qwen3.8 chat template accepts; `low`, `medium`
-  and `xhigh` pass unchanged. Every other byte reaches the target unchanged, Claude Code's
+  and `xhigh` pass unchanged. A Messages request that names no effort, sent to a hosted model
+  that declares a `reasoning_effort`, gains `output_config.effort` set to it. Every other byte
+  reaches the target unchanged, Claude Code's
   adaptive `thinking` and its structured-output `output_config.format` included: the pinned
   vLLM ignores the first and serves the second as structured output.
 - The head is the gateway's own: `host` is the target's authority, and a target with a bearer is

@@ -14,6 +14,11 @@ Nothing in any release is deployed or qualified against a live client.
   `HEAD /api/hello` stays refused; `docs/gateway.md` "The relay" says why for each, from vLLM
   v0.27.1's source and Claude Code's published gateway protocol. Settled from those sources and
   authored fixtures, not from a live session (`docs/verification/2026-10-15-claude-code-wire.md`).
+- A hosted model may declare `reasoning_effort = "low" | "medium" | "xhigh"`. A Messages request
+  that names no effort reaches its endpoint with `output_config.effort` set to it, so a server
+  started by hand no longer thinks at its chat template's `xhigh` default when Claude Code sends
+  no effort. A request that names one keeps it; the Chat and Responses wires and Runpod models,
+  whose effort is the pod's own default, are unchanged.
 
 ## 0.7.0 (2026-10-14)
 

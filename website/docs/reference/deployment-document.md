@@ -96,6 +96,7 @@ to the same path at the endpoint, and the route inventory lists each of its targ
 | `upstream_model` | the alias | The model name the endpoint expects, 1 to 256 printable ASCII characters. |
 | `context_window` | absent | 4096 to 2000000 tokens, what the public routes publish. |
 | `tool_calling` | `absent` | `parsed` or `absent`. |
+| `reasoning_effort` | absent | `low`, `medium` or `xhigh`: the effort a Messages request that names none is sent with. Any other value, `high` and `max` included, is `config:value`. |
 
 A `bearer` endpoint is sent `authorization: Bearer <credential>`, an `api-key` endpoint
 `<credential_header>: <credential>` and no `authorization`, and an `anonymous` one neither. A
@@ -105,6 +106,17 @@ is refused at start as `config:value`, naming the endpoint and quoting no creden
 `https` endpoint is reached over the same TLS client as a pod, verified against the same roots
 compiled into the binary; a certificate that does not verify is `upstream-failed` before any byte
 of the request is sent. A failed endpoint is kept: the next request asks it again.
+
+The gateway does not start a hosted endpoint, so it cannot set the server's chat-template
+defaults; a Qwen3.8 template asked for no effort thinks at `xhigh`, its deepest. With
+`reasoning_effort` declared, a Messages request that names no effort, neither
+`output_config.effort` nor `chat_template_kwargs.reasoning_effort`, reaches the endpoint with
+`output_config.effort` set to the declared value: an `output_config` object the request already
+has gains the key, and a request without one gains `"output_config":{"effort":"<value>"}`.
+Nothing else in the body changes. A request that names an effort keeps its own, with `high` and
+`max` still sent as `xhigh`, and Chat and Responses requests are relayed as sent. A
+`[models.<alias>]` model's `reasoning_effort` is its pod's default already, so nothing is added
+for it.
 
 ```toml
 [hosted.vendor-large]

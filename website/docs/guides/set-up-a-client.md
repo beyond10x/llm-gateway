@@ -83,6 +83,9 @@ Qwen3.8 chat template ([the relay](../concepts/relay.md)):
   connection-warming probe a gateway can reject without breaking anything.
 - An effort of `high` or `max` reaches the model as `xhigh`; `low`, `medium` and `xhigh` reach it
   unchanged.
+- A request with no effort reaches a hosted model that declares `reasoning_effort` with that
+  effort, so the model does not think at the template's `xhigh` default on every turn
+  ([`[hosted.<alias>]`](../reference/deployment-document.md#hosted-models)).
 - `thinking: {"type": "adaptive"}` reaches vLLM unchanged, and vLLM ignores it; the effort is
   what turns the model's thinking on. `output_config.format` reaches vLLM unchanged, and vLLM
   serves it as structured output.

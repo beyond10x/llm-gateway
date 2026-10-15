@@ -168,8 +168,9 @@ given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_vie
 `Gateway::bind_with_relay` composes the gateway with a `Relay`: the relayed models and an injected
 `RelayTargets`. A `RelayModel` is an alias, the model name its target expects, a non-empty set
 of distinct `Wire`s (`relay:no-wire`, `relay:repeated-wire`; two models with one alias are
-`relay:duplicate-model`) and its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
-`with_tool_calling` says otherwise. The embedding implements `RelayTargets` over its pool: `acquire` hands
+`relay:duplicate-model`), its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
+`with_tool_calling` says otherwise, and an optional `ReasoningEffort` (`with_reasoning_effort`,
+step 6). The embedding implements `RelayTargets` over its pool: `acquire` hands
 out the `RelayTarget` serving an alias, and `invalidate` is told when a request through one
 failed. A `RelayTarget` opens its own connection (`connect`), so the transport, TLS included,
 and its timeouts are the embedding's; this crate opens none. The specification is the `Relay`
@@ -210,8 +211,23 @@ A request to a wire path is decided in this order:
    and raises on any other effort (`Qwen/Qwen3.8-27B-FP8` `chat_template.jinja` lines 46-49 at
    Hugging Face commit `017b9c7`), which fails the turn, and `xhigh` is its deepest. `low`,
    `medium` and `xhigh` reach the target unchanged, as does any other value, and both fields on
-   the chat and responses wires. Every other byte reaches the target unchanged: llmgw
-   re-serialises the document with sorted keys, llm-gateway replaces those values in place.
+   the chat and responses wires. On the messages wire only, a body that names no effort (no
+   `effort` member in a top-level `output_config` object and no `reasoning_effort` member in a
+   top-level `chat_template_kwargs` object, whatever such a member's value), sent to a model
+   that declares a `ReasoningEffort` (`RelayModel::with_reasoning_effort`: `low`, `medium` or
+   `xhigh`), reaches the target with `output_config.effort` set to it. A top-level
+   `output_config` object gains `"effort":"<v>"` as its last member (the last such object when
+   the key is named twice), and a body without one gains `"output_config":{"effort":"<v>"}` as
+   its last top-level member; a body whose top-level `output_config` is not an object gains
+   nothing. A body that names an effort keeps the mapping above and never the declared value.
+   The binary declares a hosted model's `reasoning_effort` and never a Runpod model's: a
+   hand-started server's chat-template defaults are not the gateway's to set, and the Qwen3.8
+   template defaults to `xhigh` when a request names no effort, which vLLM v0.27.1 hands it as
+   `reasoning_effort` from `output_config.effort` (`vllm/entrypoints/anthropic/serving.py` lines
+   513-514); a Runpod pod is already started with its model's `reasoning_effort` as the
+   template's default. Every other byte reaches the target unchanged: llmgw re-serialises the
+   document with sorted keys, llm-gateway replaces those values in place and inserts only that
+   member.
 7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
    `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
    request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's

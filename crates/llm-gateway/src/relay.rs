@@ -1,7 +1,7 @@
 //! Relaying the three model-call wires to a target the embedding selects (story:wire-relay).
 //!
 //! The gateway reads and checks the request, rewrites `model` (and on the messages wire the
-//! reasoning effort), asks the injected [`RelayTargets`] for a target, sends the request over
+//! reasoning effort, or gives a request naming none the model's declared one), asks the injected [`RelayTargets`] for a target, sends the request over
 //! the connection that target opens, and relays the answer as it arrives. It never opens a
 //! connection itself: the target does, so the transport — plain TCP to a loopback fixture, TLS
 //! to a pod proxy — and its timeouts belong to the embedding. The specification is the `Relay`
@@ -861,10 +861,12 @@ pub(crate) fn serve(
     };
     let analysis = body::analyse(&body)?;
     let model = served_model(relay, &analysis, admitted.wire, call)?;
+    let messages = admitted.wire == Wire::Messages;
     let rewritten = analysis.rewrite(
         &body,
         model.upstream_model.as_str(),
-        admitted.wire == Wire::Messages,
+        messages,
+        model.reasoning_effort.filter(|_| messages),
     );
     drop(body);
     let alias = model.alias.as_str();

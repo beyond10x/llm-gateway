@@ -827,7 +827,9 @@ impl Parts {
 /// Every model of the document as the relay serves it: on its wires, under its alias, with its
 /// `tool_calling`, and with the `max_model_len` and `context_window` the public routes publish
 /// (rows R5, R1). A hosted model is relayed under its `upstream_model`, and publishes the
-/// `context_window` it declares and no `max_model_len`.
+/// `context_window` it declares and no `max_model_len`. Only a hosted model gives a messages
+/// request naming no effort its declared `reasoning_effort`: a Runpod model's is already its
+/// server's default chat-template argument.
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
     for (alias, hosted) in &deployment.hosted {
@@ -844,6 +846,10 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
             )
         })?
         .with_tool_calling(hosted.tool_calling);
+        let relayed = match hosted.reasoning_effort {
+            Some(effort) => relayed.with_reasoning_effort(effort),
+            None => relayed,
+        };
         models.push(match hosted.context_window {
             Some(window) => relayed.with_context_window(u64::from(window)),
             None => relayed,

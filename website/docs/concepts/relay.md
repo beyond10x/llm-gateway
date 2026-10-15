@@ -57,7 +57,19 @@ After the head, the probes, shedding and owner authentication of
    `model-cold-start` with `retry-after: 30` when the model's pod is still starting after the
    request's hold budget.
 
-Nothing before step 6 asks for a target, so a refused request never wakes a pod.
+7. **The output clamp**, on the Messages wire only. A model's window is its `max_model_len`
+   when it declares one, else its `context_window`: the binary declares a Runpod model's
+   `max_model_len` and a hosted model's `context_window`, so a hosted model without one has no
+   window. For a model with a window and a body whose top-level `max_tokens` is one
+   non-negative integer, the gateway first asks the same target
+   `POST /v1/messages/count_tokens` with the body it is about to relay and the same credential.
+   A `max_tokens` above the room the counted input leaves is lowered to that room; an input that
+   leaves no room is `context-exceeded` (400), whose message starts `prompt is too long`, the
+   phrase Claude Code compacts its conversation on. A count that fails relays the request
+   unchanged.
+
+Nothing before step 6 asks for a target, so a refused request never wakes a pod, and the count
+of step 7 asks only the target step 6 handed out.
 
 ## What reaches the target
 

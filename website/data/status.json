@@ -88,6 +88,13 @@
     },
     {
       "area": "Relay",
+      "detail": "For a model with a window (a Runpod model's max_model_len, a hosted model's context_window), the input is counted at the target's /v1/messages/count_tokens; a max_tokens above the room left is lowered to it, and an input that leaves none is context-exceeded, whose message Claude Code compacts on. A count that fails relays the request unchanged. Settled from vLLM v0.27.1's source, not a live session.",
+      "href": "/docs/concepts/relay",
+      "label": "A Messages request never asks for more output than the window has room for",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
       "href": "/docs/concepts/relay",
       "label": "A failed target is dropped and replaced",

@@ -1,12 +1,14 @@
 //! Reading a relayed request body as JSON without deserialising it.
 //!
 //! The relay changes at most three string values of a body (rows W2 and W4), may add one
-//! `output_config.effort` member (a model's declared effort), and must pass every other byte
-//! through unchanged. So the body is scanned, not parsed into a tree: the scan validates the
-//! whole document against RFC 8259, records where the values it may rewrite lie, whether the body
-//! names an effort and where one would be added, and whether a top-level `tools` array is
-//! non-empty (the tool-calling refusal). The rewrite then replaces exactly those byte ranges and
-//! inserts at most that one member.
+//! `output_config.effort` member (a model's declared effort), may lower its top-level
+//! `max_tokens` (the output clamp), and must pass every other byte through unchanged. So the
+//! body is scanned, not parsed into a tree: the scan validates the whole document against RFC
+//! 8259, records where the values it may rewrite lie, whether the body names an effort and where
+//! one would be added, where a top-level integer `max_tokens` lies, and whether a top-level
+//! `tools` array is non-empty (the tool-calling refusal). The rewrite then replaces exactly those
+//! byte ranges and inserts at most that one member. The same scan reads the `input_tokens` of a
+//! target's count answer ([`input_tokens`]).
 //!
 //! The scan keeps its nesting on an explicit stack rather than the call stack, so a body that is
 //! nothing but `[[[[…` costs memory bounded by the body bound and cannot overflow a thread's
@@ -38,6 +40,39 @@ pub(crate) struct Analysis {
     /// Where a declared effort would be written, or `None` when the body names an effort
     /// already or its top-level `output_config` is not an object.
     effort_slot: Option<EffortSlot>,
+    /// The top-level `max_tokens` when the body names it once and it is one non-negative JSON
+    /// integer: where its token lies, and its value (`u64::MAX` past `u64`).
+    max_tokens: Option<(Range<usize>, u64)>,
+}
+
+/// A body as the relay rewrote it, with where its top-level integer `max_tokens` lies in it.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) struct Rewritten {
+    pub(crate) bytes: Vec<u8>,
+    max_tokens: Option<(Range<usize>, u64)>,
+}
+
+impl Rewritten {
+    /// The top-level `max_tokens`, when the body names it once as one non-negative integer.
+    pub(crate) fn max_tokens(&self) -> Option<u64> {
+        self.max_tokens.as_ref().map(|(_, value)| *value)
+    }
+
+    /// Lowers that `max_tokens` to `room` in place when it asks for more. Nothing else changes,
+    /// and a body without one is unchanged.
+    pub(crate) fn clamp_max_tokens(&mut self, room: u64) {
+        let Some((span, value)) = self.max_tokens.clone() else {
+            return;
+        };
+        if value <= room {
+            return;
+        }
+        let digits = room.to_string().into_bytes();
+        let start = span.start;
+        let end = start + digits.len();
+        self.bytes.splice(span, digits);
+        self.max_tokens = Some((start..end, room));
+    }
 }
 
 /// Where a declared effort is written into a body that names none.
@@ -56,6 +91,7 @@ impl Analysis {
     /// set to `xhigh`; and when `declared` is given and the body names no effort, its
     /// `output_config.effort` set to `declared` by inserting that one member. Nothing else
     /// changes.
+    #[cfg(test)]
     pub(crate) fn rewrite(
         &self,
         body: &[u8],
@@ -63,6 +99,19 @@ impl Analysis {
         map_effort: bool,
         declared: Option<ReasoningEffort>,
     ) -> Vec<u8> {
+        self.rewritten(body, upstream_model, map_effort, declared)
+            .bytes
+    }
+
+    /// As [`Self::rewrite`], also keeping where the top-level integer `max_tokens` lies in the
+    /// output, so the output clamp can lower it in place.
+    pub(crate) fn rewritten(
+        &self,
+        body: &[u8],
+        upstream_model: &str,
+        map_effort: bool,
+        declared: Option<ReasoningEffort>,
+    ) -> Rewritten {
         let mut writer = Writer::new();
         writer.string(upstream_model);
         let model = writer.finish();
@@ -89,6 +138,18 @@ impl Analysis {
             replacements.push((*at..*at, member.as_bytes()));
         }
         replacements.sort_by_key(|(span, _)| span.start);
+        // No replacement overlaps the `max_tokens` token (it is a number, every replaced value
+        // a string, and an insertion lands after a value or at a brace), so in the output it
+        // moves by what the replacements before it added or removed.
+        let max_tokens = self.max_tokens.clone().map(|(span, value)| {
+            let mut start = span.start;
+            for (replaced, with) in &replacements {
+                if replaced.end <= span.start {
+                    start = start + with.len() - replaced.len();
+                }
+            }
+            (start..start + span.len(), value)
+        });
         let mut out = Vec::with_capacity(body.len() + model.len());
         let mut from = 0;
         for (span, value) in replacements {
@@ -97,7 +158,10 @@ impl Analysis {
             from = span.end;
         }
         out.extend_from_slice(&body[from..]);
-        out
+        Rewritten {
+            bytes: out,
+            max_tokens,
+        }
     }
 }
 
@@ -119,6 +183,10 @@ enum Slot {
     TemplateKwargs,
     Effort,
     Tools,
+    /// The top-level `max_tokens` of a request.
+    MaxTokens,
+    /// The top-level `input_tokens` of a count answer.
+    InputTokens,
     Other,
 }
 
@@ -127,6 +195,8 @@ impl Slot {
         match (role, key) {
             (Role::Top, "model") => Self::Model,
             (Role::Top, "tools") => Self::Tools,
+            (Role::Top, "max_tokens") => Self::MaxTokens,
+            (Role::Top, "input_tokens") => Self::InputTokens,
             (Role::Top, "output_config") => Self::OutputConfig,
             (Role::Top, "chat_template_kwargs") => Self::TemplateKwargs,
             (Role::OutputConfig, "effort") | (Role::TemplateKwargs, "reasoning_effort") => {
@@ -141,7 +211,12 @@ impl Slot {
             Self::Root => Role::Top,
             Self::OutputConfig => Role::OutputConfig,
             Self::TemplateKwargs => Role::TemplateKwargs,
-            Self::Model | Self::Effort | Self::Tools | Self::Other => Role::Other,
+            Self::Model
+            | Self::Effort
+            | Self::Tools
+            | Self::MaxTokens
+            | Self::InputTokens
+            | Self::Other => Role::Other,
         }
     }
 }
@@ -188,14 +263,48 @@ struct Found {
     output_config: OutputConfig,
     /// Where the top-level object's last member's value ends.
     top_end: Option<usize>,
+    max_tokens: Integer,
+    input_tokens: Integer,
+}
+
+/// What the scan has seen of one top-level member read as a count of tokens.
+#[derive(Default)]
+struct Integer {
+    /// How often the top level names it.
+    named: usize,
+    /// The last one's token and value, when it is one non-negative JSON integer.
+    value: Option<(Range<usize>, u64)>,
+}
+
+impl Integer {
+    /// Notes one more member whose value token is `raw`, at `span`. Digits alone are a
+    /// non-negative integer in JSON (`scalar` has refused a leading zero); one past `u64` reads
+    /// as `u64::MAX`, which asks for more than any window.
+    fn named(&mut self, span: Range<usize>, raw: &[u8]) {
+        self.named += 1;
+        self.value = (!raw.is_empty() && raw.iter().all(u8::is_ascii_digit)).then(|| {
+            let value = std::str::from_utf8(raw)
+                .ok()
+                .and_then(|digits| digits.parse().ok())
+                .unwrap_or(u64::MAX);
+            (span, value)
+        });
+    }
+
+    /// The member, when it is named once and is one non-negative integer.
+    fn once(self) -> Option<(Range<usize>, u64)> {
+        if self.named == 1 { self.value } else { None }
+    }
 }
 
 impl Found {
-    fn value(&mut self, slot: Slot, span: Range<usize>, text: Option<String>) {
+    fn value(&mut self, slot: Slot, span: Range<usize>, raw: &[u8], text: Option<String>) {
         if slot == Slot::Effort {
             self.names_effort = true;
         }
         match slot {
+            Slot::MaxTokens => self.max_tokens.named(span, raw),
+            Slot::InputTokens => self.input_tokens.named(span, raw),
             Slot::Model => {
                 self.models += 1;
                 self.model = text.map(|text| (span, text));
@@ -263,24 +372,24 @@ fn value_token(
     found.opens(slot, byte);
     match byte {
         Some(b'{') => {
-            found.value(slot, position..position + 1, None);
+            found.value(slot, position..position + 1, b"{", None);
             stack.push(Frame::Object(slot.role()));
             Ok((position + 1, Next::FirstMember))
         }
         Some(b'[') => {
-            found.value(slot, position..position + 1, None);
+            found.value(slot, position..position + 1, b"[", None);
             found.tools_opened = slot == Slot::Tools;
             stack.push(Frame::Array);
             Ok((position + 1, Next::FirstElement))
         }
         Some(b'"') => {
             let (end, value) = string(text, position)?;
-            found.value(slot, position..end, Some(value));
+            found.value(slot, position..end, &bytes[position..end], Some(value));
             Ok((end, Next::AfterValue))
         }
         Some(_) => {
             let end = scalar(bytes, position)?;
-            found.value(slot, position..end, None);
+            found.value(slot, position..end, &bytes[position..end], None);
             Ok((end, Next::AfterValue))
         }
         None => Err(NOT_JSON),
@@ -294,6 +403,34 @@ fn value_token(
 /// names `model` twice at its top level; [`RefusalCode::ModelAbsent`] for an object whose
 /// top-level `model` is missing or not a string.
 pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
+    let found = scan(body)?;
+    if found.models > 1 {
+        return Err(NOT_JSON);
+    }
+    let effort_slot = found.effort_slot();
+    let (model_span, model) = found.model.ok_or(RefusalCode::ModelAbsent)?;
+    Ok(Analysis {
+        model,
+        model_span,
+        efforts: found.efforts,
+        offers_tools: found.offers_tools,
+        effort_slot,
+        max_tokens: found.max_tokens.once(),
+    })
+}
+
+/// The count a target answered `POST /v1/messages/count_tokens` with: the top-level
+/// `input_tokens` of a body that is one JSON object naming it once, as one non-negative integer.
+/// `None` for any other body.
+pub(crate) fn input_tokens(body: &[u8]) -> Option<u64> {
+    scan(body)
+        .ok()
+        .and_then(|found| found.input_tokens.once())
+        .map(|(_, count)| count)
+}
+
+/// Scans `body`, one well-formed UTF-8 JSON object, and records what the relay looks at.
+fn scan(body: &[u8]) -> Result<Found, RefusalCode> {
     let text = std::str::from_utf8(body).map_err(|_| NOT_JSON)?;
     let bytes = text.as_bytes();
     let mut position = skip_whitespace(bytes, 0);
@@ -365,18 +502,7 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
             },
         };
     }
-    if found.models > 1 {
-        return Err(NOT_JSON);
-    }
-    let effort_slot = found.effort_slot();
-    let (model_span, model) = found.model.ok_or(RefusalCode::ModelAbsent)?;
-    Ok(Analysis {
-        model,
-        model_span,
-        efforts: found.efforts,
-        offers_tools: found.offers_tools,
-        effort_slot,
-    })
+    Ok(found)
 }
 
 fn skip_whitespace(bytes: &[u8], mut position: usize) -> usize {
@@ -507,7 +633,7 @@ fn scalar(bytes: &[u8], start: usize) -> Result<usize, RefusalCode> {
 
 #[cfg(test)]
 mod tests {
-    use super::analyse;
+    use super::{analyse, input_tokens};
     use crate::{error::RefusalCode, relay::ReasoningEffort};
 
     fn model(body: &str) -> Result<String, RefusalCode> {
@@ -645,6 +771,86 @@ mod tests {
             ),
         ] {
             assert_eq!(declared(body), expected, "{body}");
+        }
+    }
+
+    /// The output clamp lowers the top-level integer `max_tokens` in place, wherever the rewrite
+    /// before it moved it, and only when it asks for more than the room.
+    #[test]
+    fn a_top_level_integer_max_tokens_is_lowered_in_place_after_the_rewrite() {
+        let clamped = |body: &str, room: u64| {
+            let analysis = analyse(body.as_bytes()).unwrap();
+            let mut rewritten = analysis.rewritten(
+                body.as_bytes(),
+                "a-longer-upstream-name",
+                true,
+                Some(ReasoningEffort::Low),
+            );
+            rewritten.clamp_max_tokens(room);
+            (
+                rewritten.max_tokens(),
+                String::from_utf8(rewritten.bytes).unwrap(),
+            )
+        };
+        assert_eq!(
+            clamped(r#"{"model":"m","max_tokens":32000}"#, 31_999),
+            (
+                Some(31_999),
+                r#"{"model":"a-longer-upstream-name","max_tokens":31999,"output_config":{"effort":"low"}}"#
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            clamped(
+                r#"{"output_config":{"effort":"max"},"max_tokens" : 900 ,"model":"m"}"#,
+                9
+            ),
+            (
+                Some(9),
+                r#"{"output_config":{"effort":"xhigh"},"max_tokens" : 9 ,"model":"a-longer-upstream-name"}"#
+                    .to_owned()
+            )
+        );
+        assert_eq!(
+            clamped(r#"{"max_tokens":0,"model":"m"}"#, 1).1,
+            r#"{"max_tokens":0,"model":"a-longer-upstream-name","output_config":{"effort":"low"}}"#
+        );
+        for body in [
+            r#"{"model":"m"}"#,
+            r#"{"model":"m","max_tokens":-1}"#,
+            r#"{"model":"m","max_tokens":1.0}"#,
+            r#"{"model":"m","max_tokens":1e3}"#,
+            r#"{"model":"m","max_tokens":"9"}"#,
+            r#"{"model":"m","max_tokens":[9]}"#,
+            r#"{"model":"m","max_tokens":9,"max_tokens":9}"#,
+            r#"{"model":"m","x":{"max_tokens":9}}"#,
+        ] {
+            assert_eq!(clamped(body, 1).0, None, "{body}");
+        }
+        assert_eq!(
+            clamped(r#"{"model":"m","max_tokens":99999999999999999999999}"#, 5).1,
+            r#"{"model":"a-longer-upstream-name","max_tokens":5,"output_config":{"effort":"low"}}"#
+        );
+    }
+
+    #[test]
+    fn a_count_is_one_top_level_non_negative_integer_input_tokens() {
+        assert_eq!(input_tokens(br#"{"input_tokens":33537}"#), Some(33_537));
+        assert_eq!(input_tokens(br#" {"x":[1],"input_tokens":0} "#), Some(0));
+        for body in [
+            r#"{"tokens":10}"#,
+            r#"{"input_tokens":-1}"#,
+            r#"{"input_tokens":10.0}"#,
+            r#"{"input_tokens":1e1}"#,
+            r#"{"input_tokens":"10"}"#,
+            r#"{"input_tokens":null}"#,
+            r#"{"input_tokens":10,"input_tokens":10}"#,
+            r#"{"usage":{"input_tokens":10}}"#,
+            r#"[{"input_tokens":10}]"#,
+            "input_tokens: 10",
+            r#"{"input_tokens":10"#,
+        ] {
+            assert_eq!(input_tokens(body.as_bytes()), None, "{body}");
         }
     }
 }

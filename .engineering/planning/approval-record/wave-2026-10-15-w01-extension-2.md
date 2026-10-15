@@ -2,11 +2,13 @@
 format: aep.planning-md/3
 id: approval-record:wave-2026-10-15-w01-extension-2
 kind: approval-record
-status: draft
+status: active
 title: Wave 2026-10-15-w01 extended with story:usage-details-pass-through
 relations:
 - decides: story:usage-details-pass-through
-revision: 1
+revision: 2
+transitions:
+- {from: "draft", to: "active", at: "2026-10-15T17:42:34Z", actor: "human:timo", revision: 2}
 ---
 ## Stop
 

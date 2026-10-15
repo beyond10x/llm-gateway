@@ -22,10 +22,11 @@ of the file, every byte of it.
 | `1-tool-turn.request.txt` | `1-tool-turn.response.txt` | `?beta=true`, `anthropic-version`, `anthropic-beta`, adaptive `thinking`, `output_config.effort` `max`, a tool and `cache_control`; answered by a thinking block, a `signature_delta` and a `tool_use` block ending in `stop_reason` `tool_use` |
 | `2-tool-result.request.txt` | `2-tool-result.response.txt` | the follow-up carrying the `tool_result`; answered by a thinking block and a text block ending in `end_turn` |
 | `3-structured-output.request.txt` | `3-structured-output.response.txt` | `output_config.format` with a JSON schema beside effort `medium`, not streamed; answered by one JSON message whose text is the schema's JSON |
+| `2-tool-result.request.txt`, as the gateway counts it at `POST /v1/messages/count_tokens` | `4-count-tokens.response.txt` | the count vLLM answers the gateway's output clamp with: `{"input_tokens":n}` |
 
 Upstream sources, all read on 2026-10-15:
 
 - Claude Code's gateway protocol: <https://code.claude.com/docs/en/llm-gateway-protocol>.
 - vLLM v0.27.1 (tag `v0.27.1`, commit `6e448d0ea9bf3d88d898b65449ca6dc2aec170ac`), under
-  <https://github.com/vllm-project/vllm/blob/v0.27.1/>: `vllm/entrypoints/anthropic/protocol.py`
-  and `vllm/entrypoints/anthropic/serving.py`.
+  <https://github.com/vllm-project/vllm/blob/v0.27.1/>: `vllm/entrypoints/anthropic/protocol.py`,
+  `vllm/entrypoints/anthropic/serving.py` and `vllm/entrypoints/anthropic/api_router.py`.

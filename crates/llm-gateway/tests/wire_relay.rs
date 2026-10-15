@@ -1,8 +1,9 @@
 //! The relay of the three model-call wires (story:wire-relay), one test per behaviour, each
 //! named after the row of `docs/llmgw-capability-matrix.md` it closes: R6, R7, R8, W1, W2, W3,
 //! W4, W5, W6, W7, K11 and B8, and tool calling (`tools_*`), and what Claude Code sends on the
-//! messages wire (`claude_code_*`, story:claude-code-wire). The specification is the `Relay`
-//! command of `spec/domains/gateway.yaml`.
+//! messages wire (`claude_code_*`, story:claude-code-wire), a model's declared effort
+//! (`effort_*`) and the output clamp (`clamp_*`, story:max-tokens-clamp). The specification is
+//! the `Relay` command of `spec/domains/gateway.yaml`.
 //!
 //! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
 //! answers a fixed script. The gateway never connects anywhere itself; it asks the injected
@@ -307,6 +308,9 @@ struct Slot {
     bearer: Option<Arc<TargetBearer>>,
     /// The header the bearer is sent in instead of `authorization` (an `api-key` endpoint).
     header: Option<CredentialHeader>,
+    /// How many of the connections this slot's targets open, counted across them all, are
+    /// refused before any is opened.
+    refuse_first: Arc<AtomicUsize>,
 }
 
 /// The fake target source: hands out the current slot, and moves to the next one when the
@@ -376,6 +380,7 @@ fn listening(pod: &Pod) -> Slot {
         refuses: false,
         bearer: None,
         header: None,
+        refuse_first: Arc::new(AtomicUsize::new(0)),
     }
 }
 
@@ -385,6 +390,7 @@ fn refusing(name: &str) -> Slot {
         refuses: true,
         bearer: None,
         header: None,
+        refuse_first: Arc::new(AtomicUsize::new(0)),
     }
 }
 
@@ -447,7 +453,14 @@ impl RelayTarget for Target {
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
-        if self.slot.refuses {
+        let refused_first = self
+            .slot
+            .refuse_first
+            .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |left| {
+                left.checked_sub(1)
+            })
+            .is_ok();
+        if self.slot.refuses || refused_first {
             return Err(io::Error::from(io::ErrorKind::ConnectionRefused));
         }
         let stream = TcpStream::connect(&self.slot.authority)?;
@@ -2360,4 +2373,376 @@ fn effort_on_the_chat_and_responses_wires_a_declared_effort_is_not_given() {
             r#"{"model":"served-code","input":"hi"}"#
         ]
     );
+}
+
+// --- The output clamp (story:max-tokens-clamp) -------------------------------------------------
+//
+// The count's answer is `tests/fixtures/claude-code/4-count-tokens.response.txt`, authored from
+// vLLM v0.27.1's `/v1/messages/count_tokens` route.
+
+const COUNT_TOKENS: &str = include_str!("fixtures/claude-code/4-count-tokens.response.txt");
+/// The window the consumer's vLLM ran with (`--max-model-len 65536`).
+const WINDOW: u64 = 65_536;
+const CONTEXT_EXCEEDED: &str = "{\"error\":{\"code\":\"context-exceeded\",\"message\":\"prompt is too long: the input leaves no room for output in the model context window\"}}";
+
+/// The count's answer, as vLLM writes it.
+fn count_answer() -> Answer {
+    ok_json(fixture(COUNT_TOKENS).trim_end())
+}
+
+/// The count the fixture answers.
+fn counted() -> u64 {
+    fixture(COUNT_TOKENS)
+        .trim_end()
+        .strip_prefix("{\"input_tokens\":")
+        .and_then(|rest| rest.strip_suffix('}'))
+        .unwrap()
+        .parse()
+        .unwrap()
+}
+
+/// Claude Code's tool-result turn asking for `max_tokens`.
+fn tool_result_asking(max_tokens: u64) -> ClaudeCodeRequest {
+    let request = ClaudeCodeRequest::parse(TOOL_RESULT_REQUEST);
+    let named = "\"max_tokens\": 32000,";
+    assert!(request.body.contains(named), "the fixture asks for 32000");
+    let body = request
+        .body
+        .replacen(named, &format!("\"max_tokens\": {max_tokens},"), 1);
+    ClaudeCodeRequest {
+        path: request.path,
+        headers: request.headers,
+        body: Box::leak(body.into_boxed_str()),
+    }
+}
+
+/// A Claude Code body as the relay rewrites it: the model's served name, effort `max` as
+/// `xhigh`, and `max_tokens` set to `max_tokens`.
+fn served_tool_result(body: &str, max_tokens: u64) -> String {
+    let body = body
+        .replacen(
+            "\"model\": \"code\"",
+            &format!("\"model\": \"{SERVED_QWEN}\""),
+            1,
+        )
+        .replacen("\"effort\": \"max\"", "\"effort\": \"xhigh\"", 1);
+    let at = body.find("\"max_tokens\": ").unwrap() + "\"max_tokens\": ".len();
+    let end = at + body[at..].find(',').unwrap();
+    format!("{}{max_tokens}{}", &body[..at], &body[end..])
+}
+
+/// A slot carrying the model's vLLM key.
+fn keyed(pod: &Pod) -> Slot {
+    let mut slot = listening(pod);
+    slot.bearer = Some(Arc::new(
+        TargetBearer::new(VLLM_KEY.as_bytes().to_vec()).unwrap(),
+    ));
+    slot
+}
+
+/// Criterion 2: before relaying, the gateway asks the same target for the count, with the body
+/// it is about to relay, under its own head and the target's credential. A `max_tokens` one
+/// above the room `w - n` the window leaves is lowered to it; one at it and one below it reach
+/// the pod unchanged. The fixture's own 32000 is the case above.
+#[test]
+fn clamp_a_max_tokens_above_the_room_left_is_lowered_to_it_and_one_at_or_below_is_unchanged() {
+    let room = WINDOW - counted();
+    assert_eq!(
+        room + 1,
+        32_000,
+        "the fixture's count leaves one token fewer than it asks"
+    );
+    for (asked, relayed) in [(room - 1, room - 1), (room, room), (room + 1, room)] {
+        let pod = Pod::start(vec![count_answer(), ok_json("{}")]);
+        let source = Source::new(vec![keyed(&pod)]);
+        let gateway = Relayed::start(
+            vec![claude_code_model().with_max_model_len(WINDOW)],
+            &source,
+        );
+        let request = tool_result_asking(asked);
+        let answer = send(gateway.addr, &request.raw());
+        assert_eq!(answer.status, 200, "{asked}: {:?}", answer.code());
+        let seen = pod.seen();
+        assert_eq!(seen.len(), 2, "{asked}: a count, then the request");
+        let (count, relay) = (&seen[0], &seen[1]);
+        assert_eq!(
+            (count.method.as_str(), count.path.as_str()),
+            ("POST", "/v1/messages/count_tokens")
+        );
+        assert_eq!(count.body_text(), served_tool_result(request.body, asked));
+        assert_eq!(
+            (relay.method.as_str(), relay.path.as_str()),
+            ("POST", "/v1/messages")
+        );
+        assert_eq!(
+            relay.body_text(),
+            served_tool_result(request.body, relayed),
+            "{asked}"
+        );
+        for received in [count, relay] {
+            assert_eq!(
+                received.authorization.as_deref(),
+                Some(format!("Bearer {VLLM_KEY}").as_str())
+            );
+            assert_eq!(
+                header_names(&received.raw),
+                [
+                    "host",
+                    "authorization",
+                    "content-type",
+                    "content-length",
+                    "connection"
+                ],
+                "the count's head is the relay's own: no header of Claude Code's"
+            );
+            assert!(find(&received.raw, OWNER.as_bytes()).is_none());
+        }
+        assert_eq!(
+            source.acquired().len(),
+            1,
+            "one target serves the count and the relay"
+        );
+        assert!(source.invalidated().is_empty());
+    }
+}
+
+/// Criterion 3: an input that leaves no room (`w - n < 1`) is `context-exceeded` (400) and is
+/// never relayed; its message carries the phrase Claude Code compacts on. One token of room is
+/// relayed, asking for that one token.
+#[test]
+fn clamp_a_prompt_that_leaves_no_room_is_context_exceeded_and_never_relayed() {
+    let counted = counted();
+    for window in [counted - 1, counted] {
+        let pod = Pod::start(vec![count_answer(), ok_json("{}")]);
+        let source = Source::of(&[&pod]);
+        let gateway = Relayed::start(
+            vec![claude_code_model().with_max_model_len(window)],
+            &source,
+        );
+        let answer = send(gateway.addr, &tool_result_asking(32_000).raw());
+        assert_eq!(
+            answer.refused(),
+            (400, Some("context-exceeded".to_string())),
+            "{window}"
+        );
+        assert_eq!(answer.text(), CONTEXT_EXCEEDED);
+        assert!(answer.text().contains("prompt is too long"));
+        let paths: Vec<String> = pod.seen().iter().map(|seen| seen.path.clone()).collect();
+        assert_eq!(paths, ["/v1/messages/count_tokens"], "{window}");
+        assert!(source.invalidated().is_empty());
+        assert!(source.released_reaches(1), "the target is released");
+    }
+    let pod = Pod::start(vec![count_answer(), ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![claude_code_model().with_max_model_len(counted + 1)],
+        &source,
+    );
+    let request = tool_result_asking(32_000);
+    assert_eq!(send(gateway.addr, &request.raw()).status, 200);
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    assert_eq!(seen[1].body_text(), served_tool_result(request.body, 1));
+}
+
+/// Criterion 4: a count that fails relays the request unchanged, reports no target failed, and
+/// is answered as before: a refused connection, one closed without an answer, a status outside
+/// 2xx (a 503 included, which a relay would report), and an answer without one non-negative
+/// integer `input_tokens`, or longer than the head bound.
+#[test]
+fn clamp_a_count_that_fails_relays_the_request_unchanged() {
+    let padded = format!("{{\"input_tokens\":10,\"pad\":\"{}\"}}", "a".repeat(9_000));
+    let failures: Vec<(&str, Option<Answer>)> = vec![
+        ("refused", None),
+        ("closed", Some(Answer::Close)),
+        (
+            "500",
+            Some(reply(500, "application/json", b"{\"input_tokens\":10}")),
+        ),
+        (
+            "503",
+            Some(reply(503, "application/json", b"{\"input_tokens\":10}")),
+        ),
+        ("absent", Some(ok_json("{\"tokens\":10}"))),
+        ("negative", Some(ok_json("{\"input_tokens\":-1}"))),
+        ("fraction", Some(ok_json("{\"input_tokens\":10.0}"))),
+        ("exponent", Some(ok_json("{\"input_tokens\":1e1}"))),
+        ("string", Some(ok_json("{\"input_tokens\":\"10\"}"))),
+        ("null", Some(ok_json("{\"input_tokens\":null}"))),
+        (
+            "twice",
+            Some(ok_json("{\"input_tokens\":10,\"input_tokens\":10}")),
+        ),
+        ("nested", Some(ok_json("{\"usage\":{\"input_tokens\":10}}"))),
+        ("array", Some(ok_json("[{\"input_tokens\":10}]"))),
+        ("not json", Some(ok_json("input_tokens: 10"))),
+        ("over the head bound", Some(ok_json(&padded))),
+    ];
+    let body = "{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}";
+    let relayed = "{\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}";
+    for (name, count) in failures {
+        let refused = count.is_none();
+        let mut script: Vec<Answer> = count.into_iter().collect();
+        script.push(ok_json("{}"));
+        let pod = Pod::start(script);
+        let slot = listening(&pod);
+        if refused {
+            slot.refuse_first.store(1, Ordering::SeqCst);
+        }
+        let source = Source::new(vec![slot]);
+        // Counted at 10, the room would be 90.
+        let gateway = Relayed::start(vec![code_model().with_max_model_len(100)], &source);
+        let answer = gateway.post_text("/v1/messages", body);
+        assert_eq!(answer.status, 200, "{name}: {:?}", answer.code());
+        assert_eq!(answer.text(), "{}", "{name}");
+        let seen = pod.seen();
+        let last = seen.last().unwrap();
+        assert_eq!(last.path, "/v1/messages", "{name}");
+        assert_eq!(last.body_text(), relayed, "{name}: relayed unchanged");
+        assert_eq!(seen.len(), if refused { 1 } else { 2 }, "{name}");
+        assert!(
+            source.invalidated().is_empty(),
+            "{name}: no target is reported failed"
+        );
+        assert_eq!(source.acquired().len(), 1, "{name}");
+    }
+}
+
+/// Criteria 1 and 5: no count is asked for a model without a window, for a body without one
+/// top-level integer `max_tokens`, or on the chat and responses wires; each is relayed with
+/// only its `model` rewritten.
+#[test]
+fn clamp_no_count_is_asked_without_a_window_a_top_level_integer_max_tokens_or_the_messages_wire() {
+    let windowless = RelayModel::new(label("open"), label("served-open"), all_wires()).unwrap();
+    let cases = [
+        (
+            "/v1/messages",
+            "{\"model\":\"open\",\"max_tokens\":32000,\"messages\":[]}",
+        ),
+        ("/v1/messages", "{\"model\":\"code\",\"messages\":[]}"),
+        (
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":1.5,\"messages\":[]}",
+        ),
+        (
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":1e3,\"messages\":[]}",
+        ),
+        (
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":-1,\"messages\":[]}",
+        ),
+        (
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":\"500\",\"messages\":[]}",
+        ),
+        (
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":null,\"messages\":[]}",
+        ),
+        (
+            "/v1/messages",
+            "{\"model\":\"code\",\"x\":{\"max_tokens\":500},\"messages\":[]}",
+        ),
+        (
+            "/v1/messages",
+            "{\"model\":\"code\",\"max_tokens\":500,\"max_tokens\":500}",
+        ),
+        (
+            "/v1/chat/completions",
+            "{\"model\":\"code\",\"max_tokens\":500,\"messages\":[]}",
+        ),
+        (
+            "/v1/responses",
+            "{\"model\":\"code\",\"max_tokens\":500,\"input\":\"hi\"}",
+        ),
+    ];
+    let pod = Pod::start(cases.iter().map(|_| ok_json("{}")).collect());
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![code_model().with_max_model_len(100), windowless],
+        &source,
+    );
+    for (path, body) in cases {
+        assert_eq!(gateway.post_text(path, body).status, 200, "{path} {body}");
+    }
+    let seen: Vec<(String, String)> = pod
+        .seen()
+        .iter()
+        .map(|seen| (seen.path.clone(), seen.body_text()))
+        .collect();
+    let expected: Vec<(String, String)> = cases
+        .iter()
+        .map(|(path, body)| {
+            let served = body
+                .replacen("\"model\":\"code\"", "\"model\":\"served-code\"", 1)
+                .replacen("\"model\":\"open\"", "\"model\":\"served-open\"", 1);
+            ((*path).to_owned(), served)
+        })
+        .collect();
+    assert_eq!(seen, expected);
+}
+
+/// Criterion 1: the window is the model's `max_model_len` when it declares one, else its
+/// `context_window`: a model declaring both is clamped to the first, one declaring only a
+/// context window to it.
+#[test]
+fn clamp_the_window_is_the_max_model_len_else_the_context_window() {
+    let pod = Pod::start(vec![
+        ok_json("{\"input_tokens\":900}"),
+        ok_json("{}"),
+        ok_json("{\"input_tokens\":900}"),
+        ok_json("{}"),
+    ]);
+    let source = Source::of(&[&pod]);
+    let both = code_model()
+        .with_max_model_len(1_000)
+        .with_context_window(65_536);
+    let window = RelayModel::new(label("window"), label("served-window"), all_wires())
+        .unwrap()
+        .with_context_window(1_000);
+    let gateway = Relayed::start(vec![both, window], &source);
+    for alias in ["code", "window"] {
+        let body = format!("{{\"model\":\"{alias}\",\"max_tokens\":32000,\"messages\":[]}}");
+        assert_eq!(
+            gateway.post_text("/v1/messages", &body).status,
+            200,
+            "{alias}"
+        );
+    }
+    let relayed: Vec<String> = pod
+        .seen()
+        .iter()
+        .filter(|seen| seen.path == "/v1/messages")
+        .map(Seen::body_text)
+        .collect();
+    assert_eq!(
+        relayed,
+        [
+            "{\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}",
+            "{\"model\":\"served-window\",\"max_tokens\":100,\"messages\":[]}",
+        ]
+    );
+}
+
+/// Criterion 4: the count runs only on a target `acquire` handed out, so a request refused at
+/// `acquire` asks no pod anything.
+#[test]
+fn clamp_a_request_acquire_refuses_asks_no_pod_for_a_count() {
+    let pod = Pod::start(vec![count_answer(), ok_json("{}")]);
+    let cold = Source::cold(vec![listening(&pod)], 1);
+    let gateway = Relayed::start(vec![claude_code_model().with_max_model_len(WINDOW)], &cold);
+    let answer = send(gateway.addr, &tool_result_asking(32_000).raw());
+    assert_eq!(
+        answer.refused(),
+        (503, Some("model-cold-start".to_string()))
+    );
+    let none = Source::new(Vec::new());
+    let gateway = Relayed::start(vec![claude_code_model().with_max_model_len(WINDOW)], &none);
+    let answer = send(gateway.addr, &tool_result_asking(32_000).raw());
+    assert_eq!(
+        answer.refused(),
+        (503, Some("target-unavailable".to_string()))
+    );
+    assert!(pod.seen().is_empty());
 }

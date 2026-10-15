@@ -1,0 +1,51 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: clamp-a-count-that-fails-relays-the-request-unchanged
+summary: a count that is refused, closed, answered outside 2xx or without a non-negative integer input_tokens relays the request unchanged and reports no target failed
+timeline:
+- at: '2026-10-15T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["messages"],"max_model_len":1000}],"pods":[[{"transport":"refused"},{"status":200,"content_type":"application/json","chunks":["{}"]},{"transport":"closed"},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":500,"content_type":"application/json","chunks":["{\"error\":\"boom\"}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":503,"content_type":"application/json","chunks":["{\"input_tokens\":10}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{\"tokens\":10}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":-1}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":1.5}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":\"10\"}"]},{"status":200,"content_type":"application/json","chunks":["{}"]},{"status":200,"content_type":"application/json","chunks":["not json"]},{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    upstream:
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":32000,"messages":[]}'
+    acquired: 9
+    released: 9
+    invalidated: []

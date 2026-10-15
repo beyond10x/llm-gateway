@@ -1,0 +1,11 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a pod.
+# The JSON document vLLM v0.27.1 answers `POST /v1/messages/count_tokens` with when the gateway
+# sends it the body of 2-tool-result.request.txt as the relay rewrote it: one object holding the
+# input's token count. Sources under https://github.com/vllm-project/vllm/blob/v0.27.1/ (tag
+# v0.27.1, commit 6e448d0ea9bf): vllm/entrypoints/anthropic/api_router.py:95-133 (the
+# `/v1/messages/count_tokens` route: it takes a messages body and answers a compact
+# JSONResponse of `{"input_tokens": n}`).
+# The count is illustrative, not a tokenizer's: chosen so that the window of 65536 the consumer's
+# server ran with leaves 31999 tokens, one fewer than the request's `max_tokens` of 32000. The
+# file's final newline is not part of vLLM's answer, which the test does not depend on.
+{"input_tokens":33537}

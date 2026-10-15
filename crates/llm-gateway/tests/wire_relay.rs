@@ -2361,3 +2361,194 @@ fn effort_on_the_chat_and_responses_wires_a_declared_effort_is_not_given() {
         ]
     );
 }
+
+// --- Adversarial: a declared effort's insertion on bodies the unit's cases do not reach --------
+
+/// Insertion against escaped key spellings, whitespace before a closing brace, nested objects
+/// as the last member of `output_config`, non-object `output_config` and `chat_template_kwargs`
+/// values, braces inside strings, and a duplicate `output_config` whose first names the effort.
+/// Each expected body is written by hand from `docs/gateway.md` "The relay", step 6.
+#[test]
+fn effort_adv_insertion_keeps_every_body_valid_and_follows_step_6() {
+    let cases: &[(&str, &str)] = &[
+        (
+            r#"{"model":"code","output_config":{}}"#,
+            r#"{"model":"served-code","output_config":{"effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":"high"}}"#,
+            r#"{"model":"served-code","output_config":{"effort":"xhigh"}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":{"reasoning_effort":"medium"}}"#,
+            r#"{"model":"served-code","chat_template_kwargs":{"reasoning_effort":"medium"}}"#,
+        ),
+        (
+            "{\"model\":\"code\",\"output_config\":{\"a\":1 \n\t}\r\n}\n",
+            "{\"model\":\"served-code\",\"output_config\":{\"a\":1,\"effort\":\"low\" \n\t}\r\n}\n",
+        ),
+        (
+            "{\"model\":\"code\"  \n}  \n",
+            "{\"model\":\"served-code\",\"output_config\":{\"effort\":\"low\"}  \n}  \n",
+        ),
+        (
+            r#"{"model":"code","output_config":{"format":{"schema":{"x":[{}]}}}}"#,
+            r#"{"model":"served-code","output_config":{"format":{"schema":{"x":[{}]}},"effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"x":{"effort":"high"}}}"#,
+            r#"{"model":"served-code","output_config":{"x":{"effort":"high"},"effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"s":"}\"{"}}"#,
+            r#"{"model":"served-code","output_config":{"s":"}\"{","effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"ü":"é"}}"#,
+            r#"{"model":"served-code","output_config":{"ü":"é","effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":[]}"#,
+            r#"{"model":"served-code","output_config":[]}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":null}"#,
+            r#"{"model":"served-code","output_config":null}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":0}"#,
+            r#"{"model":"served-code","output_config":0}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":true}"#,
+            r#"{"model":"served-code","output_config":true}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":"reasoning_effort"}"#,
+            r#"{"model":"served-code","chat_template_kwargs":"reasoning_effort","output_config":{"effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":null}"#,
+            r#"{"model":"served-code","chat_template_kwargs":null,"output_config":{"effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","chat_template_kwargs":[{"reasoning_effort":"high"}]}"#,
+            r#"{"model":"served-code","chat_template_kwargs":[{"reasoning_effort":"high"}],"output_config":{"effort":"low"}}"#,
+        ),
+        (
+            r#"{"model":"code","output_config":{"effort":"medium"},"output_config":{}}"#,
+            r#"{"model":"served-code","output_config":{"effort":"medium"},"output_config":{}}"#,
+        ),
+    ];
+    let pod = Pod::start(cases.iter().map(|_| ok_json("{}")).collect());
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![code_model().with_reasoning_effort(ReasoningEffort::Low)],
+        &source,
+    );
+    for (sent, _) in cases {
+        let answer = gateway.post_text("/v1/messages", sent);
+        assert_eq!(answer.status, 200, "{sent}: {:?}", answer.code());
+    }
+    let seen = pod.seen();
+    let bodies: Vec<String> = seen.iter().map(Seen::body_text).collect();
+    let expected: Vec<&str> = cases.iter().map(|(_, rewritten)| *rewritten).collect();
+    assert_eq!(bodies, expected);
+    for request in &seen {
+        assert_eq!(
+            request.content_length.as_deref(),
+            Some(request.body.len().to_string().as_str())
+        );
+    }
+}
+
+/// A messages body of exactly 32 MiB naming no effort is relayed whole with the declared effort
+/// added past the bound, and the content-length the target is sent counts the added member.
+#[test]
+fn effort_adv_a_32_mib_body_naming_none_grows_past_the_bound_with_a_matching_length() {
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![code_model().with_reasoning_effort(ReasoningEffort::Low)],
+        &source,
+    );
+    let body = pad_to("{\"model\":\"code\"", BODY_BOUND);
+    let answer = gateway.post("/v1/messages", &body);
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    let member = b",\"output_config\":{\"effort\":\"low\"}";
+    let mut expected = pad_to("{\"model\":\"served-code\"", BODY_BOUND + 7);
+    let close = expected.pop();
+    assert_eq!(close, Some(b'}'));
+    expected.extend_from_slice(member);
+    expected.push(b'}');
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(
+        seen[0].content_length.as_deref(),
+        Some((BODY_BOUND + 7 + member.len()).to_string().as_str())
+    );
+    assert!(
+        seen[0].body.as_slice().eq(expected.as_slice()),
+        "the 32 MiB body changed beyond its model and the added effort"
+    );
+}
+
+/// A chunked messages body naming no effort reaches the target decoded, with a length counting
+/// the added effort and no transfer-encoding.
+#[test]
+fn effort_adv_a_chunked_body_naming_none_gains_the_effort_and_a_matching_length() {
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![code_model().with_reasoning_effort(ReasoningEffort::Xhigh)],
+        &source,
+    );
+    let body = b"{\"model\":\"code\",\"output_config\":{\"format\":{}} }";
+    let (first, second) = body.split_at(30);
+    let mut raw = format!(
+        "POST /v1/messages HTTP/1.1\r\nauthorization: Bearer {OWNER}\r\ntransfer-encoding: chunked\r\n\r\n"
+    )
+    .into_bytes();
+    for part in [first, second] {
+        raw.extend_from_slice(format!("{:x}\r\n", part.len()).as_bytes());
+        raw.extend_from_slice(part);
+        raw.extend_from_slice(b"\r\n");
+    }
+    raw.extend_from_slice(b"0\r\n\r\n");
+    let answer = send(gateway.addr, &raw);
+    assert_eq!(answer.status, 200, "{:?}", answer.code());
+    let expected =
+        "{\"model\":\"served-code\",\"output_config\":{\"format\":{},\"effort\":\"xhigh\"} }";
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].transfer_encoding, None);
+    assert_eq!(
+        seen[0].content_length.as_deref(),
+        Some(expected.len().to_string().as_str())
+    );
+    assert_eq!(seen[0].body_text(), expected);
+}
+
+/// The chat and responses wires stay byte-identical for a 32 MiB body naming no effort sent to
+/// a model that declares one.
+#[test]
+fn effort_adv_chat_and_responses_bodies_at_the_bound_gain_no_effort() {
+    let pod = Pod::start(vec![ok_json("{}"), ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(
+        vec![code_model().with_reasoning_effort(ReasoningEffort::Medium)],
+        &source,
+    );
+    let body = pad_to("{\"model\":\"code\"", BODY_BOUND);
+    for path in ["/v1/chat/completions", "/v1/responses"] {
+        assert_eq!(gateway.post(path, &body).status, 200, "{path}");
+    }
+    let expected = pad_to("{\"model\":\"served-code\"", BODY_BOUND + 7);
+    for seen in pod.seen() {
+        assert!(
+            seen.body.as_slice().eq(expected.as_slice()),
+            "{}",
+            seen.path
+        );
+    }
+}

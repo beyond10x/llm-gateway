@@ -9,6 +9,7 @@ relations:
 - serves: vision:portable-model-inference
 - depends_on: story:gateway-observability
 - depends_on: story:target-fallback
+- informed_by: story:usage-details-pass-through
 scope:
 - confidence: inferred
   path: checks/conformance/Cargo.toml
@@ -34,7 +35,7 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/telemetry.yaml
-revision: 19
+revision: 20
 ---
 ## Outcome
 
@@ -122,3 +123,10 @@ Derived 2026-10-06 by `story-scoper`. Every line is **cited** (read from the sto
 - **Safety fact:** the client's bytes cannot change: the port sees only a copy taken after each `write_by` in `stream_answer` (`relay.rs:650-675`), and a parse error or panic there must not reach that loop's `return` paths. This is design, not code yet (level 1, unproven). Also level 2, unproven: llm 0.2.0's protocol crates pull `b10x-llm-http`, `tokio` and `reqwest`, all in `FORBIDDEN` (`dependency_boundary.rs:22-33`), so linking them into the gateway crate fails that test.
 
 Not established, and decisive for when this story can run: at llm 0.2.0, chat's `usage_of` is private (`incoming.rs:426`), messages' `Snapshot` is `pub(crate)` (`usage.rs:7`), and `b10x-llm-responses` exports only `decode_stream(binding, &[Value])`, which needs `stream: true` (`request.rs:168`) and the whole stream as one slice. Acceptance case 1 on the responses wire may need a change in beyond10x/llm first. All three protocol crates also pull `b10x-llm-credentials`, `b10x-llm-http`, `reqwest` and `tokio` into the binary.
+
+## Cache details
+
+Case 1's fixtures carry the cache details: chat `usage.prompt_tokens_details.cached_tokens` maps to
+`cached_input_tokens`; messages `cache_read_input_tokens` to `cached_input_tokens` and
+`cache_creation_input_tokens` to `cache_creation_input_tokens`. That they reach the client
+unchanged is held already by `story:usage-details-pass-through`.

@@ -205,9 +205,13 @@ A request to a wire path is decided in this order:
    a target, so a refused request never wakes a pod.
 6. The top-level `model` value becomes the upstream name, written as a JSON string. On the
    messages wire only, `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal
-   to `high` become `xhigh`, because the served chat template rejects `high` (llmgw
-   `src/lib.rs:470-504`). Every other byte reaches the target unchanged: llmgw re-serialises the
-   document with sorted keys, llm-gateway replaces those values in place.
+   to `high` or `max` become `xhigh`, because the served chat template rejects both (llmgw
+   `src/lib.rs:470-504` for `high`): the Qwen3.8 template accepts `xhigh`, `medium` and `low`
+   and raises on any other effort (`Qwen/Qwen3.8-27B-FP8` `chat_template.jinja` lines 46-49 at
+   Hugging Face commit `017b9c7`), which fails the turn, and `xhigh` is its deepest. `low`,
+   `medium` and `xhigh` reach the target unchanged, as does any other value, and both fields on
+   the chat and responses wires. Every other byte reaches the target unchanged: llmgw
+   re-serialises the document with sorted keys, llm-gateway replaces those values in place.
 7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
    `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
    request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's
@@ -255,6 +259,48 @@ A request to a wire path is decided in this order:
 A refused relay closes gracefully: the refusal is written, the write side closed, and what the
 client still sends is read and discarded (up to `request-body-bytes`, within `read_timeout`), so
 a reset cannot destroy the refusal before the client reads it.
+
+### Claude Code on the messages wire
+
+What Claude Code 2.1.293 sends to a model id it does not recognise, such as a gateway alias, meets
+the pinned vLLM (`vllm/vllm-openai:v0.27.1`) through this relay as below. Each point is settled
+from Claude Code's published [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol)
+and vLLM's source at tag `v0.27.1`
+(`https://github.com/vllm-project/vllm/blob/v0.27.1/`, paths below relative to it), both read
+2026-10-15, not from a recorded session; `docs/verification/2026-10-15-claude-code-wire.md` lists
+the sources and what a live record still has to show. The cases are the `claude_code_*` tests of
+`crates/llm-gateway/tests/wire_relay.rs`, over fixtures authored from those sources, and the
+`claude-code-*` scenarios.
+
+- **`HEAD /api/hello`.** Claude Code's connection-warming probe has no route here. Without the
+  owner credential it is `credential-absent` (401), and with it `path-unknown` (404), each
+  without a body, as any other path off the public surface; no target is asked for. The protocol
+  page names it startup traffic a gateway "can reject without breaking anything", and vLLM has
+  no such route either.
+- **`thinking`.** Relayed unchanged, `{"type":"adaptive"}` included. vLLM v0.27.1's messages
+  request model declares no `thinking` field and drops unknown keys
+  (`vllm/entrypoints/anthropic/protocol.py:118-178`), so every `thinking` value is ignored
+  there, never refused. What turns the served model's thinking on is the effort:
+  `output_config.effort` becomes vLLM's `reasoning_effort`
+  (`vllm/entrypoints/anthropic/serving.py:513-514`), and any effort but `none` sets the chat
+  template's `enable_thinking` (`vllm/entrypoints/openai/chat_completion/protocol.py:564-573`).
+- **Effort.** Claude Code sends `low`, `medium`, `high`, `xhigh` or `max`; vLLM admits all five
+  (`vllm/entrypoints/anthropic/protocol.py:114`) and hands the value to the chat template, so
+  step 6 maps the two the template rejects.
+- **Structured output.** `output_config.format` is relayed unchanged. vLLM v0.27.1 serves
+  `{"type":"json_schema","schema":…}` as structured output, its `response_format`
+  (`vllm/entrypoints/anthropic/serving.py:505-512`), and ignores the deprecated top-level
+  `output_format`, which it does not declare; the gateway relays that unchanged too. Claude Code
+  stops sending the format under `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`.
+- **Headers.** `anthropic-version` and `anthropic-beta` are dropped, as every header of the
+  client's request is (step 7). vLLM v0.27.1 reads neither: its messages router and serving code
+  read no request header (`vllm/entrypoints/anthropic/api_router.py`,
+  `vllm/entrypoints/anthropic/serving.py`). The protocol page's advice to forward them verbatim
+  is written for an Anthropic upstream. The query of `POST /v1/messages?beta=true` is discarded
+  like any other (step 7 asks the target on the wire's own path).
+- **The answer.** vLLM's event stream, thinking blocks, `signature_delta` and `tool_use` blocks
+  included, reaches Claude Code byte for byte (step 9). vLLM writes no `ping` event, and the
+  gateway adds none.
 
 ## Counters and usage records
 

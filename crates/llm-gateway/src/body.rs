@@ -13,8 +13,10 @@
 use crate::{error::RefusalCode, json::Writer};
 use std::ops::Range;
 
-/// The client effort the served chat template rejects (llmgw `src/lib.rs:37`).
-const CLIENT_EFFORT: &str = "high";
+/// The client efforts the served chat template rejects: `high` (llmgw `src/lib.rs:37`) and
+/// `max`, which Claude Code also sends; the Qwen3.8 template accepts only `xhigh`, `medium` and
+/// `low` (`docs/gateway.md` "The relay", step 6).
+const CLIENT_EFFORTS: [&str; 2] = ["high", "max"];
 /// The template's nearest accepted depth, written as a JSON string (llmgw `src/lib.rs:39`).
 const SERVED_EFFORT: &str = "\"xhigh\"";
 
@@ -26,7 +28,7 @@ pub(crate) struct Analysis {
     /// Where the `model` value's string token lies, quotes included.
     model_span: Range<usize>,
     /// Every `output_config.effort` and `chat_template_kwargs.reasoning_effort` string token
-    /// whose unescaped value is exactly `high`.
+    /// whose unescaped value is exactly `high` or `max`.
     efforts: Vec<Range<usize>>,
     /// Whether a top-level `tools` member is a non-empty array: the body offers the model a
     /// tool. With `tools` named twice at the top level, either one counts.
@@ -139,7 +141,13 @@ impl Found {
                 self.models += 1;
                 self.model = text.map(|text| (span, text));
             }
-            Slot::Effort if text.as_deref() == Some(CLIENT_EFFORT) => self.efforts.push(span),
+            Slot::Effort
+                if text
+                    .as_deref()
+                    .is_some_and(|effort| CLIENT_EFFORTS.contains(&effort)) =>
+            {
+                self.efforts.push(span);
+            }
             _ => {}
         }
     }

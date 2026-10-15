@@ -12,12 +12,13 @@ relations:
 - depends_on: story:cold-start-hold
 - depends_on: story:model-tool-calling
 - depends_on: story:gateway-observability
+- depends_on: story:claude-code-wire
 scope:
 - confidence: cited
   path: docs/verification/client-qualification.md
 - confidence: cited
   path: docs/verification/fixtures/claude-code-2.1.293-messages.json
-revision: 6
+revision: 7
 ---
 ## Outcome
 
@@ -66,6 +67,12 @@ duration is cross-checked against the per-call record `story:gateway-observabili
 7. Every other refusal or failure it records names the story that owns the fix, or is listed as an
    open finding in the record.
 8. No test in `task check` depends on it: the gate makes no paid call (`AGENTS.md` "Invariants").
+9. The Claude Code session checks what `story:claude-code-wire` settled from sources rather than a
+   capture, each answered from the capture in the record: whether the first request carries
+   `output_config.effort` and at which level, whether an answer with a long thinking pause and no
+   `ping` event completes, how a vLLM 400 answer is handled, and whether any request carries
+   `output_config.format`. A difference from `docs/verification/2026-10-15-claude-code-wire.md`
+   names the story that owns the fix.
 
 ## Depends on
 

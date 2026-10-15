@@ -162,6 +162,17 @@ enum Next {
     AfterValue,
 }
 
+/// What the scan knows of the top-level `output_config` members.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum OutputConfig {
+    #[default]
+    Absent,
+    /// Where an effort would be written into the last one, an object.
+    Object(EffortSlot),
+    /// One of them was not an object, so no effort is written.
+    NotObject,
+}
+
 /// What the scan has seen of the top-level `model` member.
 #[derive(Default)]
 struct Found {
@@ -174,11 +185,7 @@ struct Found {
     /// A top-level `output_config.effort` or `chat_template_kwargs.reasoning_effort` member was
     /// seen, whatever its value.
     names_effort: bool,
-    /// A top-level `output_config` value was not an object.
-    output_config_not_object: bool,
-    /// Where the last top-level `output_config` object's closing brace, or its last member's
-    /// value, ends.
-    output_config: Option<EffortSlot>,
+    output_config: OutputConfig,
     /// Where the top-level object's last member's value ends.
     top_end: Option<usize>,
 }
@@ -203,9 +210,82 @@ impl Found {
             _ => {}
         }
     }
+
+    /// Notes that the value about to be scanned for `slot` starts with `byte`.
+    fn opens(&mut self, slot: Slot, byte: Option<u8>) {
+        if slot == Slot::OutputConfig && byte != Some(b'{') {
+            self.output_config = OutputConfig::NotObject;
+        }
+    }
+
+    /// Notes that the frame on top of `stack` closes. For an object, `at` is where a member
+    /// would be added, after its last member when `after_member`.
+    fn closes(&mut self, stack: &[Frame], at: usize, after_member: bool) {
+        match stack.last() {
+            Some(Frame::Object(Role::OutputConfig)) => {
+                if self.output_config != OutputConfig::NotObject {
+                    self.output_config =
+                        OutputConfig::Object(EffortSlot::Object { at, after_member });
+                }
+            }
+            Some(Frame::Object(_)) if stack.len() == 1 => self.top_end = Some(at),
+            _ => {}
+        }
+    }
+
+    /// Where a declared effort is written, or `None` when the body names one or its top-level
+    /// `output_config` is not an object.
+    fn effort_slot(&self) -> Option<EffortSlot> {
+        if self.names_effort {
+            return None;
+        }
+        match self.output_config {
+            OutputConfig::Object(slot) => Some(slot),
+            OutputConfig::NotObject => None,
+            OutputConfig::Absent => self.top_end.map(|at| EffortSlot::Top { at }),
+        }
+    }
 }
 
 const NOT_JSON: RefusalCode = RefusalCode::BodyNotJson;
+
+/// Scans the value starting at `position` for `slot`; returns where the scan continues and
+/// what it expects there.
+fn value_token(
+    text: &str,
+    position: usize,
+    slot: Slot,
+    stack: &mut Vec<Frame>,
+    found: &mut Found,
+) -> Result<(usize, Next), RefusalCode> {
+    let bytes = text.as_bytes();
+    let byte = bytes.get(position).copied();
+    found.opens(slot, byte);
+    match byte {
+        Some(b'{') => {
+            found.value(slot, position..position + 1, None);
+            stack.push(Frame::Object(slot.role()));
+            Ok((position + 1, Next::FirstMember))
+        }
+        Some(b'[') => {
+            found.value(slot, position..position + 1, None);
+            found.tools_opened = slot == Slot::Tools;
+            stack.push(Frame::Array);
+            Ok((position + 1, Next::FirstElement))
+        }
+        Some(b'"') => {
+            let (end, value) = string(text, position)?;
+            found.value(slot, position..end, Some(value));
+            Ok((end, Next::AfterValue))
+        }
+        Some(_) => {
+            let end = scalar(bytes, position)?;
+            found.value(slot, position..end, None);
+            Ok((end, Next::AfterValue))
+        }
+        None => Err(NOT_JSON),
+    }
+}
 
 /// Scans `body` and reports the relay's view of it.
 ///
@@ -229,44 +309,13 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
         position = skip_whitespace(bytes, position);
         let byte = bytes.get(position).copied();
         next = match next {
-            Next::Value(slot) => match byte {
-                Some(b'{') => {
-                    found.value(slot, position..position + 1, None);
-                    stack.push(Frame::Object(slot.role()));
-                    position += 1;
-                    Next::FirstMember
-                }
-                Some(b'[') => {
-                    found.output_config_not_object |= slot == Slot::OutputConfig;
-                    found.value(slot, position..position + 1, None);
-                    found.tools_opened = slot == Slot::Tools;
-                    stack.push(Frame::Array);
-                    position += 1;
-                    Next::FirstElement
-                }
-                Some(b'"') => {
-                    found.output_config_not_object |= slot == Slot::OutputConfig;
-                    let (end, value) = string(text, position)?;
-                    found.value(slot, position..end, Some(value));
-                    position = end;
-                    Next::AfterValue
-                }
-                Some(_) => {
-                    found.output_config_not_object |= slot == Slot::OutputConfig;
-                    let end = scalar(bytes, position)?;
-                    found.value(slot, position..end, None);
-                    position = end;
-                    Next::AfterValue
-                }
-                None => return Err(NOT_JSON),
-            },
+            Next::Value(slot) => {
+                let (end, after) = value_token(text, position, slot, &mut stack, &mut found)?;
+                position = end;
+                after
+            }
             Next::FirstMember if byte == Some(b'}') => {
-                if stack.last() == Some(&Frame::Object(Role::OutputConfig)) {
-                    found.output_config = Some(EffortSlot::Object {
-                        at: position,
-                        after_member: false,
-                    });
-                }
+                found.closes(&stack, position, false);
                 stack.pop();
                 position += 1;
                 Next::AfterValue
@@ -306,21 +355,8 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
                     position += 1;
                     Next::Value(Slot::Other)
                 }
-                (Some(Frame::Object(role)), Some(b'}')) => {
-                    if *role == Role::OutputConfig {
-                        found.output_config = Some(EffortSlot::Object {
-                            at: value_end,
-                            after_member: true,
-                        });
-                    }
-                    if stack.len() == 1 {
-                        found.top_end = Some(value_end);
-                    }
-                    stack.pop();
-                    position += 1;
-                    Next::AfterValue
-                }
-                (Some(Frame::Array), Some(b']')) => {
+                (Some(Frame::Object(_)), Some(b'}')) | (Some(Frame::Array), Some(b']')) => {
+                    found.closes(&stack, value_end, true);
                     stack.pop();
                     position += 1;
                     Next::AfterValue
@@ -332,14 +368,8 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
     if found.models > 1 {
         return Err(NOT_JSON);
     }
+    let effort_slot = found.effort_slot();
     let (model_span, model) = found.model.ok_or(RefusalCode::ModelAbsent)?;
-    let effort_slot = if found.names_effort || found.output_config_not_object {
-        None
-    } else {
-        found
-            .output_config
-            .or_else(|| found.top_end.map(|at| EffortSlot::Top { at }))
-    };
     Ok(Analysis {
         model,
         model_span,

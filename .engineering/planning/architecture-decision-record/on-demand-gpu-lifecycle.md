@@ -2,11 +2,13 @@
 format: aep.planning-md/3
 id: architecture-decision-record:on-demand-gpu-lifecycle
 kind: architecture-decision-record
-status: proposed
+status: accepted
 title: The gateway owns the on-demand GPU lifecycle of its models, spend ceilings included
 relations:
 - decides: epic:hosting
-revision: 1
+revision: 2
+transitions:
+- {from: "proposed", to: "accepted", at: "2026-10-15T20:22:58Z", actor: "human:timo", revision: 2}
 ---
 ## Status
 

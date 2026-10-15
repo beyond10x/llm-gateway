@@ -1546,7 +1546,11 @@ mod relay {
         let agent = user_agent
             .as_ref()
             .map_or_else(String::new, |agent| format!("user-agent: {agent}\r\n"));
-        let extra: String = headers.iter().map(|line| format!("{line}\r\n")).collect();
+        let extra = headers.iter().fold(String::new(), |mut extra, line| {
+            extra.push_str(line);
+            extra.push_str("\r\n");
+            extra
+        });
         let length = declare_bytes.unwrap_or(u64::try_from(body.len()).ok()?);
         let mut raw = format!(
             "{} {path} HTTP/1.1\r\nhost: gateway\r\n{extra}{agent}{auth}content-type: application/json\r\ncontent-length: {length}\r\n\r\n",

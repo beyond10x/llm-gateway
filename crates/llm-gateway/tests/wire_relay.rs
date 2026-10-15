@@ -1989,7 +1989,9 @@ impl ClaudeCodeRequest {
             raw.push_str(line);
             raw.push_str("\r\n");
         }
-        raw.push_str(&format!("content-length: {}\r\n\r\n", self.body.len()));
+        raw.push_str("content-length: ");
+        raw.push_str(&self.body.len().to_string());
+        raw.push_str("\r\n\r\n");
         let mut raw = raw.into_bytes();
         raw.extend_from_slice(self.body.as_bytes());
         raw

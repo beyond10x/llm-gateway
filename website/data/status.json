@@ -74,6 +74,13 @@
     },
     {
       "area": "Relay",
+      "detail": "An effort of high or max becomes xhigh, the deepest the served Qwen3.8 template accepts; adaptive thinking and output_config.format pass unchanged; anthropic-version and anthropic-beta are dropped. Settled from Claude Code's documentation and vLLM v0.27.1's source, not a live session.",
+      "href": "/docs/guides/set-up-a-client",
+      "label": "Claude Code's Messages requests reach vLLM in a form it serves",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
       "href": "/docs/concepts/relay",
       "label": "A failed target is dropped and replaced",

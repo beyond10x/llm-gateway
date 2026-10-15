@@ -6,7 +6,7 @@ status: draft
 title: Claude Code, Codex and Loom use a Runpod-hosted model through llm-gateway
 relations:
 - serves: vision:portable-model-inference
-revision: 2
+revision: 4
 ---
 ## Outcome
 
@@ -38,7 +38,9 @@ adds only what the three clients need beyond that chain:
 | `story:model-tool-calling` | a model declares tool calling; a request with tools for a model without it is refused before any pod starts |
 | `story:pod-proxy-tls` | the binary reaches a pod's `https` proxy URL over verified TLS |
 | `story:client-qualification` | one recorded live session each for Claude Code and Codex against a real pod, with its cost |
-| `story:claude-code-wire` | the gateway answers what Claude Code sends, settled from the qualification record |
+| `story:claude-code-wire` | the gateway answers what Claude Code sends, settled from cited sources and authored fixtures |
+| `story:effort-default` | a hosted model's declared effort is given to a Claude Code turn that names none |
+| `story:max-tokens-clamp` | a messages request never asks for more output than the context window has room for |
 | `story:loom-qualification` | one recorded live Loom run through llm against the same pod |
 
 `story:public-model-listing` (in `epic:gateway`) renders the `ClientProfile` settings at `GET /`.
@@ -53,7 +55,7 @@ adds only what the three clients need beyond that chain:
 
 ## Done when
 
-Each of the five stories is `implemented` or `archived`, an archived one giving its reason in its
+Each of the seven stories is `implemented` or `archived`, an archived one giving its reason in its
 body. `docs/verification/client-qualification.md` shows, for Claude Code and for Codex, an answer
 carrying a tool call and a following request carrying its result. `docs/verification/loom-qualification.md`
 shows the same for Loom, unless `story:loom-qualification` is archived, in which case its body names

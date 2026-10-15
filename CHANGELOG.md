@@ -27,6 +27,13 @@ Nothing in any release is deployed or qualified against a live client.
   `prompt is too long` so Claude Code compacts instead of meeting vLLM's 500. A count that fails
   relays the request unchanged; a hosted model without a `context_window`, and the Chat and
   Responses wires, are not counted.
+- The usage block of a model's answer, cache details included, is now held to reach the client
+  unchanged on the Chat and Messages wires, streamed or not: a vLLM started with
+  `--enable-prompt-tokens-details` reports `usage.prompt_tokens_details.cached_tokens` on the
+  Chat wire and `cache_read_input_tokens` and `cache_creation_input_tokens` on the Messages wire,
+  and a usage field the gateway does not know passes too. No behaviour changed: the relay already
+  returned the answer's bytes unchanged; tests and scenarios now pin it, against answers authored
+  from vLLM v0.27.1's source. The usage record's token counters stay absent.
 
 ## 0.7.0 (2026-10-14)
 

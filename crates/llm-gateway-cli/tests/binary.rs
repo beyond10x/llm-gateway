@@ -622,11 +622,10 @@ fn k8s_a_group_readable_owner_secret_is_refused_as_the_guide_pastes() {
         "website/docs/guides/run-on-kubernetes.md must paste {GUIDE_REFUSAL:?} on a line of its own"
     );
     // Control: the same file at 0400 is served, so the mode is the whole difference.
-    fixture.write(
-        "owner-secret",
-        format!("{OWNER_SECRET}\n").as_bytes(),
-        0o400,
-    );
+    {
+        use std::os::unix::fs::PermissionsExt as _;
+        std::fs::set_permissions(&secret, std::fs::Permissions::from_mode(0o400)).unwrap();
+    }
     Server::start(&config).stop();
 }
 

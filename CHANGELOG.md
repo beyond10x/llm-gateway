@@ -1,6 +1,7 @@
 # Changelog
 
-Every release is a source release tagged `<version>`; the crates are not published. The
+Every release is tagged `<version>` and publishes the source and, from the first release after
+0.9.0, the gateway image; the crates are not published. The
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
@@ -9,6 +10,12 @@ Nothing in any release is deployed or qualified against a live client.
 - A read of a target that an interrupt (a signal, a stop and continue) cuts short keeps the read
   timeout it began with, on a plain connection and on a pod's TLS connection: it is answered
   `upstream-failed` when that timeout is spent, however often it is interrupted.
+- Every release tag now publishes the gateway image `ghcr.io/beyond10x/llm-gateway:<version>`
+  for `linux/amd64` and `linux/arm64`, each built natively from the root `Dockerfile` and labelled
+  with the tag's commit, through the `Release image` workflow (`.github/workflows/release.yml`).
+  It never replaces a version the registry already holds, and a registry answer other than not
+  found, or a missing docker, stops the release instead of passing it. The package is private when
+  first created.
 
 ## 0.9.0 (2026-10-16)
 

@@ -4,6 +4,12 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- A read of a target that an interrupt (a signal, a stop and continue) cuts short keeps the read
+  timeout it began with, on a plain connection and on a pod's TLS connection: it is answered
+  `upstream-failed` when that timeout is spent, however often it is interrupted.
+
 ## 0.9.0 (2026-10-16)
 
 - A hosted model's `base_url` may carry a path. The path replaces the wire path's leading `/v1`,

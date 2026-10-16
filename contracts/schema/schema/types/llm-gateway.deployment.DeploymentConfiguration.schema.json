@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
-    "contract_digest": "slice-sha256/2:5eb508923ecdac54666cb22bffeb5a4f2715a58c671aef1c09d3ca47e0513d48",
+    "source_digest": "1967eee4c0e91b827f2f214a01bd519eb994269176729a1f2ecbb9f4323891d3",
+    "contract_digest": "slice-sha256/2:ba31527513ff5aacae1c8902d65294d9e58cecb306406f8ab06fa18b73754e75",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -127,6 +127,13 @@
         "credential_header": {
           "type": "string"
         },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-ess-map-key": "String"
+        },
         "billing_kind": {
           "$ref": "#/$defs/llm-gateway.upstream.BillingKind"
         },
@@ -147,6 +154,7 @@
         "wires",
         "base_url",
         "auth_kind",
+        "headers",
         "billing_kind",
         "upstream_model",
         "tool_calling"

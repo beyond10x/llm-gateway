@@ -136,6 +136,13 @@
       "status": "shipped"
     },
     {
+      "area": "Relay",
+      "detail": "[hosted.<alias>.headers] declares non-secret request headers, such as anthropic-version or X-Title, sent with every request to that endpoint. Framing headers, authorization and the endpoint's credential header are refused at start, and client headers are still never forwarded. Tested against loopback endpoints.",
+      "href": "/docs/reference/deployment-document",
+      "label": "Static headers per hosted endpoint",
+      "status": "shipped"
+    },
+    {
       "area": "Binary",
       "detail": "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",
       "href": "/docs/reference/deployment-document",

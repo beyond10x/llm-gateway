@@ -26,7 +26,7 @@ assert:
     - 'pod-2 POST /v1/chat/completions {"model":"vendor-plain","messages":[]}'
     received_heads:
     - 'anthropic-version: 2023-06-01 | x-title: b10x gateway | x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | content-length: 39 | connection: close'
-    - 'content-type: application/json | content-length: 40 | connection: close'
+    - 'content-type: application/json | content-length: 38 | connection: close'
     secret_upstream: false
     acquired: 2
     released: 2

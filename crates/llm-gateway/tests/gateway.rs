@@ -6,7 +6,7 @@
 use llm_gateway::{
     AuthKind, BasePath, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle,
     Label, OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, TargetLimits,
+    RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, StaticHeader, TargetLimits,
     TargetProvenance, TargetRefusal, TargetSummary, Verdict, Wire,
 };
 use std::{
@@ -1066,12 +1066,13 @@ fn enforced_bounds() -> Vec<Bound> {
         },
     ]
     .into_iter()
-    .chain(base_path_bounds())
+    .chain(hosted_endpoint_bounds())
     .collect()
 }
 
-/// The two bounds of a `BasePath` (story:hosted-base-path).
-fn base_path_bounds() -> Vec<Bound> {
+/// The bounds of a `BasePath` (story:hosted-base-path) and a `StaticHeader`
+/// (story:hosted-static-headers).
+fn hosted_endpoint_bounds() -> Vec<Bound> {
     vec![
         // The whole path, its leading `/` included.
         Bound {
@@ -1087,6 +1088,14 @@ fn base_path_bounds() -> Vec<Bound> {
             value: 32,
             direction: Direction::Maximum,
             admits: Box::new(|n| BasePath::new(&"/a".repeat(usize::try_from(n).unwrap())).is_ok()),
+        },
+        Bound {
+            name: "static-header-value-bytes",
+            value: 1024,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| {
+                StaticHeader::new("x-title", &"v".repeat(usize::try_from(n).unwrap())).is_ok()
+            }),
         },
     ]
 }

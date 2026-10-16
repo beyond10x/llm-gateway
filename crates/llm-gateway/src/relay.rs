@@ -12,7 +12,8 @@
 use crate::{
     auth, body,
     error::{
-        BasePathError, CredentialHeaderError, RefusalCode, RelayError, TargetRefusal, TokenError,
+        BasePathError, CredentialHeaderError, RefusalCode, RelayError, StaticHeaderError,
+        TargetRefusal, TokenError,
     },
     inventory::Label,
     metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
@@ -168,6 +169,57 @@ impl CredentialHeader {
     }
 }
 
+/// The longest static header value: `static-header-value-bytes`.
+const MAX_STATIC_HEADER_VALUE_BYTES: usize = 1024;
+
+/// One static, non-secret request header a target is sent with every request (a hosted
+/// endpoint's `headers`, such as `anthropic-version` or `X-Title`). Its name
+/// follows a [`CredentialHeader`]'s rule (1..=64 RFC 9110 token characters, held lowercase,
+/// none of the headers the gateway writes or that frame a message, `authorization` among them)
+/// and its value is 1..=1024 bytes of 0x20-0x7e with no leading or trailing space, so it can
+/// neither end its line, nor replace or repeat a framing header, nor carry `authorization`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct StaticHeader {
+    name: String,
+    value: String,
+}
+
+impl StaticHeader {
+    /// Accepts a name and a value as the rule above has them.
+    ///
+    /// # Errors
+    /// [`StaticHeaderError`] naming the rule, and never the name or the value.
+    pub fn new(name: &str, value: &str) -> Result<Self, StaticHeaderError> {
+        let name = CredentialHeader::new(name).map_err(|error| match error {
+            CredentialHeaderError::Length => StaticHeaderError::NameLength,
+            CredentialHeaderError::NotAToken => StaticHeaderError::NameNotAToken,
+            CredentialHeaderError::Reserved => StaticHeaderError::Reserved,
+        })?;
+        if value.is_empty() || value.len() > MAX_STATIC_HEADER_VALUE_BYTES {
+            return Err(StaticHeaderError::ValueLength);
+        }
+        if !value.bytes().all(|byte| (0x20..=0x7e).contains(&byte))
+            || value.starts_with(' ')
+            || value.ends_with(' ')
+        {
+            return Err(StaticHeaderError::ValueNotPrintable);
+        }
+        Ok(Self {
+            name: name.0,
+            value: value.to_owned(),
+        })
+    }
+
+    /// The name, lowercase, as it is written into the head.
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn value(&self) -> &str {
+        &self.value
+    }
+}
+
 /// The longest base path: `base-path-bytes`.
 const MAX_BASE_PATH_BYTES: usize = 256;
 /// The most segments a base path holds: `base-path-segments`.
@@ -256,6 +308,12 @@ pub trait RelayTarget: Send {
     /// clamp's count included. `host` is the [`Self::authority`] either way.
     fn base_path(&self) -> Option<&BasePath> {
         None
+    }
+
+    /// The static headers the target is sent with every request, the output clamp's count
+    /// included, after `host` and in the order given. The default sends none.
+    fn headers(&self) -> &[StaticHeader] {
+        &[]
     }
 
     /// Whether the source held the request while this target started (rows L6, W6). The gateway
@@ -1046,12 +1104,19 @@ impl Drop for RequestHead {
 /// header of the client's request is forwarded, so the owner's credential never reaches a
 /// target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
 /// header one token naming no header written here (`CredentialHeader::new`), so neither can end
-/// the line it is written into.
+/// the line it is written into; nor can a static header (`StaticHeader::new`), written after
+/// `host` in the order the target gives.
 fn request_head(target: &dyn RelayTarget, wire_path: &str, length: usize) -> RequestHead {
     let path = target
         .base_path()
         .map_or_else(|| wire_path.to_owned(), |base| base.join(wire_path));
-    let start = format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority());
+    let mut start = format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority());
+    for header in target.headers() {
+        start.push_str(header.name());
+        start.push_str(": ");
+        start.push_str(header.value());
+        start.push_str("\r\n");
+    }
     let end = format!(
         "content-type: application/json\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
     );
@@ -1213,7 +1278,10 @@ fn stream_answer(
 mod tests {
     use super::{Framing, MAX_REQUEST_BODY_BYTES, Relay, RelayModel, RelayTargets, Wire, framing};
     use crate::{
-        error::{BasePathError, CredentialHeaderError, RefusalCode, RelayError, TargetRefusal},
+        error::{
+            BasePathError, CredentialHeaderError, RefusalCode, RelayError, StaticHeaderError,
+            TargetRefusal,
+        },
         inventory::Label,
     };
     use std::sync::Arc;
@@ -1261,6 +1329,35 @@ mod tests {
                 super::CredentialHeader::new(&name).err(),
                 Some(*expected),
                 "{name:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_static_header_error_has_a_header_that_provokes_it() {
+        for expected in StaticHeaderError::ALL {
+            let (name, value) = match expected {
+                StaticHeaderError::NameLength => ("k".repeat(65), "v".to_owned()),
+                StaticHeaderError::NameNotAToken => ("x title".to_owned(), "v".to_owned()),
+                StaticHeaderError::Reserved => ("Authorization".to_owned(), "v".to_owned()),
+                StaticHeaderError::ValueLength => ("x-title".to_owned(), String::new()),
+                StaticHeaderError::ValueNotPrintable => {
+                    ("x-title".to_owned(), "a\r\nx-injected: b".to_owned())
+                }
+            };
+            assert_eq!(
+                super::StaticHeader::new(&name, &value).err(),
+                Some(*expected),
+                "{name:?}"
+            );
+        }
+        let header = super::StaticHeader::new("X-Title", "b10x gateway").unwrap();
+        assert_eq!((header.name(), header.value()), ("x-title", "b10x gateway"));
+        for value in [" a", "a ", "a\tb", "a\0b", "a\nb", "caf\u{e9}"] {
+            assert_eq!(
+                super::StaticHeader::new("x-title", value).err(),
+                Some(StaticHeaderError::ValueNotPrintable),
+                "{value:?}"
             );
         }
     }

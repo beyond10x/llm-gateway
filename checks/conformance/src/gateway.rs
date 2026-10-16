@@ -516,8 +516,9 @@ mod relay {
     use llm_gateway::{
         BasePath, CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
         GatewayHandle, OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
-        RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
-        TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
+        RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, StaticHeader,
+        StaticHeaderError, TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords,
+        Wire,
     };
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProxyConnector,
@@ -623,6 +624,9 @@ mod relay {
         credential: Option<String>,
         #[serde(default)]
         credential_header: Option<String>,
+        /// Static header names to values.
+        #[serde(default)]
+        headers: BTreeMap<String, String>,
     }
 
     impl EndpointInput {
@@ -1300,6 +1304,10 @@ mod relay {
             self.inner.base_path()
         }
 
+        fn headers(&self) -> &[StaticHeader] {
+            self.inner.headers()
+        }
+
         fn held(&self) -> bool {
             self.inner.held()
         }
@@ -1393,6 +1401,16 @@ mod relay {
         }
     }
 
+    fn static_header_code(error: StaticHeaderError) -> &'static str {
+        match error {
+            StaticHeaderError::NameLength => "name-length",
+            StaticHeaderError::NameNotAToken => "name-not-a-token",
+            StaticHeaderError::Reserved => "reserved",
+            StaticHeaderError::ValueLength => "value-length",
+            StaticHeaderError::ValueNotPrintable => "value-not-printable",
+        }
+    }
+
     fn credential_header_code(error: CredentialHeaderError) -> &'static str {
         match error {
             CredentialHeaderError::Length => "length",
@@ -1437,8 +1455,19 @@ mod relay {
                 endpoint.scheme,
                 endpoint.base_path.as_deref().unwrap_or_default()
             );
+            let mut headers = endpoint
+                .headers
+                .iter()
+                .map(|(name, value)| {
+                    StaticHeader::new(name, value)
+                        .map_err(|error| format!("static-header:{}", static_header_code(error)))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            headers.sort_by(|left, right| left.name().cmp(right.name()));
             let hosted = HostedEndpoint::new(&base_url, credential)
-                .map_err(|_| "endpoint:base-url".to_owned())?;
+                .map_err(|_| "endpoint:base-url".to_owned())?
+                .with_headers(headers)
+                .map_err(|_| "endpoint:headers".to_owned())?;
             endpoints.insert(model.alias.clone(), hosted);
         }
         Ok(endpoints)

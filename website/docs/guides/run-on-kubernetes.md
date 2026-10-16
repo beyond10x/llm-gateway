@@ -80,6 +80,7 @@ spec:
             - |
               set -e
               for file in owner-secret; do
+                rm -f "/run/llm-gateway/$file"
                 cp "/in/$file" "/run/llm-gateway/$file"
                 chmod 0400 "/run/llm-gateway/$file"
                 chown 65532:65532 "/run/llm-gateway/$file"
@@ -159,7 +160,11 @@ copies each file into an `emptyDir` and makes `nonroot` its owner with mode `040
 then reads files that are its own and private, and the rule is met without a relaxation. To
 serve another secret file, add its name to the `for` list and name the copied path in the
 document (`vllm_api_key_file`, `credential_file`), and mount its Secret key the same way. The
-`emptyDir` is in memory, so no key reaches the node's disk.
+`emptyDir` is in memory, so no key reaches the node's disk. The `rm -f` before the `cp`
+lets the container run again over the `emptyDir`, which lives as long as the pod: the `0400`
+copy of the first run is not writable. The init container runs as uid 0 and adds `CHOWN`, which
+the `restricted` Pod Security level refuses, so the namespace must enforce `baseline` or
+looser.
 
 ## When the pod has an `fsGroup`
 
@@ -169,7 +174,7 @@ so a `0400` Secret file is `0440` in the container. Mounted directly into the ga
 `/run/llm-gateway/owner-secret`, such a file is refused at start and the pod restarts in a loop:
 
 ```bash
-b10x-llm-gateway --config /run/gateway.toml
+b10x-llm-gateway --config /etc/llm-gateway/gateway.toml
 ```
 
 ```text
@@ -191,11 +196,12 @@ b10x-llm-gateway: listening on 0.0.0.0:8080
 
 ## Stop it
 
-On `SIGTERM` the gateway reports unready and stops accepting new connections, and it answers
-every connection it had already accepted before it exits with status 0. A relayed answer is
-not bounded by the gateway: it lasts as long as the model talks, and the stop waits for it. A
-connection made after the signal is not accepted, and one the gateway had already accepted
-that asks `/ready` is answered `503`.
+On `SIGTERM` the gateway turns `/ready` to `503`, so the Service stops routing to the pod, and
+it answers every connection it had already accepted before it exits with status 0. The listener
+stays open until the last of those connections is answered, so a connection made in the
+meantime is not refused: it waits, and the gateway does not answer it. A relayed answer is not
+bounded by the gateway: it lasts as long as the model talks, and the stop waits for it. A
+connection already accepted that asks `/ready` is answered `503`.
 
 Kubernetes sends `SIGTERM` when it starts the stop, and it removes the pod from its Service's
 endpoints at about the same time, so a client may still be sent a request for a moment after
@@ -206,8 +212,9 @@ Kubernetes 1.30 or newer).
 
 `terminationGracePeriodSeconds` covers the whole stop, the `preStop` sleep included, and
 Kubernetes kills the container when it ends. Set it larger than the sleep plus the longest
-relayed answer you allow. The manifest above sleeps 10 seconds and allows an answer of 300, so
-it sets 330: the sleep, the answer and 20 seconds of margin. A request translated between wires
+relayed answer you allow. The gateway sets no limit on that answer. The manifest above sleeps
+10 seconds and plans for an answer of 300, a figure of its own, so it sets 330: the sleep, the
+answer and 20 seconds of margin. A request translated between wires
 is bounded by 3600 seconds in all ([the relay](../concepts/relay.md)); raise the number if you
 allow that.
 

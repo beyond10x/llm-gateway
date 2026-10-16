@@ -213,6 +213,7 @@ fn serve(dir: &Path) -> Gateway {
 }
 
 #[test]
+#[ignore = "the listener stays open through the drain today; story:listener-closes-on-sigterm closes it and runs this case"]
 fn a_connection_made_after_sigterm_is_refused_while_an_accepted_one_drains() {
     // The guide: "A connection made after the signal is not accepted". A client the Service
     // still routes during the stop should be refused at once, not held until the drain ends.

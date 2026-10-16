@@ -374,7 +374,8 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
     }
 }
 
-/// Makes the usage record of an authenticated request to a relayed wire (rows O1, O2): `wire`
+/// Makes the usage record of an admitted request to a relayed wire (rows O1, O2; authenticated,
+/// or needing no credential under `IngressAuth::None`): `wire`
 /// is `None` for every other request, which makes no record. `refusal` is what the client was
 /// answered instead of a relayed answer.
 fn record(
@@ -484,7 +485,8 @@ struct Decision {
     /// Whether the connection is closed gracefully after a refusal: a request to a relayed
     /// wire may still be sending a body the gateway never read.
     linger: bool,
-    /// The wire of an authenticated request to a relayed wire path, which makes a usage
+    /// The wire of an admitted request to a relayed wire path (authenticated, or needing no
+    /// credential under `IngressAuth::None`), which makes a usage
     /// record whatever answers it.
     recorded: Option<Wire>,
 }
@@ -510,7 +512,12 @@ struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-    fn parse(head: &'a str) -> Result<Self, RefusalCode> {
+    /// `reads_no_credential` names the paths whose `authorization` is never read
+    /// (`IngressAuth::None`): a repeated one there is ignored rather than refused.
+    fn parse(
+        head: &'a str,
+        reads_no_credential: &dyn Fn(&str) -> bool,
+    ) -> Result<Self, RefusalCode> {
         // RFC 9110 section 5.5: CR, LF and NUL are never part of a field. Once the head is split
         // at its CRLFs, any that remain would let another reader see a line this one does not.
         if head
@@ -552,6 +559,9 @@ impl<'a> Request<'a> {
             }
             let name = name.to_ascii_lowercase();
             if headers.iter().any(|(seen, _)| *seen == name) {
+                if name == "authorization" && reads_no_credential(path) {
+                    continue;
+                }
                 // A repeated credential is ambiguous, and an ambiguous credential is refused.
                 return Err(if name == "authorization" {
                     RefusalCode::CredentialMalformed
@@ -585,8 +595,16 @@ impl<'a> Request<'a> {
     }
 }
 
+/// Whether `path` is a model call whose credential is never read: a wire path of a relaying
+/// gateway whose `ingress_auth` is `None` (story:ingress-auth-optional).
+fn reads_no_credential(shared: &Shared, path: &str) -> bool {
+    shared.config.ingress_auth == IngressAuth::None
+        && shared.relay.is_some()
+        && Wire::from_path(path).is_some()
+}
+
 fn dispatch(head: &str, shared: &Shared) -> Decision {
-    let request = match Request::parse(head) {
+    let request = match Request::parse(head, &|path| reads_no_credential(shared, path)) {
         Ok(request) => request,
         Err(code) => return Decision::refused(code),
     };
@@ -630,8 +648,8 @@ fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
     }
     // A model call under `IngressAuth::None` reads no credential (story:ingress-auth-optional);
     // every other path still authenticates below, so nothing else opens.
-    if shared.config.ingress_auth == IngressAuth::None
-        && let (Some(wire), Some(_)) = (Wire::from_path(request.path), &shared.relay)
+    if reads_no_credential(shared, request.path)
+        && let Some(wire) = Wire::from_path(request.path)
     {
         return (admit(request, shared, wire), Some(wire));
     }
@@ -892,7 +910,7 @@ mod tests {
     /// CRLFs is refused wherever it sits, so no other reader can see a line this one does not.
     #[test]
     fn a_cr_lf_or_nul_inside_a_head_line_is_malformed() {
-        assert!(Request::parse("POST /v1/messages HTTP/1.1\r\nx-note: a").is_ok());
+        assert!(Request::parse("POST /v1/messages HTTP/1.1\r\nx-note: a", &|_| false).is_ok());
         for head in [
             "POST /v1/messages HTTP/1.1\r\nx-note: a\ntransfer-encoding: chunked",
             "POST /v1/messages HTTP/1.1\r\nx-note: a\rb",
@@ -901,7 +919,7 @@ mod tests {
             "POST /v1/messages HTTP/1.1\r\nx-n\note: a",
         ] {
             assert_eq!(
-                Request::parse(head).err(),
+                Request::parse(head, &|_| false).err(),
                 Some(RefusalCode::RequestMalformed),
                 "{head:?}"
             );

@@ -705,6 +705,57 @@ fn ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed()
     assert_eq!(endpoint.seen().len(), 1);
 }
 
+/// story:ingress-auth-optional, criterion 2: with `ingress_auth = "none"` and an
+/// `owner_secret_file`, a model call needs no credential while the counters and the route
+/// inventory are served to that secret only.
+#[test]
+fn ingress_none_with_a_secret_serves_the_owner_surface_to_that_secret_only() {
+    let fixture = Fixture::new("ingress-none-secret");
+    let endpoint = Endpoint::start();
+    let config = fixture.config(&format!(
+        "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\nowner_secret_file = \"{}\"\n\n{}",
+        fixture.owner_secret().display(),
+        hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n")
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let body = r#"{"model":"open","messages":[]}"#;
+    let relayed = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    let mut owner = Vec::new();
+    for path in ["/metrics", "/v1/routes"] {
+        let answered = String::from_utf8_lossy(&get(server.address, path)).into_owned();
+        let absent = String::from_utf8_lossy(&exchange(
+            server.address,
+            &format!("GET {path} HTTP/1.1\r\nhost: gateway\r\n\r\n"),
+        ))
+        .into_owned();
+        let rejected = String::from_utf8_lossy(&exchange(
+            server.address,
+            &format!(
+                "GET {path} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer a-guess-0123456789abcdef0123456789abcdef\r\n\r\n"
+            ),
+        ))
+        .into_owned();
+        owner.push((path, answered, absent, rejected));
+    }
+    server.stop();
+    assert!(relayed.starts_with("HTTP/1.1 200 "), "{relayed}");
+    for (path, answered, absent, rejected) in owner {
+        assert!(answered.starts_with("HTTP/1.1 200 "), "{path}: {answered}");
+        assert!(absent.contains("credential-absent"), "{path}: {absent}");
+        assert!(
+            rejected.contains("credential-rejected"),
+            "{path}: {rejected}"
+        );
+    }
+}
+
 /// story:ingress-auth-optional, criterion 3: a document that says nothing of `ingress_auth`
 /// writes no warning and still refuses a model call without the owner's credential.
 #[test]

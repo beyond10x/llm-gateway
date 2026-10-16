@@ -64,6 +64,7 @@
       "llm-gateway.gateway/authored/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do",
       "llm-gateway.gateway/authored/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file",
       "llm-gateway.gateway/authored/ingress-none-a-model-call-without-a-credential-is-relayed",
+      "llm-gateway.gateway/authored/ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret",
       "llm-gateway.gateway/authored/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused",
       "llm-gateway.gateway/authored/inspection-a-query-string-is-discarded",
       "llm-gateway.gateway/authored/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent",
@@ -544,6 +545,11 @@
         "digest": "sha256:e715c55b9786b39071912eded8f792ee63fb2e49a4b00bd6fdf662f28f20ac83",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/ingress-none-a-model-call-without-a-credential-is-relayed"
+      },
+      "gateway/scenarios/ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret.yaml": {
+        "digest": "sha256:ce3abf25ac4a0c717e28f89ed74e645e2f7190cd751be6872c84c7fc656c3b9a",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret"
       },
       "gateway/scenarios/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused.yaml": {
         "digest": "sha256:60dc4d60bcf7cb035efc9c4abf0feb9442b7ad283fda64eea02141f06b7b3df0",
@@ -1367,7 +1373,7 @@
       }
     },
     "counts": {
-      "authored": 227,
+      "authored": 228,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -7301,6 +7307,118 @@
                   "pod-1 POST /v1/chat/completions {\"model\":\"served-open\",\"messages\":[]}",
                   "pod-1 POST /v1/responses {\"model\":\"served-open\",\"input\":\"hi\"}",
                   "pod-1 POST /v1/messages {\"model\":\"served-open\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret": {
+      "purpose": "with ingress_auth none and an owner secret, the counters are served to that secret and refused without it, and a repeated authorization is no refusal on a wire path",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"none\",\"models\":[{\"alias\":\"open\",\"upstream_model\":\"served-open\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer one-0123456789abcdef0123456789abcdef\",\"authorization: Bearer two-0123456789abcdef0123456789abcdef\"]},{\"step\":\"scrape\"},{\"step\":\"scrape\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/routes\",\"method\":\"GET\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/routes\",\"method\":\"GET\",\"body\":\"\",\"credential\":false,\"headers\":[\"authorization: Bearer a-guess-0123456789abcdef0123456789abcdef\"]}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 scraped",
+                  "401 credential-absent",
+                  "200 answered",
+                  "401 credential-rejected"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-open\",\"messages\":[]}"
                 ]
               },
               "valid_program": {

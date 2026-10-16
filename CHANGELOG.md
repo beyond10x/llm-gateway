@@ -18,6 +18,14 @@ Nothing in any release is deployed or qualified against a live client.
   writes or that frames a message, `authorization`, the endpoint's own `credential_header`, a
   repeated name, more than 32 headers, and a value that is empty, over 1024 bytes or not
   printable ASCII are refused `config:value`. Client headers are still never forwarded.
+- Ingress authentication for model calls is optional: `ingress_auth = "none"` serves the three
+  wire paths without a credential, for a gateway behind something that authenticates already,
+  and the binary writes `warning ingress auth is off` before `listening on`. `owner_secret_file`
+  is then optional; `/metrics`, `/v1/routes` and unknown paths still take the owner secret, and
+  without one they refuse every request. `bearer`, the default, is unchanged, except that a
+  document without `owner_secret_file` is now refused `config:value` rather than
+  `config:schema`. The library gains `GatewayConfig::ingress_auth` (`IngressAuth`) and
+  `NoOwnerVerifier`.
 
 ## 0.8.0 (2026-10-16)
 

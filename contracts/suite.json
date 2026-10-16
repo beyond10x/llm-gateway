@@ -63,6 +63,8 @@
       "llm-gateway.gateway/authored/hosted-each-endpoint-receives-its-credential-as-its-auth-kind-says-and-never-the-owners",
       "llm-gateway.gateway/authored/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do",
       "llm-gateway.gateway/authored/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file",
+      "llm-gateway.gateway/authored/ingress-none-a-model-call-without-a-credential-is-relayed",
+      "llm-gateway.gateway/authored/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused",
       "llm-gateway.gateway/authored/inspection-a-query-string-is-discarded",
       "llm-gateway.gateway/authored/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent",
       "llm-gateway.gateway/authored/inspection-every-answer-is-json-no-store-and-closes-after-one-request",
@@ -537,6 +539,16 @@
         "digest": "sha256:84456784e0beae134c59c8f99a6980a31e7c8507981a65f867f15450101c0ce7",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file"
+      },
+      "gateway/scenarios/ingress-none-a-model-call-without-a-credential-is-relayed.yaml": {
+        "digest": "sha256:e715c55b9786b39071912eded8f792ee63fb2e49a4b00bd6fdf662f28f20ac83",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/ingress-none-a-model-call-without-a-credential-is-relayed"
+      },
+      "gateway/scenarios/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused.yaml": {
+        "digest": "sha256:60dc4d60bcf7cb035efc9c4abf0feb9442b7ad283fda64eea02141f06b7b3df0",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused"
       },
       "gateway/scenarios/inspection-a-query-string-is-discarded.yaml": {
         "digest": "sha256:9351f32e1268fa7e56dd652e70a22916973d0a8b43fd8bf6971dcac1bd0251d1",
@@ -1355,7 +1367,7 @@
       }
     },
     "counts": {
-      "authored": 225,
+      "authored": 227,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1380,9 +1392,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "5d661751ce34dcd3c580189e396b58a3bce1b1d6b213fa1b1f8f5c4006e55479",
+    "contract_digest": "245e7a463c40c542d4b66a93a81663e9ec78012751bbd126a0a2ae603d195b7a",
     "scenario_initial_state": "empty",
-    "spec_digest": "1967eee4c0e91b827f2f214a01bd519eb994269176729a1f2ecbb9f4323891d3",
+    "spec_digest": "3f4d1362075744759346166bedf293b2049371eccbb678e98f361f65d52d22e6",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -7183,6 +7195,224 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/ingress-none-a-model-call-without-a-credential-is-relayed": {
+      "purpose": "with ingress_auth none a model call without a credential, and one with a wrong one, are relayed on every wire, while the counters still take the owner secret",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"none\",\"models\":[{\"alias\":\"open\",\"upstream_model\":\"served-open\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"resp-1\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"msg-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"messages\\\":[]}\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"input\\\":\\\"hi\\\"}\",\"credential\":false,\"headers\":[\"authorization: Bearer not-the-owner-0123456789abcdef0123456789\"]},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Basic malformed\"]},{\"step\":\"scrape\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/unknown\",\"body\":\"{}\",\"credential\":false}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "401 credential-absent",
+                  "401 credential-absent"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-open\",\"messages\":[]}",
+                  "pod-1 POST /v1/responses {\"model\":\"served-open\",\"input\":\"hi\"}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-open\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused": {
+      "purpose": "with ingress_auth none and no owner secret a model call is relayed, and the counters and routes refuse every request",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"\",\"ingress_auth\":\"none\",\"models\":[{\"alias\":\"open\",\"upstream_model\":\"served-open\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"messages\\\":[]}\",\"credential\":false},{\"step\":\"scrape\",\"credential\":false},{\"step\":\"request\",\"path\":\"/metrics\",\"method\":\"GET\",\"body\":\"\",\"credential\":false,\"headers\":[\"authorization: Bearer a-guess-0123456789abcdef0123456789abcdef\"]},{\"step\":\"request\",\"path\":\"/v1/routes\",\"method\":\"GET\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/routes\",\"method\":\"GET\",\"body\":\"\",\"credential\":false,\"headers\":[\"authorization: Bearer a-guess-0123456789abcdef0123456789abcdef\"]}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "401 credential-absent",
+                  "401 credential-rejected",
+                  "401 credential-absent",
+                  "401 credential-rejected"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-open\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },

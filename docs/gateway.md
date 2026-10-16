@@ -105,9 +105,9 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the snapshot. |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
 | `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
-| `POST` | `/v1/chat/completions` | owner | The `chat` wire, relayed ([the relay](#the-relay)). |
-| `POST` | `/v1/responses` | owner | The `responses` wire, relayed. |
-| `POST` | `/v1/messages` | owner | The `messages` wire, relayed. |
+| `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([the relay](#the-relay)). |
+| `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed. |
+| `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed. |
 
 The unauthenticated surface is a closed set of four literal paths with two literal methods. The
 two probes are matched before anything else — including before load is shed — so that a
@@ -184,7 +184,16 @@ path it does not serve: after authentication, `path-unknown` to `GET` and `HEAD`
 A request to a wire path is decided in this order:
 
 1. Probes, shedding and owner authentication, exactly as for inspection. llmgw serves its wires
-   without authentication; llm-gateway admits only its owner's bearer credential.
+   without authentication; llm-gateway admits only its owner's bearer credential, unless the
+   embedding sets `GatewayConfig::ingress_auth` to `IngressAuth::None`. Then a wire path of a
+   gateway composed with a relay skips authentication: `authorization` is not read, so a
+   missing, malformed or wrong credential is no refusal, and it is never forwarded. Every other
+   path still authenticates, so `/metrics`, `/v1/routes` and an unknown path stay closed and the
+   surface still cannot be enumerated. An embedding with no owner at all composes the gateway
+   with `NoOwnerVerifier`, which accepts no credential: the owner-only paths are then
+   `credential-absent` without one and `credential-rejected` with one. The binary does exactly
+   this for `ingress_auth = "none"` without an `owner_secret_file`, and says so on standard
+   error before it listens.
 2. `POST` only (`method-not-allowed`, `allow: POST`), and `unavailable` before `mark_ready`.
 3. The body: `content-length` or `transfer-encoding: chunked`, nothing else
    (`request-malformed`). A declared length over `request-body-bytes` is `body-too-large` before a

@@ -9,7 +9,9 @@
 //!   surface and the two public routes (`GET /v1/models` and `GET /`, which render the relayed
 //!   models and nothing else), no request is decoded past its HTTP head until an
 //!   [`OwnerVerifier`] has accepted it, and every inspection entry point demands an
-//!   [`Authenticated`] that only an accepted verdict can produce.
+//!   [`Authenticated`] that only an accepted verdict can produce. The one exception is opt-in: a
+//!   [`GatewayConfig`] whose [`IngressAuth`] is `None` relays model calls without a credential,
+//!   and still authenticates everything else.
 //! - **Inspect, read-only.** [`RouteInventory`] is an immutable snapshot with no field for an
 //!   endpoint URL, a secret reference or credential material, and no callback, so serving it
 //!   cannot provision anything. It renders exactly the identifier bytes the composer supplied
@@ -38,7 +40,9 @@ mod metrics;
 mod relay;
 mod server;
 
-pub use auth::{Authenticated, OwnerToken, OwnerVerifier, SharedSecretVerifier, Verdict};
+pub use auth::{
+    Authenticated, NoOwnerVerifier, OwnerToken, OwnerVerifier, SharedSecretVerifier, Verdict,
+};
 pub use error::{
     BasePathError, CredentialHeaderError, InventoryError, LabelError, RefusalCode, RelayError,
     StaticHeaderError, TargetRefusal, TokenError, VerifierError,
@@ -52,4 +56,4 @@ pub use relay::{
     BasePath, CredentialHeader, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget,
     RelayTargets, StaticHeader, TargetBearer, ToolCalling, Wire,
 };
-pub use server::{Gateway, GatewayConfig, GatewayHandle, ShutdownReport};
+pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};

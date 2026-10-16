@@ -7,11 +7,14 @@ domain: llm-gateway.deployment
 # K29, K30, D2).
 #
 # The command line is closed: `--config <CONFIG>`, `-h`/`--help`, `-V`/`--version`, no
-# subcommand and no positional argument. llmgw's `--insecure` (C3) has no counterpart: the gateway
-# authenticates every request outside its two probes, so the document names the owner secret
-# instead.
+# subcommand and no positional argument. llmgw's `--insecure` (C3) has no command-line
+# counterpart: the document's `ingress_auth` (DeploymentConfiguration below) decides whether a
+# model call takes the owner secret, and it takes it unless the document says `none`.
 #
 # What the process writes to standard error, one line each:
+#   `b10x-llm-gateway: warning ingress auth is off (ingress_auth = "none"): model calls are
+#   served without a credential`, once, before `listening on`, for a document whose
+#   `ingress_auth` is `none`;
 #   `b10x-llm-gateway: listening on <address>` once the gateway is bound and marked ready;
 #   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
@@ -237,6 +240,10 @@ types:
   - name: llm-gateway.deployment.StartupRefusal
     kind: enum
     variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, ListenBind, SignalInstall]
+  # `ingress_auth`: `bearer` (default) or `none`; maps onto llm-gateway.gateway.IngressAuth.
+  - name: llm-gateway.deployment.IngressAuth
+    kind: enum
+    variants: [Bearer, None]
   # The signal that ended a served process.
   - name: llm-gateway.deployment.StopSignal
     kind: enum
@@ -438,7 +445,20 @@ types:
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
-  # becomes the gateway's shared-secret owner verifier. A relative `owner_secret_file` is
+  # becomes the gateway's shared-secret owner verifier.
+  # `ingress_auth` (IngressAuth) maps onto llm-gateway.gateway `Gateway`'s `ingress_auth`:
+  # `bearer`, the default, requires `owner_secret_file` (`config:value` when it is absent) and
+  # every model call takes the owner secret, as before; `none` makes `owner_secret_file`
+  # optional and admits a model call without a credential. With `none` and no
+  # `owner_secret_file` the owner-only surface (`/metrics`, `/v1/routes`) has no owner at all:
+  # the gateway is composed with a verifier that accepts no credential, so those paths are
+  # refused (`credential-absent` without a header, `credential-rejected` with one). With `none`
+  # and an `owner_secret_file` they take that secret, as with `bearer`. Any other value is
+  # `config:schema`.
+  # DECIDED 2026-10-16 (story:ingress-auth-optional): a gateway behind something that
+  # authenticates already (a mesh, a private network, one machine) need not make its local
+  # clients hold a token; the owner-only surface stays closed because nothing in that case asks
+  # for it, and the startup line above says the model calls are open. A relative `owner_secret_file` is
   # resolved from the process's working directory, not from the document's directory
   # (`k30_a_relative_owner_secret_file_is_read_from_the_working_directory` in
   # crates/llm-gateway-cli/tests/binary.rs). At least one model, of `models` or `hosted`, is
@@ -452,7 +472,8 @@ types:
     kind: struct
     fields:
       - {name: listen, type: String}
-      - {name: owner_secret_file, type: String}
+      - {name: ingress_auth, type: llm-gateway.deployment.IngressAuth}
+      - {name: owner_secret_file, type: 'Optional<String>'}
       - {name: providers, type: 'Map<String, llm-gateway.deployment.ProviderDeclaration>'}
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}

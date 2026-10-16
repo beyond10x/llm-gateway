@@ -26,7 +26,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | Key | Required | Rule |
 | --- | --- | --- |
 | `listen` | yes | A socket address, `127.0.0.1:8080`. An address that cannot be bound is refused as `listen:bind`. |
-| `owner_secret_file` | yes | The file holding the owner's secret. A relative path is read from the working directory. |
+| `ingress_auth` | no | `bearer`, the default: every model call takes the owner secret. `none`: model calls take no credential, and the binary says so on standard error before it listens ([model calls without a credential](../concepts/single-owner-gateway.md#model-calls-without-a-credential)). Any other value is `config:schema`. |
+| `owner_secret_file` | with `bearer` | The file holding the owner's secret. A relative path is read from the working directory. Required unless `ingress_auth` is `none` (`config:value`); without it, `/metrics` and `/v1/routes` refuse every request. |
 | `[providers.<name>]` | no | Providers models name. A name is 1 to 64 of `a-z`, `0-9`, `-`, `_`, `.`, without a leading dash. |
 | `[models.<alias>]` | at least one model, here or in `hosted` | The models Runpod pods serve, under the same naming rule. |
 | `[hosted.<alias>]` | at least one model, here or in `models` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |

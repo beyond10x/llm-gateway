@@ -20,8 +20,8 @@ use crate::{
     serve::{Running, Stopped, inventory, owner_verifier},
 };
 use llm_gateway::{
-    Gateway, Label, Metrics, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    RouteInventory, SharedSecretVerifier, ShutdownReport, TargetBearer, TargetRefusal,
+    Gateway, Label, Metrics, OwnerVerifier, Relay, RelayModel, RelayStream, RelayTarget,
+    RelayTargets, RouteInventory, ShutdownReport, TargetBearer, TargetRefusal,
 };
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
@@ -793,7 +793,7 @@ where
 /// What every composition reads from the document first, in this order, and the state the
 /// relay and the stop share.
 struct Parts {
-    verifier: SharedSecretVerifier,
+    verifier: Arc<dyn OwnerVerifier>,
     inventory: RouteInventory,
     vllm_keys: VllmKeys,
     /// Each hosted model's endpoint, its credential read (story:hosted-endpoints).
@@ -905,13 +905,10 @@ fn compose(
         .with_records(Arc::new(crate::logging::TracingRecords));
     let signals = Running::install_signals()?;
     let bind = deployment.gateway.bind;
-    let handle = Gateway::bind_with_relay(
-        deployment.gateway.clone(),
-        Arc::new(verifier),
-        inventory,
-        relay,
-    )
-    .map_err(|error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")))?;
+    let handle = Gateway::bind_with_relay(deployment.gateway.clone(), verifier, inventory, relay)
+        .map_err(|error| {
+        Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}"))
+    })?;
     // One pass before serving: it sweeps the pods a previous run of this controller left. A
     // refused pass changes nothing, and the next one runs on time.
     let cleanup = pass.map(|pass| {

@@ -91,6 +91,20 @@ types:
   # hosted endpoint's base path when it has one (Relay step 7; rows R6-R8):
   # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
   # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
+  # Whether a request to a wire path of a gateway composed with a relay takes the owner
+  # credential (server.rs IngressAuth). `Bearer`, the default, authenticates it at step 5 of the
+  # `Exchange` order like every other path. `None` admits it without reading `authorization`
+  # at all, so a missing, malformed or wrong credential is no refusal and is never forwarded.
+  # Nothing else changes: the probes and public routes as before, and `/metrics`, `/v1/routes`,
+  # `/v1/routes/{alias}` and every other path still authenticate, so the surface still cannot be
+  # enumerated without the credential. An embedding with no owner at all composes the gateway
+  # with `NoOwnerVerifier`, which accepts no credential (scenarios
+  # ingress-none-a-model-call-without-a-credential-is-relayed,
+  # ingress-none-without-an-owner-secret-the-owner-surface-stays-refused).
+  # DECIDED 2026-10-16 (story:ingress-auth-optional).
+  - name: llm-gateway.gateway.IngressAuth
+    kind: enum
+    variants: [Bearer, None]
   - name: llm-gateway.gateway.Wire
     kind: enum
     variants: [Chat, Responses, Messages]
@@ -246,6 +260,9 @@ entities:
       # ESS-LIMIT: a deadline is no ESS construct;
       # `clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes` holds it.
       - {name: count_timeout_ms, type: Integer}
+      # `GatewayConfig::ingress_auth`: whether a model call takes the owner credential
+      # (IngressAuth). An embedding may set it; `GatewayConfig::new` defaults it to `Bearer`.
+      - {name: ingress_auth, type: llm-gateway.gateway.IngressAuth}
       # Ready is set once by the embedding; a drain is one way for the life of the handle
       # (server.rs mark_ready, begin_drain).
       - {name: ready, type: Boolean}
@@ -323,7 +340,8 @@ entities:
   #      of the `Exchange` order below: an unauthenticated relay is refused before any byte of
   #      its body is read. DECIDED: llmgw serves its wires without authentication
   #      (`--insecure`, llmgw README.md:28); llm-gateway admits only its owner's bearer
-  #      credential.
+  #      credential, unless the embedding sets `ingress_auth` to `None` (IngressAuth): then
+  #      step 5 is skipped for a wire path, and no credential is read.
   #   2. A wire path takes `POST` only; another method is `method-not-allowed` with
   #      `allow: POST`. Before `mark_ready` a relay is `unavailable`, like inspection.
   #   3. W1: the body is framed by `content-length` or `transfer-encoding: chunked` and nothing
@@ -596,7 +614,8 @@ commands:
   #      goes on to step 5, so without a credential it is `credential-absent`, and with the
   #      owner's it is `method-not-allowed` with `allow: GET, HEAD` at step 8 (scenarios
   #      `r1-*` and `r5-*`).
-  #   5. Owner authentication, before any further decoding: no `authorization` is
+  #   5. Owner authentication, before any further decoding (a wire path of a gateway whose
+  #      `ingress_auth` is `None` skips this step, IngressAuth): no `authorization` is
   #      `credential-absent`, one that is not a single bearer token is `credential-malformed`
   #      (the scheme is matched without regard to case), and a token that is not the owner's
   #      is `credential-rejected`. So an unauthenticated request to an unknown path, with any
@@ -642,7 +661,10 @@ commands:
   - name: llm-gateway.gateway.Relay
     input:
       # A bounded fixture program:
-      #   secret  the owner secret
+      #   secret  the owner secret; with `ingress_auth` `none` it may be empty, and the gateway
+      #           is then composed with `NoOwnerVerifier`, which accepts no credential
+      #   ingress_auth  optional, `bearer` (the default) or `none`, the Gateway's
+      #           `ingress_auth`; any other value makes the program invalid
       #   models  `[{alias, upstream_model, wires, bearer, tool_calling, max_model_len,
       #           context_window, reasoning_effort}]`, the relayed models;
       #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key

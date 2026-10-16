@@ -310,6 +310,19 @@ impl OwnerVerifier for SharedSecretVerifier {
     }
 }
 
+/// Accepts no credential at all: the verifier of a gateway with no owner, which an embedding
+/// composes when model calls take no credential (`IngressAuth::None`) and no owner secret was
+/// given. Every owner-only path is then refused, `credential-absent` without a credential and
+/// `credential-rejected` with one (story:ingress-auth-optional).
+#[derive(Debug, Clone, Copy, Default)]
+pub struct NoOwnerVerifier;
+
+impl OwnerVerifier for NoOwnerVerifier {
+    fn verify(&self, _presented: &OwnerToken) -> Verdict {
+        Verdict::Rejected
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::{

@@ -59,6 +59,22 @@ pub struct GatewayConfig {
     pub count_timeout: Duration,
     /// Connections served at once. Beyond it a request is refused as unavailable.
     pub max_concurrent_requests: u64,
+    /// Whether a model call takes the owner credential. [`IngressAuth::Bearer`] unless the
+    /// embedding says otherwise.
+    pub ingress_auth: IngressAuth,
+}
+
+/// Whether a request to a wire path of a gateway composed with a relay takes the owner
+/// credential (story:ingress-auth-optional). Every other path authenticates either way, so the
+/// owner-only surface (`/metrics`, `/v1/routes`) and an unknown path stay closed.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum IngressAuth {
+    /// The owner's bearer credential, as every other authenticated path. The default.
+    #[default]
+    Bearer,
+    /// No credential: `authorization` is not read for a model call, so a missing, malformed or
+    /// wrong one is no refusal. For a gateway behind something that authenticates already.
+    None,
 }
 
 impl GatewayConfig {
@@ -69,6 +85,7 @@ impl GatewayConfig {
             read_timeout: Duration::from_secs(DEFAULT_READ_TIMEOUT_SECONDS),
             count_timeout: Duration::from_secs(DEFAULT_COUNT_TIMEOUT_SECONDS),
             max_concurrent_requests: DEFAULT_MAX_CONCURRENT_REQUESTS,
+            ingress_auth: IngressAuth::Bearer,
         }
     }
 }
@@ -610,6 +627,13 @@ fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
     // credential. Any other method goes on to authentication, so it cannot enumerate anything.
     if request.is_read() && matches!(request.path, listing::MODELS | listing::INSTRUCTIONS) {
         return (public(request, shared), None);
+    }
+    // A model call under `IngressAuth::None` reads no credential (story:ingress-auth-optional);
+    // every other path still authenticates below, so nothing else opens.
+    if shared.config.ingress_auth == IngressAuth::None
+        && let (Some(wire), Some(_)) = (Wire::from_path(request.path), &shared.relay)
+    {
+        return (admit(request, shared, wire), Some(wire));
     }
     // Everything else establishes the authenticated context before decoding anything further.
     let owner = match authenticate(request, shared) {

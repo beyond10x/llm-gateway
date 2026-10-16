@@ -226,3 +226,5 @@ scenarios:
 - gateway/scenarios/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do.yaml
 - gateway/scenarios/hosted-a-static-header-carrying-authorization-composes-nothing.yaml
 - gateway/scenarios/hosted-a-static-header-naming-the-endpoints-credential-header-composes-nothing.yaml
+- gateway/scenarios/ingress-none-a-model-call-without-a-credential-is-relayed.yaml
+- gateway/scenarios/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused.yaml

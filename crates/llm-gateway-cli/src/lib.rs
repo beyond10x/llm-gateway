@@ -33,6 +33,7 @@ pub use relaying::{
     secret_name, start_connected, start_relaying,
 };
 pub use serve::{
-    Running, StopSignal, Stopped, inventory, main_with, owner_verifier, start, start_with,
+    INGRESS_AUTH_OFF, Running, StopSignal, Stopped, inventory, main_with, owner_verifier, start,
+    start_with,
 };
 pub use tls::ProxyConnector;

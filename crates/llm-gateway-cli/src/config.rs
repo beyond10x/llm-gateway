@@ -8,8 +8,8 @@ use crate::{
     trusted,
 };
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, GatewayConfig, ReasoningEffort, StaticHeader,
-    ToolCalling,
+    AuthKind, BillingKind, CredentialHeader, GatewayConfig, IngressAuth, ReasoningEffort,
+    StaticHeader, ToolCalling,
 };
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
@@ -49,7 +49,10 @@ macro_rules! from_string_only {
 #[serde(deny_unknown_fields)]
 struct Document {
     listen: SocketAddr,
-    owner_secret_file: PathBuf,
+    #[serde(default)]
+    ingress_auth: IngressAuthDocument,
+    #[serde(default)]
+    owner_secret_file: Option<PathBuf>,
     #[serde(default)]
     providers: BTreeMap<String, ProviderDocument>,
     #[serde(default)]
@@ -142,6 +145,16 @@ enum CloudTypeDocument {
 }
 
 from_string_only!(CloudTypeDocument { "SECURE" => Secure, "COMMUNITY" => Community });
+
+/// `ingress_auth` (`llm-gateway.deployment.IngressAuth`).
+#[derive(Default)]
+enum IngressAuthDocument {
+    #[default]
+    Bearer,
+    None,
+}
+
+from_string_only!(IngressAuthDocument { "bearer" => Bearer, "none" => None });
 
 #[derive(Default)]
 enum ThinkingDocument {
@@ -328,7 +341,9 @@ pub struct Hosted {
 #[derive(Debug, Clone)]
 pub struct Deployment {
     pub gateway: GatewayConfig,
-    pub owner_secret_file: PathBuf,
+    /// The owner secret's file: present whenever `gateway.ingress_auth` is `Bearer`, and
+    /// optional when it is `None` (story:ingress-auth-optional).
+    pub owner_secret_file: Option<PathBuf>,
     pub providers: BTreeMap<String, Provider>,
     pub models: BTreeMap<String, Model>,
     /// The models hosted endpoints serve, by alias. No alias is in both tables.
@@ -437,8 +452,19 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         let loaded = validate_hosted(&at, &alias, declared)?;
         hosted.insert(alias, loaded);
     }
+    let ingress_auth = match document.ingress_auth {
+        IngressAuthDocument::Bearer => IngressAuth::Bearer,
+        IngressAuthDocument::None => IngressAuth::None,
+    };
+    ensure(
+        ingress_auth == IngressAuth::None || document.owner_secret_file.is_some(),
+        "owner_secret_file",
+        "is required unless ingress_auth is none",
+    )?;
+    let mut gateway = GatewayConfig::new(document.listen);
+    gateway.ingress_auth = ingress_auth;
     Ok(Deployment {
-        gateway: GatewayConfig::new(document.listen),
+        gateway,
         owner_secret_file: document.owner_secret_file,
         providers,
         models,

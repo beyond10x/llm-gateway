@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "3f4d1362075744759346166bedf293b2049371eccbb678e98f361f65d52d22e6",
-    "contract_digest": "slice-sha256/2:fe26c76206fbd25bb8d192e2a0b830baade6d5d6f74c581d7661bdf52a2aa04b",
+    "source_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
+    "contract_digest": "slice-sha256/2:85a9477b1d6ddbb7d54ef8de2fc78487cf6fc74cc2749d4329e9dd194795a8a7",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -36,7 +36,12 @@
         "BearerNotPrintableAscii",
         "CredentialHeaderLength",
         "CredentialHeaderNotAToken",
-        "CredentialHeaderReserved"
+        "CredentialHeaderReserved",
+        "StaticHeaderNameLength",
+        "StaticHeaderNameNotAToken",
+        "StaticHeaderReserved",
+        "StaticHeaderValueLength",
+        "StaticHeaderValueNotPrintable"
       ]
     }
   }

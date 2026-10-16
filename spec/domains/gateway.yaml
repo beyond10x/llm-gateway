@@ -206,7 +206,7 @@ types:
   # own credential header as `endpoint:headers`.
   - name: llm-gateway.gateway.CompositionRefusal
     kind: enum
-    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii, CredentialHeaderLength, CredentialHeaderNotAToken, CredentialHeaderReserved]
+    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii, CredentialHeaderLength, CredentialHeaderNotAToken, CredentialHeaderReserved, StaticHeaderNameLength, StaticHeaderNameNotAToken, StaticHeaderReserved, StaticHeaderValueLength, StaticHeaderValueNotPrintable]
 entities:
   # One gateway: one owner verifier, one route inventory snapshot, one listener
   # (server.rs GatewayConfig, GatewayHandle).

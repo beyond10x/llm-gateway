@@ -288,7 +288,8 @@ A request to a wire path is decided in this order:
    `static-header-value-bytes` of 0x20-0x7e with no leading or trailing space; refused as
    `StaticHeaderError::NameLength`, `NameNotAToken`, `Reserved`, `ValueLength` and
    `ValueNotPrintable`. So no static header can end its line, replace or repeat a header the
-   gateway writes, or carry `authorization`. A target whose
+   gateway writes, or carry `authorization`; one named like the target's own credential header
+   is not written, so the head never carries that header twice. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target whose `credential_header` also names a `CredentialHeader`
    (an `api-key` hosted endpoint) is sent `<header>: <key>` instead, and no `authorization`; a

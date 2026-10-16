@@ -85,8 +85,113 @@ struct HostedDocument {
     #[serde(default)]
     reasoning_effort: Option<String>,
     /// `[hosted.<alias>.headers]`: static request headers, name to value.
-    #[serde(default)]
+    /// Read through [`header_table`], so a refusal of its shape quotes no value.
+    #[serde(default, deserialize_with = "header_table")]
     headers: BTreeMap<String, String>,
+}
+
+/// `[hosted.<alias>.headers]` as a table of names to strings. serde's own refusal of a value of
+/// the wrong shape quotes it (`invalid type: string "authorization: Bearer …"`), and a header
+/// value may be a credential somebody put in the wrong place, so this one names the shape and
+/// never the value: a table whose values are not all strings, or anything but a table.
+fn header_table<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, String>, D::Error> {
+    struct Table;
+
+    impl<'de> serde::de::Visitor<'de> for Table {
+        type Value = BTreeMap<String, String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a table of header names to string values")
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut table = BTreeMap::new();
+            while let Some(name) = map.next_key::<String>()? {
+                let Some(value) = map.next_value::<Opaque>()?.0 else {
+                    return Err(serde::de::Error::custom(
+                        "every value of headers must be a string",
+                    ));
+                };
+                table.insert(name, value);
+            }
+            Ok(table)
+        }
+
+        fn visit_str<E: serde::de::Error>(self, _text: &str) -> Result<Self::Value, E> {
+            Err(E::custom(
+                "headers must be a table of header names to string values, not a string",
+            ))
+        }
+    }
+
+    /// A value read whole and kept only when it is a string, so nothing else is quoted.
+    struct Opaque(Option<String>);
+
+    impl<'de> serde::Deserialize<'de> for Opaque {
+        fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct Any;
+
+            impl<'de> serde::de::Visitor<'de> for Any {
+                type Value = Opaque;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    formatter.write_str("a string")
+                }
+
+                fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Opaque, E> {
+                    Ok(Opaque(Some(text.to_owned())))
+                }
+
+                fn visit_string<E: serde::de::Error>(self, text: String) -> Result<Opaque, E> {
+                    Ok(Opaque(Some(text)))
+                }
+
+                fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                    self,
+                    mut seq: A,
+                ) -> Result<Opaque, A::Error> {
+                    while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+                    Ok(Opaque(None))
+                }
+
+                fn visit_map<A: serde::de::MapAccess<'de>>(
+                    self,
+                    mut map: A,
+                ) -> Result<Opaque, A::Error> {
+                    while map
+                        .next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>()?
+                        .is_some()
+                    {}
+                    Ok(Opaque(None))
+                }
+            }
+
+            deserializer.deserialize_any(Any)
+        }
+    }
+
+    deserializer.deserialize_map(Table)
 }
 
 enum AuthKindDocument {

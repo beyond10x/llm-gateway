@@ -85,6 +85,19 @@ impl Pod {
     }
 }
 
+/// One read of a pod's connection. An interrupted read is retried: a socket with a read timeout
+/// answers a signal, or a stop and continue of the test process, with `EINTR` whatever
+/// `SA_RESTART` says (`man 7 signal`), and a pod that took it for the end of the request would
+/// close with the body unread and reset the gateway's write.
+fn read_some(connection: &mut TcpStream, chunk: &mut [u8]) -> Option<usize> {
+    loop {
+        match connection.read(chunk) {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            read => return read.ok(),
+        }
+    }
+}
+
 impl Drop for Pod {
     fn drop(&mut self) {
         drop(TcpStream::connect(&self.authority));
@@ -101,7 +114,7 @@ fn read_request(connection: &mut TcpStream) -> Option<Vec<u8>> {
         if let Some(end) = find(&buffer, b"\r\n\r\n") {
             break end;
         }
-        let read = connection.read(&mut chunk).ok()?;
+        let read = read_some(connection, &mut chunk)?;
         if read == 0 {
             return None;
         }
@@ -114,7 +127,7 @@ fn read_request(connection: &mut TcpStream) -> Option<Vec<u8>> {
         .and_then(|value| value.trim().parse().ok())
         .unwrap_or(0);
     while buffer.len() < end + 4 + wanted {
-        let read = connection.read(&mut chunk).ok()?;
+        let read = read_some(connection, &mut chunk)?;
         if read == 0 {
             break;
         }

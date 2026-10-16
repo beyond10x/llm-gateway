@@ -523,16 +523,25 @@ impl Buffered<'_> {
             self.start = 0;
         }
         let mut chunk = [0_u8; RELAY_CHUNK];
-        let read = match &mut self.source {
-            Source::Client(stream, deadline) => {
-                let left = deadline.saturating_duration_since(Instant::now());
-                if left.is_zero() {
-                    return Err(io::ErrorKind::TimedOut.into());
+        // A socket with a read timeout answers a signal, or a stop and continue, with `EINTR`
+        // whatever `SA_RESTART` says (`man 7 signal`): such a read is retried, never taken for
+        // a peer that failed.
+        let read = loop {
+            let read = match &mut self.source {
+                Source::Client(stream, deadline) => {
+                    let left = deadline.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return Err(io::ErrorKind::TimedOut.into());
+                    }
+                    stream.set_read_timeout(Some(left))?;
+                    stream.read(&mut chunk)
                 }
-                stream.set_read_timeout(Some(left))?;
-                stream.read(&mut chunk)?
+                Source::Target(stream) => stream.read(&mut chunk),
+            };
+            match read {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                read => break read?,
             }
-            Source::Target(stream) => stream.read(&mut chunk)?,
         };
         self.buffer.extend_from_slice(&chunk[..read]);
         Ok(read > 0)
@@ -1240,6 +1249,58 @@ mod tests {
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
         }
+    }
+
+    /// Serves `answer` a few bytes at a time, each read preceded by one that is interrupted, as a
+    /// socket with a read timeout is when its thread takes a signal or its process is stopped
+    /// and continued (`man 7 signal`): `EINTR` whatever `SA_RESTART` says.
+    struct Interrupting {
+        answer: &'static [u8],
+        offset: usize,
+        interrupted: bool,
+    }
+
+    impl std::io::Read for Interrupting {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.interrupted = !self.interrupted;
+            if self.interrupted {
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            let count = buffer.len().min(5).min(self.answer.len() - self.offset);
+            buffer[..count].copy_from_slice(&self.answer[self.offset..self.offset + count]);
+            self.offset += count;
+            Ok(count)
+        }
+    }
+
+    impl std::io::Write for Interrupting {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// An interrupted read of the target's answer is retried, not taken for a target that
+    /// failed: under a signal or a stop and continue it answered `upstream-failed` (502).
+    #[test]
+    fn an_interrupted_read_of_the_answer_is_retried() {
+        let mut stream = Interrupting {
+            answer:
+                b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}",
+            offset: 0,
+            interrupted: false,
+        };
+        let mut input = super::Buffered {
+            source: super::Source::Target(&mut stream),
+            buffer: Vec::new(),
+            start: 0,
+        };
+        let head = super::read_answer_head(&mut input, 1_024).unwrap();
+        assert_eq!(head.status, 200);
+        assert_eq!(input.take(2).unwrap(), b"{}");
     }
 
     /// The buffer holds what is unread plus one read, however the reads fall across lines: a

@@ -101,7 +101,8 @@ types:
   # enumerated without the credential. An embedding with no owner at all composes the gateway
   # with `NoOwnerVerifier`, which accepts no credential (scenarios
   # ingress-none-a-model-call-without-a-credential-is-relayed,
-  # ingress-none-without-an-owner-secret-the-owner-surface-stays-refused).
+  # ingress-none-without-an-owner-secret-the-owner-surface-stays-refused,
+  # ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret).
   # DECIDED 2026-10-16 (story:ingress-auth-optional).
   - name: llm-gateway.gateway.IngressAuth
     kind: enum

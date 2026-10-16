@@ -91,6 +91,10 @@
       "llm-gateway.gateway/authored/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method",
       "llm-gateway.gateway/authored/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path",
       "llm-gateway.gateway/authored/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path",
+      "llm-gateway.gateway/authored/routes-a-base-url-without-its-api-path-composes-nothing",
+      "llm-gateway.gateway/authored/routes-a-route-named-like-a-model-composes-nothing",
+      "llm-gateway.gateway/authored/routes-an-env-secret-composes-nothing",
+      "llm-gateway.gateway/authored/routes-one-document-is-served-on-two-wires-relayed-and-translated",
       "llm-gateway.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case",
       "llm-gateway.gateway/authored/the-concurrency-bound-admits-its-own-count",
       "llm-gateway.gateway/authored/the-owner-inspects-every-route-and-unreported-limits-stay-absent",
@@ -693,6 +697,26 @@
         "digest": "sha256:860fe577569cb005b46d195a08108bad3d5f95a02bfb3d616e995f91fece81a4",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path"
+      },
+      "gateway/scenarios/routes-a-base-url-without-its-api-path-composes-nothing.yaml": {
+        "digest": "sha256:54231ffdb38a67a2c9be7fcca0fbc197d968ac47d9db8e924f0eb64654103922",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/routes-a-base-url-without-its-api-path-composes-nothing"
+      },
+      "gateway/scenarios/routes-a-route-named-like-a-model-composes-nothing.yaml": {
+        "digest": "sha256:2bbd16a69fa850d2286123c03a94828bbdfe836f06b7f110cf71b156cbedb6b0",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/routes-a-route-named-like-a-model-composes-nothing"
+      },
+      "gateway/scenarios/routes-an-env-secret-composes-nothing.yaml": {
+        "digest": "sha256:b7c13cdfffdca9f5b38ec9b8fa992c05d250261427a1b2269a10e4f7da6489b4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/routes-an-env-secret-composes-nothing"
+      },
+      "gateway/scenarios/routes-one-document-is-served-on-two-wires-relayed-and-translated.yaml": {
+        "digest": "sha256:319085e218c703bf1ac07e6e87413d497d6c12f8333e10a967de9aea83ca8b78",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/routes-one-document-is-served-on-two-wires-relayed-and-translated"
       },
       "gateway/scenarios/the-bearer-scheme-is-matched-without-regard-to-case.yaml": {
         "digest": "sha256:8874b79daa1859670eeb718758c3446e6205a1aeed1270c4b5afea55afde7ce7",
@@ -1451,7 +1475,7 @@
       }
     },
     "counts": {
-      "authored": 241,
+      "authored": 245,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1476,9 +1500,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "f0c57d03588b012245df2edffc664c68fbf81f14fdef06ca2acaf6346bef3b6a",
+    "contract_digest": "f797aa6d41e890c14d7203805ba57bed1dab7cceaef448aab27351ab2c2deaeb",
     "scenario_initial_state": "empty",
-    "spec_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
+    "spec_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -10124,6 +10148,435 @@
                 "value": [
                   "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                   "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":16,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/routes-a-base-url-without-its-api-path-composes-nothing": {
+      "purpose": "a routes endpoint whose base_url names no path composes nothing, since llm and the gateway would reach different paths",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"translation\":\"on\",\"models\":[],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  lab: {base_url: \\\"http://pod-1\\\", protocol: messages, auth: {kind: anonymous}}\\nroutes:\\n  opus: lab/claude-opus-4-1\\n\",\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"opus\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/routes-a-route-named-like-a-model-composes-nothing": {
+      "purpose": "a route whose name is already a model's alias composes nothing",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"translation\":\"on\",\"models\":[{\"alias\":\"opus\",\"upstream_model\":\"served-opus\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}}],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  lab: {base_url: \\\"http://pod-1/v1\\\", protocol: messages, auth: {kind: anonymous}}\\nroutes:\\n  opus: lab/claude-opus-4-1\\n\",\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"opus\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/routes-an-env-secret-composes-nothing": {
+      "purpose": "a routes document whose endpoint names an env secret composes nothing, as the gateway reads a credential only from a trusted file",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"translation\":\"on\",\"models\":[],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  anthropic: {base_url: \\\"http://pod-1/v1\\\", protocol: messages, auth: {kind: api-key, header: x-api-key, secret: \\\"env:ANTHROPIC_API_KEY\\\"}}\\nroutes:\\n  opus: anthropic/claude-opus-4-1\\n\",\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"opus\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/routes-one-document-is-served-on-two-wires-relayed-and-translated": {
+      "purpose": "the routes of one document are listed on every wire, relayed on their endpoint's wire to its base path and translated from another",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"translation\":\"on\",\"models\":[],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  anthropic: {base_url: \\\"http://pod-1/anthropic/v1\\\", protocol: messages, auth: {kind: api-key, header: x-api-key, secret: \\\"file:/run/keys/anthropic\\\"}}\\n  openrouter: {base_url: \\\"http://pod-2/api/v1\\\", protocol: chat-completions, auth: {kind: bearer, secret: \\\"file:~/keys/openrouter\\\"}}\\nroutes:\\n  opus: anthropic/claude-opus-4-1\\n  router: {model: openrouter/vendor/model-x, capabilities: {tools: false, tool_choice: false, temperature: true, top_p: true, reasoning_efforts: [], context_window: 65536, max_output_tokens: 512}}\\n\",\"route_credentials\":{\"anthropic\":\"endpoint-api-key-0123456789abcdef\",\"openrouter\":\"endpoint-bearer-0123456789abcdef\"},\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"msg-1\\\"}\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"chunks\":[\"event: message_start\\ndata: {\\\"type\\\":\\\"message_start\\\",\\\"message\\\":{\\\"id\\\":\\\"msg_up\\\",\\\"type\\\":\\\"message\\\",\\\"role\\\":\\\"assistant\\\",\\\"model\\\":\\\"served\\\",\\\"content\\\":[],\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"usage\\\":{\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}}}\\n\\nevent: content_block_start\\ndata: {\\\"type\\\":\\\"content_block_start\\\",\\\"index\\\":0,\\\"content_block\\\":{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"\\\"}}\\n\\nevent: content_block_delta\\ndata: {\\\"type\\\":\\\"content_block_delta\\\",\\\"index\\\":0,\\\"delta\\\":{\\\"type\\\":\\\"text_delta\\\",\\\"text\\\":\\\"Hello\\\"}}\\n\\nevent: content_block_stop\\ndata: {\\\"type\\\":\\\"content_block_stop\\\",\\\"index\\\":0}\\n\\nevent: message_delta\\ndata: {\\\"type\\\":\\\"message_delta\\\",\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"chunks\":[\"data: {\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"Hello\\\"},\\\"finish_reason\\\":null}]}\\n\\ndata: {\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\"}]}\\n\\ndata: {\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"choices\\\":[],\\\"usage\\\":{\\\"prompt_tokens\\\":12,\\\"completion_tokens\\\":2,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"opus\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"router\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"opus\\\",\\\"stream\\\":true,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"Hi\\\"}]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"router\\\",\\\"max_tokens\\\":64,\\\"stream\\\":true,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"Hi\\\"}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "Bearer endpoint-bearer-0123456789abcdef",
+                  "absent",
+                  "Bearer endpoint-bearer-0123456789abcdef"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"object\":\"list\",\"data\":[{\"id\":\"opus\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"upstream_wires\":[\"messages\"]},{\"id\":\"router\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"upstream_wires\":[\"chat\"]}]}",
+                  "{\"id\":\"msg-1\"}",
+                  "{\"id\":\"chat-1\"}",
+                  "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"model\":\"served\",\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n",
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_2\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                ]
+              },
+              "connections": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 plain request",
+                  "pod-2 plain request",
+                  "pod-1 plain request",
+                  "pod-2 plain request"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "received_heads": {
+                "kind": "literal",
+                "value": [
+                  "x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | content-length: 41 | connection: close",
+                  "authorization: Bearer endpoint-bearer-0123456789abcdef | content-type: application/json | content-length: 40 | connection: close",
+                  "x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | accept: text/event-stream | anthropic-version: 2023-06-01 | content-length: 166",
+                  "authorization: Bearer endpoint-bearer-0123456789abcdef | content-type: application/json | accept: text/event-stream | content-length: 151"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /anthropic/v1/messages {\"model\":\"claude-opus-4-1\",\"messages\":[]}",
+                  "pod-2 POST /api/v1/chat/completions {\"model\":\"vendor/model-x\",\"messages\":[]}",
+                  "pod-1 POST /anthropic/v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"claude-opus-4-1\",\"stream\":true}",
+                  "pod-2 POST /api/v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"vendor/model-x\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
                 ]
               },
               "valid_program": {

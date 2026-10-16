@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
-    "contract_digest": "slice-sha256/2:1f035a27b3f8e566bdc3a85c806d5cedf8c6b18094b59f5aa7cd3c4361481198",
+    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
+    "contract_digest": "slice-sha256/2:2948b18d8c8b4a2adc8395df27a85746407a9d36daa5c953bfcf6c5c06a4cbe8",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -95,6 +95,9 @@
             "$ref": "#/$defs/llm-gateway.deployment.HostedDeclaration"
           },
           "x-ess-map-key": "String"
+        },
+        "routes": {
+          "type": "string"
         }
       },
       "required": [

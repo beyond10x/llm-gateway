@@ -812,6 +812,17 @@ fn routes_an_alias_collision_or_a_home_secret_without_home_refuses_the_start() {
         "routes.router names an alias",
     );
 
+    // A routes document without a route, and no other model to serve.
+    let routes = deployment.routes();
+    let empty = deployment.routes_file(routes.split("routes:\n").next().unwrap(), 0o600);
+    assert_refused(
+        &deployment.config_with(&empty, ""),
+        deployment.home(),
+        "config:value",
+        "models at least one model",
+    );
+    let file = deployment.routes_file(&deployment.routes(), 0o600);
+
     // A `file:~/` secret with no home to resolve it against.
     let config = deployment.config_with(&file, "");
     let mut child = command(&config, deployment.home())

@@ -5,7 +5,8 @@
 //!
 //! The specification is `spec/domains/deployment.yaml` (`llm-gateway.deployment`). The binary
 //! reads one closed TOML document through a same-handle trusted-file reader, composes the
-//! `llm_gateway` gateway from it, serves, and stops gracefully on SIGINT or SIGTERM. Every
+//! `llm_gateway` gateway from it, and from the `llm.routes/1` document it may name ([`Routes`]),
+//! serves, and stops gracefully on SIGINT or SIGTERM. Every
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
 pub mod cli;
@@ -15,6 +16,7 @@ mod keys;
 mod logging;
 mod refusal;
 mod relaying;
+mod routes;
 mod serve;
 mod tls;
 mod translate;
@@ -34,6 +36,7 @@ pub use relaying::{
     compute_authorization, hosting_policy, idle_timeout_ms, runpod_models, runpod_pool,
     secret_name, start_connected, start_relaying,
 };
+pub use routes::{Route, RouteEndpoint, Routes, SecretFile};
 pub use serve::{
     INGRESS_AUTH_OFF, Running, StopSignal, Stopped, inventory, main_with, owner_verifier, start,
     start_with,

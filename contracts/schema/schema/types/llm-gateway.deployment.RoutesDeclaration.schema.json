@@ -1,0 +1,126 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.RoutesDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
+    "contract_digest": "slice-sha256/2:294cfa45caf8de7fd3d0f63c6f071f3154d6055f75f0d5cb1eb8aa43ed68794c",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.RouteDeclaration": {
+      "title": "RouteDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RouteDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "upstream_model": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "boolean"
+        },
+        "context_window": {
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "endpoint",
+        "upstream_model",
+        "tools",
+        "context_window",
+        "max_output_tokens"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.RouteEndpointDeclaration": {
+      "title": "RouteEndpointDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RouteEndpointDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "type": "string"
+        },
+        "protocol": {
+          "$ref": "#/$defs/llm-gateway.deployment.Wire"
+        },
+        "auth_kind": {
+          "$ref": "#/$defs/llm-gateway.upstream.AuthKind"
+        },
+        "credential_header": {
+          "type": "string"
+        },
+        "credential_file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_url",
+        "protocol",
+        "auth_kind"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.RoutesDeclaration": {
+      "title": "RoutesDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RoutesDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "endpoints": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.RouteEndpointDeclaration"
+          },
+          "x-ess-map-key": "String"
+        },
+        "routes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.RouteDeclaration"
+          },
+          "x-ess-map-key": "String"
+        },
+        "digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoints",
+        "routes",
+        "digest"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.deployment.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    },
+    "llm-gateway.upstream.AuthKind": {
+      "title": "AuthKind",
+      "x-ess-name": "llm-gateway.upstream.AuthKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Anonymous",
+        "Bearer",
+        "ApiKey"
+      ]
+    }
+  }
+}

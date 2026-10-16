@@ -80,6 +80,17 @@ entities:
   # may carry. The startup refusals of a credential file are process facts
   # (llm-gateway.deployment ESS-LIMIT), proved by `hosted_*` in
   # crates/llm-gateway-cli/tests/hosted.rs.
+  #
+  # DECIDED 2026-10-16 (story:routes-document): each route of an `llm.routes/1` document a
+  # deployment names (llm-gateway.deployment.RoutesDeclaration) is served by one HostedEndpoint,
+  # derived from the route's endpoint: `endpoint_id` the route name, `wires` the endpoint's
+  # protocol alone, `upstream_model` the route's model id, `base_url` the endpoint's (which must
+  # name its API path), `auth_kind` the endpoint's, `credential_file` its `file:` secret,
+  # `credential_header` its `auth.header`, no `headers`, and `billing_kind` llm's expansion of
+  # the endpoint: `SelfHosted` for an `Anonymous` endpoint, `Metered` otherwise. The inventory
+  # names its provider `routes` and its endpoint the route's endpoint name. Observed through the
+  # `Relay` command's `routes_document` (llm-gateway.gateway) and by `routes_*` in
+  # crates/llm-gateway-cli/tests/routes.rs.
   - name: llm-gateway.upstream.HostedEndpoint
     identity: {name: endpoint_id, type: String}
     fields:

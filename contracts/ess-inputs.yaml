@@ -242,3 +242,7 @@ scenarios:
 - gateway/scenarios/translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count.yaml
 - gateway/scenarios/translate-a-non-streamed-request-is-answered-with-its-wires-json-object.yaml
 - gateway/scenarios/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused.yaml
+- gateway/scenarios/routes-one-document-is-served-on-two-wires-relayed-and-translated.yaml
+- gateway/scenarios/routes-an-env-secret-composes-nothing.yaml
+- gateway/scenarios/routes-a-base-url-without-its-api-path-composes-nothing.yaml
+- gateway/scenarios/routes-a-route-named-like-a-model-composes-nothing.yaml

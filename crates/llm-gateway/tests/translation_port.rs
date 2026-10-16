@@ -18,7 +18,7 @@ use std::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -39,6 +39,11 @@ enum Script {
         pieces: Vec<&'static str>,
     },
     Fail(TranslationFailure),
+    /// Asks `gone` until it is true or `for_` has passed, records what it last said, and then
+    /// answers `{}` when the client is still there.
+    Watch {
+        for_: Duration,
+    },
 }
 
 /// What the translator was asked, in order.
@@ -48,6 +53,8 @@ struct Asked {
     ran: Mutex<Vec<String>>,
     /// Per piece written, whether the client was still there.
     writes: Mutex<Vec<bool>>,
+    /// What `gone` last said, for a watching translation.
+    gone: Mutex<Option<bool>>,
 }
 
 struct Fixture {
@@ -103,6 +110,19 @@ impl Translation for Run {
         ));
         match self.script {
             Script::Fail(failure) => Err(failure),
+            Script::Watch { for_ } => {
+                let deadline = Instant::now() + for_;
+                let mut gone = answer.gone();
+                while !gone && Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(5));
+                    gone = answer.gone();
+                }
+                *self.asked.gone.lock().unwrap() = Some(gone);
+                if !gone && answer.head(200, "application/json", AnswerFraming::Length(2)) {
+                    answer.body(b"{}");
+                }
+                Ok(())
+            }
             Script::Answer {
                 status,
                 content_type,
@@ -540,4 +560,41 @@ fn translate_a_target_exposes_its_bearer_and_defaults_to_http() {
     assert_eq!(bearer.expose(), b"pod-key-1");
     assert_eq!(format!("{bearer:?}"), "TargetBearer([REDACTED])");
     assert_eq!(Plain.scheme(), TargetScheme::Http);
+}
+
+/// A client that closed its connection while it waited for an answer is reported gone by the
+/// writer without a byte written; one still there is not, and gets its answer.
+#[test]
+fn translate_the_writer_reports_a_client_that_closed_while_it_waited() {
+    let composed = compose(Some(fixture(None, Script::Watch { for_: WAIT })), false);
+    let body = "{\"model\":\"two\"}";
+    let request = format!(
+        "POST {CHAT} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER}\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    let mut stream = TcpStream::connect(composed.handle.local_addr()).unwrap();
+    stream.write_all(request.as_bytes()).unwrap();
+    drop(stream);
+    composed.handle.shutdown();
+    assert_eq!(*composed.asked.gone.lock().unwrap(), Some(true));
+
+    let composed = compose(
+        Some(fixture(
+            None,
+            Script::Watch {
+                for_: Duration::from_millis(200),
+            },
+        )),
+        false,
+    );
+    let mut stream = TcpStream::connect(composed.handle.local_addr()).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut raw = Vec::new();
+    drop(stream.read_to_end(&mut raw));
+    assert!(
+        String::from_utf8_lossy(&raw).ends_with("\r\n\r\n{}"),
+        "{raw:?}"
+    );
+    assert_eq!(*composed.asked.gone.lock().unwrap(), Some(false));
 }

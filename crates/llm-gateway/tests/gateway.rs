@@ -584,9 +584,9 @@ impl Translator for ProvokingTranslator {
             .find(|code| code.wire() == named)
             .unwrap_or(RefusalCode::TranslationInvalid);
         match code {
-            RefusalCode::UpstreamRefused | RefusalCode::TranslationUnrepresentable => {
-                Ok(Box::new(ProvokingRun(code)))
-            }
+            RefusalCode::UpstreamRefused
+            | RefusalCode::TranslationUnrepresentable
+            | RefusalCode::TranslationTooLarge => Ok(Box::new(ProvokingRun(code))),
             other => Err(other),
         }
     }
@@ -667,6 +667,7 @@ fn provoke(code: RefusalCode) -> Provocation {
         // refuses or fails with the code its body names.
         RefusalCode::TranslationInvalid
         | RefusalCode::TranslationOpaqueState
+        | RefusalCode::TranslationTooLarge
         | RefusalCode::TranslationUnrepresentable
         | RefusalCode::TranslationUnsupported
         | RefusalCode::UpstreamRefused => Provocation {

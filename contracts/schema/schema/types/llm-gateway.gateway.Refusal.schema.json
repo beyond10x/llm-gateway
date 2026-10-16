@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "b7ff550689e1e0b00c87f8ebfe3e49274fe538ad9dd229a932715d82f52512de",
-    "contract_digest": "slice-sha256/2:7315bcdd4c115dadc9549662b9b2df3ec241763469a94287da243d20b7d7fad8",
+    "source_digest": "6c490682b8494793043420862cd6f0991a00fceb4b6782679c2c3cb0d0d390a7",
+    "contract_digest": "slice-sha256/2:a8eb3059d9dd637e2076f1c5e6d51542a3e0f4690af95caeb9f471f3eb07f0fb",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -36,6 +36,7 @@
         "ToolsNotServed",
         "TranslationInvalid",
         "TranslationOpaqueState",
+        "TranslationTooLarge",
         "TranslationUnrepresentable",
         "TranslationUnsupported",
         "Unavailable",
@@ -70,6 +71,7 @@
             "ToolsNotServed": "tools-not-served",
             "TranslationInvalid": "translation-invalid",
             "TranslationOpaqueState": "translation-opaque-state",
+            "TranslationTooLarge": "translation-too-large",
             "TranslationUnrepresentable": "translation-unrepresentable",
             "TranslationUnsupported": "translation-unsupported",
             "Unavailable": "unavailable",
@@ -104,6 +106,7 @@
             "ToolsNotServed": 400,
             "TranslationInvalid": 400,
             "TranslationOpaqueState": 400,
+            "TranslationTooLarge": 502,
             "TranslationUnrepresentable": 502,
             "TranslationUnsupported": 400,
             "Unavailable": 503,
@@ -138,6 +141,7 @@
             "ToolsNotServed": "the model does not serve tool calls",
             "TranslationInvalid": "the request breaks a rule of the subset the gateway translates",
             "TranslationOpaqueState": "the request carries reasoning state the gateway cannot send to the model's upstream",
+            "TranslationTooLarge": "the model's answer passed a bound of the translated path: 65536 events, 33554432 bytes or a 1048576-byte line",
             "TranslationUnrepresentable": "the model's answer cannot be written on this wire",
             "TranslationUnsupported": "the request uses a field or value outside the subset the gateway translates",
             "Unavailable": "the gateway is not ready to serve inspection",

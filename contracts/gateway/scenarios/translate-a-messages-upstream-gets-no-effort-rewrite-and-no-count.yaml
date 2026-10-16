@@ -23,6 +23,6 @@ assert:
     bodies:
     - "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"model\":\"served\",\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n"
     upstream:
-    - "pod-1 POST /v1/messages {\"max_tokens\":4096,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"output_config\":{\"effort\":\"high\"},\"stream\":true}"
+    - "pod-1 POST /v1/messages {\"max_tokens\":2048,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"output_config\":{\"effort\":\"high\"},\"stream\":true}"
     acquired: 1
     released: 1

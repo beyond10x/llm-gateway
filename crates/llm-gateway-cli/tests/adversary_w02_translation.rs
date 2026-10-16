@@ -278,14 +278,16 @@ fn adv_translation_chat_fields_below_the_top_level_are_refused_not_dropped() {
 /// (`llm_http::sse::MAX_EVENTS`), which `docs/gateway.md` does not publish.
 const LONG_ANSWER_DELTAS: usize = 70_000;
 
-/// A long answer is written whole. `docs/gateway.md` publishes no bound on a translated answer's
-/// length (its upstream limits are the three timeouts, "not size bounds"), and the byte relay
-/// relays any length; llm's SSE reader refuses the 65,537th event of one stream, so a translated
-/// answer of more than about 65,000 output tokens (one event a token on a vLLM upstream) ends in
-/// the wire's terminal error instead. Reached by a reasoning model whose messages upstream is
-/// asked for `max_tokens` = its whole window, which the translated path sends by default.
+/// A long answer ends with the bound's own terminal error. llm's SSE reader refuses the 65,537th
+/// event of one stream, so a translated answer of more than about 65,000 output tokens (one event
+/// a token on a vLLM upstream) cannot be written whole.
+///
+/// Re-pinned in correction round 1 of story:gateway-translation. Asserted first: the answer is
+/// written whole, ending `[DONE]`. Decided instead: the bound is published in `docs/gateway.md`
+/// ("Bounds of the translated path", `translated-stream-events`), and an answer past it ends with
+/// the wire's terminal error naming it, `translation-too-large` on chat, never `upstream-failed`.
 #[test]
-fn adv_translation_an_answer_past_65536_upstream_events_is_written_whole() {
+fn adv_translation_an_answer_past_65536_upstream_events_ends_with_the_bounds_terminal_error() {
     let mut answer = String::from(MESSAGES_OPENING);
     let delta = "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"a\"}}\n\n";
     for _ in 0..LONG_ANSWER_DELTAS {
@@ -305,9 +307,13 @@ fn adv_translation_an_answer_past_65536_upstream_events_is_written_whole() {
     assert_eq!(ran, Ok(()));
     let body = String::from_utf8_lossy(&written.body);
     let tail = &body[body.len().saturating_sub(300)..];
+    let terminal = format!(
+        "data: {{\"error\":{{\"code\":\"translation-too-large\",\"message\":\"{}\"}}}}\n\n",
+        RefusalCode::TranslationTooLarge.reason()
+    );
     assert!(
-        body.ends_with("data: [DONE]\n\n"),
-        "the answer ends without [DONE]: ...{tail}"
+        body.ends_with(&terminal) && !body.contains("[DONE]"),
+        "the answer does not end with the bound's terminal error: ...{tail}"
     );
 }
 

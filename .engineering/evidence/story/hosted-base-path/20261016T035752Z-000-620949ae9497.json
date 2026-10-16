@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-16T03:57:52Z",
+  "actor": "human:timo",
+  "artifact": "story:hosted-base-path",
+  "kind": "story",
+  "revision": 24,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --test hosted hosted_a_base_url_path_replaces_the_v1_prefix_and_host_stays_the_authority (base: refused config:value at a0b2e0e; unit: /api/v1/chat/completions, /api/v1/messages/count_tokens, host the authority); scenario hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path"
+  }
+}

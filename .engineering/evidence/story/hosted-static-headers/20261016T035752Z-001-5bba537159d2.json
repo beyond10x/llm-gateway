@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-16T03:57:52Z",
+  "actor": "human:timo",
+  "artifact": "story:hosted-static-headers",
+  "kind": "story",
+  "revision": 26,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --test hosted hosted_static_headers_reach_the_endpoint_beside_its_credential (base: config:schema unknown field headers at 53d6d20; unit: anthropic-version and x-title after host, before x-api-key); scenario hosted-static-headers-reach-the-endpoint-and-the-clients-never-do"
+  }
+}

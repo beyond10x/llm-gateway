@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:ingress-auth-optional
 kind: story
-status: active
+status: implemented
 title: 'Ingress authentication for model calls is optional: ingress_auth = bearer or none'
 relations:
 - decomposes: epic:gateway-features
@@ -20,35 +20,50 @@ scope:
 - confidence: cited
   path: crates/llm-gateway-cli/src/config.rs
 - confidence: cited
+  path: crates/llm-gateway-cli/src/lib.rs
+- confidence: cited
   path: crates/llm-gateway-cli/src/relaying.rs
 - confidence: cited
   path: crates/llm-gateway-cli/src/serve.rs
 - confidence: cited
-  path: crates/llm-gateway-cli/tests/binary.rs
+  path: crates/llm-gateway-cli/tests/adversary_w02.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/hosted.rs
+- confidence: cited
+  path: crates/llm-gateway-docs/src/status.rs website/data/status.json website/docs/status.mdx
 - confidence: cited
   path: crates/llm-gateway/src/auth.rs
 - confidence: cited
   path: crates/llm-gateway/src/lib.rs
 - confidence: cited
+  path: crates/llm-gateway/src/metrics.rs
+- confidence: cited
   path: crates/llm-gateway/src/server.rs
 - confidence: cited
-  path: crates/llm-gateway/tests/gateway.rs
+  path: crates/llm-gateway/tests/adversary_w10_ingress.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/adversary_w10_ingress_pass2.rs
 - confidence: cited
   path: docs/gateway.md
+- confidence: cited
+  path: docs/llmgw-capability-matrix.md
 - confidence: cited
   path: spec/domains/deployment.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
 - confidence: cited
+  path: spec/domains/upstream.yaml
+- confidence: cited
   path: website/docs/concepts/single-owner-gateway.md
 - confidence: cited
   path: website/docs/reference/deployment-document.md
-revision: 22
+revision: 35
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T02:29:20Z", actor: "human:timo", revision: 21, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-10-16T02:29:20Z", actor: "human:timo", revision: 22, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-10-16T03:57:52Z", actor: "human:timo", revision: 35, decided_on: {"recorded":{"test_result":1,"review_outcome":3,"verification":1}}}
 ---
 ## Outcome
 
@@ -101,6 +116,16 @@ and Relay step 1; the `Relay` program's `ingress_auth`). Validated before code.
 
 ## Scope
 
+Confirmed at the close of wave 2026-10-16-w01 from the unit's diff (`git diff bf4158b 1f500d4`,
+`adv/ingress-auth-optional` and `adv2/ingress-auth-optional`). Corrections to the list drafted
+before the wave: `crates/llm-gateway/tests/gateway.rs` and `crates/llm-gateway-cli/tests/binary.rs`
+were not changed (the binary is tested in `crates/llm-gateway-cli/tests/hosted.rs` instead), and
+these were changed beside the list: `crates/llm-gateway/src/metrics.rs` (the usage record's doc),
+`crates/llm-gateway-cli/src/lib.rs`, `crates/llm-gateway-cli/tests/adversary_w02.rs` and
+`spec/domains/upstream.yaml` and `docs/llmgw-capability-matrix.md` (their citations into
+`serve.rs`, which moved five lines; row C3 is now covered), the status page source and its
+generated pages, and the adversary cases in `crates/llm-gateway/tests/adversary_w10_ingress*.rs`.
+
 - `crates/llm-gateway/src/server.rs`, `crates/llm-gateway/src/auth.rs`, `crates/llm-gateway/src/lib.rs`
 - `crates/llm-gateway-cli/src/config.rs`, `crates/llm-gateway-cli/src/serve.rs`,
   `crates/llm-gateway-cli/src/relaying.rs`
@@ -109,11 +134,7 @@ and Relay step 1; the `Relay` program's `ingress_auth`). Validated before code.
 - `spec/domains/deployment.yaml`, `spec/domains/gateway.yaml`
 - `docs/gateway.md`, `website/docs/reference/deployment-document.md`,
   `website/docs/concepts/single-owner-gateway.md`, `README.md`, `CHANGELOG.md`
-- Tests: `crates/llm-gateway/tests/gateway.rs`, `crates/llm-gateway-cli/tests/config.rs`,
-  `crates/llm-gateway-cli/tests/binary.rs`
-
-Shares `config.rs`, `deployment.yaml`, `gateway.yaml`, the conformance adapter and the docs with
-the two hosted stories; it runs after them.
+- Tests: `crates/llm-gateway-cli/tests/config.rs`, `crates/llm-gateway-cli/tests/hosted.rs`
 
 ## Depends on
 

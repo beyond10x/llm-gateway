@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:hosted-base-path
 kind: story
-status: active
+status: implemented
 title: A hosted endpoint's base_url may carry a path, joined to the wire path
 relations:
 - decomposes: epic:gateway-features
@@ -19,15 +19,23 @@ scope:
 - confidence: cited
   path: crates/llm-gateway-cli/src/hosted.rs
 - confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_w10_base_path.rs
+- confidence: cited
   path: crates/llm-gateway-cli/tests/config.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/hosted.rs
+- confidence: cited
+  path: crates/llm-gateway-docs/src/status.rs website/data/status.json website/docs/status.mdx
 - confidence: cited
   path: crates/llm-gateway/src/error.rs
 - confidence: cited
   path: crates/llm-gateway/src/lib.rs
 - confidence: cited
   path: crates/llm-gateway/src/relay.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/adversary_w10_base_path.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/gateway.rs
 - confidence: cited
   path: docs/gateway.md
 - confidence: cited
@@ -38,10 +46,11 @@ scope:
   path: spec/domains/upstream.yaml
 - confidence: cited
   path: website/docs/reference/deployment-document.md
-revision: 19
+revision: 25
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T02:29:20Z", actor: "human:timo", revision: 18, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-10-16T02:29:20Z", actor: "human:timo", revision: 19, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-10-16T03:57:52Z", actor: "human:timo", revision: 25, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 ## Outcome
 
@@ -97,6 +106,14 @@ target is asked on its base path joined to the wire path; the `Relay` program's 
 
 ## Scope
 
+Confirmed at the close of wave 2026-10-16-w01 from the unit's diff (`git diff 01c3753 845bc97`
+and `adv/hosted-base-path`): every file listed below was changed, and so were
+`crates/llm-gateway/tests/gateway.rs` (the two new bounds, `base-path-bytes` and
+`base-path-segments`), the status page source and its generated pages
+(`crates/llm-gateway-docs/src/status.rs`, `website/data/status.json`, `website/docs/status.mdx`),
+README.md, and the adversary's `crates/llm-gateway/tests/adversary_w10_base_path.rs` and
+`crates/llm-gateway-cli/tests/adversary_w10_base_path.rs`.
+
 - `crates/llm-gateway/src/relay.rs`: `BasePath`, `RelayTarget::base_path`, the request head's path
 - `crates/llm-gateway/src/error.rs`, `crates/llm-gateway/src/lib.rs`
 - `crates/llm-gateway-cli/src/hosted.rs`, `crates/llm-gateway-cli/src/config.rs`
@@ -106,8 +123,7 @@ target is asked on its base path joined to the wire path; the `Relay` program's 
 - `docs/gateway.md`, `website/docs/reference/deployment-document.md`, `CHANGELOG.md`
 - Tests: `crates/llm-gateway-cli/tests/hosted.rs`, `crates/llm-gateway-cli/tests/config.rs`
 
-Shares `relay.rs` request head, `hosted.rs`, `config.rs` and the three spec domains with
-`story:hosted-static-headers` and `story:ingress-auth-optional`: the three run one after another.
+Shared with `story:hosted-static-headers` and `story:ingress-auth-optional`, which ran after it.
 
 ## Not in scope
 

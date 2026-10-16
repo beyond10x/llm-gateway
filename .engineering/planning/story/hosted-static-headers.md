@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:hosted-static-headers
 kind: story
-status: active
+status: implemented
 title: A hosted endpoint is sent its declared static non-secret headers
 relations:
 - decomposes: epic:gateway-features
@@ -20,15 +20,29 @@ scope:
 - confidence: cited
   path: crates/llm-gateway-cli/src/hosted.rs
 - confidence: cited
+  path: crates/llm-gateway-cli/src/lib.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_w10_static_headers.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_w10_static_headers_pass_2.rs
+- confidence: cited
   path: crates/llm-gateway-cli/tests/config.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/hosted.rs
+- confidence: cited
+  path: crates/llm-gateway-docs/src/status.rs website/data/status.json website/docs/status.mdx
 - confidence: cited
   path: crates/llm-gateway/src/error.rs
 - confidence: cited
   path: crates/llm-gateway/src/lib.rs
 - confidence: cited
   path: crates/llm-gateway/src/relay.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/adversary_w10_static_headers.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/adversary_w10_static_headers_pass_2.rs
+- confidence: cited
+  path: crates/llm-gateway/tests/gateway.rs
 - confidence: cited
   path: docs/gateway.md
 - confidence: cited
@@ -39,10 +53,11 @@ scope:
   path: spec/domains/upstream.yaml
 - confidence: cited
   path: website/docs/reference/deployment-document.md
-revision: 18
+revision: 27
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T02:29:20Z", actor: "human:timo", revision: 17}
 - {from: "proposed", to: "active", at: "2026-10-16T02:29:20Z", actor: "human:timo", revision: 18}
+- {from: "active", to: "implemented", at: "2026-10-16T03:57:52Z", actor: "human:timo", revision: 27, decided_on: {"recorded":{"test_result":1,"review_outcome":3,"verification":1}}}
 ---
 ## Outcome
 
@@ -93,6 +108,13 @@ HostedEndpoint `headers`, `spec/domains/gateway.yaml` `Relay` step 7 and Composi
 3. An endpoint with no `headers` sends the head it sends today (existing hosted scenarios).
 
 ## Scope
+
+Confirmed at the close of wave 2026-10-16-w01 from the unit's diff (`git diff 69905b5 660a165`,
+`adv/hosted-static-headers` and `adv2/hosted-static-headers`): every file listed below was
+changed, and so were `crates/llm-gateway-cli/src/lib.rs` (exports), `crates/llm-gateway/tests/gateway.rs`
+(the `static-header-value-bytes` bound), the status page source and its generated pages, README.md,
+and the adversary cases in `crates/llm-gateway/tests/adversary_w10_static_headers*.rs` and
+`crates/llm-gateway-cli/tests/adversary_w10_static_headers*.rs`.
 
 - `crates/llm-gateway/src/relay.rs`: `StaticHeader`, `RelayTarget::headers`, the request head
 - `crates/llm-gateway/src/error.rs` (`StaticHeaderError`), `crates/llm-gateway/src/lib.rs`

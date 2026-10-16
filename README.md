@@ -60,7 +60,9 @@ Releases are tagged `<version>` (the first is `0.1.0`); the crates are not publi
 from source. The workspace needs Rust 1.98 or newer. From the first release after 0.9.0, each
 release tag also publishes the gateway image, built from the root `Dockerfile` for `linux/amd64`
 and `linux/arm64`, as `ghcr.io/beyond10x/llm-gateway:<version>`; its
-`org.opencontainers.image.revision` label names the tag's commit.
+`org.opencontainers.image.revision` label names the tag's commit. The ghcr package is private
+when it is first created: a cluster needs an image pull secret until the package's visibility is
+made public.
 
 ## Run the gateway
 

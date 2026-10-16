@@ -27,21 +27,36 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Refuse a version that already exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
           reference="$IMAGE:$GITHUB_REF_NAME"
-          if answer=$(docker buildx imagetools inspect "$reference" 2>&1); then
+          answer=$(docker buildx imagetools inspect "$reference" 2>&1) && status=0 || status=$?
+          if [ "$status" -eq 0 ]; then
             echo "::error::$reference already exists; a release never replaces a published image"
             exit 1
           fi
+          absent=no
           case "$answer" in
-            *"not found"* | *"manifest unknown"* | *"name unknown"*)
-              echo "$reference is not in the registry yet" ;;
-            *)
-              echo "$answer"
-              echo "::error::the registry did not say whether $reference exists"
-              exit 1 ;;
+            *": not found" | *"manifest unknown"* | *"name unknown"*)
+              [ "$status" -ne 127 ] && absent=yes ;;
+            *denied* | *DENIED* | *unauthorized* | *UNAUTHORIZED*)
+              # The registry answers denied for a package that was never created. Only the packages
+              # API's own 404 says so; any other answer leaves the version unproven absent.
+              package=$(gh api /orgs/beyond10x/packages/container/llm-gateway 2>&1) && pstatus=0 || pstatus=$?
+              if [ "$pstatus" -ne 0 ] && [ "$pstatus" -ne 127 ]; then
+                case "$package" in
+                  *"HTTP 404"*) absent=yes ;;
+                esac
+              fi ;;
           esac
+          if [ "$absent" != yes ]; then
+            echo "$answer"
+            echo "::error::the registry did not say whether $reference exists"
+            exit 1
+          fi
+          echo "$reference is not in the registry yet"
 
   build:
     needs: version-is-new
@@ -109,13 +124,37 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
       - name: Refuse a version that appeared meanwhile, then push the manifest list
         working-directory: ${{ runner.temp }}/digests
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           reference="$IMAGE:$GITHUB_REF_NAME"
-          if docker buildx imagetools inspect "$reference" > /dev/null 2>&1; then
+          answer=$(docker buildx imagetools inspect "$reference" 2>&1) && status=0 || status=$?
+          if [ "$status" -eq 0 ]; then
             echo "::error::$reference already exists; a release never replaces a published image"
             exit 1
           fi
+          absent=no
+          case "$answer" in
+            *": not found" | *"manifest unknown"* | *"name unknown"*)
+              [ "$status" -ne 127 ] && absent=yes ;;
+            *denied* | *DENIED* | *unauthorized* | *UNAUTHORIZED*)
+              # The registry answers denied for a package that was never created. Only the packages
+              # API's own 404 says so; any other answer leaves the version unproven absent.
+              package=$(gh api /orgs/beyond10x/packages/container/llm-gateway 2>&1) && pstatus=0 || pstatus=$?
+              if [ "$pstatus" -ne 0 ] && [ "$pstatus" -ne 127 ]; then
+                case "$package" in
+                  *"HTTP 404"*) absent=yes ;;
+                esac
+              fi ;;
+          esac
+          if [ "$absent" != yes ]; then
+            echo "$answer"
+            echo "::error::the registry did not say whether $reference exists"
+            exit 1
+          fi
+          echo "$reference is not in the registry yet"
+          set -e
           test "$(ls | wc -l)" -eq 2
           docker buildx imagetools create --tag "$IMAGE:$GITHUB_REF_NAME" \
             $(printf "$IMAGE@sha256:%s " *)

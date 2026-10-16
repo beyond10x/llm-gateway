@@ -597,6 +597,63 @@ fn hosted_a_base_url_path_replaces_the_v1_prefix_and_host_stays_the_authority() 
     );
 }
 
+/// story:hosted-static-headers, criterion 1: an endpoint's declared headers reach it on every
+/// request, lowercase and in name order after `host`, beside its credential, and the client's own
+/// `anthropic-version` still does not.
+#[test]
+fn hosted_static_headers_reach_the_endpoint_beside_its_credential() {
+    let fixture = Fixture::new("hosted-static-headers");
+    let credential = fixture.endpoint_credential();
+    let endpoint = Endpoint::start();
+    let tables = format!(
+        "{}[hosted.claude.headers]\nanthropic-version = \"2023-06-01\"\nX-Title = \"b10x gateway\"\n",
+        hosted_table(
+            "claude",
+            &endpoint.base_url(),
+            &api_key_keys(&credential, "x-api-key")
+        ),
+    );
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &tables,
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let body = r#"{"model":"claude","messages":[]}"#;
+    let answer = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/messages HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nanthropic-version: 2099-01-01\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    let chat = post(server.address, "/v1/chat/completions", body);
+    server.stop();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(chat.starts_with("HTTP/1.1 200 "), "{chat}");
+    let seen = endpoint.seen();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    for request in &seen {
+        assert_eq!(
+            request.names(),
+            [
+                "host",
+                "anthropic-version",
+                "x-title",
+                "x-api-key",
+                "content-type",
+                "content-length",
+                "connection"
+            ],
+            "{request:?}"
+        );
+        assert_eq!(request.header("anthropic-version"), Some("2023-06-01"));
+        assert_eq!(request.header("x-title"), Some("b10x gateway"));
+        assert_eq!(request.header("x-api-key"), Some(ENDPOINT_CREDENTIAL));
+    }
+}
+
 /// A hosted endpoint that fails is answered `upstream-failed` and is kept: the next request
 /// reaches the same endpoint, since nothing replaces it. A Runpod model beside it, whose
 /// provider declares no connection, is still answered `target-unavailable` (criterion 7: the

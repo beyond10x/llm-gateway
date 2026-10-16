@@ -8,7 +8,8 @@ use crate::{
     trusted,
 };
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, GatewayConfig, ReasoningEffort, ToolCalling,
+    AuthKind, BillingKind, CredentialHeader, GatewayConfig, ReasoningEffort, StaticHeader,
+    ToolCalling,
 };
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
@@ -80,6 +81,9 @@ struct HostedDocument {
     /// `config:schema`, as a Runpod model's `reasoning_effort` is.
     #[serde(default)]
     reasoning_effort: Option<String>,
+    /// `[hosted.<alias>.headers]`: static request headers, name to value.
+    #[serde(default)]
+    headers: BTreeMap<String, String>,
 }
 
 enum AuthKindDocument {
@@ -315,6 +319,9 @@ pub struct Hosted {
     pub tool_calling: ToolCalling,
     /// The effort a messages-wire request naming none is given, when declared.
     pub reasoning_effort: Option<ReasoningEffort>,
+    /// The static headers every request to the endpoint carries, in name order
+    /// (story:hosted-static-headers).
+    pub headers: Vec<StaticHeader>,
 }
 
 /// A loaded and validated deployment document.
@@ -513,7 +520,11 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
             })
         })
         .transpose()?;
+    let headers = static_headers(&key("headers"), &declared.headers)?;
+    crate::hosted::check_headers(&headers, credential_header.as_ref())
+        .map_err(|error| value(&key("headers"), &error.to_string()))?;
     Ok(Hosted {
+        headers,
         wires: declared.wires,
         base_url: declared.base_url,
         auth_kind,
@@ -532,6 +543,22 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         },
         reasoning_effort,
     })
+}
+
+/// `[hosted.<alias>.headers]`, each checked as a [`StaticHeader`] and sorted by its lowercase
+/// name. The refusal names the key and the rule, never a name or a value.
+fn static_headers(
+    key: &str,
+    declared: &BTreeMap<String, String>,
+) -> Result<Vec<StaticHeader>, Refusal> {
+    let mut headers = declared
+        .iter()
+        .map(|(name, text)| {
+            StaticHeader::new(name, text).map_err(|error| value(key, &error.to_string()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    headers.sort_by(|left, right| left.name().cmp(right.name()));
+    Ok(headers)
 }
 
 fn value(key: &str, rule: &str) -> Refusal {

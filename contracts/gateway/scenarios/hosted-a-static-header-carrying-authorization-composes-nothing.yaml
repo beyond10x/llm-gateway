@@ -1,0 +1,23 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-a-static-header-carrying-authorization-composes-nothing
+summary: a static header named Authorization is refused static-header:reserved, so a credential cannot ride in the headers table and nothing is composed
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"remote","upstream_model":"vendor-remote","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous","headers":{"Authorization":"Bearer smuggled-0123456789abcdef"}}}],"pods":[[]],"steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: 'static-header:reserved'
+    results: []
+    upstream: []
+    connections: []
+    acquired: 0

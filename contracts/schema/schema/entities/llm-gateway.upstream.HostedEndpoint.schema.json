@@ -29,6 +29,13 @@
     "credential_header": {
       "type": "string"
     },
+    "headers": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string"
+      },
+      "x-ess-map-key": "String"
+    },
     "billing_kind": {
       "$ref": "#/$defs/llm-gateway.upstream.BillingKind"
     },
@@ -42,6 +49,7 @@
     "upstream_model",
     "base_url",
     "auth_kind",
+    "headers",
     "billing_kind",
     "state"
   ],
@@ -49,8 +57,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
-    "contract_digest": "slice-sha256/2:a0285f9b687aaa4e77d7da158726e79e9ba6c1b0fe9d6a38d3815e0932ebdb0c",
+    "source_digest": "1967eee4c0e91b827f2f214a01bd519eb994269176729a1f2ecbb9f4323891d3",
+    "contract_digest": "slice-sha256/2:f68302be4e5c140dc96bfe8aba4cb4879c16d1cc34bb182f45dc02da6b3d9b62",
     "regenerate": "ess generate"
   },
   "$defs": {

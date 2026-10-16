@@ -13,6 +13,7 @@ use llm_gateway::{AuthKind, BillingKind, CredentialHeader, ReasoningEffort, Tool
 use llm_gateway_cli::{Wire, load, vllm_keys};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking};
 use std::{
+    fmt::Write as _,
     net::SocketAddr,
     path::{Path, PathBuf},
     time::Duration,
@@ -1453,6 +1454,153 @@ fn hosted_every_value_outside_its_rule_is_refused() {
         assert!(loaded.is_ok(), "{url}: refused");
         assert_eq!(loaded.unwrap().hosted["remote"].base_url, url);
     }
+}
+
+/// story:hosted-static-headers: `[hosted.<alias>.headers]` loads as lowercase names in name
+/// order with their values as written.
+#[test]
+fn hosted_static_headers_load_lowercase_in_name_order() {
+    let fixture = Fixture::new("hosted-headers");
+    let credential = fixture.endpoint_credential();
+    let text = format!(
+        "{}[hosted.remote.headers]\nX-Title = \"b10x gateway\"\nanthropic-version = \"2023-06-01\"\n\"HTTP-Referer\" = \"https://example.test/app\"\n",
+        hosted(&fixture, &api_key_keys(&credential, "x-api-key"))
+    );
+    let deployment = load(&fixture.config(&text)).unwrap();
+    let headers: Vec<(&str, &str)> = deployment.hosted["remote"]
+        .headers
+        .iter()
+        .map(|header| (header.name(), header.value()))
+        .collect();
+    assert_eq!(
+        headers,
+        [
+            ("anthropic-version", "2023-06-01"),
+            ("http-referer", "https://example.test/app"),
+            ("x-title", "b10x gateway"),
+        ]
+    );
+    let none = load(&fixture.config(&hosted(&fixture, &bearer_keys(&credential)))).unwrap();
+    assert!(none.hosted["remote"].headers.is_empty());
+}
+
+/// `count` static headers `x-h0` … , one line each.
+fn many_headers(count: usize) -> String {
+    (0..count).fold(String::new(), |mut lines, index| {
+        writeln!(lines, "x-h{index} = \"v\"").unwrap();
+        lines
+    })
+}
+
+/// The out-of-rule static headers, each a `(case, lines)` under `[hosted.remote.headers]`.
+fn static_header_cases() -> Vec<(&'static str, String)> {
+    vec![
+        ("host", "Host = \"elsewhere.test\"\n".to_owned()),
+        (
+            "authorization",
+            "authorization = \"Bearer leaked-value\"\n".to_owned(),
+        ),
+        ("content-length", "content-length = \"5\"\n".to_owned()),
+        (
+            "transfer-encoding",
+            "transfer-encoding = \"chunked\"\n".to_owned(),
+        ),
+        ("connection", "Connection = \"keep-alive\"\n".to_owned()),
+        (
+            "proxy-authorization",
+            "proxy-authorization = \"Basic leaked-value\"\n".to_owned(),
+        ),
+        (
+            "the credential header",
+            "X-Api-Key = \"leaked-value\"\n".to_owned(),
+        ),
+        (
+            "a name repeated in another case",
+            "x-title = \"a\"\nX-Title = \"b\"\n".to_owned(),
+        ),
+        ("an empty name", "\"\" = \"v\"\n".to_owned()),
+        (
+            "a name of 65 bytes",
+            format!("{} = \"v\"\n", "k".repeat(65)),
+        ),
+        ("a name with a space", "\"x title\" = \"v\"\n".to_owned()),
+        ("a name with a colon", "\"x:title\" = \"v\"\n".to_owned()),
+        ("an empty value", "x-title = \"\"\n".to_owned()),
+        (
+            "a value of 1025 bytes",
+            format!("x-title = \"{}\"\n", "v".repeat(1025)),
+        ),
+        (
+            "a value with CR LF",
+            "x-title = \"a\\r\\nx-injected: b\"\n".to_owned(),
+        ),
+        ("a value with LF", "x-title = \"a\\nb\"\n".to_owned()),
+        ("a value with NUL", "x-title = \"a\\u0000b\"\n".to_owned()),
+        ("a value with a tab", "x-title = \"a\\tb\"\n".to_owned()),
+        (
+            "a value with a leading space",
+            "x-title = \" a\"\n".to_owned(),
+        ),
+        (
+            "a value with a trailing space",
+            "x-title = \"a \"\n".to_owned(),
+        ),
+        (
+            "a value outside ASCII",
+            "x-title = \"caf\u{e9}\"\n".to_owned(),
+        ),
+        ("33 headers", many_headers(33)),
+    ]
+}
+
+/// story:hosted-static-headers: every static header outside its rule is `config:value` naming
+/// `hosted.remote.headers`, and quoting no value; each boundary on its own side loads.
+#[test]
+fn hosted_static_headers_outside_their_rule_are_refused() {
+    let fixture = Fixture::new("hosted-headers-out-of-rule");
+    let credential = fixture.endpoint_credential();
+    let control = hosted(&fixture, &api_key_keys(&credential, "x-api-key"));
+    let table = |lines: &str| format!("{control}[hosted.remote.headers]\n{lines}");
+    for (case, lines) in static_header_cases() {
+        match load(&fixture.config(&table(&lines))) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => {
+                assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+                let message = refusal.to_string();
+                assert!(
+                    message.contains("hosted.remote.headers"),
+                    "{case}: {message}"
+                );
+                assert!(!message.contains("leaked-value"), "{case}: {message}");
+            }
+        }
+    }
+    for (case, lines) in [
+        ("32 headers", many_headers(32)),
+        (
+            "a name of 64 bytes",
+            format!("{} = \"v\"\n", "k".repeat(64)),
+        ),
+        (
+            "a value of 1024 bytes",
+            format!("x-title = \"{}\"\n", "v".repeat(1024)),
+        ),
+        (
+            "a value with inner spaces",
+            "x-title = \"a b  c\"\n".to_owned(),
+        ),
+    ] {
+        assert!(
+            load(&fixture.config(&table(&lines))).is_ok(),
+            "{case}: refused"
+        );
+    }
+    // A value that is not a string leaves the closed document.
+    let mistyped = table("x-title = 5\n");
+    assert_eq!(
+        load(&fixture.config(&mistyped)).unwrap_err().code(),
+        "config:schema"
+    );
 }
 
 /// An unknown key, a missing required key and a closed value outside its set leave the closed

@@ -20,7 +20,8 @@ use crate::{
 };
 use llm_gateway::{
     AuthKind, BasePath, CredentialHeader, Label, RelayStream, RelayTarget, RelayTargets,
-    RouteSummary, TargetBearer, TargetLimits, TargetProvenance, TargetRefusal, TargetSummary,
+    RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance, TargetRefusal,
+    TargetSummary,
 };
 use rustls::pki_types::ServerName;
 use std::{
@@ -80,6 +81,61 @@ impl fmt::Display for BaseUrlError {
 
 impl std::error::Error for BaseUrlError {}
 
+/// The most static headers one endpoint declares.
+pub const MAX_STATIC_HEADERS: usize = 32;
+
+/// A set of static headers an endpoint is not sent (story:hosted-static-headers). Each header
+/// already passed [`StaticHeader::new`]; these are the rules of the set.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderSetError {
+    /// More than [`MAX_STATIC_HEADERS`].
+    TooMany,
+    /// Two names equal without regard to case.
+    Repeated,
+    /// A name equal to the endpoint's own credential header: a credential stays in its file.
+    CredentialHeader,
+}
+
+impl fmt::Display for HeaderSetError {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str(match self {
+            Self::TooMany => "must hold at most 32 headers",
+            Self::Repeated => "must not name one header twice, whatever the case",
+            Self::CredentialHeader => {
+                "must not name the endpoint's credential_header: a credential stays in \
+                 credential_file"
+            }
+        })
+    }
+}
+
+impl std::error::Error for HeaderSetError {}
+
+/// Checks a set of static headers against the endpoint's `credential_header`.
+///
+/// # Errors
+/// [`HeaderSetError`] for the first rule the set breaks.
+pub fn check_headers(
+    headers: &[StaticHeader],
+    credential_header: Option<&CredentialHeader>,
+) -> Result<(), HeaderSetError> {
+    if headers.len() > MAX_STATIC_HEADERS {
+        return Err(HeaderSetError::TooMany);
+    }
+    for (index, header) in headers.iter().enumerate() {
+        if headers[..index]
+            .iter()
+            .any(|earlier| earlier.name() == header.name())
+        {
+            return Err(HeaderSetError::Repeated);
+        }
+        if credential_header.is_some_and(|credential| credential.as_str() == header.name()) {
+            return Err(HeaderSetError::CredentialHeader);
+        }
+    }
+    Ok(())
+}
+
 /// What an endpoint is sent, besides the request: nothing, a bearer, or an API key in its own
 /// header. The material is a [`TargetBearer`]: one printable token, redacted in `Debug` and
 /// overwritten when dropped.
@@ -104,6 +160,7 @@ pub struct HostedEndpoint {
     authority: String,
     base_path: Option<BasePath>,
     credential: EndpointCredential,
+    headers: Vec<StaticHeader>,
 }
 
 /// What a checked base URL names: how the endpoint is reached, its authority, and the base path
@@ -171,7 +228,22 @@ impl HostedEndpoint {
             authority: authority.to_owned(),
             base_path,
             credential,
+            headers: Vec::new(),
         })
+    }
+
+    /// The endpoint, sent `headers` after `host` on every request, in the order given.
+    ///
+    /// # Errors
+    /// [`HeaderSetError`] as [`check_headers`] for this endpoint's credential header.
+    pub fn with_headers(mut self, headers: Vec<StaticHeader>) -> Result<Self, HeaderSetError> {
+        let credential_header = match &self.credential {
+            EndpointCredential::ApiKey { header, .. } => Some(header),
+            _ => None,
+        };
+        check_headers(&headers, credential_header)?;
+        self.headers = headers;
+        Ok(self)
     }
 
     /// The `host[:port]` requests are sent to and named by.
@@ -273,6 +345,10 @@ impl RelayTarget for HostedTarget {
         self.endpoint.base_path.as_ref()
     }
 
+    fn headers(&self) -> &[StaticHeader] {
+        &self.endpoint.headers
+    }
+
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
         match self.endpoint.scheme {
             Scheme::Https => self.tls.connect(&self.endpoint.authority),
@@ -336,7 +412,9 @@ pub(crate) fn hosted_endpoints(
             _ => return Err(invalid("declares a credential its auth_kind does not take")),
         };
         let endpoint = HostedEndpoint::new(&hosted.base_url, credential)
-            .map_err(|error| invalid(&format!("base_url: {error}")))?;
+            .map_err(|error| invalid(&format!("base_url: {error}")))?
+            .with_headers(hosted.headers.clone())
+            .map_err(|error| invalid(&format!("headers {error}")))?;
         endpoints.insert(alias.clone(), endpoint);
     }
     Ok(endpoints)

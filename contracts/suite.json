@@ -56,9 +56,12 @@
       "llm-gateway.gateway/authored/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-document-whose-api-key-endpoint-names-no-credential-header-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-hosted-model-beside-a-pod-model-and-a-failed-endpoint-is-kept",
+      "llm-gateway.gateway/authored/hosted-a-static-header-carrying-authorization-composes-nothing",
+      "llm-gateway.gateway/authored/hosted-a-static-header-naming-the-endpoints-credential-header-composes-nothing",
       "llm-gateway.gateway/authored/hosted-an-https-endpoint-is-reached-over-verified-tls",
       "llm-gateway.gateway/authored/hosted-an-https-endpoint-whose-certificate-is-not-trusted-is-upstream-failed-and-reads-no-byte",
       "llm-gateway.gateway/authored/hosted-each-endpoint-receives-its-credential-as-its-auth-kind-says-and-never-the-owners",
+      "llm-gateway.gateway/authored/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do",
       "llm-gateway.gateway/authored/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file",
       "llm-gateway.gateway/authored/inspection-a-query-string-is-discarded",
       "llm-gateway.gateway/authored/inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent",
@@ -500,6 +503,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/hosted-a-hosted-model-beside-a-pod-model-and-a-failed-endpoint-is-kept"
       },
+      "gateway/scenarios/hosted-a-static-header-carrying-authorization-composes-nothing.yaml": {
+        "digest": "sha256:62be705af8bc001a2b6f1f07692e83919697c2e87b55b6faeb0388cd8b1dbdb4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-a-static-header-carrying-authorization-composes-nothing"
+      },
+      "gateway/scenarios/hosted-a-static-header-naming-the-endpoints-credential-header-composes-nothing.yaml": {
+        "digest": "sha256:29c1b68db500b2445d9ab260e2ec7f833fc26b84b93fee511bbb4f7963990a8b",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-a-static-header-naming-the-endpoints-credential-header-composes-nothing"
+      },
       "gateway/scenarios/hosted-an-https-endpoint-is-reached-over-verified-tls.yaml": {
         "digest": "sha256:e1ccadf0d274b75d1ecf63193fb24151528158dd8c32ccec4277fbc2d1865973",
         "disposition": "accepted",
@@ -514,6 +527,11 @@
         "digest": "sha256:9046a03b6820d55539f85fcb04f7e6370ef0c9b5747c40968170ec4a50a03edb",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/hosted-each-endpoint-receives-its-credential-as-its-auth-kind-says-and-never-the-owners"
+      },
+      "gateway/scenarios/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do.yaml": {
+        "digest": "sha256:3d6e94a9f456f85996bc48270394ecf6614bcc8dd40d9faef9ef4efa17d52bba",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do"
       },
       "gateway/scenarios/hosted-the-inventory-names-each-hosted-targets-kinds-and-never-its-url-or-credential-file.yaml": {
         "digest": "sha256:84456784e0beae134c59c8f99a6980a31e7c8507981a65f867f15450101c0ce7",
@@ -1337,7 +1355,7 @@
       }
     },
     "counts": {
-      "authored": 222,
+      "authored": 225,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1362,9 +1380,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "341d6ed63a79a3ca1e15e8c2620cdc4c358542e62573965622f731d86747dc17",
+    "contract_digest": "5d661751ce34dcd3c580189e396b58a3bce1b1d6b213fa1b1f8f5c4006e55479",
     "scenario_initial_state": "empty",
-    "spec_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
+    "spec_digest": "1967eee4c0e91b827f2f214a01bd519eb994269176729a1f2ecbb9f4323891d3",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -6370,6 +6388,192 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/hosted-a-static-header-carrying-authorization-composes-nothing": {
+      "purpose": "a static header named Authorization is refused static-header:reserved, so a credential cannot ride in the headers table and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"remote\",\"upstream_model\":\"vendor-remote\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\",\"headers\":{\"Authorization\":\"Bearer smuggled-0123456789abcdef\"}}}],\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "static-header:reserved"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/hosted-a-static-header-naming-the-endpoints-credential-header-composes-nothing": {
+      "purpose": "an api-key endpoint whose static headers name its own credential header, in another case, is refused endpoint:headers, so the credential stays in its file and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"keyed\",\"upstream_model\":\"vendor-keyed\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"api-key\",\"credential\":\"endpoint-api-key-0123456789abcdef\",\"credential_header\":\"x-api-key\",\"headers\":{\"X-Api-Key\":\"inline-key-0123456789abcdef\"}}}],\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "endpoint:headers"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/hosted-an-https-endpoint-is-reached-over-verified-tls": {
       "purpose": "an https endpoint whose certificate the client's trust roots issued for its address is reached over TLS, and the request and its credential travel inside it",
       "source": [
@@ -6758,6 +6962,117 @@
                   "pod-1 POST /v1/responses {\"model\":\"vendor-remote\",\"input\":\"hi\"}",
                   "pod-2 POST /v1/chat/completions {\"model\":\"vendor-keyed\",\"messages\":[]}",
                   "pod-3 POST /v1/messages {\"model\":\"open-model\",\"max_tokens\":8,\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do": {
+      "purpose": "an endpoint's declared static headers reach it lowercase, in name order, after host and before its credential, while the client's own anthropic-version and anthropic-beta never do",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"claude\",\"upstream_model\":\"vendor-claude\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"api-key\",\"credential\":\"endpoint-api-key-0123456789abcdef\",\"credential_header\":\"x-api-key\",\"headers\":{\"anthropic-version\":\"2023-06-01\",\"X-Title\":\"b10x gateway\"}}},{\"alias\":\"plain\",\"upstream_model\":\"vendor-plain\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"msg-1\\\"}\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"claude\\\",\\\"messages\\\":[]}\",\"headers\":[\"anthropic-version: 2099-01-01\",\"anthropic-beta: client-beta\"]},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "received_heads": {
+                "kind": "literal",
+                "value": [
+                  "anthropic-version: 2023-06-01 | x-title: b10x gateway | x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | content-length: 39 | connection: close",
+                  "content-type: application/json | content-length: 38 | connection: close"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"vendor-claude\",\"messages\":[]}",
+                  "pod-2 POST /v1/chat/completions {\"model\":\"vendor-plain\",\"messages\":[]}"
                 ]
               },
               "valid_program": {

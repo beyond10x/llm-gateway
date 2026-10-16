@@ -206,6 +206,13 @@ pub const CAPABILITIES: &[Capability] = &[
         DOCUMENT,
     ),
     shipped(
+        "Relay",
+        "Static headers per hosted endpoint",
+        "[hosted.<alias>.headers] declares non-secret request headers, such as anthropic-version or X-Title, sent with every request to that endpoint. Framing headers, authorization and the endpoint's credential header are refused at start, and client headers are still never forwarded. Tested against loopback endpoints.",
+        "crates/llm-gateway-cli/tests/hosted.rs::hosted_static_headers_reach_the_endpoint_beside_its_credential",
+        DOCUMENT,
+    ),
+    shipped(
         "Binary",
         "One closed TOML deployment document",
         "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",

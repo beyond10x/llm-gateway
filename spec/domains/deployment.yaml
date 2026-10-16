@@ -359,6 +359,15 @@ types:
   #   hf_model, image       1..=200 printable ASCII
   #   gpu_types             1..=16 entries, each 1..=64 printable ASCII, tried in order
   #   max_model_len         1024..=context_window
+  #   profiles              optional, 1..=8 ProfileDeclaration, tried in order: the model's
+  #                         profiles (llm-gateway.runpod.ModelProfile). With `profiles`, the
+  #                         flat gpu_types, max_model_len, max_num_seqs, gpu_util and
+  #                         extra_vllm_args are refused (`config:value` naming
+  #                         `models.<alias>.profiles`); without it, gpu_types and max_model_len
+  #                         are required (`config:schema` when missing) and the flat keys are one
+  #                         profile named `default`. Two profiles sharing a name, or a GPU type
+  #                         in two profiles, is `config:value` naming
+  #                         `models.<alias>.profiles` with the rule `profile-conflict`
   #   max_num_seqs          1..=1024, default 8
   #   gpu_util              0.1..=1.0, default 0.90
   #   disk_gb               10..=2000, default 80
@@ -381,6 +390,9 @@ types:
   #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
   #   tool_calling          `parsed` or `absent` (llm-gateway.clients.ToolCalling), default
   #                         `absent`; any other value is `config:schema`
+  # DECIDED 2026-10-16 (story:model-profile-fallback): a model may declare `[[models.<alias>.profiles]]`;
+  # the flat declaration is the one-profile case and keeps its meaning. Proved by `profiles_*`
+  # in crates/llm-gateway-cli/tests/config.rs.
   # DECIDED 2026-10-08 (story:model-tool-calling): `tool_calling` is the model's own key, and a
   # document that omits it declares `Absent`. An omitted key then refuses a tool request as
   # `tools-not-served` before a pod is asked for, instead of starting and billing a pod that
@@ -396,15 +408,16 @@ types:
       - {name: context_window, type: Integer}
       - {name: hf_model, type: String}
       - {name: image, type: String}
-      - {name: gpu_types, type: 'List<String>'}
-      - {name: max_model_len, type: Integer}
-      - {name: max_num_seqs, type: Integer}
-      - {name: gpu_util, type: Decimal}
+      - {name: gpu_types, type: 'Optional<List<String>>'}
+      - {name: max_model_len, type: 'Optional<Integer>'}
+      - {name: max_num_seqs, type: 'Optional<Integer>'}
+      - {name: gpu_util, type: 'Optional<Decimal>'}
+      - {name: profiles, type: 'Optional<List<llm-gateway.deployment.ProfileDeclaration>>'}
       - {name: disk_gb, type: Integer}
       - {name: thinking, type: llm-gateway.deployment.Thinking}
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.ReasoningEffort>'}
       - {name: sampling, type: 'Optional<String>'}
-      - {name: extra_vllm_args, type: 'List<String>'}
+      - {name: extra_vllm_args, type: 'Optional<List<String>>'}
       - {name: network_volume_id, type: 'Optional<String>'}
       - {name: volume_mount_path, type: String}
       - {name: data_center_ids, type: 'List<String>'}
@@ -414,6 +427,25 @@ types:
       - {name: vllm_api_key_file, type: 'Optional<String>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: price_per_hour_usd, type: 'Optional<Decimal>'}
+  # One `[[models.<alias>.profiles]]` entry (story:model-profile-fallback): the
+  # llm-gateway.runpod.ModelProfile it becomes. Every rule is `config:value`, a missing
+  # required key or an unknown key `config:schema`.
+  #   name             1..=32 of `A-Za-z0-9 - _`, unique in the model
+  #   gpu_types        as the model's: 1..=16 entries, each 1..=64 printable ASCII, tried in
+  #                    order; no GPU type in two profiles of the model
+  #   max_model_len    1024..=context_window
+  #   max_num_seqs     1..=1024, default 8
+  #   gpu_util         0.1..=1.0, default 0.90
+  #   extra_vllm_args  at most 64, each 1..=256 printable ASCII
+  - name: llm-gateway.deployment.ProfileDeclaration
+    kind: struct
+    fields:
+      - {name: name, type: String}
+      - {name: gpu_types, type: 'List<String>'}
+      - {name: max_model_len, type: Integer}
+      - {name: max_num_seqs, type: Integer}
+      - {name: gpu_util, type: Decimal}
+      - {name: extra_vllm_args, type: 'List<String>'}
   # `[hosted.<alias>]`: a model served by a hosted endpoint (llm-gateway.upstream.HostedEndpoint,
   # whose `endpoint_id` is the alias). The alias follows the provider-name rule and names no
   # `[models.<alias>]` as well. Every rule is `config:value`; a missing required key, an unknown

@@ -62,6 +62,8 @@ enum Script {
     Refused,
     /// Answers that the model is still starting past its hold budget.
     ColdStart,
+    /// Hands out a target on a pod of this profile, whose connection answers these raw bytes.
+    Profiled(&'static str, &'static str),
 }
 
 #[derive(Default)]
@@ -73,6 +75,7 @@ struct Source {
 struct Target {
     answer: Option<&'static str>,
     held: bool,
+    profile: Option<&'static str>,
 }
 
 /// One in-memory connection: reads the scripted answer, swallows what is written.
@@ -101,17 +104,25 @@ impl RelayTargets for Source {
             Some(Script::Answer(answer)) => Ok(Box::new(Target {
                 answer: Some(answer),
                 held: false,
+                profile: None,
+            })),
+            Some(Script::Profiled(answer, profile)) => Ok(Box::new(Target {
+                answer: Some(answer),
+                held: false,
+                profile: Some(profile),
             })),
             Some(Script::Held(wait, answer)) => {
                 thread::sleep(wait);
                 Ok(Box::new(Target {
                     answer: Some(answer),
                     held: true,
+                    profile: None,
                 }))
             }
             Some(Script::Refused) => Ok(Box::new(Target {
                 answer: None,
                 held: false,
+                profile: None,
             })),
             Some(Script::ColdStart) => Err(TargetRefusal::ColdStart),
             None => Err(TargetRefusal::Unavailable),
@@ -130,6 +141,10 @@ impl RelayTarget for Target {
 
     fn held(&self) -> bool {
         self.held
+    }
+
+    fn profile(&self) -> Option<String> {
+        self.profile.map(str::to_owned)
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -821,4 +836,42 @@ fn o1_the_embeddings_pod_counters_are_served_as_counted() {
         "0"
     );
     assert!(metrics.render().contains("llmgw_pod_reaps_total 3\n"));
+}
+
+/// story:model-profile-fallback: the record names the profile of the pod that served the call;
+/// a target that reports none, and a call no target served, name none.
+#[test]
+fn a_record_names_the_profile_of_the_pod_that_served_and_none_otherwise() {
+    let fixture = relaying(
+        vec![Script::Profiled(ANSWER, "h100-64k"), Script::Answer(ANSWER)],
+        true,
+    );
+    let address = fixture.handle.local_addr();
+    let profiled = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    let unprofiled = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    let unavailable = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    assert_eq!(profiled.status, 200);
+    assert_eq!(unprofiled.status, 200);
+    assert_eq!(unavailable.status, 503);
+    let profiles: Vec<Option<String>> = fixture
+        .records()
+        .iter()
+        .map(|record| record.profile.clone())
+        .collect();
+    assert_eq!(profiles, [Some("h100-64k".to_owned()), None, None]);
 }

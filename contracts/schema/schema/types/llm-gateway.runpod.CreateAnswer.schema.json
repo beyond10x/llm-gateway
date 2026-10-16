@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
-    "contract_digest": "slice-sha256/2:2191867e874cda3bfadf0d66448b4d08ee44c702f8e0e67959dc72df1db1a434",
+    "source_digest": "1321518e595ff4b45b3ff973faffa0beaac48efd3b3fcbb9f10dae89a0282916",
+    "contract_digest": "slice-sha256/2:2197c791857891eb05ca7eaac0c09dcda23306316b7af3bd28fc1f079a360c9a",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -16,6 +16,7 @@
       "type": "string",
       "enum": [
         "Created",
+        "NoCapacity",
         "Refused",
         "Lost"
       ]

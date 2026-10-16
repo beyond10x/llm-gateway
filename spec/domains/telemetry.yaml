@@ -130,6 +130,14 @@ entities:
       # The model name the target reported in its answer. Absent when it reported none; it is
       # never the alias and never the upstream name the gateway rewrote the request to (row W2).
       - {name: reported_model, type: 'Optional<String>'}
+      # DECIDED 2026-10-16 (story:model-profile-fallback): the profile
+      # (llm-gateway.runpod.ModelProfile `name`) of the pod that served the call, `default` for
+      # a model declaring none. Absent when no pod served it: a hosted endpoint, and a refusal
+      # before a pod was handed out. The binary's record carries it; the `Relay` command's
+      # `records` fact does not, because the gateway scenarios relay to no pod
+      # (`a_relayed_call_names_the_profile_of_the_pod_that_served` in
+      # crates/llm-gateway-cli/tests/relaying.rs).
+      - {name: profile, type: 'Optional<String>'}
       - {name: input_tokens, type: 'Optional<Integer>'}
       - {name: output_tokens, type: 'Optional<Integer>'}
       - {name: cached_input_tokens, type: 'Optional<Integer>'}

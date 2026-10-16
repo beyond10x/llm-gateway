@@ -1,0 +1,54 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-capacity-refusal-starts-the-model-on-its-next-profile
+summary: a profile whose every GPU answered no capacity is followed by the next profile, started with that profile's vLLM settings
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"profiles":[{"name":"l40s-32k","gpu_types":["NVIDIA L40S","NVIDIA A40"],"vllm":{"max_model_len":32768}},{"name":"h100-64k","gpu_types":["NVIDIA H100 NVL"],"vllm":{"max_model_len":65536,"max_num_seqs":16,"extra_args":["--speculative-config","{\"method\":\"mtp\"}"]}}]}},"steps":[{"step":"no_capacity_gpu","gpu":"NVIDIA L40S"},{"step":"no_capacity_gpu","gpu":"NVIDIA A40"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    create_calls: 3
+    requested_gpus:
+    - NVIDIA L40S
+    - NVIDIA A40
+    - NVIDIA H100 NVL
+    pods:
+    - pod1:b10x-llm-qwen:running
+    leases:
+    - https://pod1-8000.proxy.runpod.net/v1/ qwen
+    lease_profiles:
+    - h100-64k
+    last_entrypoint:
+    - vllm
+    - serve
+    - Qwen/Qwen3.8-27B-FP8
+    - --host
+    - 0.0.0.0
+    - --port
+    - '8000'
+    - --served-model-name
+    - qwen
+    - --max-model-len
+    - '65536'
+    - --max-num-seqs
+    - '16'
+    - --gpu-memory-utilization
+    - '0.9'
+    - --generation-config
+    - vllm
+    - --default-chat-template-kwargs
+    - '{"enable_thinking":false}'
+    - --override-generation-config
+    - '{"temperature":0.7,"top_p":0.8,"top_k":20,"presence_penalty":1.5}'
+    - --speculative-config
+    - '{"method":"mtp"}'

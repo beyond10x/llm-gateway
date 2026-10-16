@@ -29,6 +29,9 @@
     "reported_model": {
       "type": "string"
     },
+    "profile": {
+      "type": "string"
+    },
     "input_tokens": {
       "type": "integer"
     },
@@ -67,8 +70,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
-    "contract_digest": "slice-sha256/2:438cc201f7c6cd0d8bb2f42edcefaec362e23ed7072268d3e7348edba5a6674f",
+    "source_digest": "1321518e595ff4b45b3ff973faffa0beaac48efd3b3fcbb9f10dae89a0282916",
+    "contract_digest": "slice-sha256/2:7d57dcbc877c096d01745443edad7f1a6348c4ed69e5f7b4211ce48bb4a80d9c",
     "regenerate": "ess generate"
   },
   "$defs": {

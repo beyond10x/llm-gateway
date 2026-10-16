@@ -201,6 +201,7 @@
       "llm-gateway.hosting/authored/the-time-ceiling-obliges-a-stop-rather-than-performing-one",
       "llm-gateway.hosting/authored/unreported-readiness-is-unknown-and-never-ready",
       "llm-gateway.hosting/authored/validating-and-listing-allocate-nothing",
+      "llm-gateway.runpod/authored/a-capacity-refusal-starts-the-model-on-its-next-profile",
       "llm-gateway.runpod/authored/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one",
       "llm-gateway.runpod/authored/a-gpu-memory-utilization-above-one-is-refused",
       "llm-gateway.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted",
@@ -211,6 +212,7 @@
       "llm-gateway.runpod/authored/a-model-value-that-is-not-printable-is-refused",
       "llm-gateway.runpod/authored/a-model-without-a-gpu-type-is-refused",
       "llm-gateway.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override",
+      "llm-gateway.runpod/authored/a-non-capacity-refusal-is-not-retried-on-the-next-profile",
       "llm-gateway.runpod/authored/a-partial-listing-neither-discharges-nor-replaces-a-running-pod",
       "llm-gateway.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order",
       "llm-gateway.runpod/authored/a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated",
@@ -255,6 +257,7 @@
       "llm-gateway.runpod/authored/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods",
       "llm-gateway.runpod/authored/the-resource-ceiling-refuses-a-second-model-before-anything-is-submitted",
       "llm-gateway.runpod/authored/the-spend-check-runs-before-each-create-of-the-gpu-fallback",
+      "llm-gateway.runpod/authored/two-profiles-sharing-a-gpu-type-are-refused",
       "llm-gateway.runpod/authored/without-a-ceiling-no-spend-is-read"
     ],
     "authored_sources": {
@@ -1258,6 +1261,11 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.hosting/authored/validating-and-listing-allocate-nothing"
       },
+      "runpod/scenarios/a-capacity-refusal-starts-the-model-on-its-next-profile.yaml": {
+        "digest": "sha256:5095f7aa6c2fb1bbad70b6854a203142cd8b478382a93fb200aad457f528d8bd",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-capacity-refusal-starts-the-model-on-its-next-profile"
+      },
       "runpod/scenarios/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one.yaml": {
         "digest": "sha256:ac21d1b61ce28a7ccfd6f8f9b6ec18895f9ad9fba5f35dbaa6fe8721add1657b",
         "disposition": "accepted",
@@ -1307,6 +1315,11 @@
         "digest": "sha256:fb6fc73275591b3a72271216e9bde96295dd0dacc4e921d14218b5bf516b5691",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override"
+      },
+      "runpod/scenarios/a-non-capacity-refusal-is-not-retried-on-the-next-profile.yaml": {
+        "digest": "sha256:361383049b02c1b641f150c4034940e5f7b9cc87805d2786fd6c405c736737a1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-non-capacity-refusal-is-not-retried-on-the-next-profile"
       },
       "runpod/scenarios/a-partial-listing-neither-discharges-nor-replaces-a-running-pod.yaml": {
         "digest": "sha256:982bad2de09a7527b92a69ba9189455b636725b9615641aef3a08eb8f2854023",
@@ -1528,6 +1541,11 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/the-spend-check-runs-before-each-create-of-the-gpu-fallback"
       },
+      "runpod/scenarios/two-profiles-sharing-a-gpu-type-are-refused.yaml": {
+        "digest": "sha256:899308bda75de7ffc9c61cd147f3f7188ff5c35465faa1ac627d0b5e8fe6ef7f",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/two-profiles-sharing-a-gpu-type-are-refused"
+      },
       "runpod/scenarios/without-a-ceiling-no-spend-is-read.yaml": {
         "digest": "sha256:18c2123d64e4a50a6b08191f6a9df71b2e6462ca80423c2ff28883532b4bf627",
         "disposition": "accepted",
@@ -1535,7 +1553,7 @@
       }
     },
     "counts": {
-      "authored": 255,
+      "authored": 258,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1560,9 +1578,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "3c5f78702ef53f5208d9fe4756b3120c16400daed0bf9ff5247c27d0206fd9cb",
+    "contract_digest": "ff6fbbc8e04d1714a830b5c831ee551ef5c83f04e708547dd0f9b4a9ea1171bf",
     "scenario_initial_state": "empty",
-    "spec_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "spec_digest": "1321518e595ff4b45b3ff973faffa0beaac48efd3b3fcbb9f10dae89a0282916",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -21921,6 +21939,139 @@
         }
       ]
     },
+    "llm-gateway.runpod/authored/a-capacity-refusal-starts-the-model-on-its-next-profile": {
+      "purpose": "a profile whose every GPU answered no capacity is followed by the next profile, started with that profile's vLLM settings",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"profiles\":[{\"name\":\"l40s-32k\",\"gpu_types\":[\"NVIDIA L40S\",\"NVIDIA A40\"],\"vllm\":{\"max_model_len\":32768}},{\"name\":\"h100-64k\",\"gpu_types\":[\"NVIDIA H100 NVL\"],\"vllm\":{\"max_model_len\":65536,\"max_num_seqs\":16,\"extra_args\":[\"--speculative-config\",\"{\\\"method\\\":\\\"mtp\\\"}\"]}}]}},\"steps\":[{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA L40S\"},{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA A40\"},{\"step\":\"until_ready\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "last_entrypoint": {
+                "kind": "literal",
+                "value": [
+                  "vllm",
+                  "serve",
+                  "Qwen/Qwen3.8-27B-FP8",
+                  "--host",
+                  "0.0.0.0",
+                  "--port",
+                  "8000",
+                  "--served-model-name",
+                  "qwen",
+                  "--max-model-len",
+                  "65536",
+                  "--max-num-seqs",
+                  "16",
+                  "--gpu-memory-utilization",
+                  "0.9",
+                  "--generation-config",
+                  "vllm",
+                  "--default-chat-template-kwargs",
+                  "{\"enable_thinking\":false}",
+                  "--override-generation-config",
+                  "{\"temperature\":0.7,\"top_p\":0.8,\"top_k\":20,\"presence_penalty\":1.5}",
+                  "--speculative-config",
+                  "{\"method\":\"mtp\"}"
+                ]
+              },
+              "lease_profiles": {
+                "kind": "literal",
+                "value": [
+                  "h100-64k"
+                ]
+              },
+              "leases": {
+                "kind": "literal",
+                "value": [
+                  "https://pod1-8000.proxy.runpod.net/v1/ qwen"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": [
+                  "pod1:b10x-llm-qwen:running"
+                ]
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": [
+                  "NVIDIA L40S",
+                  "NVIDIA A40",
+                  "NVIDIA H100 NVL"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ready"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
     "llm-gateway.runpod/authored/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one": {
       "purpose": "decreasing container uptime reaching the restart limit terminates the pod as crash-loop",
       "source": [
@@ -22789,6 +22940,104 @@
                 "kind": "literal",
                 "value": [
                   "ready"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-non-capacity-refusal-is-not-retried-on-the-next-profile": {
+      "purpose": "a profile with a create refused for any reason but capacity ends the start; the next profile is never tried",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"profiles\":[{\"name\":\"l40s-32k\",\"gpu_types\":[\"NVIDIA L40S\",\"NVIDIA A40\"],\"vllm\":{\"max_model_len\":32768}},{\"name\":\"h100-64k\",\"gpu_types\":[\"NVIDIA H100 NVL\"]}]}},\"steps\":[{\"step\":\"refuse_gpu\",\"gpu\":\"NVIDIA L40S\"},{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA A40\"},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "lease_profiles": {
+                "kind": "literal",
+                "value": []
+              },
+              "leases": {
+                "kind": "literal",
+                "value": []
+              },
+              "pods": {
+                "kind": "literal",
+                "value": []
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": [
+                  "NVIDIA L40S",
+                  "NVIDIA A40"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "err:no-capacity"
                 ]
               }
             }
@@ -26796,6 +27045,95 @@
               "spend_reads": {
                 "kind": "literal",
                 "value": 2.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/two-profiles-sharing-a-gpu-type-are-refused": {
+      "purpose": "a GPU type declared in two profiles of one model refuses the declaration before Runpod is contacted",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"profiles\":[{\"name\":\"l40s-32k\",\"gpu_types\":[\"NVIDIA L40S\"]},{\"name\":\"wide\",\"gpu_types\":[\"NVIDIA H100 NVL\",\"NVIDIA L40S\"]}]}},\"steps\":[{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "invalid-model:profile-conflict"
+              },
+              "lists": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
               }
             }
           },

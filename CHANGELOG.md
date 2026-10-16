@@ -16,6 +16,7 @@ Nothing in any release is deployed or qualified against a live client.
   It never replaces a version the registry already holds, and a registry answer other than not
   found, or a missing docker, stops the release instead of passing it. The package is private when
   first created.
+- A guide, Run on Kubernetes, runs the released image with the file rules unchanged: Secrets copied by an init container into an `emptyDir` the `nonroot` user owns at `0400`, the refusal an `fsGroup` causes (`owner-secret:unsafe-mode`, pasted from a run and asserted by a test), probes, and a `preStop` sleep with a `terminationGracePeriodSeconds` that covers the longest answer.
 
 ## 0.9.0 (2026-10-16)
 

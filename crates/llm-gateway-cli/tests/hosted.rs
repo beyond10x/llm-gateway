@@ -654,6 +654,87 @@ fn hosted_static_headers_reach_the_endpoint_beside_its_credential() {
     }
 }
 
+/// story:ingress-auth-optional, criteria 1, 2 and 4: a document with `ingress_auth = "none"` and
+/// no `owner_secret_file` starts, writes the warning line before `listening on`, relays a model
+/// call without a credential, and refuses the owner-only surface whatever is presented.
+#[test]
+fn ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed() {
+    let fixture = Fixture::new("ingress-none");
+    let endpoint = Endpoint::start();
+    let config = fixture.config(&format!(
+        "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\n\n{}",
+        hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n")
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let before = server.written.clone();
+    let body = r#"{"model":"open","messages":[]}"#;
+    let relayed = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    let absent = String::from_utf8_lossy(&exchange(
+        server.address,
+        "GET /metrics HTTP/1.1\r\nhost: gateway\r\n\r\n",
+    ))
+    .into_owned();
+    let rejected = String::from_utf8_lossy(&exchange(
+        server.address,
+        "GET /v1/routes HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer a-guess-0123456789abcdef0123456789abcdef\r\n\r\n",
+    ))
+    .into_owned();
+    server.stop();
+    assert_eq!(
+        before,
+        [
+            "b10x-llm-gateway: warning ingress auth is off (ingress_auth = \"none\"): model calls are served without a credential".to_owned(),
+            before.last().cloned().unwrap_or_default(),
+        ],
+        "{before:?}"
+    );
+    assert!(before[1].starts_with(LISTENING), "{before:?}");
+    assert!(relayed.starts_with("HTTP/1.1 200 "), "{relayed}");
+    assert!(relayed.contains(ENDPOINT_ANSWER), "{relayed}");
+    assert!(absent.starts_with("HTTP/1.1 401 "), "{absent}");
+    assert!(absent.contains("credential-absent"), "{absent}");
+    assert!(rejected.starts_with("HTTP/1.1 401 "), "{rejected}");
+    assert!(rejected.contains("credential-rejected"), "{rejected}");
+    assert_eq!(endpoint.seen().len(), 1);
+}
+
+/// story:ingress-auth-optional, criterion 3: a document that says nothing of `ingress_auth`
+/// writes no warning and still refuses a model call without the owner's credential.
+#[test]
+fn ingress_bearer_by_default_writes_no_warning_and_refuses_an_unauthenticated_call() {
+    let fixture = Fixture::new("ingress-default");
+    let endpoint = Endpoint::start();
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n"),
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let before = server.written.clone();
+    let body = r#"{"model":"open","messages":[]}"#;
+    let refused = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    server.stop();
+    assert_eq!(before.len(), 1, "{before:?}");
+    assert!(before[0].starts_with(LISTENING), "{before:?}");
+    assert!(refused.starts_with("HTTP/1.1 401 "), "{refused}");
+    assert!(refused.contains("credential-absent"), "{refused}");
+    assert!(endpoint.seen().is_empty());
+}
+
 /// A hosted endpoint that fails is answered `upstream-failed` and is kept: the next request
 /// reaches the same endpoint, since nothing replaces it. A Runpod model beside it, whose
 /// provider declares no connection, is still answered `target-unavailable` (criterion 7: the

@@ -9,7 +9,9 @@
 
 mod support;
 
-use llm_gateway::{AuthKind, BillingKind, CredentialHeader, ReasoningEffort, ToolCalling};
+use llm_gateway::{
+    AuthKind, BillingKind, CredentialHeader, IngressAuth, ReasoningEffort, ToolCalling,
+};
 use llm_gateway_cli::{Wire, load, vllm_keys};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking};
 use std::{
@@ -36,6 +38,52 @@ fn with_model_keys(text: &str, lines: &str) -> String {
     )
 }
 
+/// story:ingress-auth-optional: `ingress_auth = "none"` makes `owner_secret_file` optional;
+/// `bearer`, written or by default, requires it (`config:value`); any other value is
+/// `config:schema`.
+#[test]
+fn ingress_auth_none_makes_the_owner_secret_optional_and_bearer_requires_it() {
+    let fixture = Fixture::new("ingress-auth");
+    let control = base(&fixture);
+    let secret = format!(
+        "owner_secret_file = \"{}\"\n",
+        fixture.owner_secret().display()
+    );
+    assert!(control.contains(&secret), "{control}");
+    let open = mutate(&control, &secret, "ingress_auth = \"none\"\n");
+    let loaded = load(&fixture.config(&open)).unwrap();
+    assert_eq!(loaded.gateway.ingress_auth, IngressAuth::None);
+    assert_eq!(loaded.owner_secret_file, None);
+    let open_with_secret = mutate(&control, &secret, &format!("ingress_auth = \"none\"\n{secret}"));
+    let loaded = load(&fixture.config(&open_with_secret)).unwrap();
+    assert_eq!(loaded.gateway.ingress_auth, IngressAuth::None);
+    assert_eq!(loaded.owner_secret_file, Some(fixture.owner_secret()));
+    let bearer = mutate(&control, &secret, &format!("ingress_auth = \"bearer\"\n{secret}"));
+    assert_eq!(
+        load(&fixture.config(&bearer)).unwrap().gateway.ingress_auth,
+        IngressAuth::Bearer
+    );
+    for (case, replace) in [
+        ("bearer without a secret", "ingress_auth = \"bearer\"\n"),
+        ("the default without a secret", ""),
+    ] {
+        let refusal = load(&fixture.config(&mutate(&control, &secret, replace))).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+        assert!(
+            refusal.to_string().contains("owner_secret_file"),
+            "{case}: {refusal}"
+        );
+    }
+    for value in ["\"open\"", "\"NONE\"", "\"\"", "true", "{ none = {} }"] {
+        let text = mutate(&control, &secret, &format!("ingress_auth = {value}\n{secret}"));
+        assert_eq!(
+            load(&fixture.config(&text)).unwrap_err().code(),
+            "config:schema",
+            "{value}"
+        );
+    }
+}
+
 #[test]
 fn k29_the_base_document_is_accepted() {
     // The control every refusal below is measured against.
@@ -46,7 +94,11 @@ fn k29_the_base_document_is_accepted() {
         deployment.gateway.bind,
         "127.0.0.1:0".parse::<SocketAddr>().unwrap()
     );
-    assert_eq!(deployment.owner_secret_file, fixture.path("owner-secret"));
+    assert_eq!(
+        deployment.owner_secret_file,
+        Some(fixture.path("owner-secret"))
+    );
+    assert_eq!(deployment.gateway.ingress_auth, IngressAuth::Bearer);
     assert_eq!(deployment.models.len(), 1);
     assert_eq!(deployment.models["small"].provider, "runpod");
     assert_eq!(deployment.models["small"].context_window, 65536);

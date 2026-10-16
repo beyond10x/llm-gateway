@@ -1331,3 +1331,24 @@ fn billing_with_a_ceiling_and_no_billing_operation_the_provider_sends_no_create(
     assert!(fixture.calls_of("operations invoke pod.create").is_empty());
     assert!(fixture.calls_of("approvals prepare pod.create").is_empty());
 }
+
+/// Adversarial pass over story:spend-caps. A billed amount Runpod reports with two decimals is
+/// an exact number of micro-USD; `ceil(usd * 1e6)` overstates 1188 of the first 100 000 cent
+/// amounts by one micro-USD through float error (4.03 * 1e6 is 4030000.0000000005). With a
+/// ceiling of 5.03 and a start estimated at 1, a reported 4.03 projects exactly the ceiling,
+/// which `spend.rs` says is admitted, and the overstated 4.030001 refuses it.
+#[test]
+fn adversary_w12_a_billed_amount_in_cents_is_read_exactly() {
+    let fixture = Fixture::new("adversary_w12_billing_cents");
+    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([
+        {"amount": 4.03, "time": DAY_START},
+        {"amount": 8.05, "time": "2026-10-15T00:00:00.000Z"},
+    ]))]}));
+    assert_eq!(
+        fixture.transport().account_spend(day_start()),
+        Some(AccountSpend {
+            daily_micro_usd: 4_030_000,
+            total_micro_usd: 12_080_000,
+        })
+    );
+}

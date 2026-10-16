@@ -200,6 +200,19 @@ fn header_of(head: &str, name: &str) -> Option<String> {
     })
 }
 
+/// One read of a pod's connection. An interrupted read is retried: a socket with a read timeout
+/// answers a signal, or a stop and continue of the test process, with `EINTR` whatever
+/// `SA_RESTART` says (`man 7 signal`), and a pod that took it for the end of the request would
+/// close with the body unread and reset the gateway's write.
+fn read_some(connection: &mut TcpStream, chunk: &mut [u8]) -> Option<usize> {
+    loop {
+        match connection.read(chunk) {
+            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
+            read => return read.ok(),
+        }
+    }
+}
+
 /// Reads one request head and its `content-length` body.
 fn read_request(connection: &mut TcpStream) -> Option<Seen> {
     let mut buffer = Vec::new();
@@ -208,7 +221,7 @@ fn read_request(connection: &mut TcpStream) -> Option<Seen> {
         if let Some(end) = find(&buffer, b"\r\n\r\n") {
             break end;
         }
-        let read = connection.read(&mut chunk).ok()?;
+        let read = read_some(connection, &mut chunk)?;
         if read == 0 {
             return None;
         }
@@ -222,7 +235,7 @@ fn read_request(connection: &mut TcpStream) -> Option<Seen> {
         .and_then(|value| value.parse().ok())
         .unwrap_or(0);
     while body.len() < wanted {
-        let read = connection.read(&mut chunk).ok()?;
+        let read = read_some(connection, &mut chunk)?;
         if read == 0 {
             break;
         }

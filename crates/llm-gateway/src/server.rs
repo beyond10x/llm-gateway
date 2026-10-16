@@ -433,6 +433,8 @@ fn linger(stream: &mut TcpStream, deadline: Instant) {
             break;
         }
         match stream.read(&mut chunk) {
+            // An interrupted read is retried: a signal is not the client closing.
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Ok(0) | Err(_) => break,
             Ok(read) => discarded += u64::try_from(read).unwrap_or(u64::MAX),
         }
@@ -467,6 +469,8 @@ fn read_head(
             return Err(RefusalCode::RequestMalformed);
         }
         match stream.read(&mut chunk[..room]) {
+            // An interrupted read is retried: a signal is not the peer stopping.
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             // A peer that stops early, times out or resets never delivered a head.
             Ok(0) | Err(_) => return Err(RefusalCode::RequestMalformed),
             Ok(read) => buffer.extend_from_slice(&chunk[..read]),

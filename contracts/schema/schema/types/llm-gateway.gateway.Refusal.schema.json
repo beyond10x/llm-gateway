@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
-    "contract_digest": "slice-sha256/2:0939ef3d0d7659496c3fcb664df438234a0b79d317e03c7213cc12221b4bb3f5",
+    "source_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
+    "contract_digest": "slice-sha256/2:623929cfa45be675db5fd9a7475d305312dd3dfcfe65f0523e5b8239f010c76a",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -34,8 +34,14 @@
         "RouteUnknown",
         "TargetUnavailable",
         "ToolsNotServed",
+        "TranslationInvalid",
+        "TranslationOpaqueState",
+        "TranslationTooLarge",
+        "TranslationUnrepresentable",
+        "TranslationUnsupported",
         "Unavailable",
         "UpstreamFailed",
+        "UpstreamRefused",
         "WireNotServed"
       ],
       "x-ess-attributes": [
@@ -63,8 +69,14 @@
             "RouteUnknown": "route-unknown",
             "TargetUnavailable": "target-unavailable",
             "ToolsNotServed": "tools-not-served",
+            "TranslationInvalid": "translation-invalid",
+            "TranslationOpaqueState": "translation-opaque-state",
+            "TranslationTooLarge": "translation-too-large",
+            "TranslationUnrepresentable": "translation-unrepresentable",
+            "TranslationUnsupported": "translation-unsupported",
             "Unavailable": "unavailable",
             "UpstreamFailed": "upstream-failed",
+            "UpstreamRefused": "upstream-refused",
             "WireNotServed": "wire-not-served"
           }
         },
@@ -92,8 +104,14 @@
             "RouteUnknown": 404,
             "TargetUnavailable": 503,
             "ToolsNotServed": 400,
+            "TranslationInvalid": 400,
+            "TranslationOpaqueState": 400,
+            "TranslationTooLarge": 502,
+            "TranslationUnrepresentable": 502,
+            "TranslationUnsupported": 400,
             "Unavailable": 503,
             "UpstreamFailed": 502,
+            "UpstreamRefused": 502,
             "WireNotServed": 400
           }
         },
@@ -121,8 +139,14 @@
             "RouteUnknown": "no such route alias",
             "TargetUnavailable": "no model target is available",
             "ToolsNotServed": "the model does not serve tool calls",
+            "TranslationInvalid": "the request breaks a rule of the subset the gateway translates",
+            "TranslationOpaqueState": "the request carries reasoning state the gateway cannot send to the model's upstream",
+            "TranslationTooLarge": "the model's answer passed a bound of the translated path, published in the gateway contract",
+            "TranslationUnrepresentable": "the model's answer cannot be written on this wire",
+            "TranslationUnsupported": "the request uses a field or value outside the subset the gateway translates",
             "Unavailable": "the gateway is not ready to serve inspection",
             "UpstreamFailed": "the model target could not be reached or failed; the next request asks for a replacement",
+            "UpstreamRefused": "the model target refused the translated request",
             "WireNotServed": "the model is not served on this wire"
           }
         }

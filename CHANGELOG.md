@@ -26,6 +26,25 @@ Nothing in any release is deployed or qualified against a live client.
   document without `owner_secret_file` is now refused `config:value` rather than
   `config:schema`. The library gains `GatewayConfig::ingress_auth` (`IngressAuth`) and
   `NoOwnerVerifier`.
+- The gateway translates between wires within llm 0.6.0's published subset. A request on a wire
+  the model's upstream does not declare is decoded, checked against the model's capabilities and
+  projected before any target is asked for, sent with llm's client for the model's first declared
+  wire, and answered on the client's wire, streamed event by event with the upstream's usage, or
+  as its JSON object. Same-wire requests are relayed byte for byte as before. New refusals:
+  `translation-unsupported`, `translation-invalid`, `translation-opaque-state` (400),
+  `translation-unrepresentable` and `upstream-refused` (502). `GET /v1/models` lists every wire
+  and the model's `upstream_wires`; `GET /` profiles stay on the declared wires, because Claude
+  Code and Codex send fields the subset refuses. The library gains the `Translator` port,
+  `Relay::with_translator`, `RelayTarget::scheme` and `TargetBearer::expose`; the binary carries
+  llm's client crates (by tag) and a tokio runtime, and always composes `LlmTranslator`.
+  A key below the top level of a chat or responses request that the subset does not list is
+  refused, not dropped; before output a transport failure (unreachable, timed out, a reset or
+  cut connection) is `upstream-failed` and replaces the target, while an answer that broke its
+  wire is `upstream-refused`; an answer past a published bound of the translated path (65536
+  events, 32 MiB, a 1 MiB line or event, 64 KiB of one tool call's arguments) is
+  `translation-too-large` (502) or ends with that terminal error; a messages upstream asked by a
+  request naming no output limit gets `min(16384, w / 2)` of the window, 200000 by default; and
+  a non-streamed client that closes cancels the turn, recorded `Relayed` with status 0.
 
 ## 0.8.0 (2026-10-16)
 

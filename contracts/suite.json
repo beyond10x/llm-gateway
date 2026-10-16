@@ -100,6 +100,19 @@
       "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged",
       "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target",
       "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged",
+      "llm-gateway.gateway/authored/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams",
+      "llm-gateway.gateway/authored/translate-a-client-that-disconnects-cancels-the-upstream-turn",
+      "llm-gateway.gateway/authored/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result",
+      "llm-gateway.gateway/authored/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target",
+      "llm-gateway.gateway/authored/translate-a-messages-client-reaches-chat-responses-and-messages-upstreams",
+      "llm-gateway.gateway/authored/translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count",
+      "llm-gateway.gateway/authored/translate-a-non-streamed-request-is-answered-with-its-wires-json-object",
+      "llm-gateway.gateway/authored/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams",
+      "llm-gateway.gateway/authored/translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event",
+      "llm-gateway.gateway/authored/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused",
+      "llm-gateway.gateway/authored/translate-an-upstream-tool-call-reaches-the-client-as-its-wires-tool-call",
+      "llm-gateway.gateway/authored/translate-carried-reasoning-state-is-refused-without-asking-for-a-target",
+      "llm-gateway.gateway/authored/translate-the-listing-names-every-wire-and-the-upstream-wires",
       "llm-gateway.gateway/authored/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged",
       "llm-gateway.gateway/authored/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged",
       "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread",
@@ -725,6 +738,71 @@
         "digest": "sha256:b3044c460fbc2b9b016b90a0185ae2fcb9faaab19ca0aadc9d1ab2717c67b59c",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged"
+      },
+      "gateway/scenarios/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams.yaml": {
+        "digest": "sha256:2e10d5c536a764cb71c25ff6fb75117215a154bfb25da98fa6574908ae246de7",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams"
+      },
+      "gateway/scenarios/translate-a-client-that-disconnects-cancels-the-upstream-turn.yaml": {
+        "digest": "sha256:4da32536de825145374ba8d37d95104351be9c30ea85c7ecf09e0e189551a4c9",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-client-that-disconnects-cancels-the-upstream-turn"
+      },
+      "gateway/scenarios/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result.yaml": {
+        "digest": "sha256:cd8235f614b0bc1b8367240cd8d80aee23ac0fd6e5a94bfc72ce113a77932201",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result"
+      },
+      "gateway/scenarios/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target.yaml": {
+        "digest": "sha256:89a62b78e4c050fc98567b95250807aeb984638f29b2bd384cd65755aa9feb62",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target"
+      },
+      "gateway/scenarios/translate-a-messages-client-reaches-chat-responses-and-messages-upstreams.yaml": {
+        "digest": "sha256:b8b33af406e66a36369a1ff89db1917fdc2de28450104edfdda657e7f295552e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-messages-client-reaches-chat-responses-and-messages-upstreams"
+      },
+      "gateway/scenarios/translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count.yaml": {
+        "digest": "sha256:c3e9bac2248a56e33c8b40632c74966d530658b1d6fc2e90449230af75cb2245",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count"
+      },
+      "gateway/scenarios/translate-a-non-streamed-request-is-answered-with-its-wires-json-object.yaml": {
+        "digest": "sha256:9a3c37f60f07f2e1ea2a25f5bf9e9361cc451a2265ff52f56208294e90893d96",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-non-streamed-request-is-answered-with-its-wires-json-object"
+      },
+      "gateway/scenarios/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams.yaml": {
+        "digest": "sha256:0b31bf336662c11a5b56df8b1428a0fc458c3b94c6720af82ebebed36fd4079c",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams"
+      },
+      "gateway/scenarios/translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event.yaml": {
+        "digest": "sha256:802bfe41096fdca5e5c39f703e9c3ea347b102fa61cda94088353995d776199e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event"
+      },
+      "gateway/scenarios/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused.yaml": {
+        "digest": "sha256:94b64bfe91b3db95e40b525738cfebd2f6f6e0d69fd80d4b481dcd11e9bdea87",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused"
+      },
+      "gateway/scenarios/translate-an-upstream-tool-call-reaches-the-client-as-its-wires-tool-call.yaml": {
+        "digest": "sha256:3d1f6d88ce5464ddd06ce533f4339b788439883d8046642681cdec38d91b38fb",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-an-upstream-tool-call-reaches-the-client-as-its-wires-tool-call"
+      },
+      "gateway/scenarios/translate-carried-reasoning-state-is-refused-without-asking-for-a-target.yaml": {
+        "digest": "sha256:dd79e5f569f255d89e0e435e93fa567bcc20d68e88bba4255d2f4a92f3ead005",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-carried-reasoning-state-is-refused-without-asking-for-a-target"
+      },
+      "gateway/scenarios/translate-the-listing-names-every-wire-and-the-upstream-wires.yaml": {
+        "digest": "sha256:b6cdad035332bfb0ec3471af1ce1bca8d521e70bbd4d2baa20173ac442cc7731",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-the-listing-names-every-wire-and-the-upstream-wires"
       },
       "gateway/scenarios/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml": {
         "digest": "sha256:4be0f1039badfd01af9403b55d8396bcabaf59d5cc031d18a310faf0c5498161",
@@ -1373,7 +1451,7 @@
       }
     },
     "counts": {
-      "authored": 228,
+      "authored": 241,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1398,9 +1476,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "ef37175289d25c5f0acc782fec4ef9c97f0f26b708e81aad7e8155df67e466bc",
+    "contract_digest": "f0c57d03588b012245df2edffc664c68fbf81f14fdef06ca2acaf6346bef3b6a",
     "scenario_initial_state": "empty",
-    "spec_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
+    "spec_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -10855,6 +10933,1516 @@
                 "kind": "literal",
                 "value": [
                   "pod-1 POST /v1/chat/completions {\"model\":\"served-text\",\"messages\":[],\"tools\": [ ]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams": {
+      "purpose": "a chat stream reaches a chat upstream byte for byte, and a responses and a messages upstream translated, each answer streamed back as chat chunks carrying the upstream's usage",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}],[{\"chunks\":[\"event: response.created\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"status\\\":\\\"in_progress\\\"},\\\"type\\\":\\\"response.created\\\"}\\n\\nevent: response.output_item.added\\ndata: {\\\"item\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"in_progress\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.added\\\"}\\n\\nevent: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"Hel\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"lo\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_item.done\\ndata: {\\\"item\\\":{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.done\\\"}\\n\\nevent: response.completed\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"model\\\":\\\"served\\\",\\\"output\\\":[{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"}],\\\"status\\\":\\\"completed\\\",\\\"usage\\\":{\\\"input_tokens\\\":12,\\\"output_tokens\\\":2}},\\\"type\\\":\\\"response.completed\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"lo\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"stream\\\":true,\\\"stream_options\\\":{\\\"include_usage\\\":true}}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"stream\\\":true,\\\"stream_options\\\":{\\\"include_usage\\\":true}}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"stream\\\":true,\\\"stream_options\\\":{\\\"include_usage\\\":true}}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "arrivals": {
+                "kind": "literal",
+                "value": [
+                  "streamed",
+                  "streamed",
+                  "streamed"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\",\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"id\":\"chatcmpl-up\",\"model\":\"served\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null,\"index\":0}],\"id\":\"chatcmpl-up\",\"model\":\"served\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"id\":\"chatcmpl-up\",\"model\":\"served\"}\n\ndata: {\"choices\":[],\"id\":\"chatcmpl-up\",\"model\":\"served\",\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":12,\"total_tokens\":14}}\n\ndata: [DONE]\n\n",
+                  "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"model\":\"served\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"model\":\"served\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":12,\"total_tokens\":14}}\n\ndata: [DONE]\n\n",
+                  "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"model\":\"served\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"model\":\"served\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":12,\"prompt_tokens_details\":{\"cache_creation_input_tokens\":0,\"cached_tokens\":0},\"total_tokens\":14}}\n\ndata: [DONE]\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+                  "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"model\":\"served-resp\",\"store\":false,\"stream\":true,\"tools\":[]}",
+                  "pod-3 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                ]
+              },
+              "upstream_ends": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 complete",
+                  "pod-2 complete",
+                  "pod-3 complete"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-client-that-disconnects-cancels-the-upstream-turn": {
+      "purpose": "a chat client that closes its connection after the first translated bytes cancels the upstream turn, whose connection closes before its answer ends, and nothing is retried",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"a\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"b\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":9}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"stream\\\":true,\\\"stream_options\\\":{\\\"include_usage\\\":true}}\",\"close_after_bytes\":1,\"path\":\"/v1/chat/completions\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 closed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                ]
+              },
+              "upstream_ends": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 cut"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result": {
+      "purpose": "a messages client's tool_result reaches a chat upstream as a tool message after the assistant's tool_calls, and a chat client's tool message reaches a messages upstream as a tool_result block",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"lo\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Weather in Kyoto?\\\",\\\"role\\\":\\\"user\\\"},{\\\"content\\\":[{\\\"id\\\":\\\"toolu_1\\\",\\\"input\\\":{\\\"city\\\":\\\"Kyoto\\\"},\\\"name\\\":\\\"lookup\\\",\\\"type\\\":\\\"tool_use\\\"}],\\\"role\\\":\\\"assistant\\\"},{\\\"content\\\":[{\\\"content\\\":\\\"Sunny\\\",\\\"tool_use_id\\\":\\\"toolu_1\\\",\\\"type\\\":\\\"tool_result\\\"}],\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"stream\\\":true,\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"input_schema\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"},\\\"name\\\":\\\"lookup\\\"}]}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Weather in Kyoto?\\\",\\\"role\\\":\\\"user\\\"},{\\\"content\\\":null,\\\"role\\\":\\\"assistant\\\",\\\"tool_calls\\\":[{\\\"function\\\":{\\\"arguments\\\":\\\"{\\\\\\\"city\\\\\\\":\\\\\\\"Kyoto\\\\\\\"}\\\",\\\"name\\\":\\\"lookup\\\"},\\\"id\\\":\\\"call_1\\\",\\\"type\\\":\\\"function\\\"}]},{\\\"content\\\":\\\"Sunny\\\",\\\"role\\\":\\\"tool\\\",\\\"tool_call_id\\\":\\\"call_1\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"stream\\\":true,\\\"tools\\\":[{\\\"function\\\":{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"}},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_1\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+                  "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"model\":\"served\",\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Weather in Kyoto?\",\"role\":\"user\"},{\"role\":\"assistant\",\"tool_calls\":[{\"function\":{\"arguments\":\"{\\\"city\\\":\\\"Kyoto\\\"}\",\"name\":\"lookup\"},\"id\":\"toolu_1\",\"type\":\"function\"}]},{\"content\":\"Sunny\",\"role\":\"tool\",\"tool_call_id\":\"toolu_1\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"}},\"type\":\"function\"}]}",
+                  "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"},{\"content\":[{\"id\":\"call_1\",\"input\":{\"city\":\"Kyoto\"},\"name\":\"lookup\",\"type\":\"tool_use\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"content\":\"Sunny\",\"is_error\":false,\"tool_use_id\":\"call_1\",\"type\":\"tool_result\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target": {
+      "purpose": "a translated request with a field outside the subset, at any level, is translation-unsupported, one breaking a subset rule translation-invalid, and none asks for a target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"absent\",\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[],[],[]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"n\\\":2}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"instructions\\\":\\\"Be brief.\\\",\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"parallel_tool_calls\\\":false,\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"prompt_cache_key\\\":\\\"session-1\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true,\\\"text\\\":{\\\"verbosity\\\":\\\"low\\\"}}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"thinking\\\":{\\\"budget_tokens\\\":1024,\\\"type\\\":\\\"enabled\\\"}}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_completion_tokens\\\":20,\\\"max_tokens\\\":10,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\"}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":0,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\"}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"tools\\\":[{\\\"function\\\":{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"}},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"tools\\\":[{\\\"function\\\":{\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\"},\\\"strict\\\":true},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"id\\\":\\\"msg_1\\\",\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 translation-unsupported",
+                  "400 translation-unsupported",
+                  "400 translation-unsupported",
+                  "400 translation-unsupported",
+                  "400 translation-unsupported",
+                  "400 translation-unsupported",
+                  "400 translation-invalid",
+                  "400 translation-invalid",
+                  "400 tools-not-served",
+                  "400 translation-unsupported",
+                  "400 translation-unsupported"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-messages-client-reaches-chat-responses-and-messages-upstreams": {
+      "purpose": "a messages stream reaches a messages upstream byte for byte, and a chat and a responses upstream translated, each answer streamed back as messages events carrying the upstream's reported output tokens",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: response.created\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"status\\\":\\\"in_progress\\\"},\\\"type\\\":\\\"response.created\\\"}\\n\\nevent: response.output_item.added\\ndata: {\\\"item\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"in_progress\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.added\\\"}\\n\\nevent: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"Hel\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"lo\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_item.done\\ndata: {\\\"item\\\":{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.done\\\"}\\n\\nevent: response.completed\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"model\\\":\\\"served\\\",\\\"output\\\":[{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"}],\\\"status\\\":\\\"completed\\\",\\\"usage\\\":{\\\"input_tokens\\\":12,\\\"output_tokens\\\":2}},\\\"type\\\":\\\"response.completed\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"lo\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "arrivals": {
+                "kind": "literal",
+                "value": [
+                  "streamed",
+                  "streamed",
+                  "streamed"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_1\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_2\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_up\",\"model\":\"served\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"input_tokens\":12,\"output_tokens\":1}},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 translated",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+                  "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"max_output_tokens\":64,\"model\":\"served-resp\",\"store\":false,\"stream\":true,\"tools\":[]}",
+                  "pod-3 POST /v1/messages {\"max_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                ]
+              },
+              "upstream_ends": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 complete",
+                  "pod-2 complete",
+                  "pod-3 complete"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count": {
+      "purpose": "a translated chat request reaching a messages upstream keeps its own effort, takes the model window as its output limit, and sends no count_tokens request",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"max_model_len\":4096,\"reasoning_effort\":\"xhigh\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"lo\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"reasoning_effort\\\":\\\"high\\\",\\\"stream\\\":true}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"content\":\"lo\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"model\":\"served\",\"object\":\"chat.completion.chunk\"}\n\ndata: [DONE]\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"max_tokens\":2048,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"output_config\":{\"effort\":\"high\"},\"stream\":true}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-non-streamed-request-is-answered-with-its-wires-json-object": {
+      "purpose": "a chat or messages request without stream is answered from a translated upstream with one JSON object of its own wire, with a content-length",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}],[{\"chunks\":[\"event: response.created\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"status\\\":\\\"in_progress\\\"},\\\"type\\\":\\\"response.created\\\"}\\n\\nevent: response.output_item.added\\ndata: {\\\"item\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"in_progress\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.added\\\"}\\n\\nevent: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"Hel\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\nevent: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"lo\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\nevent: response.output_item.done\\ndata: {\\\"item\\\":{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.done\\\"}\\n\\nevent: response.completed\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"model\\\":\\\"served\\\",\\\"output\\\":[{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"}],\\\"status\\\":\\\"completed\\\",\\\"usage\\\":{\\\"input_tokens\\\":12,\\\"output_tokens\\\":2}},\\\"type\\\":\\\"response.completed\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\"}\",\"half_close\":false,\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\"}\",\"half_close\":false,\"path\":\"/v1/messages\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"choices\":[{\"finish_reason\":\"stop\",\"index\":0,\"message\":{\"content\":\"Hello\",\"role\":\"assistant\"}}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-1\",\"model\":\"served\",\"object\":\"chat.completion\",\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":12,\"total_tokens\":14}}",
+                  "{\"content\":[{\"text\":\"Hello\",\"type\":\"text\"}],\"id\":\"msg_1800000000_2\",\"model\":\"served\",\"role\":\"assistant\",\"stop_reason\":\"end_turn\",\"type\":\"message\",\"usage\":{\"output_tokens\":2}}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"model\":\"served-resp\",\"store\":false,\"stream\":true,\"tools\":[]}",
+                  "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams": {
+      "purpose": "a responses stream reaches a responses upstream byte for byte, and a chat and a messages upstream translated, each answer streamed back as responses events carrying the upstream's usage",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: response.created\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"status\\\":\\\"in_progress\\\"},\\\"type\\\":\\\"response.created\\\"}\\n\\nevent: response.output_item.added\\ndata: {\\\"item\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"in_progress\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.added\\\"}\\n\\nevent: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"Hel\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"lo\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_item.done\\ndata: {\\\"item\\\":{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.done\\\"}\\n\\nevent: response.completed\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"model\\\":\\\"served\\\",\\\"output\\\":[{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"}],\\\"status\\\":\\\"completed\\\",\\\"usage\\\":{\\\"input_tokens\\\":12,\\\"output_tokens\\\":2}},\\\"type\\\":\\\"response.completed\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}],[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"lo\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "arrivals": {
+                "kind": "literal",
+                "value": [
+                  "streamed",
+                  "streamed",
+                  "streamed"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "event: response.created\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_resp_1800000000_1_0\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":3,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"Hel\",\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":4,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"lo\",\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":5,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_text.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":6,\"text\":\"Hello\",\"type\":\"response.output_text.done\"}\n\nevent: response.content_part.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"},\"sequence_number\":7,\"type\":\"response.content_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_1_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":8,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"model\":\"served\",\"object\":\"response\",\"output\":[{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_1_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":2,\"total_tokens\":14}},\"sequence_number\":9,\"type\":\"response.completed\"}\n\n",
+                  "event: response.created\ndata: {\"response\":{\"id\":\"resp_up\",\"status\":\"in_progress\"},\"type\":\"response.created\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_up\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":0,\"type\":\"response.output_item.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"Hel\",\"item_id\":\"msg_up\",\"output_index\":0,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"lo\",\"item_id\":\"msg_up\",\"output_index\":0,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_up\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":0,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"id\":\"resp_up\",\"model\":\"served\",\"output\":[{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_up\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":2}},\"type\":\"response.completed\"}\n\n",
+                  "event: response.created\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_2\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_2\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_resp_1800000000_2_0\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_2_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":3,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"Hel\",\"item_id\":\"msg_resp_1800000000_2_0\",\"output_index\":0,\"sequence_number\":4,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"lo\",\"item_id\":\"msg_resp_1800000000_2_0\",\"output_index\":0,\"sequence_number\":5,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_text.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_2_0\",\"output_index\":0,\"sequence_number\":6,\"text\":\"Hello\",\"type\":\"response.output_text.done\"}\n\nevent: response.content_part.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_2_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"},\"sequence_number\":7,\"type\":\"response.content_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_2_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":8,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_2\",\"model\":\"served\",\"object\":\"response\",\"output\":[{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_2_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"input_tokens_details\":{\"cache_creation_input_tokens\":0,\"cached_tokens\":0},\"output_tokens\":2,\"total_tokens\":14}},\"sequence_number\":9,\"type\":\"response.completed\"}\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 relayed",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+                  "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"model\":\"served-resp\",\"store\":false,\"stream\":true}",
+                  "pod-3 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                ]
+              },
+              "upstream_ends": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 complete",
+                  "pod-2 complete",
+                  "pod-3 complete"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event": {
+      "purpose": "an upstream answer the encoder refuses after output ends the stream with the wire terminal error, response.failed, a chat error chunk or a messages error event",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"reasoning_content\\\":\\\"think\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200},{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"role\\\":\\\"assistant\\\",\\\"tool_calls\\\":[{\\\"function\\\":{\\\"arguments\\\":\\\"\\\",\\\"name\\\":\\\"lookup\\\"},\\\"id\\\":\\\"call_1\\\",\\\"index\\\":0,\\\"type\\\":\\\"function\\\"}]},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"tool_calls\\\":[{\\\"function\\\":{\\\"arguments\\\":\\\"[1]\\\"},\\\"index\\\":0}]},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"tool_calls\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":9,\\\"prompt_tokens\\\":30,\\\"total_tokens\\\":39}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: response.created\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"status\\\":\\\"in_progress\\\"},\\\"type\\\":\\\"response.created\\\"}\\n\\nevent: response.output_item.added\\ndata: {\\\"item\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"in_progress\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.added\\\"}\\n\\nevent: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"Hel\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_item.done\\ndata: {\\\"item\\\":{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.done\\\"}\\n\\nevent: response.incomplete\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"incomplete_details\\\":{\\\"reason\\\":\\\"content_filter\\\"},\\\"model\\\":\\\"served\\\",\\\"output\\\":[{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"}],\\\"status\\\":\\\"incomplete\\\",\\\"usage\\\":{\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"response.incomplete\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"stream\\\":true,\\\"stream_options\\\":{\\\"include_usage\\\":true}}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Weather in Kyoto?\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"stream\\\":true,\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"input_schema\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"},\\\"name\\\":\\\"lookup\\\"}]}\",\"path\":\"/v1/messages\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "event: response.created\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_resp_1800000000_1_0\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":3,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"Hel\",\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":4,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"id\":\"rs_resp_1800000000_1_1\",\"summary\":[],\"type\":\"reasoning\"},\"output_index\":1,\"sequence_number\":5,\"type\":\"response.output_item.added\"}\n\nevent: response.reasoning_summary_part.added\ndata: {\"item_id\":\"rs_resp_1800000000_1_1\",\"output_index\":1,\"part\":{\"text\":\"\",\"type\":\"summary_text\"},\"sequence_number\":6,\"summary_index\":0,\"type\":\"response.reasoning_summary_part.added\"}\n\nevent: response.reasoning_summary_text.delta\ndata: {\"delta\":\"think\",\"item_id\":\"rs_resp_1800000000_1_1\",\"output_index\":1,\"sequence_number\":7,\"summary_index\":0,\"type\":\"response.reasoning_summary_text.delta\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_resp_1800000000_1_2\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":2,\"sequence_number\":8,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_2\",\"output_index\":2,\"part\":{\"annotations\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":9,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"lo\",\"item_id\":\"msg_resp_1800000000_1_2\",\"output_index\":2,\"sequence_number\":10,\"type\":\"response.output_text.delta\"}\n\nevent: response.failed\ndata: {\"response\":{\"created_at\":1800000000,\"error\":{\"code\":\"unsupported\",\"message\":\"the request could not be answered\"},\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"failed\"},\"sequence_number\":11,\"type\":\"response.failed\"}\n\n",
+                  "data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"error\":{\"code\":\"translation-unrepresentable\",\"message\":\"the model's answer cannot be written on this wire\"}}\n\n",
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_3\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"id\":\"call_1\",\"input\":{},\"name\":\"lookup\",\"type\":\"tool_use\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"partial_json\":\"[1]\",\"type\":\"input_json_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: error\ndata: {\"error\":{\"message\":\"the model's answer cannot be written on this wire\",\"type\":\"invalid_request_error\"},\"type\":\"error\"}\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "upstream_ends": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 complete",
+                  "pod-2 complete",
+                  "pod-1 complete"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused": {
+      "purpose": "a pod that closes unanswered is upstream-failed and reported failed, a 400 is upstream-refused and kept, and every pod gets the model key and never the owner credential",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"small\",\"bearer\":\"pod-key-0123456789\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\"]}],\"pods\":[[{\"transport\":\"closed\"}],[{\"chunks\":[\"{\\\"error\\\":\\\"bad request\\\"}\"],\"content_type\":\"application/json\",\"status\":400},{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"small\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"small\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"small\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "Bearer pod-key-0123456789",
+                  "Bearer pod-key-0123456789",
+                  "Bearer pod-key-0123456789"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
+                  "{\"error\":{\"code\":\"upstream-refused\",\"message\":\"the model target refused the translated request\"}}",
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_3\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": [
+                  "pod-1"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "502 upstream-failed",
+                  "502 upstream-refused",
+                  "200 translated"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-small\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+                  "pod-2 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-small\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+                  "pod-2 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-small\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-an-upstream-tool-call-reaches-the-client-as-its-wires-tool-call": {
+      "purpose": "a chat upstream's tool call reaches a messages client as a tool_use block, and a messages upstream's tool_use reaches a chat client as tool_calls and a responses client as a function_call",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"role\\\":\\\"assistant\\\",\\\"tool_calls\\\":[{\\\"function\\\":{\\\"arguments\\\":\\\"\\\",\\\"name\\\":\\\"lookup\\\"},\\\"id\\\":\\\"call_1\\\",\\\"index\\\":0,\\\"type\\\":\\\"function\\\"}]},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"tool_calls\\\":[{\\\"function\\\":{\\\"arguments\\\":\\\"{\\\\\\\"city\\\\\\\":\\\\\\\"Kyoto\\\\\\\"}\\\"},\\\"index\\\":0}]},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"tool_calls\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":9,\\\"prompt_tokens\\\":30,\\\"total_tokens\\\":39}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":30,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"id\\\":\\\"toolu_1\\\",\\\"input\\\":{},\\\"name\\\":\\\"lookup\\\",\\\"type\\\":\\\"tool_use\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"partial_json\\\":\\\"{\\\\\\\"city\\\\\\\":\\\\\\\"Kyoto\\\\\\\"}\\\",\\\"type\\\":\\\"input_json_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"tool_use\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":9}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200},{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":30,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"id\\\":\\\"toolu_1\\\",\\\"input\\\":{},\\\"name\\\":\\\"lookup\\\",\\\"type\\\":\\\"tool_use\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"partial_json\\\":\\\"{\\\\\\\"city\\\\\\\":\\\\\\\"Kyoto\\\\\\\"}\\\",\\\"type\\\":\\\"input_json_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"tool_use\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":9}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Weather in Kyoto?\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"stream\\\":true,\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"input_schema\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"},\\\"name\\\":\\\"lookup\\\"}]}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Weather in Kyoto?\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"stream\\\":true,\\\"stream_options\\\":{\\\"include_usage\\\":true},\\\"tools\\\":[{\\\"function\\\":{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"}},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Weather in Kyoto?\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"store\\\":false,\\\"stream\\\":true,\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"},\\\"strict\\\":false,\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/responses\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "arrivals": {
+                "kind": "literal",
+                "value": [
+                  "streamed",
+                  "streamed",
+                  "streamed"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_1\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"id\":\"call_1\",\"input\":{},\"name\":\"lookup\",\"type\":\"tool_use\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"partial_json\":\"{\\\"city\\\":\\\"Kyoto\\\"}\",\"type\":\"input_json_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"tool_use\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":9}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+                  "data: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"arguments\":\"\",\"name\":\"lookup\"},\"id\":\"toolu_1\",\"index\":0,\"type\":\"function\"}]},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{\"tool_calls\":[{\"function\":{\"arguments\":\"{\\\"city\\\":\\\"Kyoto\\\"}\"},\"index\":0}]},\"finish_reason\":null,\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"tool_calls\",\"index\":0}],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"model\":\"served\",\"object\":\"chat.completion.chunk\"}\n\ndata: {\"choices\":[],\"created\":1800000000,\"id\":\"chatcmpl-1800000000-2\",\"model\":\"served\",\"object\":\"chat.completion.chunk\",\"usage\":{\"completion_tokens\":9,\"prompt_tokens\":30,\"prompt_tokens_details\":{\"cache_creation_input_tokens\":0,\"cached_tokens\":0},\"total_tokens\":39}}\n\ndata: [DONE]\n\n",
+                  "event: response.created\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_3\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_3\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"arguments\":\"\",\"call_id\":\"toolu_1\",\"id\":\"fc_resp_1800000000_3_0\",\"name\":\"lookup\",\"status\":\"in_progress\",\"type\":\"function_call\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.function_call_arguments.delta\ndata: {\"delta\":\"{\\\"city\\\":\\\"Kyoto\\\"}\",\"item_id\":\"fc_resp_1800000000_3_0\",\"output_index\":0,\"sequence_number\":3,\"type\":\"response.function_call_arguments.delta\"}\n\nevent: response.function_call_arguments.done\ndata: {\"arguments\":\"{\\\"city\\\":\\\"Kyoto\\\"}\",\"item_id\":\"fc_resp_1800000000_3_0\",\"output_index\":0,\"sequence_number\":4,\"type\":\"response.function_call_arguments.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"arguments\":\"{\\\"city\\\":\\\"Kyoto\\\"}\",\"call_id\":\"toolu_1\",\"id\":\"fc_resp_1800000000_3_0\",\"name\":\"lookup\",\"status\":\"completed\",\"type\":\"function_call\"},\"output_index\":0,\"sequence_number\":5,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_3\",\"model\":\"served\",\"object\":\"response\",\"output\":[{\"arguments\":\"{\\\"city\\\":\\\"Kyoto\\\"}\",\"call_id\":\"toolu_1\",\"id\":\"fc_resp_1800000000_3_0\",\"name\":\"lookup\",\"status\":\"completed\",\"type\":\"function_call\"}],\"status\":\"completed\",\"usage\":{\"input_tokens\":30,\"input_tokens_details\":{\"cache_creation_input_tokens\":0,\"cached_tokens\":0},\"output_tokens\":9,\"total_tokens\":39}},\"sequence_number\":6,\"type\":\"response.completed\"}\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Weather in Kyoto?\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"}},\"type\":\"function\"}]}",
+                  "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}",
+                  "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
+                ]
+              },
+              "upstream_ends": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 complete",
+                  "pod-2 complete",
+                  "pod-2 complete"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-carried-reasoning-state-is-refused-without-asking-for-a-target": {
+      "purpose": "a translated messages request replaying a signed thinking block and a translated responses request replaying a reasoning item are translation-opaque-state, and neither asks for a target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[],[],[]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"},{\\\"content\\\":[{\\\"signature\\\":\\\"sig-1\\\",\\\"thinking\\\":\\\"The user greets me.\\\",\\\"type\\\":\\\"thinking\\\"},{\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"text\\\"}],\\\"role\\\":\\\"assistant\\\"},{\\\"content\\\":\\\"Again\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\"}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"},{\\\"id\\\":\\\"rs_1\\\",\\\"summary\\\":[],\\\"type\\\":\\\"reasoning\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"role\\\":\\\"assistant\\\",\\\"type\\\":\\\"message\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"Again\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 translation-opaque-state",
+                  "400 translation-opaque-state"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-the-listing-names-every-wire-and-the-upstream-wires": {
+      "purpose": "with a translator GET /v1/models lists every wire for each model and the wires its upstream speaks, while GET / still profiles a client only on a wire the model declares",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"a\",\"tool_calling\":\"parsed\",\"upstream_model\":\"served-a\",\"wires\":[\"chat\"]},{\"alias\":\"b\",\"tool_calling\":\"parsed\",\"upstream_model\":\"served-b\",\"wires\":[\"messages\",\"responses\"]}],\"pods\":[],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"\",\"credential\":false,\"method\":\"GET\",\"path\":\"/v1/models\",\"step\":\"request\"},{\"body\":\"\",\"credential\":false,\"method\":\"GET\",\"path\":\"/\",\"step\":\"request\",\"user_agent\":\"codex-cli/1.0\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"object\":\"list\",\"data\":[{\"id\":\"a\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"upstream_wires\":[\"chat\"]},{\"id\":\"b\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"upstream_wires\":[\"messages\",\"responses\"]}]}",
+                  "# Codex profiles for this llm-gateway, one per model it serves on the responses wire with\n# tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the\n# gateway's owner token, and start Codex with `codex --profile <alias>`.\n\n# ~/.codex/b.config.toml\nmodel = \"b\"\nmodel_provider = \"b10x-gateway\"\n\n[model_providers.b10x-gateway]\nname = \"b10x llm-gateway\"\nbase_url = \"http://gateway/v1\"\nenv_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered"
                 ]
               },
               "valid_program": {

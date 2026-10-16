@@ -8,6 +8,7 @@ model; this repository answers them and, later, starts the pods they reach.
 **Documentation:** <https://beyond10x.github.io/llm-gateway/>, built from
 [`website/`](website/): [getting started](https://beyond10x.github.io/llm-gateway/docs/getting-started/),
 [set up a client](https://beyond10x.github.io/llm-gateway/docs/guides/set-up-a-client/),
+[translate between wires](https://beyond10x.github.io/llm-gateway/docs/guides/translate-between-wires/),
 [CLI reference](https://beyond10x.github.io/llm-gateway/docs/reference/cli/),
 [deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/),
 [crates](https://beyond10x.github.io/llm-gateway/docs/reference/crates/) and
@@ -29,7 +30,10 @@ It is not a model client: the neutral turn, the protocol clients, credentials, r
 are llm's. The gateway library relays the owner's chat, responses and messages requests to a target
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
-it translates no protocol. The binary relays to a Runpod pod at its `https` proxy URL over
+it translates no protocol itself, but holds the port through which the binary translates a
+request on a wire the model's upstream does not speak, within llm 0.6.0's published subset
+([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, and
+Claude Code's and Codex's requests fall outside it today. The binary relays to a Runpod pod at its `https` proxy URL over
 TLS, but that path has run only against a fixture of the `connectors` CLI and a loopback pod,
 never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a hosted endpoint
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never

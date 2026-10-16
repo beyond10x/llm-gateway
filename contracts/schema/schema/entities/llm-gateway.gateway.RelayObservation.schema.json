@@ -95,6 +95,12 @@
         "type": "string"
       }
     },
+    "upstream_ends": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "state": {
       "$ref": "#/$defs/llm-gateway.gateway.RelayObservation.State"
     }
@@ -117,14 +123,15 @@
     "received_heads",
     "records",
     "scrapes",
+    "upstream_ends",
     "state"
   ],
   "additionalProperties": false,
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
-    "contract_digest": "slice-sha256/2:a9cd8b06fcce64b1923df1d89e989fdfc1966192f2064ebadbcc26ab4ea14b11",
+    "source_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
+    "contract_digest": "slice-sha256/2:9c9066c676fa60044d3474063cccf3459a239385fa8df67635c7c54c69611642",
     "regenerate": "ess generate"
   },
   "$defs": {

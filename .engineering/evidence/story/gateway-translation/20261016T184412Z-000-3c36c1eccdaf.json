@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-16T18:44:12Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-translation",
+  "kind": "story",
+  "revision": 33,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo run --locked -p b10x-llm-gateway-conformance -- check (ess 0.56.0): baseline dda0f31c answers 232 of 245 with the 13 translate-* scenarios failing; treatment 99ef6db6 answers 245 of 245 on three runs. VERIFIED: cross-wire requests are translated where the base refused wire-not-served",
+    "reference": "~/.cache/llm-gateway-m2b/unit-translation/red-conformance.log vs ~/.cache/llm-gateway-m2b/unit-translation/task-check-1.log"
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-16T19:59:04Z",
+  "actor": "human:timo",
+  "artifact": "story:routes-document",
+  "kind": "story",
+  "revision": 41,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check steps at 3000eeb on Rust 1.98.0 with ess 0.56.0: test 0 (721 passed, 0 failed), fmt 0, clippy 0, docs 0, spec 0, conformance 0 (249 of 249 on three runs)",
+    "reference": "~/.cache/llm-gateway-m2b/gate-int-1.log"
+  }
+}

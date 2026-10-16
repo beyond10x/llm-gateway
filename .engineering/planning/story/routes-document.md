@@ -2,51 +2,54 @@
 format: aep.planning-md/3
 id: story:routes-document
 kind: story
-status: active
+status: implemented
 title: A deployment may serve the models of an llm.routes/1 document
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
 - depends_on: story:gateway-translation
 scope:
-- confidence: inferred
+- confidence: cited
+  path: AGENTS.md
+- confidence: cited
   path: CHANGELOG.md
-- confidence: inferred
+- confidence: cited
   path: README.md
-- confidence: inferred
+- confidence: cited
   path: checks/conformance/src/gateway.rs
-- confidence: inferred
+- confidence: cited
   path: contracts/gateway/scenarios
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/Cargo.toml
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/config.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/hosted.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/lib.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/relaying.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/routes.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/src/serve.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/trusted.rs
-- confidence: inferred
-  path: docs/gateway.md
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/routes.rs
+- confidence: cited
   path: spec/domains/deployment.yaml
-- confidence: inferred
+- confidence: cited
+  path: spec/domains/gateway.yaml
+- confidence: cited
   path: spec/domains/upstream.yaml
-- confidence: inferred
+- confidence: cited
   path: website/docs
 - confidence: inferred
   path: website/docs/reference/deployment-document.md
-revision: 21
+revision: 42
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T16:32:04Z", actor: "human:timo", revision: 20}
 - {from: "proposed", to: "active", at: "2026-10-16T16:32:05Z", actor: "human:timo", revision: 21}
+- {from: "active", to: "implemented", at: "2026-10-16T19:59:04Z", actor: "human:timo", revision: 42, decided_on: {"recorded":{"test_result":1,"review_outcome":4,"verification":1}}}
 ---
 ## Outcome
 
@@ -105,19 +108,22 @@ strictly and performs no I/O. `[models.*]` (Runpod) and `[hosted.*]` keep workin
 
 ## Scope
 
-Planned 2026-10-16 for wave 2026-10-16-w02 (inferred until the unit confirms):
+Confirmed at the close of wave 2026-10-16-w02 from the unit's diff (`git diff 20f48f2c 085e27e`)
+and the implementor's confirmation table. Every planned line was changed except two:
+`crates/llm-gateway-cli/src/serve.rs` (its inventory already calls `hosted::routes`, where the
+routes went in) and `docs/gateway.md` (the gateway crate's contract did not change). Also changed:
+`spec/domains/gateway.yaml` (the `Relay` program's routes text), AGENTS.md,
+`crates/llm-gateway-docs/src/status.rs` and `website/docs/reference/crates.md`.
 
-- `crates/llm-gateway-cli/src/config.rs`, `crates/llm-gateway-cli/src/routes.rs` (new),
-  `crates/llm-gateway-cli/src/hosted.rs`, `crates/llm-gateway-cli/src/serve.rs`,
-  `crates/llm-gateway-cli/src/relaying.rs`, `crates/llm-gateway-cli/src/trusted.rs`,
-  `crates/llm-gateway-cli/Cargo.toml`
-- `checks/conformance/src/gateway.rs`, `contracts/gateway/scenarios/routes-*.yaml`
-- `spec/domains/deployment.yaml`, `spec/domains/upstream.yaml`
-- `website/docs/reference/deployment-document.md`, the translation page, `docs/gateway.md`,
-  `CHANGELOG.md`, `README.md`
-
-Shares `relaying.rs`, `hosted.rs`, `checks/conformance/src/gateway.rs` and the specification with
-`story:gateway-translation`, so it runs after it in the same wave.
+- `crates/llm-gateway-cli/src/routes.rs` (new), `config.rs`, `hosted.rs`, `relaying.rs`,
+  `trusted.rs`, `lib.rs`, `Cargo.toml` (`b10x-llm-models`, `serde_yaml`)
+- `checks/conformance/src/gateway.rs`, `contracts/gateway/scenarios/routes-*.yaml` (4)
+- `spec/domains/deployment.yaml` (`routes`, `RoutesDeclaration`), `spec/domains/upstream.yaml`,
+  `spec/domains/gateway.yaml`
+- `website/docs/reference/deployment-document.md`, `website/docs/guides/translate-between-wires.md`
+  (the full routes example), README.md, AGENTS.md, CHANGELOG.md
+- Tests: `crates/llm-gateway-cli/tests/routes.rs` and the adversaries'
+  `adversary_w02_routes*.rs`
 
 ## Not in scope
 

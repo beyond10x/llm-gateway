@@ -2,63 +2,62 @@
 format: aep.planning-md/3
 id: story:gateway-translation
 kind: story
-status: active
+status: implemented
 title: The gateway translates only the supported protocol subset
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
 - informed_by: story:modal-hosting
 scope:
-- confidence: inferred
+- confidence: cited
+  path: AGENTS.md
+- confidence: cited
   path: CHANGELOG.md
-- confidence: inferred
+- confidence: cited
+  path: README.md
+- confidence: cited
   path: checks/conformance/src/gateway.rs
-- confidence: inferred
+- confidence: cited
   path: contracts/gateway/scenarios
-- confidence: inferred
-  path: contracts/gateway/scenarios/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target.yaml
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/Cargo.toml
-- confidence: inferred
-  path: crates/llm-gateway-cli/src/config.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/hosted.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/lib.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/relaying.rs
-- confidence: inferred
-  path: crates/llm-gateway-cli/src/serve.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-cli/src/translate.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway-docs/src/status.rs
-- confidence: inferred
-  path: crates/llm-gateway/src/body.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/error.rs
 - confidence: cited
   path: crates/llm-gateway/src/lib.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/listing.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/relay.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/server.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/translate.rs
 - confidence: cited
   path: docs/gateway.md
 - confidence: cited
   path: spec/domains/gateway.yaml
 - confidence: cited
+  path: spec/domains/telemetry.yaml
+- confidence: cited
   path: spec/domains/upstream.yaml
-- confidence: inferred
+- confidence: cited
   path: website/docs
-revision: 33
+revision: 57
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-14T14:31:57Z", actor: "human:timo", revision: 18, decided_on: {"recorded":{"review_outcome":3}}}
 - {from: "proposed", to: "active", at: "2026-10-16T16:32:04Z", actor: "human:timo", revision: 33, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-16T19:59:04Z", actor: "human:timo", revision: 57, decided_on: {"recorded":{"test_result":1,"review_outcome":9,"verification":1}}}
 ---
 ## Outcome
 
@@ -154,18 +153,27 @@ gate.
 
 ## Scope
 
-Planned 2026-10-16 for wave 2026-10-16-w02 (all inferred until the unit confirms):
+Confirmed at the close of wave 2026-10-16-w02 from the unit's diff (`git diff dda0f31c 99ef6db6`)
+and the implementor's confirmation table. Every planned line was changed except four that were
+inferred and turned out not to be needed: `crates/llm-gateway-cli/src/config.rs`,
+`crates/llm-gateway-cli/src/serve.rs`, `crates/llm-gateway/src/body.rs`, and the k11 scenario
+(it passes unchanged, for a relay composed without a translator).
 
-- `crates/llm-gateway/src/relay.rs`, `crates/llm-gateway/src/translate.rs` (new port),
-  `crates/llm-gateway/src/error.rs`, `crates/llm-gateway/src/lib.rs`,
-  `crates/llm-gateway/src/listing.rs`, `crates/llm-gateway/src/server.rs`
-- `crates/llm-gateway-cli/Cargo.toml`, `crates/llm-gateway-cli/src/translate.rs` (new),
-  `crates/llm-gateway-cli/src/relaying.rs`, `crates/llm-gateway-cli/src/hosted.rs`,
-  `crates/llm-gateway-cli/src/lib.rs`
-- `checks/conformance/src/gateway.rs`, `contracts/gateway/scenarios/translate-*.yaml`
-- `spec/domains/gateway.yaml`, `spec/domains/upstream.yaml`
-- `docs/gateway.md`, `website/docs/` (a translation page), `crates/llm-gateway-docs/src/status.rs`,
-  `CHANGELOG.md`
+- `crates/llm-gateway/src/translate.rs` (new port: `Translator`, `Translation`,
+  `TranslatedAnswer`, `TranslationFailure`), `relay.rs` (`Relay::with_translator`,
+  `RelayTarget::scheme`, `TargetBearer::expose`, the answer writer), `error.rs` (six refusal
+  codes), `lib.rs`, `listing.rs` (`upstream_wires`), `server.rs`
+- `crates/llm-gateway-cli/src/translate.rs` (new, `LlmTranslator` over llm 0.6.0),
+  `relaying.rs`, `hosted.rs`, `lib.rs`, `Cargo.toml`
+- `checks/conformance/src/gateway.rs` (`translation: on`, `half_close`),
+  `contracts/gateway/scenarios/translate-*.yaml` (13)
+- `spec/domains/gateway.yaml`, `spec/domains/upstream.yaml`, `spec/domains/telemetry.yaml`
+- `docs/gateway.md` (the translated path, "Bounds of the translated path"),
+  `website/docs/guides/translate-between-wires.md` (new) and four other pages,
+  `crates/llm-gateway-docs/src/status.rs`, README.md, AGENTS.md, CHANGELOG.md
+- Tests: `crates/llm-gateway/tests/translation_port.rs`, `tests/gateway.rs`,
+  `crates/llm-gateway-cli/tests/translation.rs`, `translation_bounds.rs`,
+  `translation_guards.rs`, and the adversaries' `adversary_w02_translation*.rs`
 
 ## Opaque state carried from ingress
 

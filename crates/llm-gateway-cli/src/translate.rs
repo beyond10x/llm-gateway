@@ -49,8 +49,8 @@ pub const TRANSLATION_READ_TIMEOUT: Duration = Duration::from_secs(120);
 pub const TRANSLATION_TURN_TIMEOUT: Duration = Duration::from_secs(3600);
 /// The context window, and so the output limit, of a model that declares none.
 pub const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
-/// The most output a request to a messages upstream that names no limit is given, for a model
-/// with a window; it is given half the window when that is less.
+/// The most output a request to a messages upstream that names no limit is given; it is given
+/// half the window it is translated under when that is less.
 pub const MESSAGES_DEFAULT_OUTPUT_TOKENS: u64 = 16_384;
 /// The reasoning efforts a model is translated under: llm's vocabulary below `max`.
 pub const REASONING_EFFORTS: [&str; 5] = ["minimal", "low", "medium", "high", "xhigh"];
@@ -547,13 +547,13 @@ impl Translator for LlmTranslator {
         }
         let capabilities = self.capabilities(request.model);
         // A messages upstream needs an output limit, and the whole window leaves no room for
-        // the input: a request naming none is given half the window, at most
-        // MESSAGES_DEFAULT_OUTPUT_TOKENS; llm's projection gives a model without one the
-        // capabilities' limit.
-        if request.upstream == Wire::Messages
-            && decoded.request.max_output_tokens.is_none()
-            && let Some(window) = request.model.window()
-        {
+        // the input: a request naming none is given half the window it is translated under
+        // (the model's, else the capabilities'), at most MESSAGES_DEFAULT_OUTPUT_TOKENS.
+        if request.upstream == Wire::Messages && decoded.request.max_output_tokens.is_none() {
+            let window = request
+                .model
+                .window()
+                .unwrap_or(capabilities.context_window);
             decoded.request.max_output_tokens = Some(
                 (window / 2)
                     .clamp(1, MESSAGES_DEFAULT_OUTPUT_TOKENS)
@@ -865,20 +865,22 @@ fn past_a_bound(error: &Error) -> bool {
 }
 
 /// What a failure before any output is answered with. A target that could not be reached,
-/// timed out, was unavailable, answered `408` or `5xx`, or cut or garbled its answer has failed,
-/// whatever was dispatched, and is reported to the target source; one whose answer's status
-/// refused the request has refused it and is kept; an answer past a bound is
+/// timed out, was unavailable, answered `408` or `5xx`, or reset its connection or ended it
+/// inside a frame (llm `transport`, `deadline`, `unavailable`) has failed, whatever was
+/// dispatched, and is reported to the target source; one whose answer's status refused the
+/// request, or whose answer broke its wire (llm `protocol`: a clean end before the terminal
+/// event, a call to a tool not offered), has refused it and is kept; an answer past a bound is
 /// `translation-too-large`.
 fn before_output(error: &Error) -> TranslationFailure {
     if past_a_bound(error) {
         return TranslationFailure::Refused(RefusalCode::TranslationTooLarge);
     }
     match error.code {
-        ErrorCode::Transport
-        | ErrorCode::Deadline
-        | ErrorCode::Unavailable
-        | ErrorCode::Protocol => TranslationFailure::UpstreamFailed,
-        ErrorCode::Unauthorized
+        ErrorCode::Transport | ErrorCode::Deadline | ErrorCode::Unavailable => {
+            TranslationFailure::UpstreamFailed
+        }
+        ErrorCode::Protocol
+        | ErrorCode::Unauthorized
         | ErrorCode::RateLimited
         | ErrorCode::Refused
         | ErrorCode::InvalidRequest

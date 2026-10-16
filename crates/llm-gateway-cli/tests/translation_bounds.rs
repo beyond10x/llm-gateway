@@ -10,6 +10,7 @@ use llm_gateway::{
 };
 use llm_gateway_cli::LlmTranslator;
 use std::{
+    fmt::Write as _,
     io::{self, Read, Write},
     net::{Shutdown, SocketAddr, TcpListener, TcpStream},
     thread::{self, JoinHandle},
@@ -282,9 +283,11 @@ fn tool_argument_bytes(bytes: usize) -> String {
     );
     for fragment in fragments {
         let fragment = serde_json::to_string(&fragment).unwrap();
-        body.push_str(&format!(
+        write!(
+            body,
             "event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"input_json_delta\",\"partial_json\":{fragment}}}}}\n\n"
-        ));
+        )
+        .unwrap();
     }
     body.push_str(&CLOSING.replace("end_turn", "tool_use"));
     body

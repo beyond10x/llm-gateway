@@ -38,11 +38,13 @@ Nothing in any release is deployed or qualified against a live client.
   `Relay::with_translator`, `RelayTarget::scheme` and `TargetBearer::expose`; the binary carries
   llm's client crates (by tag) and a tokio runtime, and always composes `LlmTranslator`.
   A key below the top level of a chat or responses request that the subset does not list is
-  refused, not dropped; a failure before output that no answer status decided (a cut, garbled
-  or timed-out answer) is `upstream-failed` and replaces the target; an answer past 65536
-  events, 32 MiB or a 1 MiB line is `translation-too-large` (502) or ends with that terminal
-  error; a messages upstream asked by a request naming no output limit gets `min(16384, w / 2)`
-  of the model's window; and a non-streamed client that closes cancels the turn.
+  refused, not dropped; before output a transport failure (unreachable, timed out, a reset or
+  cut connection) is `upstream-failed` and replaces the target, while an answer that broke its
+  wire is `upstream-refused`; an answer past a published bound of the translated path (65536
+  events, 32 MiB, a 1 MiB line or event, 64 KiB of one tool call's arguments) is
+  `translation-too-large` (502) or ends with that terminal error; a messages upstream asked by a
+  request naming no output limit gets `min(16384, w / 2)` of the window, 200000 by default; and
+  a non-streamed client that closes cancels the turn, recorded `Relayed` with status 0.
 
 ## 0.8.0 (2026-10-16)
 

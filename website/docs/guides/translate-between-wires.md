@@ -100,8 +100,8 @@ A request is also checked against the model's capabilities: tools only when its 
 (its `max_model_len`, else its `context_window`, else 200000). Every nested level is closed
 too: a key a level does not list, such as a tool's `strict`, a message's `name` or a part's
 `cache_control`, is refused rather than dropped. A Messages upstream asked by a request that
-names no output limit gets half the model's window, at most 16384 tokens, so the input keeps
-room.
+names no output limit gets half the model's window (200000 when it declares none), at most
+16384 tokens, so the input keeps room.
 
 ## Refusals
 
@@ -110,10 +110,10 @@ room.
 | `translation-unsupported` | 400 | a field or value outside the subset, or past its size bound |
 | `translation-invalid` | 400 | a value breaking a rule of the subset, such as two output limits that disagree |
 | `translation-opaque-state` | 400 | the request replays reasoning state (a `thinking` block, a `reasoning` item) another upstream minted |
-| `upstream-refused` | 502 | the upstream's answer status refused the translated request before any output (`401`, `403`, `429`, another `4xx`) |
-| `upstream-failed` | 502 | before any output the upstream could not be reached, answered `408` or `5xx`, timed out, or cut or garbled its answer |
+| `upstream-refused` | 502 | before any output the upstream's answer status refused the translated request (`401`, `403`, `429`, another `4xx`), or its answer broke its wire (ended cleanly before its end event, called a tool not offered) |
+| `upstream-failed` | 502 | before any output the upstream could not be reached, answered `408` or `5xx`, timed out, or reset or cut its connection |
 | `translation-unrepresentable` | 502 | the answer cannot be written on the client's wire, and nothing of it was |
-| `translation-too-large` | 502 | the answer passed 65536 events, 32 MiB or a 1 MiB line, and nothing of it was written |
+| `translation-too-large` | 502 | the answer passed a published bound (65536 events, 32 MiB, a 1 MiB line or event, 64 KiB of one tool call's arguments), and nothing of it was written |
 
 None of the first three asks for a target, so a refused request never wakes a pod.
 
@@ -126,7 +126,7 @@ unreported. Reasoning text is shown where the client's wire has a place for it (
 `reasoning_content`, a responses reasoning summary) and withheld on messages. An answer the
 client's encoder cannot carry after the stream began ends with that wire's terminal error:
 `response.failed`, an `error` event, or a chat `{"error":…}` chunk without `[DONE]`; so does one
-past 65536 events, 32 MiB or a 1 MiB line, with `translation-too-large`'s message. A client that
+past one of those bounds, with `translation-too-large`'s message. A client that
 stops reading, or that closes while it waits for a non-streamed answer, cancels the upstream
 turn; nothing is retried.
 

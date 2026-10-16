@@ -484,8 +484,9 @@ headers never do. llm's client sends its own protocol headers (`accept: text/eve
 hosted endpoint's static `headers` are not sent on a translated request. The projection is
 llm's: every upstream is asked for a stream (chat with `stream_options.include_usage`), a
 responses upstream with `store: false`; a messages upstream gets `max_tokens` from the request,
-else `min(16384, w / 2)` for a model with a window `w` (its `max_model_len`, else its
-`context_window`), so the input keeps room in the window, else the capabilities' output limit,
+else `min(16384, w / 2)` of the window `w` it is translated under (the model's `max_model_len`,
+else its `context_window`, else the capabilities' window, 200000 by default), so the input keeps
+room in the window, and never more than the capabilities' output limit,
 and llm's rolling `cache_control` breakpoint on the last block. Neither
 the messages effort mapping of step 6 nor the output clamp's count of step 7 applies.
 
@@ -514,8 +515,9 @@ A failure before any output, by llm's class of it and whatever was dispatched:
 
 | llm class | Upstream | Answer | Target |
 | --- | --- | --- | --- |
-| `transport`, `deadline`, `unavailable`, `protocol` | unreachable, a `408` or `5xx`, timed out (no head in 120 s, or 120 s between reads after it), an answer cut, garbled or not an event stream | `upstream-failed` (502) | reported to the target source, as at step 8 |
+| `transport`, `deadline`, `unavailable` | unreachable, a `408` or `5xx`, timed out (no head in 120 s, or 120 s between reads after it), a connection reset or ended before its declared length or inside a chunk | `upstream-failed` (502) | reported to the target source, as at step 8 |
 | `unauthorized`, `rate-limited`, `refused`, `invalid-request`, `unsupported` | an answer's status refused the request (`401`, `403`, `429`, another `4xx`) | `upstream-refused` (502) | kept |
+| `protocol` | an answer that broke its wire: a stream ended cleanly before its terminal event, a body that is no event stream, a call to a tool the request did not offer | `upstream-refused` (502) | kept |
 | `too-large`, after dispatch | the answer passed a [bound of the translated path](#bounds-of-the-translated-path) | `translation-too-large` (502) | kept |
 
 Unlike the byte relay, which relays a `500` as the model's own answer, a translated request
@@ -525,7 +527,7 @@ upstream failure, a bound or an encoder refusal ends the stream with the wire's 
 and nothing else: `response.failed` (responses), an `error` event (messages), or
 `data: {"error":{"code":"translation-unrepresentable"|"translation-too-large"|"upstream-failed",…}}`
 and no `[DONE]` (chat); a bound's terminal error carries `translation-too-large`'s message,
-which names the bounds. A client that stops reading (a write to it fails) cancels the turn,
+which names the published bounds. A client that stops reading (a write to it fails) cancels the turn,
 which drops the upstream connection; so does a client waiting for a non-streamed answer that
 has closed its connection or its sending side, which the gateway asks between two events
 (`TranslatedAnswer::gone`, a peek that does not wait). Nothing is retried or replayed. The
@@ -556,7 +558,8 @@ Each statement about a refused field is backed by a test that feeds the request 
   each is the 502 JSON refusal `translation-unrepresentable`; after output it ends the stream
   with the terminal error above.
 - **Long answers.** An answer past 65536 events (about that many output tokens from a vLLM
-  upstream), 32 MiB or a 1 MiB line cannot be translated whole; see
+  upstream), 32 MiB, a 1 MiB line or event, or a tool call of more than 64 KiB of arguments
+  cannot be translated whole; see
   [Bounds of the translated path](#bounds-of-the-translated-path).
 
 ## Counters and usage records
@@ -567,7 +570,10 @@ body named (absent when it named none), the wire, its `Disposition` (`Relayed`, 
 `UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
 status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
 request head to the last byte written. The token counters and the model the target reported are
-always absent for now. An unauthenticated or shed request makes no record. The record feeds the
+always absent for now. A translated request whose client went away before any answer was
+written (a non-streamed client that closed while it waited) is recorded `Relayed` with status 0,
+no target status and 0 response bytes: status 0 means no answer was written because the client
+left. An unauthenticated or shed request makes no record. The record feeds the
 counters, then leaves the crate through the `UsageRecords` port the embedding implements
 (`Relay::with_records`); the binary writes each as one `tracing` event at `info`.
 
@@ -632,7 +638,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `tools-not-served` | 400 | the model does not serve tool calls |
 | `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |
 | `translation-opaque-state` | 400 | the request carries reasoning state the gateway cannot send to the model's upstream |
-| `translation-too-large` | 502 | the model's answer passed a bound of the translated path: 65536 events, 33554432 bytes or a 1048576-byte line |
+| `translation-too-large` | 502 | the model's answer passed a bound of the translated path, published in the gateway contract |
 | `translation-unrepresentable` | 502 | the model's answer cannot be written on this wire |
 | `translation-unsupported` | 400 | the request uses a field or value outside the subset the gateway translates |
 | `unavailable` | 503 | the gateway is not ready to serve inspection |
@@ -736,8 +742,8 @@ in `tests/wire_relay.rs` measures the header, and
 
 ## Bounds of the translated path
 
-The bounds llm 0.6.0's transport holds a translated answer to, per upstream stream
-(`llm_http::sse`, read by the binary's translator); the gateway crate holds none of them, so they
+The bounds llm 0.6.0 holds a translated answer to, per upstream stream (`llm_http::sse`, and
+llm-core's `MAX_TOOL_ARGUMENT_BYTES`, read by the binary's translator); the gateway crate holds none of them, so they
 are not in [Bounds](#bounds). An answer at a bound is written whole; one past it ends with the
 wire's terminal error carrying `translation-too-large`'s message, or, before any output, is the
 refusal `translation-too-large` (502). An outcome past llm's own bounds (4096 items, 16 MiB
@@ -748,8 +754,14 @@ encoded) is refused the same way.
 | `translated-stream-events` | `MAX_EVENTS` | 65536 |
 | `translated-stream-bytes` | `MAX_STREAM_BYTES` | 33554432 |
 | `translated-line-bytes` | `MAX_EVENT_BYTES` | 1048576 |
+| `translated-event-bytes` | `MAX_EVENT_BYTES` | 1048576 |
+| `translated-tool-argument-bytes` | `MAX_TOOL_ARGUMENT_BYTES` | 65536 |
 
-All three are maxima: the events of one stream, its bytes, and the bytes of one line of it.
+All five are maxima: the events of one stream; its bytes; the bytes of one line of it, comment
+lines included; the bytes of one event's data, its `data:` lines joined with `\n` (llm-http
+applies `MAX_EVENT_BYTES` to both); and the bytes of one tool call's arguments (llm-core's
+`MAX_TOOL_ARGUMENT_BYTES`, which the messages decoder holds streamed fragments to and every
+outcome its parsed arguments).
 `translation_bound_every_published_bound_of_the_translated_path_flips_at_its_number` in
 `crates/llm-gateway-cli/tests/translation_bounds.rs` reads this table and measures each row at
 its number and one past it.

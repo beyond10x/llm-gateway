@@ -225,13 +225,13 @@ fn adv_translation_a_target_that_drops_after_its_head_has_failed_not_refused() {
             "streamed, closed before any event",
             streamed,
             cut_off(""),
-            failed.clone(),
+            failed,
         ),
         (
             "non-streamed, closed mid-answer",
             whole,
             cut_off(MESSAGES_OPENING),
-            failed.clone(),
+            failed,
         ),
         (
             "non-streamed, closed inside a chunk",

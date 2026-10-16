@@ -368,7 +368,9 @@ pub trait RelayTargets: Send + Sync {
     /// # Errors
     /// [`TargetRefusal::Unavailable`] when none can be had, answered `target-unavailable`;
     /// [`TargetRefusal::ColdStart`] when the target is still starting and the request's hold
-    /// budget has passed, answered `model-cold-start` with `retry-after: 30` (row W6).
+    /// budget has passed, answered `model-cold-start` with `retry-after: 30` (row W6);
+    /// [`TargetRefusal::SpendCeiling`] when starting the target would pass a spend ceiling,
+    /// answered `spend-ceiling` at once, without `retry-after`.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal>;
 
     /// A request for `alias` through the target at `authority` failed (row W7): drop that
@@ -1565,6 +1567,7 @@ mod tests {
             let expected = match refusal {
                 TargetRefusal::Unavailable => RefusalCode::TargetUnavailable,
                 TargetRefusal::ColdStart => RefusalCode::ModelColdStart,
+                TargetRefusal::SpendCeiling => RefusalCode::SpendCeiling,
             };
             assert_eq!(refusal.refusal(), expected);
             assert_eq!(expected.status(), 503);

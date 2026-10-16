@@ -75,11 +75,11 @@ fn spend(priced: &[&str]) -> SpendPolicy {
     }
 }
 
-fn reported(daily_micro_usd: u64) -> Option<AccountSpend> {
-    Some(AccountSpend {
+fn reported(daily_micro_usd: u64) -> AccountSpend {
+    AccountSpend {
         daily_micro_usd,
         total_micro_usd: daily_micro_usd,
-    })
+    }
 }
 
 fn pool(
@@ -152,7 +152,7 @@ fn a_refused_start_sends_nothing_and_a_later_one_that_fits_starts() {
         Arc::new(LeaseRegistry::default()),
     );
     let pool = pool(&runpod, &clock, &leases, &["qwen"]);
-    runpod.set_account_spend(reported(9_000_001));
+    runpod.set_account_spend(Some(reported(9_000_001)));
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),
         Some(PoolError::SpendCeiling(SpendRefusal::Over {
@@ -162,7 +162,7 @@ fn a_refused_start_sends_nothing_and_a_later_one_that_fits_starts() {
         "one micro-USD past the ceiling is refused"
     );
     assert_eq!(runpod.create_calls(), 0);
-    runpod.set_account_spend(reported(9_000_000));
+    runpod.set_account_spend(Some(reported(9_000_000)));
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),
         Some(PoolError::Starting)
@@ -178,7 +178,7 @@ fn a_restored_pool_counts_the_live_pods_its_records_hold() {
         ManualClock::new(1_000),
         Arc::new(LeaseRegistry::default()),
     );
-    runpod.set_account_spend(reported(0));
+    runpod.set_account_spend(Some(reported(0)));
     let first = pool(&runpod, &clock, &leases, &["a", "b"]);
     assert_eq!(
         first.ensure(&id("a"), &authorization()).err(),
@@ -197,7 +197,7 @@ fn a_restored_pool_counts_the_live_pods_its_records_hold() {
     // a: 2 USD/h for half an hour = 1; b about to start: 1; reported 8.5: 10.5 > 10. Without
     // the restored record's running estimate it would be 9.5, and admitted.
     clock.advance(1_800_000);
-    runpod.set_account_spend(reported(8_500_000));
+    runpod.set_account_spend(Some(reported(8_500_000)));
     assert_eq!(
         restored.ensure(&id("b"), &authorization()).err(),
         Some(PoolError::SpendCeiling(SpendRefusal::Over {
@@ -224,7 +224,7 @@ fn a_model_without_a_declared_price_is_never_started_under_a_ceiling() {
     )
     .expect("pool")
     .with_spend(spend(&[]));
-    runpod.set_account_spend(reported(0));
+    runpod.set_account_spend(Some(reported(0)));
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),
         Some(PoolError::SpendCeiling(SpendRefusal::Unknown))
@@ -240,7 +240,7 @@ fn a_spend_read_that_answers_nothing_is_never_a_met_ceiling() {
         Arc::new(LeaseRegistry::default()),
     );
     let pool = pool(&runpod, &clock, &leases, &["qwen"]);
-    runpod.set_account_spend(reported(0));
+    runpod.set_account_spend(Some(reported(0)));
     runpod.set_account_spend(None);
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),

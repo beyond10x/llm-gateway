@@ -186,6 +186,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "Spend ceilings on pod starts",
+        "A provider's daily_cap_usd and total_cap_usd are checked before every pod create against the reported spend and the pods' estimates; a start that would pass one, or whose spend is unknown, is spend-ceiling with no create. Tested over the emulator; the live spend read needs a connectors release that offers billing.pods.",
+        "crates/llm-gateway-cli/tests/relaying.rs::spend_a_start_past_the_ceiling_is_spend_ceiling_at_once_with_no_create_and_is_counted",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
         "Relay to a Runpod pod from the binary over verified TLS",
         "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
         "crates/llm-gateway-cli/tests/pod_tls.rs::tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors",

@@ -6,7 +6,7 @@ timeline:
 - at: '2026-10-16T12:00:00Z'
   command: llm-gateway.runpod.Exercise
   input:
-    program_json: '{"models":{"a":{"price_per_hour_usd":2,"startup_deadline_ms":1800000},"b":{"price_per_hour_usd":2,"startup_deadline_ms":1800000}},"spend":{"daily_cap_usd":10},"steps":[{"step":"account_spend","daily_usd":1,"total_usd":1},{"step":"until_ready","alias":"a"},{"step":"advance","ms":15000000},{"step":"ensure","alias":"b"}]}'
+    program_json: '{"models":{"a":{"price_per_hour_usd":10,"startup_deadline_ms":1800000,"idle_timeout_ms":36000000},"b":{"price_per_hour_usd":2,"startup_deadline_ms":1800000}},"spend":{"daily_cap_usd":10},"steps":[{"step":"account_spend","daily_usd":1,"total_usd":1},{"step":"until_ready","alias":"a"},{"step":"advance","ms":3000000},{"step":"ensure","alias":"b"}]}'
   outcome: observed
 assert:
 - view: llm-gateway.runpod.LastExecution
@@ -19,7 +19,7 @@ assert:
     - ok
     - ready
     - ok
-    - err:spend-ceiling:daily:over_usd=0.333889
+    - err:spend-ceiling:daily:over_usd=0.336112
     create_calls: 1
     spend_reads: 2
     phases:

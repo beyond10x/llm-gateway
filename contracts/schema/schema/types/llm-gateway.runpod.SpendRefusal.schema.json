@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.SpendRefusal",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:4bc44be66e30237fb3e617f75f50e07f614eafc78fc600cf49468cac636db42b",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.SpendCeilingKind": {
+      "title": "SpendCeilingKind",
+      "x-ess-name": "llm-gateway.runpod.SpendCeilingKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Daily",
+        "Total"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "Daily": "daily",
+            "Total": "total"
+          }
+        }
+      ]
+    },
+    "llm-gateway.runpod.SpendRefusal": {
+      "title": "SpendRefusal",
+      "x-ess-name": "llm-gateway.runpod.SpendRefusal",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "ceiling": {
+          "$ref": "#/$defs/llm-gateway.runpod.SpendCeilingKind"
+        },
+        "over_micro_usd": {
+          "type": "integer"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

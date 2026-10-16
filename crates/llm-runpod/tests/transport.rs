@@ -23,10 +23,9 @@ use llm_provision::{
 };
 use llm_runpod::{
     AccountSpend, CloudType, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, ManualClock,
-    NetworkVolume, SpendPolicy, SpendRefusal,
-    POD_CREATE_BODY_KEYS, PodRequest, PodStatus, PodStream, PodTls, Probe, ProbeTarget,
-    RunpodModel, RunpodProvider, RunpodTransport, TerminateAnswer, Thinking, Unserviceable,
-    VllmSettings, started_at_ms,
+    NetworkVolume, POD_CREATE_BODY_KEYS, PodRequest, PodStatus, PodStream, PodTls, Probe,
+    ProbeTarget, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy, SpendRefusal,
+    TerminateAnswer, Thinking, Unserviceable, VllmSettings, started_at_ms,
 };
 use serde_json::{Value, json};
 
@@ -1242,8 +1241,16 @@ fn billing_reads_billing_pods_once_as_a_read_and_sums_today_and_the_total() {
     let invokes = fixture.calls_of("operations invoke billing.pods");
     assert_eq!(invokes.len(), 1);
     assert_eq!(input(&invokes[0]), json!({"bucketSize": "day"}));
-    assert_eq!(arg(&invokes[0], "--approval-file"), None, "a read takes no approval");
-    assert!(fixture.calls_of("approvals prepare billing.pods").is_empty());
+    assert_eq!(
+        arg(&invokes[0], "--approval-file"),
+        None,
+        "a read takes no approval"
+    );
+    assert!(
+        fixture
+            .calls_of("approvals prepare billing.pods")
+            .is_empty()
+    );
 }
 
 #[test]
@@ -1267,15 +1274,25 @@ fn billing_an_answer_that_is_not_wholly_readable_is_unanswered() {
         ("text amount", billed(&entry(json!("1"), json!(DAY_START)))),
         ("no amount", billed(&json!([{"time": DAY_START}]))),
         ("no time", billed(&json!([{"amount": 1}]))),
-        ("bad time", billed(&entry(json!(1), json!("2026-10-16 00:00:00")))),
+        (
+            "bad time",
+            billed(&entry(json!(1), json!("2026-10-16 00:00:00"))),
+        ),
         ("not an array", billed(&json!({"amount": 1}))),
-        ("a 500", json!({"stdout": {"result": {"status": 500, "body": []}}})),
+        (
+            "a 500",
+            json!({"stdout": {"result": {"status": 500, "body": []}}}),
+        ),
         ("a failure", failed("not_attempted", "unavailable")),
         ("garbage", json!({"raw": "not json"})),
     ] {
         let fixture = Fixture::new(&format!("billing_unreadable_{}", case.replace(' ', "_")));
         fixture.script(&json!({"operations invoke billing.pods": [answer]}));
-        assert_eq!(fixture.transport().account_spend(day_start()), None, "{case}");
+        assert_eq!(
+            fixture.transport().account_spend(day_start()),
+            None,
+            "{case}"
+        );
     }
 }
 
@@ -1286,7 +1303,11 @@ fn billing_without_the_operation_in_the_catalog_is_unanswered_and_invokes_nothin
         {"exit": 2, "stdout": {"error": {"code": "not_found"}}}
     ]}));
     assert_eq!(fixture.transport().account_spend(day_start()), None);
-    assert!(fixture.calls_of("operations invoke billing.pods").is_empty());
+    assert!(
+        fixture
+            .calls_of("operations invoke billing.pods")
+            .is_empty()
+    );
 }
 
 #[test]

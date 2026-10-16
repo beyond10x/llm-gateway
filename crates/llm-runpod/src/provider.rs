@@ -20,8 +20,9 @@ use llm_provision::{
 
 use crate::{
     Clock, CreateAnswer, Pod, PodStatus, Probe, ProbeTarget, RunpodModel, RunpodTransport,
-    TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
+    SpendPolicy, SpendRefusal, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
     request::{Tags, in_namespace, pod_request},
+    spend::{DAY_MS, admit, estimate},
 };
 
 /// Why a pod can no longer serve and has to be replaced.
@@ -56,6 +57,12 @@ pub struct RunpodProvider<T> {
     clock: Arc<dyn Clock>,
     /// llm's Runpod provider description: where a running pod serves inference.
     description: ProviderDescription,
+    /// The account's spend ceilings and the declared prices; `None` checks nothing.
+    spend: Option<SpendPolicy>,
+    /// The pool's live pods the spend check estimates: model alias and submission instant.
+    live: Vec<(Identifier, u64)>,
+    /// Why the last create was refused by the spend check, until taken.
+    spend_refusal: Option<SpendRefusal>,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RunpodProvider<T> {
@@ -90,7 +97,66 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             health: BTreeMap::new(),
             clock,
             description: descriptions::runpod(),
+            spend: None,
+            live: Vec::new(),
+            spend_refusal: None,
         }
+    }
+
+    /// Sets the spend ceilings every create is checked against; `None` checks nothing.
+    pub fn set_spend(&mut self, spend: Option<SpendPolicy>) {
+        self.spend = spend;
+    }
+
+    /// The live pods the spend check counts, as `(model alias, submission instant)`: every
+    /// record of the controller whose phase occupies a slot. The pool sets them before each
+    /// provision.
+    pub fn set_live(&mut self, live: Vec<(Identifier, u64)>) {
+        self.live = live;
+    }
+
+    /// Why the spend check refused the last create, once: taking it clears it.
+    pub fn take_spend_refusal(&mut self) -> Option<SpendRefusal> {
+        self.spend_refusal.take()
+    }
+
+    /// The spend check (`spec/domains/runpod.yaml`, `SpendLedger`), run immediately before
+    /// every create: whether a pod of the model `alias` may start now without passing a spend
+    /// ceiling. With no ceiling declared it reads nothing and admits. Otherwise it reads the
+    /// account's spend once, adds the running estimate of the live pods ([`Self::set_live`])
+    /// and the estimate of this one over its startup deadline, and compares the sum with each
+    /// ceiling, the daily one first. It needs no relayed request, so any start path may call it.
+    ///
+    /// # Errors
+    ///
+    /// [`SpendRefusal::Over`] when a ceiling would be passed, and [`SpendRefusal::Unknown`]
+    /// when the spend read failed or answered nothing, or a live pod's model or this one has
+    /// no declared price, or this model is not declared.
+    pub fn admit_spend(&mut self, alias: &Identifier) -> Result<(), SpendRefusal> {
+        let Some(policy) = self.spend.as_ref().filter(|policy| policy.is_metered()) else {
+            return Ok(());
+        };
+        let price = |alias: &Identifier| policy.price_per_hour_micro_usd.get(alias).copied();
+        let startup_ms = self
+            .models
+            .get(alias)
+            .map(|model| model.startup_deadline_ms)
+            .ok_or(SpendRefusal::Unknown)?;
+        let now = self.clock.now_ms();
+        let mut estimated = estimate(price(alias).ok_or(SpendRefusal::Unknown)?, startup_ms);
+        for (live, submitted_at) in &self.live {
+            let running = estimate(
+                price(live).ok_or(SpendRefusal::Unknown)?,
+                now.saturating_sub(*submitted_at),
+            );
+            estimated = estimated.saturating_add(running);
+        }
+        let policy = policy.clone();
+        let reported = self
+            .transport
+            .account_spend(now - now % DAY_MS)
+            .ok_or(SpendRefusal::Unknown)?;
+        admit(&policy, reported, estimated)
     }
 
     fn model_of(&self, key: &ResourceKey) -> Option<&RunpodModel> {
@@ -230,13 +296,15 @@ fn prune_restarts(restarts: &mut VecDeque<u64>, now_ms: u64, window_ms: u64) {
 
 impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
     fn create(&mut self, request: &CreateRequest) -> CreateOutcome {
+        // A refusal belongs to the create it stopped; an older one is never reported for this.
+        self.spend_refusal = None;
         let not_sent = CreateOutcome {
             dispatch: Dispatch::NotSent,
             resource: None,
         };
         // An undeclared model, or a specification whose image is not the declared one, is
         // never sent: this adapter does not silently substitute either.
-        let Some(model) = self.models.get(&request.spec.model) else {
+        let Some(model) = self.models.get(&request.spec.model).cloned() else {
             return not_sent;
         };
         if model.image != request.spec.image {
@@ -252,9 +320,15 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
                 request.spec.resource_name.as_str(),
                 request.spec.model.as_str(),
                 gpu,
-                model,
+                &model,
                 &tags,
             );
+            // The spend check runs immediately before each create, so every GPU type tried is
+            // admitted on its own. A refused check sends nothing and tries no further GPU type.
+            if let Err(refusal) = self.admit_spend(&request.spec.model) {
+                self.spend_refusal = Some(refusal);
+                return not_sent;
+            }
             match self.transport.create_pod(&body) {
                 CreateAnswer::Created(pod) => {
                     return match self.describe(&pod, None) {

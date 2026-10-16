@@ -116,6 +116,13 @@
     },
     {
       "area": "Relay",
+      "detail": "A provider's daily_cap_usd and total_cap_usd are checked before every pod create against the reported spend and the pods' estimates; a start that would pass one, or whose spend is unknown, is spend-ceiling with no create. Tested over the emulator; the live spend read needs a connectors release that offers billing.pods.",
+      "href": "/docs/concepts/relay",
+      "label": "Spend ceilings on pod starts",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
       "href": "/docs/concepts/relay",
       "label": "Relay to a Runpod pod from the binary over verified TLS",

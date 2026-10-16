@@ -32,9 +32,9 @@ pub use logging::{TracingRecords, install_logging, log_filter};
 pub use refusal::{Refusal, Source, StartupRefusal};
 pub use relaying::{
     ACCOUNT, CLEANUP_INTERVAL, CONTROLLER, CRASH_RESTART_LIMIT, CRASH_WINDOW_MS, LEASE_MS, LEDGER,
-    MAX_LIFETIME_MS, PROVIDER, PodConnector, RESERVATION, Relaying, WallClock,
-    compute_authorization, hosting_policy, idle_timeout_ms, runpod_models, runpod_pool,
-    secret_name, start_connected, start_relaying,
+    MAX_LIFETIME_MS, METERED_RESERVATION, PROVIDER, PodConnector, RESERVATION, Relaying, WallClock,
+    compute_authorization, compute_authorization_for, hosting_policy, idle_timeout_ms,
+    runpod_models, runpod_pool, secret_name, spend_policy, start_connected, start_relaying,
 };
 pub use routes::{MAX_ROUTE_NAME_BYTES, Route, RouteEndpoint, Routes, SecretFile};
 pub use serve::{

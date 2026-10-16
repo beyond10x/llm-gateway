@@ -1,8 +1,8 @@
 ---
 title: Scrape the counters
 sidebar_position: 2
-description: Read llmgw's 13 counters from GET /metrics and the usage events from standard error.
-lede: GET /metrics serves llmgw's 13 counters under their llmgw names behind the owner credential, so a scrape configured for llmgw keeps working.
+description: Read llmgw's 13 counters and the gateway's spend-refusal counter from GET /metrics, and the usage events from standard error.
+lede: GET /metrics serves llmgw's 13 counters under their llmgw names behind the owner credential, so a scrape configured for llmgw keeps working, and one counter of the gateway's own.
 source: docs/gateway.md (Counters and usage records), crates/llm-gateway/src/metrics.rs, crates/llm-gateway/tests/observability.rs, crates/llm-gateway-cli/tests/observability.rs; the output below is pasted from a run of the binary on the getting-started document
 ---
 
@@ -40,6 +40,9 @@ llmgw_endpoint_invalidations_total 0
 # HELP llmgw_cold_start_wait_seconds_total Seconds requests spent held for a starting target.
 # TYPE llmgw_cold_start_wait_seconds_total counter
 llmgw_cold_start_wait_seconds_total 0
+# HELP llmgw_pod_start_spend_refusals_total Pod starts refused because they would pass a spend ceiling or the spend is unknown.
+# TYPE llmgw_pod_start_spend_refusals_total counter
+llmgw_pod_start_spend_refusals_total 0
 # HELP llmgw_route_requests_total Model calls per model and wire.
 # TYPE llmgw_route_requests_total counter
 llmgw_route_requests_total{model="small",wire="chat"} 1

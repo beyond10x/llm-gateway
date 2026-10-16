@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.SpendLedger.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:cda3a4ae36519233dd207042e36128fce4ffd2644646d02c17daac6766f6e9f1",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.SpendLedger.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.runpod.SpendLedger.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

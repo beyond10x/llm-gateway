@@ -13,8 +13,8 @@ use std::{
 };
 
 use crate::{
-    CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget, RunpodTransport,
-    TerminateAnswer,
+    AccountSpend, CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget,
+    RunpodTransport, TerminateAnswer,
 };
 
 /// The instant every emulated container start is counted back from: a pod scripted with uptime
@@ -44,6 +44,9 @@ struct State {
     uptimes: Vec<u64>,
     partial: bool,
     unreachable: bool,
+    /// What a spend read answers; `None`, the default, is a read that answers nothing.
+    account_spend: Option<AccountSpend>,
+    spend_reads: u32,
 }
 
 /// A scriptable, shareable Runpod control plane. Clones share one state.
@@ -80,6 +83,10 @@ impl EmulatedRunpod {
     /// Every create request submitted, in order.
     pub fn requests(&self) -> Vec<PodRequest> {
         self.state().requests.clone()
+    }
+    /// Spend reads made, whatever they answered.
+    pub fn spend_reads(&self) -> u32 {
+        self.state().spend_reads
     }
     /// Pod ids successfully terminated, in order.
     pub fn terminations(&self) -> Vec<String> {
@@ -120,6 +127,11 @@ impl EmulatedRunpod {
                 pod.credential_refused = true;
             }
         }
+    }
+    /// Spend reads from now on answer this; `None` answers nothing, as a failed read does.
+    /// Until this is called every read answers nothing.
+    pub fn set_account_spend(&self, spend: Option<AccountSpend>) {
+        self.state().account_spend = spend;
     }
     /// Listings from now on claim to be incomplete.
     pub fn partial_listing(&self, partial: bool) {
@@ -267,5 +279,12 @@ impl RunpodTransport for EmulatedRunpod {
             .find(|pod| pod.pod.id == pod_id)
             .and_then(|pod| pod.uptimes.pop_front())
             .map(|uptime| EMULATED_START_ORIGIN_MS.saturating_sub(uptime))
+    }
+
+    /// Answers the scripted spend whatever the day's start: the script states today's spend.
+    fn account_spend(&mut self, _day_start_ms: u64) -> Option<AccountSpend> {
+        let mut state = self.state();
+        state.spend_reads = state.spend_reads.saturating_add(1);
+        state.account_spend
     }
 }

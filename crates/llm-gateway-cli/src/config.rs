@@ -259,6 +259,10 @@ struct ProviderDocument {
     cloud_type: CloudTypeDocument,
     #[serde(default)]
     connectors: Option<ConnectorsDocument>,
+    #[serde(default)]
+    daily_cap_usd: Option<f64>,
+    #[serde(default)]
+    total_cap_usd: Option<f64>,
 }
 
 /// `[providers.<name>.connectors]` (`llm-gateway.deployment.ConnectorsDeclaration`).
@@ -356,6 +360,8 @@ struct ModelDocument {
     vllm_api_key_file: Option<PathBuf>,
     #[serde(default)]
     tool_calling: ToolCallingDocument,
+    #[serde(default)]
+    price_per_hour_usd: Option<f64>,
 }
 
 fn default_max_num_seqs() -> u32 {
@@ -420,6 +426,10 @@ pub struct Provider {
     /// The connectors connection the provider's pods are reached through, when it declares
     /// one; `None` leaves its models answered `target-unavailable`.
     pub connectors: Option<ConnectorsBinding>,
+    /// The account's daily spend ceiling in micro-USD (`daily_cap_usd`); `None` is none.
+    pub daily_cap_micro_usd: Option<u64>,
+    /// The account's total spend ceiling in micro-USD (`total_cap_usd`); `None` is none.
+    pub total_cap_micro_usd: Option<u64>,
 }
 
 /// `[models.<alias>]`, with every default applied and every rule checked.
@@ -448,6 +458,10 @@ pub struct Model {
     /// `parsed`. A request offering tools to an `Absent` model is refused before a pod is
     /// asked for.
     pub tool_calling: ToolCalling,
+    /// The most the model's pod costs per hour on any of its GPU types, in micro-USD
+    /// (`price_per_hour_usd`), which the spend check prices its pods by. Required once a
+    /// provider declares a spend ceiling.
+    pub price_per_hour_micro_usd: Option<u64>,
 }
 
 /// `[hosted.<alias>]`, with every default applied and every rule checked: a model a hosted
@@ -584,35 +598,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
             "at least one model, of models, hosted or the routes document, is required",
         ));
     }
-    let mut providers = BTreeMap::new();
-    for (name, provider) in document.providers {
-        closed_name(&format!("providers.{name}"), &name)?;
-        let cloud_type = match provider.cloud_type {
-            CloudTypeDocument::Secure => CloudType::Secure,
-            CloudTypeDocument::Community => CloudType::Community,
-        };
-        let connectors = provider
-            .connectors
-            .map(|table| connectors_binding(&format!("providers.{name}.connectors"), table))
-            .transpose()?;
-        providers.insert(
-            name,
-            Provider {
-                kind: provider.kind,
-                cloud_type,
-                connectors,
-            },
-        );
-    }
-    ensure(
-        providers
-            .values()
-            .filter(|provider| provider.connectors.is_some())
-            .count()
-            <= 1,
-        "providers",
-        "may declare at most one connectors connection",
-    )?;
+    let (providers, metered) = providers(document.providers)?;
     let mut models = BTreeMap::new();
     for (alias, model) in document.models {
         let at = format!("models.{alias}");
@@ -623,7 +609,13 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
                 "must name a declared provider",
             ));
         }
-        models.insert(alias, validate_model(&at, model)?);
+        let model = validate_model(&at, model)?;
+        ensure(
+            metered == 0 || model.price_per_hour_micro_usd.is_some(),
+            &format!("{at}.price_per_hour_usd"),
+            "is required once a provider declares a spend ceiling",
+        )?;
+        models.insert(alias, model);
     }
     let mut hosted = BTreeMap::new();
     for (alias, declared) in document.hosted {
@@ -658,6 +650,64 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         routes: Routes::default(),
         digest,
     })
+}
+
+/// `[providers.<name>]`, checked: the providers, and how many of them declare a spend ceiling
+/// (at most one).
+fn providers(
+    declared: BTreeMap<String, ProviderDocument>,
+) -> Result<(BTreeMap<String, Provider>, usize), Refusal> {
+    let mut providers = BTreeMap::new();
+    for (name, provider) in declared {
+        closed_name(&format!("providers.{name}"), &name)?;
+        let cloud_type = match provider.cloud_type {
+            CloudTypeDocument::Secure => CloudType::Secure,
+            CloudTypeDocument::Community => CloudType::Community,
+        };
+        let connectors = provider
+            .connectors
+            .map(|table| connectors_binding(&format!("providers.{name}.connectors"), table))
+            .transpose()?;
+        let daily_cap_micro_usd = provider
+            .daily_cap_usd
+            .map(|usd| amount(&format!("providers.{name}.daily_cap_usd"), usd, MAX_CAP_USD))
+            .transpose()?;
+        let total_cap_micro_usd = provider
+            .total_cap_usd
+            .map(|usd| amount(&format!("providers.{name}.total_cap_usd"), usd, MAX_CAP_USD))
+            .transpose()?;
+        providers.insert(
+            name,
+            Provider {
+                kind: provider.kind,
+                cloud_type,
+                connectors,
+                daily_cap_micro_usd,
+                total_cap_micro_usd,
+            },
+        );
+    }
+    ensure(
+        providers
+            .values()
+            .filter(|provider| provider.connectors.is_some())
+            .count()
+            <= 1,
+        "providers",
+        "may declare at most one connectors connection",
+    )?;
+    let metered = providers
+        .values()
+        .filter(|provider| {
+            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
+        })
+        .count();
+    ensure(
+        metered <= 1,
+        "providers",
+        "may declare a spend ceiling on at most one provider",
+    )?;
+    Ok((providers, metered))
 }
 
 /// `[hosted.<alias>]`, checked (`llm-gateway.deployment.HostedDeclaration`).
@@ -863,7 +913,37 @@ fn validate_model(at: &str, model: ModelDocument) -> Result<Model, Refusal> {
     check_serving(at, &model)?;
     check_vllm(at, &model)?;
     check_placement(at, &model)?;
-    Ok(into_model(model))
+    let price = model
+        .price_per_hour_usd
+        .map(|usd| {
+            amount(
+                &format!("{at}.price_per_hour_usd"),
+                usd,
+                MAX_PRICE_PER_HOUR_USD,
+            )
+        })
+        .transpose()?;
+    Ok(Model {
+        price_per_hour_micro_usd: price,
+        ..into_model(model)
+    })
+}
+
+/// The most a spend ceiling may be, in USD.
+const MAX_CAP_USD: f64 = 1_000_000.0;
+/// The most a model's price per hour may be, in USD.
+const MAX_PRICE_PER_HOUR_USD: f64 = 1_000.0;
+
+/// A declared USD amount in micro-USD: finite, above 0, at most `max` and at least one
+/// micro-USD, or `config:value` naming `key`. The value is never quoted.
+fn amount(key: &str, usd: f64, max: f64) -> Result<u64, Refusal> {
+    let rule =
+        format!("must be a finite amount above 0 and at most {max} USD, of at least 0.000001");
+    if usd.is_finite() && usd <= max {
+        llm_runpod::micro_usd(usd).ok_or_else(|| value(key, &rule))
+    } else {
+        Err(value(key, &rule))
+    }
 }
 
 /// What the gateway serves and how long it holds a request.
@@ -1033,5 +1113,6 @@ fn into_model(model: ModelDocument) -> Model {
             ToolCallingDocument::Parsed => ToolCalling::Parsed,
             ToolCallingDocument::Absent => ToolCalling::Absent,
         },
+        price_per_hour_micro_usd: None,
     }
 }

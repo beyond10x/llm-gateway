@@ -1854,11 +1854,20 @@ fn spend_a_ceiling_or_price_outside_its_rule_is_a_value_refusal() {
         ("daily nan", priced("daily_cap_usd = nan\n", price)),
         ("daily inf", priced("daily_cap_usd = inf\n", price)),
         ("daily above", priced("daily_cap_usd = 1000000.5\n", price)),
-        ("daily below a micro", priced("daily_cap_usd = 0.0000004\n", price)),
+        (
+            "daily below a micro",
+            priced("daily_cap_usd = 0.0000004\n", price),
+        ),
         ("total zero", priced("total_cap_usd = 0.0\n", price)),
         ("total -inf", priced("total_cap_usd = -inf\n", price)),
-        ("price zero", priced("daily_cap_usd = 5\n", "price_per_hour_usd = 0\n")),
-        ("price above", priced("daily_cap_usd = 5\n", "price_per_hour_usd = 1000.01\n")),
+        (
+            "price zero",
+            priced("daily_cap_usd = 5\n", "price_per_hour_usd = 0\n"),
+        ),
+        (
+            "price above",
+            priced("daily_cap_usd = 5\n", "price_per_hour_usd = 1000.01\n"),
+        ),
         ("price nan", priced("", "price_per_hour_usd = nan\n")),
         ("price missing", priced("daily_cap_usd = 5\n", "")),
     ] {

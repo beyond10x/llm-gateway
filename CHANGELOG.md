@@ -4,6 +4,15 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- A provider may declare `daily_cap_usd` and `total_cap_usd`, spend ceilings for its account,
+  and each model `price_per_hour_usd`. Before every pod create the pool checks the account's
+  reported spend plus its live pods' and the new pod's estimates against each ceiling; a start
+  that would pass one, or whose spend is unknown, is refused `spend-ceiling` (503) with no
+  create, counted in `llmgw_pod_start_spend_refusals_total`. The reported spend is read through
+  the connectors operation `billing.pods`, which needs a connectors release that offers it.
+
 ## 0.9.0 (2026-10-16)
 
 - A hosted model's `base_url` may carry a path. The path replaces the wire path's leading `/v1`,

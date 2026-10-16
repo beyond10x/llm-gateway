@@ -17,9 +17,10 @@ use std::{
 use ess_conformance::target::TargetError;
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 use llm_runpod::{
-    CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock, NetworkVolume, PodListing,
-    PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel, RunpodPool, RunpodTransport,
-    StreamLease, TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
+    AccountSpend, CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock,
+    NetworkVolume, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel,
+    RunpodPool, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease, TAG_REQUEST,
+    TerminateAnswer, Thinking, VllmSettings,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -70,7 +71,17 @@ struct Program {
     models: BTreeMap<String, ModelInput>,
     #[serde(default)]
     max_active: Option<u32>,
+    /// The pool's spend ceilings in USD (`SpendLedger`); absent is no ceiling.
+    #[serde(default)]
+    spend: Option<SpendInput>,
     steps: Vec<Step>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct SpendInput {
+    daily_cap_usd: Option<f64>,
+    total_cap_usd: Option<f64>,
 }
 
 /// Overrides on the crate test suite's reference model (`tests/runpod.rs` `model()`).
@@ -90,6 +101,8 @@ struct ModelInput {
     idle_timeout_ms: Option<u64>,
     crash_restart_limit: Option<u32>,
     crash_window_ms: Option<u64>,
+    /// The model's declared price per hour in USD, which the spend check prices it by.
+    price_per_hour_usd: Option<f64>,
 }
 
 #[derive(Deserialize, Clone)]
@@ -190,6 +203,11 @@ enum Step {
     Wedge {
         pod: String,
     },
+    /// Spend reads from now on answer this reported spend, in USD.
+    AccountSpend {
+        daily_usd: f64,
+        total_usd: f64,
+    },
 }
 
 /// The emulator, plus the one arrangement it cannot script: a pod that stops serving.
@@ -222,6 +240,36 @@ impl RunpodTransport for Fixture {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.runpod.container_started_at(pod_id)
     }
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
+        self.runpod.account_spend(day_start_ms)
+    }
+}
+
+/// A USD amount of a program in micro-USD: 0, or a positive amount of at least one micro-USD.
+fn amount(usd: f64) -> Result<u64, String> {
+    if usd == 0.0 {
+        return Ok(0);
+    }
+    llm_runpod::micro_usd(usd).ok_or_else(|| "fixture:invalid-amount".to_owned())
+}
+
+/// The program's spend ledger: its ceilings and every model's price.
+fn spend_policy(
+    spend: Option<&SpendInput>,
+    models: &BTreeMap<String, ModelInput>,
+) -> Result<SpendPolicy, String> {
+    let cap = |usd: Option<f64>| usd.map(amount).transpose();
+    let mut prices = BTreeMap::new();
+    for (alias, model) in models {
+        if let Some(price) = model.price_per_hour_usd {
+            prices.insert(ident(alias)?, amount(price)?);
+        }
+    }
+    Ok(SpendPolicy {
+        daily_cap_micro_usd: cap(spend.and_then(|spend| spend.daily_cap_usd))?,
+        total_cap_micro_usd: cap(spend.and_then(|spend| spend.total_cap_usd))?,
+        price_per_hour_micro_usd: prices,
+    })
 }
 
 fn ident(value: &str) -> Result<Identifier, String> {
@@ -303,6 +351,15 @@ fn refusal(error: PoolError) -> String {
     match error {
         PoolError::InvalidModel(config) => format!("invalid-model:{}", config.code()),
         PoolError::Hosting(hosting) => format!("hosting:{}", hosting.code()),
+        PoolError::SpendCeiling(SpendRefusal::Over {
+            ceiling,
+            over_micro_usd,
+        }) => format!(
+            "spend-ceiling:{}:over_usd={}",
+            ceiling.code(),
+            llm_runpod::usd(over_micro_usd)
+        ),
+        PoolError::SpendCeiling(SpendRefusal::Unknown) => "spend-ceiling:unknown".to_owned(),
         other => other.code().to_owned(),
     }
 }
@@ -349,6 +406,7 @@ struct Run {
     registry: Arc<LeaseRegistry>,
     policy: HostingPolicy,
     models: BTreeMap<Identifier, RunpodModel>,
+    spend: SpendPolicy,
     pool: Arc<RunpodPool<Fixture>>,
     /// Pools a restart replaced. They stay alive, as a crashed process's claims would.
     replaced: Vec<Arc<RunpodPool<Fixture>>>,
@@ -431,6 +489,7 @@ impl Run {
             Arc::new(self.clock.clone()),
         ) {
             Ok(pool) => {
+                let pool = pool.with_spend(self.spend.clone());
                 let previous = std::mem::replace(&mut self.pool, Arc::new(pool));
                 self.replaced.push(previous);
                 self.models = models;
@@ -492,6 +551,18 @@ impl Run {
             Step::RefuseCredential { pod } => runpod.refuse_credential(pod),
             Step::PartialListing { partial } => runpod.partial_listing(*partial),
             Step::ProbeUnreachable { unreachable } => runpod.probe_unreachable(*unreachable),
+            Step::AccountSpend {
+                daily_usd,
+                total_usd,
+            } => match (amount(*daily_usd), amount(*total_usd)) {
+                (Ok(daily_micro_usd), Ok(total_micro_usd)) => {
+                    runpod.set_account_spend(Some(AccountSpend {
+                        daily_micro_usd,
+                        total_micro_usd,
+                    }));
+                }
+                (Err(code), _) | (_, Err(code)) => return format!("err:{code}"),
+            },
             Step::SetStatus { pod, status } => {
                 let status = match status.as_str() {
                     "Created" => PodStatus::Created,
@@ -525,6 +596,7 @@ fn emulator_facts(facts: &mut Value, runpod: &EmulatedRunpod) {
     let requests = runpod.requests();
     facts["create_calls"] = json!(runpod.create_calls());
     facts["lists"] = json!(runpod.lists());
+    facts["spend_reads"] = json!(runpod.spend_reads());
     facts["requested_gpus"] = json!(
         requests
             .iter()
@@ -634,7 +706,7 @@ fn pool_facts(facts: &mut Value, run: &Run) {
 fn run(program_json: &str) -> Value {
     let mut facts = json!({
         "valid_program": false, "error_code": null, "results": [], "create_calls": null,
-        "lists": null, "requested_gpus": [], "terminations": [], "pods": [], "leases": [],
+        "lists": null, "spend_reads": null, "requested_gpus": [], "terminations": [], "pods": [], "leases": [],
         "cleanups": [], "phases": [], "observed": [], "stop_required": [], "transferred": [],
         "last_request": null, "last_entrypoint": [], "last_env": []
     });
@@ -648,9 +720,14 @@ fn run(program_json: &str) -> Value {
         return facts;
     }
     facts["valid_program"] = json!(true);
-    let setup = build_models(&program.models)
-        .and_then(|models| Ok((models, policy(program.max_active.unwrap_or(16))?)));
-    let (models, policy) = match setup {
+    let setup = build_models(&program.models).and_then(|models| {
+        Ok((
+            models,
+            policy(program.max_active.unwrap_or(16))?,
+            spend_policy(program.spend.as_ref(), &program.models)?,
+        ))
+    });
+    let (models, policy, spend) = match setup {
         Ok(setup) => setup,
         Err(code) => {
             facts["error_code"] = json!(code);
@@ -667,7 +744,7 @@ fn run(program_json: &str) -> Value {
         models.clone(),
         Arc::new(clock.clone()),
     ) {
-        Ok(pool) => pool,
+        Ok(pool) => pool.with_spend(spend.clone()),
         Err(error) => {
             facts["error_code"] = json!(refusal(error));
             emulator_facts(&mut facts, &fixture.runpod);
@@ -680,6 +757,7 @@ fn run(program_json: &str) -> Value {
         registry,
         policy,
         models,
+        spend,
         pool: Arc::new(pool),
         replaced: Vec::new(),
         held: Vec::new(),

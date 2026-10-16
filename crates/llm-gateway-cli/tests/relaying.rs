@@ -1247,7 +1247,7 @@ fn spend_a_start_past_the_ceiling_is_spend_ceiling_at_once_with_no_create_and_is
 fn spend_a_start_at_the_ceiling_is_created_and_served() {
     let fixture = Fixture::new("spend-at");
     let deployment = capped(&fixture);
-    let mut pod = Pod::start(0, "{\"id\":\"served\"}");
+    let mut pod = Pod::start(1, "{\"id\":\"served\"}");
     let runpod = EmulatedRunpod::new();
     spent(&runpod, 9_666_666);
     let running = start_relaying(

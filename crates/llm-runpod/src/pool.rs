@@ -27,7 +27,8 @@ use llm_provision::{
 };
 
 use crate::{
-    ConfigError, RunpodModel, RunpodProvider, RunpodTransport, Unserviceable, request::in_namespace,
+    ConfigError, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy, SpendRefusal,
+    Unserviceable, request::in_namespace,
 };
 
 /// A trusted Unix-millisecond clock. It must never move backwards.
@@ -85,6 +86,9 @@ pub enum PoolError {
     StoppedServing,
     /// The hosting controller refused.
     Hosting(HostingError),
+    /// The spend check refused the create it ran before: no create was sent and the deployment
+    /// is withdrawn. It says which ceiling and by how much, or that the spend is unknown.
+    SpendCeiling(SpendRefusal),
 }
 
 impl PoolError {
@@ -102,6 +106,7 @@ impl PoolError {
             Self::PodExited => "pod-exited",
             Self::StoppedServing => "stopped-serving",
             Self::Hosting(_) => "hosting",
+            Self::SpendCeiling(_) => "spend-ceiling",
         }
     }
 }
@@ -111,6 +116,7 @@ impl std::fmt::Display for PoolError {
         match self {
             Self::InvalidModel(error) => write!(formatter, "invalid Runpod model: {error}"),
             Self::Hosting(error) => write!(formatter, "hosting refused: {error}"),
+            Self::SpendCeiling(refusal) => write!(formatter, "pod start refused: {refusal}"),
             other => formatter.write_str(match other {
                 Self::UnknownModel => "no model is declared under this alias",
                 Self::Starting => "the model is starting",
@@ -424,6 +430,19 @@ impl<T: RunpodTransport> RunpodPool<T> {
             }),
             clock,
         })
+    }
+
+    /// The pool with these spend ceilings: every create it sends is checked against them
+    /// first ([`RunpodProvider::admit_spend`]), and a refused one is
+    /// [`PoolError::SpendCeiling`]. A policy that declares no ceiling checks nothing.
+    #[must_use]
+    pub fn with_spend(mut self, spend: SpendPolicy) -> Self {
+        self.inner
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .provider
+            .set_spend(Some(spend));
+        self
     }
 
     fn lock(&self) -> MutexGuard<'_, Inner<T>> {
@@ -1001,6 +1020,16 @@ impl<T: RunpodTransport> Inner<T> {
                 },
             )
             .and_then(|_| {
+                // The spend check before the create counts every pod this controller's
+                // records hold as occupying a slot, from its submission.
+                let live = self
+                    .live_records()
+                    .into_iter()
+                    .filter(|record| record.phase.occupies_a_slot())
+                    .filter_map(|record| Some((record.requested.model, record.started_at_ms?)))
+                    .collect();
+                self.provider.set_live(live);
+                let _stale = self.provider.take_spend_refusal();
                 self.apply(
                     now,
                     HostingCommand::Provision {
@@ -1022,7 +1051,10 @@ impl<T: RunpodTransport> Inner<T> {
             }
         };
         if receipt.phase == Some(Phase::Cancelled) {
-            return Err(PoolError::NoCapacity);
+            return Err(self
+                .provider
+                .take_spend_refusal()
+                .map_or(PoolError::NoCapacity, PoolError::SpendCeiling));
         }
         if let Some(slot) = self.slots.get_mut(alias) {
             slot.current = Some(deployment);

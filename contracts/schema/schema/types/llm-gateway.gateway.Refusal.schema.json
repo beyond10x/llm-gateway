@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:623929cfa45be675db5fd9a7475d305312dd3dfcfe65f0523e5b8239f010c76a",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:959cc1305eb1b2407af9cc1c8e7ad347ab38bb027758e451f6d61193bbe28c7b",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -32,6 +32,7 @@
         "RequestMalformed",
         "RequestTooLarge",
         "RouteUnknown",
+        "SpendCeiling",
         "TargetUnavailable",
         "ToolsNotServed",
         "TranslationInvalid",
@@ -67,6 +68,7 @@
             "RequestMalformed": "request-malformed",
             "RequestTooLarge": "request-too-large",
             "RouteUnknown": "route-unknown",
+            "SpendCeiling": "spend-ceiling",
             "TargetUnavailable": "target-unavailable",
             "ToolsNotServed": "tools-not-served",
             "TranslationInvalid": "translation-invalid",
@@ -102,6 +104,7 @@
             "RequestMalformed": 400,
             "RequestTooLarge": 431,
             "RouteUnknown": 404,
+            "SpendCeiling": 503,
             "TargetUnavailable": 503,
             "ToolsNotServed": 400,
             "TranslationInvalid": 400,
@@ -137,6 +140,7 @@
             "RequestMalformed": "the request is not well-formed HTTP",
             "RequestTooLarge": "the request head exceeds its byte bound",
             "RouteUnknown": "no such route alias",
+            "SpendCeiling": "the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown",
             "TargetUnavailable": "no model target is available",
             "ToolsNotServed": "the model does not serve tool calls",
             "TranslationInvalid": "the request breaks a rule of the subset the gateway translates",

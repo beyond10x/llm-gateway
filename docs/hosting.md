@@ -461,7 +461,8 @@ Every input is fixed or read from the document (`spec/domains/deployment.yaml`):
 
 | Input | Source | Value |
 | --- | --- | --- |
-| `ComputeAuthorization` | fixed | ledger `b10x-llm-gateway`, reservation `unmetered`; no budget ledger is consulted yet |
+| `ComputeAuthorization` | fixed, and the document | ledger `b10x-llm-gateway`; reservation `spend-ceiling` when a provider declares a spend ceiling, `unmetered` otherwise |
+| `SpendPolicy` | the document | `daily_cap_usd` and `total_cap_usd` of the one provider that declares any, and every model's `price_per_hour_usd`, in micro-USD ([spend ceilings](#spend-ceilings)) |
 | clock | fixed | `WallClock`: system time in Unix milliseconds, never moving backwards |
 | `LeaseRegistry` | fixed | one empty in-process registry per run |
 | `HostingPolicy` | fixed, and the document | controller `b10x-llm-gateway`, provider `runpod`, account `default`, ledger `b10x-llm-gateway`, `max_lifetime_ms` 86400000 (24 h), `lease_ms` 300000 (5 min); `max_active` is the number of declared models |
@@ -497,6 +498,56 @@ starts a replacement; the next request does. A record whose create answer was lo
 (`uncertain`) keeps its holds waiting, because its pod may still be adopted and serve. A hold of
 0 asks once, starting the pod if none is live, and answers `model-cold-start` at once. `l6_*`, `w6_*` and `k28_*` in
 `crates/llm-gateway-cli/tests/relaying.rs` prove it.
+
+### Spend ceilings
+
+A `[providers.<name>]` table may declare `daily_cap_usd` and `total_cap_usd`, the account's spend
+ceilings in USD (each finite, above 0, at most 1000000 and at least 0.000001; `config:value`
+otherwise). At most one provider declares one, because the pool is one account, and once one
+does every `[models.<alias>]` declares `price_per_hour_usd` (above 0, at most 1000): the most its
+pod costs per hour on any of its GPU types. Amounts are held as integer micro-USD, so a ceiling
+compares exactly.
+
+The spend check, `RunpodProvider::admit_spend`, runs immediately before every create the
+provider sends, once per declared GPU type it tries, and needs no relayed request. Without a
+ceiling it reads nothing. With one it adds, at the pool clock's instant:
+
+- the account's reported spend, read afresh for each check: today's since the UTC day's start,
+  and the total;
+- the running estimate of the pool's live pods: for every record of this controller that
+  occupies a slot, its model's price times the time since its create was submitted;
+- the estimate of the pod about to start: its model's price times its startup deadline.
+
+Each estimate is rounded up to the next micro-USD, and the price is always the declared one,
+never the pod listing's. The daily projection is compared with the daily ceiling first, then
+the total one with the total ceiling. A projection equal to its ceiling is admitted; one
+micro-USD past it is refused. A spend read that fails or answers nothing, or a model with no
+price, is refused too: no ceiling is ever assumed met. A refused check sends no create and tries
+no further GPU type; the deployment is withdrawn (`cancelled`), the pool answers
+`spend-ceiling`, the request is answered `spend-ceiling` (503) at once without `retry-after`,
+`llmgw_pod_start_spend_refusals_total` counts it, and a `warn` event, `pod start refused by a
+spend ceiling`, names the model, the ceiling (`daily`, `total` or `unknown`) and the excess in
+USD. The client's message names neither.
+
+The check errs toward refusing, and its billing assumptions are unchecked against a live
+account:
+
+- The running estimate counts a live pod's whole time since submission, so it may count again
+  hours the reported spend already holds.
+- A pod this pool holds no record for (another controller's, or a previous run's before its
+  orphan sweep) is counted only once the reported spend holds it.
+- The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`: each
+  entry's `amount` is taken as USD and its `time` as the bucket's start. Neither reading has been
+  checked against a live account.
+
+**The live spend read needs a connectors release.** `ConnectorsRunpod` reads the account's spend
+through the connectors operation `billing.pods`, which the connectors v0.37.0 Runpod catalog does
+not select. Until a connectors release offers it, `operations describe` refuses it, every spend
+read is unanswered, and a deployment that declares a ceiling starts no pod: every start is
+answered `spend-ceiling`. A deployment that declares none is unaffected. `spend.rs` and the
+`billing_*` cases of `transport.rs` in `crates/llm-runpod/tests`, the ceiling scenarios under
+`contracts/runpod/scenarios`, and `spend_*` in `crates/llm-gateway-cli/tests/config.rs` and
+`tests/relaying.rs` prove it.
 
 **`idle_timeout_minutes = 0` means no idle grace** (row K27). The pod is stopped by the first
 cleanup pass that finds it with no request in flight, and never sooner than its measured cold

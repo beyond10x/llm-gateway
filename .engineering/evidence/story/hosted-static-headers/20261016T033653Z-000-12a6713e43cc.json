@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-16T03:36:53Z",
+  "actor": "human:timo",
+  "artifact": "story:hosted-static-headers",
+  "kind": "story",
+  "revision": 18,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-w10-hosted-static-headers-pass-1",
+    "review": "review-result:adversary-w10-hosted-static-headers-pass-1",
+    "outcome": "fixed"
+  }
+}

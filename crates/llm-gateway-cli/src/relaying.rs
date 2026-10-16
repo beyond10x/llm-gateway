@@ -268,6 +268,8 @@ fn runpod_model(
         idle_timeout_ms: idle_timeout_ms(model.idle_timeout_minutes),
         crash_restart_limit: CRASH_RESTART_LIMIT,
         crash_window_ms: CRASH_WINDOW_MS,
+        profile: model.profile.clone(),
+        fallbacks: model.fallbacks.clone(),
     };
     declared.validate().map_err(|error| {
         Refusal::new(
@@ -561,7 +563,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         connector: Arc::clone(&self.connector),
                         // A hold binds only to a pod it found starting (rows O1, O2).
                         held: hold.deployment().is_some(),
-                        _lease: lease,
+                        lease,
                     }));
                 }
                 Err(PoolError::Starting | PoolError::Stopping) if !stopping && !hold.lost() => {
@@ -611,7 +613,7 @@ struct PodTarget {
     connector: Arc<dyn PodConnector>,
     /// The request was held while this pod started.
     held: bool,
-    _lease: StreamLease,
+    lease: StreamLease,
 }
 
 impl RelayTarget for PodTarget {
@@ -625,6 +627,10 @@ impl RelayTarget for PodTarget {
 
     fn bearer(&self) -> Option<&TargetBearer> {
         Some(&self.bearer)
+    }
+
+    fn profile(&self) -> Option<String> {
+        self.lease.profile().map(str::to_owned)
     }
 
     fn held(&self) -> bool {

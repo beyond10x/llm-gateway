@@ -1262,7 +1262,7 @@
         "scenario": "llm-gateway.hosting/authored/validating-and-listing-allocate-nothing"
       },
       "runpod/scenarios/a-capacity-refusal-starts-the-model-on-its-next-profile.yaml": {
-        "digest": "sha256:5095f7aa6c2fb1bbad70b6854a203142cd8b478382a93fb200aad457f528d8bd",
+        "digest": "sha256:d163e97236871a7d029b54b03d3fc6451e995b3ce03fe7a4527ea7f471b3b23d",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-capacity-refusal-starts-the-model-on-its-next-profile"
       },
@@ -1317,7 +1317,7 @@
         "scenario": "llm-gateway.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override"
       },
       "runpod/scenarios/a-non-capacity-refusal-is-not-retried-on-the-next-profile.yaml": {
-        "digest": "sha256:361383049b02c1b641f150c4034940e5f7b9cc87805d2786fd6c405c736737a1",
+        "digest": "sha256:a20dc363a49482e3ceac52e779c5da5d1ef2198a0efdb1ada3f74759b5eeab0d",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-non-capacity-refusal-is-not-retried-on-the-next-profile"
       },
@@ -22062,6 +22062,8 @@
               "results": {
                 "kind": "literal",
                 "value": [
+                  "ok",
+                  "ok",
                   "ready"
                 ]
               }
@@ -23037,6 +23039,8 @@
               "results": {
                 "kind": "literal",
                 "value": [
+                  "ok",
+                  "ok",
                   "err:no-capacity"
                 ]
               }

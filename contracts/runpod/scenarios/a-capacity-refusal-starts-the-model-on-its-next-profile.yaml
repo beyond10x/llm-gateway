@@ -16,6 +16,8 @@ assert:
 - view: llm-gateway.runpod.LastExecution
   contains:
     results:
+    - ok
+    - ok
     - ready
     create_calls: 3
     requested_gpus:

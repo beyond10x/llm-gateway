@@ -108,6 +108,58 @@ with the default profile only the cards that data center has can be rented. The 
 alternative: Runpod clears the container disk on stop, keeps billing the storage, and may return no
 GPU on resume.
 
+## Fallback: high throughput first, 32k on the broad cards when no 80 GB card is free
+
+A model may list its profiles in order under `[[models.<alias>.profiles]]`; each names its GPU
+types and the vLLM settings that fit them. A start tries the first profile's GPU types in order;
+when Runpod refuses every one of them for capacity, it tries the next profile, inside the same
+startup deadline and with the spend check before every create. Any other refusal, or a create
+whose answer was lost, ends the start. Thinking, reasoning effort, sampling and every other key
+stay on the model and hold for every profile; `gpu_types`, `max_model_len`, `max_num_seqs`,
+`gpu_util` and `extra_vllm_args` move into the profiles and are refused on the model beside them.
+A GPU type belongs to at most one profile, and the usage record names the profile of the pod that
+served. A model without `profiles` is one profile named `default`.
+
+```toml
+[models."qwen3.8-27b"]
+provider = "runpod"
+wires = ["chat", "responses", "messages"]
+context_window = 65536
+hf_model = "Qwen/Qwen3.8-27B-FP8"
+image = "vllm/vllm-openai:v0.27.1"
+disk_gb = 80
+thinking = "off"
+idle_timeout_minutes = 30
+start_wait_seconds = 1800
+
+[[models."qwen3.8-27b".profiles]]
+name = "h100-64k"
+gpu_types = ["NVIDIA H100 NVL", "NVIDIA H100 80GB HBM3", "NVIDIA B200"]
+max_model_len = 65536
+max_num_seqs = 64
+extra_vllm_args = [
+  "--language-model-only", "--max-num-batched-tokens", "1536",
+  "--kv-cache-dtype", "fp8", "--mamba-ssm-cache-dtype", "float16",
+  "--mamba-cache-dtype", "float16", "--enable-prefix-caching",
+  "--mamba-cache-mode", "align", "--reasoning-parser", "qwen3",
+  "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
+  "--speculative-config", '{"method":"mtp","num_speculative_tokens":3}',
+]
+
+[[models."qwen3.8-27b".profiles]]
+name = "l40s-32k"
+gpu_types = ["NVIDIA L40S", "NVIDIA RTX A6000", "NVIDIA A40"]
+max_model_len = 32768
+max_num_seqs = 8
+extra_vllm_args = [
+  "--language-model-only", "--max-num-batched-tokens", "1536",
+  "--kv-cache-dtype", "fp8", "--mamba-ssm-cache-dtype", "float16",
+  "--mamba-cache-dtype", "float16", "--enable-prefix-caching",
+  "--mamba-cache-mode", "align", "--reasoning-parser", "qwen3",
+  "--enable-auto-tool-choice", "--tool-call-parser", "qwen3_coder",
+]
+```
+
 ## What did not carry over
 
 llmgw's `reasoningEffort` and `sampling` are empty strings in both profiles; here an unset key is

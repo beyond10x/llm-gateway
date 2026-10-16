@@ -189,6 +189,7 @@ pub struct StreamLease {
     deployment: Identifier,
     endpoint: Option<String>,
     served_model: Option<Identifier>,
+    profile: Option<String>,
 }
 
 impl StreamLease {
@@ -202,6 +203,11 @@ impl StreamLease {
     /// The model the pod itself says it serves. `None` when it did not say.
     pub fn served_model(&self) -> Option<&Identifier> {
         self.served_model.as_ref()
+    }
+    /// The profile of the model the pod was started on, named by the pod's GPU type. `None`
+    /// when the pod's GPU type is unknown or in no profile of the model.
+    pub fn profile(&self) -> Option<&str> {
+        self.profile.as_deref()
     }
 }
 
@@ -575,6 +581,8 @@ impl<T: RunpodTransport> RunpodPool<T> {
             Phase::StopRequired => Err(PoolError::Stopping),
             Phase::Requested | Phase::Active if ready_now(&record, now) => {
                 let observed = record.observed.as_ref();
+                let profile =
+                    observed.and_then(|observed| inner.provider.profile_of(&observed.key));
                 let slot = inner.slots.get(alias).ok_or(PoolError::UnknownModel)?;
                 slot.usage.in_flight.fetch_add(1, Ordering::SeqCst);
                 slot.usage.last_used_ms.fetch_max(now, Ordering::SeqCst);
@@ -584,6 +592,7 @@ impl<T: RunpodTransport> RunpodPool<T> {
                     deployment,
                     endpoint: observed.and_then(|observed| observed.endpoint.clone()),
                     served_model: observed.and_then(|observed| observed.served_model.clone()),
+                    profile,
                 })
             }
             _ => Err(PoolError::Starting),

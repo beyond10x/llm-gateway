@@ -1349,7 +1349,7 @@ fn a_relayed_call_names_the_profile_of_the_pod_that_served() {
         OWNER_SECRET,
         "{\"model\":\"profiled\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
     );
-    drop(running.shutdown());
+    running.shutdown();
     assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
     let gpus: Vec<String> = runpod
         .requests()

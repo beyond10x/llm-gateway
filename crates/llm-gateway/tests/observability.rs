@@ -868,10 +868,10 @@ fn a_record_names_the_profile_of_the_pod_that_served_and_none_otherwise() {
     assert_eq!(profiled.status, 200);
     assert_eq!(unprofiled.status, 200);
     assert_eq!(unavailable.status, 503);
-    let profiles: Vec<Option<String>> = fixture
+    let served: Vec<Option<String>> = fixture
         .records()
         .iter()
         .map(|record| record.profile.clone())
         .collect();
-    assert_eq!(profiles, [Some("h100-64k".to_owned()), None, None]);
+    assert_eq!(served, [Some("h100-64k".to_owned()), None, None]);
 }

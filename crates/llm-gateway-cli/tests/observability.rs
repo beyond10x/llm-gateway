@@ -62,6 +62,7 @@ fn record(disposition: Disposition, refusal: Option<RefusalCode>, status: u16) -
         reasoning_output_tokens: None,
         response_bytes: 10,
         duration_ms: 7,
+        profile: None,
     }
 }
 

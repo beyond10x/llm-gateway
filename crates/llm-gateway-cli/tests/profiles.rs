@@ -150,3 +150,25 @@ fn d3_the_weight_cache_block_is_accepted_with_either_profile() {
         assert_eq!(model.data_center_ids, ["US-CA-2"], "{title}");
     }
 }
+
+const FALLBACK: &str =
+    "Fallback: high throughput first, 32k on the broad cards when no 80 GB card is free";
+
+#[test]
+fn the_fallback_block_loads_as_two_ordered_profiles() {
+    let model = load_profile("profiles-fallback", &block(&profiles(), FALLBACK));
+    assert_eq!(model.profile, "h100-64k");
+    assert_eq!(model.vllm.max_model_len, 65_536);
+    assert!(model.gpu_types.contains(&"NVIDIA H100 NVL".to_string()));
+    assert_eq!(model.fallbacks.len(), 1);
+    let fallback = &model.fallbacks[0];
+    assert_eq!(fallback.name, "l40s-32k");
+    assert_eq!(fallback.vllm.max_model_len, 32_768);
+    assert_eq!(fallback.gpu_types.len(), 3);
+    assert!(
+        !fallback
+            .vllm
+            .extra_args
+            .contains(&"--speculative-config".to_string())
+    );
+}

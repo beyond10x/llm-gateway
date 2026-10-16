@@ -6,6 +6,12 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+- A model may declare ordered `[[models.<alias>.profiles]]`, each a GPU type list with its vLLM
+  settings. When Runpod refuses every create of a profile for capacity (the connectors failure
+  code `capacity`), the start moves on to the next profile, inside the same startup deadline and
+  with the spend check before every create; any other refusal ends the start. Two profiles sharing
+  a name or a GPU type are refused `profile-conflict`. The flat declaration is the one profile
+  `default`, unchanged, and the usage record names the profile of the pod that served.
 - A provider may declare `daily_cap_usd` and `total_cap_usd`, spend ceilings for its account,
   and each model `price_per_hour_usd`. Before every pod create the pool checks the account's
   reported spend plus its live pods' and the new pod's estimates against each ceiling; a start

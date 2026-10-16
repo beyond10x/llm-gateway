@@ -16,6 +16,8 @@ assert:
 - view: llm-gateway.runpod.LastExecution
   contains:
     results:
+    - ok
+    - ok
     - err:no-capacity
     create_calls: 2
     requested_gpus:

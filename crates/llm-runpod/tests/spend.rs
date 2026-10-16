@@ -59,6 +59,8 @@ fn model() -> RunpodModel {
         idle_timeout_ms: 86_400_000,
         crash_restart_limit: 2,
         crash_window_ms: 600_000,
+        profile: "default".to_owned(),
+        fallbacks: Vec::new(),
     }
 }
 

@@ -261,6 +261,17 @@ types:
   - name: llm-gateway.deployment.ReasoningEffort
     kind: enum
     variants: [Low, Medium, High, Xhigh]
+  # A hosted model's `reasoning_effort`: the efforts the served Qwen3.8 chat template accepts
+  # (Qwen/Qwen3.8-27B-FP8 `chat_template.jinja` lines 46-49), so not ReasoningEffort's `high`,
+  # which a Runpod pod's template argument still takes. DECIDED 2026-10-15
+  # (story:effort-default): a hosted endpoint is a server the operator started, whose
+  # chat-template defaults the gateway does not set, and that template defaults to `xhigh` when
+  # a request names no effort, so a declared effort is given to such a request instead
+  # (llm-gateway.gateway `Relay`, step 6). A Runpod model needs none: its `reasoning_effort`
+  # is already the server's default chat-template argument (crates/llm-runpod/src/request.rs).
+  - name: llm-gateway.deployment.HostedReasoningEffort
+    kind: enum
+    variants: [Low, Medium, Xhigh]
   # `[providers.<name>]`. The name is 1..=64 of `a-z 0-9 - _ .` without a leading dash
   # (`config:value`).
   # `connectors`, optional: when present the provider's pods are reached through the connectors
@@ -385,6 +396,10 @@ types:
   #   upstream_model     1..=256 printable ASCII, default the alias
   #   context_window     optional, 4096..=2000000: what the public routes publish
   #   tool_calling       as a model's, default `absent`
+  #   reasoning_effort   optional, `low`, `medium` or `xhigh` (HostedReasoningEffort), absent
+  #                      by default; any other string, `high` and `max` included, is
+  #                      `config:value`. A messages-wire request that names no effort reaches
+  #                      the endpoint with this one (llm-gateway.gateway `Relay`, step 6)
   - name: llm-gateway.deployment.HostedDeclaration
     kind: struct
     fields:
@@ -397,6 +412,7 @@ types:
       - {name: upstream_model, type: String}
       - {name: context_window, type: 'Optional<Integer>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
+      - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
   # becomes the gateway's shared-secret owner verifier. A relative `owner_secret_file` is

@@ -67,8 +67,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
-    "contract_digest": "slice-sha256/2:8930662882aea166029bd6e0df50e806a58db9c80dceb9d06cbd77dfab694df4",
+    "source_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
+    "contract_digest": "slice-sha256/2:fdd2b2136ddb1456e938ea2be0ccc558deca2f4ee07b08d03d6c3f89a63f9353",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -82,6 +82,7 @@
         "BodyNotAllowed",
         "BodyNotJson",
         "BodyTooLarge",
+        "ContextExceeded",
         "CredentialAbsent",
         "CredentialMalformed",
         "CredentialRejected",
@@ -110,6 +111,7 @@
             "BodyNotAllowed": "body-not-allowed",
             "BodyNotJson": "body-not-json",
             "BodyTooLarge": "body-too-large",
+            "ContextExceeded": "context-exceeded",
             "CredentialAbsent": "credential-absent",
             "CredentialMalformed": "credential-malformed",
             "CredentialRejected": "credential-rejected",
@@ -138,6 +140,7 @@
             "BodyNotAllowed": 400,
             "BodyNotJson": 400,
             "BodyTooLarge": 413,
+            "ContextExceeded": 400,
             "CredentialAbsent": 401,
             "CredentialMalformed": 401,
             "CredentialRejected": 401,
@@ -166,6 +169,7 @@
             "BodyNotAllowed": "the inspection surface accepts no request body",
             "BodyNotJson": "the request body is not one JSON object",
             "BodyTooLarge": "the request body exceeds its byte bound",
+            "ContextExceeded": "prompt is too long: the input leaves no room for output in the model context window",
             "CredentialAbsent": "no owner credential was presented",
             "CredentialMalformed": "the owner credential is not a bearer token",
             "CredentialRejected": "the presented owner credential was rejected",

@@ -39,8 +39,18 @@
       "llm-gateway.gateway/authored/authentication-comes-before-the-path-is-decided",
       "llm-gateway.gateway/authored/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing",
       "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential",
+      "llm-gateway.gateway/authored/clamp-a-count-that-fails-relays-the-request-unchanged",
+      "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted",
+      "llm-gateway.gateway/authored/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged",
+      "llm-gateway.gateway/authored/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed",
+      "llm-gateway.gateway/authored/claude-code-adaptive-thinking-reaches-the-target-unchanged",
+      "llm-gateway.gateway/authored/claude-code-anthropic-headers-never-reach-the-target",
+      "llm-gateway.gateway/authored/claude-code-structured-output-format-reaches-the-target-unchanged",
+      "llm-gateway.gateway/authored/claude-code-the-startup-probe-head-api-hello-is-refused",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
       "llm-gateway.gateway/authored/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing",
+      "llm-gateway.gateway/authored/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire",
+      "llm-gateway.gateway/authored/hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none",
       "llm-gateway.gateway/authored/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-document-whose-api-key-endpoint-names-no-credential-header-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-hosted-model-beside-a-pod-model-and-a-failed-endpoint-is-kept",
@@ -82,13 +92,17 @@
       "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-with-tool-calling-parsed-is-relayed-unchanged",
       "llm-gateway.gateway/authored/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target",
       "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged",
+      "llm-gateway.gateway/authored/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged",
+      "llm-gateway.gateway/authored/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged",
       "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread",
       "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed",
       "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete",
       "llm-gateway.gateway/authored/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes",
       "llm-gateway.gateway/authored/w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused",
       "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged",
+      "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-max-passes-unchanged",
       "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh",
+      "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-max-reaches-the-target-as-xhigh",
       "llm-gateway.gateway/authored/w5-an-event-stream-is-relayed-unchanged-as-it-arrives",
       "llm-gateway.gateway/authored/w6-a-model-still-starting-past-its-hold-budget-is-model-cold-start-with-retry-after-30",
       "llm-gateway.gateway/authored/w6-a-model-with-no-target-is-target-unavailable-without-retry-after",
@@ -379,6 +393,46 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential"
       },
+      "gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml": {
+        "digest": "sha256:953c6cd8092373e7d84ca5431f057b84b5dfa07be47e89495719baef007a045d",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/clamp-a-count-that-fails-relays-the-request-unchanged"
+      },
+      "gateway/scenarios/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted.yaml": {
+        "digest": "sha256:397b84f372b804e56a405833b7e0da9d3c3c54e02dc8070c07811a2c1b15ad25",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted"
+      },
+      "gateway/scenarios/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged.yaml": {
+        "digest": "sha256:254140c93dd193f9e28ab7d780757b6a7a395c87b648aa5445ae38b911ab8b94",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged"
+      },
+      "gateway/scenarios/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed.yaml": {
+        "digest": "sha256:a04828fbe727b9b6ce29fbe39f2ca3226ce1a94cbeb45fae5abbd69b83f02558",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed"
+      },
+      "gateway/scenarios/claude-code-adaptive-thinking-reaches-the-target-unchanged.yaml": {
+        "digest": "sha256:e05ed5c221a2ffc1a78dbe1480ba1db9b563e4a4be4c5633490e719fa8efabe1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/claude-code-adaptive-thinking-reaches-the-target-unchanged"
+      },
+      "gateway/scenarios/claude-code-anthropic-headers-never-reach-the-target.yaml": {
+        "digest": "sha256:c806dd743cb73bfa9e343a010b1b1b800ccf2a03aa7f6b743605cb96f31c6541",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/claude-code-anthropic-headers-never-reach-the-target"
+      },
+      "gateway/scenarios/claude-code-structured-output-format-reaches-the-target-unchanged.yaml": {
+        "digest": "sha256:d57a5ba94d1fc72110c3377f90bf555d744c67d999cda6d80489a1a78b0725d4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/claude-code-structured-output-format-reaches-the-target-unchanged"
+      },
+      "gateway/scenarios/claude-code-the-startup-probe-head-api-hello-is-refused.yaml": {
+        "digest": "sha256:00477d630f2e560b3ee57d75eb67f9f7cc5828f96faca90b056b4c152968234f",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/claude-code-the-startup-probe-head-api-hello-is-refused"
+      },
       "gateway/scenarios/gateway-a-header-name-followed-by-whitespace-is-malformed.yaml": {
         "digest": "sha256:7b9b260a007aa5475525e43d9defa53b20c041e838905a43d60a66fc0fec5aac",
         "disposition": "accepted",
@@ -408,6 +462,16 @@
         "digest": "sha256:bfd365c9de6aa81d87c916478fe27b458217dad1cd20c71b90a52af830841d88",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing"
+      },
+      "gateway/scenarios/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire.yaml": {
+        "digest": "sha256:6cdeebbd105f957218831749588e9ed5d2fb57ad3c995ac77e513ce824a352c4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire"
+      },
+      "gateway/scenarios/hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none.yaml": {
+        "digest": "sha256:42dad05d0c62ff56f0b55fede8b88553ec0d2b2944d0190d17b228b09a10b95e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none"
       },
       "gateway/scenarios/hosted-a-document-sending-a-credential-over-http-to-a-remote-host-composes-nothing.yaml": {
         "digest": "sha256:b8ab67d798cd56babe8bdf6d97df90392d983f5995caaae0fd3808225bd13a3c",
@@ -614,6 +678,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged"
       },
+      "gateway/scenarios/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml": {
+        "digest": "sha256:4be0f1039badfd01af9403b55d8396bcabaf59d5cc031d18a310faf0c5498161",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged"
+      },
+      "gateway/scenarios/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml": {
+        "digest": "sha256:66330e68e6784c40793a3152bf88db02f8e2e173f7a16c25e51aea78db305d6d",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged"
+      },
       "gateway/scenarios/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread.yaml": {
         "digest": "sha256:9d1666bcd8103702b2dcaa5fa64bab30d5b32586c6b4243bc72c562126b73c38",
         "disposition": "accepted",
@@ -644,10 +718,20 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged"
       },
+      "gateway/scenarios/w4-on-the-chat-and-responses-wires-effort-max-passes-unchanged.yaml": {
+        "digest": "sha256:72b120356f528e258ae1443ed0adcc443a1631198162642fc05df458eae0c557",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-max-passes-unchanged"
+      },
       "gateway/scenarios/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh.yaml": {
         "digest": "sha256:6d95d855cdfe5a88b5f37e821f02633dffeb28292d4e5ca55af1b08feca78326",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh"
+      },
+      "gateway/scenarios/w4-on-the-messages-wire-effort-max-reaches-the-target-as-xhigh.yaml": {
+        "digest": "sha256:ccd367ec0ad54378df6bac7a2427edff5767c6c9d7e39c1e1b9cffb2bbde9523",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-max-reaches-the-target-as-xhigh"
       },
       "gateway/scenarios/w5-an-event-stream-is-relayed-unchanged-as-it-arrives.yaml": {
         "digest": "sha256:28386d7976f22e3c75f9336cf0cbbb5ee50f1ab71e62e015d45cd8657a96b8a8",
@@ -1241,7 +1325,7 @@
       }
     },
     "counts": {
-      "authored": 206,
+      "authored": 220,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1266,9 +1350,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "875b591bf351cca725b3e63c60512e5ae4ea635466088001dcff6e690cc8b570",
+    "contract_digest": "341d6ed63a79a3ca1e15e8c2620cdc4c358542e62573965622f731d86747dc17",
     "scenario_initial_state": "empty",
-    "spec_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
+    "spec_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -4510,6 +4594,867 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/clamp-a-count-that-fails-relays-the-request-unchanged": {
+      "purpose": "a count that is refused, closed, answered outside 2xx or without a non-negative integer input_tokens relays the request unchanged and reports no target failed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"],\"max_model_len\":1000}],\"pods\":[[{\"transport\":\"refused\"},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"transport\":\"closed\"},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":500,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"error\\\":\\\"boom\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":503,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":10}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"tokens\\\":10}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":-1}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":1.5}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":\\\"10\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"not json\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 9.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 9.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted": {
+      "purpose": "a hosted model's window is its context_window; a hosted model declaring none, a body without max_tokens and the chat wire are relayed without a count",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"open\",\"upstream_model\":\"vendor-open\",\"wires\":[\"chat\",\"messages\"],\"context_window\":4096,\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"bare\",\"upstream_model\":\"vendor-bare\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":4000}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"bare\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"open\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"vendor-open\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"vendor-open\",\"max_tokens\":96,\"messages\":[]}",
+                  "pod-2 POST /v1/messages {\"model\":\"vendor-bare\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"vendor-open\",\"messages\":[]}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"vendor-open\",\"max_tokens\":32000,\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged": {
+      "purpose": "on the messages wire the gateway counts the input at the target and lowers a max_tokens above the room max_model_len leaves to that room, and relays one at or below it unchanged",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"],\"bearer\":\"vllm-key-code-0123456789abcdef\",\"max_model_len\":1000,\"context_window\":65536}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":900}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":900}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":900}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":101,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":100,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":99,\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "Bearer vllm-key-code-0123456789abcdef",
+                  "Bearer vllm-key-code-0123456789abcdef",
+                  "Bearer vllm-key-code-0123456789abcdef",
+                  "Bearer vllm-key-code-0123456789abcdef",
+                  "Bearer vllm-key-code-0123456789abcdef",
+                  "Bearer vllm-key-code-0123456789abcdef"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 3.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":101,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":100,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":99,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":99,\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed": {
+      "purpose": "a messages request whose counted input leaves no room in the window is refused context-exceeded with a message Claude Code reads as a prompt too long, and nothing is relayed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"],\"max_model_len\":1000}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":1000}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":999}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"context-exceeded\",\"message\":\"prompt is too long: the input leaves no room for output in the model context window\"}}",
+                  "{}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=messages disposition=Refused refusal=context-exceeded status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent",
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=2 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "400 context-exceeded",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":1,\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/claude-code-adaptive-thinking-reaches-the-target-unchanged": {
+      "purpose": "the thinking object Claude Code sends to a model id it does not recognise, type adaptive, reaches the target unchanged on the messages wire (llm-gateway.clients ThinkingHandling Relayed)",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"],\"tool_calling\":\"parsed\"}],\"pods\":[[{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"event: message_start\\ndata: {\\\"type\\\":\\\"message_start\\\"}\\n\\n\",\"event: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages?beta=true\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":1024,\\\"stream\\\":true,\\\"thinking\\\":{\\\"type\\\":\\\"adaptive\\\"},\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "event: message_start\ndata: {\"type\":\"message_start\"}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":1024,\"stream\":true,\"thinking\":{\"type\":\"adaptive\"},\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/claude-code-anthropic-headers-never-reach-the-target": {
+      "purpose": "anthropic-version, anthropic-beta and x-claude-code-session-id are dropped like every client header; the target receives the gateway's own head on the path without the query",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages?beta=true\",\"headers\":[\"anthropic-version: 2023-06-01\",\"anthropic-beta: context-management-2025-06-27,structured-outputs-2025-11-13\",\"x-claude-code-session-id: 6f1c2a9e-3b7d-4e58-9a21-0c4d8e7f5b13\"],\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":1024,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "absent"
+                ]
+              },
+              "received_heads": {
+                "kind": "literal",
+                "value": [
+                  "content-type: application/json | content-length: 85 | connection: close"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":1024,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/claude-code-structured-output-format-reaches-the-target-unchanged": {
+      "purpose": "output_config.format and the deprecated top-level output_format reach the target unchanged beside an effort the template accepts; only the model is rewritten",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"type\\\":\\\"message\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":512,\\\"output_config\\\":{\\\"effort\\\":\\\"medium\\\",\\\"format\\\":{\\\"type\\\":\\\"json_schema\\\",\\\"schema\\\":{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"title\\\":{\\\"type\\\":\\\"string\\\"}},\\\"required\\\":[\\\"title\\\"]}}},\\\"output_format\\\":{\\\"type\\\":\\\"json_schema\\\",\\\"schema\\\":{\\\"type\\\":\\\"object\\\"}},\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"type\":\"message\"}"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":512,\"output_config\":{\"effort\":\"medium\",\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\",\"properties\":{\"title\":{\"type\":\"string\"}},\"required\":[\"title\"]}}},\"output_format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\"}},\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/claude-code-the-startup-probe-head-api-hello-is-refused": {
+      "purpose": "Claude Code's connection-warming HEAD /api/hello is credential-absent without the owner credential and path-unknown with it, each without a body",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"send\",\"raw\":\"HEAD /api/hello HTTP/1.1\\r\\nanthropic-version: 2023-06-01\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /api/hello HTTP/1.1\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"HEAD /api/hello HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\nanthropic-version: 2023-06-01\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /api/hello HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "",
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "",
+                  "{\"error\":{\"code\":\"path-unknown\",\"message\":\"no such gateway resource\"}}"
+                ]
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "www-authenticate=Bearer allow=absent",
+                  "www-authenticate=Bearer allow=absent",
+                  "www-authenticate=absent allow=absent",
+                  "www-authenticate=absent allow=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "401 no-body",
+                  "401 credential-absent",
+                  "404 no-body",
+                  "404 path-unknown"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/head-inspection-answers-without-a-body": {
       "purpose": "HEAD is served like GET and writes no body; a query string is discarded",
       "source": [
@@ -4673,6 +5618,212 @@
               "upstream": {
                 "kind": "literal",
                 "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire": {
+      "purpose": "a named effort keeps the W4 mapping; a non-object output_config, the chat and responses wires and an undeclared model relay as before",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"reasoning_effort\":\"low\",\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"plain\",\"upstream_model\":\"served-plain\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"max\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"medium\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"high\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"medium\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":null}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":\\\"none\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"x\\\":{\\\"output_config\\\":{\\\"effort\\\":\\\"high\\\"}}}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"input\\\":\\\"hi\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"max_tokens\\\":8,\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"xhigh\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"medium\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"chat_template_kwargs\":{\"reasoning_effort\":\"medium\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":null}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":\"none\"}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"x\":{\"output_config\":{\"effort\":\"high\"}},\"output_config\":{\"effort\":\"low\"}}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"messages\":[]}",
+                  "pod-1 POST /v1/responses {\"model\":\"served-code\",\"input\":\"hi\"}",
+                  "pod-2 POST /v1/messages {\"model\":\"served-plain\",\"max_tokens\":8,\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none": {
+      "purpose": "a messages request naming no effort, Claude Code's turn among them, reaches a hosted endpoint with the declared effort as output_config.effort",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code-low\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"],\"tool_calling\":\"parsed\",\"reasoning_effort\":\"low\",\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"code-medium\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"],\"tool_calling\":\"parsed\",\"reasoning_effort\":\"medium\",\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"code-xhigh\",\"upstream_model\":\"served-code\",\"wires\":[\"messages\"],\"tool_calling\":\"parsed\",\"reasoning_effort\":\"xhigh\",\"endpoint\":{\"pod\":\"pod-3\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages?beta=true\",\"headers\":[\"anthropic-version: 2023-06-01\"],\"body\":\"{\\\"model\\\":\\\"code-low\\\",\\\"max_tokens\\\":32000,\\\"stream\\\":true,\\\"thinking\\\":{\\\"type\\\":\\\"adaptive\\\"},\\\"system\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"[attribution block: client version and conversation fingerprint]\\\"},{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"You are Claude Code, an interactive command line tool.\\\",\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"}}],\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"What does /tmp/a.txt say?\\\",\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"}}]}],\\\"tools\\\":[{\\\"name\\\":\\\"Read\\\",\\\"description\\\":\\\"Reads a file from the local filesystem.\\\",\\\"input_schema\\\":{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"file_path\\\":{\\\"type\\\":\\\"string\\\",\\\"description\\\":\\\"The absolute path to the file to read\\\"}},\\\"required\\\":[\\\"file_path\\\"]}}]}\"},{\"step\":\"request\",\"path\":\"/v1/messages?beta=true\",\"headers\":[\"anthropic-version: 2023-06-01\"],\"body\":\"{\\\"model\\\":\\\"code-medium\\\",\\\"max_tokens\\\":32000,\\\"stream\\\":true,\\\"thinking\\\":{\\\"type\\\":\\\"adaptive\\\"},\\\"system\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"[attribution block: client version and conversation fingerprint]\\\"},{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"You are Claude Code, an interactive command line tool.\\\",\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"}}],\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"What does /tmp/a.txt say?\\\",\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"}}]}],\\\"tools\\\":[{\\\"name\\\":\\\"Read\\\",\\\"description\\\":\\\"Reads a file from the local filesystem.\\\",\\\"input_schema\\\":{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"file_path\\\":{\\\"type\\\":\\\"string\\\",\\\"description\\\":\\\"The absolute path to the file to read\\\"}},\\\"required\\\":[\\\"file_path\\\"]}}]}\"},{\"step\":\"request\",\"path\":\"/v1/messages?beta=true\",\"headers\":[\"anthropic-version: 2023-06-01\"],\"body\":\"{\\\"model\\\":\\\"code-xhigh\\\",\\\"max_tokens\\\":32000,\\\"stream\\\":true,\\\"thinking\\\":{\\\"type\\\":\\\"adaptive\\\"},\\\"system\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"[attribution block: client version and conversation fingerprint]\\\"},{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"You are Claude Code, an interactive command line tool.\\\",\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"}}],\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"What does /tmp/a.txt say?\\\",\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"}}]}],\\\"tools\\\":[{\\\"name\\\":\\\"Read\\\",\\\"description\\\":\\\"Reads a file from the local filesystem.\\\",\\\"input_schema\\\":{\\\"type\\\":\\\"object\\\",\\\"properties\\\":{\\\"file_path\\\":{\\\"type\\\":\\\"string\\\",\\\"description\\\":\\\"The absolute path to the file to read\\\"}},\\\"required\\\":[\\\"file_path\\\"]}}]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code-low\\\",\\\"output_config\\\":{},\\\"max_tokens\\\":8,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code-medium\\\",\\\"output_config\\\":{\\\"format\\\":{\\\"type\\\":\\\"json_schema\\\",\\\"schema\\\":{\\\"type\\\":\\\"object\\\"}}},\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"stream\":true,\"thinking\":{\"type\":\"adaptive\"},\"system\":[{\"type\":\"text\",\"text\":\"[attribution block: client version and conversation fingerprint]\"},{\"type\":\"text\",\"text\":\"You are Claude Code, an interactive command line tool.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"What does /tmp/a.txt say?\",\"cache_control\":{\"type\":\"ephemeral\"}}]}],\"tools\":[{\"name\":\"Read\",\"description\":\"Reads a file from the local filesystem.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"file_path\":{\"type\":\"string\",\"description\":\"The absolute path to the file to read\"}},\"required\":[\"file_path\"]}}],\"output_config\":{\"effort\":\"low\"}}",
+                  "pod-2 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"stream\":true,\"thinking\":{\"type\":\"adaptive\"},\"system\":[{\"type\":\"text\",\"text\":\"[attribution block: client version and conversation fingerprint]\"},{\"type\":\"text\",\"text\":\"You are Claude Code, an interactive command line tool.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"What does /tmp/a.txt say?\",\"cache_control\":{\"type\":\"ephemeral\"}}]}],\"tools\":[{\"name\":\"Read\",\"description\":\"Reads a file from the local filesystem.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"file_path\":{\"type\":\"string\",\"description\":\"The absolute path to the file to read\"}},\"required\":[\"file_path\"]}}],\"output_config\":{\"effort\":\"medium\"}}",
+                  "pod-3 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":32000,\"stream\":true,\"thinking\":{\"type\":\"adaptive\"},\"system\":[{\"type\":\"text\",\"text\":\"[attribution block: client version and conversation fingerprint]\"},{\"type\":\"text\",\"text\":\"You are Claude Code, an interactive command line tool.\",\"cache_control\":{\"type\":\"ephemeral\"}}],\"messages\":[{\"role\":\"user\",\"content\":[{\"type\":\"text\",\"text\":\"What does /tmp/a.txt say?\",\"cache_control\":{\"type\":\"ephemeral\"}}]}],\"tools\":[{\"name\":\"Read\",\"description\":\"Reads a file from the local filesystem.\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"file_path\":{\"type\":\"string\",\"description\":\"The absolute path to the file to read\"}},\"required\":[\"file_path\"]}}],\"output_config\":{\"effort\":\"xhigh\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"low\"},\"max_tokens\":8,\"messages\":[]}",
+                  "pod-2 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"format\":{\"type\":\"json_schema\",\"schema\":{\"type\":\"object\"}},\"effort\":\"medium\"},\"messages\":[]}"
+                ]
               },
               "valid_program": {
                 "kind": "literal",
@@ -8826,6 +9977,248 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged": {
+      "purpose": "a chat answer and a chat stream's final usage chunk, cached_tokens and an unknown usage field included, reach the client byte for byte; the record's token counters stay absent",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"Qwen/Qwen3.8-27B-FP8\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chatcmpl-5d1e8a3c0f7b4e92\\\",\\\"object\\\":\\\"chat.completion\\\",\\\"created\\\":1792051200,\\\"model\\\":\\\"Qwen/Qwen3.8-27B-FP8\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"message\\\":{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"Hello.\\\",\\\"refusal\\\":null,\\\"annotations\\\":null,\\\"audio\\\":null,\\\"function_call\\\":null,\\\"reasoning\\\":null},\\\"logprobs\\\":null,\\\"finish_reason\\\":\\\"stop\\\",\\\"stop_reason\\\":null,\\\"token_ids\\\":null,\\\"routed_experts\\\":null}],\\\"service_tier\\\":null,\\\"system_fingerprint\\\":null,\\\"usage\\\":{\\\"prompt_tokens\\\":1234,\\\"total_tokens\\\":1240,\\\"completion_tokens\\\":6,\\\"prompt_tokens_details\\\":{\\\"cached_tokens\\\":1024,\\\"created_cache_tokens\\\":192,\\\"multimodal_tokens\\\":null},\\\"future_usage_field\\\":{\\\"kept\\\":true}},\\\"prompt_logprobs\\\":null,\\\"prompt_token_ids\\\":null,\\\"prompt_text\\\":null,\\\"kv_transfer_params\\\":null,\\\"ec_transfer_params\\\":null,\\\"metrics\\\":null}\\n\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"data: {\\\"id\\\":\\\"chatcmpl-7a2b9c4d1e3f5a60\\\",\\\"object\\\":\\\"chat.completion.chunk\\\",\\\"created\\\":1792051200,\\\"model\\\":\\\"Qwen/Qwen3.8-27B-FP8\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"\\\"},\\\"logprobs\\\":null,\\\"finish_reason\\\":null}],\\\"prompt_token_ids\\\":null,\\\"prompt_text\\\":null}\\n\\n\",\"data: {\\\"id\\\":\\\"chatcmpl-7a2b9c4d1e3f5a60\\\",\\\"object\\\":\\\"chat.completion.chunk\\\",\\\"created\\\":1792051200,\\\"model\\\":\\\"Qwen/Qwen3.8-27B-FP8\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{\\\"content\\\":\\\"Hello\\\"},\\\"logprobs\\\":null,\\\"finish_reason\\\":null,\\\"token_ids\\\":null}]}\\n\\n\",\"data: {\\\"id\\\":\\\"chatcmpl-7a2b9c4d1e3f5a60\\\",\\\"object\\\":\\\"chat.completion.chunk\\\",\\\"created\\\":1792051200,\\\"model\\\":\\\"Qwen/Qwen3.8-27B-FP8\\\",\\\"choices\\\":[{\\\"index\\\":0,\\\"delta\\\":{\\\"content\\\":\\\".\\\"},\\\"logprobs\\\":null,\\\"finish_reason\\\":\\\"stop\\\",\\\"stop_reason\\\":null,\\\"token_ids\\\":null}]}\\n\\n\",\"data: {\\\"id\\\":\\\"chatcmpl-7a2b9c4d1e3f5a60\\\",\\\"object\\\":\\\"chat.completion.chunk\\\",\\\"created\\\":1792051200,\\\"model\\\":\\\"Qwen/Qwen3.8-27B-FP8\\\",\\\"choices\\\":[],\\\"usage\\\":{\\\"prompt_tokens\\\":1234,\\\"total_tokens\\\":1240,\\\"completion_tokens\\\":6,\\\"prompt_tokens_details\\\":{\\\"cached_tokens\\\":1024,\\\"created_cache_tokens\\\":192},\\\"future_usage_field\\\":{\\\"kept\\\":true}}}\\n\\n\",\"data: [DONE]\\n\\n\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}],\\\"stream\\\":true,\\\"stream_options\\\":{\\\"include_usage\\\":true}}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"chatcmpl-5d1e8a3c0f7b4e92\",\"object\":\"chat.completion\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Hello.\",\"refusal\":null,\"annotations\":null,\"audio\":null,\"function_call\":null,\"reasoning\":null},\"logprobs\":null,\"finish_reason\":\"stop\",\"stop_reason\":null,\"token_ids\":null,\"routed_experts\":null}],\"service_tier\":null,\"system_fingerprint\":null,\"usage\":{\"prompt_tokens\":1234,\"total_tokens\":1240,\"completion_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":1024,\"created_cache_tokens\":192,\"multimodal_tokens\":null},\"future_usage_field\":{\"kept\":true}},\"prompt_logprobs\":null,\"prompt_token_ids\":null,\"prompt_text\":null,\"kv_transfer_params\":null,\"ec_transfer_params\":null,\"metrics\":null}\n",
+                  "data: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"logprobs\":null,\"finish_reason\":null}],\"prompt_token_ids\":null,\"prompt_text\":null}\n\ndata: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hello\"},\"logprobs\":null,\"finish_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\".\"},\"logprobs\":null,\"finish_reason\":\"stop\",\"stop_reason\":null,\"token_ids\":null}]}\n\ndata: {\"id\":\"chatcmpl-7a2b9c4d1e3f5a60\",\"object\":\"chat.completion.chunk\",\"created\":1792051200,\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"choices\":[],\"usage\":{\"prompt_tokens\":1234,\"total_tokens\":1240,\"completion_tokens\":6,\"prompt_tokens_details\":{\"cached_tokens\":1024,\"created_cache_tokens\":192},\"future_usage_field\":{\"kept\":true}}}\n\ndata: [DONE]\n\n"
+                ]
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=756 duration_ms=bounded tokens=absent",
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1092 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged": {
+      "purpose": "a messages answer and stream, cache read and creation tokens and an unknown usage field included, reach the client byte for byte; the record's token counters stay absent",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"Qwen/Qwen3.8-27B-FP8\",\"wires\":[\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chatcmpl-3c8f1a6e2d9b4071\\\",\\\"type\\\":\\\"message\\\",\\\"role\\\":\\\"assistant\\\",\\\"content\\\":[{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"Hello.\\\"}],\\\"model\\\":\\\"Qwen/Qwen3.8-27B-FP8\\\",\\\"stop_reason\\\":\\\"end_turn\\\",\\\"usage\\\":{\\\"input_tokens\\\":18,\\\"output_tokens\\\":6,\\\"cache_creation_input_tokens\\\":192,\\\"cache_read_input_tokens\\\":1024,\\\"future_usage_field\\\":{\\\"kept\\\":true}}}\\n\"]},{\"status\":200,\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"chunks\":[\"event: message_start\\ndata: {\\\"type\\\":\\\"message_start\\\",\\\"message\\\":{\\\"id\\\":\\\"chatcmpl-8e4d2b7a1c6f3095\\\",\\\"type\\\":\\\"message\\\",\\\"role\\\":\\\"assistant\\\",\\\"content\\\":[],\\\"model\\\":\\\"Qwen/Qwen3.8-27B-FP8\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"usage\\\":{\\\"input_tokens\\\":1234,\\\"output_tokens\\\":0,\\\"future_usage_field\\\":{\\\"kept\\\":true}}}}\\n\\n\",\"event: content_block_start\\ndata: {\\\"type\\\":\\\"content_block_start\\\",\\\"content_block\\\":{\\\"type\\\":\\\"text\\\",\\\"text\\\":\\\"\\\"},\\\"index\\\":0}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"type\\\":\\\"content_block_delta\\\",\\\"delta\\\":{\\\"type\\\":\\\"text_delta\\\",\\\"text\\\":\\\"Hello\\\"},\\\"index\\\":0}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"type\\\":\\\"content_block_delta\\\",\\\"delta\\\":{\\\"type\\\":\\\"text_delta\\\",\\\"text\\\":\\\".\\\"},\\\"index\\\":0}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"type\\\":\\\"content_block_stop\\\",\\\"index\\\":0}\\n\\n\",\"event: message_delta\\ndata: {\\\"type\\\":\\\"message_delta\\\",\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\"},\\\"usage\\\":{\\\"input_tokens\\\":18,\\\"output_tokens\\\":6,\\\"cache_creation_input_tokens\\\":192,\\\"cache_read_input_tokens\\\":1024,\\\"future_usage_field\\\":{\\\"kept\\\":true}}}\\n\\n\",\"event: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":16,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":16,\\\"stream\\\":true,\\\"messages\\\":[{\\\"role\\\":\\\"user\\\",\\\"content\\\":\\\"hi\\\"}]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"chatcmpl-3c8f1a6e2d9b4071\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"Hello.\"}],\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":18,\"output_tokens\":6,\"cache_creation_input_tokens\":192,\"cache_read_input_tokens\":1024,\"future_usage_field\":{\"kept\":true}}}\n",
+                  "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"chatcmpl-8e4d2b7a1c6f3095\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":1234,\"output_tokens\":0,\"future_usage_field\":{\"kept\":true}}}}\n\nevent: content_block_start\ndata: {\"type\":\"content_block_start\",\"content_block\":{\"type\":\"text\",\"text\":\"\"},\"index\":0}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"},\"index\":0}\n\nevent: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\".\"},\"index\":0}\n\nevent: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"input_tokens\":18,\"output_tokens\":6,\"cache_creation_input_tokens\":192,\"cache_read_input_tokens\":1024,\"future_usage_field\":{\"kept\":true}}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+                ]
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=text/event-stream cache-control=no-store allow=absent"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=317 duration_ms=bounded tokens=absent",
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1012 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+                  "pod-1 POST /v1/messages {\"model\":\"Qwen/Qwen3.8-27B-FP8\",\"max_tokens\":16,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread": {
       "purpose": "a content-length of 33554433 is body-too-large from the head alone, and no target is asked for",
       "source": [
@@ -9382,6 +10775,94 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/w4-on-the-chat-and-responses-wires-effort-max-passes-unchanged": {
+      "purpose": "on the chat and responses wires an effort of max, in any field, reaches the target unchanged; only the model is rewritten",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"reasoning_effort\\\":\\\"max\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"max\\\"},\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"max\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"reasoning\\\":{\\\"effort\\\":\\\"max\\\"},\\\"output_config\\\":{\\\"effort\\\":\\\"max\\\"}}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"reasoning_effort\":\"max\",\"output_config\":{\"effort\":\"max\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"max\"}}",
+                  "pod-1 POST /v1/responses {\"model\":\"served-code\",\"reasoning\":{\"effort\":\"max\"},\"output_config\":{\"effort\":\"max\"}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-high-reaches-the-target-as-xhigh": {
       "purpose": "output_config.effort and chat_template_kwargs.reasoning_effort equal to high become xhigh on the messages wire; any other value passes unchanged",
       "source": [
@@ -9457,6 +10938,98 @@
                 "value": [
                   "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"xhigh\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
                   "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"medium\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"HIGH\"},\"effort\":\"high\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/w4-on-the-messages-wire-effort-max-reaches-the-target-as-xhigh": {
+      "purpose": "output_config.effort and chat_template_kwargs.reasoning_effort equal to max become xhigh on the messages wire, as high does; low, medium and xhigh pass unchanged",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"max\\\"},\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"max\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"low\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"medium\\\"},\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"xhigh\\\"}}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"MAX\\\"},\\\"chat_template_kwargs\\\":{\\\"reasoning_effort\\\":\\\"maximum\\\"},\\\"effort\\\":\\\"max\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"xhigh\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"low\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"medium\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"xhigh\"}}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"output_config\":{\"effort\":\"MAX\"},\"chat_template_kwargs\":{\"reasoning_effort\":\"maximum\"},\"effort\":\"max\"}"
                 ]
               },
               "valid_program": {

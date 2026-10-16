@@ -9,7 +9,7 @@
 
 mod support;
 
-use llm_gateway::{AuthKind, BillingKind, CredentialHeader, ToolCalling};
+use llm_gateway::{AuthKind, BillingKind, CredentialHeader, ReasoningEffort, ToolCalling};
 use llm_gateway_cli::{Wire, load, vllm_keys};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking};
 use std::{
@@ -1436,4 +1436,73 @@ fn hosted_an_unknown_missing_or_mistyped_key_is_refused_as_schema() {
             Err(refusal) => assert_eq!(refusal.code(), "config:schema", "{case}: {refusal}"),
         }
     }
+}
+
+// --- A hosted model's declared effort (story:effort-default) ---------------------------------
+
+/// `[hosted.<alias>] reasoning_effort` is absent by default and loads as `low`, `medium` or
+/// `xhigh`; any other string, `high` and `max` included, is `config:value` naming the key, and a
+/// value that is not a string leaves the closed document (`config:schema`). A Runpod model's
+/// `reasoning_effort` keeps its own set, `high` included.
+#[test]
+fn hosted_a_reasoning_effort_of_low_medium_or_xhigh_loads_and_any_other_is_refused() {
+    let fixture = Fixture::new("hosted-effort");
+    let credential = fixture.endpoint_credential();
+    let bearer = bearer_keys(&credential);
+    let control = hosted(&fixture, &bearer);
+    let deployment = load(&fixture.config(&control)).unwrap();
+    assert_eq!(deployment.hosted["remote"].reasoning_effort, None);
+    for effort in ReasoningEffort::ALL {
+        let text = mutate(
+            &control,
+            &bearer,
+            &format!("{bearer}reasoning_effort = \"{}\"\n", effort.as_str()),
+        );
+        let deployment = load(&fixture.config(&text)).unwrap();
+        assert_eq!(
+            deployment.hosted["remote"].reasoning_effort,
+            Some(effort),
+            "{effort:?}"
+        );
+    }
+    for other in [
+        "high", "max", "none", "minimal", "", "LOW", "Xhigh", " low", "x-high",
+    ] {
+        let text = mutate(
+            &control,
+            &bearer,
+            &format!("{bearer}reasoning_effort = \"{other}\"\n"),
+        );
+        match load(&fixture.config(&text)) {
+            Ok(_) => panic!("{other:?}: accepted"),
+            Err(refusal) => {
+                assert_eq!(refusal.code(), "config:value", "{other:?}: {refusal}");
+                assert!(
+                    refusal
+                        .to_string()
+                        .contains("hosted.remote.reasoning_effort"),
+                    "{refusal}"
+                );
+            }
+        }
+    }
+    let text = mutate(
+        &control,
+        &bearer,
+        &format!("{bearer}reasoning_effort = 2\n"),
+    );
+    match load(&fixture.config(&text)) {
+        Ok(_) => panic!("a mistyped reasoning_effort: accepted"),
+        Err(refusal) => assert_eq!(refusal.code(), "config:schema", "{refusal}"),
+    }
+    let runpod = mutate(
+        &control,
+        "max_model_len = 1024\n",
+        "max_model_len = 1024\nreasoning_effort = \"high\"\n",
+    );
+    let deployment = load(&fixture.config(&runpod)).unwrap();
+    assert_eq!(
+        deployment.models["small"].vllm.reasoning_effort.as_deref(),
+        Some("high")
+    );
 }

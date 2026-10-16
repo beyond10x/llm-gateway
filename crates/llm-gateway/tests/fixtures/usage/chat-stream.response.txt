@@ -1,0 +1,25 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a server.
+# The event stream `vllm/vllm-openai:v0.27.1` started with `--enable-prompt-tokens-details`
+# answers a chat completion with `"stream": true` and `"stream_options": {"include_usage":
+# true}`: the role chunk, the content chunks, the chunk carrying `finish_reason`, then one
+# chunk with no choice that carries `usage`, then `[DONE]`. Sources under
+# https://github.com/vllm-project/vllm/blob/v0.27.1/ (tag v0.27.1, commit 6e448d0ea9bf):
+#   vllm/entrypoints/openai/chat_completion/serving.py:505-542 (the first chunk: the role, an
+#   empty content, `prompt_token_ids` and `prompt_text`), 690-761 (content and finish chunks,
+#   `model_dump_json(exclude_unset=True)`), 763-807 (the usage chunk, dumped with
+#   `exclude_unset=True, exclude_none=True`, so null details are absent), 842 (`[DONE]`);
+#   vllm/entrypoints/openai/chat_completion/protocol.py:151-180 (chunk field order);
+#   vllm/entrypoints/openai/engine/protocol.py:105-119 and 394-405 (usage, DeltaMessage).
+# NOT from vLLM: `usage.future_usage_field`, a field no server defines, standing for one the
+# gateway does not know. The id, `created`, the text and the token counts are illustrative;
+# `model` is the served model name.
+data: {"id":"chatcmpl-7a2b9c4d1e3f5a60","object":"chat.completion.chunk","created":1792051200,"model":"Qwen/Qwen3.8-27B-FP8","choices":[{"index":0,"delta":{"role":"assistant","content":""},"logprobs":null,"finish_reason":null}],"prompt_token_ids":null,"prompt_text":null}
+
+data: {"id":"chatcmpl-7a2b9c4d1e3f5a60","object":"chat.completion.chunk","created":1792051200,"model":"Qwen/Qwen3.8-27B-FP8","choices":[{"index":0,"delta":{"content":"Hello"},"logprobs":null,"finish_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-7a2b9c4d1e3f5a60","object":"chat.completion.chunk","created":1792051200,"model":"Qwen/Qwen3.8-27B-FP8","choices":[{"index":0,"delta":{"content":"."},"logprobs":null,"finish_reason":"stop","stop_reason":null,"token_ids":null}]}
+
+data: {"id":"chatcmpl-7a2b9c4d1e3f5a60","object":"chat.completion.chunk","created":1792051200,"model":"Qwen/Qwen3.8-27B-FP8","choices":[],"usage":{"prompt_tokens":1234,"total_tokens":1240,"completion_tokens":6,"prompt_tokens_details":{"cached_tokens":1024,"created_cache_tokens":192},"future_usage_field":{"kept":true}}}
+
+data: [DONE]
+

@@ -18,7 +18,7 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-use support::{Fixture, OWNER_SECRET, VLLM_KEY, document, mutate, with_vllm_key};
+use support::{Fixture, OWNER_SECRET, VLLM_KEY, document, hosted_table, mutate, with_vllm_key};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -1010,4 +1010,173 @@ fn r5_r1_the_binary_lists_and_profiles_each_model_from_the_document_and_starts_n
             assert!(!answer.contains(owner_only), "{owner_only:?} in {answer}");
         }
     }
+}
+
+// --- A declared effort reaches a hosted endpoint, never a Runpod pod (story:effort-default) ---
+
+/// A messages request naming no effort reaches the hosted model `open`, which declares
+/// `reasoning_effort = "low"`, with `output_config.effort` `low`, and reaches the Runpod model
+/// `small`, which declares `reasoning_effort = "medium"` as its server's chat-template default,
+/// with only its `model` as sent: the binary gives a declared effort to a hosted model only. A
+/// request naming an effort keeps it, and the chat wire gains none.
+#[test]
+fn effort_a_hosted_model_gives_its_declared_effort_and_a_runpod_model_never_does() {
+    let fixture = Fixture::new("effort-default");
+    let mut endpoint = Pod::start(3, "{\"id\":\"hosted-1\"}");
+    let base_url = format!("http://{}", endpoint.address);
+    let deployment = deployment(&fixture, |text| {
+        let text = mutate(
+            &text,
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nreasoning_effort = \"medium\"\n",
+        );
+        format!(
+            "{text}\n{}",
+            hosted_table(
+                "open",
+                &base_url,
+                "auth_kind = \"anonymous\"\nreasoning_effort = \"low\"\n"
+            )
+        )
+    });
+    let mut pod = Pod::start(1, "{\"id\":\"pod-1\"}");
+    let loopback = Arc::new(Loopback {
+        pod: pod.address,
+        asked: Mutex::new(Vec::new()),
+    });
+    let running = start_relaying(
+        &deployment,
+        EmulatedRunpod::new(),
+        Arc::clone(&loopback) as Arc<dyn PodConnector>,
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let answers = [
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"small\",\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"open\",\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/messages",
+            OWNER_SECRET,
+            "{\"model\":\"open\",\"output_config\":{\"effort\":\"medium\"},\"messages\":[]}",
+        ),
+        post(
+            address,
+            "/v1/chat/completions",
+            OWNER_SECRET,
+            "{\"model\":\"open\",\"messages\":[]}",
+        ),
+    ];
+    running.shutdown();
+    for answer in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    let body = |raw: &Vec<u8>| {
+        let text = String::from_utf8(raw.clone()).unwrap();
+        text.split_once("\r\n\r\n").unwrap().1.to_owned()
+    };
+    let runpod: Vec<String> = pod.received().iter().map(body).collect();
+    assert_eq!(runpod, ["{\"model\":\"small\",\"messages\":[]}"]);
+    let hosted: Vec<String> = endpoint.received().iter().map(body).collect();
+    assert_eq!(
+        hosted,
+        [
+            "{\"model\":\"open\",\"messages\":[],\"output_config\":{\"effort\":\"low\"}}",
+            "{\"model\":\"open\",\"output_config\":{\"effort\":\"medium\"},\"messages\":[]}",
+            "{\"model\":\"open\",\"messages\":[]}",
+        ]
+    );
+}
+
+// --- The output clamp's window (story:max-tokens-clamp) ---------------------------------------
+
+/// Every request a pod has read so far, each as `<request line> <body>`, without waiting for the
+/// rest of its script.
+fn requests_so_far(pod: &Pod) -> Vec<String> {
+    pod.received
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|raw| {
+            let text = String::from_utf8_lossy(raw).into_owned();
+            let line = text.split("\r\n").next().unwrap_or_default().to_owned();
+            let body = text.split_once("\r\n\r\n").map_or("", |(_, body)| body);
+            format!("{line} {body}")
+        })
+        .collect()
+}
+
+/// Criterion 1: the binary's window for a Runpod model is its `max_model_len` (1024), not its
+/// `context_window` (65536); a hosted model's is its `context_window` (4096); a hosted model
+/// declaring none has no window, so its request is relayed with no count. Every pod counts the
+/// input at 1000 tokens.
+#[test]
+fn clamp_a_runpod_model_is_clamped_to_its_max_model_len_a_hosted_one_to_its_context_window() {
+    const COUNT: &str = "{\"input_tokens\":1000}";
+    let fixture = Fixture::new("max-tokens-clamp");
+    let open = Pod::start(2, COUNT);
+    let bare = Pod::start(2, COUNT);
+    let (open_url, bare_url) = (
+        format!("http://{}", open.address),
+        format!("http://{}", bare.address),
+    );
+    let deployment = deployment(&fixture, |text| {
+        format!(
+            "{text}\n{}\n{}",
+            hosted_table(
+                "open",
+                &open_url,
+                "auth_kind = \"anonymous\"\ncontext_window = 4096\n"
+            ),
+            hosted_table("bare", &bare_url, "auth_kind = \"anonymous\"\n"),
+        )
+    });
+    let pod = Pod::start(2, COUNT);
+    let running = start_relaying(
+        &deployment,
+        EmulatedRunpod::new(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let answers: Vec<String> = ["small", "open", "bare"]
+        .iter()
+        .map(|alias| {
+            post(
+                address,
+                "/v1/messages",
+                OWNER_SECRET,
+                &format!("{{\"model\":\"{alias}\",\"max_tokens\":32000,\"messages\":[]}}"),
+            )
+        })
+        .collect();
+    running.shutdown();
+    for answer in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    let count = |alias: &str| {
+        format!(
+            "POST /v1/messages/count_tokens HTTP/1.1 {{\"model\":\"{alias}\",\"max_tokens\":32000,\"messages\":[]}}"
+        )
+    };
+    let relay = |alias: &str, max_tokens: u32| {
+        format!(
+            "POST /v1/messages HTTP/1.1 {{\"model\":\"{alias}\",\"max_tokens\":{max_tokens},\"messages\":[]}}"
+        )
+    };
+    assert_eq!(requests_so_far(&pod), [count("small"), relay("small", 24)]);
+    assert_eq!(requests_so_far(&open), [count("open"), relay("open", 3096)]);
+    assert_eq!(requests_so_far(&bare), [relay("bare", 32000)]);
 }

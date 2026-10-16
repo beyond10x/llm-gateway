@@ -487,14 +487,49 @@ impl RelayTarget for Unreachable {
     }
 }
 
-/// Hands out an unreachable target for `down`, reports `cold` still starting, and has none for
-/// anything else.
+/// A target whose every connection answers a count of 10 input tokens, whatever it is sent.
+struct CountsTen;
+
+/// One connection to [`CountsTen`]: discards what it is written, then reads the count.
+struct CountAnswer(io::Cursor<&'static [u8]>);
+
+impl Read for CountAnswer {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buffer)
+    }
+}
+
+impl Write for CountAnswer {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+impl RelayTarget for CountsTen {
+    fn authority(&self) -> &'static str {
+        "counts-ten.invalid:8000"
+    }
+
+    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
+        Ok(Box::new(CountAnswer(io::Cursor::new(
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 19\r\n\r\n{\"input_tokens\":10}",
+        ))))
+    }
+}
+
+/// Hands out an unreachable target for `down` and a target counting 10 input tokens for `full`,
+/// reports `cold` still starting, and has none for anything else.
 struct ProvokingTargets;
 
 impl RelayTargets for ProvokingTargets {
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         match alias {
             "down" => Ok(Box::new(Unreachable)),
+            "full" => Ok(Box::new(CountsTen)),
             "cold" => Err(TargetRefusal::ColdStart),
             _ => Err(TargetRefusal::Unavailable),
         }
@@ -504,14 +539,19 @@ impl RelayTargets for ProvokingTargets {
 }
 
 /// Three chat-only models: `down`, whose target cannot be reached, `cold`, whose target is
-/// still starting, and `none`, which has none.
+/// still starting, and `none`, which has none; and `full`, a messages model with a window of 10
+/// tokens whose target counts every input at 10.
 fn provoking_relay() -> Relay {
     let model = |alias: &str| RelayModel::new(label(alias), label("served"), vec![Wire::Chat]);
+    let full = RelayModel::new(label("full"), label("served"), vec![Wire::Messages])
+        .unwrap()
+        .with_max_model_len(10);
     Relay::new(
         vec![
             model("down").unwrap(),
             model("cold").unwrap(),
             model("none").unwrap(),
+            full,
         ],
         Arc::new(ProvokingTargets),
     )
@@ -570,6 +610,10 @@ fn provoke(code: RefusalCode) -> Provocation {
         // `none` declares no tool calling, so it takes `Absent`.
         RefusalCode::ToolsNotServed => relayed(chat, "{\"model\":\"none\",\"tools\":[{}]}"),
         RefusalCode::TargetUnavailable => relayed(chat, "{\"model\":\"none\"}"),
+        // The input leaves none of the window's 10 tokens for output.
+        RefusalCode::ContextExceeded => {
+            relayed("/v1/messages", "{\"model\":\"full\",\"max_tokens\":5}")
+        }
         RefusalCode::ModelColdStart => relayed(chat, "{\"model\":\"cold\"}"),
         RefusalCode::UpstreamFailed => relayed(chat, "{\"model\":\"down\"}"),
         RefusalCode::CredentialAbsent => plain("GET /v1/routes HTTP/1.1\r\nhost: h\r\n\r\n"),
@@ -863,6 +907,11 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
         "DEFAULT_READ_TIMEOUT_SECONDS",
         "a timeout rather than a size bound; enforcement is measured by \
          a_stalled_head_is_refused_when_the_read_timeout_expires",
+    ),
+    (
+        "DEFAULT_COUNT_TIMEOUT_SECONDS",
+        "a timeout rather than a size bound; enforcement is measured by \
+         clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes",
     ),
     (
         "COLD_START_RETRY_AFTER_SECONDS",

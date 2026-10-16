@@ -69,6 +69,7 @@ types:
       - {name: BodyNotAllowed, attributes: {code: body-not-allowed, status: 400, message: "the inspection surface accepts no request body"}}
       - {name: BodyNotJson, attributes: {code: body-not-json, status: 400, message: "the request body is not one JSON object"}}
       - {name: BodyTooLarge, attributes: {code: body-too-large, status: 413, message: "the request body exceeds its byte bound"}}
+      - {name: ContextExceeded, attributes: {code: context-exceeded, status: 400, message: "prompt is too long: the input leaves no room for output in the model context window"}}
       - {name: CredentialAbsent, attributes: {code: credential-absent, status: 401, message: "no owner credential was presented"}}
       - {name: CredentialMalformed, attributes: {code: credential-malformed, status: 401, message: "the owner credential is not a bearer token"}}
       - {name: CredentialRejected, attributes: {code: credential-rejected, status: 401, message: "the presented owner credential was rejected"}}
@@ -227,6 +228,13 @@ entities:
       # embedding may set it; `GatewayConfig::new` defaults it to 10000 (ten seconds).
       # ESS-LIMIT: a deadline is no ESS construct; the three tests named above hold it.
       - {name: read_timeout_ms, type: Integer}
+      # `GatewayConfig::count_timeout`, in milliseconds: the output clamp's count (Relay step 7)
+      # has this long, from the moment its connection is open, to be written and answered; a
+      # count not answered by then is a count that fails. An embedding may set it;
+      # `GatewayConfig::new` defaults it to 10000 (ten seconds).
+      # ESS-LIMIT: a deadline is no ESS construct;
+      # `clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes` holds it.
+      - {name: count_timeout_ms, type: Integer}
       # Ready is set once by the embedding; a drain is one way for the life of the handle
       # (server.rs mark_ready, begin_drain).
       - {name: ready, type: Boolean}
@@ -338,11 +346,47 @@ entities:
   #   6. W2: the top-level `model` value is rewritten to the model's upstream name on every wire,
   #      written as a JSON string (a `"` or `\` in the name is escaped).
   #      W4: on the messages wire only, `output_config.effort` and
-  #      `chat_template_kwargs.reasoning_effort` equal to `high` become `xhigh`; any other value,
-  #      and these fields on the chat and responses wires, pass unchanged (llmgw
-  #      src/lib.rs:470-504). Every other byte of the body reaches the target unchanged.
+  #      `chat_template_kwargs.reasoning_effort` equal to `high` or `max` become `xhigh`; any
+  #      other value (`low`, `medium` and `xhigh` among them), and these fields on the chat and
+  #      responses wires, pass unchanged (llmgw src/lib.rs:470-504 for `high`). DECIDED
+  #      2026-10-15 (story:claude-code-wire): `max` too. Claude Code sends
+  #      `low|medium|high|xhigh|max` (https://code.claude.com/docs/en/llm-gateway-protocol,
+  #      "Feature pass-through"), vLLM v0.27.1 admits all five and hands the value to the chat
+  #      template as `reasoning_effort` (vllm/entrypoints/anthropic/protocol.py line 114,
+  #      serving.py lines 513-514), and the served Qwen3.8 template accepts only `xhigh`,
+  #      `medium` and `low` and raises on any other (Qwen/Qwen3.8-27B-FP8 `chat_template.jinja`
+  #      lines 46-49), which fails the turn. `xhigh` is the template's deepest effort, the
+  #      nearest to both (scenario w4-on-the-messages-wire-effort-max-reaches-the-target-as-xhigh).
+  #      The structured-output request `output_config.format` is relayed unchanged, beside the
+  #      effort and on every wire: vLLM v0.27.1 serves `{"type":"json_schema","schema":…}` as
+  #      structured output (serving.py lines 505-512) and ignores the deprecated top-level
+  #      `output_format`, which is relayed unchanged too (scenario
+  #      claude-code-structured-output-format-reaches-the-target-unchanged). Every other byte of
+  #      the body reaches the target unchanged, `thinking` included
+  #      (llm-gateway.clients.ThinkingHandling `Relayed`).
+  #      Declared effort: on the messages wire only, a body that names no effort (no member
+  #      `effort` in a top-level `output_config` object and no member `reasoning_effort` in a
+  #      top-level `chat_template_kwargs` object, whatever such a member's value), sent to a
+  #      model that declares a reasoning effort (`RelayModel::with_reasoning_effort`: `low`,
+  #      `medium` or `xhigh`), reaches the target with `output_config.effort` equal to it: a
+  #      top-level `output_config` object gains `"effort":"<v>"` as its last member (the last
+  #      such object, when the key is named twice), and a body without one gains
+  #      `"output_config":{"effort":"<v>"}` as its last top-level member. A body whose top-level
+  #      `output_config` is not an object gains nothing. A body that names an effort keeps the
+  #      W4 mapping above and never the declared value; a model that declares none, and the
+  #      chat and responses wires, are relayed as before. The binary declares a hosted model's
+  #      `reasoning_effort` (llm-gateway.deployment.HostedDeclaration) and never a Runpod
+  #      model's, whose effort is already its server's default chat-template argument.
+  #      DECIDED 2026-10-15 (story:effort-default): Claude Code 2.1.300 sent no effort to a
+  #      hand-started vLLM v0.27.1, whose Qwen3.8 template then defaults to `xhigh`
+  #      (`chat_template.jinja` lines 46-49), and the first turn thought for its whole
+  #      `max_tokens`; vLLM hands `output_config.effort` to the template as `reasoning_effort`
+  #      (vllm/entrypoints/anthropic/serving.py lines 513-514), so the request is where a
+  #      server the gateway did not start is told the operator's effort (scenarios
+  #      hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none,
+  #      hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire).
   #      DECIDED: llmgw re-serialises the parsed document (sorted keys, compact); llm-gateway
-  #      rewrites only those string values in place.
+  #      rewrites only those string values in place, and inserts only that member.
   #   7. The embedding's target source hands out the target serving the model, or says why it
   #      hands out none: none can be had is `target-unavailable` (503); W6: the model's target
   #      is still starting and the request's hold budget has passed is `model-cold-start` (503)
@@ -358,7 +402,47 @@ entities:
   #      endpoint, llm-gateway.upstream.HostedEndpoint) is sent `<header>: <key>` instead, and
   #      no `authorization`. The head the target receives is built by the gateway alone: no
   #      header of the client's request is forwarded, so the owner's credential never reaches
-  #      a target, in the head or anywhere else.
+  #      a target, in the head or anywhere else. Claude Code's `anthropic-version` and
+  #      `anthropic-beta` are dropped with the rest: vLLM v0.27.1's messages endpoint reads
+  #      neither (vllm/entrypoints/anthropic/api_router.py and serving.py read no request
+  #      header), so the forward-verbatim rule of Claude Code's gateway protocol page, written
+  #      for an Anthropic upstream, has nothing to serve here (scenario
+  #      claude-code-anthropic-headers-never-reach-the-target).
+  #      The output clamp, on the messages wire only, after the target is handed out and before
+  #      the request is relayed to it. The model's window `w` is its declared `max_model_len`
+  #      (`RelayModel::with_max_model_len`), else its declared `context_window`, else it has
+  #      none: the binary declares a Runpod model's `max_model_len`, what `vllm serve` is started
+  #      with, and a hosted model's `context_window` and never its `max_model_len`, so a hosted
+  #      model declaring no `context_window` has no window. For a model with a window and a body
+  #      whose top-level `max_tokens` is one non-negative JSON integer (digits only, named once
+  #      at the top level), the gateway first sends `POST /v1/messages/count_tokens` to the same
+  #      target over a connection of its own, with the head and credential of the relayed
+  #      request and the body step 6 wrote. A count answered 2xx whose body is one JSON object
+  #      with one top-level non-negative integer `input_tokens` = `n` decides: `w - n < 1` is
+  #      `context-exceeded` (400) and nothing is relayed; a `max_tokens` above `w - n` is
+  #      rewritten in place to `w - n`, and one at or below it is unchanged. The count has its
+  #      own deadline, `count_timeout_ms` of the Gateway (ten seconds unless the embedding sets
+  #      it), from the moment its connection is open: the target's own read timeout, which may
+  #      be far longer, never holds the request. A count that fails (no connection, a request
+  #      that cannot be written, an answer head that never arrives or is malformed, a status
+  #      outside 2xx, an answer body longer than the head bound, a body without such an
+  #      `input_tokens`, or an answer not complete by the deadline) relays the request
+  #      unchanged, reports nothing to the target source and counts no series. A count past its
+  #      deadline is abandoned, not waited for: its connection closes when the target answers
+  #      or the target's own timeout ends it. A body without such a `max_tokens`, a model
+  #      without a window, and the chat and responses wires are relayed without a count. The
+  #      count runs only on a target `acquire` handed out, so it never wakes a pod the relay
+  #      would not have woken.
+  #      DECIDED 2026-10-15 (story:max-tokens-clamp): a consumer's Claude Code 2.1.300 against
+  #      vLLM v0.27.1 `--max-model-len 65536` spent its whole 32000 `max_tokens` on a first
+  #      turn, and the continuation's input plus `max_tokens` passed the window, which vLLM
+  #      answered 500. vLLM v0.27.1 serves `POST /v1/messages/count_tokens` and answers
+  #      `{"input_tokens":n,"context_management":{"original_input_tokens":n}}` for a messages
+  #      body (vllm/entrypoints/anthropic/api_router.py lines 95-133, serving.py lines
+  #      1020-1025); only the top-level `input_tokens` is read. The refusal's message starts `prompt is too long`: Claude Code 2.1.301
+  #      lowercases an API error's message and tests it for `prompt is too long`, which it
+  #      classes `prompt_too_long` and answers by compacting (its bundled client, read
+  #      2026-10-15) (scenarios clamp-*).
   #   8. W7: a target that cannot be connected to, a request that cannot be written to it, an
   #      answer head that never arrives or is malformed, and an answer of 502, 503 or 504 are
   #      each reported failed to the target source by the authority of the endpoint that served
@@ -497,6 +581,12 @@ commands:
   #      method, is `credential-absent`, and the surface cannot be enumerated without the
   #      credential (scenarios authentication-comes-before-the-path-is-decided,
   #      inspection-an-unauthenticated-write-to-an-unknown-path-is-credential-absent).
+  #      DECIDED 2026-10-15 (story:claude-code-wire, design choice D2 = A): Claude Code's
+  #      connection-warming `HEAD /api/hello` gets no route of its own. Without the owner
+  #      credential it is `credential-absent`, with it `path-unknown` at step 8, each without
+  #      a body; Claude Code's gateway protocol page calls it startup traffic "a gateway can
+  #      reject without breaking anything" (https://code.claude.com/docs/en/llm-gateway-protocol,
+  #      read 2026-10-15) (scenario claude-code-the-startup-probe-head-api-hello-is-refused).
   #   6. A wire path of a gateway composed with a relay goes on to the `Relay` order below.
   #   7. `/metrics`, R4 (see RelayObservation).
   #   8. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
@@ -532,12 +622,16 @@ commands:
       # A bounded fixture program:
       #   secret  the owner secret
       #   models  `[{alias, upstream_model, wires, bearer, tool_calling, max_model_len,
-      #           context_window}]`, the relayed models;
+      #           context_window, reasoning_effort}]`, the relayed models;
       #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key
       #           every target the source hands out for that model carries (row B8); the
       #           optional `tool_calling` is `parsed` or `absent`, default `absent`, as the
       #           deployment document's; the optional `max_model_len` and `context_window` are
-      #           what the public routes render (rows R5, R1), absent unless given;
+      #           what the public routes render (rows R5, R1), absent unless given, and the
+      #           first of them given is the model's window for the output clamp (step 7); the
+      #           optional `reasoning_effort` is `low`, `medium` or `xhigh`, the effort the model
+      #           declares (step 6), none unless given, and any other value makes the program
+      #           invalid;
       #           the optional `endpoint` serves the model by a hosted endpoint
       #           (llm-gateway.upstream.HostedEndpoint) instead of the source's current pod:
       #           `{pod, scheme, certificate, auth_kind, credential, credential_header}`, where
@@ -566,9 +660,11 @@ commands:
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
       #           `}` to exactly that many bytes), `declare_bytes` (only a head declaring
-      #           that `content-length` is sent, never a body) and `user_agent` (sent as the
-      #           request's `user-agent`; none is sent without it). Every request carries
-      #           `host: gateway`.
+      #           that `content-length` is sent, never a body), `user_agent` (sent as the
+      #           request's `user-agent`; none is sent without it) and `headers` (a list of
+      #           `<name>: <value>` lines sent after `host`, as a client such as Claude Code
+      #           adds `anthropic-version`; a line holding a CR or LF makes the program
+      #           invalid). Every request carries `host: gateway`.
       - {name: program_json, type: String}
     outcomes:
       - name: observed

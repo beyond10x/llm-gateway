@@ -74,6 +74,34 @@
     },
     {
       "area": "Relay",
+      "detail": "An effort of high or max becomes xhigh, the deepest the served Qwen3.8 template accepts; adaptive thinking and output_config.format pass unchanged; anthropic-version and anthropic-beta are dropped. Settled from Claude Code's documentation and vLLM v0.27.1's source, not a live session.",
+      "href": "/docs/guides/set-up-a-client",
+      "label": "Claude Code's Messages requests reach vLLM in a form it serves",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "A hosted model may declare reasoning_effort low, medium or xhigh; a Messages request that names no effort reaches the endpoint with output_config.effort set to it, so a server started by hand does not think at its template's xhigh default. A named effort, the other wires and Runpod models are unchanged.",
+      "href": "/docs/reference/deployment-document",
+      "label": "A hosted model's declared effort reaches its endpoint when a request names none",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "For a model with a window (a Runpod model's max_model_len, a hosted model's context_window), the input is counted at the target's /v1/messages/count_tokens; a max_tokens above the room left is lowered to it, and an input that leaves none is context-exceeded, whose message Claude Code compacts on. A count that fails relays the request unchanged. Settled from vLLM v0.27.1's source, not a live session.",
+      "href": "/docs/concepts/relay",
+      "label": "A Messages request never asks for more output than the window has room for",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "The usage block of a target's answer reaches the client byte for byte on the Chat and Messages wires, streamed or not: vLLM's cached_tokens, cache_read_input_tokens and cache_creation_input_tokens, and any field the gateway does not know. Settled from vLLM v0.27.1's source and authored answers, not a live server.",
+      "href": "/docs/concepts/relay",
+      "label": "Usage details reach the client unchanged",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "A connection failure or a 502, 503 or 504 answers upstream-failed and drops that endpoint; the next request reaches a replacement.",
       "href": "/docs/concepts/relay",
       "label": "A failed target is dropped and replaced",

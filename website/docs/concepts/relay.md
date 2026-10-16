@@ -57,18 +57,38 @@ After the head, the probes, shedding and owner authentication of
    `model-cold-start` with `retry-after: 30` when the model's pod is still starting after the
    request's hold budget.
 
-Nothing before step 6 asks for a target, so a refused request never wakes a pod.
+7. **The output clamp**, on the Messages wire only. A model's window is its `max_model_len`
+   when it declares one, else its `context_window`: the binary declares a Runpod model's
+   `max_model_len` and a hosted model's `context_window`, so a hosted model without one has no
+   window. For a model with a window and a body whose top-level `max_tokens` is one
+   non-negative integer, the gateway first asks the same target
+   `POST /v1/messages/count_tokens` with the body it is about to relay and the same credential.
+   A `max_tokens` above the room the counted input leaves is lowered to that room; an input that
+   leaves no room is `context-exceeded` (400), whose message starts `prompt is too long`, the
+   phrase Claude Code compacts its conversation on. A count that fails relays the request
+   unchanged, and so does one not answered within ten seconds of its connection opening (the
+   embedding may set another deadline): a target that never answers the count holds the
+   request no longer than that.
+
+Nothing before step 6 asks for a target, so a refused request never wakes a pod, and the count
+of step 7 asks only the target step 6 handed out.
 
 ## What reaches the target
 
 - The top-level `model` value becomes the target's model name. On the Messages wire,
-  `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal to `high` become
-  `xhigh`. Every other byte reaches the target unchanged.
+  `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal to `high` or `max`
+  become `xhigh`, the deepest effort the served Qwen3.8 chat template accepts; `low`, `medium`
+  and `xhigh` pass unchanged. A Messages request that names no effort, sent to a hosted model
+  that declares a `reasoning_effort`, gains `output_config.effort` set to it. Every other byte
+  reaches the target unchanged, Claude Code's
+  adaptive `thinking` and its structured-output `output_config.format` included: the pinned
+  vLLM ignores the first and serves the second as structured output.
 - The head is the gateway's own: `host` is the target's authority, and a target with a bearer is
   sent `authorization: Bearer <key>` (for a Runpod pod, the model's vLLM key). An `api-key`
   hosted endpoint is sent its credential in the header its table names instead, and no
   `authorization`. No header of the client's request is forwarded, so the owner's credential
-  never reaches a target.
+  never reaches a target. Claude Code's `anthropic-version` and `anthropic-beta` are dropped
+  with the rest; the pinned vLLM reads neither.
 - The target's status, `content-type` and body are relayed as they arrive, chunked, so a stream
   reaches the client event by event. The body is not rewritten: whatever a target puts in its
   answer body reaches the client. An answer cut short reaches the client cut.

@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "b848bb622484ecee4ec3e8370065991015faab79e119b430a9dffecf560435c2",
-    "contract_digest": "slice-sha256/2:b75932010b25a94c2bfc7fc4122fcf5ef686b467cc190ded7e7b64acb4c1faa9",
+    "source_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
+    "contract_digest": "slice-sha256/2:d9e5332a4ee2c388404016054c8fde3aa47ead5965a1d3ecf5f2cd8d33bcdad8",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -54,6 +54,9 @@
         },
         "tool_calling": {
           "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
+        },
+        "reasoning_effort": {
+          "$ref": "#/$defs/llm-gateway.deployment.HostedReasoningEffort"
         }
       },
       "required": [
@@ -65,6 +68,17 @@
         "tool_calling"
       ],
       "additionalProperties": false
+    },
+    "llm-gateway.deployment.HostedReasoningEffort": {
+      "title": "HostedReasoningEffort",
+      "x-ess-name": "llm-gateway.deployment.HostedReasoningEffort",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Low",
+        "Medium",
+        "Xhigh"
+      ]
     },
     "llm-gateway.deployment.Wire": {
       "title": "Wire",

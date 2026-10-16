@@ -1,0 +1,39 @@
+# AUTHORED from vLLM v0.27.1's source, NOT captured from a pod.
+# The event stream vLLM v0.27.1 answers 2-tool-result.request.txt with: a thinking block closed
+# by its `signature_delta`, then a text block, then `message_delta` with `stop_reason`
+# `end_turn` and `message_stop`. Sources under
+# https://github.com/vllm-project/vllm/blob/v0.27.1/ (tag v0.27.1, commit 6e448d0ea9bf):
+#   vllm/entrypoints/anthropic/serving.py:95-96, 673-996 (as 1-tool-turn.response.txt; the
+#   text block opens with `{"type":"text","text":""}` and carries `text_delta`s), serving.py:136
+#   (finish reason `stop` is `end_turn`); vllm/entrypoints/anthropic/protocol.py:181-218.
+# The ids, the signature and the token counts are illustrative.
+event: message_start
+data: {"type":"message_start","message":{"id":"chatcmpl-4d7a0b2e91c3f866","type":"message","role":"assistant","content":[],"model":"Qwen/Qwen3.8-27B-FP8","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":1302,"output_tokens":0}}}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"thinking","thinking":""},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"The file has one line."},"index":0}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"signature_delta","signature":"8c0e5a7f2b9d41e3a6c8f0b2d4e6a8c1"},"index":0}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":0}
+
+event: content_block_start
+data: {"type":"content_block_start","content_block":{"type":"text","text":""},"index":1}
+
+event: content_block_delta
+data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"It says \"hello from a.txt\"."},"index":1}
+
+event: content_block_stop
+data: {"type":"content_block_stop","index":1}
+
+event: message_delta
+data: {"type":"message_delta","delta":{"stop_reason":"end_turn"},"usage":{"input_tokens":1302,"output_tokens":21}}
+
+event: message_stop
+data: {"type":"message_stop"}
+

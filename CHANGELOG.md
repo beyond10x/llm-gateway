@@ -4,6 +4,38 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## 0.8.0 (2026-10-16)
+
+- Claude Code on the Messages wire: an effort of `max` (`output_config.effort` or
+  `chat_template_kwargs.reasoning_effort`) now reaches the model as `xhigh`, as `high` already
+  did, because the served Qwen3.8 chat template accepts only `xhigh`, `medium` and `low`.
+  Adaptive `thinking`, `output_config.format` and the deprecated `output_format` are relayed
+  unchanged, `anthropic-version` and `anthropic-beta` are dropped like every client header, and
+  `HEAD /api/hello` stays refused; `docs/gateway.md` "The relay" says why for each, from vLLM
+  v0.27.1's source and Claude Code's published gateway protocol. Settled from those sources and
+  authored fixtures, not from a live session (`docs/verification/2026-10-15-claude-code-wire.md`).
+- A hosted model may declare `reasoning_effort = "low" | "medium" | "xhigh"`. A Messages request
+  that names no effort reaches its endpoint with `output_config.effort` set to it, so a server
+  started by hand no longer thinks at its chat template's `xhigh` default when Claude Code sends
+  no effort. A request that names one keeps it; the Chat and Responses wires and Runpod models,
+  whose effort is the pod's own default, are unchanged.
+- A Messages request never asks for more output than the model's window has room for. For a
+  model with a window (a Runpod model's `max_model_len`, a hosted model's `context_window`), a
+  request with a top-level integer `max_tokens` is first counted at the same target's
+  `POST /v1/messages/count_tokens`; a `max_tokens` above the room the input leaves is lowered
+  to it, and an input that leaves none is refused `context-exceeded` (400), whose message starts
+  `prompt is too long` so Claude Code compacts instead of meeting vLLM's 500. A count that fails,
+  or is not answered within `GatewayConfig::count_timeout` (ten seconds by default) of its
+  connection opening, relays the request unchanged; a hosted model without a `context_window`, and the Chat and
+  Responses wires, are not counted.
+- The usage block of a model's answer, cache details included, is now held to reach the client
+  unchanged on the Chat and Messages wires, streamed or not: a vLLM started with
+  `--enable-prompt-tokens-details` reports `usage.prompt_tokens_details.cached_tokens` on the
+  Chat wire and `cache_read_input_tokens` and `cache_creation_input_tokens` on the Messages wire,
+  and a usage field the gateway does not know passes too. No behaviour changed: the relay already
+  returned the answer's bytes unchanged; tests and scenarios now pin it, against answers authored
+  from vLLM v0.27.1's source. The usage record's token counters stay absent.
+
 ## 0.7.0 (2026-10-14)
 
 - The documentation site is published at <https://beyond10x.github.io/llm-gateway/>; README

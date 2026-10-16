@@ -75,6 +75,25 @@ export CLAUDE_CODE_SUBAGENT_MODEL='small'
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'
 ```
 
+What the gateway does with what Claude Code sends, for a model served by vLLM v0.27.1 with the
+Qwen3.8 chat template ([the relay](../concepts/relay.md)):
+
+- The startup probe `HEAD /api/hello` is refused (`401`, or `404` with the owner token). Claude
+  Code's [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol) calls it a
+  connection-warming probe a gateway can reject without breaking anything.
+- An effort of `high` or `max` reaches the model as `xhigh`; `low`, `medium` and `xhigh` reach it
+  unchanged.
+- A request with no effort reaches a hosted model that declares `reasoning_effort` with that
+  effort, so the model does not think at the template's `xhigh` default on every turn
+  ([`[hosted.<alias>]`](../reference/deployment-document.md#hosted-models)).
+- `thinking: {"type": "adaptive"}` reaches vLLM unchanged, and vLLM ignores it; the effort is
+  what turns the model's thinking on. `output_config.format` reaches vLLM unchanged, and vLLM
+  serves it as structured output.
+- `anthropic-version` and `anthropic-beta` are not forwarded; vLLM reads neither.
+
+These are read from Claude Code's documentation and vLLM's source; no Claude Code session has
+been recorded against a pod yet.
+
 ## Loom, through an llm catalog
 
 ```bash

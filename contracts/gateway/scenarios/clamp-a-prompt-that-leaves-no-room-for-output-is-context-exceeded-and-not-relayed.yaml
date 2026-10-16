@@ -1,0 +1,36 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed
+summary: a messages request whose counted input leaves no room in the window is refused context-exceeded with a message Claude Code reads as a prompt too long, and nothing is relayed
+timeline:
+- at: '2026-10-15T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["messages"],"max_model_len":1000}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":1000}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":999}"]},{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"max_tokens\":32000,\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '400 context-exceeded'
+    - '200 relayed'
+    bodies:
+    - '{"error":{"code":"context-exceeded","message":"prompt is too long: the input leaves no room for output in the model context window"}}'
+    - '{}'
+    upstream:
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages/count_tokens {"model":"served-code","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","max_tokens":1,"messages":[]}'
+    acquired: 2
+    released: 2
+    invalidated: []
+    records:
+    - 'model=code wire=messages disposition=Refused refusal=context-exceeded status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent'
+    - 'model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=2 duration_ms=bounded tokens=absent'

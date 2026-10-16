@@ -34,8 +34,8 @@ loopback pod, never against Runpod. No client has run a live session against it.
 - **Not a model client.** The neutral turn, the protocol clients, credentials, routing and cost
   are llm's. llm-gateway answers llm's clients.
 - **Not a translator.** It relays each wire as it arrives, rewriting only the top-level `model`
-  (and an effort of `high`, which becomes `xhigh`, on the Messages wire). Protocol translation
-  is planned, not built.
+  (and an effort of `high` or `max`, which becomes `xhigh`, on the Messages wire). Protocol
+  translation is planned, not built.
 - **Not multi-tenant.** One owner, one credential. There are no accounts, quotas or API keys per
   user.
 - **Not llmgw's replacement yet.** llmgw is the gateway this repository is meant to succeed. Its

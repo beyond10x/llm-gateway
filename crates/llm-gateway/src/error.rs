@@ -120,6 +120,11 @@ refusal_codes! {
     /// is [`crate::ToolCalling::Absent`].
     ToolsNotServed => "tools-not-served", 400,
         "the model does not serve tool calls";
+    /// A messages-wire request whose input, counted at the target, leaves no room for output
+    /// in the model's window (the output clamp). Its message starts `prompt is too long`, the
+    /// phrase Claude Code answers by compacting its conversation.
+    ContextExceeded => "context-exceeded", 400,
+        "prompt is too long: the input leaves no room for output in the model context window";
     /// The embedding handed out no target for the model.
     TargetUnavailable => "target-unavailable", 503,
         "no model target is available";

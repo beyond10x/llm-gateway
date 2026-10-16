@@ -168,8 +168,10 @@ given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_vie
 `Gateway::bind_with_relay` composes the gateway with a `Relay`: the relayed models and an injected
 `RelayTargets`. A `RelayModel` is an alias, the model name its target expects, a non-empty set
 of distinct `Wire`s (`relay:no-wire`, `relay:repeated-wire`; two models with one alias are
-`relay:duplicate-model`) and its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
-`with_tool_calling` says otherwise. The embedding implements `RelayTargets` over its pool: `acquire` hands
+`relay:duplicate-model`), its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
+`with_tool_calling` says otherwise, an optional `ReasoningEffort` (`with_reasoning_effort`,
+step 6), and the optional `max_model_len` and `context_window` the public routes publish, the
+first of which declared is its window (`RelayModel::window`, step 7). The embedding implements `RelayTargets` over its pool: `acquire` hands
 out the `RelayTarget` serving an alias, and `invalidate` is told when a request through one
 failed. A `RelayTarget` opens its own connection (`connect`), so the transport, TLS included,
 and its timeouts are the embedding's; this crate opens none. The specification is the `Relay`
@@ -205,16 +207,62 @@ A request to a wire path is decided in this order:
    a target, so a refused request never wakes a pod.
 6. The top-level `model` value becomes the upstream name, written as a JSON string. On the
    messages wire only, `output_config.effort` and `chat_template_kwargs.reasoning_effort` equal
-   to `high` become `xhigh`, because the served chat template rejects `high` (llmgw
-   `src/lib.rs:470-504`). Every other byte reaches the target unchanged: llmgw re-serialises the
-   document with sorted keys, llm-gateway replaces those values in place.
+   to `high` or `max` become `xhigh`, because the served chat template rejects both (llmgw
+   `src/lib.rs:470-504` for `high`): the Qwen3.8 template accepts `xhigh`, `medium` and `low`
+   and raises on any other effort (`Qwen/Qwen3.8-27B-FP8` `chat_template.jinja` lines 46-49 at
+   Hugging Face commit `017b9c7`), which fails the turn, and `xhigh` is its deepest. `low`,
+   `medium` and `xhigh` reach the target unchanged, as does any other value, and both fields on
+   the chat and responses wires. On the messages wire only, a body that names no effort (no
+   `effort` member in a top-level `output_config` object and no `reasoning_effort` member in a
+   top-level `chat_template_kwargs` object, whatever such a member's value), sent to a model
+   that declares a `ReasoningEffort` (`RelayModel::with_reasoning_effort`: `low`, `medium` or
+   `xhigh`), reaches the target with `output_config.effort` set to it. A top-level
+   `output_config` object gains `"effort":"<v>"` as its last member (the last such object when
+   the key is named twice), and a body without one gains `"output_config":{"effort":"<v>"}` as
+   its last top-level member; a body whose top-level `output_config` is not an object gains
+   nothing. A body that names an effort keeps the mapping above and never the declared value.
+   The binary declares a hosted model's `reasoning_effort` and never a Runpod model's: a
+   hand-started server's chat-template defaults are not the gateway's to set, and the Qwen3.8
+   template defaults to `xhigh` when a request names no effort, which vLLM v0.27.1 hands it as
+   `reasoning_effort` from `output_config.effort` (`vllm/entrypoints/anthropic/serving.py` lines
+   513-514); a Runpod pod is already started with its model's `reasoning_effort` as the
+   template's default. Every other byte reaches the target unchanged: llmgw re-serialises the
+   document with sorted keys, llm-gateway replaces those values in place and inserts only that
+   member.
 7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
    `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
    request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's
    `model_cold_start` (row W6). It is the only refusal that carries `retry-after`. The embedding
    holds the request while its target starts and owns the hold budget; the Runpod composition
    asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
-   `docs/hosting.md`). Then `POST` to the same path at the
+   `docs/hosting.md`). Then, on the messages wire only, the output clamp. A model's window `w`
+   is its `max_model_len`, else its `context_window`, else it has none: the binary declares a
+   Runpod model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
+   `context_window` and never its `max_model_len`, so a hosted model without a `context_window`
+   has no window. For a model with a window and a body whose top-level `max_tokens` is one
+   non-negative JSON integer (digits only, named once at the top level), the gateway first sends
+   `POST /v1/messages/count_tokens` to the target `acquire` handed out, over a connection of its
+   own, with the head and credential described below and the body step 6 wrote; vLLM v0.27.1
+   answers it `{"input_tokens":n,"context_management":{"original_input_tokens":n}}`
+   (`vllm/entrypoints/anthropic/api_router.py` lines 95-133, `serving.py` lines 1020-1025), of
+   which only the top-level `input_tokens` is read. The count has its own deadline,
+   `GatewayConfig::count_timeout` (ten seconds by default), from the moment its connection is
+   open: a count not answered by then fails, so the target's own read timeout, which may be far
+   longer, never holds the request; the abandoned count's connection closes when the target
+   answers or its own timeout ends it. A
+   2xx answer whose body is one JSON object with one top-level non-negative integer
+   `input_tokens` = `n` decides: `w - n < 1` is `context-exceeded` (400) and nothing is
+   relayed; a `max_tokens` above `w - n` is rewritten in place to `w - n`, and one at or below it
+   is unchanged. The refusal's message starts `prompt is too long`, which Claude Code (2.1.301)
+   classes as a prompt that is too long and answers by compacting its conversation, where a vLLM
+   500 for a request past its window ends the turn. A count that fails (no connection, a request
+   that cannot be written, an answer head that never arrives or is malformed, a status outside
+   2xx, an answer body longer than `request-head-bytes`, a body without such an
+   `input_tokens`, or an answer not complete by the count's deadline) relays the request unchanged, reports nothing to `invalidate` and counts no
+   series. A body without such a `max_tokens`, a model without a window, and the chat and
+   responses wires are relayed without a count. The count runs only on a target `acquire`
+   handed out, so it never wakes a pod the relay would not have woken. Then `POST` to the same
+   path at the
    target with `host` set to the target's authority and a `content-length`. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target whose `credential_header` also names a `CredentialHeader`
@@ -255,6 +303,53 @@ A request to a wire path is decided in this order:
 A refused relay closes gracefully: the refusal is written, the write side closed, and what the
 client still sends is read and discarded (up to `request-body-bytes`, within `read_timeout`), so
 a reset cannot destroy the refusal before the client reads it.
+
+### Claude Code on the messages wire
+
+What Claude Code 2.1.293 sends to a model id it does not recognise, such as a gateway alias, meets
+the pinned vLLM (`vllm/vllm-openai:v0.27.1`) through this relay as below. Each point is settled
+from Claude Code's published [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol)
+and vLLM's source at tag `v0.27.1`
+(`https://github.com/vllm-project/vllm/blob/v0.27.1/`, paths below relative to it), both read
+2026-10-15, not from a recorded session; `docs/verification/2026-10-15-claude-code-wire.md` lists
+the sources and what a live record still has to show. The cases are the `claude_code_*` tests of
+`crates/llm-gateway/tests/wire_relay.rs`, over fixtures authored from those sources, and the
+`claude-code-*` scenarios.
+
+- **`HEAD /api/hello`.** Claude Code's connection-warming probe has no route here. Without the
+  owner credential it is `credential-absent` (401), and with it `path-unknown` (404), each
+  without a body, as any other path off the public surface; no target is asked for. The protocol
+  page names it startup traffic a gateway "can reject without breaking anything", and vLLM has
+  no such route either.
+- **`thinking`.** Relayed unchanged, `{"type":"adaptive"}` included. vLLM v0.27.1's messages
+  request model declares no `thinking` field and drops unknown keys
+  (`vllm/entrypoints/anthropic/protocol.py:118-178`), so every `thinking` value is ignored
+  there, never refused. What turns the served model's thinking on is the effort:
+  `output_config.effort` becomes vLLM's `reasoning_effort`
+  (`vllm/entrypoints/anthropic/serving.py:513-514`), and any effort but `none` sets the chat
+  template's `enable_thinking` (`vllm/entrypoints/openai/chat_completion/protocol.py:564-573`).
+- **Effort.** Claude Code sends `low`, `medium`, `high`, `xhigh` or `max`; vLLM admits all five
+  (`vllm/entrypoints/anthropic/protocol.py:114`) and hands the value to the chat template, so
+  step 6 maps the two the template rejects.
+- **Structured output.** `output_config.format` is relayed unchanged. vLLM v0.27.1 serves
+  `{"type":"json_schema","schema":…}` as structured output, its `response_format`
+  (`vllm/entrypoints/anthropic/serving.py:505-512`), and ignores the deprecated top-level
+  `output_format`, which it does not declare; the gateway relays that unchanged too. Claude Code
+  stops sending the format under `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`.
+- **`POST /v1/messages/count_tokens`.** Not relayed, although vLLM v0.27.1 serves it
+  (`vllm/entrypoints/anthropic/api_router.py:95-96`): with the owner credential, a `POST` to a
+  path that is not a wire path is `method-not-allowed` (405), and no target is asked for. The
+  protocol page says Claude Code falls back to estimated counts when the endpoint is missing;
+  whether it treats a 405 as it treats a 404 is for the live record.
+- **Headers.** `anthropic-version` and `anthropic-beta` are dropped, as every header of the
+  client's request is (step 7). vLLM v0.27.1 reads neither: its messages router and serving code
+  read no request header (`vllm/entrypoints/anthropic/api_router.py`,
+  `vllm/entrypoints/anthropic/serving.py`). The protocol page's advice to forward them verbatim
+  is written for an Anthropic upstream. The query of `POST /v1/messages?beta=true` is discarded
+  like any other (step 7 asks the target on the wire's own path).
+- **The answer.** vLLM's event stream, thinking blocks, `signature_delta` and `tool_use` blocks
+  included, reaches Claude Code byte for byte (step 9). vLLM writes no `ping` event, and the
+  gateway adds none.
 
 ## Counters and usage records
 
@@ -315,6 +410,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `credential-rejected` | 401 | the presented owner credential was rejected |
 | `body-not-json` | 400 | the request body is not one JSON object |
 | `body-too-large` | 413 | the request body exceeds its byte bound |
+| `context-exceeded` | 400 | prompt is too long: the input leaves no room for output in the model context window |
 | `method-not-allowed` | 405 | this path does not accept that method |
 | `model-absent` | 400 | the request body names no model |
 | `model-cold-start` | 503 | the model is still starting; ask again after the retry-after delay |
@@ -407,6 +503,12 @@ defaults to ten seconds, and its enforcement is measured with a short configured
 `a_stalled_head_is_refused_when_the_read_timeout_expires`,
 `a_trickled_head_is_refused_when_the_read_timeout_expires` and
 `a_peer_that_never_reads_its_answer_cannot_hold_the_stop`.
+
+The output clamp's count is bounded by `GatewayConfig::count_timeout`, also a timeout rather than
+a size bound: one deadline for writing the count and reading its whole answer, from the moment its
+connection is open. It defaults to ten seconds (`DEFAULT_COUNT_TIMEOUT_SECONDS`), and its
+enforcement is measured with a short configured value by
+`clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes`.
 
 `COLD_START_RETRY_AFTER_SECONDS` (30) is the `retry-after` a `model-cold-start` refusal carries. It
 is a hint to the client rather than a limit the gateway enforces, so it is not in this table

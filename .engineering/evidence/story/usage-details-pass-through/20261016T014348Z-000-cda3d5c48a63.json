@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-16T01:43:48Z",
+  "actor": "human:timo",
+  "artifact": "story:usage-details-pass-through",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "~/.cache/llm-gateway-w08/rel/gate.sh on wave/2026-10-15-w01 at 0c2c15e plus the 0.8.0 bump (RUSTUP_TOOLCHAIN=1.98.0): clippy -D warnings and tests of four crates green but one intermittent 502 in wire_relay effort_adv_chat_and_responses_bodies_at_the_bound_gain_no_effort, green 8 of 8 alone and wire_relay 71 of 71 three runs on rerun; conformance 224 of 224 three runs"
+  }
+}

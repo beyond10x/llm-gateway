@@ -19,8 +19,9 @@
 //!   reporting unready, followed by a graceful stop that reports what was in flight.
 //! - **Relay three model-call wires.** Composed with a [`Relay`], the gateway relays the owner's
 //!   `chat`, `responses` and `messages` requests to the target an injected [`RelayTargets`]
-//!   hands out, rewriting only `model` (and on the messages wire a `high` effort), and streams
-//!   the answer back as it arrives. The target opens its own connection; this crate opens none.
+//!   hands out, rewriting only `model` (and on the messages wire a `high` or `max` effort, or
+//!   adding a model's declared effort to a request naming none), and streams the answer back as
+//!   it arrives. The target opens its own connection; this crate opens none.
 //!
 //! What it deliberately does not do: protocol translation between wires, resolving a secret,
 //! opening a connection, and multi-tenant accounts or quotas. Credential material is
@@ -48,7 +49,7 @@ pub use inventory::{
 };
 pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
 pub use relay::{
-    CredentialHeader, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, TargetBearer,
-    ToolCalling, Wire,
+    CredentialHeader, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    TargetBearer, ToolCalling, Wire,
 };
 pub use server::{Gateway, GatewayConfig, GatewayHandle, ShutdownReport};

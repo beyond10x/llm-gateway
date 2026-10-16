@@ -235,12 +235,15 @@ fn release_builds_both_platforms_natively_from_the_root_dockerfile() {
 fn release_pushes_one_image_per_platform_and_one_manifest_list_under_the_image_name() {
     let workflow = workflow();
     assert_eq!(string(get(&workflow, "env"), "IMAGE"), IMAGE);
-    for line in text().lines().filter(|line| line.contains("ghcr.io/")) {
-        assert!(
-            line.contains(&format!("{IMAGE}\"")) || line.trim_end().ends_with(IMAGE),
-            "`{}` names another image",
-            line.trim()
-        );
+    // Every repository the file names on ghcr.io, up to its tag or digest, is the image.
+    let text = text();
+    for (start, _) in text.match_indices("ghcr.io/") {
+        let named: String = text[start..]
+            .chars()
+            .take_while(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '/' | '-' | '_'))
+            .collect();
+        let named = named.trim_end_matches('.');
+        assert_eq!(named, IMAGE, "the workflow names another image");
     }
     let (build_job, _, build) = job_using(&workflow, "docker/build-push-action");
     let outputs = string(get(build, "with"), "outputs");

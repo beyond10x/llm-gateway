@@ -4,6 +4,13 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- Every release tag now publishes the gateway image `ghcr.io/beyond10x/llm-gateway:<version>`
+  for `linux/amd64` and `linux/arm64`, each built natively from the root `Dockerfile` and labelled
+  with the tag's commit, through the `Release image` workflow (`.github/workflows/release.yml`).
+  It never replaces a version the registry already holds.
+
 ## 0.9.0 (2026-10-16)
 
 - A hosted model's `base_url` may carry a path. The path replaces the wire path's leading `/v1`,

@@ -50,7 +50,10 @@ After the head, the probes, shedding and owner authentication of
    moment it passes it. A body that ends or stalls is `body-incomplete`.
 3. **One JSON object** (`body-not-json`) with exactly one top-level `model` string
    (`model-absent`), naming a relayed model (`model-unknown`).
-4. **The wire**: the model must declare the path's wire (`wire-not-served`).
+4. **The wire**: a request on a wire the model declares is relayed as below. The binary
+   translates a request on any other wire within llm's published subset
+   ([Translate between wires](../guides/translate-between-wires.md)); a gateway composed without a
+   translator refuses it `wire-not-served`.
 5. **Tools**: a non-empty top-level `tools` array for a model whose tool calling is `Absent` is
    `tools-not-served`. A pod started without a tool-call parser could not answer it.
 6. **The target**: only now is a target asked for. `target-unavailable` when there is none;

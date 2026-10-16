@@ -26,6 +26,17 @@ Nothing in any release is deployed or qualified against a live client.
   document without `owner_secret_file` is now refused `config:value` rather than
   `config:schema`. The library gains `GatewayConfig::ingress_auth` (`IngressAuth`) and
   `NoOwnerVerifier`.
+- The gateway translates between wires within llm 0.6.0's published subset. A request on a wire
+  the model's upstream does not declare is decoded, checked against the model's capabilities and
+  projected before any target is asked for, sent with llm's client for the model's first declared
+  wire, and answered on the client's wire, streamed event by event with the upstream's usage, or
+  as its JSON object. Same-wire requests are relayed byte for byte as before. New refusals:
+  `translation-unsupported`, `translation-invalid`, `translation-opaque-state` (400),
+  `translation-unrepresentable` and `upstream-refused` (502). `GET /v1/models` lists every wire
+  and the model's `upstream_wires`; `GET /` profiles stay on the declared wires, because Claude
+  Code and Codex send fields the subset refuses. The library gains the `Translator` port,
+  `Relay::with_translator`, `RelayTarget::scheme` and `TargetBearer::expose`; the binary carries
+  llm's client crates (by tag) and a tokio runtime, and always composes `LlmTranslator`.
 
 ## 0.8.0 (2026-10-16)
 

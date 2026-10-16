@@ -213,6 +213,13 @@ pub const CAPABILITIES: &[Capability] = &[
         DOCUMENT,
     ),
     shipped(
+        "Relay",
+        "Translation between wires within llm's subset",
+        "A request on a wire the model's upstream does not speak is decoded with llm 0.6.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Claude Code's and Codex's requests fall outside the subset today. Tested against loopback fixture upstreams, not a vendor API.",
+        "crates/llm-gateway-cli/tests/translation.rs::translation_the_binary_reaches_an_api_key_endpoint_on_its_base_path_with_its_key_only",
+        Some("/docs/guides/translate-between-wires"),
+    ),
+    shipped(
         "Binary",
         "Model calls without a credential, on request",
         "ingress_auth = \"none\" serves the three wire paths without a credential, for a gateway behind something that authenticates already, and the binary warns before it listens. The counters and the route inventory still take the owner secret, and refuse everything when there is none. bearer, the default, is unchanged.",
@@ -300,12 +307,6 @@ pub const CAPABILITIES: &[Capability] = &[
         "Relay",
         "Fallback to the next target",
         "A model with ordered targets tries the next one when an attempt fails before any answer byte reaches the client.",
-        None,
-    ),
-    planned(
-        "Relay",
-        "Protocol translation",
-        "Translating a supported subset between wires; the gateway translates nothing today.",
         None,
     ),
     planned(

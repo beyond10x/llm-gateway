@@ -7,11 +7,12 @@
 //! * the account's reported spend, read afresh from the transport for each check
 //!   ([`crate::RunpodTransport::account_spend`]);
 //! * the running estimate of the pool's live pods: each one's declared price per hour times
-//!   its time since submission;
+//!   its time since submission, and never less than its price times its startup deadline;
 //! * the estimate of the pod about to start: its declared price per hour times its startup
 //!   deadline.
 //!
-//! An estimate is rounded up to the next micro-USD. A projection equal to its ceiling is
+//! A computed estimate is rounded up to the next micro-USD; a reported amount and a declared
+//! value are rounded to the nearest, so an amount in whole cents is read exactly. A projection equal to its ceiling is
 //! admitted; one micro-USD past it is refused. A read that fails or answers nothing, or a pod
 //! with no declared price, is [`SpendRefusal::Unknown`]: no ceiling is ever assumed met.
 
@@ -127,13 +128,14 @@ pub fn micro_usd(usd: f64) -> Option<u64> {
     from_scaled((usd * 1e6).round()).filter(|&micro| micro >= 1)
 }
 
-/// A reported USD amount in micro-USD, rounded up so that spend is never understated: `None`
-/// unless it is finite and not negative.
+/// A reported USD amount in micro-USD, rounded to the nearest: an amount in whole cents is
+/// read exactly, where rounding up would read the float error of `usd * 1e6` as one micro-USD
+/// more. `None` unless it is finite and not negative.
 pub(crate) fn reported_micro_usd(usd: f64) -> Option<u64> {
     if !usd.is_finite() || usd < 0.0 {
         return None;
     }
-    from_scaled((usd * 1e6).ceil())
+    from_scaled((usd * 1e6).round())
 }
 
 /// A whole, non-negative `f64` that fits a `u64`.
@@ -192,11 +194,13 @@ mod tests {
     use super::{estimate, reported_micro_usd, usd};
 
     #[test]
-    fn an_estimate_rounds_up_and_a_reported_amount_is_never_understated() {
+    fn an_estimate_rounds_up_and_a_reported_amount_rounds_to_the_nearest() {
         assert_eq!(estimate(2_000_000, 600_000), 333_334);
         assert_eq!(estimate(2_000_000, 1_800_000), 1_000_000);
         assert_eq!(estimate(u64::MAX, u64::MAX), u64::MAX);
-        assert_eq!(reported_micro_usd(0.000_000_4), Some(1));
+        assert_eq!(reported_micro_usd(0.000_000_4), Some(0));
+        assert_eq!(reported_micro_usd(0.000_000_5), Some(1));
+        assert_eq!(reported_micro_usd(4.03), Some(4_030_000));
         assert_eq!(reported_micro_usd(0.0), Some(0));
         assert_eq!(reported_micro_usd(-0.5), None);
         assert_eq!(reported_micro_usd(1e300), None);

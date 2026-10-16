@@ -256,3 +256,5 @@ scenarios:
 - runpod/scenarios/a-start-under-the-total-ceiling-is-created.yaml
 - runpod/scenarios/the-spend-check-runs-before-each-create-of-the-gpu-fallback.yaml
 - runpod/scenarios/without-a-ceiling-no-spend-is-read.yaml
+- runpod/scenarios/a-pod-just-started-counts-its-startup-estimate.yaml
+- runpod/scenarios/spend-billed-before-the-utc-days-start-is-not-todays.yaml

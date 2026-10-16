@@ -515,11 +515,14 @@ ceiling it reads nothing. With one it adds, at the pool clock's instant:
 - the account's reported spend, read afresh for each check: today's since the UTC day's start,
   and the total;
 - the running estimate of the pool's live pods: for every record of this controller that
-  occupies a slot, its model's price times the time since its create was submitted;
+  occupies a slot, its model's price times the time since its create was submitted, and never
+  less than its price times its startup deadline, so a pod submitted moments ago counts what
+  its own start was admitted at and two starts in a row never share one headroom;
 - the estimate of the pod about to start: its model's price times its startup deadline.
 
-Each estimate is rounded up to the next micro-USD, and the price is always the declared one,
-never the pod listing's. The daily projection is compared with the daily ceiling first, then
+Each estimate is rounded up to the next micro-USD; a reported amount and a declared ceiling or
+price are rounded to the nearest, so an amount billed in whole cents is read exactly. The price
+is always the declared one, never the pod listing's. The daily projection is compared with the daily ceiling first, then
 the total one with the total ceiling. A projection equal to its ceiling is admitted; one
 micro-USD past it is refused. A spend read that fails or answers nothing, or a model with no
 price, is refused too: no ceiling is ever assumed met. A refused check sends no create and tries
@@ -539,6 +542,11 @@ account:
 - The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`: each
   entry's `amount` is taken as USD and its `time` as the bucket's start. Neither reading has been
   checked against a live account.
+- The total is the sum of `billing.pods` over the provider's default time window, since the
+  read names none. If that window is bounded, spend billed before it is not counted and the
+  total ceiling is understated.
+- A `billing.pods` result is read only when it carries a 2xx `status`; one with no status is
+  unanswered, never zero spend, and refuses the start.
 
 **The live spend read needs a connectors release.** `ConnectorsRunpod` reads the account's spend
 through the connectors operation `billing.pods`, which the connectors v0.37.0 Runpod catalog does

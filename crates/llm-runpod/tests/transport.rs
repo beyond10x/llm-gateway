@@ -1233,10 +1233,10 @@ fn billing_reads_billing_pods_once_as_a_read_and_sums_today_and_the_total() {
     assert_eq!(
         spend,
         Some(AccountSpend {
-            daily_micro_usd: 1_250_001,
-            total_micro_usd: 3_750_001,
+            daily_micro_usd: 1_250_000,
+            total_micro_usd: 3_750_000,
         }),
-        "each amount is rounded up to the next micro-USD"
+        "each amount is rounded to the nearest micro-USD"
     );
     let invokes = fixture.calls_of("operations invoke billing.pods");
     assert_eq!(invokes.len(), 1);

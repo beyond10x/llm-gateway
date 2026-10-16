@@ -587,6 +587,49 @@ fn k30_an_owner_secret_readable_by_others_is_refused() {
     Server::start(&config).stop();
 }
 
+/// The deployment guide's page, read at compile time so a change to it or to the refusal fails
+/// the run.
+const KUBERNETES_GUIDE: &str = include_str!("../../../website/docs/guides/run-on-kubernetes.md");
+
+/// Where the guide mounts the owner secret. The test runs the binary on a file under its own
+/// directory and puts this path where the binary printed that one.
+const GUIDE_SECRET_PATH: &str = "/run/llm-gateway/owner-secret";
+
+/// The line a pod's `fsGroup` makes the gateway print: Kubernetes sets the group read bit on every
+/// file of a Secret volume, and the trusted-file reader refuses a mode with any group or other bit.
+const GUIDE_REFUSAL: &str = "b10x-llm-gateway: refused owner-secret:unsafe-mode: /run/llm-gateway/owner-secret: has mode 440; none of 077 may be set";
+
+#[test]
+fn k8s_a_group_readable_owner_secret_is_refused_as_the_guide_pastes() {
+    let fixture = Fixture::new("k8s-fsgroup-mode");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let secret = fixture.write(
+        "owner-secret",
+        format!("{OWNER_SECRET}\n").as_bytes(),
+        0o440,
+    );
+    let finished = run_config(&config);
+    assert_refused(&finished, "owner-secret:unsafe-mode");
+    let printed = finished
+        .stderr
+        .lines()
+        .find(|line| line.starts_with(&format!("{PREFIX}refused owner-secret:unsafe-mode: ")))
+        .unwrap()
+        .replace(secret.to_str().unwrap(), GUIDE_SECRET_PATH);
+    assert_eq!(printed, GUIDE_REFUSAL, "the refusal the guide pastes");
+    assert!(
+        KUBERNETES_GUIDE.lines().any(|line| line == GUIDE_REFUSAL),
+        "website/docs/guides/run-on-kubernetes.md must paste {GUIDE_REFUSAL:?} on a line of its own"
+    );
+    // Control: the same file at 0400 is served, so the mode is the whole difference.
+    fixture.write(
+        "owner-secret",
+        format!("{OWNER_SECRET}\n").as_bytes(),
+        0o400,
+    );
+    Server::start(&config).stop();
+}
+
 #[test]
 fn k30_a_symlinked_owner_secret_is_refused() {
     let fixture = Fixture::new("k30-secret-symlink");
@@ -888,6 +931,33 @@ fn d2_sigterm_stops_the_server() {
         TcpStream::connect(address).is_err(),
         "the listener is closed after the stop"
     );
+}
+
+/// The guide's stop: at SIGTERM the readiness probe of a connection the gateway already accepted
+/// answers `503`, and a connection made after the signal is not accepted.
+#[test]
+fn d2_sigterm_flips_ready_to_503_on_an_accepted_connection_and_closes_the_listener() {
+    let fixture = Fixture::new("d2-ready-503");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let server = Server::start(&config);
+    let address = server.address;
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream
+        .set_read_timeout(Some(Duration::from_secs(10)))
+        .unwrap();
+    stream
+        .write_all(b"GET /ready HTTP/1.1\r\nHost: gateway\r\n")
+        .unwrap();
+    thread::sleep(SETTLE);
+    server.signal(Signal::TERM);
+    thread::sleep(SETTLE);
+    stream.write_all(b"\r\n").unwrap();
+    let mut response = String::new();
+    stream.read_to_string(&mut response).unwrap();
+    assert_eq!(status(&response), "503", "{response:?}");
+    assert!(body(&response).contains("unready"), "{response:?}");
+    let (exit, lines) = server.wait();
+    assert_eq!(exit.code(), Some(0), "{lines:?}");
 }
 
 #[test]

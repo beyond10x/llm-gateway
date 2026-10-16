@@ -253,6 +253,14 @@ impl Answer {
         }
         result.get("body")
     }
+
+    /// [`Self::body`], only when the result says it succeeded: a `result.status` that is
+    /// present and 2xx. An answer that is read as an amount uses this, so a result that never
+    /// said it succeeded is unanswered rather than an empty body read as nothing spent.
+    fn confirmed_body(&self) -> Option<&Value> {
+        self.result.as_ref()?.get("result")?.get("status")?;
+        self.body()
+    }
 }
 
 /// A unique stem for one write's files in the work directory.
@@ -826,15 +834,16 @@ impl RunpodTransport for ConnectorsRunpod {
             .and_then(started_at_ms)
     }
 
-    /// `billing.pods` with `{"bucketSize":"day"}`, read only when the whole answer is: every
-    /// entry a finite, non-negative `amount` in USD and a `time` in `lastStartedAt`'s form.
+    /// `billing.pods` with `{"bucketSize":"day"}`, read only when the whole answer is: a 2xx
+    /// `status`, present, and every entry a finite, non-negative `amount` in USD and a `time`
+    /// in `lastStartedAt`'s form. Each amount is rounded to the nearest micro-USD.
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
         let answer = self.read_operation(BILLING_PODS, &json!({ "bucketSize": "day" }));
         let mut spend = AccountSpend {
             daily_micro_usd: 0,
             total_micro_usd: 0,
         };
-        for entry in answer.body()?.as_array()? {
+        for entry in answer.confirmed_body()?.as_array()? {
             let amount = reported_micro_usd(entry.get("amount")?.as_f64()?)?;
             let time = started_at_ms(entry.get("time")?.as_str()?)?;
             spend.total_micro_usd = spend.total_micro_usd.checked_add(amount)?;

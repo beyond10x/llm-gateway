@@ -249,11 +249,12 @@ types:
   # with the input `{"bucketSize":"day"}`. Until a connectors release offers it, `operations
   # describe` refuses it and every read is unanswered, so with a ceiling declared every start is
   # refused (`SpendRefusal.Unknown`), never silently unchecked. The answer is read only when it
-  # is a 2xx `result.body` holding an array whose every entry has a finite, non-negative number
-  # `amount` (USD) and a `time` in `lastStartedAt`'s form: the total is the sum of every
-  # entry's `amount`, the daily spend the sum of those whose `time` is at or after the current
-  # UTC day's start. Anything else, one unreadable entry included, is unanswered. An empty array
-  # is an answer: no spend. ESS-LIMIT: no scenario observes the transport; tests/transport.rs
+  # carries a `result.status` that is 2xx and a `result.body` holding an array whose every entry
+  # has a finite, non-negative number `amount` (USD) and a `time` in `lastStartedAt`'s form: the
+  # total is the sum of every entry's `amount`, the daily spend the sum of those whose `time` is
+  # at or after the current UTC day's start. Each `amount` is rounded to the nearest micro-USD.
+  # Anything else, one unreadable entry or a result with no `status` included, is unanswered,
+  # never zero spend. An empty array under a 2xx status is an answer: no spend. ESS-LIMIT: no scenario observes the transport; tests/transport.rs
   # drives it against the connectors fixture (`billing_*`).
   - name: llm-gateway.runpod.ConnectorsOperation
     kind: enum
@@ -437,16 +438,23 @@ entities:
   # tries, and before nothing else. With no ceiling declared it reads nothing and admits (`without-a-ceiling-no-spend-is-read`).
   # Otherwise it computes, at the pool clock's instant:
   #   spend = the account's reported spend (`RunpodTransport::account_spend`, read afresh for
-  #           each check: today's since the UTC day's start, and the total)
+  #           each check: today's, everything billed at or after the UTC day's start, and the
+  #           total; `spend-billed-before-the-utc-days-start-is-not-todays`)
   #         + the running estimate of the pool's live pods: for every record of this
   #           controller whose phase occupies a slot (llm-gateway.hosting `Phase`) and that has
-  #           a submission instant, its model's price per hour times the time since that
-  #           instant (`a-live-pods-running-estimate-counts-against-the-ceiling`)
+  #           a submission instant, the larger of its model's price per hour times the time
+  #           since that instant and its model's price per hour times its
+  #           `startup_deadline_ms`: a pod just submitted counts at least what its own start was
+  #           admitted at, so two starts in a row never share one headroom
+  #           (`a-live-pods-running-estimate-counts-against-the-ceiling`,
+  #           `a-pod-just-started-counts-its-startup-estimate`)
   #         + the estimate of the pod about to start: its model's price per hour times its
   #           `startup_deadline_ms`.
   # The price is the declaration's (`price_per_hour_micro_usd` per model alias), never the pod
-  # listing's: the pod about to start has no listing yet, and one source prices every pod. An
-  # estimate is rounded up to the next micro-USD. The daily projection (reported daily + both
+  # listing's: the pod about to start has no listing yet, and one source prices every pod. A
+  # computed estimate is rounded up to the next micro-USD; a reported amount and a declared
+  # ceiling or price are rounded to the nearest, so an amount in whole cents is read exactly.
+  # The daily projection (reported daily + both
   # estimates) is compared with `daily_cap_micro_usd`, then the total projection with
   # `total_cap_micro_usd`. A projection equal to its ceiling is admitted; one micro-USD past it
   # is refused `Over` with the excess (`a-start-exactly-at-the-daily-ceiling-is-created`,

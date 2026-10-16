@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-pod-just-started-counts-its-startup-estimate
+summary: a live pod submitted moments ago counts at least its startup estimate, so a second start at once does not share the first one's headroom
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"a":{"price_per_hour_usd":2,"startup_deadline_ms":1800000},"b":{"price_per_hour_usd":2,"startup_deadline_ms":1800000}},"spend":{"daily_cap_usd":10},"steps":[{"step":"account_spend","daily_usd":8.5,"total_usd":8.5},{"step":"ensure","alias":"a"},{"step":"ensure","alias":"b"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - err:starting
+    - err:spend-ceiling:daily:over_usd=0.500000
+    create_calls: 1
+    spend_reads: 2
+    phases:
+    - a-1:active
+    - b-1:cancelled

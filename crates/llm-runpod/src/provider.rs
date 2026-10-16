@@ -127,8 +127,8 @@ impl<T: RunpodTransport> RunpodProvider<T> {
     /// The spend check (`spec/domains/runpod.yaml`, `SpendLedger`), run immediately before
     /// every create: whether a pod of the model `alias` may start now without passing a spend
     /// ceiling. With no ceiling declared it reads nothing and admits. Otherwise it reads the
-    /// account's spend once, adds the running estimate of the live pods ([`Self::set_live`])
-    /// and the estimate of this one over its startup deadline, and compares the sum with each
+    /// account's spend once, adds the running estimate of the live pods ([`Self::set_live`]),
+    /// each at least its own startup estimate, and the estimate of this one over its startup deadline, and compares the sum with each
     /// ceiling, the daily one first. It needs no relayed request, so any start path may call it.
     ///
     /// # Errors
@@ -141,18 +141,24 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             return Ok(());
         };
         let price = |alias: &Identifier| policy.price_per_hour_micro_usd.get(alias).copied();
-        let startup_ms = self
-            .models
-            .get(alias)
-            .map(|model| model.startup_deadline_ms)
-            .ok_or(SpendRefusal::Unknown)?;
+        let startup_ms = |alias: &Identifier| {
+            self.models
+                .get(alias)
+                .map(|model| model.startup_deadline_ms)
+        };
         let now = self.clock.now_ms();
-        let mut estimated = estimate(price(alias).ok_or(SpendRefusal::Unknown)?, startup_ms);
+        let mut estimated = estimate(
+            price(alias).ok_or(SpendRefusal::Unknown)?,
+            startup_ms(alias).ok_or(SpendRefusal::Unknown)?,
+        );
         for (live, submitted_at) in &self.live {
-            let running = estimate(
-                price(live).ok_or(SpendRefusal::Unknown)?,
-                now.saturating_sub(*submitted_at),
-            );
+            let price = price(live).ok_or(SpendRefusal::Unknown)?;
+            // A pod counts at least what its own start was admitted at: one submitted moments
+            // ago would otherwise add nothing, and two starts in a row would share one headroom.
+            let running = estimate(price, now.saturating_sub(*submitted_at)).max(estimate(
+                price,
+                startup_ms(live).ok_or(SpendRefusal::Unknown)?,
+            ));
             estimated = estimated.saturating_add(running);
         }
         let policy = policy.clone();

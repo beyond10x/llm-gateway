@@ -46,8 +46,18 @@ struct State {
     partial: bool,
     unreachable: bool,
     /// What a spend read answers; `None`, the default, is a read that answers nothing.
-    account_spend: Option<AccountSpend>,
+    account_spend: Option<SpendScript>,
     spend_reads: u32,
+}
+
+/// What the emulated account's spend reads answer.
+#[derive(Debug, Clone)]
+enum SpendScript {
+    /// The same spend whatever day start is asked: the script states today's spend.
+    Stated(AccountSpend),
+    /// Billed amounts in micro-USD at instants in ms: today's spend is those at or after the
+    /// asked day start, the total all of them.
+    Billed(Vec<(u64, u64)>),
 }
 
 /// A scriptable, shareable Runpod control plane. Clones share one state.
@@ -138,7 +148,13 @@ impl EmulatedRunpod {
     /// Spend reads from now on answer this; `None` answers nothing, as a failed read does.
     /// Until this is called every read answers nothing.
     pub fn set_account_spend(&self, spend: Option<AccountSpend>) {
-        self.state().account_spend = spend;
+        self.state().account_spend = spend.map(SpendScript::Stated);
+    }
+    /// Spend reads from now on answer from these billed amounts, each `(instant in ms,
+    /// micro-USD)`: today's spend is the sum of those at or after the day start the read asks
+    /// for, the total the sum of all of them, as Runpod's billing buckets are read.
+    pub fn set_billed(&self, entries: Vec<(u64, u64)>) {
+        self.state().account_spend = Some(SpendScript::Billed(entries));
     }
     /// Listings from now on claim to be incomplete.
     pub fn partial_listing(&self, partial: bool) {
@@ -291,10 +307,26 @@ impl RunpodTransport for EmulatedRunpod {
             .map(|uptime| EMULATED_START_ORIGIN_MS.saturating_sub(uptime))
     }
 
-    /// Answers the scripted spend whatever the day's start: the script states today's spend.
-    fn account_spend(&mut self, _day_start_ms: u64) -> Option<AccountSpend> {
+    /// Answers the scripted spend: a stated spend whatever the day's start, billed amounts
+    /// counted as today's from `day_start_ms` on.
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
         let mut state = self.state();
         state.spend_reads = state.spend_reads.saturating_add(1);
-        state.account_spend
+        match state.account_spend.as_ref()? {
+            SpendScript::Stated(spend) => Some(*spend),
+            SpendScript::Billed(entries) => {
+                let mut spend = AccountSpend {
+                    daily_micro_usd: 0,
+                    total_micro_usd: 0,
+                };
+                for &(at_ms, micro_usd) in entries {
+                    spend.total_micro_usd = spend.total_micro_usd.checked_add(micro_usd)?;
+                    if at_ms >= day_start_ms {
+                        spend.daily_micro_usd = spend.daily_micro_usd.checked_add(micro_usd)?;
+                    }
+                }
+                Some(spend)
+            }
+        }
     }
 }

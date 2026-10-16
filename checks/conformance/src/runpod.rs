@@ -223,6 +223,19 @@ enum Step {
         daily_usd: f64,
         total_usd: f64,
     },
+    /// Spend reads from now on answer from these billed amounts: today's spend is those at or
+    /// after the UTC day's start the read asks for.
+    Billed {
+        entries: Vec<BilledInput>,
+    },
+}
+
+/// One billed amount: `usd` at the pool clock's instant `at_ms`.
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct BilledInput {
+    at_ms: u64,
+    usd: f64,
 }
 
 /// The emulator, plus the one arrangement it cannot script: a pod that stops serving.
@@ -610,6 +623,16 @@ impl Run {
                 }
                 (Err(code), _) | (_, Err(code)) => return format!("err:{code}"),
             },
+            Step::Billed { entries } => {
+                let mut billed = Vec::with_capacity(entries.len());
+                for entry in entries {
+                    match amount(entry.usd) {
+                        Ok(micro_usd) => billed.push((entry.at_ms, micro_usd)),
+                        Err(code) => return format!("err:{code}"),
+                    }
+                }
+                runpod.set_billed(billed);
+            }
             Step::SetStatus { pod, status } => {
                 let status = match status.as_str() {
                     "Created" => PodStatus::Created,

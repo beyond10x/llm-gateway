@@ -840,8 +840,9 @@ where
     // Every check the pool and its targets make, made before the transport is built: whether
     // a document is valid never depends on the connection, and a refused document costs no
     // `connectors` call.
-    let models = runpod_models(&subset)?;
-    let policy = hosting_policy(&subset)?;
+    runpod_models(&subset)?;
+    hosting_policy(&subset)?;
+    spend_policy(&subset)?;
     let authorization = compute_authorization_for(&subset)?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let mut transport = ConnectorsRunpod::new(binding.clone());
@@ -858,20 +859,13 @@ where
             transport.set_vllm_key(alias, key.expose().to_vec());
         }
     }
-    let pool = RunpodPool::new(
-        policy,
-        Arc::new(LeaseRegistry::default()),
+    // The one constructor every composition builds its pool with, so none starts a pod
+    // without the spend ceilings the document declares.
+    let pool = Arc::new(runpod_pool(
+        &subset,
         wrap(transport),
-        models,
         Arc::new(WallClock::default()),
-    )
-    .map_err(|error| {
-        Refusal::new(
-            StartupRefusal::ConfigValue,
-            format!("the Runpod pool cannot be composed: {error}"),
-        )
-    })?;
-    let pool = Arc::new(pool);
+    )?);
     let targets = PoolTargets::from_relayed(
         relayed,
         authorization,

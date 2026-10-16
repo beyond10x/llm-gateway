@@ -259,3 +259,5 @@ scenarios:
 - runpod/scenarios/a-capacity-refusal-starts-the-model-on-its-next-profile.yaml
 - runpod/scenarios/a-non-capacity-refusal-is-not-retried-on-the-next-profile.yaml
 - runpod/scenarios/two-profiles-sharing-a-gpu-type-are-refused.yaml
+- runpod/scenarios/a-pod-just-started-counts-its-startup-estimate.yaml
+- runpod/scenarios/spend-billed-before-the-utc-days-start-is-not-todays.yaml

@@ -18,6 +18,10 @@ Nothing in any release is deployed or qualified against a live client.
   that would pass one, or whose spend is unknown, is refused `spend-ceiling` (503) with no
   create, counted in `llmgw_pod_start_spend_refusals_total`. The reported spend is read through
   the connectors operation `billing.pods`, which needs a connectors release that offers it.
+- The shipped gateway enforces the spend ceilings: its Runpod pool is built with them, as every
+  other composition's is. A live pod counts at least its startup estimate, so two starts in a
+  row do not share one headroom; a reported amount in whole cents is read exactly; a
+  `billing.pods` result with no status refuses the start.
 
 ## 0.9.0 (2026-10-16)
 

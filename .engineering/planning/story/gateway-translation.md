@@ -7,8 +7,6 @@ title: The gateway translates only the supported protocol subset
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-- depends_on: story:target-fallback
-- depends_on: story:usage-records
 - informed_by: story:modal-hosting
 scope:
 - confidence: inferred
@@ -35,7 +33,7 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/upstream.yaml
-revision: 18
+revision: 19
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-14T14:31:57Z", actor: "human:timo", revision: 18, decided_on: {"recorded":{"review_outcome":3}}}
 ---
@@ -102,9 +100,7 @@ llm's store at `.engineering/evidence/story/gateway-translation/`. Its dependenc
 
 ## Depends on
 
-- `story:target-fallback` and `story:usage-records`. This story's acceptance names the fallback
-  visibility boundary and usage, which those two stories settle first. All three change
-  `relay::serve` in `crates/llm-gateway/src/relay.rs`.
+Replan 2026-10-16 (Milestone 2, operator-approved): translation carries usage inside the translated answer, usage records stay their own story (`story:usage-records`), and fallback is not required for translation (`story:target-fallback`); both `depends_on` edges were removed.
 
 `story:modal-hosting` is related as `informed_by`, not `depends_on`. llm's record of this story
 (llm `8d8e752d`) depended on it, but this story's Context calls hosting optional, and translation

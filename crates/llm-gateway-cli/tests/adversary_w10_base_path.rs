@@ -4,7 +4,10 @@
 use llm_gateway::{AuthKind, BasePath};
 use llm_gateway_cli::{BaseUrlError, HostedEndpoint, Scheme};
 
-fn checked(url: &str, auth_kind: AuthKind) -> Result<(Scheme, String, Option<String>), BaseUrlError> {
+fn checked(
+    url: &str,
+    auth_kind: AuthKind,
+) -> Result<(Scheme, String, Option<String>), BaseUrlError> {
     HostedEndpoint::check(url, auth_kind).map(|(scheme, authority, base)| {
         (
             scheme,
@@ -19,10 +22,34 @@ fn checked(url: &str, auth_kind: AuthKind) -> Result<(Scheme, String, Option<Str
 #[test]
 fn an_ipv6_literal_with_a_path_keeps_its_brackets_in_the_authority() {
     for (url, auth_kind, scheme, authority, base) in [
-        ("http://[::1]:8000/api/v1", AuthKind::Bearer, Scheme::Http, "[::1]:8000", Some("/api/v1")),
-        ("https://[::1]/v1/", AuthKind::ApiKey, Scheme::Https, "[::1]", Some("/v1")),
-        ("http://[::1]/", AuthKind::Bearer, Scheme::Http, "[::1]", None),
-        ("http://localhost:9/openai", AuthKind::ApiKey, Scheme::Http, "localhost:9", Some("/openai")),
+        (
+            "http://[::1]:8000/api/v1",
+            AuthKind::Bearer,
+            Scheme::Http,
+            "[::1]:8000",
+            Some("/api/v1"),
+        ),
+        (
+            "https://[::1]/v1/",
+            AuthKind::ApiKey,
+            Scheme::Https,
+            "[::1]",
+            Some("/v1"),
+        ),
+        (
+            "http://[::1]/",
+            AuthKind::Bearer,
+            Scheme::Http,
+            "[::1]",
+            None,
+        ),
+        (
+            "http://localhost:9/openai",
+            AuthKind::ApiKey,
+            Scheme::Http,
+            "localhost:9",
+            Some("/openai"),
+        ),
     ] {
         assert_eq!(
             checked(url, auth_kind),

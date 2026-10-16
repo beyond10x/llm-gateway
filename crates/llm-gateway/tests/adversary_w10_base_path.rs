@@ -44,7 +44,7 @@ fn every_byte_outside_the_rule_is_refused_wherever_it_stands() {
 /// segment and no byte outside the rule, and keeps the rest of the wire path verbatim.
 #[test]
 fn no_accepted_base_path_joins_to_a_path_that_leaves_its_prefix() {
-    let alphabet = [b'/', b'.', b'a', b'~'];
+    let alphabet = *b"/.a~";
     let mut accepted = 0_usize;
     for length in 0..=6_u32 {
         for index in 0..alphabet.len().pow(length) {

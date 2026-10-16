@@ -4,7 +4,7 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.8.0 (2026-10-16)
 
 - Claude Code on the Messages wire: an effort of `max` (`output_config.effort` or
   `chat_template_kwargs.reasoning_effort`) now reaches the model as `xhigh`, as `high` already

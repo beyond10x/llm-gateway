@@ -187,11 +187,13 @@ A request to a wire path is decided in this order:
    without authentication; llm-gateway admits only its owner's bearer credential, unless the
    embedding sets `GatewayConfig::ingress_auth` to `IngressAuth::None`. Then a wire path of a
    gateway composed with a relay skips authentication: `authorization` is not read, so a
-   missing, malformed or wrong credential is no refusal, and it is never forwarded. Every other
+   missing, malformed, repeated or wrong credential is no refusal, and it is never forwarded.
+   Every other
    path still authenticates, so `/metrics`, `/v1/routes` and an unknown path stay closed and the
    surface still cannot be enumerated. An embedding with no owner at all composes the gateway
    with `NoOwnerVerifier`, which accepts no credential: the owner-only paths are then
-   `credential-absent` without one and `credential-rejected` with one. The binary does exactly
+   `credential-absent` without one and `credential-rejected` with a bearer token (anything else
+   is `credential-malformed`, as with a secret). The binary does exactly
    this for `ingress_auth = "none"` without an `owner_secret_file`, and says so on standard
    error before it listens.
 2. `POST` only (`method-not-allowed`, `allow: POST`), and `unavailable` before `mark_ready`.

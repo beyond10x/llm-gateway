@@ -29,7 +29,8 @@ pub enum Disposition {
 
 /// What the gateway learned about one model call it was asked to relay
 /// (`llm-gateway.telemetry.UsageRecord`). One is made for every request to a wire path that
-/// passed owner authentication, once its answer or refusal is written.
+/// passed owner authentication, or needed none (`IngressAuth::None`), once its answer or
+/// refusal is written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UsageRecord {
     /// The relayed model's alias the body named. `None` when it named no relayed model.

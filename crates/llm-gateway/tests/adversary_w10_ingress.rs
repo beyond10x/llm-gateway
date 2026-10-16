@@ -128,7 +128,9 @@ impl UsageRecords for Records {
 }
 
 fn owner_verifier() -> Arc<dyn OwnerVerifier> {
-    Arc::new(SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap())
+    Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    )
 }
 
 fn model() -> RelayModel {
@@ -183,7 +185,9 @@ impl Open {
         }
         if !body.is_empty() {
             raw.push_str("content-type: application/json\r\n");
-            raw.push_str(&format!("content-length: {}\r\n", body.len()));
+            raw.push_str("content-length: ");
+            raw.push_str(&body.len().to_string());
+            raw.push_str("\r\n");
         }
         raw.push_str("\r\n");
         raw.push_str(body);
@@ -226,7 +230,10 @@ fn adv_none_a_repeated_authorization_on_a_wire_path_is_no_refusal() {
     let answered = gateway.ask(
         "POST",
         "/v1/chat/completions",
-        &["authorization: Bearer one-0123456789abcdef", "authorization: Bearer two-0123456789abcdef"],
+        &[
+            "authorization: Bearer one-0123456789abcdef",
+            "authorization: Bearer two-0123456789abcdef",
+        ],
         BODY,
     );
     assert_eq!(answered, (200, String::new()), "pod saw {:?}", pod.heads());
@@ -332,9 +339,16 @@ fn adv_none_records_an_unauthenticated_call_and_forwards_no_client_credential() 
     for (path, headers) in [
         ("/v1/chat/completions", vec![]),
         ("/v1/responses?api-version=1", vec![owner.as_str()]),
-        ("/v1/messages", vec!["authorization: Basic eDp5", "x-api-key: client-key"]),
+        (
+            "/v1/messages",
+            vec!["authorization: Basic eDp5", "x-api-key: client-key"],
+        ),
     ] {
-        assert_eq!(gateway.ask("POST", path, &headers, BODY), (200, String::new()), "{path}");
+        assert_eq!(
+            gateway.ask("POST", path, &headers, BODY),
+            (200, String::new()),
+            "{path}"
+        );
     }
     assert_eq!(
         gateway.ask("GET", "/v1/messages", &[], ""),
@@ -351,7 +365,14 @@ fn adv_none_records_an_unauthenticated_call_and_forwards_no_client_credential() 
     let records = records.0.lock().unwrap().clone();
     let summary: Vec<_> = records
         .iter()
-        .map(|record| (record.model.as_deref(), record.wire, record.disposition, record.status))
+        .map(|record| {
+            (
+                record.model.as_deref(),
+                record.wire,
+                record.disposition,
+                record.status,
+            )
+        })
         .collect();
     assert_eq!(
         summary,

@@ -452,7 +452,8 @@ types:
   # optional and admits a model call without a credential. With `none` and no
   # `owner_secret_file` the owner-only surface (`/metrics`, `/v1/routes`) has no owner at all:
   # the gateway is composed with a verifier that accepts no credential, so those paths are
-  # refused (`credential-absent` without a header, `credential-rejected` with one). With `none`
+  # refused (`credential-absent` without a header, `credential-rejected` with a bearer token,
+  # `credential-malformed` with anything else, as with a secret). With `none`
   # and an `owner_secret_file` they take that secret, as with `bearer`. Any other value is
   # `config:schema`.
   # DECIDED 2026-10-16 (story:ingress-auth-optional): a gateway behind something that

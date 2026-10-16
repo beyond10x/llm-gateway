@@ -227,6 +227,19 @@ closed_enum! {
 }
 
 closed_enum! {
+    /// Why a [`crate::BasePath`] cannot be built. The rejected path is never quoted.
+    BasePathError {
+        /// Longer than 256 bytes, or more than 32 segments.
+        Length => "a base path is at most 256 bytes of at most 32 segments";
+        /// Not `/` and segments of one or more of `A-Z a-z 0-9 - . _ ~`: an empty segment, or
+        /// any other byte.
+        NotAPath => "a base path is / and segments of one or more of A-Z a-z 0-9 - . _ ~";
+        /// A segment that is `.` or `..`.
+        DotSegment => "a base path has no . or .. segment";
+    }
+}
+
+closed_enum! {
     /// Why relayed models cannot be composed (row K11).
     RelayError {
         /// A model that declares no wire.

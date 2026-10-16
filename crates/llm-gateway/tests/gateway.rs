@@ -4,8 +4,8 @@
 //! upstream credential appearing on the wire and without any secret source being consulted.
 
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle, Label,
-    OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    AuthKind, BasePath, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle,
+    Label, OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
     RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, TargetLimits,
     TargetProvenance, TargetRefusal, TargetSummary, Verdict, Wire,
 };
@@ -1063,6 +1063,30 @@ fn enforced_bounds() -> Vec<Bound> {
             value: 33_554_432,
             direction: Direction::Maximum,
             admits: Box::new(|n| a_relayed_body_of_exactly(usize::try_from(n).unwrap()).is_none()),
+        },
+    ]
+    .into_iter()
+    .chain(base_path_bounds())
+    .collect()
+}
+
+/// The two bounds of a `BasePath` (story:hosted-base-path).
+fn base_path_bounds() -> Vec<Bound> {
+    vec![
+        // The whole path, its leading `/` included.
+        Bound {
+            name: "base-path-bytes",
+            value: 256,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| {
+                BasePath::new(&format!("/{}", "a".repeat(usize::try_from(n).unwrap() - 1))).is_ok()
+            }),
+        },
+        Bound {
+            name: "base-path-segments",
+            value: 32,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| BasePath::new(&"/a".repeat(usize::try_from(n).unwrap())).is_ok()),
         },
     ]
 }

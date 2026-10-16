@@ -514,7 +514,7 @@ mod relay {
     use super::{Observed, label, token_code, unavailable, verifier_code};
     use ess_conformance::target::TargetError;
     use llm_gateway::{
-        CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
+        BasePath, CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
         GatewayHandle, OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
         RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
         TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
@@ -611,6 +611,9 @@ mod relay {
         pod: String,
         /// `http` or `https`; an `https` endpoint's pod serves TLS.
         scheme: String,
+        /// Appended to `<scheme>://<authority>` to make the endpoint.s `base_url`.
+        #[serde(default)]
+        base_path: Option<String>,
         /// `trusted`, the default, or `untrusted`: whose root issued the pod's certificate.
         #[serde(default)]
         certificate: Option<String>,
@@ -1293,6 +1296,10 @@ mod relay {
             self.inner.credential_header()
         }
 
+        fn base_path(&self) -> Option<&BasePath> {
+            self.inner.base_path()
+        }
+
         fn held(&self) -> bool {
             self.inner.held()
         }
@@ -1425,7 +1432,11 @@ mod relay {
                 .pod_index(authorities.len())
                 .and_then(|index| authorities.get(index))
                 .ok_or_else(|| "fixture:endpoint-pod".to_owned())?;
-            let base_url = format!("{}://{authority}", endpoint.scheme);
+            let base_url = format!(
+                "{}://{authority}{}",
+                endpoint.scheme,
+                endpoint.base_path.as_deref().unwrap_or_default()
+            );
             let hosted = HostedEndpoint::new(&base_url, credential)
                 .map_err(|_| "endpoint:base-url".to_owned())?;
             endpoints.insert(model.alias.clone(), hosted);

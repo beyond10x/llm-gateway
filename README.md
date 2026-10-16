@@ -131,7 +131,9 @@ Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' 
 ([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1).
 
 A `[hosted.<alias>]` table serves a model from a hosted endpoint instead of a pod: `wires`,
-`base_url` (`http://` or `https://` and a `host[:port]`, no path), `auth_kind` (`anonymous`,
+`base_url` (`http://` or `https://`, a `host[:port]` and an optional base path that replaces
+the wire path's leading `/v1`, so `https://openrouter.ai/api/v1` asks `/api/v1/chat/completions`),
+`auth_kind` (`anonymous`,
 `bearer` or `api-key`), `credential_file` unless anonymous, `credential_header` for `api-key`,
 and optionally `billing_kind`, `upstream_model`, `context_window` and `tool_calling`. The
 credential file is read once at startup under the owner secret's rules (`endpoint-credential:<rule>`);

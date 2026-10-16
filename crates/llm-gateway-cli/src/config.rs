@@ -298,7 +298,7 @@ pub struct Model {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hosted {
     pub wires: Vec<Wire>,
-    /// `http://` or `https://` and an authority, nothing else but an optional final `/`. Never
+    /// `http://` or `https://`, an authority and an optional base path, as written. Never
     /// rendered by the route inventory.
     pub base_url: String,
     pub auth_kind: AuthKind,
@@ -464,8 +464,10 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         Err(crate::hosted::BaseUrlError::Malformed) => {
             return Err(value(
                 &key("base_url"),
-                "must be http:// or https:// and a host[:port] of at most 256 printable ASCII \
-                 characters, with no path, query, fragment or user information",
+                "must be http:// or https://, a host[:port] of at most 256 printable ASCII \
+                 characters and an optional base path of at most 32 segments and 256 bytes, each \
+                 segment one or more of A-Z a-z 0-9 - . _ ~ and neither . nor .., with no query, \
+                 fragment or user information",
             ));
         }
         Err(crate::hosted::BaseUrlError::CleartextCredential) => {

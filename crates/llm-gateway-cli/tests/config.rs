@@ -1205,20 +1205,10 @@ fn credential_cases(credential: &Path, bearer: &str) -> Vec<(&'static str, Strin
     ]
 }
 
-/// The out-of-rule cases of a hosted endpoint's `base_url`, each a `(case, find, replace)` on the
+/// story:hosted-base-path: the out-of-rule base paths, each a `(case, find, replace)` on the
 /// control's `base_url` line.
-fn base_url_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
+fn base_path_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
     vec![
-        (
-            "another scheme",
-            base_url.to_owned(),
-            "base_url = \"ftp://api.example.test/\"".to_owned(),
-        ),
-        (
-            "no scheme",
-            base_url.to_owned(),
-            "base_url = \"api.example.test\"".to_owned(),
-        ),
         (
             "a dot-dot segment",
             base_url.to_owned(),
@@ -1272,7 +1262,27 @@ fn base_url_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
         (
             "a path over 256 bytes",
             base_url.to_owned(),
-            format!("base_url = \"https://api.example.test/{}\"", "a".repeat(256)),
+            format!(
+                "base_url = \"https://api.example.test/{}\"",
+                "a".repeat(256)
+            ),
+        ),
+    ]
+}
+
+/// The out-of-rule cases of a hosted endpoint's `base_url`, each a `(case, find, replace)` on the
+/// control's `base_url` line.
+fn base_url_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
+    vec![
+        (
+            "another scheme",
+            base_url.to_owned(),
+            "base_url = \"ftp://api.example.test/\"".to_owned(),
+        ),
+        (
+            "no scheme",
+            base_url.to_owned(),
+            "base_url = \"api.example.test\"".to_owned(),
         ),
         (
             "a query",
@@ -1385,6 +1395,7 @@ fn hosted_every_value_outside_its_rule_is_refused() {
     let cases = [
         credential_cases(&credential, &bearer),
         base_url_cases(base_url),
+        base_path_cases(base_url),
         declaration_cases(&bearer),
     ]
     .concat();

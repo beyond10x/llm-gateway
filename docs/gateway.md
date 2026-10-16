@@ -263,7 +263,15 @@ A request to a wire path is decided in this order:
    responses wires are relayed without a count. The count runs only on a target `acquire`
    handed out, so it never wakes a pod the relay would not have woken. Then `POST` to the same
    path at the
-   target with `host` set to the target's authority and a `content-length`. A target whose
+   target with `host` set to the target's authority and a `content-length`. A target with a
+   `BasePath` (`RelayTarget::base_path`: a hosted endpoint whose `base_url` names a path) is
+   asked on that path joined to the wire path instead, the base path replacing the wire path's
+   leading `/v1`, and so is its count: `/api/v1` asks `/api/v1/chat/completions` and
+   `/api/v1/messages/count_tokens`, `/v1` asks the wire path itself. `host` stays the
+   authority. A `BasePath` is `/` and 1 to `base-path-segments` segments of `A-Z a-z 0-9 - . _ ~`,
+   none of them empty, `.` or `..`, at most `base-path-bytes` long with one final `/` dropped,
+   refused as `BasePathError::Length`, `NotAPath` and `DotSegment`; so it can neither end the
+   request line nor leave the prefix it names. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target whose `credential_header` also names a `CredentialHeader`
    (an `api-key` hosted endpoint) is sent `<header>: <key>` instead, and no `authorization`; a
@@ -473,6 +481,8 @@ list written by hand.
 | `shared-secret-bytes` | `MIN_SHARED_SECRET_BYTES` | 32 |
 | `label-bytes` | `MAX_LABEL_BYTES` | 256 |
 | `credential-header-bytes` | `MAX_CREDENTIAL_HEADER_BYTES` | 64 |
+| `base-path-bytes` | `MAX_BASE_PATH_BYTES` | 256 |
+| `base-path-segments` | `MAX_BASE_PATH_SEGMENTS` | 32 |
 | `targets-per-route` | `MAX_TARGETS_PER_ROUTE` | 64 |
 | `routes` | `MAX_ROUTES` | 4096 |
 | `digest-characters` | `DIGEST_CHARACTERS` | 64 |
@@ -490,7 +500,8 @@ one past it, through the public API or over a socket, never by reading a configu
 not a bound has to be named in the exemption list in `tests/gateway.rs` with a reason, rather
 than being invisible.
 
-`owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `targets-per-route`, `routes`,
+`owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `base-path-bytes`,
+`base-path-segments`, `targets-per-route`, `routes`,
 `request-head-bytes`, `concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
 `digest-characters` is an exact length. `request-head-bytes` and `concurrent-requests` are
 `GatewayConfig` defaults an embedding may override; they and `request-body-bytes` (32 MiB, as

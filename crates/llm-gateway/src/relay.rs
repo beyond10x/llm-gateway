@@ -11,7 +11,9 @@
 
 use crate::{
     auth, body,
-    error::{CredentialHeaderError, RefusalCode, RelayError, TargetRefusal, TokenError},
+    error::{
+        BasePathError, CredentialHeaderError, RefusalCode, RelayError, TargetRefusal, TokenError,
+    },
     inventory::Label,
     metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
 };
@@ -166,6 +168,69 @@ impl CredentialHeader {
     }
 }
 
+/// The longest base path: `base-path-bytes`.
+const MAX_BASE_PATH_BYTES: usize = 256;
+/// The most segments a base path holds: `base-path-segments`.
+const MAX_BASE_PATH_SEGMENTS: usize = 32;
+/// The prefix every wire path starts with, which a base path replaces.
+const WIRE_PREFIX: &str = "/v1";
+
+/// The path a hosted endpoint's API lives below (`https://openrouter.ai/api/v1` has `/api/v1`;
+/// `llm-gateway.upstream.HostedEndpoint` `base_url`). A request is sent to it joined to the wire
+/// path, replacing the wire path's leading `/v1` ([`Self::join`]). It is `/` and 1..=32
+/// segments of one or more of `A-Z a-z 0-9 - . _ ~`, none of them `.` or `..`, at most 256
+/// bytes, held without a final `/`: so it can neither end the request line it is written into
+/// nor address anything outside the prefix it names.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct BasePath(String);
+
+impl BasePath {
+    /// Accepts a path as the rule above has it; one final `/` is dropped before the rule is
+    /// applied, so `/api/v1/` is `/api/v1`.
+    ///
+    /// # Errors
+    /// [`BasePathError`] naming the rule and never the path.
+    pub fn new(path: &str) -> Result<Self, BasePathError> {
+        let held = path.strip_suffix('/').unwrap_or(path);
+        if held.len() > MAX_BASE_PATH_BYTES {
+            return Err(BasePathError::Length);
+        }
+        let Some(segments) = held.strip_prefix('/') else {
+            return Err(BasePathError::NotAPath);
+        };
+        let mut count = 0_usize;
+        for segment in segments.split('/') {
+            count += 1;
+            if count > MAX_BASE_PATH_SEGMENTS {
+                return Err(BasePathError::Length);
+            }
+            let allowed = |byte: u8| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~')
+            };
+            if segment.is_empty() || !segment.bytes().all(allowed) {
+                return Err(BasePathError::NotAPath);
+            }
+            if segment == "." || segment == ".." {
+                return Err(BasePathError::DotSegment);
+            }
+        }
+        Ok(Self(held.to_owned()))
+    }
+
+    /// The path, without a final `/`.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+
+    /// The path a request on `wire_path` is sent to: this path followed by `wire_path` without
+    /// its leading `/v1`. `/api/v1` and `/v1/chat/completions` make `/api/v1/chat/completions`;
+    /// `/v1` and `/v1/messages` make `/v1/messages`.
+    pub fn join(&self, wire_path: &str) -> String {
+        let rest = wire_path.strip_prefix(WIRE_PREFIX).unwrap_or(wire_path);
+        format!("{}{rest}", self.0)
+    }
+}
+
 /// One target, held for as long as a relayed answer streams and released when dropped.
 pub trait RelayTarget: Send {
     /// The target's `host[:port]`. It is sent as `host`, and it is what the gateway names back
@@ -183,6 +248,13 @@ pub trait RelayTarget: Send {
     /// `authorization` (an `api-key` hosted endpoint). `None`, the default, sends a bearer as
     /// `authorization: Bearer <key>`. Without a bearer it sends nothing.
     fn credential_header(&self) -> Option<&CredentialHeader> {
+        None
+    }
+
+    /// The path the target's API lives below. `None`, the default, asks the target on the wire
+    /// path itself; a [`BasePath`] asks it on [`BasePath::join`] of the wire path, the output
+    /// clamp's count included. `host` is the [`Self::authority`] either way.
+    fn base_path(&self) -> Option<&BasePath> {
         None
     }
 
@@ -975,7 +1047,10 @@ impl Drop for RequestHead {
 /// target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
 /// header one token naming no header written here (`CredentialHeader::new`), so neither can end
 /// the line it is written into.
-fn request_head(target: &dyn RelayTarget, path: &str, length: usize) -> RequestHead {
+fn request_head(target: &dyn RelayTarget, wire_path: &str, length: usize) -> RequestHead {
+    let path = target
+        .base_path()
+        .map_or_else(|| wire_path.to_owned(), |base| base.join(wire_path));
     let start = format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority());
     let end = format!(
         "content-type: application/json\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
@@ -1138,7 +1213,7 @@ fn stream_answer(
 mod tests {
     use super::{Framing, MAX_REQUEST_BODY_BYTES, Relay, RelayModel, RelayTargets, Wire, framing};
     use crate::{
-        error::{CredentialHeaderError, RefusalCode, RelayError, TargetRefusal},
+        error::{BasePathError, CredentialHeaderError, RefusalCode, RelayError, TargetRefusal},
         inventory::Label,
     };
     use std::sync::Arc;
@@ -1188,6 +1263,79 @@ mod tests {
                 "{name:?}"
             );
         }
+    }
+
+    #[test]
+    fn every_base_path_error_has_a_path_that_provokes_it() {
+        for expected in BasePathError::ALL {
+            let path = match expected {
+                BasePathError::Length => format!("/{}", "a".repeat(256)),
+                BasePathError::NotAPath => "/api//v1".to_owned(),
+                BasePathError::DotSegment => "/api/../admin".to_owned(),
+            };
+            assert_eq!(
+                super::BasePath::new(&path).err(),
+                Some(*expected),
+                "{path:?}"
+            );
+        }
+    }
+
+    /// A base path replaces the wire path's leading `/v1`; `/v1` itself changes nothing.
+    #[test]
+    fn a_base_path_replaces_the_v1_prefix_of_every_wire_path() {
+        for (base, wire, joined) in [
+            (
+                "/api/v1",
+                "/v1/chat/completions",
+                "/api/v1/chat/completions",
+            ),
+            (
+                "/api/v1/",
+                "/v1/messages/count_tokens",
+                "/api/v1/messages/count_tokens",
+            ),
+            ("/v1", "/v1/responses", "/v1/responses"),
+            (
+                "/openai",
+                "/v1/chat/completions",
+                "/openai/chat/completions",
+            ),
+            ("/a-b_c.d~e/V2", "/v1/messages", "/a-b_c.d~e/V2/messages"),
+        ] {
+            assert_eq!(
+                super::BasePath::new(base).unwrap().join(wire),
+                joined,
+                "{base}"
+            );
+        }
+        for path in [
+            "",
+            "/",
+            "//",
+            "api/v1",
+            "/api/v1//",
+            "/a b",
+            "/a%2f",
+            "/a\\b",
+            "/a?b",
+            "/a#b",
+            "/a\r\nx: y",
+            "/./v1",
+            "/..",
+            "/v1/.",
+            "/é",
+        ] {
+            assert!(super::BasePath::new(path).is_err(), "{path:?}");
+        }
+        let longest = format!("/{}", "a".repeat(255));
+        assert!(super::BasePath::new(&longest).is_ok());
+        assert!(super::BasePath::new(&format!("{longest}/")).is_ok());
+        assert!(super::BasePath::new(&"/a".repeat(32)).is_ok());
+        assert_eq!(
+            super::BasePath::new(&"/a".repeat(33)).err(),
+            Some(BasePathError::Length)
+        );
     }
 
     #[test]

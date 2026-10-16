@@ -40,8 +40,8 @@ mod server;
 
 pub use auth::{Authenticated, OwnerToken, OwnerVerifier, SharedSecretVerifier, Verdict};
 pub use error::{
-    CredentialHeaderError, InventoryError, LabelError, RefusalCode, RelayError, TargetRefusal,
-    TokenError, VerifierError,
+    BasePathError, CredentialHeaderError, InventoryError, LabelError, RefusalCode, RelayError,
+    TargetRefusal, TokenError, VerifierError,
 };
 pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
@@ -49,7 +49,7 @@ pub use inventory::{
 };
 pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
 pub use relay::{
-    CredentialHeader, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    TargetBearer, ToolCalling, Wire,
+    BasePath, CredentialHeader, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget,
+    RelayTargets, TargetBearer, ToolCalling, Wire,
 };
 pub use server::{Gateway, GatewayConfig, GatewayHandle, ShutdownReport};

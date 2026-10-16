@@ -82,13 +82,13 @@ held. Two proven model declarations are in
 
 A model served by a hosted endpoint: any server that speaks the model's wires, a vendor API or an
 OpenAI-compatible server somebody else runs. Nothing is started or stopped for it. A request goes
-to the same path at the endpoint, and the route inventory lists each of its targets with its
-`auth_kind` and `billing_kind`, never its URL or credential.
+to the endpoint's base path joined to the wire path (below), and the route inventory lists each
+of its targets with its `auth_kind` and `billing_kind`, never its URL or credential.
 
 | Key | Default | Rule |
 | --- | --- | --- |
 | `wires` | required | A non-empty set of `chat`, `responses`, `messages`, none repeated. |
-| `base_url` | required | `http://` or `https://` and a `host[:port]` of at most 256 characters, then at most a final `/`: no path, query, fragment or user information. An `http` URL for a `bearer` or `api-key` endpoint must name a loopback host (`127.0.0.0/8`, `::1` or `localhost`): a credential is never sent in cleartext to a remote host. |
+| `base_url` | required | `http://` or `https://`, a `host[:port]` of at most 256 characters, then an optional base path: no query, fragment or user information. A base path is 1 to 32 segments of `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`, at most 256 bytes, with no empty, `.` or `..` segment; one final `/` is dropped. An `http` URL for a `bearer` or `api-key` endpoint must name a loopback host (`127.0.0.0/8`, `::1` or `localhost`): a credential is never sent in cleartext to a remote host. |
 | `auth_kind` | required | `anonymous`, `bearer` or `api-key`. |
 | `credential_file` | absent | The file holding the credential: required unless `auth_kind` is `anonymous`, and refused when it is. |
 | `credential_header` | absent | The header an `api-key` endpoint receives the credential in, 1 to 64 token characters: required for `api-key`, refused otherwise, and never `authorization`, `host` or a header that frames a message. |
@@ -97,6 +97,20 @@ to the same path at the endpoint, and the route inventory lists each of its targ
 | `context_window` | absent | 4096 to 2000000 tokens, what the public routes publish. |
 | `tool_calling` | `absent` | `parsed` or `absent`. |
 | `reasoning_effort` | absent | `low`, `medium` or `xhigh`: the effort a Messages request that names none is sent with. Any other value, `high` and `max` included, is `config:value`. |
+
+Every wire path starts `/v1/`. A `base_url` without a path, or with only `/`, is asked on the
+wire path itself. A base path replaces the wire path's leading `/v1`, so a `base_url` written
+the way OpenAI-compatible clients write one, ending in `/v1`, works as written:
+
+| `base_url` | Chat request goes to |
+| --- | --- |
+| `https://api.example.test` | `/v1/chat/completions` |
+| `https://api.example.test/v1` | `/v1/chat/completions` |
+| `https://openrouter.ai/api/v1` | `/api/v1/chat/completions` |
+| `https://gateway.example.test/openai` | `/openai/chat/completions` |
+
+The output clamp's count on the Messages wire follows the same rule
+(`/api/v1/messages/count_tokens` for the third row). The `host` header is the authority alone.
 
 A `bearer` endpoint is sent `authorization: Bearer <credential>`, an `api-key` endpoint
 `<credential_header>: <credential>` and no `authorization`, and an `anonymous` one neither. A

@@ -188,7 +188,7 @@ A changed routes document takes a restart.
 | A credentialed endpoint's `auth.secret` is a `file:` reference: an absolute path, or `~/<path>` resolved against `HOME`. An `env:` or `keychain:` secret is refused: the gateway reads credentials only from trusted files. | `config:value` naming `routes.<endpoint>.auth.secret` |
 | The key file is read once at start, as a hosted model's `credential_file` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret <path>:` |
 | `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |
-| An `api-key` endpoint's `auth.header` is one a hosted model's `credential_header` may be. | `config:value` naming `routes.<endpoint>.auth.header` |
+| An `api-key` endpoint's `auth.header` is one a hosted model's `credential_header` may be, and on a `messages` endpoint it is not `anthropic-version` (in any case), the header every request to such an endpoint is sent. | `config:value` naming `routes.<endpoint>.auth.header` |
 | A route name is not also a `[models.<alias>]` or `[hosted.<alias>]` alias. | `config:value` naming `routes.<route>` |
 | A route name is at most 246 bytes, though llm admits 256: its inventory target id `<route>.<wire>` must fit the gateway's 256-byte label, and `responses` is the longest wire. | `config:value` naming `routes.` and the name's first 32 bytes, and the bound |
 

@@ -502,7 +502,9 @@ types:
   #                     unset or not absolute). An `env:` or `keychain:` secret is `config:value`
   #                     naming `routes.<endpoint>.auth.secret`. An `api-key` endpoint's
   #                     `auth.header` must also pass HostedDeclaration's `credential_header` rule
-  #                     (`config:value` naming `routes.<endpoint>.auth.header`)
+  #                     (`config:value` naming `routes.<endpoint>.auth.header`), and on a
+  #                     `messages` endpoint it is not `anthropic-version` in any case, the
+  #                     header every request to such an endpoint is sent (same refusal)
   #   the alias collision rule  a route name that is also a `[models.<alias>]` or
   #                     `[hosted.<alias>]` alias is `config:value` naming `routes.<route>`
   #   the base-URL rule  llm appends the wire path to `base_url`; the gateway replaces the wire

@@ -37,7 +37,7 @@ assert:
     upstream:
     - "pod-1 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
     - "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"model\":\"served-resp\",\"store\":false,\"stream\":true}"
-    - "pod-3 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+    - "pod-3 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
     upstream_ends:
     - "pod-1 complete"
     - "pod-2 complete"

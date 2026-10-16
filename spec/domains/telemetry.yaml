@@ -86,7 +86,10 @@ types:
   # How one call ended, from the gateway's side: relayed to the client with the target's answer
   # (a 4xx or 500 from the target included, row W7), refused by the gateway before any target
   # answered (`target-unavailable` and `model-cold-start` included: the source handed out none),
-  # or ended `upstream-failed` (502).
+  # or ended `upstream-failed` (502). A translated request whose client went away before any
+  # answer was written (a non-streamed client that closed while it waited) is `Relayed` with
+  # `status` 0, no `target_status` and 0 `response_bytes`: no answer was written because the
+  # client left (story:gateway-translation, correction round 2).
   - name: llm-gateway.telemetry.Disposition
     kind: enum
     variants: [Relayed, Refused, UpstreamFailed]
@@ -110,7 +113,8 @@ entities:
       - {name: disposition, type: llm-gateway.telemetry.Disposition}
       # Present exactly when `disposition` is `Refused` or `UpstreamFailed`.
       - {name: refusal, type: 'Optional<llm-gateway.gateway.Refusal>'}
-      # The status line the client received.
+      # The status line the client received; 0 when none was written because the client left
+      # before a translated answer (Disposition).
       - {name: status, type: Integer}
       # The status the target answered with: the relayed one, or the 502, 503 or 504 the
       # gateway answered `upstream-failed` instead. Absent when no target answered: a refusal

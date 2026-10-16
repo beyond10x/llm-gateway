@@ -32,8 +32,8 @@ assert:
     - "streamed"
     upstream:
     - "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Weather in Kyoto?\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"}},\"type\":\"function\"}]}"
-    - "pod-2 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
-    - "pod-2 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
+    - "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
+    - "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
     upstream_ends:
     - "pod-1 complete"
     - "pod-2 complete"

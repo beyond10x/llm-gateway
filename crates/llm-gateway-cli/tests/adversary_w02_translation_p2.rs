@@ -5,8 +5,8 @@
 //! Nothing leaves the machine and no credential is real.
 
 use llm_gateway::{
-    AnswerFraming, Label, RelayModel, RelayStream, RelayTarget, ToolCalling, TranslatedAnswer,
-    TranslationFailure, TranslationRequest, Translator, Wire,
+    AnswerFraming, Label, RefusalCode, RelayModel, RelayStream, RelayTarget, ToolCalling,
+    TranslatedAnswer, TranslationFailure, TranslationRequest, Translator, Wire,
 };
 use llm_gateway_cli::LlmTranslator;
 use std::{
@@ -205,8 +205,13 @@ fn tool_answer(bytes: usize) -> String {
 /// the answer did not pass. Reached by any agent's file-writing tool call of more than 64 KiB
 /// on a translated route. A 60000-byte call, under that bound, is written whole first, so the
 /// fixture is not what fails.
+///
+/// Re-pinned in correction round 2. Asserted first: the 70000-byte call is written whole.
+/// Decided instead: the bound is published (`translated-tool-argument-bytes`, 65536) and the
+/// terminal message names the bound family, so the 70000-byte call ends with
+/// `translation-too-large`'s terminal error while the 60000-byte one is written whole.
 #[test]
-fn adv_p2_a_tool_call_past_64_kib_of_arguments_inside_every_published_bound_is_written_whole() {
+fn adv_p2_a_tool_call_past_64_kib_of_arguments_ends_with_the_bounds_terminal_error() {
     let request = format!(
         "{{\"model\":\"code\",\"stream\":true,\"messages\":[{{\"role\":\"user\",\"content\":\"Write it\"}}],{TOOLS}}}"
     );
@@ -224,9 +229,17 @@ fn adv_p2_a_tool_call_past_64_kib_of_arguments_inside_every_published_bound_is_w
     );
     let (whole, tail) = ended(70_000);
     assert!(
-        whole,
-        "a 70000-byte tool call inside every published bound is not written whole: ...{tail}"
+        !whole && tail.ends_with(&bound_terminal_error()),
+        "a 70000-byte tool call does not end with the bound's terminal error: ...{tail}"
     );
+}
+
+/// The chat chunk a translated answer past a bound ends with.
+fn bound_terminal_error() -> String {
+    format!(
+        "data: {{\"error\":{{\"code\":\"translation-too-large\",\"message\":\"{}\"}}}}\n\n",
+        RefusalCode::TranslationTooLarge.reason()
+    )
 }
 
 /// The decision on pass 1's finding 4: a request naming no output limit gets
@@ -294,23 +307,40 @@ fn adv_p2_a_model_that_calls_an_unpublished_tool_does_not_fail_its_target() {
 /// joined data, `crates/llm-http/src/sse.rs`) refuses it, and the answer ends with
 /// `translation-too-large`. The table names the constant as the bytes "of one line". No
 /// upstream was found that splits an event's data across lines, so this is a document finding.
+///
+/// Re-pinned in correction round 2. Asserted first: the event of two 600000-byte lines is
+/// written whole. Decided instead: the bound is documented as an event's joined data
+/// (`translated-event-bytes`), so an event whose joined data passes 1048576 ends with the bound's
+/// terminal error, and one of two 400000-byte lines, under it, is written whole.
 #[test]
-fn adv_p2_an_event_of_two_lines_each_under_the_line_bound_is_written_whole() {
+fn adv_p2_an_event_whose_joined_data_passes_the_event_bound_ends_with_its_terminal_error() {
     let request = "{\"model\":\"code\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
-    let spaces = " ".repeat(600_000);
-    let split = format!(
-        "event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,{spaces}\ndata: {spaces}\"delta\":{{\"type\":\"text_delta\",\"text\":\"lo\"}}}}\n\n"
-    );
-    let ran = run(
-        &model(None),
-        request,
-        format!("{MESSAGE_START}{TEXT_OPENING}{split}{TEXT_CLOSING}"),
-    );
-    assert_eq!(ran.result, Ok(()));
-    let written = String::from_utf8_lossy(&ran.answer.body).into_owned();
-    let tail = &written[written.len().saturating_sub(400)..];
+    let ended = |padding: usize| {
+        let spaces = " ".repeat(padding);
+        let split = format!(
+            "event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,{spaces}\ndata: {spaces}\"delta\":{{\"type\":\"text_delta\",\"text\":\"lo\"}}}}\n\n"
+        );
+        let ran = run(
+            &model(None),
+            request,
+            format!("{MESSAGE_START}{TEXT_OPENING}{split}{TEXT_CLOSING}"),
+        );
+        assert_eq!(ran.result, Ok(()));
+        let written = String::from_utf8_lossy(&ran.answer.body).into_owned();
+        let tail = written[written.len().saturating_sub(400)..].to_owned();
+        (
+            written.ends_with("data: [DONE]\n\n") && written.contains("\"lo\""),
+            tail,
+        )
+    };
+    let (whole, tail) = ended(400_000);
     assert!(
-        written.ends_with("data: [DONE]\n\n") && written.contains("\"lo\""),
-        "an event of two lines inside the line bound is not written whole: ...{tail}"
+        whole,
+        "an event under the bound is not written whole: ...{tail}"
+    );
+    let (whole, tail) = ended(600_000);
+    assert!(
+        !whole && tail.ends_with(&bound_terminal_error()),
+        "an event past the bound does not end with its terminal error: ...{tail}"
     );
 }

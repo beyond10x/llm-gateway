@@ -198,31 +198,65 @@ fn cut_off(body: &str) -> Vec<u8> {
 /// `upstream-failed`. Reached by a pod that dies mid-generation (preempted, OOM, restarted) on a
 /// non-streamed request, whose answer the gateway writes only at the outcome, or before its first
 /// event on a streamed one.
+///
+/// Re-pinned in correction round 2, which revises the decision of round 1: an abrupt close (an
+/// end before the declared length, or inside a chunk) is still `upstream-failed`, but a stream
+/// that ends cleanly before its terminal event is an answer that broke its wire, llm's
+/// `protocol`, and is `upstream-refused`, invalidating nothing. The chunk and clean-end subcases
+/// are added.
 #[test]
 fn adv_translation_a_target_that_drops_after_its_head_has_failed_not_refused() {
+    let streamed = "{\"model\":\"code\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
+    let whole = "{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
+    let failed = Err(TranslationFailure::UpstreamFailed);
+    let refused = Err(TranslationFailure::Refused(RefusalCode::UpstreamRefused));
+    let inside_a_chunk = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n{:x}\r\n{MESSAGES_OPENING}",
+        MESSAGES_OPENING.len() + 1000
+    )
+    .into_bytes();
+    let clean_end = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{MESSAGES_OPENING}",
+        MESSAGES_OPENING.len()
+    )
+    .into_bytes();
     let cases = [
         (
             "streamed, closed before any event",
-            "{\"model\":\"code\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}",
+            streamed,
             cut_off(""),
+            failed.clone(),
         ),
         (
             "non-streamed, closed mid-answer",
-            "{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}",
+            whole,
             cut_off(MESSAGES_OPENING),
+            failed.clone(),
+        ),
+        (
+            "non-streamed, closed inside a chunk",
+            whole,
+            inside_a_chunk,
+            failed,
+        ),
+        (
+            "non-streamed, ended cleanly before its terminal event",
+            whole,
+            clean_end,
+            refused,
         ),
     ];
     let mut wrong = Vec::new();
-    for (case, body, raw) in cases {
+    for (case, body, raw, expected) in cases {
         let (ran, answer) = translate(body, raw);
         assert!(answer.head.is_none(), "{case}: nothing reaches the client");
-        if ran != Err(TranslationFailure::UpstreamFailed) {
-            wrong.push(format!("{case}: {ran:?}"));
+        if ran != expected {
+            wrong.push(format!("{case}: {ran:?}, expected {expected:?}"));
         }
     }
     assert!(
         wrong.is_empty(),
-        "a target that dropped its connection must be upstream-failed (and invalidated): {wrong:#?}"
+        "an abrupt close must be upstream-failed and a clean early end upstream-refused: {wrong:#?}"
     );
 }
 

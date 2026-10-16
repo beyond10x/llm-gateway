@@ -34,9 +34,10 @@ domain: llm-gateway.gateway
 #     no others. Continuation state the upstream mints for its own wire (Responses reasoning
 #     items, Messages signed thinking) is not carried to another wire. An upstream that fails
 #     before any output is `upstream-failed` (and is reported to the target source, as on the
-#     byte relay) when it could not be reached, timed out, was unavailable or cut or garbled its
-#     answer, whatever was dispatched, and `upstream-refused` when its answer's status refused
-#     the request. An answer llm's encoder refuses is `translation-unrepresentable`, and one past
+#     byte relay) when it could not be reached, timed out, was unavailable or cut its connection
+#     (a reset, or an end inside a frame), whatever was dispatched, and `upstream-refused`, the
+#     target kept, when its answer's status refused the request or its answer broke its wire
+#     (a stream ended cleanly before its terminal event, a call to a tool not offered). An answer llm's encoder refuses is `translation-unrepresentable`, and one past
 #     a bound of the translated path `translation-too-large`, before any output; after output
 #     either ends with the wire's terminal error (`response.failed`, an `error` event, or a chat
 #     `data: {"error":…}` chunk and no `[DONE]`). A client that stops reading, or that closes
@@ -47,7 +48,11 @@ domain: llm-gateway.gateway
 #   a message's `name` or `reasoning_content`, a part's `cache_control`, an item's `id` or
 #   `status`); the gateway closes every nested level they read before decoding, so such a key
 #   is `translation-unsupported`, not dropped. A translated messages request naming no output
-#   limit to a model with a window `w` carries `min(16384, w / 2)` rather than the whole window.
+#   limit carries `min(16384, w / 2)` of the window `w` it is translated under (200000 for a
+#   model that declares none) rather than the whole window.
+# DECIDED 2026-10-16 (correction round 2): an llm `protocol` failure before output is
+#   `upstream-refused` and invalidates nothing; only `transport`, `deadline` and `unavailable`
+#   replace the target.
 # There is exactly one owner (crates/llm-gateway/src/auth.rs:11), and
 # the single-owner admission is what the credential scenarios in contracts/gateway/scenarios/ declare.
 # DECIDED 2026-09-27: the gateway has no multi-tenant accounts or quotas; tenancy and quotas belong
@@ -122,7 +127,7 @@ types:
       - {name: ToolsNotServed, attributes: {code: tools-not-served, status: 400, message: "the model does not serve tool calls"}}
       - {name: TranslationInvalid, attributes: {code: translation-invalid, status: 400, message: "the request breaks a rule of the subset the gateway translates"}}
       - {name: TranslationOpaqueState, attributes: {code: translation-opaque-state, status: 400, message: "the request carries reasoning state the gateway cannot send to the model's upstream"}}
-      - {name: TranslationTooLarge, attributes: {code: translation-too-large, status: 502, message: "the model's answer passed a bound of the translated path: 65536 events, 33554432 bytes or a 1048576-byte line"}}
+      - {name: TranslationTooLarge, attributes: {code: translation-too-large, status: 502, message: "the model's answer passed a bound of the translated path, published in the gateway contract"}}
       - {name: TranslationUnrepresentable, attributes: {code: translation-unrepresentable, status: 502, message: "the model's answer cannot be written on this wire"}}
       - {name: TranslationUnsupported, attributes: {code: translation-unsupported, status: 400, message: "the request uses a field or value outside the subset the gateway translates"}}
       - {name: Unavailable, attributes: {code: unavailable, status: 503, message: "the gateway is not ready to serve inspection"}}
@@ -459,8 +464,9 @@ entities:
   #      target's credential as its kind says and nothing else of the gateway's (no static
   #      header, no effort rewrite, no output clamp count; scenario
   #      translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count). A request to a
-  #      messages upstream that names no output limit carries `min(16384, w / 2)` for a model
-  #      with a window `w`, and the capabilities' output limit otherwise. Its answer is
+  #      messages upstream that names no output limit carries `min(16384, w / 2)` of the
+  #      window `w` it is translated under (the model's, else the capabilities', 200000 by
+  #      default), and never more than the capabilities' output limit. Its answer is
   #      written to the client on the client's wire (step 9 below, translated): the head once,
   #      on the first event or at the outcome, `200` with `content-type: text/event-stream`
   #      for a streamed request (responses always; chat and messages with `stream` true) and
@@ -469,14 +475,17 @@ entities:
   #      it: `event: <type>` and `data: <json>` for responses and messages, `data: <json>`
   #      for chat, which ends `data: [DONE]`. Identifiers (`chatcmpl-`, `resp_`, `msg_`) and
   #      `created` are the gateway's own. A failure before any output: an llm `transport`,
-  #      `deadline`, `unavailable` or `protocol` failure (unreachable, a `408` or `5xx`, timed
-  #      out, an answer cut or garbled after its head), whatever was dispatched, is
+  #      `deadline` or `unavailable` failure (unreachable, a `408` or `5xx`, timed out, a
+  #      connection reset or ended inside a frame), whatever was dispatched, is
   #      `upstream-failed`, reported to the target source by the target's authority as at step
   #      8; a failure an answer's status decided (`unauthorized`, `rate-limited`, `refused`,
-  #      `invalid-request`, `unsupported`) is `upstream-refused` (502) and the target is kept;
-  #      an answer past a bound of the translated path (llm `too-large`: 65536 events,
-  #      33554432 bytes or a 1048576-byte line on its stream, docs/gateway.md "Bounds of the
-  #      translated path") is `translation-too-large` (502). An outcome the encoder refuses
+  #      `invalid-request`, `unsupported`) or an answer that broke its wire (`protocol`: a
+  #      stream ended cleanly before its terminal event, a body that is no event stream, a call
+  #      to a tool the request did not offer) is `upstream-refused` (502) and the target is
+  #      kept; an answer past a bound of the translated path (llm `too-large`: 65536 events,
+  #      33554432 bytes, a 1048576-byte line, 1048576 bytes of one event's joined data, or
+  #      65536 bytes of one tool call's arguments, docs/gateway.md "Bounds of the translated
+  #      path") is `translation-too-large` (502). An outcome the encoder refuses
   #      before any output is `translation-unrepresentable` (502); after output, it, a bound and
   #      any upstream failure end the stream with the wire's terminal error (responses
   #      `response.failed`, messages an `error` event, chat a

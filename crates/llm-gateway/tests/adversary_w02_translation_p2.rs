@@ -87,8 +87,14 @@ impl UsageRecords for Kept {
 /// was written, and `llmgw_route_requests_total` counts it as a relayed call. Reached by every
 /// client that gives up on a non-streamed translated answer (a timeout, Ctrl-C), the path the
 /// correction round added (`relay.rs` `Ok(()) if answer.gone => Ok(())`).
+///
+/// Re-pinned in correction round 2. Asserted first: such a request is not recorded `Relayed`
+/// with status 0. Decided instead: the record is kept and the contract says it
+/// (`spec/domains/telemetry.yaml` Disposition and `status`, `docs/gateway.md` "Counters and
+/// usage records"): `Relayed`, status 0, no target status and 0 response bytes mean no answer
+/// was written because the client left.
 #[test]
-fn adv_p2_a_client_gone_before_a_translated_answer_is_not_recorded_relayed_with_status_0() {
+fn adv_p2_a_client_gone_before_a_translated_answer_is_recorded_relayed_with_status_0() {
     let kept = Arc::new(Kept::default());
     let model = RelayModel::new(
         Label::new("code").unwrap(),
@@ -133,10 +139,15 @@ fn adv_p2_a_client_gone_before_a_translated_answer_is_not_recorded_relayed_with_
         panic!("expected one usage record, got {records:#?}");
     };
     assert!(
-        record.disposition != Disposition::Relayed && (100..=599).contains(&record.status),
-        "a client gone before any answer is recorded {:?} with status {} (target status {:?})",
+        record.disposition == Disposition::Relayed
+            && record.status == 0
+            && record.target_status.is_none()
+            && record.refusal.is_none()
+            && record.response_bytes == 0,
+        "a client gone before any answer is recorded {:?} with status {} (target status {:?}, {} bytes)",
         record.disposition,
         record.status,
-        record.target_status
+        record.target_status,
+        record.response_bytes
     );
 }

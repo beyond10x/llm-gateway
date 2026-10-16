@@ -67,8 +67,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "6c490682b8494793043420862cd6f0991a00fceb4b6782679c2c3cb0d0d390a7",
-    "contract_digest": "slice-sha256/2:c7ed6a9c95ad46d1058b2d3db2fd475938dc8af3fb639ebb9c8286b6d7efbd3c",
+    "source_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
+    "contract_digest": "slice-sha256/2:4d37f8e03a7f64c46a851da574be41388f45083a233211afa1b16f7a563a0ff8",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -204,7 +204,7 @@
             "ToolsNotServed": "the model does not serve tool calls",
             "TranslationInvalid": "the request breaks a rule of the subset the gateway translates",
             "TranslationOpaqueState": "the request carries reasoning state the gateway cannot send to the model's upstream",
-            "TranslationTooLarge": "the model's answer passed a bound of the translated path: 65536 events, 33554432 bytes or a 1048576-byte line",
+            "TranslationTooLarge": "the model's answer passed a bound of the translated path, published in the gateway contract",
             "TranslationUnrepresentable": "the model's answer cannot be written on this wire",
             "TranslationUnsupported": "the request uses a field or value outside the subset the gateway translates",
             "Unavailable": "the gateway is not ready to serve inspection",

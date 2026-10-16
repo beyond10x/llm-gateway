@@ -38,6 +38,8 @@ const DELTA: &str = "event: content_block_delta\ndata: {\"type\":\"content_block
 const STREAMED: &str =
     "{\"model\":\"code\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
 const WHOLE: &str = "{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
+/// A streamed request offering the `write` tool a measured answer may call.
+const WITH_TOOLS: &str = "{\"model\":\"code\",\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}],\"tools\":[{\"type\":\"function\",\"function\":{\"name\":\"write\",\"parameters\":{\"type\":\"object\"}}}]}";
 
 struct Loopback(String);
 
@@ -198,7 +200,7 @@ fn run(
 /// error; anything else fails.
 fn ended_whole(body: String) -> bool {
     let mut answer = Recorded::default();
-    let (ran, _) = run(&model(None), STREAMED, body, false, &mut answer);
+    let (ran, _) = run(&model(None), WITH_TOOLS, body, false, &mut answer);
     assert_eq!(ran, Ok(()));
     let written = String::from_utf8_lossy(&answer.body).into_owned();
     let terminal = format!(
@@ -251,6 +253,43 @@ fn stream_bytes(bytes: usize) -> String {
     )
 }
 
+/// A stream holding one event whose data, two `data:` lines joined, is exactly `bytes` bytes.
+fn event_bytes(bytes: usize) -> String {
+    let prefix = "{\"type\":\"content_block_delta\",\"index\":0,";
+    let suffix = "\"delta\":{\"type\":\"text_delta\",\"text\":\"lo\"}}";
+    let padding = bytes - prefix.len() - suffix.len() - 1;
+    let first = " ".repeat(padding / 2);
+    let second = " ".repeat(padding - padding / 2);
+    format!(
+        "{OPENING}event: content_block_delta\ndata: {prefix}{first}\ndata: {second}{suffix}\n\n{CLOSING}"
+    )
+}
+
+/// A stream holding one `write` tool call whose arguments are exactly `bytes` bytes, in
+/// fragments of at most 8192.
+fn tool_argument_bytes(bytes: usize) -> String {
+    let start = OPENING.split_once("event: content_block_start").unwrap().0;
+    let mut fragments = vec!["{\"content\":\"".to_owned()];
+    let mut left = bytes - "{\"content\":\"\"}".len();
+    while left > 0 {
+        let piece = left.min(8192);
+        fragments.push("a".repeat(piece));
+        left -= piece;
+    }
+    fragments.push("\"}".to_owned());
+    let mut body = format!(
+        "{start}event: content_block_start\ndata: {{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"write\",\"input\":{{}}}}}}\n\n"
+    );
+    for fragment in fragments {
+        let fragment = serde_json::to_string(&fragment).unwrap();
+        body.push_str(&format!(
+            "event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"input_json_delta\",\"partial_json\":{fragment}}}}}\n\n"
+        ));
+    }
+    body.push_str(&CLOSING.replace("end_turn", "tool_use"));
+    body
+}
+
 /// A stream holding one comment line of exactly `bytes` bytes.
 fn line_bytes(bytes: usize) -> String {
     format!("{OPENING}:{}\n{CLOSING}", "a".repeat(bytes - 1))
@@ -292,14 +331,18 @@ fn translation_bound_every_published_bound_of_the_translated_path_flips_at_its_n
         [
             "translated-stream-events",
             "translated-stream-bytes",
-            "translated-line-bytes"
+            "translated-line-bytes",
+            "translated-event-bytes",
+            "translated-tool-argument-bytes"
         ]
     );
     for (name, value) in &published {
         let stream: fn(usize) -> String = match name.as_str() {
             "translated-stream-events" => events,
             "translated-stream-bytes" => stream_bytes,
-            _ => line_bytes,
+            "translated-line-bytes" => line_bytes,
+            "translated-event-bytes" => event_bytes,
+            _ => tool_argument_bytes,
         };
         assert!(
             ended_whole(stream(*value)),
@@ -328,7 +371,8 @@ fn translation_bound_a_whole_answer_past_a_bound_is_refused_translation_too_larg
 }
 
 /// A request naming no output limit asks a messages upstream for `min(16384, w / 2)` of a
-/// window `w`, the capabilities' limit without a window, and a named limit unchanged.
+/// window `w`, 16384 of the 200000 a model without a window is translated under (re-pinned in
+/// correction round 2 from the capabilities' 200000), and a named limit unchanged.
 #[test]
 fn translation_bound_a_messages_upstream_is_asked_for_half_the_window_at_most_16384() {
     let limit = |window: Option<u64>, request: &str| {
@@ -345,7 +389,7 @@ fn translation_bound_a_messages_upstream_is_asked_for_half_the_window_at_most_16
     assert_eq!(limit(Some(65_536), STREAMED), 16_384);
     assert_eq!(limit(Some(32_768), STREAMED), 16_384);
     assert_eq!(limit(Some(8_192), STREAMED), 4_096);
-    assert_eq!(limit(None, STREAMED), 200_000);
+    assert_eq!(limit(None, STREAMED), 16_384);
     let named = "{\"model\":\"code\",\"stream\":true,\"max_tokens\":8000,\"messages\":[{\"role\":\"user\",\"content\":\"Hi\"}]}";
     assert_eq!(limit(Some(32_768), named), 8_000);
 }

@@ -740,17 +740,17 @@
         "scenario": "llm-gateway.gateway/authored/tools-an-empty-tools-array-to-a-model-without-tool-calling-is-relayed-unchanged"
       },
       "gateway/scenarios/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams.yaml": {
-        "digest": "sha256:64230295f88a341aec7d768060ed935472aaaae55475edfa5f4d4821cff50754",
+        "digest": "sha256:2e10d5c536a764cb71c25ff6fb75117215a154bfb25da98fa6574908ae246de7",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams"
       },
       "gateway/scenarios/translate-a-client-that-disconnects-cancels-the-upstream-turn.yaml": {
-        "digest": "sha256:384d7182f5355ac91f1ecced7664c116f6ce00996aa9dbdf62d28aefddde1422",
+        "digest": "sha256:4da32536de825145374ba8d37d95104351be9c30ea85c7ecf09e0e189551a4c9",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-a-client-that-disconnects-cancels-the-upstream-turn"
       },
       "gateway/scenarios/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result.yaml": {
-        "digest": "sha256:55bcd105b4261342a7c09e42b538bdbb6651010fa83863c963e1171ea9ebbc3b",
+        "digest": "sha256:cd8235f614b0bc1b8367240cd8d80aee23ac0fd6e5a94bfc72ce113a77932201",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result"
       },
@@ -775,7 +775,7 @@
         "scenario": "llm-gateway.gateway/authored/translate-a-non-streamed-request-is-answered-with-its-wires-json-object"
       },
       "gateway/scenarios/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams.yaml": {
-        "digest": "sha256:fdc8519135040d0a5ca2b3a47ffdda677387f84a82e19ef8dc2365b5b2c893bb",
+        "digest": "sha256:0b31bf336662c11a5b56df8b1428a0fc458c3b94c6720af82ebebed36fd4079c",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams"
       },
@@ -790,7 +790,7 @@
         "scenario": "llm-gateway.gateway/authored/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused"
       },
       "gateway/scenarios/translate-an-upstream-tool-call-reaches-the-client-as-its-wires-tool-call.yaml": {
-        "digest": "sha256:584156fce301e01304e567328c3d10c54bbd1a8b0bb99c71fd883b486e384e08",
+        "digest": "sha256:3d1f6d88ce5464ddd06ce533f4339b788439883d8046642681cdec38d91b38fb",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-an-upstream-tool-call-reaches-the-client-as-its-wires-tool-call"
       },
@@ -1476,9 +1476,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "cec83581451b1824f5a6275f945e986e6c93b84970eb2800068e6b6e3f17cfdb",
+    "contract_digest": "f0c57d03588b012245df2edffc664c68fbf81f14fdef06ca2acaf6346bef3b6a",
     "scenario_initial_state": "empty",
-    "spec_digest": "6c490682b8494793043420862cd6f0991a00fceb4b6782679c2c3cb0d0d390a7",
+    "spec_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -11062,7 +11062,7 @@
                 "value": [
                   "pod-1 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
                   "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"model\":\"served-resp\",\"store\":false,\"stream\":true,\"tools\":[]}",
-                  "pod-3 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                  "pod-3 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
                 ]
               },
               "upstream_ends": {
@@ -11172,7 +11172,7 @@
               "upstream": {
                 "kind": "literal",
                 "value": [
-                  "pod-1 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
                 ]
               },
               "upstream_ends": {
@@ -11285,7 +11285,7 @@
                 "kind": "literal",
                 "value": [
                   "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Weather in Kyoto?\",\"role\":\"user\"},{\"role\":\"assistant\",\"tool_calls\":[{\"function\":{\"arguments\":\"{\\\"city\\\":\\\"Kyoto\\\"}\",\"name\":\"lookup\"},\"id\":\"toolu_1\",\"type\":\"function\"}]},{\"content\":\"Sunny\",\"role\":\"tool\",\"tool_call_id\":\"toolu_1\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"}},\"type\":\"function\"}]}",
-                  "pod-2 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"},{\"content\":[{\"id\":\"call_1\",\"input\":{\"city\":\"Kyoto\"},\"name\":\"lookup\",\"type\":\"tool_use\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"content\":\"Sunny\",\"is_error\":false,\"tool_use_id\":\"call_1\",\"type\":\"tool_result\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
+                  "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"},{\"content\":[{\"id\":\"call_1\",\"input\":{\"city\":\"Kyoto\"},\"name\":\"lookup\",\"type\":\"tool_use\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"content\":\"Sunny\",\"is_error\":false,\"tool_use_id\":\"call_1\",\"type\":\"tool_result\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
                 ]
               },
               "valid_program": {
@@ -11873,7 +11873,7 @@
                 "value": [
                   "pod-1 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
                   "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"model\":\"served-resp\",\"store\":false,\"stream\":true}",
-                  "pod-3 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                  "pod-3 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
                 ]
               },
               "upstream_ends": {
@@ -12248,8 +12248,8 @@
                 "kind": "literal",
                 "value": [
                   "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Weather in Kyoto?\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"}},\"type\":\"function\"}]}",
-                  "pod-2 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}",
-                  "pod-2 POST /v1/messages {\"max_tokens\":200000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
+                  "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}",
+                  "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Weather in Kyoto?\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"properties\":{\"city\":{\"type\":\"string\"}},\"type\":\"object\"},\"name\":\"lookup\"}]}"
                 ]
               },
               "upstream_ends": {

@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "1967eee4c0e91b827f2f214a01bd519eb994269176729a1f2ecbb9f4323891d3",
-    "contract_digest": "slice-sha256/2:ba31527513ff5aacae1c8902d65294d9e58cecb306406f8ab06fa18b73754e75",
+    "source_digest": "3f4d1362075744759346166bedf293b2049371eccbb678e98f361f65d52d22e6",
+    "contract_digest": "slice-sha256/2:1f035a27b3f8e566bdc3a85c806d5cedf8c6b18094b59f5aa7cd3c4361481198",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -69,6 +69,9 @@
         "listen": {
           "type": "string"
         },
+        "ingress_auth": {
+          "$ref": "#/$defs/llm-gateway.deployment.IngressAuth"
+        },
         "owner_secret_file": {
           "type": "string"
         },
@@ -96,7 +99,7 @@
       },
       "required": [
         "listen",
-        "owner_secret_file",
+        "ingress_auth",
         "providers",
         "models",
         "hosted"
@@ -170,6 +173,16 @@
         "Low",
         "Medium",
         "Xhigh"
+      ]
+    },
+    "llm-gateway.deployment.IngressAuth": {
+      "title": "IngressAuth",
+      "x-ess-name": "llm-gateway.deployment.IngressAuth",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "None"
       ]
     },
     "llm-gateway.deployment.ModelDeclaration": {

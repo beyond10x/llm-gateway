@@ -144,6 +144,13 @@
     },
     {
       "area": "Binary",
+      "detail": "ingress_auth = \"none\" serves the three wire paths without a credential, for a gateway behind something that authenticates already, and the binary warns before it listens. The counters and the route inventory still take the owner secret, and refuse everything when there is none. bearer, the default, is unchanged.",
+      "href": "/docs/reference/deployment-document",
+      "label": "Model calls without a credential, on request",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
       "detail": "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",
       "href": "/docs/reference/deployment-document",
       "label": "One closed TOML deployment document",

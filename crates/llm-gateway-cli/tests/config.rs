@@ -54,11 +54,19 @@ fn ingress_auth_none_makes_the_owner_secret_optional_and_bearer_requires_it() {
     let loaded = load(&fixture.config(&open)).unwrap();
     assert_eq!(loaded.gateway.ingress_auth, IngressAuth::None);
     assert_eq!(loaded.owner_secret_file, None);
-    let open_with_secret = mutate(&control, &secret, &format!("ingress_auth = \"none\"\n{secret}"));
+    let open_with_secret = mutate(
+        &control,
+        &secret,
+        &format!("ingress_auth = \"none\"\n{secret}"),
+    );
     let loaded = load(&fixture.config(&open_with_secret)).unwrap();
     assert_eq!(loaded.gateway.ingress_auth, IngressAuth::None);
     assert_eq!(loaded.owner_secret_file, Some(fixture.owner_secret()));
-    let bearer = mutate(&control, &secret, &format!("ingress_auth = \"bearer\"\n{secret}"));
+    let bearer = mutate(
+        &control,
+        &secret,
+        &format!("ingress_auth = \"bearer\"\n{secret}"),
+    );
     assert_eq!(
         load(&fixture.config(&bearer)).unwrap().gateway.ingress_auth,
         IngressAuth::Bearer
@@ -75,7 +83,11 @@ fn ingress_auth_none_makes_the_owner_secret_optional_and_bearer_requires_it() {
         );
     }
     for value in ["\"open\"", "\"NONE\"", "\"\"", "true", "{ none = {} }"] {
-        let text = mutate(&control, &secret, &format!("ingress_auth = {value}\n{secret}"));
+        let text = mutate(
+            &control,
+            &secret,
+            &format!("ingress_auth = {value}\n{secret}"),
+        );
         assert_eq!(
             load(&fixture.config(&text)).unwrap_err().code(),
             "config:schema",

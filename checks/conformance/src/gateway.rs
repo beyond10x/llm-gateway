@@ -515,10 +515,10 @@ mod relay {
     use ess_conformance::target::TargetError;
     use llm_gateway::{
         BasePath, CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
-        GatewayHandle, OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
-        RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, StaticHeader,
-        StaticHeaderError, TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords,
-        Wire,
+        GatewayHandle, IngressAuth, NoOwnerVerifier, OwnerToken, OwnerVerifier, ReasoningEffort,
+        Relay, RelayError, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory,
+        SharedSecretVerifier, StaticHeader, StaticHeaderError, TargetBearer, TargetRefusal,
+        ToolCalling, UsageRecord, UsageRecords, Wire,
     };
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProxyConnector,
@@ -575,6 +575,9 @@ mod relay {
         #[serde(default)]
         cold_starts: usize,
         steps: Vec<Step>,
+        /// `bearer`, the default, or `none`: the Gateway's `ingress_auth`.
+        #[serde(default)]
+        ingress_auth: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -1480,10 +1483,23 @@ mod relay {
         records: Arc<Records>,
         tls_root: Option<&[u8]>,
     ) -> Result<GatewayHandle, String> {
-        let token = OwnerToken::new(program.secret.as_bytes().to_vec())
-            .map_err(|error| format!("token:{}", token_code(error)))?;
-        let verifier = SharedSecretVerifier::new(token)
-            .map_err(|error| format!("verifier:{}", verifier_code(error)))?;
+        let ingress_auth = match program.ingress_auth.as_deref() {
+            None | Some("bearer") => IngressAuth::Bearer,
+            Some("none") => IngressAuth::None,
+            Some(_) => return Err("fixture:unknown-ingress-auth".to_owned()),
+        };
+        // With ingress auth off and no secret the gateway has no owner at all.
+        let verifier: Arc<dyn OwnerVerifier> =
+            if ingress_auth == IngressAuth::None && program.secret.is_empty() {
+                Arc::new(NoOwnerVerifier)
+            } else {
+                let token = OwnerToken::new(program.secret.as_bytes().to_vec())
+                    .map_err(|error| format!("token:{}", token_code(error)))?;
+                Arc::new(
+                    SharedSecretVerifier::new(token)
+                        .map_err(|error| format!("verifier:{}", verifier_code(error)))?,
+                )
+            };
         let relay_error = |error| format!("relay:{}", relay_code(error));
         let mut models = Vec::new();
         for model in &program.models {
@@ -1560,7 +1576,8 @@ mod relay {
             .map_err(|_| "fixture:bind-address".to_owned())?;
         let mut config = GatewayConfig::new(bind);
         config.read_timeout = WAIT;
-        Gateway::bind_with_relay(config, Arc::new(verifier), inventory, relay)
+        config.ingress_auth = ingress_auth;
+        Gateway::bind_with_relay(config, verifier, inventory, relay)
             .map_err(|_| "bind:refused".to_owned())
     }
 
@@ -1749,6 +1766,10 @@ mod relay {
                 .is_none_or(|effort| ReasoningEffort::from_name(effort).is_some())
         });
         endpoints_agree
+            && matches!(
+                program.ingress_auth.as_deref(),
+                None | Some("bearer" | "none")
+            )
             && efforts_known
             && program.steps.len() <= MAX_STEPS
             && program.cold_starts <= MAX_STEPS

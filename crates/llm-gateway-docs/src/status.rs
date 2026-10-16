@@ -214,6 +214,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Binary",
+        "Model calls without a credential, on request",
+        "ingress_auth = \"none\" serves the three wire paths without a credential, for a gateway behind something that authenticates already, and the binary warns before it listens. The counters and the route inventory still take the owner secret, and refuse everything when there is none. bearer, the default, is unchanged.",
+        "crates/llm-gateway-cli/tests/hosted.rs::ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed",
+        DOCUMENT,
+    ),
+    shipped(
+        "Binary",
         "One closed TOML deployment document",
         "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",
         "crates/llm-gateway-cli/tests/config.rs::k29_every_key_outside_the_closed_document_is_refused",

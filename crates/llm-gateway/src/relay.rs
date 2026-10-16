@@ -20,7 +20,8 @@ use std::{
     fmt,
     io::{self, Read, Write},
     net::TcpStream,
-    sync::Arc,
+    sync::{Arc, mpsc},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -811,6 +812,8 @@ fn next_piece(
 pub(crate) struct Limits {
     pub(crate) line_bytes: usize,
     pub(crate) timeout: Duration,
+    /// The output clamp's count deadline, `GatewayConfig::count_timeout`.
+    pub(crate) count_timeout: Duration,
 }
 
 /// What a relay learned about its call, for the usage record.
@@ -899,14 +902,19 @@ pub(crate) fn serve(
     let target = acquired.map_err(TargetRefusal::refusal)?;
     // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
     // never wakes a pod the relay would not have woken. A count that fails decides nothing.
-    if let (Some(window), Some(_)) = (window, rewritten.max_tokens())
-        && let Some(counted) = count_input(target.as_ref(), &rewritten.bytes, limits)
-    {
-        let room = window.saturating_sub(counted);
-        if room < 1 {
-            return Err(RefusalCode::ContextExceeded);
+    if let (Some(window), Some(_)) = (window, rewritten.max_tokens()) {
+        let shared = Arc::new(std::mem::take(&mut rewritten.bytes));
+        let counted = count_input(target.as_ref(), &shared, limits);
+        // The count's thread lets go of the body before it answers; one abandoned past its
+        // deadline may still hold it, and then the relay sends a copy.
+        rewritten.bytes = Arc::try_unwrap(shared).unwrap_or_else(|shared| shared.as_ref().clone());
+        if let Some(counted) = counted {
+            let room = window.saturating_sub(counted);
+            if room < 1 {
+                return Err(RefusalCode::ContextExceeded);
+            }
+            rewritten.clamp_max_tokens(room);
         }
-        rewritten.clamp_max_tokens(room);
     }
     let rewritten = rewritten.bytes;
     let failed = || {
@@ -915,12 +923,9 @@ pub(crate) fn serve(
         RefusalCode::UpstreamFailed
     };
     let mut connection = target.connect().map_err(|_| failed())?;
-    let sent = write_request(
-        connection.as_mut(),
-        target.as_ref(),
-        admitted.wire.path(),
-        &rewritten,
-    );
+    let head = request_head(target.as_ref(), admitted.wire.path(), rewritten.len());
+    let sent = write_request(connection.as_mut(), &head, &rewritten);
+    drop(head);
     drop(rewritten);
     if sent.is_err() {
         return Err(failed());
@@ -953,69 +958,117 @@ pub(crate) fn serve(
     Ok(())
 }
 
-/// Writes `body` to `target` as `POST <path>` under the gateway's own head. No header of the
-/// client's request is forwarded, so the owner's credential never reaches a target. The target's
-/// bearer is one printable token (`TargetBearer::new`) and its credential header one token
-/// naming no header written here (`CredentialHeader::new`), so neither can end the line it is
-/// written into.
+/// A request head, which holds the target's credential when it has one. It is sized before the
+/// credential is written into it, so it never reallocates and leaves no copy behind in freed
+/// memory, and it is overwritten when dropped, as `TargetBearer` is.
+struct RequestHead(Vec<u8>);
+
+impl Drop for RequestHead {
+    fn drop(&mut self) {
+        self.0.fill(0);
+        std::hint::black_box(&self.0);
+    }
+}
+
+/// The gateway's own head for `POST <path>` to `target` with a body of `length` bytes. No
+/// header of the client's request is forwarded, so the owner's credential never reaches a
+/// target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
+/// header one token naming no header written here (`CredentialHeader::new`), so neither can end
+/// the line it is written into.
+fn request_head(target: &dyn RelayTarget, path: &str, length: usize) -> RequestHead {
+    let start = format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority());
+    let end = format!(
+        "content-type: application/json\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
+    );
+    let credential: [&[u8]; 4] = match (target.bearer(), target.credential_header()) {
+        (Some(bearer), Some(header)) => [header.as_str().as_bytes(), b": ", &bearer.0, b"\r\n"],
+        (Some(bearer), None) => [b"authorization: Bearer ", b"", &bearer.0, b"\r\n"],
+        (None, _) => [b""; 4],
+    };
+    let length =
+        start.len() + credential.iter().map(|piece| piece.len()).sum::<usize>() + end.len();
+    let mut head = RequestHead(Vec::with_capacity(length));
+    let sized = head.0.capacity();
+    head.0.extend_from_slice(start.as_bytes());
+    for piece in credential {
+        head.0.extend_from_slice(piece);
+    }
+    head.0.extend_from_slice(end.as_bytes());
+    debug_assert_eq!(
+        head.0.capacity(),
+        sized,
+        "a head holding a credential reallocated, leaving a copy of it in freed memory"
+    );
+    head
+}
+
+/// Writes `head`, then `body`, to the target.
 fn write_request(
     connection: &mut dyn RelayStream,
-    target: &dyn RelayTarget,
-    path: &str,
+    head: &RequestHead,
     body: &[u8],
 ) -> io::Result<()> {
-    let mut request =
-        format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority()).into_bytes();
-    if let Some(bearer) = target.bearer() {
-        match target.credential_header() {
-            Some(header) => {
-                request.extend_from_slice(header.as_str().as_bytes());
-                request.extend_from_slice(b": ");
-            }
-            None => request.extend_from_slice(b"authorization: Bearer "),
-        }
-        request.extend_from_slice(&bearer.0);
-        request.extend_from_slice(b"\r\n");
-    }
-    request.extend_from_slice(
-        format!(
-            "content-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
-            body.len()
-        )
-        .as_bytes(),
-    );
-    let sent = connection
-        .write_all(&request)
+    connection
+        .write_all(&head.0)
         .and_then(|()| connection.write_all(body))
-        .and_then(|()| connection.flush());
-    // The head holds the bearer's bytes: overwrite them as `TargetBearer` does its own.
-    request.fill(0);
-    std::hint::black_box(&request);
-    sent
+        .and_then(|()| connection.flush())
 }
 
 /// The output clamp's count: `body`, the request as it is about to be relayed, sent to the same
 /// target's `POST /v1/messages/count_tokens` over a connection of its own, and the
 /// `input_tokens` of a 2xx answer. `None` for a count that fails: no connection, a request that
 /// cannot be written, an answer head that never arrives or is malformed, a status outside 2xx,
-/// an answer body longer than the head bound or one without such an `input_tokens`. A failed
-/// count reports nothing to the target source, and is counted in no series.
-fn count_input(target: &dyn RelayTarget, body: &[u8], limits: &Limits) -> Option<u64> {
+/// an answer body longer than the head bound, one without such an `input_tokens`, or an answer
+/// not complete within `limits.count_timeout` of the connection opening. A failed count reports
+/// nothing to the target source, and is counted in no series.
+///
+/// The count runs on a thread of its own, so its deadline holds whatever the target's read
+/// timeout is: the relay stops waiting at the deadline and the thread, abandoned, ends when the
+/// target answers or its own timeout ends the connection. It holds no `RelayTarget`, so an
+/// abandoned count keeps no target held.
+fn count_input(target: &dyn RelayTarget, body: &Arc<Vec<u8>>, limits: &Limits) -> Option<u64> {
     let mut connection = target.connect().ok()?;
-    write_request(connection.as_mut(), target, COUNT_TOKENS_PATH, body).ok()?;
+    let opened = Instant::now();
+    let head = request_head(target, COUNT_TOKENS_PATH, body.len());
+    let body = Arc::clone(body);
+    let line_bytes = limits.line_bytes;
+    let (answer, answered) = mpsc::sync_channel(1);
+    thread::Builder::new()
+        .name("llm-gateway-count".to_owned())
+        .spawn(move || {
+            let counted = count_over(connection.as_mut(), &head, &body, line_bytes);
+            drop(head);
+            drop(body);
+            drop(connection);
+            let _answered = answer.send(counted);
+        })
+        .ok()?;
+    let left = limits.count_timeout.saturating_sub(opened.elapsed());
+    answered.recv_timeout(left).ok().flatten()
+}
+
+/// The count's exchange over its open connection: the request, then a 2xx answer's
+/// `input_tokens`.
+fn count_over(
+    connection: &mut dyn RelayStream,
+    head: &RequestHead,
+    body: &[u8],
+    line_bytes: usize,
+) -> Option<u64> {
+    write_request(connection, head, body).ok()?;
     let mut input = Buffered {
-        source: Source::Target(connection.as_mut()),
+        source: Source::Target(connection),
         buffer: Vec::new(),
         start: 0,
     };
-    let mut head = read_answer_head(&mut input, limits.line_bytes).ok()?;
+    let mut head = read_answer_head(&mut input, line_bytes).ok()?;
     if !(200..300).contains(&head.status) {
         return None;
     }
     let mut answer = Vec::new();
-    while let Some(piece) = next_piece(&mut input, &mut head.framing, limits.line_bytes).ok()? {
+    while let Some(piece) = next_piece(&mut input, &mut head.framing, line_bytes).ok()? {
         answer.extend_from_slice(&piece);
-        if answer.len() > limits.line_bytes {
+        if answer.len() > line_bytes {
             return None;
         }
     }

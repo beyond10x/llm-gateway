@@ -909,6 +909,11 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
          a_stalled_head_is_refused_when_the_read_timeout_expires",
     ),
     (
+        "DEFAULT_COUNT_TIMEOUT_SECONDS",
+        "a timeout rather than a size bound; enforcement is measured by \
+         clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes",
+    ),
+    (
         "COLD_START_RETRY_AFTER_SECONDS",
         "the delay a model-cold-start refusal asks the client to wait (row W6), a hint rather \
          than a limit; its header is measured by \

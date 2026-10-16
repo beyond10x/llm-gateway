@@ -1350,9 +1350,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "bdab815989e30c260a4df59dd0189370b32c7353263c866edbcfc7b1df086c73",
+    "contract_digest": "341d6ed63a79a3ca1e15e8c2620cdc4c358542e62573965622f731d86747dc17",
     "scenario_initial_state": "empty",
-    "spec_digest": "913f8a44b25242c45b80fd45f78f0c95e1ae766651dd813c568d2f42c3cdcbde",
+    "spec_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"

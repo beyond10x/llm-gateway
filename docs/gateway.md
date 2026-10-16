@@ -243,7 +243,13 @@ A request to a wire path is decided in this order:
    non-negative JSON integer (digits only, named once at the top level), the gateway first sends
    `POST /v1/messages/count_tokens` to the target `acquire` handed out, over a connection of its
    own, with the head and credential described below and the body step 6 wrote; vLLM v0.27.1
-   answers it `{"input_tokens":n}` (`vllm/entrypoints/anthropic/api_router.py` lines 95-133). A
+   answers it `{"input_tokens":n,"context_management":{"original_input_tokens":n}}`
+   (`vllm/entrypoints/anthropic/api_router.py` lines 95-133, `serving.py` lines 1020-1025), of
+   which only the top-level `input_tokens` is read. The count has its own deadline,
+   `GatewayConfig::count_timeout` (ten seconds by default), from the moment its connection is
+   open: a count not answered by then fails, so the target's own read timeout, which may be far
+   longer, never holds the request; the abandoned count's connection closes when the target
+   answers or its own timeout ends it. A
    2xx answer whose body is one JSON object with one top-level non-negative integer
    `input_tokens` = `n` decides: `w - n < 1` is `context-exceeded` (400) and nothing is
    relayed; a `max_tokens` above `w - n` is rewritten in place to `w - n`, and one at or below it
@@ -251,8 +257,8 @@ A request to a wire path is decided in this order:
    classes as a prompt that is too long and answers by compacting its conversation, where a vLLM
    500 for a request past its window ends the turn. A count that fails (no connection, a request
    that cannot be written, an answer head that never arrives or is malformed, a status outside
-   2xx, an answer body longer than `request-head-bytes`, or a body without such an
-   `input_tokens`) relays the request unchanged, reports nothing to `invalidate` and counts no
+   2xx, an answer body longer than `request-head-bytes`, a body without such an
+   `input_tokens`, or an answer not complete by the count's deadline) relays the request unchanged, reports nothing to `invalidate` and counts no
    series. A body without such a `max_tokens`, a model without a window, and the chat and
    responses wires are relayed without a count. The count runs only on a target `acquire`
    handed out, so it never wakes a pod the relay would not have woken. Then `POST` to the same
@@ -497,6 +503,12 @@ defaults to ten seconds, and its enforcement is measured with a short configured
 `a_stalled_head_is_refused_when_the_read_timeout_expires`,
 `a_trickled_head_is_refused_when_the_read_timeout_expires` and
 `a_peer_that_never_reads_its_answer_cannot_hold_the_stop`.
+
+The output clamp's count is bounded by `GatewayConfig::count_timeout`, also a timeout rather than
+a size bound: one deadline for writing the count and reading its whole answer, from the moment its
+connection is open. It defaults to ten seconds (`DEFAULT_COUNT_TIMEOUT_SECONDS`), and its
+enforcement is measured with a short configured value by
+`clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes`.
 
 `COLD_START_RETRY_AFTER_SECONDS` (30) is the `retry-after` a `model-cold-start` refusal carries. It
 is a hint to the client rather than a limit the gateway enforces, so it is not in this table

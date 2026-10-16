@@ -24,8 +24,9 @@ Nothing in any release is deployed or qualified against a live client.
   request with a top-level integer `max_tokens` is first counted at the same target's
   `POST /v1/messages/count_tokens`; a `max_tokens` above the room the input leaves is lowered
   to it, and an input that leaves none is refused `context-exceeded` (400), whose message starts
-  `prompt is too long` so Claude Code compacts instead of meeting vLLM's 500. A count that fails
-  relays the request unchanged; a hosted model without a `context_window`, and the Chat and
+  `prompt is too long` so Claude Code compacts instead of meeting vLLM's 500. A count that fails,
+  or is not answered within `GatewayConfig::count_timeout` (ten seconds by default) of its
+  connection opening, relays the request unchanged; a hosted model without a `context_window`, and the Chat and
   Responses wires, are not counted.
 - The usage block of a model's answer, cache details included, is now held to reach the client
   unchanged on the Chat and Messages wires, streamed or not: a vLLM started with

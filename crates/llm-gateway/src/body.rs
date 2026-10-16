@@ -836,6 +836,13 @@ mod tests {
     #[test]
     fn a_count_is_one_top_level_non_negative_integer_input_tokens() {
         assert_eq!(input_tokens(br#"{"input_tokens":33537}"#), Some(33_537));
+        // vLLM v0.27.1's own answer (serving.py:1020-1025): the nested count is not read.
+        assert_eq!(
+            input_tokens(
+                br#"{"input_tokens":33537,"context_management":{"original_input_tokens":33537}}"#
+            ),
+            Some(33_537)
+        );
         assert_eq!(input_tokens(br#" {"x":[1],"input_tokens":0} "#), Some(0));
         for body in [
             r#"{"tokens":10}"#,

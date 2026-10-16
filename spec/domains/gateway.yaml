@@ -228,6 +228,13 @@ entities:
       # embedding may set it; `GatewayConfig::new` defaults it to 10000 (ten seconds).
       # ESS-LIMIT: a deadline is no ESS construct; the three tests named above hold it.
       - {name: read_timeout_ms, type: Integer}
+      # `GatewayConfig::count_timeout`, in milliseconds: the output clamp's count (Relay step 7)
+      # has this long, from the moment its connection is open, to be written and answered; a
+      # count not answered by then is a count that fails. An embedding may set it;
+      # `GatewayConfig::new` defaults it to 10000 (ten seconds).
+      # ESS-LIMIT: a deadline is no ESS construct;
+      # `clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes` holds it.
+      - {name: count_timeout_ms, type: Integer}
       # Ready is set once by the embedding; a drain is one way for the life of the handle
       # (server.rs mark_ready, begin_drain).
       - {name: ready, type: Boolean}
@@ -413,11 +420,16 @@ entities:
   #      request and the body step 6 wrote. A count answered 2xx whose body is one JSON object
   #      with one top-level non-negative integer `input_tokens` = `n` decides: `w - n < 1` is
   #      `context-exceeded` (400) and nothing is relayed; a `max_tokens` above `w - n` is
-  #      rewritten in place to `w - n`, and one at or below it is unchanged. A count that fails
-  #      (no connection, a request that cannot be written, an answer head that never arrives or
-  #      is malformed, a status outside 2xx, an answer body longer than the head bound, or
-  #      a body without such an `input_tokens`) relays the request unchanged, reports nothing to
-  #      the target source and counts no series. A body without such a `max_tokens`, a model
+  #      rewritten in place to `w - n`, and one at or below it is unchanged. The count has its
+  #      own deadline, `count_timeout_ms` of the Gateway (ten seconds unless the embedding sets
+  #      it), from the moment its connection is open: the target's own read timeout, which may
+  #      be far longer, never holds the request. A count that fails (no connection, a request
+  #      that cannot be written, an answer head that never arrives or is malformed, a status
+  #      outside 2xx, an answer body longer than the head bound, a body without such an
+  #      `input_tokens`, or an answer not complete by the deadline) relays the request
+  #      unchanged, reports nothing to the target source and counts no series. A count past its
+  #      deadline is abandoned, not waited for: its connection closes when the target answers
+  #      or the target's own timeout ends it. A body without such a `max_tokens`, a model
   #      without a window, and the chat and responses wires are relayed without a count. The
   #      count runs only on a target `acquire` handed out, so it never wakes a pod the relay
   #      would not have woken.
@@ -425,8 +437,9 @@ entities:
   #      vLLM v0.27.1 `--max-model-len 65536` spent its whole 32000 `max_tokens` on a first
   #      turn, and the continuation's input plus `max_tokens` passed the window, which vLLM
   #      answered 500. vLLM v0.27.1 serves `POST /v1/messages/count_tokens` and answers
-  #      `{"input_tokens":n}` for a messages body (vllm/entrypoints/anthropic/api_router.py
-  #      lines 95-133). The refusal's message starts `prompt is too long`: Claude Code 2.1.301
+  #      `{"input_tokens":n,"context_management":{"original_input_tokens":n}}` for a messages
+  #      body (vllm/entrypoints/anthropic/api_router.py lines 95-133, serving.py lines
+  #      1020-1025); only the top-level `input_tokens` is read. The refusal's message starts `prompt is too long`: Claude Code 2.1.301
   #      lowercases an API error's message and tests it for `prompt is too long`, which it
   #      classes `prompt_too_long` and answers by compacting (its bundled client, read
   #      2026-10-15) (scenarios clamp-*).

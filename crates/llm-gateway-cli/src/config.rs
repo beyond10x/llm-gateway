@@ -90,6 +90,9 @@ struct HostedDocument {
     headers: BTreeMap<String, String>,
 }
 
+/// The key under which the toml crate presents a datetime to a visitor as a one-entry table.
+const TOML_DATETIME_KEY: &str = "$__toml_private_datetime";
+
 /// `[hosted.<alias>.headers]` as a table of names to strings. serde's own refusal of a value of
 /// the wrong shape quotes it (`invalid type: string "authorization: Bearer …"`), and a header
 /// value may be a credential somebody put in the wrong place, so this one names the shape and
@@ -112,6 +115,13 @@ fn header_table<'de, D: serde::Deserializer<'de>>(
         ) -> Result<Self::Value, A::Error> {
             let mut table = BTreeMap::new();
             while let Some(name) = map.next_key::<String>()? {
+                // The toml crate hands a datetime over as a one-entry table under this key, whose
+                // name is a valid token: it is a datetime, not a header.
+                if name == TOML_DATETIME_KEY {
+                    return Err(serde::de::Error::custom(
+                        "headers must be a table of header names to string values, not a datetime",
+                    ));
+                }
                 let Some(value) = map.next_value::<Opaque>()?.0 else {
                     return Err(serde::de::Error::custom(
                         "every value of headers must be a string",
@@ -123,10 +133,31 @@ fn header_table<'de, D: serde::Deserializer<'de>>(
         }
 
         fn visit_str<E: serde::de::Error>(self, _text: &str) -> Result<Self::Value, E> {
-            Err(E::custom(
-                "headers must be a table of header names to string values, not a string",
-            ))
+            Err(not_a_table("a string"))
         }
+
+        fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<Self::Value, E> {
+            Err(not_a_table("an integer"))
+        }
+
+        fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<Self::Value, E> {
+            Err(not_a_table("an integer"))
+        }
+
+        fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<Self::Value, E> {
+            Err(not_a_table("a float"))
+        }
+
+        fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<Self::Value, E> {
+            Err(not_a_table("a boolean"))
+        }
+    }
+
+    /// The refusal of a `headers` of the wrong shape, naming the shape and never the value.
+    fn not_a_table<E: serde::de::Error>(shape: &str) -> E {
+        E::custom(format!(
+            "headers must be a table of header names to string values, not {shape}"
+        ))
     }
 
     /// A value read whole and kept only when it is a string, so nothing else is quoted.

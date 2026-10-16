@@ -68,8 +68,11 @@ impl InstructionAnswer {
     }
 }
 
-/// `{"object":"list","data":[entry…]}`, one `ListedModel` entry per model in alias order.
-pub(crate) fn models<'m>(models: impl Iterator<Item = &'m RelayModel>) -> String {
+/// `{"object":"list","data":[entry…]}`, one `ListedModel` entry per model in alias order. With
+/// a translator (`translates`) every model accepts every wire, listed in `wires`, and its
+/// declared wires follow as `upstream_wires`; without one `wires` is the declared wires and
+/// there is no `upstream_wires` (story:gateway-translation).
+pub(crate) fn models<'m>(models: impl Iterator<Item = &'m RelayModel>, translates: bool) -> String {
     let mut writer = Writer::new();
     writer.begin_object();
     writer.key("object");
@@ -89,12 +92,25 @@ pub(crate) fn models<'m>(models: impl Iterator<Item = &'m RelayModel>) -> String
             writer.key("max_model_len");
             writer.number(length);
         }
+        let accepted: &[Wire] = if translates {
+            &Wire::ALL
+        } else {
+            model.wires()
+        };
         writer.key("wires");
         writer.begin_array();
-        for wire in model.wires() {
+        for wire in accepted {
             writer.string(wire.label());
         }
         writer.end_array();
+        if translates {
+            writer.key("upstream_wires");
+            writer.begin_array();
+            for wire in model.wires() {
+                writer.string(wire.label());
+            }
+            writer.end_array();
+        }
         writer.end_object();
     }
     writer.end_array();

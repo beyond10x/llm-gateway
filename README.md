@@ -8,6 +8,7 @@ model; this repository answers them and, later, starts the pods they reach.
 **Documentation:** <https://beyond10x.github.io/llm-gateway/>, built from
 [`website/`](website/): [getting started](https://beyond10x.github.io/llm-gateway/docs/getting-started/),
 [set up a client](https://beyond10x.github.io/llm-gateway/docs/guides/set-up-a-client/),
+[translate between wires](https://beyond10x.github.io/llm-gateway/docs/guides/translate-between-wires/),
 [CLI reference](https://beyond10x.github.io/llm-gateway/docs/reference/cli/),
 [deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/),
 [crates](https://beyond10x.github.io/llm-gateway/docs/reference/crates/) and
@@ -19,7 +20,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.8.0, released 2026-10-16 as a source release; tested against in-process fakes and
+**Status: 0.9.0, released 2026-10-16 as a source release; tested against in-process fakes and
 loopback; nothing is deployed or qualified.** [CHANGELOG.md](CHANGELOG.md) lists every release
 and what is unreleased.
 
@@ -29,7 +30,10 @@ It is not a model client: the neutral turn, the protocol clients, credentials, r
 are llm's. The gateway library relays the owner's chat, responses and messages requests to a target
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
-it translates no protocol. The binary relays to a Runpod pod at its `https` proxy URL over
+it translates no protocol itself, but holds the port through which the binary translates a
+request on a wire the model's upstream does not speak, within llm 0.6.0's published subset
+([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, and
+Claude Code's and Codex's requests fall outside it today. The binary relays to a Runpod pod at its `https` proxy URL over
 TLS, but that path has run only against a fixture of the `connectors` CLI and a loopback pod,
 never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a hosted endpoint
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never
@@ -111,11 +115,12 @@ b10x-llm-gateway: stopped by SIGTERM accepted=2 completed=2
 
 The document is closed: an unknown key at any level is refused as `config:schema`, naming the line
 and the keys that are allowed. A relative `owner_secret_file` is resolved from the working
-directory. At least one `[models.<alias>]` or `[hosted.<alias>]` table is required
-(`config:value` otherwise). `ingress_auth = "none"` serves model calls without a credential, for
-a gateway behind something that authenticates already; `owner_secret_file` is then optional, the
-counters and the route inventory still take the owner secret (and refuse everything without
-one), and the binary writes a warning line before it listens. `bearer`, the default, requires
+directory. At least one model, of a `[models.<alias>]` or `[hosted.<alias>]` table or the
+`routes` document, is required (`config:value` otherwise). `ingress_auth = "none"` serves model
+calls without a credential, for a gateway behind something that authenticates already;
+`owner_secret_file` is then optional, the counters and the route inventory still take the owner
+secret (and refuse everything without one), and the binary writes a warning line before it
+listens. `bearer`, the default, requires
 `owner_secret_file`.
 `spec/domains/deployment.yaml` holds every key, default and range.
 
@@ -147,6 +152,15 @@ credential in its named header. An `https` endpoint is verified against the same
 roots as a pod. A credential goes over plain `http` only to a loopback host (`127.0.0.0/8`,
 `::1`, `localhost`); any other `http` endpoint that is not `anonymous` is refused as
 `config:value`.
+
+A top-level `routes = "<path>"` names an llm `llm.routes/1` document instead, or as well. Each
+route is served under its route name from its endpoint: relayed byte for byte on the endpoint's
+wire, translated from the other two. The file is read once at start (at most 2 MiB, not group- or
+world-writable); a credentialed endpoint's `auth.secret` must be a `file:` key file (`~/` is
+resolved against `HOME`), and its `base_url` must name the API path, such as
+`https://api.anthropic.com/v1`. The rules are on the
+[deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/#routes)
+page.
 
 The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model with its
 `max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,

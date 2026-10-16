@@ -4,7 +4,7 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.9.0 (2026-10-16)
 
 - A hosted model's `base_url` may carry a path. The path replaces the wire path's leading `/v1`,
   so `https://openrouter.ai/api/v1` sends Chat requests to `/api/v1/chat/completions` and a
@@ -26,6 +26,43 @@ Nothing in any release is deployed or qualified against a live client.
   document without `owner_secret_file` is now refused `config:value` rather than
   `config:schema`. The library gains `GatewayConfig::ingress_auth` (`IngressAuth`) and
   `NoOwnerVerifier`.
+- The gateway translates between wires within llm 0.6.0's published subset. A request on a wire
+  the model's upstream does not declare is decoded, checked against the model's capabilities and
+  projected before any target is asked for, sent with llm's client for the model's first declared
+  wire, and answered on the client's wire, streamed event by event with the upstream's usage, or
+  as its JSON object. Same-wire requests are relayed byte for byte as before. New refusals:
+  `translation-unsupported`, `translation-invalid`, `translation-opaque-state` (400),
+  `translation-unrepresentable` and `upstream-refused` (502). `GET /v1/models` lists every wire
+  and the model's `upstream_wires`; `GET /` profiles stay on the declared wires, because Claude
+  Code and Codex send fields the subset refuses. The library gains the `Translator` port,
+  `Relay::with_translator`, `RelayTarget::scheme` and `TargetBearer::expose`; the binary carries
+  llm's client crates (by tag) and a tokio runtime, and always composes `LlmTranslator`.
+  A key below the top level of a chat or responses request that the subset does not list is
+  refused, not dropped; before output a transport failure (unreachable, timed out, a reset or
+  cut connection) is `upstream-failed` and replaces the target, while an answer that broke its
+  wire is `upstream-refused`; an answer past a published bound of the translated path (65536
+  events, 32 MiB, a 1 MiB line or event, 64 KiB of one tool call's arguments) is
+  `translation-too-large` (502) or ends with that terminal error; a messages upstream asked by a
+  request naming no output limit gets `min(16384, w / 2)` of the window, 200000 by default; and
+  a non-streamed client that closes cancels the turn, recorded `Relayed` with status 0.
+- The deployment document may name an llm `llm.routes/1` document, `routes = "<path>"`, read
+  once at start (at most 2 MiB, not group- or world-writable) and parsed with llm 0.6.0's
+  `Routes::parse` (`b10x-llm-models`, no default feature, so llm reads no secret). Each route is
+  served under its name from a hosted endpoint built from its endpoint: relayed byte for byte on
+  the endpoint's wire to its base path, translated from the other wires under the route's
+  capabilities, beside `[models.*]` and `[hosted.*]`. `GET /v1/models` lists each route on all
+  three wires; `GET /v1/routes` lists one target per route, provider `routes`, the endpoint's
+  name, and no URL or credential. A credential comes only from a `file:` key file read through
+  the trusted reader (`endpoint-credential:<rule>`, `~/` against `HOME`); an `env:` or
+  `keychain:` secret, a `base_url` without its API path or outside the base-path rule, a
+  cleartext credential to a remote host, a document llm refuses, and a route name equal to a
+  `[models.*]` or `[hosted.*]` alias are refused `config:value`, and so is a route name over
+  246 bytes, the longest whose target id `<route>.<wire>` fits an inventory label. A route on a
+  `messages` endpoint is sent llm's `anthropic-version` on every request, the output clamp's
+  count included, and no other static header. A document with only `routes` is admitted. The
+  library exports `Routes`, `Route`, `RouteEndpoint`, `SecretFile`, `MAX_ROUTE_NAME_BYTES` and
+  `Deployment::with_routes`; the conformance `Relay` program takes `routes_document` and
+  `route_credentials`.
 
 ## 0.8.0 (2026-10-16)
 

@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: translate-carried-reasoning-state-is-refused-without-asking-for-a-target
+summary: a translated messages request replaying a signed thinking block and a translated responses request replaying a reasoning item are translation-opaque-state, and neither asks for a target
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[],[],[]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"},{\\\"content\\\":[{\\\"signature\\\":\\\"sig-1\\\",\\\"thinking\\\":\\\"The user greets me.\\\",\\\"type\\\":\\\"thinking\\\"},{\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"text\\\"}],\\\"role\\\":\\\"assistant\\\"},{\\\"content\\\":\\\"Again\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\"}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"},{\\\"id\\\":\\\"rs_1\\\",\\\"summary\\\":[],\\\"type\\\":\\\"reasoning\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"role\\\":\\\"assistant\\\",\\\"type\\\":\\\"message\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"Again\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"}],\"translation\":\"on\"}"
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - "ok"
+    - "400 translation-opaque-state"
+    - "400 translation-opaque-state"
+    upstream: []
+    acquired: 0

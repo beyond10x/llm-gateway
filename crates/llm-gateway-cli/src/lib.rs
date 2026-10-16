@@ -1,10 +1,12 @@
 #![forbid(unsafe_code)]
 
-//! The `b10x-llm-gateway` binary's deployment document, trusted-file reader and serving loop.
+//! The `b10x-llm-gateway` binary's deployment document, trusted-file reader, serving loop and
+//! translator ([`LlmTranslator`], over llm 0.6.0's client crates and a tokio runtime).
 //!
 //! The specification is `spec/domains/deployment.yaml` (`llm-gateway.deployment`). The binary
 //! reads one closed TOML document through a same-handle trusted-file reader, composes the
-//! `llm_gateway` gateway from it, serves, and stops gracefully on SIGINT or SIGTERM. Every
+//! `llm_gateway` gateway from it, and from the `llm.routes/1` document it may name ([`Routes`]),
+//! serves, and stops gracefully on SIGINT or SIGTERM. Every
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
 pub mod cli;
@@ -14,8 +16,10 @@ mod keys;
 mod logging;
 mod refusal;
 mod relaying;
+mod routes;
 mod serve;
 mod tls;
+mod translate;
 mod trusted;
 
 pub use config::{Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
@@ -32,8 +36,13 @@ pub use relaying::{
     compute_authorization, hosting_policy, idle_timeout_ms, runpod_models, runpod_pool,
     secret_name, start_connected, start_relaying,
 };
+pub use routes::{MAX_ROUTE_NAME_BYTES, Route, RouteEndpoint, Routes, SecretFile};
 pub use serve::{
     INGRESS_AUTH_OFF, Running, StopSignal, Stopped, inventory, main_with, owner_verifier, start,
     start_with,
 };
 pub use tls::ProxyConnector;
+pub use translate::{
+    DEFAULT_CONTEXT_WINDOW, LlmTranslator, MESSAGES_DEFAULT_OUTPUT_TOKENS, REASONING_EFFORTS,
+    TRANSLATION_CONNECT_TIMEOUT, TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT,
+};

@@ -18,10 +18,11 @@ use crate::{
     keys::VllmKeys,
     refusal::{Refusal, StartupRefusal},
     serve::{Running, Stopped, inventory, owner_verifier},
+    translate::LlmTranslator,
 };
 use llm_gateway::{
     Gateway, Label, Metrics, OwnerVerifier, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, RouteInventory, ShutdownReport, TargetBearer, TargetRefusal,
+    RelayTargets, RouteInventory, ShutdownReport, TargetBearer, TargetRefusal, TargetScheme,
 };
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
@@ -439,6 +440,17 @@ fn authority(endpoint: &str) -> Option<&str> {
     (!authority.is_empty()).then_some(authority)
 }
 
+/// The scheme of an endpoint URL: `https` for the Runpod proxy's `https://<pod>-8000.proxy.runpod.net/v1/`,
+/// `http` for an `http://` endpoint (an emulated pod). A translated request reaches the pod over
+/// it (story:gateway-translation); the byte relay always connects through the pod connector.
+fn scheme(endpoint: &str) -> TargetScheme {
+    if endpoint.starts_with("http://") {
+        TargetScheme::Http
+    } else {
+        TargetScheme::Https
+    }
+}
+
 impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// Asks the pool for the model's ready pod through one [`Hold`], and while the pool answers
     /// `starting` (or `stopping`, before the hold is bound to a pod) holds the request, asking
@@ -471,13 +483,14 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
             }
             match asked {
                 Ok(lease) => {
-                    let authority = lease
-                        .endpoint()
-                        .and_then(authority)
+                    let endpoint = lease.endpoint().ok_or(TargetRefusal::Unavailable)?;
+                    let authority = authority(endpoint)
                         .ok_or(TargetRefusal::Unavailable)?
                         .to_owned();
+                    let scheme = scheme(endpoint);
                     return Ok(Box::new(PodTarget {
                         authority,
+                        scheme,
                         bearer: Arc::clone(&relayed.bearer),
                         connector: Arc::clone(&self.connector),
                         // A hold binds only to a pod it found starting (rows O1, O2).
@@ -523,6 +536,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
 /// One pod, held through its [`StreamLease`] until the relayed answer has ended.
 struct PodTarget {
     authority: String,
+    scheme: TargetScheme,
     bearer: Arc<TargetBearer>,
     connector: Arc<dyn PodConnector>,
     /// The request was held while this pod started.
@@ -533,6 +547,10 @@ struct PodTarget {
 impl RelayTarget for PodTarget {
     fn authority(&self) -> &str {
         &self.authority
+    }
+
+    fn scheme(&self) -> TargetScheme {
+        self.scheme
     }
 
     fn bearer(&self) -> Option<&TargetBearer> {
@@ -631,7 +649,7 @@ fn relay_label(value: &str) -> Result<Label, Refusal> {
     })
 }
 
-const fn relay_wire(wire: Wire) -> llm_gateway::Wire {
+pub(crate) const fn relay_wire(wire: Wire) -> llm_gateway::Wire {
     match wire {
         Wire::Chat => llm_gateway::Wire::Chat,
         Wire::Responses => llm_gateway::Wire::Responses,
@@ -796,7 +814,8 @@ struct Parts {
     verifier: Arc<dyn OwnerVerifier>,
     inventory: RouteInventory,
     vllm_keys: VllmKeys,
-    /// Each hosted model's endpoint, its credential read (story:hosted-endpoints).
+    /// Each hosted model's and each route's endpoint, its credential read
+    /// (story:hosted-endpoints, story:routes-document).
     hosted: BTreeMap<String, HostedEndpoint>,
     /// The connector an `https` hosted endpoint is reached through: the pod connector.
     tls: Arc<dyn PodConnector>,
@@ -829,7 +848,8 @@ impl Parts {
 /// (rows R5, R1). A hosted model is relayed under its `upstream_model`, and publishes the
 /// `context_window` it declares and no `max_model_len`. Only a hosted model gives a messages
 /// request naming no effort its declared `reasoning_effort`: a Runpod model's is already its
-/// server's default chat-template argument.
+/// server's default chat-template argument. A route of the routes document is relayed as
+/// [`crate::Routes::relay_models`] says.
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
     for (alias, hosted) in &deployment.hosted {
@@ -873,6 +893,8 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                 .with_context_window(u64::from(model.context_window)),
         );
     }
+    // Each route of the routes document, on its endpoint's wire (story:routes-document).
+    models.extend(deployment.routes.relay_models()?);
     Ok(models)
 }
 
@@ -899,8 +921,13 @@ fn compose(
     } = parts;
     // Every composition serves its hosted models from their endpoints, whatever serves the rest.
     let targets: Arc<dyn RelayTargets> = Arc::new(HostedTargets::new(hosted, tls, targets));
+    // Every composition translates a wire a model's upstream does not speak
+    // (story:gateway-translation), a route under its declared capabilities
+    // (story:routes-document).
+    let translator = deployment.routes.translator(LlmTranslator::new());
     let relay = Relay::new(models, targets)
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
+        .with_translator(Arc::new(translator))
         .with_metrics(Arc::clone(&metrics))
         .with_records(Arc::new(crate::logging::TracingRecords));
     let signals = Running::install_signals()?;
@@ -980,6 +1007,18 @@ mod tests {
         for refused in ["", "pod1", "https:///v1/", "ftp://pod/"] {
             assert_eq!(authority(refused), None, "{refused:?}");
         }
+    }
+
+    /// A Runpod proxy endpoint is reached over `https` by a translated request; an emulated
+    /// pod's `http://` endpoint over `http` (story:gateway-translation).
+    #[test]
+    fn translation_a_pod_target_reports_its_endpoints_scheme() {
+        use llm_gateway::TargetScheme;
+        assert_eq!(
+            super::scheme("https://pod1-8000.proxy.runpod.net/v1/"),
+            TargetScheme::Https
+        );
+        assert_eq!(super::scheme("http://127.0.0.1:9/v1/"), TargetScheme::Http);
     }
 
     #[test]

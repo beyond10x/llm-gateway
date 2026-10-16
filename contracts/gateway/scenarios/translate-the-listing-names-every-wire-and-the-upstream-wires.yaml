@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: translate-the-listing-names-every-wire-and-the-upstream-wires
+summary: with a translator GET /v1/models lists every wire for each model and the wires its upstream speaks, while GET / still profiles a client only on a wire the model declares
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: "{\"models\":[{\"alias\":\"a\",\"tool_calling\":\"parsed\",\"upstream_model\":\"served-a\",\"wires\":[\"chat\"]},{\"alias\":\"b\",\"tool_calling\":\"parsed\",\"upstream_model\":\"served-b\",\"wires\":[\"messages\",\"responses\"]}],\"pods\":[],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"\",\"credential\":false,\"method\":\"GET\",\"path\":\"/v1/models\",\"step\":\"request\"},{\"body\":\"\",\"credential\":false,\"method\":\"GET\",\"path\":\"/\",\"step\":\"request\",\"user_agent\":\"codex-cli/1.0\"}],\"translation\":\"on\"}"
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - "ok"
+    - "200 answered"
+    - "200 answered"
+    bodies:
+    - "{\"object\":\"list\",\"data\":[{\"id\":\"a\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"upstream_wires\":[\"chat\"]},{\"id\":\"b\",\"object\":\"model\",\"owned_by\":\"llm-gateway\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"upstream_wires\":[\"messages\",\"responses\"]}]}"
+    - "# Codex profiles for this llm-gateway, one per model it serves on the responses wire with\n# tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the\n# gateway's owner token, and start Codex with `codex --profile <alias>`.\n\n# ~/.codex/b.config.toml\nmodel = \"b\"\nmodel_provider = \"b10x-gateway\"\n\n[model_providers.b10x-gateway]\nname = \"b10x llm-gateway\"\nbase_url = \"http://gateway/v1\"\nenv_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n"
+    acquired: 0

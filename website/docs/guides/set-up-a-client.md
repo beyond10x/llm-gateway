@@ -146,5 +146,5 @@ curl -s http://127.0.0.1:8080/v1/models
 ```
 
 ```json
-{"object":"list","data":[{"id":"small","object":"model","owned_by":"llm-gateway","max_model_len":65536,"wires":["chat","responses","messages"]}]}
+{"object":"list","data":[{"id":"small","object":"model","owned_by":"llm-gateway","max_model_len":65536,"wires":["chat","responses","messages"],"upstream_wires":["chat","responses","messages"]}]}
 ```

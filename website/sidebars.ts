@@ -18,7 +18,12 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Guides',
       collapsed: false,
-      items: ['guides/set-up-a-client', 'guides/scrape-the-counters', 'guides/run-the-checks'],
+      items: [
+        'guides/set-up-a-client',
+        'guides/translate-between-wires',
+        'guides/scrape-the-counters',
+        'guides/run-the-checks',
+      ],
     },
     {
       type: 'category',

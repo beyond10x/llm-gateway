@@ -980,11 +980,14 @@ fn r5_r1_the_binary_lists_and_profiles_each_model_from_the_document_and_starts_n
     running.shutdown();
 
     assert!(listing.starts_with("HTTP/1.1 200 "), "{listing}");
+    // The binary always translates (story:gateway-translation), so every wire is listed, and
+    // the document's own wires follow as `upstream_wires`.
     assert!(
         listing.ends_with(
             "\r\n\r\n{\"object\":\"list\",\"data\":[{\"id\":\"small\",\"object\":\"model\",\
              \"owned_by\":\"llm-gateway\",\"max_model_len\":2048,\
-             \"wires\":[\"chat\",\"responses\",\"messages\"]}]}"
+             \"wires\":[\"chat\",\"responses\",\"messages\"],\
+             \"upstream_wires\":[\"chat\",\"responses\",\"messages\"]}]}"
         ),
         "{listing}"
     );

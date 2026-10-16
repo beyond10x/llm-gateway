@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-16T19:56:03Z",
+  "actor": "human:timo",
+  "artifact": "story:routes-document",
+  "kind": "story",
+  "revision": 21,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --locked --test routes: baseline 20f48f2c source refuses every case with config:schema unknown field routes (0 passed, 8 failed); treatment deca5af passes them; conformance 249 of 249 on three runs. VERIFIED: a deployment naming a routes document serves its routes",
+    "reference": "~/.cache/llm-gateway-m2b/unit-routes (red and gate logs)"
+  }
+}

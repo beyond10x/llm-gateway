@@ -521,7 +521,8 @@ mod relay {
         ToolCalling, UsageRecord, UsageRecords, Wire,
     };
     use llm_gateway_cli::{
-        EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProxyConnector,
+        EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, PodConnector,
+        ProxyConnector, Routes,
     };
     use rcgen::{
         BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer,
@@ -557,6 +558,11 @@ mod relay {
     const CHUNK_HOLD: Duration = Duration::from_secs(2);
     /// How long either side waits for the other. Far above any relay this program makes.
     const WAIT: Duration = Duration::from_secs(10);
+    /// How long a pod whose client closed early waits to see the gateway close the upstream
+    /// connection before it releases its next chunk.
+    const CLOSE_WAIT: Duration = Duration::from_millis(500);
+    /// The translator's fixed `created`, so a translated answer's bytes are exact.
+    const CREATED: u64 = 1_800_000_000;
 
     #[derive(Deserialize)]
     #[serde(deny_unknown_fields)]
@@ -578,6 +584,17 @@ mod relay {
         /// `bearer`, the default, or `none`: the Gateway's `ingress_auth`.
         #[serde(default)]
         ingress_auth: Option<String>,
+        /// `off`, the default, or `on`: the relay is composed with the binary's translator.
+        #[serde(default)]
+        translation: Option<String>,
+        /// The text of an `llm.routes/1` document whose routes are served beside `models`; each
+        /// `//pod-<n>` in it is replaced by `//` and that pod's authority before it is parsed.
+        #[serde(default)]
+        routes_document: Option<String>,
+        /// Each credentialed route endpoint's credential material, by endpoint name: no file
+        /// the routes document names is read.
+        #[serde(default)]
+        route_credentials: BTreeMap<String, String>,
     }
 
     #[derive(Deserialize)]
@@ -676,6 +693,9 @@ mod relay {
         framing: Option<String>,
         #[serde(default)]
         transport: Option<String>,
+        /// `received`, the default, or `progress`: when each chunk after the first is released.
+        #[serde(default)]
+        release: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -705,6 +725,12 @@ mod relay {
             /// `anthropic-version`.
             #[serde(default)]
             headers: Vec<String>,
+            /// The client closes the connection once it has received this many body bytes.
+            #[serde(default)]
+            close_after_bytes: Option<usize>,
+            /// Whether the client shuts its sending side once the request is written; default true.
+            #[serde(default)]
+            half_close: Option<bool>,
         },
     }
 
@@ -720,9 +746,18 @@ mod relay {
                 (None, Some(status)) => {
                     (200..=599).contains(&status)
                         && matches!(self.framing.as_deref(), None | Some("length" | "chunked"))
+                        && matches!(
+                            self.release.as_deref(),
+                            None | Some("received" | "progress")
+                        )
                 }
                 _ => false,
             }
+        }
+
+        /// Whether each chunk waits for the client's progress rather than for its bytes.
+        fn by_progress(&self) -> bool {
+            self.release.as_deref() == Some("progress")
         }
     }
 
@@ -735,6 +770,8 @@ mod relay {
         replied: Mutex<Option<(u16, Vec<u8>)>>,
         /// A pod had to release a chunk before the client received the one before it.
         held: AtomicBool,
+        /// The client closed its connection early (`close_after_bytes`).
+        closed: AtomicBool,
     }
 
     impl Progress {
@@ -743,6 +780,41 @@ mod relay {
                 *received = count;
             }
             self.arrived.notify_all();
+        }
+
+        fn received(&self) -> usize {
+            self.received.lock().map_or(0, |received| *received)
+        }
+
+        fn close(&self) {
+            // Set under the lock a waiting pod checks it under, so the wake is not lost.
+            let _guard = self.received.lock();
+            self.closed.store(true, Ordering::SeqCst);
+            self.arrived.notify_all();
+        }
+
+        fn is_closed(&self) -> bool {
+            self.closed.load(Ordering::SeqCst)
+        }
+
+        /// Waits until the client has received more than `baseline` body bytes, or closed;
+        /// false if neither happened in time.
+        fn wait_beyond(&self, baseline: usize) -> bool {
+            let deadline = Instant::now() + CHUNK_HOLD;
+            let Ok(mut received) = self.received.lock() else {
+                return false;
+            };
+            while *received <= baseline && !self.is_closed() {
+                let left = deadline.saturating_duration_since(Instant::now());
+                if left.is_zero() {
+                    return false;
+                }
+                match self.arrived.wait_timeout(received, left) {
+                    Ok((next, _)) => received = next,
+                    Err(_) => return false,
+                }
+            }
+            true
         }
 
         /// Waits until the client has received `count` body bytes; false if it did not in time.
@@ -775,6 +847,8 @@ mod relay {
         received_heads: Mutex<Vec<String>>,
         /// Per connection a pod accepted, `<pod> <transport> <request|nothing>`.
         connections: Mutex<Vec<String>>,
+        /// Per reply a pod began, `<pod> complete` or `<pod> cut`.
+        ends: Mutex<Vec<String>>,
         /// The owner secret, searched for in every byte a pod reads.
         secret: Vec<u8>,
         secret_upstream: AtomicBool,
@@ -861,6 +935,32 @@ mod relay {
                 Self::Plain(_) => "plain",
                 Self::Tls(_) => "tls",
             }
+        }
+
+        /// Whether the gateway closed this connection, waiting up to [`CLOSE_WAIT`] to see it.
+        fn peer_closed(&mut self) -> bool {
+            let socket = match self {
+                Self::Plain(stream) => &*stream,
+                Self::Tls(stream) => &stream.sock,
+            };
+            if socket.set_read_timeout(Some(CLOSE_WAIT)).is_err() {
+                return true;
+            }
+            let mut byte = [0_u8; 1];
+            let closed = match self.read(&mut byte) {
+                Ok(0) => true,
+                Ok(_) => false,
+                Err(error) => !matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut
+                ),
+            };
+            let socket = match self {
+                Self::Plain(stream) => &*stream,
+                Self::Tls(stream) => &stream.sock,
+            };
+            let _restored = socket.set_read_timeout(Some(WAIT));
+            closed
         }
 
         /// Ends the connection: a TLS close first, then both directions of the socket.
@@ -994,11 +1094,40 @@ mod relay {
         if connection.write_all(head.as_bytes()).is_err() {
             return;
         }
+        let cut = !write_chunks(&mut connection, &answer, &progress, chunked);
+        record(
+            &shared.ends,
+            format!("{pod} {}", if cut { "cut" } else { "complete" }),
+        );
+        connection.close();
+    }
+
+    /// Writes the answer's chunks, each released as its `release` says; `false` when the
+    /// connection closed before the last one was written.
+    fn write_chunks(
+        connection: &mut Connection,
+        answer: &AnswerInput,
+        progress: &Progress,
+        chunked: bool,
+    ) -> bool {
         let mut sent = 0;
+        let mut baseline = 0;
+        let mut cut = false;
         for (index, chunk) in answer.chunks.iter().enumerate() {
-            if index > 0 && !progress.wait_for(sent) {
+            if index > 0 && answer.by_progress() {
+                if !progress.wait_beyond(baseline) {
+                    progress.held.store(true, Ordering::SeqCst);
+                }
+                // A client gone early releases the next chunk at once, unless the gateway has
+                // already closed the upstream connection: the turn was cancelled.
+                if progress.is_closed() && connection.peer_closed() {
+                    cut = true;
+                    break;
+                }
+            } else if index > 0 && !progress.wait_for(sent) {
                 progress.held.store(true, Ordering::SeqCst);
             }
+            baseline = progress.received();
             let mut framed = Vec::new();
             if chunked {
                 framed.extend_from_slice(format!("{:x}\r\n", chunk.len()).as_bytes());
@@ -1012,14 +1141,15 @@ mod relay {
                 .and_then(|()| connection.flush())
                 .is_err()
             {
-                return;
+                cut = true;
+                break;
             }
             sent += chunk.len();
         }
-        if chunked {
-            let _end = connection.write_all(b"0\r\n\r\n");
+        if !cut && chunked && connection.write_all(b"0\r\n\r\n").is_err() {
+            cut = true;
         }
-        connection.close();
+        !cut
     }
 
     /// One request a pod read.
@@ -1476,6 +1606,60 @@ mod relay {
         Ok(endpoints)
     }
 
+    /// The routes document, empty without `routes_document`: each `//pod-<n>` replaced by `//`
+    /// and that pod's authority, then parsed as the binary parses it. A route name equal to a
+    /// model's alias is refused as the binary refuses one equal to a `[hosted.*]` alias.
+    fn routes(program: &Program, authorities: &[String]) -> Result<Routes, String> {
+        let Some(text) = &program.routes_document else {
+            return Ok(Routes::default());
+        };
+        let mut text = text.clone();
+        // The highest pod first, so `//pod-1` never rewrites the start of `//pod-10`.
+        for (index, authority) in authorities.iter().enumerate().rev() {
+            text = text.replace(&format!("//pod-{}", index + 1), &format!("//{authority}"));
+        }
+        let routes = Routes::parse(&text).map_err(|refusal| refusal.code().to_owned())?;
+        if routes.routes().any(|route| {
+            program
+                .models
+                .iter()
+                .any(|model| model.alias == route.name())
+        }) {
+            return Err("config:value".to_owned());
+        }
+        Ok(routes)
+    }
+
+    /// The binary's translator, on a fixed clock so a translated answer's bytes are exact, each
+    /// route translated under its capabilities.
+    fn translator(routes: &Routes) -> LlmTranslator {
+        routes
+            .translator(LlmTranslator::new())
+            .with_created(CREATED)
+    }
+
+    /// Serves the routes document's routes beside the program's models, as the binary composes
+    /// them (story:routes-document): each route's hosted endpoint, sent the credential
+    /// `route_credentials` gives its endpoint, and its relayed model.
+    fn serve_routes(
+        program: &Program,
+        authorities: &[String],
+        endpoints: &mut BTreeMap<String, HostedEndpoint>,
+        models: &mut Vec<RelayModel>,
+    ) -> Result<Routes, String> {
+        let routes = routes(program, authorities)?;
+        let code = |refusal: llm_gateway_cli::Refusal| refusal.code().to_owned();
+        let mut credentials = BTreeMap::new();
+        for (endpoint, material) in &program.route_credentials {
+            let bearer = TargetBearer::new(material.as_bytes().to_vec())
+                .map_err(|error| format!("bearer:{}", token_code(error)))?;
+            credentials.insert(endpoint.clone(), bearer);
+        }
+        endpoints.extend(routes.hosted_endpoints(&credentials).map_err(code)?);
+        models.extend(routes.relay_models().map_err(code)?);
+        Ok(routes)
+    }
+
     fn compose(
         program: &Program,
         source: Arc<Source>,
@@ -1548,7 +1732,8 @@ mod relay {
             .map(|(name, authority, _)| (name.clone(), authority.clone()))
             .collect();
         let authorities: Vec<String> = names.iter().map(|(_, pod)| pod.clone()).collect();
-        let endpoints = endpoints(program, &authorities)?;
+        let mut endpoints = endpoints(program, &authorities)?;
+        let routes = serve_routes(program, &authorities, &mut endpoints, &mut models)?;
         // The binary's TLS client over the run's test root: the seam the shipped binary cannot
         // reach. A run with no https endpoint trusts nothing, and connects over TLS to nothing.
         let tls: Arc<dyn PodConnector> = match tls_root {
@@ -1569,6 +1754,12 @@ mod relay {
         let relay = Relay::new(models, targets)
             .map_err(relay_error)?
             .with_records(records);
+        // The binary's translator, on a fixed clock so a translated answer's bytes are exact.
+        let relay = match program.translation.as_deref() {
+            None | Some("off") => relay,
+            Some("on") => relay.with_translator(Arc::new(translator(&routes))),
+            Some(_) => return Err("fixture:unknown-translation".to_owned()),
+        };
         let inventory =
             RouteInventory::new(Vec::new()).map_err(|_| "fixture:inventory".to_owned())?;
         let bind = "127.0.0.1:0"
@@ -1592,6 +1783,7 @@ mod relay {
             declare_bytes,
             user_agent,
             headers,
+            ..
         } = step
         else {
             return None;
@@ -1697,13 +1889,23 @@ mod relay {
 
     /// Sends one request and reads its answer while it arrives, telling the pod how far the
     /// client has got.
-    fn exchange(addr: SocketAddr, request: &[u8], progress: &Progress) -> Option<Received> {
+    /// With `close_after`, the client closes the connection once it has received that many body
+    /// bytes, and tells the pod through `progress`.
+    fn exchange(
+        addr: SocketAddr,
+        request: &[u8],
+        progress: &Progress,
+        close_after: Option<usize>,
+        half_close: bool,
+    ) -> Option<Received> {
         let mut stream = TcpStream::connect(addr).ok()?;
         stream.set_read_timeout(Some(WAIT)).ok()?;
         stream.set_write_timeout(Some(WAIT)).ok()?;
         // A write the gateway cut short is not a lost answer: whatever arrived is read.
         let _written = stream.write_all(request).and_then(|()| stream.flush());
-        let _half = stream.shutdown(Shutdown::Write);
+        if half_close {
+            let _half = stream.shutdown(Shutdown::Write);
+        }
         let mut raw = Vec::new();
         let mut chunk = [0_u8; 16_384];
         loop {
@@ -1713,6 +1915,11 @@ mod relay {
                     raw.extend_from_slice(&chunk[..read]);
                     if let Some(received) = decode(&raw) {
                         progress.set_received(received.body.len());
+                        if close_after.is_some_and(|bytes| received.body.len() >= bytes) {
+                            drop(stream);
+                            progress.close();
+                            return Some(received);
+                        }
                     }
                 }
             }
@@ -1729,15 +1936,20 @@ mod relay {
             .lock()
             .ok()
             .and_then(|replied| replied.clone());
+        if progress.is_closed() {
+            return format!("{status} closed");
+        }
         if replied.as_ref() == Some(&(status, received.body.clone())) {
             return format!("{status} relayed");
         }
         let refusal = serde_json::from_slice::<Value>(&received.body)
             .ok()
             .and_then(|value| value["error"]["code"].as_str().map(str::to_owned));
-        // An answer the gateway wrote itself that is no refusal: a public route (R1, R5).
+        // An answer a pod replied to that reached the client in other bytes: a translation.
+        // One the gateway wrote itself that is no refusal: a public route (R1, R5).
         let word = match refusal {
             Some(code) => code,
+            None if (200..300).contains(&status) && replied.is_some() => "translated".to_owned(),
             None if (200..300).contains(&status) => "answered".to_owned(),
             None => "unparsed".to_owned(),
         };
@@ -1770,6 +1982,7 @@ mod relay {
                 program.ingress_auth.as_deref(),
                 None | Some("bearer" | "none")
             )
+            && matches!(program.translation.as_deref(), None | Some("off" | "on"))
             && efforts_known
             && program.steps.len() <= MAX_STEPS
             && program.cold_starts <= MAX_STEPS
@@ -1826,7 +2039,7 @@ mod relay {
             "valid_program": false, "error_code": null, "results": [], "bodies": [],
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
-            "scrapes": [], "connections": [], "received_heads": []
+            "scrapes": [], "connections": [], "received_heads": [], "upstream_ends": []
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -1901,6 +2114,7 @@ mod relay {
         facts["authorizations"] = json!(taken(&shared.authorizations));
         facts["received_heads"] = json!(taken(&shared.received_heads));
         facts["connections"] = json!(taken(&shared.connections));
+        facts["upstream_ends"] = json!(taken(&shared.ends));
         facts["secret_upstream"] = json!(shared.secret_upstream.load(Ordering::SeqCst));
         if let Some(counting) = counting {
             facts["acquired"] = json!(counting.acquired.load(Ordering::SeqCst));
@@ -1925,7 +2139,8 @@ mod relay {
             String::new()
         };
         let raw = format!("GET /metrics HTTP/1.1\r\nhost: gateway\r\n{auth}\r\n");
-        let Some(received) = exchange(addr, raw.as_bytes(), &Progress::default()) else {
+        let Some(received) = exchange(addr, raw.as_bytes(), &Progress::default(), None, true)
+        else {
             return "no-response".to_owned();
         };
         let Some(status) = received.status else {
@@ -1999,8 +2214,16 @@ mod relay {
                 *current = Arc::clone(&progress);
             }
             let started = Instant::now();
+            let (close_after, half_close) = match step {
+                Step::Request {
+                    close_after_bytes,
+                    half_close,
+                    ..
+                } => (*close_after_bytes, half_close.unwrap_or(true)),
+                _ => (None, true),
+            };
             let received = request_bytes(&program.secret, step)
-                .and_then(|raw| exchange(addr, &raw, &progress));
+                .and_then(|raw| exchange(addr, &raw, &progress, close_after, half_close));
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
             let elapsed = started.elapsed();

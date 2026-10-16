@@ -6,7 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 publish.workspace = true
-description = "The b10x-llm-gateway binary: one closed TOML deployment document, one gateway, a clean stop."
+description = "The b10x-llm-gateway binary: one closed TOML deployment document and the llm.routes/1 document it may name, one gateway that translates between wires with llm's clients, a clean stop."
 
 [lib]
 name = "llm_gateway_cli"
@@ -27,7 +27,16 @@ test-seam = []
 
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
+llm-blocking = { package = "b10x-llm-blocking", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
+llm-chat = { package = "b10x-llm-chat", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
+llm-core = { package = "b10x-llm-core", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
+llm-credentials = { package = "b10x-llm-credentials", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
 llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
+llm-http = { package = "b10x-llm-http", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
+llm-messages = { package = "b10x-llm-messages", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
+llm-models = { package = "b10x-llm-models", git = "https://github.com/beyond10x/llm", tag = "0.6.0", default-features = false }
+llm-providers = { package = "b10x-llm-providers", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
+llm-responses = { package = "b10x-llm-responses", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
 llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
 rustix = { version = "1.1", features = ["fs", "process"] }
 # The pod connection's TLS client (spec/domains/deployment.yaml, the pod endpoint rule): rustls
@@ -35,8 +44,10 @@ rustix = { version = "1.1", features = ["fs", "process"] }
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }
 serde.workspace = true
 serde_json.workspace = true
+serde_yaml = "0.9"
 sha2.workspace = true
 signal-hook = "0.4"
+tokio = { version = "1.53", features = ["rt-multi-thread"] }
 toml = "1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }

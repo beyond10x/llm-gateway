@@ -28,7 +28,7 @@ gateway="$PWD/target/release/b10x-llm-gateway"
 ```
 
 ```text
-b10x-llm-gateway 0.8.0
+b10x-llm-gateway 0.9.0
 ```
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else
@@ -92,7 +92,7 @@ curl -s http://127.0.0.1:8080/v1/models
 ```text
 {"status":"live"}
 {"status":"ready"}
-{"object":"list","data":[{"id":"small","object":"model","owned_by":"llm-gateway","max_model_len":65536,"wires":["chat","responses","messages"]}]}
+{"object":"list","data":[{"id":"small","object":"model","owned_by":"llm-gateway","max_model_len":65536,"wires":["chat","responses","messages"],"upstream_wires":["chat","responses","messages"]}]}
 ```
 
 The route inventory takes the owner credential. Without it:

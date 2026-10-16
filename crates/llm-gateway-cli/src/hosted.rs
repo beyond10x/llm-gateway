@@ -9,6 +9,11 @@
 //! certificate verification complete before the connection is handed back, so a certificate the
 //! gateway does not trust costs no request byte and no credential. The endpoint is handed out at
 //! once, never held, and kept when a request through it fails: nothing replaces it.
+//!
+//! A translated request (story:gateway-translation) reaches the endpoint through llm's HTTP
+//! client instead, over the scheme [`RelayTarget::scheme`] reports, to the base path, with the
+//! credential; the endpoint's static headers are not sent on it, because llm's clients take no
+//! caller headers and the headers were declared for the wire they were written for.
 
 use crate::{
     config::{Deployment, Hosted, Wire},
@@ -21,7 +26,7 @@ use crate::{
 use llm_gateway::{
     AuthKind, BasePath, CredentialHeader, Label, RelayStream, RelayTarget, RelayTargets,
     RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance, TargetRefusal,
-    TargetSummary,
+    TargetScheme, TargetSummary,
 };
 use rustls::pki_types::ServerName;
 use std::{
@@ -326,6 +331,14 @@ impl RelayTarget for HostedTarget {
         &self.endpoint.authority
     }
 
+    /// The base URL's scheme, which a translated request reaches the endpoint over.
+    fn scheme(&self) -> TargetScheme {
+        match self.endpoint.scheme {
+            Scheme::Http => TargetScheme::Http,
+            Scheme::Https => TargetScheme::Https,
+        }
+    }
+
     fn bearer(&self) -> Option<&TargetBearer> {
         match &self.endpoint.credential {
             EndpointCredential::Anonymous => None,
@@ -366,7 +379,8 @@ impl RelayTarget for HostedTarget {
     }
 }
 
-/// Every hosted model's endpoint, its credential file read once through the trusted-file reader.
+/// Every hosted model's endpoint, its credential file read once through the trusted-file reader,
+/// then every route's ([`crate::Routes::read_credentials`], [`crate::Routes::hosted_endpoints`]).
 ///
 /// # Errors
 /// An `endpoint-credential:*` [`Refusal`] for the first file, in alias order, that breaks a
@@ -417,6 +431,11 @@ pub(crate) fn hosted_endpoints(
             .map_err(|error| invalid(&format!("headers {error}")))?;
         endpoints.insert(alias.clone(), endpoint);
     }
+    // Each route's endpoint (story:routes-document), its `file:` secret read once per endpoint,
+    // a `~/` path against `HOME`. No route name is a hosted alias (`Deployment::with_routes`).
+    let home = std::env::var_os("HOME").map(std::path::PathBuf::from);
+    let credentials = deployment.routes.read_credentials(home.as_deref())?;
+    endpoints.extend(deployment.routes.hosted_endpoints(&credentials)?);
     Ok(endpoints)
 }
 
@@ -431,7 +450,8 @@ fn label(value: &str) -> Result<Label, Refusal> {
 
 /// The inventory's routes: `routes` (the Runpod models') and one per hosted model, one target
 /// per wire carrying the declaration's `auth_kind` and `billing_kind`, all in alias order. No
-/// target names a base URL, a credential file or a credential.
+/// target names a base URL, a credential file or a credential. Then one per route of the routes
+/// document ([`crate::Routes`]).
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] when a hosted model cannot be represented in an inventory.
@@ -447,6 +467,7 @@ pub(crate) fn routes(
             })?;
         routes.push(route);
     }
+    routes.extend(deployment.routes.summaries()?);
     routes.sort_by(|left, right| left.alias().as_str().cmp(right.alias().as_str()));
     Ok(routes)
 }

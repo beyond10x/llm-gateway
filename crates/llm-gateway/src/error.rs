@@ -120,6 +120,19 @@ refusal_codes! {
     /// is [`crate::ToolCalling::Absent`].
     ToolsNotServed => "tools-not-served", 400,
         "the model does not serve tool calls";
+    /// A translated request (story:gateway-translation) whose body names a field or value outside
+    /// the subset the translator decodes, or is past one of its size bounds. Refused before any
+    /// target is asked for.
+    TranslationUnsupported => "translation-unsupported", 400,
+        "the request uses a field or value outside the subset the gateway translates";
+    /// A translated request whose body breaks a rule of that subset: contradictory limits, a
+    /// tool result answering no call, a value of the wrong kind. Refused before any target.
+    TranslationInvalid => "translation-invalid", 400,
+        "the request breaks a rule of the subset the gateway translates";
+    /// A translated request carrying reasoning state another serving binding minted, which the
+    /// gateway never binds to the upstream. Refused before any target.
+    TranslationOpaqueState => "translation-opaque-state", 400,
+        "the request carries reasoning state the gateway cannot send to the model's upstream";
     /// A messages-wire request whose input, counted at the target, leaves no room for output
     /// in the model's window (the output clamp). Its message starts `prompt is too long`, the
     /// phrase Claude Code answers by compacting its conversation.
@@ -132,9 +145,25 @@ refusal_codes! {
     /// passed (row W6). The only refusal with a `retry-after`.
     ModelColdStart => "model-cold-start", 503,
         "the model is still starting; ask again after the retry-after delay";
-    /// The target could not be reached, closed without an answer, or answered 502, 503 or 504.
+    /// The target could not be reached, closed without an answer, or answered 502, 503 or 504;
+    /// on a translated request, also a transport failure before output: unreachable, a 408 or
+    /// 5xx, timed out, or a connection reset or ended inside a frame.
     UpstreamFailed => "upstream-failed", 502,
         "the model target could not be reached or failed; the next request asks for a replacement";
+    /// The target refused a translated request before any output: its answer's status (a 4xx
+    /// other than 408, an authentication or a rate-limit refusal), or an answer that broke its
+    /// wire (a stream ended cleanly before its terminal event, a call to a tool not offered).
+    /// The target is kept.
+    UpstreamRefused => "upstream-refused", 502,
+        "the model target refused the translated request";
+    /// The target's answer to a translated request cannot be written on the client's wire, and
+    /// nothing of it had been: a non-streamed answer, or a stream refused at its outcome.
+    TranslationUnrepresentable => "translation-unrepresentable", 502,
+        "the model's answer cannot be written on this wire";
+    /// The target's answer to a translated request passed a bound of the translated path
+    /// (`docs/gateway.md` "Bounds of the translated path"), and nothing of it had been written.
+    TranslationTooLarge => "translation-too-large", 502,
+        "the model's answer passed a bound of the translated path, published in the gateway contract";
     /// More work arrived at once than the gateway admits.
     Overloaded => "overloaded", 503,
         "the gateway is already serving its maximum concurrent requests";

@@ -17,6 +17,18 @@ Nothing in any release is deployed or qualified against a live client.
   found, or a missing docker, stops the release instead of passing it. The package is private when
   first created.
 - A guide, Run on Kubernetes, runs the released image with the file rules unchanged: Secrets copied by an init container into an `emptyDir` the `nonroot` user owns at `0400`, the refusal an `fsGroup` causes (`owner-secret:unsafe-mode`, pasted from a run and asserted by a test), probes, and a `preStop` sleep with a `terminationGracePeriodSeconds` that covers the longest answer.
+- A provider may declare `daily_cap_usd` and `total_cap_usd`, spend ceilings for its account,
+  and each model `price_per_hour_usd`. Before every pod create the pool checks the account's
+  reported spend plus its live pods' and the new pod's estimates against each ceiling; a start
+  that would pass one, or whose spend is unknown, is refused `spend-ceiling` (503) with no
+  create, counted in `llmgw_pod_start_spend_refusals_total`. The reported spend is read through
+  the connectors operation `billing.pods`, which needs a connectors release that offers it.
+- The shipped gateway enforces the spend ceilings: its Runpod pool is built with them, as every
+  other composition's is. A live pod counts at least its startup estimate, so two starts in a
+  row do not share one headroom; a reported amount in whole cents is read exactly; a
+  `billing.pods` result with no status refuses the start.
+- A spend ceiling binds only the account of the provider that declares it: a ceiling declared on
+  a provider other than the connected one no longer refuses the connected provider's pod starts.
 
 ## 0.9.0 (2026-10-16)
 

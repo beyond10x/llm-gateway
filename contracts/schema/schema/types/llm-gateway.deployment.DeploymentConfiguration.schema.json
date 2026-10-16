@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:2948b18d8c8b4a2adc8395df27a85746407a9d36daa5c953bfcf6c5c06a4cbe8",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:2ea152a2e9fc477457fce0fefd99f01138a1953b2f82183eec7a564e687a1e9e",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -273,6 +273,11 @@
         },
         "tool_calling": {
           "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
+        },
+        "price_per_hour_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         }
       },
       "required": [
@@ -311,6 +316,16 @@
         },
         "connectors": {
           "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
+        },
+        "daily_cap_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "total_cap_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         }
       },
       "required": [

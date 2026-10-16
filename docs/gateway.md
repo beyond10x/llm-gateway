@@ -247,7 +247,10 @@ A request to a wire path is decided in this order:
 7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
    `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
    request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's
-   `model_cold_start` (row W6). It is the only refusal that carries `retry-after`. The embedding
+   `model_cold_start` (row W6). It is the only refusal that carries `retry-after`.
+   `SpendCeiling`, starting the model's pod would pass a spend ceiling of its provider account
+   or that account's spend is unknown, is `spend-ceiling` (503), answered at once and without
+   `retry-after`; its message names neither the ceiling nor the amount. The embedding
    holds the request while its target starts and owns the hold budget; the Runpod composition
    asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
    `docs/hosting.md`). Then, on the messages wire only, the output clamp. A model's window `w`
@@ -578,7 +581,8 @@ counters, then leaves the crate through the `UsageRecords` port the embedding im
 (`Relay::with_records`); the binary writes each as one `tracing` event at `info`.
 
 `GET /metrics` serves llmgw's 13 counters under their llmgw names, so a scrape configured for
-llmgw keeps working. It takes the owner credential and readiness like inspection, and answers
+llmgw keeps working, and one of the gateway's own, `llmgw_pod_start_spend_refusals_total`, after
+llmgw's eight process-wide series; its prefix keeps one scrape configuration for every series. It takes the owner credential and readiness like inspection, and answers
 `content-type: text/plain; version=0.0.4; charset=utf-8`. The text is rendered inside this crate,
 which takes no dependency for it.
 
@@ -592,6 +596,7 @@ which takes no dependency for it.
 | `llmgw_pod_reaps_total` | | deployments and pods the embedding's cleanup pass stopped |
 | `llmgw_endpoint_invalidations_total` | | each target reported to `invalidate` |
 | `llmgw_cold_start_wait_seconds_total` | | seconds `acquire` took for a request held for a starting target |
+| `llmgw_pod_start_spend_refusals_total` | | pod starts the embedding refused for a spend ceiling, each answered `spend-ceiling` (`Metrics::count_pod_start_spend_refusal`) |
 | `llmgw_route_requests_total` | `model`, `wire` | records naming a relayed model on a wire it declares |
 | `llmgw_route_refusals_total` | `model`, `wire` | the same, refused or no target answered |
 | `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
@@ -634,6 +639,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `request-malformed` | 400 | the request is not well-formed HTTP |
 | `request-too-large` | 431 | the request head exceeds its byte bound |
 | `route-unknown` | 404 | no such route alias |
+| `spend-ceiling` | 503 | the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown |
 | `target-unavailable` | 503 | no model target is available |
 | `tools-not-served` | 400 | the model does not serve tool calls |
 | `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |

@@ -26,6 +26,9 @@
     "lists": {
       "type": "integer"
     },
+    "spend_reads": {
+      "type": "integer"
+    },
     "requested_gpus": {
       "type": "array",
       "items": {
@@ -120,8 +123,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:38fd68babdb254022a39cdee9ca22ff82d4e8841497a66d19cfa04f4f9223ee0",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:01b2dfc9e62c23488a1227135cf56414366288827b44bf9601f0e830c45842a1",
     "regenerate": "ess generate"
   },
   "$defs": {

@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "SpendLedger",
+  "x-ess-name": "llm-gateway.runpod.SpendLedger",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "pool_id": {
+      "type": "string",
+      "x-ess-relation": {
+        "name": "pool",
+        "kind": "references",
+        "source": "llm-gateway.runpod.SpendLedger",
+        "target": "llm-gateway.runpod.Pool",
+        "cardinality": "one",
+        "via": "pool_id"
+      }
+    },
+    "daily_cap_micro_usd": {
+      "type": "integer"
+    },
+    "total_cap_micro_usd": {
+      "type": "integer"
+    },
+    "price_per_hour_micro_usd": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "integer"
+      },
+      "x-ess-map-key": "String"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.runpod.SpendLedger.State"
+    }
+  },
+  "required": [
+    "id",
+    "pool_id",
+    "price_per_hour_micro_usd",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:149d2deb9ac68bc3d84ce1785b2e8dd25726355bd9ee59f75cb72a062f5782c2",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.SpendLedger.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.runpod.SpendLedger.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Declared"
+      ]
+    }
+  }
+}

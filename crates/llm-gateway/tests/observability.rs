@@ -24,9 +24,10 @@ const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const WAIT: Duration = Duration::from_secs(10);
 const PROMETHEUS: &str = "text/plain; version=0.0.4; charset=utf-8";
 
-/// llmgw's 13 series, in the order llm-gateway.telemetry lists them: eight process-wide, then
+/// llmgw's 13 series and the gateway's own spend-refusal series, in the order
+/// llm-gateway.telemetry lists them: nine process-wide, then
 /// five per model and wire.
-const PROCESS_SERIES: [&str; 8] = [
+const PROCESS_SERIES: [&str; 9] = [
     "llmgw_inference_requests_total",
     "llmgw_upstream_failures_total",
     "llmgw_instruction_views_total",
@@ -35,6 +36,7 @@ const PROCESS_SERIES: [&str; 8] = [
     "llmgw_pod_reaps_total",
     "llmgw_endpoint_invalidations_total",
     "llmgw_cold_start_wait_seconds_total",
+    "llmgw_pod_start_spend_refusals_total",
 ];
 const ROUTE_SERIES: [&str; 5] = [
     "llmgw_route_requests_total",
@@ -806,10 +808,13 @@ fn o1_the_embeddings_pod_counters_are_served_as_counted() {
     metrics.count_pod_start();
     metrics.count_pod_start_failure();
     metrics.count_pod_reaps(3);
+    metrics.count_pod_start_spend_refusal();
+    metrics.count_pod_start_spend_refusal();
     let scraped = samples(&scrape(handle.local_addr()));
     assert_eq!(scraped["llmgw_pod_starts_total"], "2");
     assert_eq!(scraped["llmgw_pod_start_failures_total"], "1");
     assert_eq!(scraped["llmgw_pod_reaps_total"], "3");
+    assert_eq!(scraped["llmgw_pod_start_spend_refusals_total"], "2");
     // The metrics handed in carry the relay's routes too.
     assert_eq!(
         scraped[&route("llmgw_route_requests_total", "code", "chat")],

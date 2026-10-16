@@ -27,7 +27,7 @@ use llm_gateway::{
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
     HostingPolicy, Identifier, LeaseRegistry, PodListing, PodStream, PodTls, PoolError,
-    RunpodModel, RunpodPool, RunpodTransport, StreamLease,
+    RunpodModel, RunpodPool, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -47,10 +47,14 @@ pub const CONTROLLER: &str = "b10x-llm-gateway";
 pub const PROVIDER: &str = "runpod";
 /// The Runpod account. The gateway holds no Runpod credential (row K7), so it names none.
 pub const ACCOUNT: &str = "default";
-/// The budget ledger the hosting contract attaches each pod to. No ledger is consulted yet.
+/// The budget ledger the hosting contract attaches each pod to.
 pub const LEDGER: &str = "b10x-llm-gateway";
-/// The reservation every pod is created under.
+/// The reservation every pod is created under when no provider declares a spend ceiling: no
+/// ledger is consulted.
 pub const RESERVATION: &str = "unmetered";
+/// The reservation every pod is created under when a provider declares a spend ceiling: each
+/// create is admitted by the pool's spend check.
+pub const METERED_RESERVATION: &str = "spend-ceiling";
 /// The longest a pod lives before it owes a stop: 24 hours.
 pub const MAX_LIFETIME_MS: u64 = 86_400_000;
 /// How long one ownership lease lasts: 5 minutes, five cleanup intervals.
@@ -157,7 +161,7 @@ pub fn hosting_policy(deployment: &Deployment) -> Result<HostingPolicy, Refusal>
     Ok(policy)
 }
 
-/// The fixed authorization every pod is created under.
+/// The unmetered authorization a pod is created under when no spend ceiling is declared.
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] if a fixed value were invalid.
@@ -166,6 +170,62 @@ pub fn compute_authorization() -> Result<ComputeAuthorization, Refusal> {
         ledger: identifier(LEDGER, "the ledger")?,
         reservation: identifier(RESERVATION, "the reservation")?,
     })
+}
+
+/// The authorization every pod of `deployment` is created under: the reservation
+/// [`METERED_RESERVATION`] when [`spend_policy`] binds a spend ceiling (one declared by a
+/// provider that one of its models runs on), [`RESERVATION`] otherwise.
+///
+/// # Errors
+/// As [`spend_policy`].
+pub fn compute_authorization_for(deployment: &Deployment) -> Result<ComputeAuthorization, Refusal> {
+    let reservation = if spend_policy(deployment)?.is_metered() {
+        METERED_RESERVATION
+    } else {
+        RESERVATION
+    };
+    Ok(ComputeAuthorization {
+        ledger: identifier(LEDGER, "the ledger")?,
+        reservation: identifier(reservation, "the reservation")?,
+    })
+}
+
+/// The spend ledger the pool built from `deployment` checks every create against: the ceilings
+/// of the one provider that declares any (the document allows at most one) when one of
+/// `deployment`'s models runs on it, and every model's declared price per hour. The pool bills
+/// the account of the providers its models name, so a ceiling declared on a provider no model
+/// names binds nothing here. With no such ceiling it is unmetered and the pool reads no spend.
+///
+/// # Errors
+/// A `config:value` [`Refusal`] for a model alias that is not an identifier.
+pub fn spend_policy(deployment: &Deployment) -> Result<SpendPolicy, Refusal> {
+    let mut policy = SpendPolicy::default();
+    let billed = |name: &String| {
+        deployment
+            .models
+            .values()
+            .any(|model| &model.provider == name)
+    };
+    if let Some(provider) = deployment
+        .providers
+        .iter()
+        .filter(|(name, _)| billed(name))
+        .map(|(_, provider)| provider)
+        .find(|provider| {
+            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
+        })
+    {
+        policy.daily_cap_micro_usd = provider.daily_cap_micro_usd;
+        policy.total_cap_micro_usd = provider.total_cap_micro_usd;
+    }
+    for (alias, model) in &deployment.models {
+        if let Some(price) = model.price_per_hour_micro_usd {
+            policy
+                .price_per_hour_micro_usd
+                .insert(identifier(alias, "a model alias")?, price);
+        }
+    }
+    Ok(policy)
 }
 
 /// `idle_timeout_minutes` as the pool's idle window. 0 is no idle grace (row K27): the pool takes
@@ -259,6 +319,7 @@ pub fn runpod_pool<T: RunpodTransport>(
     transport: T,
     clock: Arc<dyn Clock>,
 ) -> Result<RunpodPool<T>, Refusal> {
+    let spend = spend_policy(deployment)?;
     RunpodPool::new(
         hosting_policy(deployment)?,
         Arc::new(LeaseRegistry::default()),
@@ -266,6 +327,7 @@ pub fn runpod_pool<T: RunpodTransport>(
         runpod_models(deployment)?,
         clock,
     )
+    .map(|pool| pool.with_spend(spend))
     .map_err(|error| {
         Refusal::new(
             StartupRefusal::ConfigValue,
@@ -347,7 +409,7 @@ impl<T> PoolTargets<T> {
     ) -> Result<Self, Refusal> {
         Ok(Self::from_relayed(
             relayed_models(deployment, keys)?,
-            compute_authorization()?,
+            compute_authorization_for(deployment)?,
             pool,
             connector,
             stopping,
@@ -392,6 +454,25 @@ impl<T> PoolTargets<T> {
                 deployment = deployment.as_str(),
                 "pod start submitted"
             );
+        }
+    }
+
+    /// Counts a pod start the spend check refused, and writes the ceiling and the excess,
+    /// which the client's refusal never names, into a `warn` event.
+    fn count_spend_refusal(&self, alias: &str, refusal: SpendRefusal) {
+        self.metrics.count_pod_start_spend_refusal();
+        match refusal {
+            SpendRefusal::Over { over_micro_usd, .. } => tracing::warn!(
+                model = alias,
+                ceiling = refusal.code(),
+                over_usd = llm_runpod::usd(over_micro_usd).as_str(),
+                "pod start refused by a spend ceiling"
+            ),
+            SpendRefusal::Unknown => tracing::warn!(
+                model = alias,
+                ceiling = refusal.code(),
+                "pod start refused by a spend ceiling"
+            ),
         }
     }
 
@@ -515,6 +596,10 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                             STOP_CHECK.min(next.saturating_duration_since(Instant::now())),
                         );
                     }
+                }
+                Err(PoolError::SpendCeiling(refusal)) => {
+                    self.count_spend_refusal(alias, refusal);
+                    return Err(TargetRefusal::SpendCeiling);
                 }
                 Err(_) => return Err(TargetRefusal::Unavailable),
             }
@@ -756,17 +841,21 @@ where
     let Some((provider, binding)) = connected else {
         return compose(deployment, parts, Arc::new(Unconnected), None);
     };
+    // The pool runs this provider's models on this provider's account: the subset holds no
+    // other provider, so no other provider's spend ceiling binds it.
     let mut subset = deployment.clone();
     subset.models.retain(|_, model| &model.provider == provider);
+    subset.providers.retain(|name, _| name == provider);
     if subset.models.is_empty() {
         return compose(deployment, parts, Arc::new(Unconnected), None);
     }
     // Every check the pool and its targets make, made before the transport is built: whether
     // a document is valid never depends on the connection, and a refused document costs no
     // `connectors` call.
-    let models = runpod_models(&subset)?;
-    let policy = hosting_policy(&subset)?;
-    let authorization = compute_authorization()?;
+    runpod_models(&subset)?;
+    hosting_policy(&subset)?;
+    spend_policy(&subset)?;
+    let authorization = compute_authorization_for(&subset)?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let mut transport = ConnectorsRunpod::new(binding.clone());
     transport.set_tls(Arc::new(ProbeOver(Arc::clone(&pods))));
@@ -782,20 +871,13 @@ where
             transport.set_vllm_key(alias, key.expose().to_vec());
         }
     }
-    let pool = RunpodPool::new(
-        policy,
-        Arc::new(LeaseRegistry::default()),
+    // The one constructor every composition builds its pool with, so none starts a pod
+    // without the spend ceilings the document declares.
+    let pool = Arc::new(runpod_pool(
+        &subset,
         wrap(transport),
-        models,
         Arc::new(WallClock::default()),
-    )
-    .map_err(|error| {
-        Refusal::new(
-            StartupRefusal::ConfigValue,
-            format!("the Runpod pool cannot be composed: {error}"),
-        )
-    })?;
-    let pool = Arc::new(pool);
+    )?);
     let targets = PoolTargets::from_relayed(
         relayed,
         authorization,

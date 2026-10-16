@@ -13,8 +13,8 @@ use std::{
 };
 
 use crate::{
-    CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget, RunpodTransport,
-    TerminateAnswer,
+    AccountSpend, CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget,
+    RunpodTransport, TerminateAnswer,
 };
 
 /// The instant every emulated container start is counted back from: a pod scripted with uptime
@@ -44,6 +44,19 @@ struct State {
     uptimes: Vec<u64>,
     partial: bool,
     unreachable: bool,
+    /// What a spend read answers; `None`, the default, is a read that answers nothing.
+    account_spend: Option<SpendScript>,
+    spend_reads: u32,
+}
+
+/// What the emulated account's spend reads answer.
+#[derive(Debug, Clone)]
+enum SpendScript {
+    /// The same spend whatever day start is asked: the script states today's spend.
+    Stated(AccountSpend),
+    /// Billed amounts in micro-USD at instants in ms: today's spend is those at or after the
+    /// asked day start, the total all of them.
+    Billed(Vec<(u64, u64)>),
 }
 
 /// A scriptable, shareable Runpod control plane. Clones share one state.
@@ -80,6 +93,10 @@ impl EmulatedRunpod {
     /// Every create request submitted, in order.
     pub fn requests(&self) -> Vec<PodRequest> {
         self.state().requests.clone()
+    }
+    /// Spend reads made, whatever they answered.
+    pub fn spend_reads(&self) -> u32 {
+        self.state().spend_reads
     }
     /// Pod ids successfully terminated, in order.
     pub fn terminations(&self) -> Vec<String> {
@@ -120,6 +137,17 @@ impl EmulatedRunpod {
                 pod.credential_refused = true;
             }
         }
+    }
+    /// Spend reads from now on answer this; `None` answers nothing, as a failed read does.
+    /// Until this is called every read answers nothing.
+    pub fn set_account_spend(&self, spend: Option<AccountSpend>) {
+        self.state().account_spend = spend.map(SpendScript::Stated);
+    }
+    /// Spend reads from now on answer from these billed amounts, each `(instant in ms,
+    /// micro-USD)`: today's spend is the sum of those at or after the day start the read asks
+    /// for, the total the sum of all of them, as Runpod's billing buckets are read.
+    pub fn set_billed(&self, entries: Vec<(u64, u64)>) {
+        self.state().account_spend = Some(SpendScript::Billed(entries));
     }
     /// Listings from now on claim to be incomplete.
     pub fn partial_listing(&self, partial: bool) {
@@ -267,5 +295,28 @@ impl RunpodTransport for EmulatedRunpod {
             .find(|pod| pod.pod.id == pod_id)
             .and_then(|pod| pod.uptimes.pop_front())
             .map(|uptime| EMULATED_START_ORIGIN_MS.saturating_sub(uptime))
+    }
+
+    /// Answers the scripted spend: a stated spend whatever the day's start, billed amounts
+    /// counted as today's from `day_start_ms` on.
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
+        let mut state = self.state();
+        state.spend_reads = state.spend_reads.saturating_add(1);
+        match state.account_spend.as_ref()? {
+            SpendScript::Stated(spend) => Some(*spend),
+            SpendScript::Billed(entries) => {
+                let mut spend = AccountSpend {
+                    daily_micro_usd: 0,
+                    total_micro_usd: 0,
+                };
+                for &(at_ms, micro_usd) in entries {
+                    spend.total_micro_usd = spend.total_micro_usd.checked_add(micro_usd)?;
+                    if at_ms >= day_start_ms {
+                        spend.daily_micro_usd = spend.daily_micro_usd.checked_add(micro_usd)?;
+                    }
+                }
+                Some(spend)
+            }
+        }
     }
 }

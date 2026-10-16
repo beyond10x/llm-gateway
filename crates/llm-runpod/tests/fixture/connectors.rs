@@ -2,8 +2,9 @@
 //!
 //! It is reached through a symlink named `connectors` in a per-test directory, and keeps all its
 //! state there: `script.json` holds the canned answers, `calls.jsonl` gets one line per
-//! invocation with its argv and its input document. It answers `operations describe`,
-//! `approvals prepare` and `approvals issue` by default, and `operations invoke` only from the
+//! invocation with its argv and its input document. It answers `operations describe` for the
+//! operations of its catalog ([`CATALOG`]), refusing any other, and `approvals prepare` and
+//! `approvals issue` by default, and `operations invoke` only from the
 //! script. An issued proof records the exact input it was issued for, and an invoke of a write
 //! whose proof was issued for another input, or that names no proof, is refused the way
 //! connectors refuses it, and recorded as `proof_mismatch`. A `pod.create` body carrying a key
@@ -26,6 +27,11 @@ use std::{
 use serde_json::{Value, json};
 
 const WRITES: [&str; 2] = ["pod.create", "pod.terminate"];
+/// The operations this fixture's Runpod catalog selects: connectors v0.37.0's three, and
+/// `billing.pods` (Runpod `GET /billing/pods`), which the transport reads the account's spend
+/// with and which no connectors release selects yet. `operations describe` of any other is
+/// refused `not_found`, as connectors refuses an operation its catalog does not hold.
+const CATALOG: [&str; 4] = ["pod.create", "pods.list", "pod.terminate", "billing.pods"];
 const CONNECTION_REVISION: &str = "conn-rev-3";
 /// connectors v0.37.0 `adapters/catalog/providers/runpod/operations.json`, `pod.create`
 /// `body_keys`: the only keys a `pod.create` `body` may carry.
@@ -92,6 +98,21 @@ fn succeed(result: &Value) {
     }
 }
 
+/// `operations describe`: the operation's schema, or `not_found` for one the catalog does not
+/// offer.
+fn describe(args: &[String], operation: &str) -> Value {
+    if !CATALOG.contains(&operation) {
+        return json!({"error": {"code": "not_found"}});
+    }
+    json!({
+        "adapter": option(args, "--adapter"),
+        "revision": "revision-7",
+        "schema": format!("schema-{operation}"),
+        "operation": {"id": operation},
+        "stale": false,
+    })
+}
+
 fn main() -> ExitCode {
     let command_line: Vec<String> = std::env::args().collect();
     // A child started by `hold_stdout_ms`: it only keeps the inherited stdout open, the way a
@@ -127,13 +148,7 @@ fn main() -> ExitCode {
 
     let mut record = json!({"argv": args, "input": input});
     let answer = match command.as_str() {
-        "operations describe" => Some(json!({
-            "adapter": option(&args, "--adapter"),
-            "revision": "revision-7",
-            "schema": format!("schema-{operation}"),
-            "operation": {"id": operation},
-            "stale": false,
-        })),
+        "operations describe" => Some(describe(&args, &operation)),
         "approvals prepare" => Some(json!({
             "adapter": option(&args, "--adapter"),
             "preparation": {"subject_sha256": subject(input.as_deref().unwrap_or(""))},

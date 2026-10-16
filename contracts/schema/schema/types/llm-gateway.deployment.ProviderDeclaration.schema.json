@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:02ce2d014b3b3b3127b07aa5fdcae5a6ad8f35df12a6c6197ee726b94d95d325",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:9a8cf102063d1c46c3ac67dc97b43a81b4323104b2c1a36103b3794d654e64e8",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -64,6 +64,16 @@
         },
         "connectors": {
           "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
+        },
+        "daily_cap_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "total_cap_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         }
       },
       "required": [

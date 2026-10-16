@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:31978336d307e9dd0cd620559d4f45e49a52f0b20a8c5ff069b9bf84b11e6cfa",
+    "source_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
+    "contract_digest": "slice-sha256/2:e583547a425e1b079e2afd3d9b8fe41a23aac2f2abed6dd7a4f5b8d2da3b1e87",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -25,7 +25,8 @@
         "StartupDeadline",
         "PodExited",
         "StoppedServing",
-        "Hosting"
+        "Hosting",
+        "SpendCeiling"
       ],
       "x-ess-attributes": [
         {
@@ -39,6 +40,7 @@
             "InvalidModel": "invalid-model",
             "NoCapacity": "no-capacity",
             "PodExited": "pod-exited",
+            "SpendCeiling": "spend-ceiling",
             "Starting": "starting",
             "StartupDeadline": "startup-deadline",
             "StoppedServing": "stopped-serving",

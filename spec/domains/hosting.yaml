@@ -333,6 +333,9 @@ entities:
       - {name: deployment_spec_id, type: String}
       # The budget reservation this billed resource is admitted against. `Declare` requires a
       # compute authorization naming the controller's ledger (`HostingError.Unauthorized`).
+      # The controller does not re-derive admission: a Runpod pool admits each create through
+      # its spend check (llm-gateway.runpod.SpendLedger) and the binary names that reservation
+      # `spend-ceiling`, or `unmetered` when no ceiling is declared (llm-gateway.deployment).
       - {name: reservation_id, type: String}
       # The idempotency key, recorded before the create mutation was submitted.
       - {name: request_id, type: String}

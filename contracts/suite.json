@@ -204,6 +204,7 @@
       "llm-gateway.runpod/authored/a-crash-looping-pod-is-terminated-and-the-next-request-starts-a-fresh-one",
       "llm-gateway.runpod/authored/a-gpu-memory-utilization-above-one-is-refused",
       "llm-gateway.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted",
+      "llm-gateway.runpod/authored/a-live-pods-running-estimate-counts-against-the-ceiling",
       "llm-gateway.runpod/authored/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id",
       "llm-gateway.runpod/authored/a-lost-create-that-allocated-nothing-is-discharged-and-starts-afresh",
       "llm-gateway.runpod/authored/a-model-removed-from-the-registry-has-its-pod-stopped-after-restart",
@@ -212,6 +213,7 @@
       "llm-gateway.runpod/authored/a-model-without-a-volume-carries-no-placement-or-cache-override",
       "llm-gateway.runpod/authored/a-partial-listing-neither-discharges-nor-replaces-a-running-pod",
       "llm-gateway.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order",
+      "llm-gateway.runpod/authored/a-pod-just-started-counts-its-startup-estimate",
       "llm-gateway.runpod/authored/a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated",
       "llm-gateway.runpod/authored/a-pod-that-is-not-running-reports-no-endpoint",
       "llm-gateway.runpod/authored/a-pod-that-misses-its-startup-deadline-is-terminated",
@@ -223,12 +225,19 @@
       "llm-gateway.runpod/authored/a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name",
       "llm-gateway.runpod/authored/a-second-pod-carrying-a-recorded-request-id-under-another-key-is-an-orphan",
       "llm-gateway.runpod/authored/a-secret-name-unusable-in-a-runpod-template-is-refused",
+      "llm-gateway.runpod/authored/a-start-exactly-at-the-daily-ceiling-is-created",
+      "llm-gateway.runpod/authored/a-start-exactly-at-the-total-ceiling-is-created",
+      "llm-gateway.runpod/authored/a-start-over-the-daily-ceiling-is-refused-before-any-create",
+      "llm-gateway.runpod/authored/a-start-over-the-total-ceiling-is-refused-before-any-create",
+      "llm-gateway.runpod/authored/a-start-under-the-daily-ceiling-is-created",
+      "llm-gateway.runpod/authored/a-start-under-the-total-ceiling-is-created",
       "llm-gateway.runpod/authored/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped",
       "llm-gateway.runpod/authored/a-zero-crash-window-is-refused",
       "llm-gateway.runpod/authored/adversary-w2-a-gpu-memory-utilization-of-zero-is-refused",
       "llm-gateway.runpod/authored/an-exited-pod-is-terminated-and-replaced",
       "llm-gateway.runpod/authored/an-idle-pod-is-reaped-and-the-next-request-cold-starts-again",
       "llm-gateway.runpod/authored/an-open-stream-lease-keeps-the-pod-from-being-reaped",
+      "llm-gateway.runpod/authored/an-unanswered-spend-read-refuses-the-start",
       "llm-gateway.runpod/authored/an-unknown-model-is-refused-without-contacting-runpod",
       "llm-gateway.runpod/authored/an-unreported-readiness-or-served-model-stays-unknown",
       "llm-gateway.runpod/authored/an-unresolved-lost-create-blocks-a-second-pod-until-it-is-resolved",
@@ -240,12 +249,15 @@
       "llm-gateway.runpod/authored/reasoning-effort-and-explicit-sampling-reach-the-entrypoint",
       "llm-gateway.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
       "llm-gateway.runpod/authored/restarts-spread-over-more-than-the-crash-window-are-not-a-crash-loop",
+      "llm-gateway.runpod/authored/spend-billed-before-the-utc-days-start-is-not-todays",
       "llm-gateway.runpod/authored/the-crash-restart-limit-is-reached-at-exactly-its-count",
       "llm-gateway.runpod/authored/the-create-request-carries-the-declared-vllm-settings",
       "llm-gateway.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start",
       "llm-gateway.runpod/authored/the-orphan-sweep-never-selects-a-legacy-llmgw-pod",
       "llm-gateway.runpod/authored/the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods",
-      "llm-gateway.runpod/authored/the-resource-ceiling-refuses-a-second-model-before-anything-is-submitted"
+      "llm-gateway.runpod/authored/the-resource-ceiling-refuses-a-second-model-before-anything-is-submitted",
+      "llm-gateway.runpod/authored/the-spend-check-runs-before-each-create-of-the-gpu-fallback",
+      "llm-gateway.runpod/authored/without-a-ceiling-no-spend-is-read"
     ],
     "authored_sources": {
       "gateway/scenarios/a-config-digest-that-is-not-lowercase-hex-is-refused.yaml": {
@@ -619,17 +631,17 @@
         "scenario": "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready"
       },
       "gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml": {
-        "digest": "sha256:992afafe817f0ac341fb2f466d801901f3db2cebfb32010709b76bc48aab97ae",
+        "digest": "sha256:8ee419fea01126739515ceef8e3c94db89f877c4fbdd7550371450e62b212780",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series"
       },
       "gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml": {
-        "digest": "sha256:1b70404fc92ba3a0df94b6d515ed197f5caa348df2188f00c0b6a3cd884feb55",
+        "digest": "sha256:ad3548f10f8bfcc863012e5378f2479bd3c562e3c126b0b8a453c53b66ea33c6",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route"
       },
       "gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml": {
-        "digest": "sha256:f44feae80c91a3b16f19151635beaa37040cea8fb67fbfab7b96926c56d79968",
+        "digest": "sha256:5cd72282a9c5afac31d0b8a2a0e274bd2d8ec321f2bebad0f68ca33fc87b06bf",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure"
       },
@@ -649,7 +661,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile"
       },
       "gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml": {
-        "digest": "sha256:63d17afb039b4cbafee38a90d0fd4733a62cf33312e6621013558870efa2b5ea",
+        "digest": "sha256:e8a34c81d61d4cf24cfd94bab87e58a02d17f0ca586dac6868e83d18d231a97f",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view"
       },
@@ -669,7 +681,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body"
       },
       "gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml": {
-        "digest": "sha256:620fa5146343c5fdc44610c90f98bfa8ed848bbbde3de6d76c055ab9c90d4cf1",
+        "digest": "sha256:06b3b2f57852ad0a42d9c1ee0eddcc0c732f8b32282a49d0a8e726c9d23d0e00",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero"
       },
@@ -1263,6 +1275,11 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-gpu-memory-utilization-of-exactly-one-is-admitted"
       },
+      "runpod/scenarios/a-live-pods-running-estimate-counts-against-the-ceiling.yaml": {
+        "digest": "sha256:0b3a8fb9b0ac3f435732772ff5e713f77c143a98f0d1d89e9a57756ee07c9df7",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-live-pods-running-estimate-counts-against-the-ceiling"
+      },
       "runpod/scenarios/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id.yaml": {
         "digest": "sha256:0b1deb6c8744bc097400929f5f86628a4692e3c44299b1599148cb11b19ad080",
         "disposition": "accepted",
@@ -1302,6 +1319,11 @@
         "digest": "sha256:c4dad43da5514a323d7672338433a0025b5ed96c2a309c8ee8ebb615f1917407",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order"
+      },
+      "runpod/scenarios/a-pod-just-started-counts-its-startup-estimate.yaml": {
+        "digest": "sha256:9c0407a908ed1cd2901d888e1bd3e5eecf38ceb06b258c277d57d1e54bdf75f8",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-pod-just-started-counts-its-startup-estimate"
       },
       "runpod/scenarios/a-pod-retagged-by-a-newer-owner-is-handed-over-and-never-terminated.yaml": {
         "digest": "sha256:bc2cb335916e5a2d5357d26791be60082e78e6727206450e450e044654dc0ab6",
@@ -1358,6 +1380,36 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-secret-name-unusable-in-a-runpod-template-is-refused"
       },
+      "runpod/scenarios/a-start-exactly-at-the-daily-ceiling-is-created.yaml": {
+        "digest": "sha256:10432dd03b3b0cb6c366c399dd01fe61f69e55971da973e76f81a085224743a5",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-start-exactly-at-the-daily-ceiling-is-created"
+      },
+      "runpod/scenarios/a-start-exactly-at-the-total-ceiling-is-created.yaml": {
+        "digest": "sha256:275959ec53a33496d520409cbae14de01a15ab4d6ea2ad6c13e8bdb2c1484464",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-start-exactly-at-the-total-ceiling-is-created"
+      },
+      "runpod/scenarios/a-start-over-the-daily-ceiling-is-refused-before-any-create.yaml": {
+        "digest": "sha256:cf329ba072160ef0481300da1d6ad2b9438f3e24d616f765a57a01bd26463f1d",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-start-over-the-daily-ceiling-is-refused-before-any-create"
+      },
+      "runpod/scenarios/a-start-over-the-total-ceiling-is-refused-before-any-create.yaml": {
+        "digest": "sha256:c44228302267313a59906e6c5b043d6ebeddcc47396cf6616679c9e468a77fc6",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-start-over-the-total-ceiling-is-refused-before-any-create"
+      },
+      "runpod/scenarios/a-start-under-the-daily-ceiling-is-created.yaml": {
+        "digest": "sha256:7ad790a70a6479a8c5b84d7a2fc572f8a0241a21de52a48d63d5df9ddfbd53f1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-start-under-the-daily-ceiling-is-created"
+      },
+      "runpod/scenarios/a-start-under-the-total-ceiling-is-created.yaml": {
+        "digest": "sha256:cd1a3fc0ac7220b96f34e89af8e9ac6d65fec2080b8acef623dfe5e87cad239c",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-start-under-the-total-ceiling-is-created"
+      },
       "runpod/scenarios/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped.yaml": {
         "digest": "sha256:6980caae7d63334a9dde0c0b175afb7399d16da66513343927276de1d2314e26",
         "disposition": "accepted",
@@ -1382,6 +1434,11 @@
         "digest": "sha256:de4dd2776305985f0f36d00c36999a9e1b9dc3f27db7af6c7c6659f555b92c76",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/an-open-stream-lease-keeps-the-pod-from-being-reaped"
+      },
+      "runpod/scenarios/an-unanswered-spend-read-refuses-the-start.yaml": {
+        "digest": "sha256:bc3b068481540d9cabcc657249edbae99bcd72c16252a0f9ebac888006f92a72",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/an-unanswered-spend-read-refuses-the-start"
       },
       "runpod/scenarios/an-unknown-model-is-refused-without-contacting-runpod.yaml": {
         "digest": "sha256:61433295908497866bce3264ca758eabd78644dad938fd747134f83ade8c70dd",
@@ -1443,6 +1500,11 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/adversary-w2-a-gpu-memory-utilization-of-zero-is-refused"
       },
+      "runpod/scenarios/spend-billed-before-the-utc-days-start-is-not-todays.yaml": {
+        "digest": "sha256:4d955465e3a7f37b7b0a60c09702a25b3af1ed279412b392a7c336ecb283d883",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/spend-billed-before-the-utc-days-start-is-not-todays"
+      },
       "runpod/scenarios/the-crash-restart-limit-is-reached-at-exactly-its-count.yaml": {
         "digest": "sha256:5b88cebe404b10891a8682c7110b955a9056df360a0bd90b938c22eb48f7264a",
         "disposition": "accepted",
@@ -1472,10 +1534,20 @@
         "digest": "sha256:b2826072f8f23030dfd2b128929c7e6a1635bb86d82358639c8ee687de01f068",
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/the-resource-ceiling-refuses-a-second-model-before-anything-is-submitted"
+      },
+      "runpod/scenarios/the-spend-check-runs-before-each-create-of-the-gpu-fallback.yaml": {
+        "digest": "sha256:b3dcc360401a7b540ddf328aafe575ca13257c1d2b8c8c1ba27ca2dffa97cc20",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/the-spend-check-runs-before-each-create-of-the-gpu-fallback"
+      },
+      "runpod/scenarios/without-a-ceiling-no-spend-is-read.yaml": {
+        "digest": "sha256:18c2123d64e4a50a6b08191f6a9df71b2e6462ca80423c2ff28883532b4bf627",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/without-a-ceiling-no-spend-is-read"
       }
     },
     "counts": {
-      "authored": 245,
+      "authored": 257,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1500,9 +1572,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "f797aa6d41e890c14d7203805ba57bed1dab7cceaef448aab27351ab2c2deaeb",
+    "contract_digest": "3c5f78702ef53f5208d9fe4756b3120c16400daed0bf9ff5247c27d0206fd9cb",
     "scenario_initial_state": "empty",
-    "spec_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
+    "spec_digest": "56a16a69ca4db05d7d48d265764b4044aaeb9dc9c851ec3212f202c1239ecc60",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -8549,6 +8621,7 @@
                   "1 llmgw_pod_reaps_total 0",
                   "1 llmgw_endpoint_invalidations_total 0",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -8568,6 +8641,7 @@
                   "2 llmgw_pod_reaps_total 0",
                   "2 llmgw_endpoint_invalidations_total 1",
                   "2 llmgw_cold_start_wait_seconds_total bounded",
+                  "2 llmgw_pod_start_spend_refusals_total 0",
                   "2 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
                   "2 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 1",
                   "2 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
@@ -8698,6 +8772,7 @@
                   "1 llmgw_pod_reaps_total 0",
                   "1 llmgw_endpoint_invalidations_total 0",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
@@ -8823,6 +8898,7 @@
                   "1 llmgw_pod_reaps_total 0",
                   "1 llmgw_endpoint_invalidations_total 2",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 3",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 2",
@@ -9181,6 +9257,7 @@
                   "1 llmgw_pod_reaps_total 0",
                   "1 llmgw_endpoint_invalidations_total 0",
                   "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
@@ -9604,6 +9681,7 @@
                   "3 llmgw_pod_reaps_total 0",
                   "3 llmgw_endpoint_invalidations_total 0",
                   "3 llmgw_cold_start_wait_seconds_total bounded",
+                  "3 llmgw_pod_start_spend_refusals_total 0",
                   "3 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "3 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
                   "3 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -22111,6 +22189,99 @@
         }
       ]
     },
+    "llm-gateway.runpod/authored/a-live-pods-running-estimate-counts-against-the-ceiling": {
+      "purpose": "a live pod adds its price times its time since submission, and the next start that would pass the ceiling is refused",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"a\":{\"price_per_hour_usd\":10,\"startup_deadline_ms\":1800000,\"idle_timeout_ms\":36000000},\"b\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":1,\"total_usd\":1},{\"step\":\"until_ready\",\"alias\":\"a\"},{\"step\":\"advance\",\"ms\":3000000},{\"step\":\"ensure\",\"alias\":\"b\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "a-1:active",
+                  "b-1:cancelled"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "ready",
+                  "ok",
+                  "err:spend-ceiling:daily:over_usd=0.336112"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 2.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
     "llm-gateway.runpod/authored/a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id": {
       "purpose": "a create whose answer was lost is not retried on another GPU and is resolved by the listing that finds its request id",
       "source": [
@@ -22803,6 +22974,98 @@
                   "ok",
                   "ready"
                 ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-pod-just-started-counts-its-startup-estimate": {
+      "purpose": "a live pod submitted moments ago counts at least its startup estimate, so a second start at once does not share the first one's headroom",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"a\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000},\"b\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":8.5,\"total_usd\":8.5},{\"step\":\"ensure\",\"alias\":\"a\"},{\"step\":\"ensure\",\"alias\":\"b\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "a-1:active",
+                  "b-1:cancelled"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:starting",
+                  "err:spend-ceiling:daily:over_usd=0.500000"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 2.0
               }
             }
           },
@@ -23771,6 +24034,570 @@
         }
       ]
     },
+    "llm-gateway.runpod/authored/a-start-exactly-at-the-daily-ceiling-is-created": {
+      "purpose": "a projected daily spend equal to the daily ceiling admits the create",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":9,\"total_usd\":50},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:requested"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:starting"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-start-exactly-at-the-total-ceiling-is-created": {
+      "purpose": "a projected total spend equal to the total ceiling admits the create",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"total_cap_usd\":100},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":0,\"total_usd\":99},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:requested"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:starting"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-start-over-the-daily-ceiling-is-refused-before-any-create": {
+      "purpose": "a projected daily spend past the daily ceiling refuses the start with the excess and sends no create",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":9.5,\"total_usd\":50},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:cancelled"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": []
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:spend-ceiling:daily:over_usd=0.500000"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "stop_required": {
+                "kind": "literal",
+                "value": []
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-start-over-the-total-ceiling-is-refused-before-any-create": {
+      "purpose": "a projected total spend past the total ceiling refuses the start with the excess and sends no create",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"total_cap_usd\":100},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":0,\"total_usd\":99.5},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:cancelled"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": []
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:spend-ceiling:total:over_usd=0.500000"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "stop_required": {
+                "kind": "literal",
+                "value": []
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-start-under-the-daily-ceiling-is-created": {
+      "purpose": "a projected daily spend under the daily ceiling admits the create",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":8.5,\"total_usd\":50},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:requested"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:starting"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-start-under-the-total-ceiling-is-created": {
+      "purpose": "a projected total spend under the total ceiling admits the create",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"total_cap_usd\":100},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":0,\"total_usd\":98.5},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:requested"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:starting"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
     "llm-gateway.runpod/authored/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped": {
       "purpose": "in-flight accounting belongs to one deployment, not to the alias",
       "source": [
@@ -24280,6 +25107,107 @@
                   "ok",
                   "ok"
                 ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/an-unanswered-spend-read-refuses-the-start": {
+      "purpose": "with a ceiling declared a spend read that answers nothing refuses the start and assumes no ceiling met",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10,\"total_cap_usd\":100},\"steps\":[{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:cancelled"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": []
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "err:spend-ceiling:unknown"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "stop_required": {
+                "kind": "literal",
+                "value": []
               }
             }
           },
@@ -25315,6 +26243,97 @@
         }
       ]
     },
+    "llm-gateway.runpod/authored/spend-billed-before-the-utc-days-start-is-not-todays": {
+      "purpose": "the daily ceiling counts what was billed at or after the UTC day's start, and nothing billed one millisecond before it",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":1.5},\"steps\":[{\"step\":\"billed\",\"entries\":[{\"at_ms\":86399999,\"usd\":9},{\"at_ms\":86400000,\"usd\":1}]},{\"step\":\"advance\",\"ms\":86400000},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:cancelled"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "ok",
+                  "err:spend-ceiling:daily:over_usd=0.500000"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
     "llm-gateway.runpod/authored/the-crash-restart-limit-is-reached-at-exactly-its-count": {
       "purpose": "the second restart inside the window is the crash loop when the declared limit is two",
       "source": [
@@ -25880,6 +26899,181 @@
                   "err:starting",
                   "err:hosting:capacity-exceeded"
                 ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/the-spend-check-runs-before-each-create-of-the-gpu-fallback": {
+      "purpose": "each create of the GPU fallback is preceded by its own spend check",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10},\"steps\":[{\"step\":\"refuse_gpu\",\"gpu\":\"NVIDIA L40S\"},{\"step\":\"account_spend\",\"daily_usd\":0,\"total_usd\":0},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": [
+                  "NVIDIA L40S",
+                  "NVIDIA H100 NVL"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "ok",
+                  "err:starting"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 2.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/without-a-ceiling-no-spend-is-read": {
+      "purpose": "a pool with no ceiling reads no spend and creates as before",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"steps\":[{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "err:starting"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 0.0
               }
             }
           },

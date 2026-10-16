@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: spend-billed-before-the-utc-days-start-is-not-todays
+summary: the daily ceiling counts what was billed at or after the UTC day's start, and nothing billed one millisecond before it
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"price_per_hour_usd":2,"startup_deadline_ms":1800000}},"spend":{"daily_cap_usd":1.5},"steps":[{"step":"billed","entries":[{"at_ms":86399999,"usd":9},{"at_ms":86400000,"usd":1}]},{"step":"advance","ms":86400000},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ok
+    - err:spend-ceiling:daily:over_usd=0.500000
+    create_calls: 0
+    spend_reads: 1
+    phases:
+    - qwen-1:cancelled

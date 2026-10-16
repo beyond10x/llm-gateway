@@ -145,6 +145,11 @@ refusal_codes! {
     /// passed (row W6). The only refusal with a `retry-after`.
     ModelColdStart => "model-cold-start", 503,
         "the model is still starting; ask again after the retry-after delay";
+    /// The embedding refused to start the model's pod because the start would pass a spend
+    /// ceiling of its provider account, or that account's spend is unknown. Answered at once,
+    /// without a `retry-after`; the message names neither the ceiling nor the amount.
+    SpendCeiling => "spend-ceiling", 503,
+        "the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown";
     /// The target could not be reached, closed without an answer, or answered 502, 503 or 504;
     /// on a translated request, also a transport failure before output: unreachable, a 408 or
     /// 5xx, timed out, or a connection reset or ended inside a frame.
@@ -298,7 +303,7 @@ closed_enum! {
 
 closed_enum! {
     /// Why [`crate::RelayTargets::acquire`] handed out no target. Each is answered with its own
-    /// refusal: `target-unavailable` or `model-cold-start`.
+    /// refusal: `target-unavailable`, `model-cold-start` or `spend-ceiling`.
     TargetRefusal {
         /// No target can be had: the model is down, failed to start, or the embedding is
         /// stopping.
@@ -306,6 +311,9 @@ closed_enum! {
         /// The model's target is still starting and the request's hold budget has passed
         /// (row W6). The client is told to ask again later.
         ColdStart => "the model is still starting";
+        /// Starting the model's pod would pass a spend ceiling of its provider account, or that
+        /// account's spend is unknown. The pod was not started; the request is not held.
+        SpendCeiling => "the model's pod was not started for a spend ceiling";
     }
 }
 
@@ -315,6 +323,7 @@ impl TargetRefusal {
         match self {
             Self::Unavailable => RefusalCode::TargetUnavailable,
             Self::ColdStart => RefusalCode::ModelColdStart,
+            Self::SpendCeiling => RefusalCode::SpendCeiling,
         }
     }
 }

@@ -49,6 +49,12 @@ domain: llm-gateway.telemetry
 #                                                     answer a request received
 #     llmgw_pod_reaps_total                           each deployment or pod a cleanup pass
 #                                                     stopped (idle, retired, replaced, orphan)
+#     llmgw_pod_start_spend_refusals_total            each `spend-ceiling` answer a request
+#                                                     received: a pod start the spend check
+#                                                     refused (story:spend-caps)
+# DECIDED 2026-10-16 (story:spend-caps): beside llmgw's 13 the gateway serves one series of its
+# own, `llmgw_pod_start_spend_refusals_total`, process-wide, after llmgw's eight; its prefix
+# keeps one scrape configuration for every series. llmgw had no spend ceiling to count.
 # DECIDED 2026-10-08: `GET /metrics` (and `HEAD`) requires the owner credential, like every path
 # outside the closed two-path probe set and the two public routes, and is served once the
 # gateway is ready, like inspection (llm-gateway.gateway, docs/gateway.md "The HTTP surface").

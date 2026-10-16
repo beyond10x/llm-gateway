@@ -13,7 +13,7 @@ any level is refused as `config:schema`, naming the line and the keys allowed th
 outside its rule is refused as `config:value`. Either refusal exits 1 before anything is bound.
 
 ```text
-b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `tool_calling`
+b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `tool_calling`, `price_per_hour_usd`
 ```
 
 The document holds no Runpod API key: that key stays in the connectors keyring, which is why
@@ -40,6 +40,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `kind` | required | `runpod-vllm` |
 | `cloud_type` | `SECURE` | `SECURE` or `COMMUNITY` |
 | `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one. |
+| `daily_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in one UTC day. A pod start of one of this provider's models that would pass it is refused `spend-ceiling`; a ceiling binds no other provider's pods. |
+| `total_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
 
 :::caution[A connectors provider starts real, billed pods]
 With a `connectors` table and real Runpod credentials, the binary creates pods on that account
@@ -48,6 +50,11 @@ and reaches each one at its `https` proxy endpoint, with the certificate verifie
 space or leading dash), `work_directory` (an absolute path) and `timeout_seconds` (1 to 600,
 default 60).
 :::
+
+A spend ceiling is checked before every pod create against the account's reported spend, the
+running pods' estimates and the new pod's estimate over its startup deadline. The reported spend
+is read through a connectors operation that no connectors release offers yet, so until one does,
+a provider that declares a ceiling starts no pod and every start is refused `spend-ceiling`.
 
 ## `[models.<alias>]`
 
@@ -75,6 +82,7 @@ default 60).
 | `start_wait_seconds` | 600 | 10 to 3600: the pod's startup deadline. |
 | `request_hold_seconds` | `start_wait_seconds` | 0 to `start_wait_seconds`: how long one request waits for a starting pod. |
 | `vllm_api_key_file` | absent | The file holding the key the model's vLLM server expects. |
+| `price_per_hour_usd` | absent | Above 0, at most 1000: the most the model's pod costs per hour on any of its GPU types, which the spend check prices it by. Required once a provider declares a spend ceiling. |
 
 The Runpod settings reach a pod only once the binary can start one; today they are checked and
 held. Two proven model declarations are in

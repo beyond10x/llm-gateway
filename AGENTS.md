@@ -13,7 +13,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | Path | What it is |
 | --- | --- |
 | `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency; it holds the translation port (`Translator`) and translates nothing itself |
-| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`) over llm 0.6.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`. It carries the dependencies the gateway crate must not have |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `b10x-llm-models`), the `llm.routes/1` document a deployment may name (`routes.rs`), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`) over llm 0.6.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`. It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests, `ConnectorsRunpod` the production transport, which reaches the control plane only through the `connectors` CLI |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
@@ -45,7 +45,7 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 245 of at least 245 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 249 of at least 249 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | The generated site pages equal what `llm-gateway-docs` generates, and no hand-written page carries a raw admonition title, a story id or a `/home/` path | `crates/llm-gateway-docs/tests/generate.rs::check_fails_on_every_kind_of_drift` |
 | Every `shipped` item on the status page names a test that exists | `crates/llm-gateway-docs/src/status.rs::a_vanished_test_or_a_shipped_item_without_one_is_refused` |
 | The refusal reference lists every code `RefusalCode::ALL` and `StartupRefusal::ALL` hold | `crates/llm-gateway-docs/tests/generate.rs::refusal_reference_lists_every_code_the_gateway_can_emit` |
@@ -124,7 +124,10 @@ A crate that needs an llm client crate takes it by tag,
 `{ git = "https://github.com/beyond10x/llm", tag = "<release>" }`, never by path.
 `b10x-llm-runpod` takes `b10x-llm-providers` at tag `0.5.0` for the Runpod provider description.
 `b10x-llm-gateway-cli` takes `b10x-llm-core`, `-chat`, `-responses`, `-messages`, `-providers`,
-`-credentials`, `-http` and `-blocking` at tag `0.6.0` for its translator. No `aws-lc` crate
+`-credentials`, `-http` and `-blocking` at tag `0.6.0` for its translator, and `b10x-llm-models`
+at tag `0.6.0` with no default feature for the `llm.routes/1` parser: its `environment`, `file`
+and `keychain` features would let llm resolve a secret, and the gateway reads every credential
+through its own trusted-file reader instead. No `aws-lc` crate
 enters `Cargo.lock`: rustls runs on `ring` only.
 
 ## Documents

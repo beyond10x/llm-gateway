@@ -3,7 +3,7 @@ title: The deployment document
 sidebar_position: 2
 description: Every key of the closed TOML document b10x-llm-gateway reads, with its default and its rule, and how each file it names is read.
 lede: One closed TOML document configures the binary; an unknown key at any level refuses the start, naming its line and the keys allowed there.
-source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/binary.rs and crates/llm-gateway-cli/tests/hosted.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
+source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/src/routes.rs, crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/hosted.rs and crates/llm-gateway-cli/tests/routes.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
 ---
 
 # The deployment document
@@ -29,8 +29,9 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `ingress_auth` | no | `bearer`, the default: every model call takes the owner secret. `none`: model calls take no credential, and the binary says so on standard error before it listens ([model calls without a credential](../concepts/single-owner-gateway.md#model-calls-without-a-credential)). Any other value is `config:schema`. |
 | `owner_secret_file` | with `bearer` | The file holding the owner's secret. A relative path is read from the working directory. Required unless `ingress_auth` is `none` (`config:value`); without it, `/metrics` and `/v1/routes` refuse every request. |
 | `[providers.<name>]` | no | Providers models name. A name is 1 to 64 of `a-z`, `0-9`, `-`, `_`, `.`, without a leading dash. |
-| `[models.<alias>]` | at least one model, here or in `hosted` | The models Runpod pods serve, under the same naming rule. |
-| `[hosted.<alias>]` | at least one model, here or in `models` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
+| `routes` | no | The path of an llm `llm.routes/1` document whose routes are served beside the tables below ([`routes`](#routes)). A relative path is read from the working directory. |
+| `[models.<alias>]` | at least one model, here, in `hosted` or in `routes` | The models Runpod pods serve, under the same naming rule. |
+| `[hosted.<alias>]` | at least one model, here, in `models` or in `routes` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
 
 ## `[providers.<name>]`
 
@@ -169,6 +170,45 @@ credential_header = "x-api-key"
 upstream_model = "vendor-large-2"
 ```
 
+## `routes` {#routes}
+
+`routes = "<path>"` names a routes document in llm's `llm.routes/1` format: endpoints, each with
+a `base_url`, a `protocol` and an `auth`, and routes, each a name for `<endpoint>/<model-id>`,
+optionally with its `capabilities`. The binary reads it once at start and parses it with llm
+0.6.0's own parser, which reads no secret and no other file. Each route is then served as a model
+under its route name, from a hosted endpoint built from its endpoint: on the endpoint's wire
+alone, relayed byte for byte, and translated from the other two
+([translate between wires](../guides/translate-between-wires.md#serve-the-models-of-a-routes-document)).
+A changed routes document takes a restart.
+
+| Rule | Refusal |
+| --- | --- |
+| The file is read through the trusted-file reader (below): at most 2 MiB, llm's own bound, and not group- or world-writable. | `config:<rule>`, its message starting `routes <path>:` |
+| A document llm refuses: malformed YAML, an unknown field, a repeated key, an unknown format, protocol, auth kind or secret source, a literal secret, a relative `file:` path, a route to an undeclared endpoint. | `config:value`, its message `routes <llm's message>`, which names a field, endpoint or route and never a value |
+| A credentialed endpoint's `auth.secret` is a `file:` reference: an absolute path, or `~/<path>` resolved against `HOME`. An `env:` or `keychain:` secret is refused: the gateway reads credentials only from trusted files. | `config:value` naming `routes.<endpoint>.auth.secret` |
+| The key file is read once at start, as a hosted model's `credential_file` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret <path>:` |
+| `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |
+| An `api-key` endpoint's `auth.header` is one a hosted model's `credential_header` may be. | `config:value` naming `routes.<endpoint>.auth.header` |
+| A route name is not also a `[models.<alias>]` or `[hosted.<alias>]` alias. | `config:value` naming `routes.<route>` |
+
+An endpoint whose key is `secret: "env:ANTHROPIC_API_KEY"`:
+
+```text
+b10x-llm-gateway: refused config:value: routes.anthropic.auth.secret must be a file: reference: the gateway reads a credential only from a trusted file, never from an env: variable or a keychain: entry
+```
+
+A route is served under its endpoint's credential (`bearer` or `api-key` in its `auth.header`,
+or none), with no static header. It is relayed under its model id, its tool calling `parsed`
+exactly when its capabilities say `tools`, and it lists its capabilities' `context_window`,
+which is also its window for the Messages output clamp ([`[hosted.<alias>]`](#hosted-models)
+has the same rule); llm's defaults for a plain route are a 200000-token window and 16384
+output tokens. The route inventory lists one route per route name: one target
+`<route>.<wire>`, provider and account `routes`, the endpoint's name, the route's model id,
+`binding_revision` the SHA-256 of the routes file, the endpoint's `auth_kind`, and
+`billing_kind` `self-hosted` for an `anonymous` endpoint, `metered` otherwise. A direct
+`<endpoint>/<model-id>` name, which llm also resolves, is not a route and is answered
+`model-unknown`.
+
 ## The files it reads
 
 Every file goes through one trusted-file reader. It opens the file once, without following a
@@ -179,12 +219,14 @@ and UTF-8.
 | File | Size | Mode | Content |
 | --- | --- | --- | --- |
 | the document | at most 256 KiB | not group- or world-writable | TOML |
+| `routes` | at most 2 MiB | not group- or world-writable | an `llm.routes/1` YAML document |
 | `owner_secret_file` | 32 to 4096 bytes | no group or other permission at all | one printable token; trailing ASCII whitespace is trimmed |
 | `vllm_api_key_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | `credential_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
+| a route endpoint's `file:` secret | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 
 A broken rule is refused as `<source>:<rule>`, the source being `config`, `owner-secret`,
-`vllm-api-key` or `endpoint-credential`:
+`vllm-api-key` or `endpoint-credential` (a routes document is a `config` file, a route's key file an `endpoint-credential` one):
 
 ```text
 b10x-llm-gateway: refused owner-secret:unsafe-mode: owner-secret: has mode 644; none of 077 may be set

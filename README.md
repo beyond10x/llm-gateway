@@ -115,11 +115,12 @@ b10x-llm-gateway: stopped by SIGTERM accepted=2 completed=2
 
 The document is closed: an unknown key at any level is refused as `config:schema`, naming the line
 and the keys that are allowed. A relative `owner_secret_file` is resolved from the working
-directory. At least one `[models.<alias>]` or `[hosted.<alias>]` table is required
-(`config:value` otherwise). `ingress_auth = "none"` serves model calls without a credential, for
-a gateway behind something that authenticates already; `owner_secret_file` is then optional, the
-counters and the route inventory still take the owner secret (and refuse everything without
-one), and the binary writes a warning line before it listens. `bearer`, the default, requires
+directory. At least one model, of a `[models.<alias>]` or `[hosted.<alias>]` table or the
+`routes` document, is required (`config:value` otherwise). `ingress_auth = "none"` serves model
+calls without a credential, for a gateway behind something that authenticates already;
+`owner_secret_file` is then optional, the counters and the route inventory still take the owner
+secret (and refuse everything without one), and the binary writes a warning line before it
+listens. `bearer`, the default, requires
 `owner_secret_file`.
 `spec/domains/deployment.yaml` holds every key, default and range.
 
@@ -151,6 +152,15 @@ credential in its named header. An `https` endpoint is verified against the same
 roots as a pod. A credential goes over plain `http` only to a loopback host (`127.0.0.0/8`,
 `::1`, `localhost`); any other `http` endpoint that is not `anonymous` is refused as
 `config:value`.
+
+A top-level `routes = "<path>"` names an llm `llm.routes/1` document instead, or as well. Each
+route is served under its route name from its endpoint: relayed byte for byte on the endpoint's
+wire, translated from the other two. The file is read once at start (at most 2 MiB, not group- or
+world-writable); a credentialed endpoint's `auth.secret` must be a `file:` key file (`~/` is
+resolved against `HOME`), and its `base_url` must name the API path, such as
+`https://api.anthropic.com/v1`. The rules are on the
+[deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/#routes)
+page.
 
 The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model with its
 `max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,

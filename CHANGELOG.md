@@ -45,6 +45,21 @@ Nothing in any release is deployed or qualified against a live client.
   `translation-too-large` (502) or ends with that terminal error; a messages upstream asked by a
   request naming no output limit gets `min(16384, w / 2)` of the window, 200000 by default; and
   a non-streamed client that closes cancels the turn, recorded `Relayed` with status 0.
+- The deployment document may name an llm `llm.routes/1` document, `routes = "<path>"`, read
+  once at start (at most 2 MiB, not group- or world-writable) and parsed with llm 0.6.0's
+  `Routes::parse` (`b10x-llm-models`, no default feature, so llm reads no secret). Each route is
+  served under its name from a hosted endpoint built from its endpoint: relayed byte for byte on
+  the endpoint's wire to its base path, translated from the other wires under the route's
+  capabilities, beside `[models.*]` and `[hosted.*]`. `GET /v1/models` lists each route on all
+  three wires; `GET /v1/routes` lists one target per route, provider `routes`, the endpoint's
+  name, and no URL or credential. A credential comes only from a `file:` key file read through
+  the trusted reader (`endpoint-credential:<rule>`, `~/` against `HOME`); an `env:` or
+  `keychain:` secret, a `base_url` without its API path or outside the base-path rule, a
+  cleartext credential to a remote host, a document llm refuses, and a route name equal to a
+  `[models.*]` or `[hosted.*]` alias are refused `config:value`. A document with only `routes`
+  is admitted. The library exports `Routes`, `Route`, `RouteEndpoint`, `SecretFile` and
+  `Deployment::with_routes`; the conformance `Relay` program takes `routes_document` and
+  `route_credentials`.
 
 ## 0.8.0 (2026-10-16)
 

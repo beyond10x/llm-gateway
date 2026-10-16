@@ -220,6 +220,13 @@ pub const CAPABILITIES: &[Capability] = &[
         Some("/docs/guides/translate-between-wires"),
     ),
     shipped(
+        "Relay",
+        "The models of an llm.routes/1 document",
+        "routes = \"<path>\" serves each route of an llm.routes/1 document under its name from its endpoint: relayed byte for byte on the endpoint's wire to its base path, translated from the other wires under the route's capabilities, beside [models.*] and [hosted.*]. Credentials come only from file: key files read through the trusted reader; env: and keychain: secrets, a base_url without its API path and an alias collision are refused at start. Tested against loopback endpoints, not against a vendor API.",
+        "crates/llm-gateway-cli/tests/routes.rs::routes_a_request_on_the_endpoints_wire_is_relayed_and_hosted_is_unchanged",
+        Some("/docs/guides/translate-between-wires"),
+    ),
+    shipped(
         "Binary",
         "Model calls without a credential, on request",
         "ingress_auth = \"none\" serves the three wire paths without a credential, for a gateway behind something that authenticates already, and the binary warns before it listens. The counters and the route inventory still take the owner secret, and refuse everything when there is none. bearer, the default, is unchanged.",
@@ -236,7 +243,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Binary",
         "Trusted-file reader",
-        "The document, the owner secret, each vLLM key file and each hosted endpoint's credential file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
+        "The document, the routes document it names, the owner secret, each vLLM key file and each endpoint credential file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
         "crates/llm-gateway-cli/tests/binary.rs::k30_a_symlinked_owner_secret_is_refused",
         DOCUMENT,
     ),

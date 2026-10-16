@@ -88,4 +88,11 @@ pub trait TranslatedAnswer: Send {
     /// Writes one piece of the body after the head. `false` when the client is gone, no head
     /// was written, or the piece would pass a declared length.
     fn body(&mut self, bytes: &[u8]) -> bool;
+
+    /// Whether the client has closed its connection, or its sending side, while it waits: asked
+    /// between two events of an answer nothing has been written of yet, so a translation can
+    /// cancel its turn. It writes nothing. `false`, the default, for a writer that cannot tell.
+    fn gone(&mut self) -> bool {
+        false
+    }
 }

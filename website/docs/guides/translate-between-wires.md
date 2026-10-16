@@ -97,7 +97,11 @@ curl -s http://127.0.0.1:8080/v1/chat/completions -H "$token" \
 
 A request is also checked against the model's capabilities: tools only when its tool calling is
 `parsed`, the efforts `minimal` to `xhigh`, and an output limit no larger than the model's window
-(its `max_model_len`, else its `context_window`, else 200000).
+(its `max_model_len`, else its `context_window`, else 200000). Every nested level is closed
+too: a key a level does not list, such as a tool's `strict`, a message's `name` or a part's
+`cache_control`, is refused rather than dropped. A Messages upstream asked by a request that
+names no output limit gets half the model's window, at most 16384 tokens, so the input keeps
+room.
 
 ## Refusals
 
@@ -106,9 +110,10 @@ A request is also checked against the model's capabilities: tools only when its 
 | `translation-unsupported` | 400 | a field or value outside the subset, or past its size bound |
 | `translation-invalid` | 400 | a value breaking a rule of the subset, such as two output limits that disagree |
 | `translation-opaque-state` | 400 | the request replays reasoning state (a `thinking` block, a `reasoning` item) another upstream minted |
-| `upstream-refused` | 502 | the upstream refused the translated request before any output (a `4xx`, an authentication or rate-limit refusal) |
-| `upstream-failed` | 502 | the upstream could not be reached, failed or timed out before any output |
+| `upstream-refused` | 502 | the upstream's answer status refused the translated request before any output (`401`, `403`, `429`, another `4xx`) |
+| `upstream-failed` | 502 | before any output the upstream could not be reached, answered `408` or `5xx`, timed out, or cut or garbled its answer |
 | `translation-unrepresentable` | 502 | the answer cannot be written on the client's wire, and nothing of it was |
+| `translation-too-large` | 502 | the answer passed 65536 events, 32 MiB or a 1 MiB line, and nothing of it was written |
 
 None of the first three asks for a target, so a refused request never wakes a pod.
 
@@ -120,8 +125,10 @@ its JSON object. The upstream's reported token counts are carried, and an unrepo
 unreported. Reasoning text is shown where the client's wire has a place for it (chat
 `reasoning_content`, a responses reasoning summary) and withheld on messages. An answer the
 client's encoder cannot carry after the stream began ends with that wire's terminal error:
-`response.failed`, an `error` event, or a chat `{"error":…}` chunk without `[DONE]`. A client that
-stops reading cancels the upstream turn; nothing is retried.
+`response.failed`, an `error` event, or a chat `{"error":…}` chunk without `[DONE]`; so does one
+past 65536 events, 32 MiB or a 1 MiB line, with `translation-too-large`'s message. A client that
+stops reading, or that closes while it waits for a non-streamed answer, cancels the upstream
+turn; nothing is retried.
 
 What a translated request does not get: the gateway's static `headers` of a hosted endpoint, the
 Messages effort mapping, and the Messages output clamp's token count.
@@ -138,4 +145,4 @@ Messages effort mapping, and the Messages output clamp's token count.
 - **Answers llm's encoders refuse**: two assistant messages back to back, or a message another
   item interrupts, to a responses client; redacted thinking between streamed blocks, or tool
   arguments that are not a JSON object, to a messages client; a terminal reason a chat client has
-  no name for.
+  no name for. Before any output each is the 502 refusal `translation-unrepresentable`.

@@ -1092,6 +1092,8 @@ fn translate(
     let ran = prepared.run(target.as_ref(), &mut answer);
     let Some(framing) = answer.framing else {
         return match ran {
+            // The client went away before anything was written: there is no one to answer.
+            Ok(()) if answer.gone => Ok(()),
             Ok(()) => Err(RefusalCode::UpstreamRefused),
             Err(TranslationFailure::UpstreamFailed) => {
                 relay.targets.invalidate(alias, target.authority());
@@ -1170,6 +1172,31 @@ impl TranslatedAnswer for ClientAnswer<'_> {
             "HTTP/1.1 {status} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n"
         );
         self.write(head.as_bytes())
+    }
+
+    /// A peek that does not wait: the end of the stream (the client closed it, or its sending
+    /// side) or an error is a client gone; bytes waiting, or none yet, a client still there.
+    fn gone(&mut self) -> bool {
+        if self.gone {
+            return true;
+        }
+        if self.stream.set_nonblocking(true).is_err() {
+            return false;
+        }
+        let mut byte = [0_u8; 1];
+        let closed = match self.stream.peek(&mut byte) {
+            Ok(0) => true,
+            Ok(_) => false,
+            Err(error) => !matches!(
+                error.kind(),
+                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+            ),
+        };
+        if self.stream.set_nonblocking(false).is_err() {
+            return true;
+        }
+        self.gone |= closed;
+        closed
     }
 
     fn body(&mut self, bytes: &[u8]) -> bool {

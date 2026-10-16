@@ -114,16 +114,16 @@ struct Seen {
     cut: bool,
 }
 
-/// Answers one connection with an event stream: `sent`, then, when `held`, waits for the
+/// Answers one connection with an event stream: `sent`, then, when `waits`, waits for the
 /// gateway to close the connection before it would send the rest.
-fn upstream(body: String, held: bool) -> (SocketAddr, JoinHandle<Seen>) {
+fn upstream(body: String, waits: bool) -> (SocketAddr, JoinHandle<Seen>) {
     let listener = TcpListener::bind("127.0.0.1:0").unwrap();
     let address = listener.local_addr().unwrap();
     let thread = thread::spawn(move || {
         let (mut connection, _) = listener.accept().unwrap();
         connection.set_read_timeout(Some(WAIT)).unwrap();
         let request = String::from_utf8_lossy(&read_request(&mut connection)).into_owned();
-        let length = if held {
+        let length = if waits {
             body.len() + CLOSING.len()
         } else {
             body.len()
@@ -135,7 +135,7 @@ fn upstream(body: String, held: bool) -> (SocketAddr, JoinHandle<Seen>) {
         drop(connection.write_all(body.as_bytes()));
         drop(connection.flush());
         let mut cut = false;
-        if held {
+        if waits {
             // A read that times out is a gateway that kept the connection: not cut.
             connection
                 .set_read_timeout(Some(Duration::from_secs(10)))

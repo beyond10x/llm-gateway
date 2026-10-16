@@ -145,17 +145,23 @@ refusal_codes! {
     /// passed (row W6). The only refusal with a `retry-after`.
     ModelColdStart => "model-cold-start", 503,
         "the model is still starting; ask again after the retry-after delay";
-    /// The target could not be reached, closed without an answer, or answered 502, 503 or 504.
+    /// The target could not be reached, closed without an answer, or answered 502, 503 or 504;
+    /// on a translated request, also any failure before output that no answer status decided:
+    /// unreachable, a 408 or 5xx, timed out, or an answer cut or garbled after its head.
     UpstreamFailed => "upstream-failed", 502,
         "the model target could not be reached or failed; the next request asks for a replacement";
-    /// The target refused a translated request before any output: a 4xx, an authentication or
-    /// a rate-limit refusal. The target is kept.
+    /// The target refused a translated request before any output by its answer's status: a 4xx
+    /// other than 408, an authentication or a rate-limit refusal. The target is kept.
     UpstreamRefused => "upstream-refused", 502,
         "the model target refused the translated request";
     /// The target's answer to a translated request cannot be written on the client's wire, and
     /// nothing of it had been: a non-streamed answer, or a stream refused at its outcome.
     TranslationUnrepresentable => "translation-unrepresentable", 502,
         "the model's answer cannot be written on this wire";
+    /// The target's answer to a translated request passed a bound of the translated path
+    /// (`docs/gateway.md` "Bounds of the translated path"), and nothing of it had been written.
+    TranslationTooLarge => "translation-too-large", 502,
+        "the model's answer passed a bound of the translated path: 65536 events, 33554432 bytes or a 1048576-byte line";
     /// More work arrived at once than the gateway admits.
     Overloaded => "overloaded", 503,
         "the gateway is already serving its maximum concurrent requests";

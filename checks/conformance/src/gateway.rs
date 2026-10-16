@@ -720,6 +720,9 @@ mod relay {
             /// The client closes the connection once it has received this many body bytes.
             #[serde(default)]
             close_after_bytes: Option<usize>,
+            /// Whether the client shuts its sending side once the request is written; default true.
+            #[serde(default)]
+            half_close: Option<bool>,
         },
     }
 
@@ -1832,13 +1835,16 @@ mod relay {
         request: &[u8],
         progress: &Progress,
         close_after: Option<usize>,
+        half_close: bool,
     ) -> Option<Received> {
         let mut stream = TcpStream::connect(addr).ok()?;
         stream.set_read_timeout(Some(WAIT)).ok()?;
         stream.set_write_timeout(Some(WAIT)).ok()?;
         // A write the gateway cut short is not a lost answer: whatever arrived is read.
         let _written = stream.write_all(request).and_then(|()| stream.flush());
-        let _half = stream.shutdown(Shutdown::Write);
+        if half_close {
+            let _half = stream.shutdown(Shutdown::Write);
+        }
         let mut raw = Vec::new();
         let mut chunk = [0_u8; 16_384];
         loop {
@@ -2072,7 +2078,8 @@ mod relay {
             String::new()
         };
         let raw = format!("GET /metrics HTTP/1.1\r\nhost: gateway\r\n{auth}\r\n");
-        let Some(received) = exchange(addr, raw.as_bytes(), &Progress::default(), None) else {
+        let Some(received) = exchange(addr, raw.as_bytes(), &Progress::default(), None, true)
+        else {
             return "no-response".to_owned();
         };
         let Some(status) = received.status else {
@@ -2146,14 +2153,16 @@ mod relay {
                 *current = Arc::clone(&progress);
             }
             let started = Instant::now();
-            let close_after = match step {
+            let (close_after, half_close) = match step {
                 Step::Request {
-                    close_after_bytes, ..
-                } => *close_after_bytes,
-                _ => None,
+                    close_after_bytes,
+                    half_close,
+                    ..
+                } => (*close_after_bytes, half_close.unwrap_or(true)),
+                _ => (None, true),
             };
             let received = request_bytes(&program.secret, step)
-                .and_then(|raw| exchange(addr, &raw, &progress, close_after));
+                .and_then(|raw| exchange(addr, &raw, &progress, close_after, half_close));
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
             let elapsed = started.elapsed();

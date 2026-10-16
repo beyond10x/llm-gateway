@@ -575,6 +575,11 @@ fn translate_the_writer_reports_a_client_that_closed_while_it_waited() {
     let mut stream = TcpStream::connect(composed.handle.local_addr()).unwrap();
     stream.write_all(request.as_bytes()).unwrap();
     drop(stream);
+    // The gateway serves the connection on its own thread: wait for its record.
+    let deadline = Instant::now() + WAIT;
+    while composed.asked.gone.lock().unwrap().is_none() && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(5));
+    }
     composed.handle.shutdown();
     assert_eq!(*composed.asked.gone.lock().unwrap(), Some(true));
 

@@ -37,6 +37,12 @@ Nothing in any release is deployed or qualified against a live client.
   Code and Codex send fields the subset refuses. The library gains the `Translator` port,
   `Relay::with_translator`, `RelayTarget::scheme` and `TargetBearer::expose`; the binary carries
   llm's client crates (by tag) and a tokio runtime, and always composes `LlmTranslator`.
+  A key below the top level of a chat or responses request that the subset does not list is
+  refused, not dropped; a failure before output that no answer status decided (a cut, garbled
+  or timed-out answer) is `upstream-failed` and replaces the target; an answer past 65536
+  events, 32 MiB or a 1 MiB line is `translation-too-large` (502) or ends with that terminal
+  error; a messages upstream asked by a request naming no output limit gets `min(16384, w / 2)`
+  of the model's window; and a non-streamed client that closes cancels the turn.
 
 ## 0.8.0 (2026-10-16)
 

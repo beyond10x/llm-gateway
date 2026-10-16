@@ -49,6 +49,9 @@ pub const TRANSLATION_READ_TIMEOUT: Duration = Duration::from_secs(120);
 pub const TRANSLATION_TURN_TIMEOUT: Duration = Duration::from_secs(3600);
 /// The context window, and so the output limit, of a model that declares none.
 pub const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
+/// The most output a request to a messages upstream that names no limit is given, for a model
+/// with a window; it is given half the window when that is less.
+pub const MESSAGES_DEFAULT_OUTPUT_TOKENS: u64 = 16_384;
 /// The reasoning efforts a model is translated under: llm's vocabulary below `max`.
 pub const REASONING_EFFORTS: [&str; 5] = ["minimal", "low", "medium", "high", "xhigh"];
 /// The name the binding's account gives the target's credential; only the resolver below
@@ -337,11 +340,143 @@ struct Decoded {
     include_usage: bool,
 }
 
+/// Refuses an object at `level` that holds a key outside `allowed`; anything else passes, for
+/// the decoder to judge. The diagnostic names the level, never the key the client sent.
+fn closed(value: &Value, allowed: &[&str], level: &str) -> Result<(), Error> {
+    match value.as_object() {
+        Some(object) if object.keys().any(|key| !allowed.contains(&key.as_str())) => {
+            Err(Error::unsupported(format!(
+                "a request {level} carries a key outside the subset"
+            )))
+        }
+        _ => Ok(()),
+    }
+}
+
+/// Refuses a `type` other than `function` where the decoder reads the object as a function
+/// but not its `type`.
+fn function_typed(value: &Value, level: &str) -> Result<(), Error> {
+    match value.get("type") {
+        None => Ok(()),
+        Some(kind) if kind == "function" => Ok(()),
+        Some(_) => Err(Error::unsupported(format!(
+            "a request {level} names a type outside the subset"
+        ))),
+    }
+}
+
+/// The chat subset closed at every level below the top that llm 0.6.0's decoder reads, which
+/// passes over any other key there (`crates/llm-chat/src/ingress.rs` `decode_messages`,
+/// `content_text`, `decode_tool_call`, `decode_tools`, `decode_tool_choice`; `docs/chat.md`).
+/// The top level and `stream_options` the decoder closes itself; a role it does not know it
+/// refuses.
+fn chat_closed(body: &Value) -> Result<(), Error> {
+    for message in body
+        .get("messages")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let allowed: &[&str] = match message.get("role").and_then(Value::as_str) {
+            Some("system" | "developer" | "user") => &["role", "content"],
+            Some("assistant") => &["role", "content", "tool_calls"],
+            Some("tool") => &["role", "content", "tool_call_id"],
+            _ => continue,
+        };
+        closed(message, allowed, "messages[]")?;
+        for part in message
+            .get("content")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            closed(part, &["type", "text"], "messages[].content[]")?;
+        }
+        for call in message
+            .get("tool_calls")
+            .and_then(Value::as_array)
+            .into_iter()
+            .flatten()
+        {
+            closed(call, &["id", "type", "function"], "messages[].tool_calls[]")?;
+            function_typed(call, "messages[].tool_calls[]")?;
+            if let Some(function) = call.get("function") {
+                closed(
+                    function,
+                    &["name", "arguments"],
+                    "messages[].tool_calls[].function",
+                )?;
+            }
+        }
+    }
+    for tool in body
+        .get("tools")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        closed(tool, &["type", "function"], "tools[]")?;
+        if let Some(function) = tool.get("function") {
+            closed(
+                function,
+                &["name", "description", "parameters"],
+                "tools[].function",
+            )?;
+        }
+    }
+    if let Some(choice) = body.get("tool_choice").filter(|choice| choice.is_object()) {
+        closed(choice, &["type", "function"], "tool_choice")?;
+        function_typed(choice, "tool_choice")?;
+        if let Some(function) = choice.get("function") {
+            closed(function, &["name"], "tool_choice.function")?;
+        }
+    }
+    Ok(())
+}
+
+/// The responses subset closed at every level below the top that llm 0.6.0's decoder reads,
+/// which passes over any other key there (`crates/llm-responses/src/request.rs`
+/// `input_to_item`, `content_text`, `wire_to_tool_choice`). The top level, `reasoning` and
+/// `tools[]` the decoder closes itself; a `reasoning` item is refused as carried state, and an
+/// item of another type the decoder refuses.
+fn responses_closed(body: &Value) -> Result<(), Error> {
+    for item in body
+        .get("input")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        let kind = item.get("type").and_then(Value::as_str);
+        let allowed: &[&str] = match kind {
+            Some("message") => &["type", "role", "content"],
+            Some("function_call") => &["type", "call_id", "name", "arguments"],
+            Some("function_call_output") => &["type", "call_id", "output"],
+            _ => continue,
+        };
+        closed(item, allowed, "input[]")?;
+        if kind == Some("message") {
+            for part in item
+                .get("content")
+                .and_then(Value::as_array)
+                .into_iter()
+                .flatten()
+            {
+                closed(part, &["type", "text"], "input[].content[]")?;
+            }
+        }
+    }
+    if let Some(choice) = body.get("tool_choice").filter(|choice| choice.is_object()) {
+        closed(choice, &["type", "name"], "tool_choice")?;
+    }
+    Ok(())
+}
+
 fn decode(ingress: Wire, alias: &str, body: &[u8]) -> Result<Decoded, Error> {
     match ingress {
         Wire::Chat => {
             let value: Value = serde_json::from_slice(body)
                 .map_err(|_| Error::invalid("the request body is not JSON"))?;
+            chat_closed(&value)?;
             let decoded = llm_chat::decode_ingress_request(&value)?;
             Ok(Decoded {
                 request: decoded.request,
@@ -352,6 +487,7 @@ fn decode(ingress: Wire, alias: &str, body: &[u8]) -> Result<Decoded, Error> {
         Wire::Responses => {
             let value: Value = serde_json::from_slice(body)
                 .map_err(|_| Error::invalid("the request body is not JSON"))?;
+            responses_closed(&value)?;
             // The body must name the model the binding answers to: the alias the client named.
             let reading =
                 llm_responses::Binding::new(ingress_provenance(ingress, alias)?, id(alias)?);
@@ -399,7 +535,7 @@ impl Translator for LlmTranslator {
     ) -> Result<Box<dyn Translation>, RefusalCode> {
         let alias = request.model.alias().as_str();
         let upstream_model = request.model.upstream_model().as_str();
-        let decoded =
+        let mut decoded =
             decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
         if decoded
             .request
@@ -410,6 +546,20 @@ impl Translator for LlmTranslator {
             return Err(RefusalCode::TranslationOpaqueState);
         }
         let capabilities = self.capabilities(request.model);
+        // A messages upstream needs an output limit, and the whole window leaves no room for
+        // the input: a request naming none is given half the window, at most
+        // MESSAGES_DEFAULT_OUTPUT_TOKENS; llm's projection gives a model without one the
+        // capabilities' limit.
+        if request.upstream == Wire::Messages
+            && decoded.request.max_output_tokens.is_none()
+            && let Some(window) = request.model.window()
+        {
+            decoded.request.max_output_tokens = Some(
+                (window / 2)
+                    .clamp(1, MESSAGES_DEFAULT_OUTPUT_TOKENS)
+                    .min(capabilities.max_output_tokens),
+            );
+        }
         let placeholder = Reach {
             base_url: PLACEHOLDER_URL.to_owned(),
             credential: Credential::None,
@@ -674,7 +824,13 @@ impl Encoder {
                 &json!({"error": {"code": code.wire(), "message": message}}),
             ),
             Self::Responses(stream) => {
-                for payload in stream.fail(&fixed) {
+                for mut payload in stream.fail(&fixed) {
+                    // llm's encoder writes a fixed message per class; a bound is named instead.
+                    if code == RefusalCode::TranslationTooLarge
+                        && let Some(failure) = payload.pointer_mut("/response/error/message")
+                    {
+                        *failure = json!(message);
+                    }
                     event(&mut out, &payload);
                 }
             }
@@ -698,6 +854,37 @@ impl Encoder {
             Self::Responses(_) => return Err(Error::unsupported("a responses answer streams")),
         };
         serde_json::to_vec(&value).map_err(|_| Error::invalid("the answer cannot be encoded"))
+    }
+}
+
+/// Whether a failure is the upstream's answer passing a bound of the translated path: llm's
+/// `too-large` once the request was sent (its stream's 65536 events, 33554432 bytes or
+/// 1048576-byte line, or an outcome past llm's own bounds).
+fn past_a_bound(error: &Error) -> bool {
+    error.code == ErrorCode::TooLarge && error.dispatch != Dispatch::NotSent
+}
+
+/// What a failure before any output is answered with. A target that could not be reached,
+/// timed out, was unavailable, answered `408` or `5xx`, or cut or garbled its answer has failed,
+/// whatever was dispatched, and is reported to the target source; one whose answer's status
+/// refused the request has refused it and is kept; an answer past a bound is
+/// `translation-too-large`.
+fn before_output(error: &Error) -> TranslationFailure {
+    if past_a_bound(error) {
+        return TranslationFailure::Refused(RefusalCode::TranslationTooLarge);
+    }
+    match error.code {
+        ErrorCode::Transport
+        | ErrorCode::Deadline
+        | ErrorCode::Unavailable
+        | ErrorCode::Protocol => TranslationFailure::UpstreamFailed,
+        ErrorCode::Unauthorized
+        | ErrorCode::RateLimited
+        | ErrorCode::Refused
+        | ErrorCode::InvalidRequest
+        | ErrorCode::TooLarge
+        | ErrorCode::Unsupported
+        | ErrorCode::Cancelled => TranslationFailure::Refused(RefusalCode::UpstreamRefused),
     }
 }
 
@@ -749,22 +936,16 @@ impl ClientSink<'_> {
                 self.answered(&outcome)
             }
             Err(error) if self.started => {
-                let bytes = self.encoder.fail(RefusalCode::UpstreamFailed, &error);
+                let code = if past_a_bound(&error) {
+                    RefusalCode::TranslationTooLarge
+                } else {
+                    RefusalCode::UpstreamFailed
+                };
+                let bytes = self.encoder.fail(code, &error);
                 self.write(&bytes);
                 Ok(())
             }
-            Err(error) => {
-                let unreached = matches!(error.dispatch, Dispatch::NotSent | Dispatch::Unknown)
-                    && matches!(
-                        error.code,
-                        ErrorCode::Transport | ErrorCode::Deadline | ErrorCode::Unavailable
-                    );
-                Err(if unreached {
-                    TranslationFailure::UpstreamFailed
-                } else {
-                    TranslationFailure::Refused(RefusalCode::UpstreamRefused)
-                })
-            }
+            Err(error) => Err(before_output(&error)),
         }
     }
 
@@ -801,12 +982,18 @@ impl ClientSink<'_> {
 
 impl BlockingSink for ClientSink<'_> {
     fn emit(&mut self, delta: StreamEvent) -> Result<(), Error> {
-        if !self.streamed || self.gone {
-            return if self.gone {
-                Err(Error::cancelled())
-            } else {
-                Ok(())
-            };
+        if self.gone {
+            return Err(Error::cancelled());
+        }
+        if !self.streamed {
+            // Nothing is written until the outcome, so a client that went away is noticed only
+            // by asking, between two events.
+            if self.answer.gone() {
+                self.gone = true;
+                self.cancel.cancel();
+                return Err(Error::cancelled());
+            }
+            return Ok(());
         }
         let bytes = self.encoder.chunk(&delta);
         if bytes.is_empty() || self.write(&bytes) {

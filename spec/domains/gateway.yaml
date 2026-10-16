@@ -9,10 +9,37 @@ domain: llm-gateway.gateway
 # the real `Gateway` bound to a loopback socket and exercised with raw HTTP/1.1 requests; they
 # are not a production event bus.
 #
-# The gateway also relays three model-call wires to a target the embedding selects, without
-# translating between them (story:wire-relay; the `Relay` command below).
-# DEFERRED: protocol translation between wires is not implemented; it belongs to
-# story:gateway-translation. There is exactly one owner (crates/llm-gateway/src/auth.rs:11), and
+# The gateway also relays three model-call wires to a target the embedding selects
+# (story:wire-relay; the `Relay` command below). A model's declared `wires` are the wires its
+# upstream speaks. A request on one of them is relayed byte for byte. A request on another wire
+# goes to the relay's `Translator`, when the embedding composed one (story:gateway-translation),
+# and is refused `wire-not-served` otherwise.
+# DECIDED 2026-10-16 (story:gateway-translation): the translation contract.
+#   - Where: the gateway crate holds only a std-only port (crates/llm-gateway/src/translate.rs,
+#     `Translator` and `Translation`); the binary implements it with llm 0.6.0's ingress decoders,
+#     protocol clients and ingress encoders (crates/llm-gateway-cli/src/translate.rs) over a tokio
+#     runtime the binary owns. The upstream wire is the model's first declared wire.
+#   - Decode before any target: the client's body is decoded onto llm's neutral turn, checked
+#     against the model's capabilities and projected for the upstream wire before the target
+#     source is asked, so a refused request never wakes a pod. A field outside llm's subset is
+#     `translation-unsupported`; a value breaking one of its rules is `translation-invalid`;
+#     carried reasoning state (llm `Item::UnattributedOpaque`) is `translation-opaque-state`:
+#     the upstream speaks another protocol than the one the state was read from, and the gateway
+#     binds no carried state. Nothing is dropped.
+#   - Upstream: the target supplies the scheme, authority, base path and credential; the turn is
+#     sent once with llm's client for the upstream wire. Neither the gateway's static headers nor
+#     the Messages effort mapping and output clamp apply on this path.
+#   - Answer: a streamed answer is written event by event as the client wire's server-sent
+#     events, a non-streamed one as its JSON object, with the upstream's reported counters and
+#     no others. Continuation state the upstream mints for its own wire (Responses reasoning
+#     items, Messages signed thinking) is not carried to another wire. An upstream that fails
+#     before any output is `upstream-failed` (and is reported to the target source, as on the
+#     byte relay) when it could not be reached, timed out or was unavailable, and
+#     `upstream-refused` otherwise. An answer llm's encoder refuses is `translation-unrepresentable`
+#     before any output, and after output ends with the wire's terminal error (`response.failed`,
+#     an `error` event, or a chat `data: {"error":…}` chunk and no `[DONE]`). A client that stops
+#     reading cancels the turn; nothing is retried or replayed.
+# There is exactly one owner (crates/llm-gateway/src/auth.rs:11), and
 # the single-owner admission is what the credential scenarios in contracts/gateway/scenarios/ declare.
 # DECIDED 2026-09-27: the gateway has no multi-tenant accounts or quotas; tenancy and quotas belong
 # to the embedding platform, which runs one gateway per owner.
@@ -84,8 +111,13 @@ types:
       - {name: RouteUnknown, attributes: {code: route-unknown, status: 404, message: "no such route alias"}}
       - {name: TargetUnavailable, attributes: {code: target-unavailable, status: 503, message: "no model target is available"}}
       - {name: ToolsNotServed, attributes: {code: tools-not-served, status: 400, message: "the model does not serve tool calls"}}
+      - {name: TranslationInvalid, attributes: {code: translation-invalid, status: 400, message: "the request breaks a rule of the subset the gateway translates"}}
+      - {name: TranslationOpaqueState, attributes: {code: translation-opaque-state, status: 400, message: "the request carries reasoning state the gateway cannot send to the model's upstream"}}
+      - {name: TranslationUnrepresentable, attributes: {code: translation-unrepresentable, status: 502, message: "the model's answer cannot be written on this wire"}}
+      - {name: TranslationUnsupported, attributes: {code: translation-unsupported, status: 400, message: "the request uses a field or value outside the subset the gateway translates"}}
       - {name: Unavailable, attributes: {code: unavailable, status: 503, message: "the gateway is not ready to serve inspection"}}
       - {name: UpstreamFailed, attributes: {code: upstream-failed, status: 502, message: "the model target could not be reached or failed; the next request asks for a replacement"}}
+      - {name: UpstreamRefused, attributes: {code: upstream-refused, status: 502, message: "the model target refused the translated request"}}
       - {name: WireNotServed, attributes: {code: wire-not-served, status: 400, message: "the model is not served on this wire"}}
   # A wire the gateway relays, each on its own path, to the same path at the target, joined to a
   # hosted endpoint's base path when it has one (Relay step 7; rows R6-R8):
@@ -274,8 +306,17 @@ entities:
   # the OpenAI list shape `{"object":"list","data":[entry…]}` with an entry's keys in the order
   # below: `id` is the alias, `object` is `model`, `owned_by` is `llm-gateway`, `max_model_len`
   # is the longest sequence the model's server takes, absent when the embedding declared none
-  # (never `0`), and `wires` names the model's wires in its declared order (`chat`, `responses`,
-  # `messages`). No other key exists.
+  # (never `0`), and `wires` names the wires a client may call the model on. For a relay without
+  # a translator they are the model's declared wires in their declared order (`chat`,
+  # `responses`, `messages`), and no other key exists. For a relay with a translator `wires` is
+  # all three in that fixed order, and `upstream_wires`, after it, names the declared wires in
+  # their declared order: the ones relayed byte for byte, every other one translated
+  # (story:gateway-translation; scenario translate-the-listing-names-every-wire-and-the-upstream-wires).
+  # DECIDED 2026-10-16: `upstream_wires` is left out without a translator, where it would repeat
+  # `wires`, so a gateway composed as before lists exactly what it listed before. The client
+  # profiles of `GET /` stay keyed on the declared wires (llm-gateway.clients.ClientProfile):
+  # Codex and Claude Code send fields llm's translated subset refuses (docs/gateway.md
+  # "Translation"), so a profile through translation would not work.
   - name: llm-gateway.gateway.ListedModel
     identity: {name: id, type: String}
     fields:
@@ -283,6 +324,7 @@ entities:
       - {name: owned_by, type: String}
       - {name: max_model_len, type: 'Optional<Integer>'}
       - {name: wires, type: 'List<llm-gateway.gateway.Wire>'}
+      - {name: upstream_wires, type: 'Optional<List<llm-gateway.gateway.Wire>>'}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.gateway.ExchangeObservation
     identity: {name: observation_id, type: String}
@@ -368,12 +410,56 @@ entities:
   #      one top-level `model` key whose value is a string (`model-absent`; a second top-level
   #      `model` is `body-not-json`, because the target could read the other one), naming a
   #      relayed model after JSON unescaping (`model-unknown`, 404).
-  #   5. K11: the model must declare the path's wire (`wire-not-served`). Then a body whose
-  #      top-level `tools` is a non-empty array, for a model whose tool calling is `Absent`, is
-  #      `tools-not-served` (400); a `tools` that is absent, an empty array or not an array, and
-  #      any `tools` below the top level, is relayed unchanged (llm-gateway.clients
-  #      ToolCalling). A body naming `tools` twice at its top level is refused when either is a
-  #      non-empty array. Steps 3-5 hand out no target, so a refused request never wakes a pod.
+  #   5. K11: the model must declare the path's wire, or the relay must have a translator; a
+  #      relay without one refuses any other wire `wire-not-served` (scenario
+  #      k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target). Then a body
+  #      whose top-level `tools` is a non-empty array, for a model whose tool calling is
+  #      `Absent`, is `tools-not-served` (400), on a declared wire and a translated one alike;
+  #      a `tools` that is absent, an empty array or not an array, and any `tools` below the
+  #      top level, is relayed unchanged (llm-gateway.clients ToolCalling). A body naming
+  #      `tools` twice at its top level is refused when either is a non-empty array. Steps 3-5
+  #      hand out no target, so a refused request never wakes a pod.
+  #      Translation (story:gateway-translation): a request on a wire the model does not
+  #      declare, to a relay with a translator, leaves the byte relay here. The translator
+  #      prepares it for the model's first declared wire before any target is asked for: it
+  #      decodes the body with llm 0.6.0's ingress decoder for the client's wire (chat
+  #      `decode_ingress_request`, responses `ingest_request` with the body's model the
+  #      model's alias, messages `decode_request`), refuses carried reasoning state
+  #      `translation-opaque-state`, a field or value outside the subset (llm `unsupported`,
+  #      `too-large`) `translation-unsupported` and one breaking its rules (llm
+  #      `invalid-request`, `protocol`) `translation-invalid`, checks the turn against the
+  #      model's capabilities (tools and tool choice when its tool calling is `Parsed`,
+  #      temperature and top_p, reasoning efforts `minimal` to `xhigh`, a context window and
+  #      output limit of its `max_model_len`, else its `context_window`, else 200000) and
+  #      projects it for the upstream wire, each refusal the same way (scenarios
+  #      translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target,
+  #      translate-carried-reasoning-state-is-refused-without-asking-for-a-target). Then the
+  #      target is acquired as at step 7, cold starts counted alike, and the turn is sent once
+  #      to it with llm's client for the upstream wire: at `<scheme>://<authority>` and the
+  #      target's base path (`/v1` without one) joined to the upstream wire's path, with the
+  #      target's credential as its kind says and nothing else of the gateway's (no static
+  #      header, no effort rewrite, no output clamp count; scenario
+  #      translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count). Its answer is
+  #      written to the client on the client's wire (step 9 below, translated): the head once,
+  #      on the first event or at the outcome, `200` with `content-type: text/event-stream`
+  #      for a streamed request (responses always; chat and messages with `stream` true) and
+  #      `application/json` with a `content-length` for the rest, `cache-control: no-store`
+  #      and `connection: close`. Each server-sent event is written as llm's encoder writes
+  #      it: `event: <type>` and `data: <json>` for responses and messages, `data: <json>`
+  #      for chat, which ends `data: [DONE]`. Identifiers (`chatcmpl-`, `resp_`, `msg_`) and
+  #      `created` are the gateway's own. A failure before any output: a transport failure, a
+  #      deadline or an unavailable upstream with nothing sent or dispatch unknown is
+  #      `upstream-failed`, reported to the target source by the target's authority as at step
+  #      8; any other is `upstream-refused` (502) and the target is kept. An outcome the
+  #      encoder refuses before any output is `translation-unrepresentable` (502); after
+  #      output, it and any upstream failure end the stream with the wire's terminal error
+  #      (responses `response.failed`, messages an `error` event, chat a
+  #      `data: {"error":{"code":"translation-unrepresentable"|"upstream-failed",…}}` chunk and
+  #      no `[DONE]`), the target kept (scenario
+  #      translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event). A write to the
+  #      client that fails cancels the turn, which drops the upstream connection; nothing is
+  #      retried (scenario translate-a-client-that-disconnects-cancels-the-upstream-turn). The
+  #      target is released after the last byte, as at step 9.
   #   6. W2: the top-level `model` value is rewritten to the model's upstream name on every wire,
   #      written as a JSON string (a `"` or `\` in the name is escaped).
   #      W4: on the messages wire only, `output_config.effort` and
@@ -505,7 +591,10 @@ entities:
   #  10. O1, O2: every request to a wire path that passed step 1 makes one
   #      llm-gateway.telemetry.UsageRecord once its answer or refusal is written, before the
   #      connection is closed. The record feeds the counters llm-gateway.telemetry lists and
-  #      leaves the gateway through the embedding's `UsageRecords`.
+  #      leaves the gateway through the embedding's `UsageRecords`. A translated answer's
+  #      record carries the status of the answer the gateway wrote as its `target_status` (llm's
+  #      client reads only a 2xx answer), and its `response_bytes` are the translated bytes;
+  #      a model's route series are registered on every wire when the relay has a translator.
   # A refused relay is closed gracefully: the refusal is written, the write side closed, and
   # what the client still sends is read and discarded, up to 33554432 bytes and within one
   # `read_timeout_ms`, so a reset cannot destroy the refusal before the client reads it
@@ -526,9 +615,11 @@ entities:
       # `endpoint:headers` for a static header set it refuses.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
-      # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer and
-      # `<status> answered` for an answer to a public route, and for a scrape
-      # `<status> scraped` when served or `<status> <refusal code>`.
+      # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer,
+      # `<status> translated` for a 2xx answer a pod replied to that reached the client in
+      # other bytes, and `<status> answered` for an answer to a public route, and for a scrape
+      # `<status> scraped` when served or `<status> <refusal code>`. A request whose client
+      # closed early (`close_after_bytes`) is `<status> closed`.
       - {name: results, type: 'List<String>'}
       # The body each request received, decoded from its HTTP framing, in order.
       - {name: bodies, type: 'List<String>'}
@@ -581,6 +672,10 @@ entities:
       # `llmgw_cold_start_wait_seconds_total` is measured, so its value is written `bounded`
       # when it is at most the time the run has taken, and as served otherwise.
       - {name: scrapes, type: 'List<String>'}
+      # Per reply a fixture pod began to write, in order, `<pod> complete` when it wrote every
+      # chunk of its answer, or `<pod> cut` when its connection closed before it had: a write
+      # failed, or the gateway closed the connection while the pod waited to release a chunk.
+      - {name: upstream_ends, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   # A request outside the relay, in the order the gateway decides (docs/gateway.md, "The HTTP
@@ -667,6 +762,13 @@ commands:
       #           is then composed with `NoOwnerVerifier`, which accepts no credential
       #   ingress_auth  optional, `bearer` (the default) or `none`, the Gateway's
       #           `ingress_auth`; any other value makes the program invalid
+      #   translation  optional, `off` (the default: the relay has no translator, as before) or
+      #           `on`: the relay is composed with the binary's translator
+      #           (`llm_gateway_cli::LlmTranslator`), whose clock reads a fixed `created` of
+      #           1800000000 and whose identifiers count from 1 in each run, so a translated
+      #           answer's bytes are exact; any other value makes the program invalid. A
+      #           translated request reaches its pod over plain HTTP from llm's client, so a
+      #           pod it reaches serves `http`
       #   models  `[{alias, upstream_model, wires, bearer, tool_calling, max_model_len,
       #           context_window, reasoning_effort}]`, the relayed models;
       #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key
@@ -697,11 +799,15 @@ commands:
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a
       #           connection past its script. An answer is
-      #           `{status, content_type, chunks, framing}` (`framing` is `length`, the
-      #           default, or `chunked`; each chunk is released only after the client received
-      #           the one before it, or after two seconds), or `{transport: refused}` (the
-      #           connection is refused) or `{transport: closed}` (the request is read and the
-      #           connection closed without an answer)
+      #           `{status, content_type, chunks, framing, release}` (`framing` is `length`, the
+      #           default, or `chunked`; with `release` `received`, the default, each chunk is
+      #           released only after the client received the bytes of the ones before it, or
+      #           after two seconds; with `release` `progress`, for an answer the gateway
+      #           translates into other bytes, each chunk is released once the client has
+      #           received more body bytes than when the one before was released, or after two
+      #           seconds, and at once when the client has closed early), or
+      #           `{transport: refused}` (the connection is refused) or `{transport: closed}`
+      #           (the request is read and the connection closed without an answer)
       #   cold_starts  optional, default 0: the target source answers its first `cold_starts`
       #           acquisitions with the model still starting past the request's hold budget
       #           (row W6), and hands out the current pod after that
@@ -714,7 +820,9 @@ commands:
       #           request's `user-agent`; none is sent without it) and `headers` (a list of
       #           `<name>: <value>` lines sent after `host`, as a client such as Claude Code
       #           adds `anthropic-version`; a line holding a CR or LF makes the program
-      #           invalid). Every request carries `host: gateway`.
+      #           invalid) and `close_after_bytes` (the client stops reading and closes the
+      #           connection once it has received at least that many body bytes; the step's
+      #           result is then `<status> closed`). Every request carries `host: gateway`.
       - {name: program_json, type: String}
     outcomes:
       - name: observed

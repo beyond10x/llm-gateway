@@ -1,0 +1,41 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused
+summary: a pod that closes unanswered is upstream-failed and reported failed, a 400 is upstream-refused and kept, and every pod gets the model key and never the owner credential
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: "{\"models\":[{\"alias\":\"small\",\"bearer\":\"pod-key-0123456789\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\"]}],\"pods\":[[{\"transport\":\"closed\"}],[{\"chunks\":[\"{\\\"error\\\":\\\"bad request\\\"}\"],\"content_type\":\"application/json\",\"status\":400},{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"small\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"small\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"small\\\",\\\"stream\\\":true}\",\"path\":\"/v1/messages\",\"step\":\"request\"}],\"translation\":\"on\"}"
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - "ok"
+    - "502 upstream-failed"
+    - "502 upstream-refused"
+    - "200 translated"
+    bodies:
+    - "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}"
+    - "{\"error\":{\"code\":\"upstream-refused\",\"message\":\"the model target refused the translated request\"}}"
+    - "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_3\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    upstream:
+    - "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-small\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+    - "pod-2 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-small\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+    - "pod-2 POST /v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-small\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+    authorizations:
+    - "Bearer pod-key-0123456789"
+    - "Bearer pod-key-0123456789"
+    - "Bearer pod-key-0123456789"
+    secret_upstream: false
+    acquired: 3
+    invalidated:
+    - "pod-1"
+    released: 3

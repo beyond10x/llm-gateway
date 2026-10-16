@@ -7,7 +7,8 @@ use llm_gateway::{
     AuthKind, BasePath, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle,
     Label, OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
     RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, StaticHeader, TargetLimits,
-    TargetProvenance, TargetRefusal, TargetSummary, Verdict, Wire,
+    TargetProvenance, TargetRefusal, TargetSummary, TranslatedAnswer, Translation,
+    TranslationFailure, TranslationRequest, Translator, Verdict, Wire,
 };
 use std::{
     collections::BTreeSet,
@@ -34,6 +35,7 @@ const SOURCES: &[&str] = &[
     include_str!("../src/metrics.rs"),
     include_str!("../src/relay.rs"),
     include_str!("../src/server.rs"),
+    include_str!("../src/translate.rs"),
 ];
 const OTHER_SECRET: &str = "other-token-0123456789abcdef0123456789abcdef";
 /// The catalog's account names this reference; resolving it is never part of inspection.
@@ -472,6 +474,8 @@ struct Provocation {
     raw: String,
     /// Whether the gateway is composed with [`provoking_relay`].
     relayed: bool,
+    /// Whether that relay also has the [`ProvokingTranslator`].
+    translated: bool,
 }
 
 /// A target nothing can connect to.
@@ -558,6 +562,46 @@ fn provoking_relay() -> Relay {
     .unwrap()
 }
 
+/// Refuses a request before any target with the code its body's `fail` names when that is a
+/// preparation refusal, and fails its run with it otherwise (story:gateway-translation).
+struct ProvokingTranslator;
+
+struct ProvokingRun(RefusalCode);
+
+impl Translator for ProvokingTranslator {
+    fn prepare(
+        &self,
+        request: &TranslationRequest<'_>,
+    ) -> Result<Box<dyn Translation>, RefusalCode> {
+        let body = String::from_utf8_lossy(request.body);
+        let named = body
+            .split_once("\"fail\":\"")
+            .and_then(|(_, rest)| rest.split('"').next())
+            .unwrap_or_default();
+        let code = RefusalCode::ALL
+            .iter()
+            .copied()
+            .find(|code| code.wire() == named)
+            .unwrap_or(RefusalCode::TranslationInvalid);
+        match code {
+            RefusalCode::UpstreamRefused | RefusalCode::TranslationUnrepresentable => {
+                Ok(Box::new(ProvokingRun(code)))
+            }
+            other => Err(other),
+        }
+    }
+}
+
+impl Translation for ProvokingRun {
+    fn run(
+        self: Box<Self>,
+        _target: &dyn RelayTarget,
+        _answer: &mut dyn TranslatedAnswer,
+    ) -> Result<(), TranslationFailure> {
+        Err(TranslationFailure::Refused(self.0))
+    }
+}
+
 /// An authenticated relay of `body` on `path`.
 fn relay_request(path: &str, body: &str) -> String {
     format!(
@@ -573,6 +617,7 @@ fn provoke(code: RefusalCode) -> Provocation {
         max_concurrent_requests: 64,
         raw: raw.to_string(),
         relayed: false,
+        translated: false,
     };
     let owned = |raw: String| Provocation {
         ready: true,
@@ -580,6 +625,7 @@ fn provoke(code: RefusalCode) -> Provocation {
         max_concurrent_requests: 64,
         raw,
         relayed: false,
+        translated: false,
     };
     let relayed = |path: &str, body: &str| Provocation {
         ready: true,
@@ -587,6 +633,7 @@ fn provoke(code: RefusalCode) -> Provocation {
         max_concurrent_requests: 64,
         raw: relay_request(path, body),
         relayed: true,
+        translated: false,
     };
     let chat = "/v1/chat/completions";
     match code {
@@ -616,6 +663,19 @@ fn provoke(code: RefusalCode) -> Provocation {
         }
         RefusalCode::ModelColdStart => relayed(chat, "{\"model\":\"cold\"}"),
         RefusalCode::UpstreamFailed => relayed(chat, "{\"model\":\"down\"}"),
+        // `down` is chat-only, so a messages request for it is translated, and the translator
+        // refuses or fails with the code its body names.
+        RefusalCode::TranslationInvalid
+        | RefusalCode::TranslationOpaqueState
+        | RefusalCode::TranslationUnrepresentable
+        | RefusalCode::TranslationUnsupported
+        | RefusalCode::UpstreamRefused => Provocation {
+            translated: true,
+            ..relayed(
+                "/v1/messages",
+                &format!("{{\"model\":\"down\",\"fail\":\"{}\"}}", code.wire()),
+            )
+        },
         RefusalCode::CredentialAbsent => plain("GET /v1/routes HTTP/1.1\r\nhost: h\r\n\r\n"),
         RefusalCode::CredentialRejected => owned(format!(
             "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OTHER_SECRET}\r\n\r\n"
@@ -645,6 +705,7 @@ fn provoke(code: RefusalCode) -> Provocation {
                 "p".repeat(2048)
             ),
             relayed: false,
+            translated: false,
         },
         // A bound of zero makes every connection one too many: the overload path, without a race.
         RefusalCode::Overloaded => Provocation {
@@ -655,6 +716,7 @@ fn provoke(code: RefusalCode) -> Provocation {
                 "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
             ),
             relayed: false,
+            translated: false,
         },
         RefusalCode::Unavailable => Provocation {
             ready: false,
@@ -664,6 +726,7 @@ fn provoke(code: RefusalCode) -> Provocation {
                 "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
             ),
             relayed: false,
+            translated: false,
         },
     }
 }
@@ -672,7 +735,14 @@ fn provoke(code: RefusalCode) -> Provocation {
 fn every_refusal_code_has_a_request_that_provokes_it() {
     for &code in RefusalCode::ALL {
         let provocation = provoke(code);
-        let relay = provocation.relayed.then(provoking_relay);
+        let relay = provocation.relayed.then(|| {
+            let relay = provoking_relay();
+            if provocation.translated {
+                relay.with_translator(Arc::new(ProvokingTranslator))
+            } else {
+                relay
+            }
+        });
         let gateway = Fixture::composed(provocation.ready, OWNER_SECRET, relay, |config| {
             config.max_head_bytes = provocation.max_head_bytes;
             config.max_concurrent_requests = provocation.max_concurrent_requests;

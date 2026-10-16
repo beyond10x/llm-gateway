@@ -23,6 +23,12 @@
         "$ref": "#/$defs/llm-gateway.gateway.Wire"
       }
     },
+    "upstream_wires": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/llm-gateway.gateway.Wire"
+      }
+    },
     "state": {
       "$ref": "#/$defs/llm-gateway.gateway.ListedModel.State"
     }
@@ -38,8 +44,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
-    "contract_digest": "slice-sha256/2:2e07c4cd879045c3b1fc6a8df5e699ce8b910e36d78f7bdb18dbecfe0ce79f4c",
+    "source_digest": "b7ff550689e1e0b00c87f8ebfe3e49274fe538ad9dd229a932715d82f52512de",
+    "contract_digest": "slice-sha256/2:f08d95b8898193144d17a3b38655bf2f929da5eb08b374c67a66708e03f3fef3",
     "regenerate": "ess generate"
   },
   "$defs": {

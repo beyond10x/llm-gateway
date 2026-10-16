@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-16T22:43:47Z",
+  "actor": "human:timo",
+  "artifact": "story:kubernetes-deployment-guide",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-w12-kubernetes-deployment-guide-pass-1",
+    "reference": "265be92",
+    "review": "review-result:adversary-w12-kubernetes-deployment-guide-pass-1",
+    "outcome": "fixed"
+  }
+}

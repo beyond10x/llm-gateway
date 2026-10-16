@@ -180,6 +180,16 @@ types:
   # itself or that frames a message (llm-gateway.deployment.HostedDeclaration lists them). It is
   # checked when the embedding builds it, so it can neither end its line nor add a second
   # framing or `authorization` header to the head.
+  #
+  # A target's static header (relay.rs StaticHeader::new; the `headers` of
+  # llm-gateway.upstream.HostedEndpoint): `static-header:name-length` for an empty name or one
+  # over 64 bytes, `static-header:name-not-a-token` for a name byte that is no RFC 9110 token
+  # character, `static-header:reserved` for a name `credential-header:reserved` refuses,
+  # `static-header:value-length` for an empty value or one over 1024 bytes
+  # (`static-header-value-bytes`), and `static-header:value-not-printable` for a value byte
+  # outside 0x20-0x7e or a leading or trailing space. The binary's endpoint then refuses a set
+  # of more than 32, two names equal without regard to case, or a name equal to the endpoint's
+  # own credential header as `endpoint:headers`.
   - name: llm-gateway.gateway.CompositionRefusal
     kind: enum
     variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii, CredentialHeaderLength, CredentialHeaderNotAToken, CredentialHeaderReserved]
@@ -401,7 +411,12 @@ entities:
   #      the base path replacing the wire path's leading `/v1`, the count of the output clamp
   #      below included (llm-gateway.upstream.HostedEndpoint `base_url`; scenario
   #      hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path); `host` is still the
-  #      authority alone.
+  #      authority alone. A target with static headers (`RelayTarget::headers`, a hosted
+  #      endpoint's `headers`) is sent each as `<name>: <value>` after `host`, in name order,
+  #      before the credential and the framing headers, on the relayed request and on the
+  #      count alike (scenario hosted-static-headers-reach-the-endpoint-and-the-clients-never-do).
+  #      A `StaticHeader` is checked when the embedding builds it, so it can neither end its
+  #      line, nor replace or repeat a header the gateway writes, nor carry `authorization`.
   #      B8: a target that carries a bearer (the model's vLLM key, which the embedding reads)
   #      is sent `authorization: Bearer <key>`; a target without one is sent no
   #      `authorization`. A target that also names a credential header (an `api-key` hosted
@@ -486,8 +501,9 @@ entities:
     fields: &relay_facts
       - {name: valid_program, type: Boolean}
       # Why the gateway could not be composed: `token:<rule>`, `verifier:<rule>`,
-      # `label:<rule>`, `relay:<rule>`, `bearer:<rule>`, `credential-header:<rule>`, or
-      # `endpoint:base-url` for an endpoint the binary refuses.
+      # `label:<rule>`, `relay:<rule>`, `bearer:<rule>`, `credential-header:<rule>`,
+      # `static-header:<rule>`, `endpoint:base-url` for an endpoint the binary refuses, or
+      # `endpoint:headers` for a static header set it refuses.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
       # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer and
@@ -641,7 +657,8 @@ commands:
       #           the optional `endpoint` serves the model by a hosted endpoint
       #           (llm-gateway.upstream.HostedEndpoint) instead of the source's current pod:
       #           `{pod, scheme, base_path, certificate, auth_kind, credential,
-      #           credential_header}`, where
+      #           credential_header, headers}`, where `headers` is an object of static header
+      #           names to values (none unless given), and
       #           `pod` names the fixture pod at the endpoint's authority (`pod-1`, …),
       #           `base_path` is appended to `<scheme>://<authority>` to make the endpoint's
       #           `base_url` (none unless given),

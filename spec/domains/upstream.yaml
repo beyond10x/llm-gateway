@@ -126,6 +126,12 @@ entities:
       # DECIDED 2026-10-06: the header is declared because vendors disagree on its name; no
       # source here fixes one.
       - {name: credential_header, type: 'Optional<String>'}
+      # Static, non-secret request headers the endpoint is sent with every request, name to
+      # value, written after `host` in name order and before the credential and the framing
+      # headers (llm-gateway.gateway `Relay`, step 7); their rules are
+      # llm-gateway.deployment `HostedDeclaration`'s `headers`. No client header is forwarded.
+      # DECIDED 2026-10-16 (story:hosted-static-headers).
+      - {name: headers, type: 'Map<String, String>'}
       - {name: billing_kind, type: llm-gateway.upstream.BillingKind}
     # DECIDED 2026-10-06: any endpoint that speaks one of the three wires is in scope, with no
     # vendor-specific code: the relay does not translate, so an endpoint is described by its

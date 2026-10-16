@@ -173,7 +173,8 @@ pub fn compute_authorization() -> Result<ComputeAuthorization, Refusal> {
 }
 
 /// The authorization every pod of `deployment` is created under: the reservation
-/// [`METERED_RESERVATION`] when a provider declares a spend ceiling, [`RESERVATION`] otherwise.
+/// [`METERED_RESERVATION`] when [`spend_policy`] binds a spend ceiling (one declared by a
+/// provider that one of its models runs on), [`RESERVATION`] otherwise.
 ///
 /// # Errors
 /// As [`spend_policy`].
@@ -189,17 +190,31 @@ pub fn compute_authorization_for(deployment: &Deployment) -> Result<ComputeAutho
     })
 }
 
-/// The spend ledger the pool checks every create against: the ceilings of the one provider
-/// that declares any (the document allows at most one), and every model's declared price per
-/// hour. With no ceiling declared it is unmetered and the pool reads no spend.
+/// The spend ledger the pool built from `deployment` checks every create against: the ceilings
+/// of the one provider that declares any (the document allows at most one) when one of
+/// `deployment`'s models runs on it, and every model's declared price per hour. The pool bills
+/// the account of the providers its models name, so a ceiling declared on a provider no model
+/// names binds nothing here. With no such ceiling it is unmetered and the pool reads no spend.
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] for a model alias that is not an identifier.
 pub fn spend_policy(deployment: &Deployment) -> Result<SpendPolicy, Refusal> {
     let mut policy = SpendPolicy::default();
-    if let Some(provider) = deployment.providers.values().find(|provider| {
-        provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
-    }) {
+    let billed = |name: &String| {
+        deployment
+            .models
+            .values()
+            .any(|model| &model.provider == name)
+    };
+    if let Some(provider) = deployment
+        .providers
+        .iter()
+        .filter(|(name, _)| billed(name))
+        .map(|(_, provider)| provider)
+        .find(|provider| {
+            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
+        })
+    {
         policy.daily_cap_micro_usd = provider.daily_cap_micro_usd;
         policy.total_cap_micro_usd = provider.total_cap_micro_usd;
     }
@@ -826,8 +841,11 @@ where
     let Some((provider, binding)) = connected else {
         return compose(deployment, parts, Arc::new(Unconnected), None);
     };
+    // The pool runs this provider's models on this provider's account: the subset holds no
+    // other provider, so no other provider's spend ceiling binds it.
     let mut subset = deployment.clone();
     subset.models.retain(|_, model| &model.provider == provider);
+    subset.providers.retain(|name, _| name == provider);
     if subset.models.is_empty() {
         return compose(deployment, parts, Arc::new(Unconnected), None);
     }

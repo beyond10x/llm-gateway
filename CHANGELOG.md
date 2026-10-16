@@ -16,6 +16,8 @@ Nothing in any release is deployed or qualified against a live client.
   other composition's is. A live pod counts at least its startup estimate, so two starts in a
   row do not share one headroom; a reported amount in whole cents is read exactly; a
   `billing.pods` result with no status refuses the start.
+- A spend ceiling binds only the account of the provider that declares it: a ceiling declared on
+  a provider other than the connected one no longer refuses the connected provider's pod starts.
 
 ## 0.9.0 (2026-10-16)
 

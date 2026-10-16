@@ -136,14 +136,23 @@ domain: llm-gateway.deployment
 # read with the hosted endpoints' credential files. Reloading it while serving is not done: a
 # changed routes document takes a restart.
 # The pool's inputs, each from the document or fixed:
-#   ComputeAuthorization  ledger `b10x-llm-gateway`; reservation `spend-ceiling` when a provider
-#                         declares a spend ceiling, and `unmetered` otherwise, when no ledger
+#   ComputeAuthorization  ledger `b10x-llm-gateway`; reservation `spend-ceiling` when the
+#                         SpendPolicy below binds a ceiling, and `unmetered` otherwise, when no ledger
 #                         is consulted and the pair only satisfies the hosting contract
 #   SpendPolicy           DECIDED 2026-10-16 (story:spend-caps): the ledger
 #                         (llm-gateway.runpod.SpendLedger) from the one provider that declares
 #                         `daily_cap_usd` or `total_cap_usd` (ProviderDeclaration), each in
 #                         micro-USD, and every model's `price_per_hour_usd`. The pool is one
 #                         account, so that ceiling binds every pod start of every model it runs.
+#                         DECIDED 2026-10-17 (story:spend-caps): the ceiling binds only the
+#                         account the pool bills, the provider the pool is built for, which its
+#                         models name (`start_connected`: the provider that declares the
+#                         `connectors` connection). A ceiling declared on any other provider does
+#                         not bind it, and the document is still accepted; with none on its own
+#                         provider the pool reads no spend. ESS-LIMIT: no scenario command
+#                         composes a pool from a document; the crate test
+#                         `adversary_w12p2_another_providers_ceiling_does_not_bind_the_connected_account`
+#                         in crates/llm-gateway-cli/tests proves it.
 #                         A start it refuses is answered `spend-ceiling` (503,
 #                         llm-gateway.gateway.Refusal), counted in
 #                         `llmgw_pod_start_spend_refusals_total` (llm-gateway.telemetry), and
@@ -310,7 +319,8 @@ types:
   # `connectors`, optional: when present the provider's pods are reached through the connectors
   # connection it names, and the table is closed.
   # DECIDED 2026-10-16 (story:spend-caps): `daily_cap_usd` and `total_cap_usd`, optional, are the
-  # account's spend ceilings in USD (llm-gateway.runpod.SpendLedger); absent is no ceiling of
+  # spend ceilings of this provider's own account in USD (llm-gateway.runpod.SpendLedger), binding
+  # only a pool built for this provider (Deployment, SpendPolicy); absent is no ceiling of
   # that kind. A value that is not finite, is not above 0, or is above 1000000 is
   # `config:value`. At most one provider declares a ceiling (`config:value` naming
   # `providers`), and once one does, every `[models.*]` model declares `price_per_hour_usd`

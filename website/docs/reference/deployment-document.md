@@ -40,8 +40,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `kind` | required | `runpod-vllm` |
 | `cloud_type` | `SECURE` | `SECURE` or `COMMUNITY` |
 | `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one. |
-| `daily_cap_usd` | absent | Above 0, at most 1000000: the most the account may spend in one UTC day. A pod start that would pass it is refused `spend-ceiling`. |
-| `total_cap_usd` | absent | Above 0, at most 1000000: the most the account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
+| `daily_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in one UTC day. A pod start of one of this provider's models that would pass it is refused `spend-ceiling`; a ceiling binds no other provider's pods. |
+| `total_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
 
 :::caution[A connectors provider starts real, billed pods]
 With a `connectors` table and real Runpod credentials, the binary creates pods on that account

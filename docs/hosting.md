@@ -503,10 +503,15 @@ starts a replacement; the next request does. A record whose create answer was lo
 
 A `[providers.<name>]` table may declare `daily_cap_usd` and `total_cap_usd`, the account's spend
 ceilings in USD (each finite, above 0, at most 1000000 and at least 0.000001; `config:value`
-otherwise). At most one provider declares one, because the pool is one account, and once one
-does every `[models.<alias>]` declares `price_per_hour_usd` (above 0, at most 1000): the most its
-pod costs per hour on any of its GPU types. Amounts are held as integer micro-USD, so a ceiling
-compares exactly.
+otherwise). At most one provider declares one, and once one does every `[models.<alias>]`
+declares `price_per_hour_usd` (above 0, at most 1000): the most its pod costs per hour on any of
+its GPU types. Amounts are held as integer micro-USD, so a ceiling compares exactly.
+
+A ceiling binds only the account of the provider that declares it. The pool is built for one
+provider, the one whose models it runs (in the shipped binary, the provider that declares the
+`connectors` connection), and it bills that provider's account, so it checks only that
+provider's ceilings. A ceiling declared on another provider does not bind the pool, and the
+document is still accepted: when the connected provider declares none, the pool reads no spend.
 
 The spend check, `RunpodProvider::admit_spend`, runs immediately before every create the
 provider sends, once per declared GPU type it tries, and needs no relayed request. Without a
@@ -539,6 +544,9 @@ account:
   hours the reported spend already holds.
 - A pod this pool holds no record for (another controller's, or a previous run's before its
   orphan sweep) is counted only once the reported spend holds it.
+- A pool pod that has been stopped leaves the running estimate when its record stops
+  occupying a slot, which can be before the provider bills its last stretch. Until the reported
+  spend holds that stretch, neither part counts it. This lag errs toward admitting.
 - The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`: each
   entry's `amount` is taken as USD and its `time` as the bucket's start. Neither reading has been
   checked against a live account.

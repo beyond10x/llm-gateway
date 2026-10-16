@@ -374,14 +374,22 @@ types:
   # ESS-LIMIT: the rules are not struct invariants, for the reason ModelDeclaration gives; the
   # crate tests named `hosted_*` in crates/llm-gateway-cli/tests/config.rs prove them.
   #   wires              non-empty, no repeat
-  #   base_url           `http://` or `https://` and an authority `host[:port]` of at most 256
-  #                      printable ASCII bytes, then nothing but an optional final `/`: no path,
-  #                      query, fragment or user information. An `https` host is a DNS name or
+  #   base_url           `http://` or `https://`, an authority `host[:port]` of at most 256
+  #                      printable ASCII bytes, then an optional base path: no query, fragment
+  #                      or user information. An `https` host is a DNS name or
   #                      an IP address the TLS client can verify a certificate for. An `http`
   #                      host is a loopback literal (`127.0.0.0/8`, `::1`) or `localhost`
   #                      unless `auth_kind` is `anonymous`: no credential is sent in cleartext
   #                      to a remote host. The refusal names `hosted.<alias>.base_url` and
-  #                      quotes no credential
+  #                      quotes no credential.
+  #                      The base path (llm-gateway.upstream.HostedEndpoint `base_url` has the
+  #                      join rule): nothing or `/` is none; otherwise `/` and 1..=32 segments
+  #                      joined by `/`, each one or more of `A-Z a-z 0-9 - . _ ~` and neither
+  #                      `.` nor `..`, at most 256 bytes, one final `/` dropped. An empty
+  #                      segment, a `%`, `\`, `?`, `#`, `@` or any other byte is `config:value`.
+  #                      DECIDED 2026-10-16 (story:hosted-base-path): a path was refused before;
+  #                      a vendor whose API lives below a prefix (`https://openrouter.ai/api/v1`)
+  #                      is now reached without a proxy in front of it
   #   auth_kind          `anonymous`, `bearer` or `api-key`
   #   credential_file    absent exactly when `auth_kind` is `anonymous`; read through the
   #                      trusted-file reader (`endpoint-credential:<rule>`). A credential goes

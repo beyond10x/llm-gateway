@@ -4,6 +4,15 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- A hosted model's `base_url` may carry a path. The path replaces the wire path's leading `/v1`,
+  so `https://openrouter.ai/api/v1` sends Chat requests to `/api/v1/chat/completions` and a
+  `base_url` ending in `/v1` works as OpenAI-compatible clients write it; a `base_url` without a
+  path reaches the wire path as before. The output clamp's count follows the same rule, and
+  `host` stays the authority. A base path with an empty, `.` or `..` segment, a `%`, a query, a
+  fragment or user information is refused `config:value`.
+
 ## 0.8.0 (2026-10-16)
 
 - Claude Code on the Messages wire: an effort of `max` (`output_config.effort` or

@@ -48,6 +48,8 @@
       "llm-gateway.gateway/authored/claude-code-structured-output-format-reaches-the-target-unchanged",
       "llm-gateway.gateway/authored/claude-code-the-startup-probe-head-api-hello-is-refused",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
+      "llm-gateway.gateway/authored/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing",
+      "llm-gateway.gateway/authored/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path",
       "llm-gateway.gateway/authored/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire",
       "llm-gateway.gateway/authored/hosted-a-declared-effort-reaches-the-endpoint-when-the-request-names-none",
@@ -457,6 +459,16 @@
         "digest": "sha256:b127e678b9361d5ff60ff8de71882315c644ba75498a367542e8293d9ead1078",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/head-inspection-answers-without-a-body"
+      },
+      "gateway/scenarios/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing.yaml": {
+        "digest": "sha256:5d08abea5785dfb017e2fc011afb4fa4c9d6690262894845584c2616cfcc0349",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing"
+      },
+      "gateway/scenarios/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path.yaml": {
+        "digest": "sha256:f5404b48b244ca43bdb49b235318bc37c1b453a5840687c8d9de76aa1bdc9ec7",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path"
       },
       "gateway/scenarios/hosted-a-credential-header-the-gateway-writes-itself-composes-nothing.yaml": {
         "digest": "sha256:bfd365c9de6aa81d87c916478fe27b458217dad1cd20c71b90a52af830841d88",
@@ -1325,7 +1337,7 @@
       }
     },
     "counts": {
-      "authored": 220,
+      "authored": 222,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -5534,6 +5546,222 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing": {
+      "purpose": "a base_url whose path holds a dot-dot segment is refused endpoint:base-url, so nothing is composed and no pod is asked",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"routed\",\"upstream_model\":\"vendor-routed\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"base_path\":\"/api/../admin\",\"auth_kind\":\"anonymous\"}}],\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "endpoint:base-url"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path": {
+      "purpose": "an endpoint whose base_url ends /api/v1 is asked on /api/v1 joined to every wire path, the output clamp's count included, and an endpoint without a path on the wire path itself",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"routed\",\"upstream_model\":\"vendor/routed\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"context_window\":4096,\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"base_path\":\"/api/v1\",\"auth_kind\":\"bearer\",\"credential\":\"endpoint-bearer-0123456789abcdef\"}},{\"alias\":\"plain\",\"upstream_model\":\"vendor-plain\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"base_path\":\"/\",\"auth_kind\":\"anonymous\"}}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"resp-1\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":4000}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"msg-1\\\"}\"]}],[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-2\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"routed\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"routed\\\",\\\"input\\\":\\\"hi\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"routed\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "Bearer endpoint-bearer-0123456789abcdef",
+                  "Bearer endpoint-bearer-0123456789abcdef",
+                  "Bearer endpoint-bearer-0123456789abcdef",
+                  "Bearer endpoint-bearer-0123456789abcdef",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /api/v1/chat/completions {\"model\":\"vendor/routed\",\"messages\":[]}",
+                  "pod-1 POST /api/v1/responses {\"model\":\"vendor/routed\",\"input\":\"hi\"}",
+                  "pod-1 POST /api/v1/messages/count_tokens {\"model\":\"vendor/routed\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /api/v1/messages {\"model\":\"vendor/routed\",\"max_tokens\":96,\"messages\":[]}",
+                  "pod-2 POST /v1/chat/completions {\"model\":\"vendor-plain\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },

@@ -523,6 +523,80 @@ fn hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path() {
     }
 }
 
+/// story:hosted-base-path, criteria 1 and 3: an endpoint whose `base_url` carries the path
+/// `/api/v1/` is asked on `/api/v1` joined to each wire path, the output clamp's count
+/// included, with `host` the authority alone; one whose `base_url` ends in `/v1` is asked on the
+/// wire path itself.
+#[test]
+fn hosted_a_base_url_path_replaces_the_v1_prefix_and_host_stays_the_authority() {
+    let fixture = Fixture::new("hosted-base-path");
+    let (routed, versioned) = (Endpoint::start(), Endpoint::start());
+    let tables = format!(
+        "{}{}",
+        hosted_table(
+            "routed",
+            &format!("{}/api/v1/", routed.base_url()),
+            "auth_kind = \"anonymous\"\ncontext_window = 8192\n"
+        ),
+        hosted_table(
+            "versioned",
+            &format!("{}/v1", versioned.base_url()),
+            "auth_kind = \"anonymous\"\n"
+        ),
+    );
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &tables,
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let answers = [
+        post(
+            server.address,
+            "/v1/chat/completions",
+            r#"{"model":"routed","messages":[]}"#,
+        ),
+        post(
+            server.address,
+            "/v1/messages",
+            r#"{"model":"routed","max_tokens":16,"messages":[]}"#,
+        ),
+        post(
+            server.address,
+            "/v1/chat/completions",
+            r#"{"model":"versioned","messages":[]}"#,
+        ),
+    ];
+    server.stop();
+    for answer in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    let seen = routed.seen();
+    assert_eq!(
+        seen.iter().map(Received::request_line).collect::<Vec<_>>(),
+        [
+            "POST /api/v1/chat/completions HTTP/1.1",
+            "POST /api/v1/messages/count_tokens HTTP/1.1",
+            "POST /api/v1/messages HTTP/1.1",
+        ]
+    );
+    for request in &seen {
+        assert_eq!(
+            request.header("host"),
+            Some(routed.address.to_string().as_str()),
+            "{request:?}"
+        );
+    }
+    assert_eq!(
+        versioned
+            .seen()
+            .iter()
+            .map(Received::request_line)
+            .collect::<Vec<_>>(),
+        ["POST /v1/chat/completions HTTP/1.1"]
+    );
+}
+
 /// A hosted endpoint that fails is answered `upstream-failed` and is kept: the next request
 /// reaches the same endpoint, since nothing replaces it. A Runpod model beside it, whose
 /// provider declares no connection, is still answered `target-unavailable` (criterion 7: the

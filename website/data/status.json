@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-10-14",
+  "asOf": "2026-10-16",
   "format": "b10x-status/1",
   "items": [
     {
@@ -126,6 +126,13 @@
       "detail": "A model declared as [hosted.<alias>] is relayed to any server that speaks its wire at an http or https base URL, with a bearer, an API key in a named header, or no credential, read from a file. https is verified against the same roots as a pod. Tested against loopback endpoints, not against a vendor API.",
       "href": "/docs/reference/deployment-document",
       "label": "Hosted endpoints",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "A hosted endpoint's base path replaces the wire path's leading /v1, so https://openrouter.ai/api/v1 is asked on /api/v1/chat/completions and a base URL ending in /v1 works as written; host stays the authority. A path with an empty, . or .. segment, a query, a fragment or user information is refused at start. Tested against loopback endpoints.",
+      "href": "/docs/reference/deployment-document",
+      "label": "A hosted base_url may carry a path",
       "status": "shipped"
     },
     {

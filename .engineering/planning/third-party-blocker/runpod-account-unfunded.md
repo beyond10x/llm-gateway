@@ -7,7 +7,6 @@ title: The Runpod account is unfunded, so no live pod run can happen
 relations:
 - blocks: story:client-qualification
 - blocks: story:loom-qualification
-- blocks: story:spend-caps
 revision: 1
 ---
 ## Blocks

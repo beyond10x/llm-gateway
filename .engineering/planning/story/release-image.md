@@ -2,12 +2,22 @@
 format: aep.planning-md/3
 id: story:release-image
 kind: story
-status: draft
+status: active
 title: Every release publishes the gateway image to ghcr.io/beyond10x/llm-gateway
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-revision: 1
+scope:
+- confidence: inferred
+  path: .github/workflows/release.yml
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: crates/llm-gateway-cli/tests/release_workflow.rs
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-16T20:20:59Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-10-16T20:20:59Z", actor: "human:timo", revision: 6}
 ---
 ## Outcome
 

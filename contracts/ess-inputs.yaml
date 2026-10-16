@@ -246,3 +246,13 @@ scenarios:
 - gateway/scenarios/routes-an-env-secret-composes-nothing.yaml
 - gateway/scenarios/routes-a-base-url-without-its-api-path-composes-nothing.yaml
 - gateway/scenarios/routes-a-route-named-like-a-model-composes-nothing.yaml
+- runpod/scenarios/a-live-pods-running-estimate-counts-against-the-ceiling.yaml
+- runpod/scenarios/an-unanswered-spend-read-refuses-the-start.yaml
+- runpod/scenarios/a-start-exactly-at-the-daily-ceiling-is-created.yaml
+- runpod/scenarios/a-start-exactly-at-the-total-ceiling-is-created.yaml
+- runpod/scenarios/a-start-over-the-daily-ceiling-is-refused-before-any-create.yaml
+- runpod/scenarios/a-start-over-the-total-ceiling-is-refused-before-any-create.yaml
+- runpod/scenarios/a-start-under-the-daily-ceiling-is-created.yaml
+- runpod/scenarios/a-start-under-the-total-ceiling-is-created.yaml
+- runpod/scenarios/the-spend-check-runs-before-each-create-of-the-gpu-fallback.yaml
+- runpod/scenarios/without-a-ceiling-no-spend-is-read.yaml

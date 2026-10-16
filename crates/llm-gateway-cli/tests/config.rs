@@ -1793,3 +1793,95 @@ fn hosted_a_reasoning_effort_of_low_medium_or_xhigh_loads_and_any_other_is_refus
         Some("high")
     );
 }
+
+// --- story:spend-caps --------------------------------------------------------------------------
+
+/// `text` with `lines` added to its `[providers.runpod]` table.
+fn with_provider_keys(text: &str, lines: &str) -> String {
+    mutate(
+        text,
+        "kind = \"runpod-vllm\"\n",
+        &format!("kind = \"runpod-vllm\"\n{lines}"),
+    )
+}
+
+#[test]
+fn spend_ceilings_and_prices_are_absent_unless_declared_and_read_in_micro_usd() {
+    let fixture = Fixture::new("spend-read");
+    let plain = load(&fixture.config(&base(&fixture))).unwrap();
+    assert_eq!(plain.providers["runpod"].daily_cap_micro_usd, None);
+    assert_eq!(plain.providers["runpod"].total_cap_micro_usd, None);
+    assert_eq!(plain.models["small"].price_per_hour_micro_usd, None);
+    let capped = with_model_keys(
+        &with_provider_keys(
+            &base(&fixture),
+            "daily_cap_usd = 25.5\ntotal_cap_usd = 1000000\n",
+        ),
+        "price_per_hour_usd = 0.000001\n",
+    );
+    let deployment = load(&fixture.config(&capped)).unwrap();
+    assert_eq!(
+        deployment.providers["runpod"].daily_cap_micro_usd,
+        Some(25_500_000)
+    );
+    assert_eq!(
+        deployment.providers["runpod"].total_cap_micro_usd,
+        Some(1_000_000_000_000)
+    );
+    assert_eq!(deployment.models["small"].price_per_hour_micro_usd, Some(1));
+    let only_total = with_model_keys(
+        &with_provider_keys(&base(&fixture), "total_cap_usd = 3\n"),
+        "price_per_hour_usd = 1000\n",
+    );
+    let deployment = load(&fixture.config(&only_total)).unwrap();
+    assert_eq!(deployment.providers["runpod"].daily_cap_micro_usd, None);
+    assert_eq!(
+        deployment.models["small"].price_per_hour_micro_usd,
+        Some(1_000_000_000)
+    );
+}
+
+#[test]
+fn spend_a_ceiling_or_price_outside_its_rule_is_a_value_refusal() {
+    let fixture = Fixture::new("spend-out-of-rule");
+    let priced = |provider: &str, model: &str| {
+        with_model_keys(&with_provider_keys(&base(&fixture), provider), model)
+    };
+    let price = "price_per_hour_usd = 2\n";
+    for (case, text) in [
+        ("daily zero", priced("daily_cap_usd = 0\n", price)),
+        ("daily negative", priced("daily_cap_usd = -1.5\n", price)),
+        ("daily nan", priced("daily_cap_usd = nan\n", price)),
+        ("daily inf", priced("daily_cap_usd = inf\n", price)),
+        ("daily above", priced("daily_cap_usd = 1000000.5\n", price)),
+        ("daily below a micro", priced("daily_cap_usd = 0.0000004\n", price)),
+        ("total zero", priced("total_cap_usd = 0.0\n", price)),
+        ("total -inf", priced("total_cap_usd = -inf\n", price)),
+        ("price zero", priced("daily_cap_usd = 5\n", "price_per_hour_usd = 0\n")),
+        ("price above", priced("daily_cap_usd = 5\n", "price_per_hour_usd = 1000.01\n")),
+        ("price nan", priced("", "price_per_hour_usd = nan\n")),
+        ("price missing", priced("daily_cap_usd = 5\n", "")),
+    ] {
+        match load(&fixture.config(&text)) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:value", "{case}"),
+        }
+    }
+    let second = format!(
+        "{}\n[providers.other]\nkind = \"runpod-vllm\"\ntotal_cap_usd = 4\n",
+        priced("daily_cap_usd = 5\n", price)
+    );
+    let refusal = load(&fixture.config(&second)).unwrap_err();
+    assert_eq!(refusal.code(), "config:value");
+    assert!(refusal.to_string().contains("providers"), "{refusal}");
+}
+
+#[test]
+fn spend_a_ceiling_written_as_text_is_a_schema_refusal() {
+    let fixture = Fixture::new("spend-schema");
+    let text = with_provider_keys(&base(&fixture), "daily_cap_usd = \"5\"\n");
+    assert_eq!(
+        load(&fixture.config(&text)).unwrap_err().code(),
+        "config:schema"
+    );
+}

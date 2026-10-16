@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-start-under-the-total-ceiling-is-created
+summary: a projected total spend under the total ceiling admits the create
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"price_per_hour_usd":2,"startup_deadline_ms":1800000}},"spend":{"total_cap_usd":100},"steps":[{"step":"account_spend","daily_usd":0,"total_usd":98.5},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - err:starting
+    create_calls: 1
+    spend_reads: 1
+    phases:
+    - qwen-1:requested

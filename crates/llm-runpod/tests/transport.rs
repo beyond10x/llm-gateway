@@ -22,7 +22,8 @@ use llm_provision::{
     ResourceKey,
 };
 use llm_runpod::{
-    CloudType, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, ManualClock, NetworkVolume,
+    AccountSpend, CloudType, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, ManualClock,
+    NetworkVolume, SpendPolicy, SpendRefusal,
     POD_CREATE_BODY_KEYS, PodRequest, PodStatus, PodStream, PodTls, Probe, ProbeTarget,
     RunpodModel, RunpodProvider, RunpodTransport, TerminateAnswer, Thinking, Unserviceable,
     VllmSettings, started_at_ms,
@@ -1202,4 +1203,110 @@ fn a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again() {
             "{name}"
         );
     }
+}
+
+// The account's reported spend: `billing.pods` (Runpod `GET /billing/pods`, `PodBilling`), a read
+// the connectors v0.37.0 catalog does not select yet; the fixture is taught it
+// (`spec/domains/runpod.yaml`, `ConnectorsOperation`).
+
+fn billed(body: &Value) -> Value {
+    json!({"stdout": {
+        "adapter": "gpu", "operation": "billing.pods", "revision": "revision-7",
+        "result": {"status": 200, "body": body},
+    }})
+}
+
+const DAY_START: &str = "2026-10-16T00:00:00.000Z";
+
+fn day_start() -> u64 {
+    started_at_ms(DAY_START).expect("day start")
+}
+
+#[test]
+fn billing_reads_billing_pods_once_as_a_read_and_sums_today_and_the_total() {
+    let fixture = Fixture::new("billing_sums");
+    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([
+        {"amount": 2.5, "time": "2026-10-15T00:00:00.000Z", "timeBilledMs": 1},
+        {"amount": 1.25, "time": DAY_START},
+        {"amount": 0.000_000_4, "time": "2026-10-16T13:00:00Z"},
+    ]))]}));
+    let spend = fixture.transport().account_spend(day_start());
+    assert_eq!(
+        spend,
+        Some(AccountSpend {
+            daily_micro_usd: 1_250_001,
+            total_micro_usd: 3_750_001,
+        }),
+        "each amount is rounded up to the next micro-USD"
+    );
+    let invokes = fixture.calls_of("operations invoke billing.pods");
+    assert_eq!(invokes.len(), 1);
+    assert_eq!(input(&invokes[0]), json!({"bucketSize": "day"}));
+    assert_eq!(arg(&invokes[0], "--approval-file"), None, "a read takes no approval");
+    assert!(fixture.calls_of("approvals prepare billing.pods").is_empty());
+}
+
+#[test]
+fn billing_an_empty_answer_is_no_spend() {
+    let fixture = Fixture::new("billing_empty");
+    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([]))]}));
+    assert_eq!(
+        fixture.transport().account_spend(day_start()),
+        Some(AccountSpend {
+            daily_micro_usd: 0,
+            total_micro_usd: 0,
+        })
+    );
+}
+
+#[test]
+fn billing_an_answer_that_is_not_wholly_readable_is_unanswered() {
+    let entry = |amount: Value, time: Value| json!([{"amount": 1, "time": DAY_START}, {"amount": amount, "time": time}]);
+    for (case, answer) in [
+        ("negative", billed(&entry(json!(-1), json!(DAY_START)))),
+        ("text amount", billed(&entry(json!("1"), json!(DAY_START)))),
+        ("no amount", billed(&json!([{"time": DAY_START}]))),
+        ("no time", billed(&json!([{"amount": 1}]))),
+        ("bad time", billed(&entry(json!(1), json!("2026-10-16 00:00:00")))),
+        ("not an array", billed(&json!({"amount": 1}))),
+        ("a 500", json!({"stdout": {"result": {"status": 500, "body": []}}})),
+        ("a failure", failed("not_attempted", "unavailable")),
+        ("garbage", json!({"raw": "not json"})),
+    ] {
+        let fixture = Fixture::new(&format!("billing_unreadable_{}", case.replace(' ', "_")));
+        fixture.script(&json!({"operations invoke billing.pods": [answer]}));
+        assert_eq!(fixture.transport().account_spend(day_start()), None, "{case}");
+    }
+}
+
+#[test]
+fn billing_without_the_operation_in_the_catalog_is_unanswered_and_invokes_nothing() {
+    let fixture = Fixture::new("billing_absent");
+    fixture.script(&json!({"operations describe billing.pods": [
+        {"exit": 2, "stdout": {"error": {"code": "not_found"}}}
+    ]}));
+    assert_eq!(fixture.transport().account_spend(day_start()), None);
+    assert!(fixture.calls_of("operations invoke billing.pods").is_empty());
+}
+
+#[test]
+fn billing_with_a_ceiling_and_no_billing_operation_the_provider_sends_no_create() {
+    let fixture = Fixture::new("billing_provider_refuses");
+    fixture.script(&json!({"operations describe billing.pods": [
+        {"exit": 2, "stdout": {"error": {"code": "not_found"}}}
+    ]}));
+    let mut provider = provider(&fixture);
+    provider.set_spend(Some(SpendPolicy {
+        daily_cap_micro_usd: Some(10_000_000),
+        total_cap_micro_usd: None,
+        price_per_hour_micro_usd: BTreeMap::from([(
+            Identifier::new("qwen").expect("alias"),
+            2_000_000,
+        )]),
+    }));
+    let outcome: CreateOutcome = provider.create(&create_request());
+    assert_eq!(outcome.dispatch, Dispatch::NotSent);
+    assert_eq!(provider.take_spend_refusal(), Some(SpendRefusal::Unknown));
+    assert!(fixture.calls_of("operations invoke pod.create").is_empty());
+    assert!(fixture.calls_of("approvals prepare pod.create").is_empty());
 }

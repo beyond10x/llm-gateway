@@ -44,6 +44,7 @@ assert:
     - 1 llmgw_pod_reaps_total 0
     - 1 llmgw_endpoint_invalidations_total 0
     - 1 llmgw_cold_start_wait_seconds_total bounded
+    - 1 llmgw_pod_start_spend_refusals_total 0
     - '1 llmgw_route_requests_total{model="code",wire="chat"} 0'
     - '1 llmgw_route_requests_total{model="code",wire="responses"} 0'
     - '1 llmgw_route_refusals_total{model="code",wire="chat"} 0'
@@ -63,6 +64,7 @@ assert:
     - 2 llmgw_pod_reaps_total 0
     - 2 llmgw_endpoint_invalidations_total 1
     - 2 llmgw_cold_start_wait_seconds_total bounded
+    - 2 llmgw_pod_start_spend_refusals_total 0
     - '2 llmgw_route_requests_total{model="code",wire="chat"} 2'
     - '2 llmgw_route_requests_total{model="code",wire="responses"} 1'
     - '2 llmgw_route_refusals_total{model="code",wire="chat"} 1'

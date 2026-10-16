@@ -20,7 +20,7 @@ use llm_provision::{
     LeaseRegistry, Phase,
 };
 use llm_runpod::{
-    CloudType, ConfigError, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX,
+    CloudType, ConfigError, SpendRefusal, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX,
     ManualClock, NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError,
     Probe, ProbeTarget, RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, TAG_EPOCH,
     TAG_OWNER, TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
@@ -1569,6 +1569,7 @@ fn every_pool_and_config_refusal_is_declared_with_its_code() {
         PoolError::PodExited => "PodExited",
         PoolError::StoppedServing => "StoppedServing",
         PoolError::Hosting(_) => "Hosting",
+        PoolError::SpendCeiling(_) => "SpendCeiling",
     };
     let pool: Vec<(String, String)> = [
         PoolError::UnknownModel,
@@ -1582,6 +1583,7 @@ fn every_pool_and_config_refusal_is_declared_with_its_code() {
         PoolError::PodExited,
         PoolError::StoppedServing,
         PoolError::Hosting(HostingError::WrongPhase),
+        PoolError::SpendCeiling(SpendRefusal::Unknown),
     ]
     .into_iter()
     .map(|error| (name(error).to_owned(), error.code().to_owned()))

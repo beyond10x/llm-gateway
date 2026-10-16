@@ -1183,3 +1183,103 @@ fn clamp_a_runpod_model_is_clamped_to_its_max_model_len_a_hosted_one_to_its_cont
     assert_eq!(requests_so_far(&open), [count("open"), relay("open", 3096)]);
     assert_eq!(requests_so_far(&bare), [relay("bare", 32000)]);
 }
+
+// --- story:spend-caps: a pod start that would pass a spend ceiling ---------------------------
+
+/// The deployment with a daily ceiling of 10 USD on its provider and a price of 2 USD an hour
+/// on `small`, whose default 600-second startup deadline makes a start estimate 0.333334 USD.
+fn capped(fixture: &Fixture) -> Deployment {
+    deployment(fixture, |text| {
+        let text = mutate(
+            &text,
+            "kind = \"runpod-vllm\"\n",
+            "kind = \"runpod-vllm\"\ndaily_cap_usd = 10\n",
+        );
+        mutate(
+            &text,
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nprice_per_hour_usd = 2\n",
+        )
+    })
+}
+
+fn spent(runpod: &EmulatedRunpod, daily_micro_usd: u64) {
+    runpod.set_account_spend(Some(llm_runpod::AccountSpend {
+        daily_micro_usd,
+        total_micro_usd: daily_micro_usd,
+    }));
+}
+
+#[test]
+fn spend_a_start_past_the_ceiling_is_spend_ceiling_at_once_with_no_create_and_is_counted() {
+    let fixture = Fixture::new("spend-over");
+    let deployment = capped(&fixture);
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    spent(&runpod, 9_666_667);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, took) = timed_chat(running.local_addr());
+    let after = scrape(running.local_addr());
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 503 "), "{answer}");
+    assert!(answer.contains("\"code\":\"spend-ceiling\""), "{answer}");
+    assert_eq!(header(&answer, "retry-after"), None, "{answer}");
+    assert!(took < Duration::from_secs(5), "not held: {took:?}");
+    assert_eq!(runpod.create_calls(), 0);
+    assert_eq!(runpod.spend_reads(), 1);
+    assert_eq!(after["llmgw_pod_start_spend_refusals_total"], "1");
+    assert_eq!(after["llmgw_pod_start_failures_total"], "0");
+    assert_eq!(after["llmgw_pod_starts_total"], "0");
+    assert_eq!(
+        after["llmgw_route_refusals_total{model=\"small\",wire=\"chat\"}"],
+        "1"
+    );
+    assert!(pod.received().is_empty());
+}
+
+#[test]
+fn spend_a_start_at_the_ceiling_is_created_and_served() {
+    let fixture = Fixture::new("spend-at");
+    let deployment = capped(&fixture);
+    let mut pod = Pod::start(0, "{\"id\":\"served\"}");
+    let runpod = EmulatedRunpod::new();
+    spent(&runpod, 9_666_666);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, _) = timed_chat(running.local_addr());
+    let after = scrape(running.local_addr());
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert_eq!(runpod.create_calls(), 1);
+    assert_eq!(after["llmgw_pod_start_spend_refusals_total"], "0");
+    assert_eq!(pod.received().len(), 1);
+}
+
+#[test]
+fn spend_the_pool_is_metered_exactly_when_a_ceiling_is_declared() {
+    let fixture = Fixture::new("spend-ledger");
+    let plain = deployment(&fixture, |text| text);
+    let unmetered = llm_gateway_cli::compute_authorization_for(&plain).unwrap();
+    assert_eq!(unmetered.reservation.as_str(), "unmetered");
+    assert!(!llm_gateway_cli::spend_policy(&plain).unwrap().is_metered());
+    let deployment = capped(&fixture);
+    let metered = llm_gateway_cli::compute_authorization_for(&deployment).unwrap();
+    assert_eq!(metered.ledger.as_str(), "b10x-llm-gateway");
+    assert_eq!(metered.reservation.as_str(), "spend-ceiling");
+    let policy = llm_gateway_cli::spend_policy(&deployment).unwrap();
+    assert!(policy.is_metered());
+    assert_eq!(policy.daily_cap_micro_usd, Some(10_000_000));
+    assert_eq!(policy.total_cap_micro_usd, None);
+    assert_eq!(policy.price_per_hour_micro_usd[&small()], 2_000_000);
+}

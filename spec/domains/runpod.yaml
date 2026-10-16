@@ -113,6 +113,12 @@ types:
       - {name: StoppedServing, attributes: {code: stopped-serving}}
       # The hosting controller refused; the code is `hosting`.
       - {name: Hosting, attributes: {code: hosting}}
+      # DECIDED 2026-10-16 (story:spend-caps): the spend check (`SpendLedger`) refused the create
+      # it ran before: no create was sent and the deployment is withdrawn (`cancelled`), as for
+      # `no-capacity`. It carries a `SpendRefusal`, which says which ceiling and by how much
+      # (`a-start-over-the-daily-ceiling-is-refused-before-any-create`,
+      # `an-unanswered-spend-read-refuses-the-start`).
+      - {name: SpendCeiling, attributes: {code: spend-ceiling}}
   # Why a model declaration is refused (crates/llm-runpod/src/config.rs `RunpodModel::validate`),
   # the first that applies, in this order. The message never quotes the refused value
   # (`a_model_declaration_without_a_usable_setting_is_refused`,
@@ -205,9 +211,39 @@ types:
   # proof and its own idempotency key. A second refusal, or any other answer, is mapped as
   # usual: `Lost` for a write, an incomplete listing for a read. A write refused any other way,
   # or classified otherwise, is never repeated.
+  # DECIDED 2026-10-16 (story:spend-caps): a fourth operation, `billing.pods` (Runpod
+  # `GET /billing/pods`, operationId `PodBilling`), is the account's reported spend
+  # (`RunpodTransport::account_spend`). connectors v0.37.0's Runpod catalog does not select it;
+  # the transport names it and reads it like `pods.list` (a read: no approval, never a write),
+  # with the input `{"bucketSize":"day"}`. Until a connectors release offers it, `operations
+  # describe` refuses it and every read is unanswered, so with a ceiling declared every start is
+  # refused (`SpendRefusal.Unknown`), never silently unchecked. The answer is read only when it
+  # is a 2xx `result.body` holding an array whose every entry has a finite, non-negative number
+  # `amount` (USD) and a `time` in `lastStartedAt`'s form: the total is the sum of every
+  # entry's `amount`, the daily spend the sum of those whose `time` is at or after the current
+  # UTC day's start. Anything else, one unreadable entry included, is unanswered. An empty array
+  # is an answer: no spend. ESS-LIMIT: no scenario observes the transport; tests/transport.rs
+  # drives it against the connectors fixture (`billing_*`).
   - name: llm-gateway.runpod.ConnectorsOperation
     kind: enum
-    variants: [PodCreate, PodsList, PodTerminate]
+    variants: [PodCreate, PodsList, PodTerminate, BillingPods]
+  # Which spend ceiling a start would pass. The daily one is checked first.
+  - name: llm-gateway.runpod.SpendCeilingKind
+    kind: enum
+    attributes:
+      - {name: code, type: String}
+    variants:
+      - {name: Daily, attributes: {code: daily}}
+      - {name: Total, attributes: {code: total}}
+  # Why the spend check refused a create, as the pool's `spend-ceiling` refusal carries it:
+  # `Over` names the ceiling and the amount the projected spend passes it by, in micro-USD
+  # (written `over_usd=<USD with six decimals>`); `Unknown` is a spend read that failed or
+  # answered nothing, or a live pod or the model about to start that has no declared price.
+  - name: llm-gateway.runpod.SpendRefusal
+    kind: struct
+    fields:
+      - {name: ceiling, type: 'Optional<llm-gateway.runpod.SpendCeilingKind>'}
+      - {name: over_micro_usd, type: 'Optional<Integer>'}
   # connectors' `mutation.classification` of a write (connectors ess/domains/mutations.yaml
   # `EffectKnowledge`).
   - name: llm-gateway.runpod.WriteClassification
@@ -355,18 +391,65 @@ entities:
     relations:
       - {name: controller, kind: references, target: llm-gateway.hosting.Controller, cardinality: one, via: controller_id}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  # The budget ledger of one pool's account (story:spend-caps,
+  # architecture-decision-record:on-demand-gpu-lifecycle): the spend ceilings a pod start is
+  # admitted against, and the per-model prices its estimates are made from
+  # (`RunpodPool::with_spend`, `llm_runpod::SpendPolicy`). Amounts are integer micro-USD, so a
+  # ceiling compares exactly.
+  # DECIDED 2026-10-16: the spend check (`RunpodProvider::admit_spend`) runs immediately before
+  # every create the provider sends, once per declared GPU type it tries, and before nothing
+  # else. With no ceiling declared it reads nothing and admits (`without-a-ceiling-no-spend-is-read`).
+  # Otherwise it computes, at the pool clock's instant:
+  #   spend = the account's reported spend (`RunpodTransport::account_spend`, read afresh for
+  #           each check: today's since the UTC day's start, and the total)
+  #         + the running estimate of the pool's live pods: for every record of this
+  #           controller whose phase occupies a slot (llm-gateway.hosting `Phase`) and that has
+  #           a submission instant, its model's price per hour times the time since that
+  #           instant (`a-live-pods-running-estimate-counts-against-the-ceiling`)
+  #         + the estimate of the pod about to start: its model's price per hour times its
+  #           `startup_deadline_ms`.
+  # The price is the declaration's (`price_per_hour_micro_usd` per model alias), never the pod
+  # listing's: the pod about to start has no listing yet, and one source prices every pod. An
+  # estimate is rounded up to the next micro-USD. The daily projection (reported daily + both
+  # estimates) is compared with `daily_cap_micro_usd`, then the total projection with
+  # `total_cap_micro_usd`. A projection equal to its ceiling is admitted; one micro-USD past it
+  # is refused `Over` with the excess (`a-start-exactly-at-the-daily-ceiling-is-created`,
+  # `a-start-over-the-total-ceiling-is-refused-before-any-create`). A read that fails or answers
+  # nothing, or a live record or model with no price, is refused `Unknown`: no ceiling is ever
+  # assumed met. A refused check sends no create, tries no further GPU type, and the pool
+  # answers `spend-ceiling`.
+  # DECIDED 2026-10-16: the running estimate counts a live pod's whole time since submission,
+  # so it may count again hours the reported spend already holds, and a pod the pool holds no
+  # record for (another controller's, another process's before its orphan sweep) is counted
+  # only once the reported spend holds it. The check errs toward refusing; docs/hosting.md says
+  # so. The binary (llm-gateway.deployment) declares the ledger and authorizes each create under
+  # the reservation `spend-ceiling` instead of `unmetered` when a ceiling is declared.
+  - name: llm-gateway.runpod.SpendLedger
+    identity: {name: id, type: String}
+    fields:
+      - {name: pool_id, type: String}
+      - {name: daily_cap_micro_usd, type: 'Optional<Integer>'}
+      - {name: total_cap_micro_usd, type: 'Optional<Integer>'}
+      - {name: price_per_hour_micro_usd, type: 'Map<String, Integer>'}
+    relations:
+      - {name: pool, kind: references, target: llm-gateway.runpod.Pool, cardinality: one, via: pool_id}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.runpod.ExecutionObservation
     identity: {name: observation_id, type: String}
     fields: &execution_facts
       - {name: valid_program, type: Boolean}
       # Why the pool could not be constructed or restored, e.g. `invalid-model:no-gpu`.
       - {name: error_code, type: 'Optional<String>'}
-      # One entry per step, in order: `ok`, `ready`, or `err:<pool refusal code>`.
+      # One entry per step, in order: `ok`, `ready`, or `err:<pool refusal code>`; a
+      # `spend-ceiling` refusal is `err:spend-ceiling:<daily|total>:over_usd=<excess>` or
+      # `err:spend-ceiling:unknown` (SpendRefusal).
       - {name: results, type: 'List<String>'}
       # Control-plane counters read from the emulator. Absent, never zero, when no emulator
       # was ever built.
       - {name: create_calls, type: 'Optional<Integer>'}
       - {name: lists, type: 'Optional<Integer>'}
+      # Spend reads (`account_spend`) the spend check made.
+      - {name: spend_reads, type: 'Optional<Integer>'}
       # The GPU type of every create request submitted, in order.
       - {name: requested_gpus, type: 'List<String>'}
       # Pod ids the emulator terminated, in order.

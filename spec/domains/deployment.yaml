@@ -136,8 +136,21 @@ domain: llm-gateway.deployment
 # read with the hosted endpoints' credential files. Reloading it while serving is not done: a
 # changed routes document takes a restart.
 # The pool's inputs, each from the document or fixed:
-#   ComputeAuthorization  fixed: ledger `b10x-llm-gateway`, reservation `unmetered`. No budget
-#                         ledger is consulted yet; the pair only satisfies the hosting contract
+#   ComputeAuthorization  ledger `b10x-llm-gateway`; reservation `spend-ceiling` when a provider
+#                         declares a spend ceiling, and `unmetered` otherwise, when no ledger
+#                         is consulted and the pair only satisfies the hosting contract
+#   SpendPolicy           DECIDED 2026-10-16 (story:spend-caps): the ledger
+#                         (llm-gateway.runpod.SpendLedger) from the one provider that declares
+#                         `daily_cap_usd` or `total_cap_usd` (ProviderDeclaration), each in
+#                         micro-USD, and every model's `price_per_hour_usd`. The pool is one
+#                         account, so that ceiling binds every pod start of every model it runs.
+#                         A start it refuses is answered `spend-ceiling` (503,
+#                         llm-gateway.gateway.Refusal), counted in
+#                         `llmgw_pod_start_spend_refusals_total` (llm-gateway.telemetry), and
+#                         written as a `warn` event, `pod start refused by a spend ceiling`,
+#                         naming the model, the ceiling (`daily`, `total` or `unknown`) and
+#                         the excess in USD; the client's message is fixed and names neither.
+#                         The request is not held: the refusal is answered at once
 #   wall clock            fixed: system time in Unix milliseconds, never moving backwards
 #   LeaseRegistry         fixed: one empty in-process registry per run
 #   HostingPolicy         controller `b10x-llm-gateway`, provider `runpod`, account `default`,
@@ -296,12 +309,21 @@ types:
   # (`config:value`).
   # `connectors`, optional: when present the provider's pods are reached through the connectors
   # connection it names, and the table is closed.
+  # DECIDED 2026-10-16 (story:spend-caps): `daily_cap_usd` and `total_cap_usd`, optional, are the
+  # account's spend ceilings in USD (llm-gateway.runpod.SpendLedger); absent is no ceiling of
+  # that kind. A value that is not finite, is not above 0, or is above 1000000 is
+  # `config:value`. At most one provider declares a ceiling (`config:value` naming
+  # `providers`), and once one does, every `[models.*]` model declares `price_per_hour_usd`
+  # (ModelDeclaration; `config:value` naming the model otherwise). Proved by `spend_*` in
+  # crates/llm-gateway-cli/tests/config.rs.
   - name: llm-gateway.deployment.ProviderDeclaration
     kind: struct
     fields:
       - {name: kind, type: llm-gateway.deployment.ProviderKind}
       - {name: cloud_type, type: llm-gateway.deployment.CloudType}
       - {name: connectors, type: 'Optional<llm-gateway.deployment.ConnectorsDeclaration>'}
+      - {name: daily_cap_usd, type: 'Optional<Decimal>'}
+      - {name: total_cap_usd, type: 'Optional<Decimal>'}
   # `[providers.<name>.connectors]`: how the binary reaches the connectors owner process that
   # holds the Runpod authorization (docs/design/runpod-clients.md § 4). It maps one to one onto
   # llm-gateway.runpod.ConnectorsBinding, `timeout_seconds` x 1000 being its `timeout_ms`. Every
@@ -351,6 +373,10 @@ types:
   #   start_wait_seconds    10..=3600, default 600: the pod's startup deadline
   #   request_hold_seconds  0..=start_wait_seconds, default start_wait_seconds: how long one
   #                         request waits for the pod (row K28)
+  #   price_per_hour_usd    optional, above 0 and at most 1000, finite: the most the model's pod
+  #                         costs per hour on any of its GPU types, which the spend check
+  #                         prices its pods by (llm-gateway.runpod.SpendLedger). Required once a
+  #                         provider declares a spend ceiling (ProviderDeclaration)
   #   vllm_api_key_file     optional; the file holding the key the model's pod's vLLM server
   #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
   #   tool_calling          `parsed` or `absent` (llm-gateway.clients.ToolCalling), default
@@ -387,6 +413,7 @@ types:
       - {name: request_hold_seconds, type: Integer}
       - {name: vllm_api_key_file, type: 'Optional<String>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
+      - {name: price_per_hour_usd, type: 'Optional<Decimal>'}
   # `[hosted.<alias>]`: a model served by a hosted endpoint (llm-gateway.upstream.HostedEndpoint,
   # whose `endpoint_id` is the alias). The alias follows the provider-name rule and names no
   # `[models.<alias>]` as well. Every rule is `config:value`; a missing required key, an unknown

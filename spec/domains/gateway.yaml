@@ -123,6 +123,7 @@ types:
       - {name: RequestMalformed, attributes: {code: request-malformed, status: 400, message: "the request is not well-formed HTTP"}}
       - {name: RequestTooLarge, attributes: {code: request-too-large, status: 431, message: "the request head exceeds its byte bound"}}
       - {name: RouteUnknown, attributes: {code: route-unknown, status: 404, message: "no such route alias"}}
+      - {name: SpendCeiling, attributes: {code: spend-ceiling, status: 503, message: "the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown"}}
       - {name: TargetUnavailable, attributes: {code: target-unavailable, status: 503, message: "no model target is available"}}
       - {name: ToolsNotServed, attributes: {code: tools-not-served, status: 400, message: "the model does not serve tool calls"}}
       - {name: TranslationInvalid, attributes: {code: translation-invalid, status: 400, message: "the request breaks a rule of the subset the gateway translates"}}
@@ -545,7 +546,9 @@ entities:
   #      hands out none: none can be had is `target-unavailable` (503); W6: the model's target
   #      is still starting and the request's hold budget has passed is `model-cold-start` (503)
   #      with `retry-after: 30`, so the client asks again later rather than treating the model
-  #      as down. How long a request is held for its target, and what a stop does to a held
+  #      as down; starting its pod would pass a spend ceiling of its provider account, or that
+  #      account's spend is unknown, is `spend-ceiling` (503, story:spend-caps,
+  #      `TargetRefusal::SpendCeiling`), without `retry-after`. How long a request is held for its target, and what a stop does to a held
   #      request, are the embedding's (llm-gateway.deployment, rows L6 and K28); the gateway
   #      holds nothing itself. The request goes to the same path at the target, with `host` set
   #      to the target's authority and a `content-length` (`r6_*`, `r7_*` and `r8_*` in

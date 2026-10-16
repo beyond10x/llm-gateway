@@ -649,7 +649,8 @@ entities:
       # Why the gateway could not be composed: `token:<rule>`, `verifier:<rule>`,
       # `label:<rule>`, `relay:<rule>`, `bearer:<rule>`, `credential-header:<rule>`,
       # `static-header:<rule>`, `endpoint:base-url` for an endpoint the binary refuses, or
-      # `endpoint:headers` for a static header set it refuses.
+      # `endpoint:headers` for a static header set it refuses, or a routes
+      # document's `config:<rule>` (`routes_document`).
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
       # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer,
@@ -832,6 +833,19 @@ commands:
       #           endpoint's (the credential's material, not a file). Such a model is served by
       #           the binary's own hosted target source, `llm_gateway_cli::HostedTargets`, over
       #           the binary's TLS client with the test seam's root, and takes no `bearer`
+      #   routes_document  optional, the text of an `llm.routes/1` document
+      #           (llm-gateway.deployment.RoutesDeclaration) whose routes are served beside
+      #           `models`, as the binary serves them (`llm_gateway_cli::Routes`): each route a
+      #           model on its endpoint's wire, served by `HostedTargets` from the hosted
+      #           endpoint derived from its endpoint, and translated under its capabilities when
+      #           `translation` is `on`. Every `//pod-<n>` in the text is replaced by `//` and
+      #           that fixture pod's authority before it is parsed, so a `base_url` reads
+      #           `http://pod-1/v1`. No file the document names is read: each credentialed
+      #           endpoint's credential is the material `route_credentials` gives under the
+      #           endpoint's name. A document the binary refuses, an endpoint without its
+      #           credential, or a route name equal to a model's alias composes nothing, its
+      #           `error_code` the refusal's `<source>:<rule>` (`config:value`)
+      #   route_credentials  optional, an object of endpoint names to credential material
       #   pods    one script per fixture pod, `pod-1` first. The target source hands out the
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a

@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.RouteDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
+    "contract_digest": "slice-sha256/2:f85e6fefae248a397192f69d1ee368394d22f1db7b3d9ed40a4708a7403227c9",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.RouteDeclaration": {
+      "title": "RouteDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RouteDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "upstream_model": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "boolean"
+        },
+        "context_window": {
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "endpoint",
+        "upstream_model",
+        "tools",
+        "context_window",
+        "max_output_tokens"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

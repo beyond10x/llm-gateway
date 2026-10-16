@@ -14,6 +14,9 @@
     "configuration_digest": {
       "type": "string"
     },
+    "routes": {
+      "$ref": "#/$defs/llm-gateway.deployment.RoutesDeclaration"
+    },
     "refusal": {
       "$ref": "#/$defs/llm-gateway.deployment.StartupRefusal"
     },
@@ -38,8 +41,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "470011f18fdbad1912b61af3c3a176a02d8d596f5b0ff4d00909c390b3a22f64",
-    "contract_digest": "slice-sha256/2:99871452056ed2d616c070c2e7e0bf1c256e5334c45f543ee88b50bda355d6df",
+    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
+    "contract_digest": "slice-sha256/2:38415d200dbd89c2a795f2f43368f1d23a54bdbb57e58f3004394a0d60987e95",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -129,6 +132,9 @@
             "$ref": "#/$defs/llm-gateway.deployment.HostedDeclaration"
           },
           "x-ess-map-key": "String"
+        },
+        "routes": {
+          "type": "string"
         }
       },
       "required": [
@@ -379,6 +385,97 @@
         "High",
         "Xhigh"
       ]
+    },
+    "llm-gateway.deployment.RouteDeclaration": {
+      "title": "RouteDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RouteDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "endpoint": {
+          "type": "string"
+        },
+        "upstream_model": {
+          "type": "string"
+        },
+        "tools": {
+          "type": "boolean"
+        },
+        "context_window": {
+          "type": "integer"
+        },
+        "max_output_tokens": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "endpoint",
+        "upstream_model",
+        "tools",
+        "context_window",
+        "max_output_tokens"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.RouteEndpointDeclaration": {
+      "title": "RouteEndpointDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RouteEndpointDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "base_url": {
+          "type": "string"
+        },
+        "protocol": {
+          "$ref": "#/$defs/llm-gateway.deployment.Wire"
+        },
+        "auth_kind": {
+          "$ref": "#/$defs/llm-gateway.upstream.AuthKind"
+        },
+        "credential_header": {
+          "type": "string"
+        },
+        "credential_file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "base_url",
+        "protocol",
+        "auth_kind"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.RoutesDeclaration": {
+      "title": "RoutesDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RoutesDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "endpoints": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.RouteEndpointDeclaration"
+          },
+          "x-ess-map-key": "String"
+        },
+        "routes": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/llm-gateway.deployment.RouteDeclaration"
+          },
+          "x-ess-map-key": "String"
+        },
+        "digest": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "endpoints",
+        "routes",
+        "digest"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.StartupRefusal": {
       "title": "StartupRefusal",

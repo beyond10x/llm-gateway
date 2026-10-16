@@ -649,7 +649,7 @@ fn relay_label(value: &str) -> Result<Label, Refusal> {
     })
 }
 
-const fn relay_wire(wire: Wire) -> llm_gateway::Wire {
+pub(crate) const fn relay_wire(wire: Wire) -> llm_gateway::Wire {
     match wire {
         Wire::Chat => llm_gateway::Wire::Chat,
         Wire::Responses => llm_gateway::Wire::Responses,
@@ -814,7 +814,8 @@ struct Parts {
     verifier: Arc<dyn OwnerVerifier>,
     inventory: RouteInventory,
     vllm_keys: VllmKeys,
-    /// Each hosted model's endpoint, its credential read (story:hosted-endpoints).
+    /// Each hosted model's and each route's endpoint, its credential read
+    /// (story:hosted-endpoints, story:routes-document).
     hosted: BTreeMap<String, HostedEndpoint>,
     /// The connector an `https` hosted endpoint is reached through: the pod connector.
     tls: Arc<dyn PodConnector>,
@@ -847,7 +848,8 @@ impl Parts {
 /// (rows R5, R1). A hosted model is relayed under its `upstream_model`, and publishes the
 /// `context_window` it declares and no `max_model_len`. Only a hosted model gives a messages
 /// request naming no effort its declared `reasoning_effort`: a Runpod model's is already its
-/// server's default chat-template argument.
+/// server's default chat-template argument. A route of the routes document is relayed as
+/// [`crate::Routes::relay_models`] says.
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
     for (alias, hosted) in &deployment.hosted {
@@ -891,6 +893,8 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                 .with_context_window(u64::from(model.context_window)),
         );
     }
+    // Each route of the routes document, on its endpoint's wire (story:routes-document).
+    models.extend(deployment.routes.relay_models()?);
     Ok(models)
 }
 
@@ -918,10 +922,12 @@ fn compose(
     // Every composition serves its hosted models from their endpoints, whatever serves the rest.
     let targets: Arc<dyn RelayTargets> = Arc::new(HostedTargets::new(hosted, tls, targets));
     // Every composition translates a wire a model's upstream does not speak
-    // (story:gateway-translation).
+    // (story:gateway-translation), a route under its declared capabilities
+    // (story:routes-document).
+    let translator = deployment.routes.translator(LlmTranslator::new());
     let relay = Relay::new(models, targets)
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
-        .with_translator(Arc::new(LlmTranslator::new()))
+        .with_translator(Arc::new(translator))
         .with_metrics(Arc::clone(&metrics))
         .with_records(Arc::new(crate::logging::TracingRecords));
     let signals = Running::install_signals()?;

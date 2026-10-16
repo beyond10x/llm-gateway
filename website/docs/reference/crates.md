@@ -15,7 +15,7 @@ The workspace holds 7 packages at version `0.8.0`. None is published to a regist
 | --- | --- | --- | --- | --- |
 | `b10x-llm-gateway-conformance` | — | `b10x-llm-gateway-conformance` | `checks/conformance` | The ESS conformance runner: checks the generated suite and schemas against the specification and runs the scenarios against the crates. |
 | `b10x-llm-gateway` | `llm_gateway` | — | `crates/llm-gateway` | The single-owner gateway library: owner authentication, probes, the public model listing, route inspection, the wire relay and its translation port, counters, drain and stop. |
-| `b10x-llm-gateway-cli` | `llm_gateway_cli` | `b10x-llm-gateway`, `gateway-connectors-fixture`, `gateway-tls-seam` | `crates/llm-gateway-cli` | The b10x-llm-gateway binary: one closed TOML deployment document, one gateway that translates between wires with llm's clients, a clean stop. |
+| `b10x-llm-gateway-cli` | `llm_gateway_cli` | `b10x-llm-gateway`, `gateway-connectors-fixture`, `gateway-tls-seam` | `crates/llm-gateway-cli` | The b10x-llm-gateway binary: one closed TOML deployment document and the llm.routes/1 document it may name, one gateway that translates between wires with llm's clients, a clean stop. |
 | `llm-gateway-docs` | — | `llm-gateway-docs` | `crates/llm-gateway-docs` | Generates and drift-checks the derived pages of the llm-gateway documentation site, and binds a built site to its source commit. |
 | `b10x-llm-modal` | `b10x_llm_modal` | — | `crates/llm-modal` | Modal provisioning adapter behind the hosting lifecycle port; it exports nothing yet. |
 | `b10x-llm-provision` | `llm_provision` | — | `crates/llm-provision` | Hosting lifecycle ports and resource ownership contracts. |

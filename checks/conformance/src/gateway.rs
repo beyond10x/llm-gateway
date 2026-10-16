@@ -522,7 +522,7 @@ mod relay {
     };
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, PodConnector,
-        ProxyConnector,
+        ProxyConnector, Routes,
     };
     use rcgen::{
         BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer,
@@ -587,6 +587,14 @@ mod relay {
         /// `off`, the default, or `on`: the relay is composed with the binary's translator.
         #[serde(default)]
         translation: Option<String>,
+        /// The text of an `llm.routes/1` document whose routes are served beside `models`; each
+        /// `//pod-<n>` in it is replaced by `//` and that pod's authority before it is parsed.
+        #[serde(default)]
+        routes_document: Option<String>,
+        /// Each credentialed route endpoint's credential material, by endpoint name: no file
+        /// the routes document names is read.
+        #[serde(default)]
+        route_credentials: BTreeMap<String, String>,
     }
 
     #[derive(Deserialize)]
@@ -1598,6 +1606,60 @@ mod relay {
         Ok(endpoints)
     }
 
+    /// The routes document, empty without `routes_document`: each `//pod-<n>` replaced by `//`
+    /// and that pod's authority, then parsed as the binary parses it. A route name equal to a
+    /// model's alias is refused as the binary refuses one equal to a `[hosted.*]` alias.
+    fn routes(program: &Program, authorities: &[String]) -> Result<Routes, String> {
+        let Some(text) = &program.routes_document else {
+            return Ok(Routes::default());
+        };
+        let mut text = text.clone();
+        // The highest pod first, so `//pod-1` never rewrites the start of `//pod-10`.
+        for (index, authority) in authorities.iter().enumerate().rev() {
+            text = text.replace(&format!("//pod-{}", index + 1), &format!("//{authority}"));
+        }
+        let routes = Routes::parse(&text).map_err(|refusal| refusal.code().to_owned())?;
+        if routes.routes().any(|route| {
+            program
+                .models
+                .iter()
+                .any(|model| model.alias == route.name())
+        }) {
+            return Err("config:value".to_owned());
+        }
+        Ok(routes)
+    }
+
+    /// The binary's translator, on a fixed clock so a translated answer's bytes are exact, each
+    /// route translated under its capabilities.
+    fn translator(routes: &Routes) -> LlmTranslator {
+        routes
+            .translator(LlmTranslator::new())
+            .with_created(CREATED)
+    }
+
+    /// Serves the routes document's routes beside the program's models, as the binary composes
+    /// them (story:routes-document): each route's hosted endpoint, sent the credential
+    /// `route_credentials` gives its endpoint, and its relayed model.
+    fn serve_routes(
+        program: &Program,
+        authorities: &[String],
+        endpoints: &mut BTreeMap<String, HostedEndpoint>,
+        models: &mut Vec<RelayModel>,
+    ) -> Result<Routes, String> {
+        let routes = routes(program, authorities)?;
+        let code = |refusal: llm_gateway_cli::Refusal| refusal.code().to_owned();
+        let mut credentials = BTreeMap::new();
+        for (endpoint, material) in &program.route_credentials {
+            let bearer = TargetBearer::new(material.as_bytes().to_vec())
+                .map_err(|error| format!("bearer:{}", token_code(error)))?;
+            credentials.insert(endpoint.clone(), bearer);
+        }
+        endpoints.extend(routes.hosted_endpoints(&credentials).map_err(code)?);
+        models.extend(routes.relay_models().map_err(code)?);
+        Ok(routes)
+    }
+
     fn compose(
         program: &Program,
         source: Arc<Source>,
@@ -1670,7 +1732,8 @@ mod relay {
             .map(|(name, authority, _)| (name.clone(), authority.clone()))
             .collect();
         let authorities: Vec<String> = names.iter().map(|(_, pod)| pod.clone()).collect();
-        let endpoints = endpoints(program, &authorities)?;
+        let mut endpoints = endpoints(program, &authorities)?;
+        let routes = serve_routes(program, &authorities, &mut endpoints, &mut models)?;
         // The binary's TLS client over the run's test root: the seam the shipped binary cannot
         // reach. A run with no https endpoint trusts nothing, and connects over TLS to nothing.
         let tls: Arc<dyn PodConnector> = match tls_root {
@@ -1694,9 +1757,7 @@ mod relay {
         // The binary's translator, on a fixed clock so a translated answer's bytes are exact.
         let relay = match program.translation.as_deref() {
             None | Some("off") => relay,
-            Some("on") => {
-                relay.with_translator(Arc::new(LlmTranslator::new().with_created(CREATED)))
-            }
+            Some("on") => relay.with_translator(Arc::new(translator(&routes))),
             Some(_) => return Err("fixture:unknown-translation".to_owned()),
         };
         let inventory =

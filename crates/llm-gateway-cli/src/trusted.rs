@@ -1,5 +1,6 @@
 //! The same-handle, bounded trusted-file reader (rows K30 and B9; llmgw `src/trusted.rs:21-42`),
-//! for the document, the owner secret, each vLLM key and each hosted endpoint's credential.
+//! for the document, the routes document it names, the owner secret, each vLLM key and each
+//! endpoint credential.
 //!
 //! The file is opened once without following a final symlink, and every check reads that handle:
 //! a path swapped between a check and the read cannot substitute another file.
@@ -31,6 +32,14 @@ pub(crate) const CONFIG: Policy = Policy {
     source: Source::Config,
     limit: 256 * 1024,
     unsafe_mode: 0o022,
+};
+
+/// The routes document a deployment names (story:routes-document): a `config` file in every rule
+/// but its bound, which is llm's own `MAX_CONFIG_BYTES`, 2 MiB, the bound `Routes::parse` applies
+/// (`routes::tests::the_routes_bound_is_the_bound_llm_parses_to`).
+pub(crate) const ROUTES: Policy = Policy {
+    limit: 2 * 1024 * 1024,
+    ..CONFIG
 };
 
 /// The owner secret: a token of at most 4096 bytes plus the trailing CRLF or newline an editor

@@ -3,7 +3,7 @@ title: Translate between wires
 sidebar_position: 4
 description: When the gateway relays a request byte for byte and when it translates it to the wire the model's upstream speaks, what each wire's translated subset accepts, and the limits that matter for Claude Code and Codex.
 lede: A model's declared wires are the wires its upstream speaks. A request on one of them is relayed unchanged; a request on another is translated within llm's published subset, and a field outside it is refused, never dropped.
-source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crates/llm-gateway-cli/src/translate.rs, crates/llm-gateway-cli/tests/translation.rs, contracts/gateway/scenarios/translate-*.yaml; every output below is pasted from a run of the binary
+source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crates/llm-gateway-cli/src/translate.rs, crates/llm-gateway-cli/src/routes.rs, crates/llm-gateway-cli/tests/translation.rs, crates/llm-gateway-cli/tests/routes.rs, contracts/gateway/scenarios/translate-*.yaml and routes-*.yaml; every output below is pasted from a run of the binary
 ---
 
 # Translate between wires
@@ -79,6 +79,145 @@ curl -s http://127.0.0.1:8080/v1/chat/completions -H "$token" \
 ```json
 {"error":{"code":"upstream-failed","message":"the model target could not be reached or failed; the next request asks for a replacement"}}
 ```
+
+## Serve the models of a routes document
+
+The deployment document may name an llm `llm.routes/1` document with its top-level `routes` key
+([the rules](../reference/deployment-document.md#routes)). Each route is served as a model under
+its route name, on its endpoint's wire, with the endpoint's base URL, authentication and
+credential. A request on the endpoint's wire is relayed byte for byte to the endpoint's base
+path; a request on another wire is translated to the endpoint's wire, under the route's
+capabilities. `[models.*]` and `[hosted.*]` models keep working beside the routes.
+
+This deployment routes Codex, which speaks Responses, to Anthropic's Messages API, and Claude
+Code, which speaks Messages, to OpenRouter's Chat Completions API. The model ids are examples;
+use the ones your accounts offer.
+
+```toml title="gateway.toml"
+listen = "127.0.0.1:8080"
+owner_secret_file = "owner-secret"
+routes = "routes.yaml"
+```
+
+```yaml title="routes.yaml"
+format: llm.routes/1
+endpoints:
+  anthropic:
+    base_url: https://api.anthropic.com/v1
+    protocol: messages
+    auth: {kind: api-key, header: x-api-key, secret: "file:~/.config/llm-gateway/anthropic-key"}
+  openrouter:
+    base_url: https://openrouter.ai/api/v1
+    protocol: chat-completions
+    auth: {kind: bearer, secret: "file:~/.config/llm-gateway/openrouter-key"}
+routes:
+  codex: anthropic/claude-sonnet-4-5
+  claude: openrouter/anthropic/claude-sonnet-4.5
+```
+
+Each key file holds one token and has no group or other permission (`chmod 600`); `~/` is
+resolved against `HOME`. The routes file and both key files are read once, at start:
+
+```bash
+b10x-llm-gateway --config gateway.toml
+```
+
+```text
+b10x-llm-gateway: listening on 127.0.0.1:8080
+```
+
+| Client wire | Route | Endpoint wire | What the gateway does |
+| --- | --- | --- | --- |
+| `responses` (Codex) | `codex` | `messages` | translates, and sends the turn to `https://api.anthropic.com/v1/messages` with `x-api-key` and llm's `anthropic-version: 2023-06-01` |
+| `messages` (Claude Code) | `codex` | `messages` | relays byte for byte to `https://api.anthropic.com/v1/messages` with `x-api-key` and `anthropic-version: 2023-06-01` |
+| `messages` (Claude Code) | `claude` | `chat` | translates, and sends the turn to `https://openrouter.ai/api/v1/chat/completions` with `authorization: Bearer` |
+
+A route on a Messages endpoint is sent llm's `anthropic-version` on every request, the output
+clamp's `count_tokens` included, since Anthropic's API requires it; a route is sent no other
+static header.
+
+The listing names both routes on every wire, and the wire each endpoint speaks:
+
+```bash
+curl -s http://127.0.0.1:8080/v1/models
+```
+
+```json
+{"object":"list","data":[{"id":"claude","object":"model","owned_by":"llm-gateway","wires":["chat","responses","messages"],"upstream_wires":["chat"]},{"id":"codex","object":"model","owned_by":"llm-gateway","wires":["chat","responses","messages"],"upstream_wires":["messages"]}]}
+```
+
+The owner's route inventory names each route's endpoint, wire, model id, kinds and limits, and
+never a URL, a key file or a key. `binding_revision` is the SHA-256 of the routes file:
+
+```bash
+token="authorization: Bearer $(cat owner-secret)"
+curl -s http://127.0.0.1:8080/v1/routes -H "$token"
+```
+
+```json
+{"config_digest":"767d483018c9701a537f76276b5407521ac1236edb6ed1592842e77a2f56b07d","route_count":2,"routes":[{"route_id":"claude","alias":"claude","fallback_enabled":false,"target_count":1,"targets":[{"target_id":"claude.chat","position":0,"protocol":"chat","provider":"routes","account":"routes","endpoint":"openrouter","model":"anthropic/claude-sonnet-4.5","binding_revision":"4444fa6ee9ef5335002f2a7adb63d7457b2186aa0ed6ba4075865e2b86cb34f4","auth_kind":"bearer","billing_kind":"metered","context_window":200000,"max_output_tokens":16384}]},{"route_id":"codex","alias":"codex","fallback_enabled":false,"target_count":1,"targets":[{"target_id":"codex.messages","position":0,"protocol":"messages","provider":"routes","account":"routes","endpoint":"anthropic","model":"claude-sonnet-4-5","binding_revision":"4444fa6ee9ef5335002f2a7adb63d7457b2186aa0ed6ba4075865e2b86cb34f4","auth_kind":"api-key","billing_kind":"metered","context_window":200000,"max_output_tokens":16384}]}]}
+```
+
+`config_digest` is the SHA-256 of `gateway.toml` exactly as read, its final newline included.
+
+`GET /` hands each client the settings for the models it can call on their own wire, as for
+any model. For this document Claude Code is handed the `codex` route, which reaches Anthropic
+natively, and Codex is handed nothing:
+
+```bash
+curl -s http://127.0.0.1:8080/ -A "claude-cli/2.1.0 (external, cli)"
+curl -s http://127.0.0.1:8080/ -A "codex_cli_rs/0.50.0"
+```
+
+```text
+# Claude Code settings for this llm-gateway, one block per model it serves on the messages
+# wire with tool calling parsed. Set ANTHROPIC_AUTH_TOKEN to the gateway's owner token, or
+# name an apiKeyHelper that prints it; ANTHROPIC_API_KEY is sent as x-api-key, which this
+# gateway does not read.
+
+# model codex
+export ANTHROPIC_BASE_URL='http://127.0.0.1:8080'
+export ANTHROPIC_MODEL='codex'
+export ANTHROPIC_DEFAULT_OPUS_MODEL='codex'
+export ANTHROPIC_DEFAULT_SONNET_MODEL='codex'
+export ANTHROPIC_DEFAULT_HAIKU_MODEL='codex'
+export CLAUDE_CODE_SUBAGENT_MODEL='codex'
+export CLAUDE_CODE_MAX_CONTEXT_TOKENS='200000'
+
+# Codex profiles for this llm-gateway, one per model it serves on the responses wire with
+# tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the
+# gateway's owner token, and start Codex with `codex --profile <alias>`.
+
+# No model of this gateway serves Codex: none declares the responses wire with tool
+# calling parsed.
+```
+
+Claude Code on `codex` is relayed to Anthropic as it sends its requests, `thinking` and all,
+with the route's `anthropic-version`. A translated route gets no client profile: llm 0.6.0's
+subset refuses the requests Codex and Claude Code send (the [known limits](#known-limits)
+below). On this document, Codex's `instructions` to `codex` and Claude Code's `thinking` to
+`claude` are each refused before any request leaves the gateway:
+
+```bash
+curl -s http://127.0.0.1:8080/v1/responses -H "$token" \
+  -d '{"model":"codex","instructions":"Be brief.","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Hi"}]}],"stream":true,"store":false,"include":["reasoning.encrypted_content"]}'
+curl -s http://127.0.0.1:8080/v1/messages -H "$token" \
+  -d '{"model":"claude","max_tokens":1024,"thinking":{"type":"enabled","budget_tokens":512},"messages":[{"role":"user","content":"Hi"}]}'
+```
+
+```json
+{"error":{"code":"translation-unsupported","message":"the request uses a field or value outside the subset the gateway translates"}}
+{"error":{"code":"translation-unsupported","message":"the request uses a field or value outside the subset the gateway translates"}}
+```
+
+A request inside the subset, from any client, is translated and sent.
+
+
+A plain route (`<endpoint>/<model-id>`) is translated under llm's default capabilities: tools,
+sampling, efforts `low`, `medium` and `high`, a 200000-token window and at most 16384 output
+tokens. A route written as a mapping with its own `capabilities` is translated under those, and
+its `tools` decides whether a tool request on its own wire is relayed or refused
+`tools-not-served`.
 
 ## What each wire's subset accepts
 

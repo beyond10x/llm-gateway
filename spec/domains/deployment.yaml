@@ -127,6 +127,14 @@ domain: llm-gateway.deployment
 # `connectors` call (`endpoint-credential:<rule>`), and held redacted. A hosted model starts no
 # pod, counts toward no hosting policy and is never held: its endpoint is handed out at once,
 # also while the gateway stops, and is kept when a request through it fails.
+# DECIDED 2026-10-16 (story:routes-document): the document may instead, or as well, name an
+# llm `llm.routes/1` document by its top-level `routes` key (RoutesDeclaration below). Each route
+# is served as one model whose endpoint is a hosted endpoint (llm-gateway.upstream.HostedEndpoint)
+# derived from the route's endpoint, through the same `HostedTargets`, beside `[models.*]` and
+# `[hosted.*]`, which keep working unchanged. The routes document is read once at start, right
+# after the deployment document and before any other file; its endpoints' credential files are
+# read with the hosted endpoints' credential files. Reloading it while serving is not done: a
+# changed routes document takes a restart.
 # The pool's inputs, each from the document or fixed:
 #   ComputeAuthorization  fixed: ledger `b10x-llm-gateway`, reservation `unmetered`. No budget
 #                         ledger is consulted yet; the pair only satisfies the hosting contract
@@ -201,7 +209,12 @@ types:
   # file bound. Every `vllm-api-key:<rule>` message starts
   # `models.<alias>.vllm_api_key_file <path>:`, and every `endpoint-credential:<rule>` message
   # `hosted.<alias>.credential_file <path>:`, naming the model and the file and never the
-  # credential's bytes.
+  # credential's bytes; a routes document's endpoint credential (RoutesDeclaration) is an
+  # `endpoint-credential` file too, its messages starting `routes.<endpoint>.auth.secret <path>:`.
+  # The routes document a deployment names is a `config` file in every rule but its bound: its
+  # messages start `routes <path>:`, it is refused group- or world-writable (mode & 0o022) and
+  # `config:too-large` over 2097152 bytes (2 MiB, llm's `MAX_CONFIG_BYTES`, the bound
+  # `Routes::parse` itself applies).
   #   `<source>:unreadable`     the file cannot be opened (absent, no permission)
   #   `<source>:symlink`        the final path component is a symbolic link
   #   `<source>:not-regular`    the handle is not a regular file
@@ -443,6 +456,99 @@ types:
       - {name: context_window, type: 'Optional<Integer>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
+  # One endpoint of a routes document (RoutesDeclaration), as llm 0.6.0 reads it
+  # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
+  # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,
+  # `Chat`), `auth.kind` `anonymous`, `bearer` or `api-key`, `auth.header` for an `api-key`
+  # endpoint, and `auth.secret` a `file:` reference for any but an `anonymous` endpoint.
+  - name: llm-gateway.deployment.RouteEndpointDeclaration
+    kind: struct
+    fields:
+      - {name: base_url, type: String}
+      - {name: protocol, type: llm-gateway.deployment.Wire}
+      - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
+      - {name: credential_header, type: 'Optional<String>'}
+      - {name: credential_file, type: 'Optional<String>'}
+  # One route of a routes document: the endpoint its model names (before the model's first `/`),
+  # the model id sent upstream (after it), and its capabilities, llm's declared ones or llm's
+  # defaults for a route written as a plain `<endpoint>/<model-id>` (every boolean true, efforts
+  # `low`, `medium`, `high`, a 200000-token window and 16384 output tokens).
+  - name: llm-gateway.deployment.RouteDeclaration
+    kind: struct
+    fields:
+      - {name: endpoint, type: String}
+      - {name: upstream_model, type: String}
+      - {name: tools, type: Boolean}
+      - {name: context_window, type: Integer}
+      - {name: max_output_tokens, type: Integer}
+  # The `llm.routes/1` document a deployment's `routes` key names (story:routes-document).
+  # ESS-LIMIT: the rules are not struct invariants, for the reason ModelDeclaration gives; the
+  # crate tests named `routes_*` in crates/llm-gateway-cli/tests/routes.rs prove them.
+  #   what is read      the file `routes` names, once at start, through the trusted-file reader
+  #                     as a `config` file bounded at 2 MiB (StartupRefusal), then
+  #                     `llm_models::routes::Routes::parse` of llm 0.6.0, which parses strictly
+  #                     and performs no I/O; `b10x-llm-models` is linked with no default feature,
+  #                     so llm itself reads no secret. A relative path is resolved from the
+  #                     process's working directory, as `owner_secret_file` is. A document llm
+  #                     refuses (malformed YAML, an unknown field, a repeated key, an unknown
+  #                     format, protocol, auth kind or secret source, a literal secret, a relative
+  #                     `file:` path, a route to an undeclared endpoint, …) is `config:value`, its
+  #                     message `routes <llm's message>`, which names a field, endpoint or route
+  #                     and never a value
+  #   the credential rule  credentials come only from trusted files: a `file:` secret is read
+  #                     once at start through the trusted-file reader with the endpoint-credential
+  #                     policy (`endpoint-credential:<rule>`), a `~/` path resolved against `HOME`
+  #                     (`config:value` naming `routes.<endpoint>.auth.secret` when `HOME` is
+  #                     unset or not absolute). An `env:` or `keychain:` secret is `config:value`
+  #                     naming `routes.<endpoint>.auth.secret`. An `api-key` endpoint's
+  #                     `auth.header` must also pass HostedDeclaration's `credential_header` rule
+  #                     (`config:value` naming `routes.<endpoint>.auth.header`), and on a
+  #                     `messages` endpoint it is not `anthropic-version` in any case, the
+  #                     header every request to such an endpoint is sent (same refusal)
+  #   the alias collision rule  a route name that is also a `[models.<alias>]` or
+  #                     `[hosted.<alias>]` alias is `config:value` naming `routes.<route>`
+  #   the base-URL rule  llm appends the wire path to `base_url`; the gateway replaces the wire
+  #                     path's leading `/v1` with the base path (llm-gateway.upstream
+  #                     HostedEndpoint): the two agree only when the URL names its API path. A
+  #                     `base_url` with no path (nothing or `/`), or one whose path breaks
+  #                     HostedDeclaration's base-path rule, is `config:value` naming
+  #                     `routes.<endpoint>.base_url`; a credential over `http` to a host that is
+  #                     not loopback is `config:value` there too, as for `[hosted.*]`
+  #   the route-name bound  llm admits a route name of 1..=256 printable ASCII bytes without
+  #                     `/`; the gateway serves one of at most 246 bytes (`MAX_ROUTE_NAME_BYTES`:
+  #                     256, the inventory label bound, less `.` and the longest wire label,
+  #                     `responses`), so that its target id `<route>.<wire>` fits one label. A
+  #                     longer name is `config:value` naming `routes.<the name's first 32
+  #                     bytes>…` and the bound, never the whole name. DECIDED 2026-10-16
+  #                     (correction round 1 of story:routes-document): a published bound and a
+  #                     named refusal, rather than a generic label error at start
+  #   what is served    each route name is a model alias: its upstream model the route's model
+  #                     id, its wires the endpoint's protocol only, its tool calling `parsed`
+  #                     exactly when `capabilities.tools` is true, its listed context window
+  #                     `capabilities.context_window`; the translator translates it under the
+  #                     route's capabilities. A direct `<endpoint>/<model-id>` name, which llm also
+  #                     resolves, is not a route and is not served (`model-unknown`). A route's
+  #                     endpoint is sent one static header when its protocol is `messages`,
+  #                     `anthropic-version: <llm_messages::ANTHROPIC_VERSION>` (`2023-06-01` in
+  #                     llm 0.6.0), on every request relayed to it, the output clamp's count
+  #                     included, and no other static header. DECIDED 2026-10-16 (correction
+  #                     round 1 of story:routes-document): Anthropic's Messages API requires
+  #                     the header on every request, llm's client already sends it on the
+  #                     translated path, and a routes document has no place to declare it
+  #   the inventory     one route per route name, one target `<route>.<wire>` at position 0:
+  #                     protocol the endpoint's wire, provider and account `routes`, endpoint the
+  #                     endpoint's name, model the route's model id, `binding_revision` the
+  #                     SHA-256 of the exact routes document bytes read (`digest`), `auth_kind`
+  #                     the endpoint's, `billing_kind` llm's expansion (`self-hosted` for an
+  #                     `anonymous` endpoint, `metered` otherwise), and the capabilities' context
+  #                     window and output limit; never a base URL, a credential file or a
+  #                     credential
+  - name: llm-gateway.deployment.RoutesDeclaration
+    kind: struct
+    fields:
+      - {name: endpoints, type: 'Map<String, llm-gateway.deployment.RouteEndpointDeclaration>'}
+      - {name: routes, type: 'Map<String, llm-gateway.deployment.RouteDeclaration>'}
+      - {name: digest, type: String}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
   # becomes the gateway's shared-secret owner verifier.
@@ -462,8 +568,11 @@ types:
   # for it, and the startup line above says the model calls are open. A relative `owner_secret_file` is
   # resolved from the process's working directory, not from the document's directory
   # (`k30_a_relative_owner_secret_file_is_read_from_the_working_directory` in
-  # crates/llm-gateway-cli/tests/binary.rs). At least one model, of `models` or `hosted`, is
-  # required. Each model alias, of either table, is served as one route of the inspection
+  # crates/llm-gateway-cli/tests/binary.rs). `routes`, optional, is the path of an `llm.routes/1`
+  # document (RoutesDeclaration). At least one model, of `models`, `hosted` or the routes
+  # document, is required: `parse`, which reads no file, admits a document naming `routes` and no
+  # other model, and a routes document without a route then refuses the start `config:value`
+  # naming `models`. Each model alias, of either table, is served as one route of the inspection
   # inventory, one target per wire, whose `config_digest` is the SHA-256 of the exact document
   # bytes read. A Runpod model's targets are `bearer` and `self-hosted`, its provider the
   # model's provider; a hosted model's carry the declaration's `auth_kind` and `billing_kind`,
@@ -478,6 +587,7 @@ types:
       - {name: providers, type: 'Map<String, llm-gateway.deployment.ProviderDeclaration>'}
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}
+      - {name: routes, type: 'Optional<String>'}
 entities:
   # One run of the binary. A refused start has a `refusal` and no `listening`; a served run has
   # `listening`, and `stopped_by` once a signal ended it.
@@ -486,6 +596,8 @@ entities:
     fields:
       - {name: configuration, type: 'Optional<llm-gateway.deployment.DeploymentConfiguration>'}
       - {name: configuration_digest, type: 'Optional<String>'}
+      # The routes document read at start, when the configuration names one.
+      - {name: routes, type: 'Optional<llm-gateway.deployment.RoutesDeclaration>'}
       - {name: refusal, type: 'Optional<llm-gateway.deployment.StartupRefusal>'}
       - {name: listening, type: 'Optional<String>'}
       - {name: stopped_by, type: 'Optional<llm-gateway.deployment.StopSignal>'}

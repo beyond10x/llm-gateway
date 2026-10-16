@@ -5,6 +5,7 @@
 
 use crate::{
     refusal::{Refusal, StartupRefusal},
+    routes::Routes,
     trusted,
 };
 use llm_gateway::{
@@ -59,6 +60,9 @@ struct Document {
     models: BTreeMap<String, ModelDocument>,
     #[serde(default)]
     hosted: BTreeMap<String, HostedDocument>,
+    /// The `llm.routes/1` document whose routes are served (story:routes-document).
+    #[serde(default)]
+    routes: Option<PathBuf>,
 }
 
 /// `[hosted.<alias>]`: a model a hosted endpoint serves (`llm-gateway.deployment.HostedDeclaration`).
@@ -484,18 +488,67 @@ pub struct Deployment {
     pub models: BTreeMap<String, Model>,
     /// The models hosted endpoints serve, by alias. No alias is in both tables.
     pub hosted: BTreeMap<String, Hosted>,
+    /// The routes document `routes` names, as written; only the path is loaded by [`parse`].
+    pub routes_file: Option<PathBuf>,
+    /// The routes of that document once [`load`] (or [`Deployment::with_routes`]) has read it;
+    /// empty before, and when the document names none. No route name is a `models` or `hosted`
+    /// alias.
+    pub routes: Routes,
     /// SHA-256 of the exact document bytes read, as 64 lowercase hex characters.
     pub digest: String,
 }
 
-/// Reads `path` through the trusted-file reader and loads the closed document.
+impl Deployment {
+    /// The deployment serving `routes` beside its own models.
+    ///
+    /// # Errors
+    /// `config:value` naming `routes.<route>` for a route name that is a `[models.*]` or
+    /// `[hosted.*]` alias, and naming `models` when no model of any kind is left to serve.
+    pub fn with_routes(mut self, routes: Routes) -> Result<Self, Refusal> {
+        for route in routes.routes() {
+            ensure(
+                !self.models.contains_key(route.name()) && !self.hosted.contains_key(route.name()),
+                &format!("routes.{}", route.name()),
+                "names an alias [models.*] or [hosted.*] already declares",
+            )?;
+        }
+        ensure(
+            !(self.models.is_empty() && self.hosted.is_empty() && routes.is_empty()),
+            "models",
+            "at least one model, of models, hosted or the routes document, is required",
+        )?;
+        self.routes = routes;
+        Ok(self)
+    }
+}
+
+/// SHA-256 of `bytes`, as 64 lowercase hex characters.
+pub(crate) fn hex_digest(bytes: &[u8]) -> String {
+    let mut digest = String::with_capacity(64);
+    for byte in Sha256::digest(bytes) {
+        digest.push(char::from(HEX[usize::from(byte >> 4)]));
+        digest.push(char::from(HEX[usize::from(byte & 0x0f)]));
+    }
+    digest
+}
+
+/// Reads `path` through the trusted-file reader and loads the closed document, then the routes
+/// document it names, if any (story:routes-document).
 ///
 /// # Errors
 /// A `config:*` [`Refusal`]: a trusted-file rule, `config:schema` for anything outside the
-/// closed document, or `config:value` for a value outside its rule.
+/// closed document, or `config:value` for a value outside its rule; for the routes document, a
+/// trusted-file rule or `config:value`, each message starting `routes`.
 pub fn load(path: &Path) -> Result<Deployment, Refusal> {
     let text = trusted::read(path, &trusted::CONFIG)?;
-    parse(&text)
+    let deployment = parse(&text)?;
+    match deployment.routes_file.clone() {
+        Some(file) => {
+            let routes = crate::routes::load(&file)?;
+            deployment.with_routes(routes)
+        }
+        None => Ok(deployment),
+    }
 }
 
 fn schema_refusal(text: &str, error: &toml::de::Error) -> Refusal {
@@ -524,15 +577,11 @@ fn schema_refusal(text: &str, error: &toml::de::Error) -> Refusal {
 /// outside its rule.
 pub fn parse(text: &str) -> Result<Deployment, Refusal> {
     let document: Document = toml::from_str(text).map_err(|error| schema_refusal(text, &error))?;
-    let mut digest = String::with_capacity(64);
-    for byte in Sha256::digest(text.as_bytes()) {
-        digest.push(char::from(HEX[usize::from(byte >> 4)]));
-        digest.push(char::from(HEX[usize::from(byte & 0x0f)]));
-    }
-    if document.models.is_empty() && document.hosted.is_empty() {
+    let digest = hex_digest(text.as_bytes());
+    if document.models.is_empty() && document.hosted.is_empty() && document.routes.is_none() {
         return Err(value(
             "models",
-            "at least one model, of models or hosted, is required",
+            "at least one model, of models, hosted or the routes document, is required",
         ));
     }
     let mut providers = BTreeMap::new();
@@ -605,6 +654,8 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         providers,
         models,
         hosted,
+        routes_file: document.routes,
+        routes: Routes::default(),
         digest,
     })
 }

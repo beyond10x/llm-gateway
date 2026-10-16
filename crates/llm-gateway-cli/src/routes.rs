@@ -7,8 +7,9 @@
 //! the path of an endpoint's `file:` secret, is read here from the same text with a minimal
 //! reader that ignores everything else. Each route becomes a served model whose endpoint is a
 //! [`HostedEndpoint`] derived from the route's endpoint: its wire, base URL, authentication and
-//! credential, no static header. A request on the endpoint's own wire is relayed byte for byte to
-//! its base path; a request on another wire is translated under the route's capabilities.
+//! credential, and for a Messages endpoint llm's `anthropic-version` as its one static header. A
+//! request on the endpoint's own wire is relayed byte for byte to its base path; a request on
+//! another wire is translated under the route's capabilities.
 //!
 //! Credentials come only from trusted files, as every other credential of the gateway: an
 //! `env:` or `keychain:` secret is refused, and a `file:` secret is read once at start with the
@@ -25,8 +26,8 @@ use crate::{
 };
 use llm_core::{Capabilities, Protocol};
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, Label, RelayModel, RouteSummary, TargetBearer,
-    TargetLimits, TargetProvenance, TargetSummary, ToolCalling,
+    AuthKind, BillingKind, CredentialHeader, Label, RelayModel, RouteSummary, StaticHeader,
+    TargetBearer, TargetLimits, TargetProvenance, TargetSummary, ToolCalling,
 };
 use llm_models::routes::{EndpointDeclaration, SecretKind};
 use serde::Deserialize;
@@ -37,6 +38,32 @@ use std::{
 
 /// The provider and account every route's target is listed under.
 const PROVIDER: &str = "routes";
+
+/// The longest label of a wire, which a route's inventory target id `<route>.<wire>` carries.
+const LONGEST_WIRE_LABEL: usize = {
+    let wires = [Wire::Chat, Wire::Responses, Wire::Messages];
+    let mut longest = 0;
+    let mut index = 0;
+    while index < wires.len() {
+        let length = wires[index].label().len();
+        if length > longest {
+            longest = length;
+        }
+        index += 1;
+    }
+    longest
+};
+
+/// The longest inventory label, `llm_gateway::Label`'s bound
+/// (`tests::the_label_bound_is_the_gateways`).
+const LABEL_BYTES: usize = 256;
+
+/// The longest route name the gateway serves: the longest whose target id `<route>.<wire>` fits
+/// one inventory label on every wire. llm admits up to 256 bytes; the gateway, fewer.
+pub const MAX_ROUTE_NAME_BYTES: usize = LABEL_BYTES - 1 - LONGEST_WIRE_LABEL;
+
+/// How much of a refused route name a message quotes.
+const QUOTED_NAME_BYTES: usize = 32;
 
 /// Where an endpoint's `file:` secret lives: an absolute path, or one below `HOME`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -189,6 +216,7 @@ impl Routes {
         let mut routes = BTreeMap::new();
         for route in parsed.routes() {
             let name = route.name().as_str().to_owned();
+            route_name(&name)?;
             routes.insert(
                 name.clone(),
                 Route {
@@ -355,12 +383,20 @@ impl Routes {
                     ));
                 }
             };
-            let served = HostedEndpoint::new(&endpoint.base_url, credential).map_err(|error| {
-                value(
-                    &format!("routes.{}.base_url", endpoint.name),
-                    &error.to_string(),
-                )
-            })?;
+            let served = HostedEndpoint::new(&endpoint.base_url, credential)
+                .map_err(|error| {
+                    value(
+                        &format!("routes.{}.base_url", endpoint.name),
+                        &error.to_string(),
+                    )
+                })?
+                .with_headers(endpoint_headers(endpoint.wire)?)
+                .map_err(|error| {
+                    value(
+                        &format!("routes.{}.auth.header", endpoint.name),
+                        &format!("cannot be sent beside anthropic-version: {error}"),
+                    )
+                })?;
             hosted.insert(route.name.clone(), served);
         }
         Ok(hosted)
@@ -489,6 +525,40 @@ fn endpoint(
     })
 }
 
+/// The static headers a route's endpoint is sent on every request it is relayed, the output
+/// clamp's count included: a Messages endpoint gets llm's `anthropic-version`, which Anthropic's
+/// API requires and llm's own client sends on the translated path; any other endpoint none.
+fn endpoint_headers(wire: Wire) -> Result<Vec<StaticHeader>, Refusal> {
+    if wire != Wire::Messages {
+        return Ok(Vec::new());
+    }
+    let header = StaticHeader::new(
+        llm_messages::VERSION_HEADER,
+        llm_messages::ANTHROPIC_VERSION,
+    )
+    .map_err(|error| value("routes", &format!("anthropic-version: {error}")))?;
+    Ok(vec![header])
+}
+
+/// A route name the gateway can serve: at most [`MAX_ROUTE_NAME_BYTES`], so that its target id
+/// `<route>.<wire>` fits one inventory label. A longer name is quoted only in part.
+fn route_name(name: &str) -> Result<(), Refusal> {
+    if name.len() <= MAX_ROUTE_NAME_BYTES {
+        return Ok(());
+    }
+    // llm admits only printable ASCII, so any byte offset is a character boundary.
+    let quoted = name.get(..QUOTED_NAME_BYTES).unwrap_or(name);
+    Err(value(
+        &format!("routes.{quoted}…"),
+        &format!(
+            "is a route name of {} bytes; the gateway serves route names of at most \
+             {MAX_ROUTE_NAME_BYTES} bytes, so that the target id <route>.<wire> fits its \
+             {LABEL_BYTES}-byte inventory label",
+            name.len()
+        ),
+    ))
+}
+
 /// A `file:` reference's path: `~/<path>` below the home directory, or an absolute path.
 fn secret_file(key: &str, secret: Option<&str>) -> Result<SecretFile, Refusal> {
     let path = secret
@@ -540,6 +610,69 @@ mod tests {
             refused.message().starts_with("routes ") && refused.message().contains("byte bound"),
             "{refused}"
         );
+    }
+
+    /// `LABEL_BYTES` is the gateway's own label bound: a label of exactly it is admitted, one byte
+    /// more is not.
+    #[test]
+    fn the_label_bound_is_the_gateways() {
+        assert!(llm_gateway::Label::new("a".repeat(super::LABEL_BYTES)).is_ok());
+        assert!(llm_gateway::Label::new("a".repeat(super::LABEL_BYTES + 1)).is_err());
+        assert_eq!(super::LONGEST_WIRE_LABEL, "responses".len());
+    }
+
+    /// A route name of [`super::MAX_ROUTE_NAME_BYTES`] is served on every wire, its target id
+    /// fitting one label; one byte more is `config:value` naming the bound and quoting only the
+    /// start of the name.
+    #[test]
+    fn a_route_name_is_served_up_to_the_gateways_bound_and_refused_past_it() {
+        let document = |name: &str| {
+            format!(
+                "format: llm.routes/1\nendpoints:\n  lab: {{base_url: http://127.0.0.1:8000/v1, protocol: responses, auth: {{kind: anonymous}}}}\nroutes:\n  {name}: lab/small\n"
+            )
+        };
+        let longest = "r".repeat(super::MAX_ROUTE_NAME_BYTES);
+        let routes = Routes::parse(&document(&longest)).unwrap();
+        assert_eq!(routes.summaries().unwrap().len(), 1);
+        assert_eq!(routes.relay_models().unwrap().len(), 1);
+        let past = "r".repeat(super::MAX_ROUTE_NAME_BYTES + 1);
+        let refused = Routes::parse(&document(&past)).unwrap_err();
+        assert_eq!(refused.code(), "config:value");
+        assert!(
+            refused
+                .message()
+                .contains(&format!("at most {} bytes", super::MAX_ROUTE_NAME_BYTES)),
+            "{refused}"
+        );
+        assert!(!refused.message().contains(&past), "{refused}");
+    }
+
+    /// The route-name bound and the `anthropic-version` a Messages route is sent are published
+    /// with the numbers the code holds, on the reference page and in the specification.
+    #[test]
+    fn the_published_route_name_bound_and_version_are_the_codes() {
+        let page = include_str!("../../../website/docs/reference/deployment-document.md");
+        let spec = include_str!("../../../spec/domains/deployment.yaml");
+        let bound = format!("at most {} bytes", super::MAX_ROUTE_NAME_BYTES);
+        assert!(
+            page.contains(&format!("A route name is {bound}")),
+            "{bound}"
+        );
+        assert!(spec.contains(&format!("serves one of {bound}")), "{bound}");
+        let version = format!("anthropic-version: {}", llm_messages::ANTHROPIC_VERSION);
+        assert!(page.contains(&version), "{version}");
+    }
+
+    /// A Messages endpoint is sent llm's own `anthropic-version`, every other endpoint nothing.
+    #[test]
+    fn only_a_messages_endpoint_is_sent_anthropic_version() {
+        let headers = super::endpoint_headers(crate::config::Wire::Messages).unwrap();
+        assert_eq!(headers.len(), 1);
+        assert_eq!(headers[0].name(), llm_messages::VERSION_HEADER);
+        assert_eq!(headers[0].value(), llm_messages::ANTHROPIC_VERSION);
+        for wire in [crate::config::Wire::Chat, crate::config::Wire::Responses] {
+            assert!(super::endpoint_headers(wire).unwrap().is_empty());
+        }
     }
 
     #[test]

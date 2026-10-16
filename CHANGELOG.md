@@ -56,8 +56,11 @@ Nothing in any release is deployed or qualified against a live client.
   the trusted reader (`endpoint-credential:<rule>`, `~/` against `HOME`); an `env:` or
   `keychain:` secret, a `base_url` without its API path or outside the base-path rule, a
   cleartext credential to a remote host, a document llm refuses, and a route name equal to a
-  `[models.*]` or `[hosted.*]` alias are refused `config:value`. A document with only `routes`
-  is admitted. The library exports `Routes`, `Route`, `RouteEndpoint`, `SecretFile` and
+  `[models.*]` or `[hosted.*]` alias are refused `config:value`, and so is a route name over
+  246 bytes, the longest whose target id `<route>.<wire>` fits an inventory label. A route on a
+  `messages` endpoint is sent llm's `anthropic-version` on every request, the output clamp's
+  count included, and no other static header. A document with only `routes` is admitted. The
+  library exports `Routes`, `Route`, `RouteEndpoint`, `SecretFile`, `MAX_ROUTE_NAME_BYTES` and
   `Deployment::with_routes`; the conformance `Relay` program takes `routes_document` and
   `route_credentials`.
 

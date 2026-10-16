@@ -190,6 +190,7 @@ A changed routes document takes a restart.
 | `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |
 | An `api-key` endpoint's `auth.header` is one a hosted model's `credential_header` may be. | `config:value` naming `routes.<endpoint>.auth.header` |
 | A route name is not also a `[models.<alias>]` or `[hosted.<alias>]` alias. | `config:value` naming `routes.<route>` |
+| A route name is at most 246 bytes, though llm admits 256: its inventory target id `<route>.<wire>` must fit the gateway's 256-byte label, and `responses` is the longest wire. | `config:value` naming `routes.` and the name's first 32 bytes, and the bound |
 
 An endpoint whose key is `secret: "env:ANTHROPIC_API_KEY"`:
 
@@ -198,7 +199,9 @@ b10x-llm-gateway: refused config:value: routes.anthropic.auth.secret must be a f
 ```
 
 A route is served under its endpoint's credential (`bearer` or `api-key` in its `auth.header`,
-or none), with no static header. It is relayed under its model id, its tool calling `parsed`
+or none). A route on a `messages` endpoint is sent llm's `anthropic-version: 2023-06-01` on every
+request, the output clamp's count included, because Anthropic's API requires it; a route is sent
+no other static header. It is relayed under its model id, its tool calling `parsed`
 exactly when its capabilities say `tools`, and it lists its capabilities' `context_window`,
 which is also its window for the Messages output clamp ([`[hosted.<alias>]`](#hosted-models)
 has the same rule); llm's defaults for a plain route are a 200000-token window and 16384

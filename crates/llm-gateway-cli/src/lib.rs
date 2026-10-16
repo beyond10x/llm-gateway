@@ -36,7 +36,7 @@ pub use relaying::{
     compute_authorization, hosting_policy, idle_timeout_ms, runpod_models, runpod_pool,
     secret_name, start_connected, start_relaying,
 };
-pub use routes::{Route, RouteEndpoint, Routes, SecretFile};
+pub use routes::{MAX_ROUTE_NAME_BYTES, Route, RouteEndpoint, Routes, SecretFile};
 pub use serve::{
     INGRESS_AUTH_OFF, Running, StopSignal, Stopped, inventory, main_with, owner_verifier, start,
     start_with,

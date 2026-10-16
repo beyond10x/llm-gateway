@@ -512,14 +512,27 @@ types:
   #                     HostedDeclaration's base-path rule, is `config:value` naming
   #                     `routes.<endpoint>.base_url`; a credential over `http` to a host that is
   #                     not loopback is `config:value` there too, as for `[hosted.*]`
-  #   what is served    each route name is a model alias (a route name is llm's rule: 1..=256
-  #                     printable ASCII without `/`): its upstream model the route's model id, its
-  #                     wires the endpoint's protocol only, its tool calling `parsed` exactly when
-  #                     `capabilities.tools` is true, its listed context window
+  #   the route-name bound  llm admits a route name of 1..=256 printable ASCII bytes without
+  #                     `/`; the gateway serves one of at most 246 bytes (`MAX_ROUTE_NAME_BYTES`:
+  #                     256, the inventory label bound, less `.` and the longest wire label,
+  #                     `responses`), so that its target id `<route>.<wire>` fits one label. A
+  #                     longer name is `config:value` naming `routes.<the name's first 32
+  #                     bytes>…` and the bound, never the whole name. DECIDED 2026-10-16
+  #                     (correction round 1 of story:routes-document): a published bound and a
+  #                     named refusal, rather than a generic label error at start
+  #   what is served    each route name is a model alias: its upstream model the route's model
+  #                     id, its wires the endpoint's protocol only, its tool calling `parsed`
+  #                     exactly when `capabilities.tools` is true, its listed context window
   #                     `capabilities.context_window`; the translator translates it under the
   #                     route's capabilities. A direct `<endpoint>/<model-id>` name, which llm also
   #                     resolves, is not a route and is not served (`model-unknown`). A route's
-  #                     endpoint is sent no static header
+  #                     endpoint is sent one static header when its protocol is `messages`,
+  #                     `anthropic-version: <llm_messages::ANTHROPIC_VERSION>` (`2023-06-01` in
+  #                     llm 0.6.0), on every request relayed to it, the output clamp's count
+  #                     included, and no other static header. DECIDED 2026-10-16 (correction
+  #                     round 1 of story:routes-document): Anthropic's Messages API requires
+  #                     the header on every request, llm's client already sends it on the
+  #                     translated path, and a routes document has no place to declare it
   #   the inventory     one route per route name, one target `<route>.<wire>` at position 0:
   #                     protocol the endpoint's wire, provider and account `routes`, endpoint the
   #                     endpoint's name, model the route's model id, `binding_revision` the

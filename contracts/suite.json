@@ -714,7 +714,7 @@
         "scenario": "llm-gateway.gateway/authored/routes-an-env-secret-composes-nothing"
       },
       "gateway/scenarios/routes-one-document-is-served-on-two-wires-relayed-and-translated.yaml": {
-        "digest": "sha256:319085e218c703bf1ac07e6e87413d497d6c12f8333e10a967de9aea83ca8b78",
+        "digest": "sha256:8440f752fda8ba58c2145d507e06ad10566147c7388d4854d2c39467f8c3451e",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/routes-one-document-is-served-on-two-wires-relayed-and-translated"
       },
@@ -10545,7 +10545,7 @@
               "received_heads": {
                 "kind": "literal",
                 "value": [
-                  "x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | content-length: 41 | connection: close",
+                  "anthropic-version: 2023-06-01 | x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | content-length: 41 | connection: close",
                   "authorization: Bearer endpoint-bearer-0123456789abcdef | content-type: application/json | content-length: 40 | connection: close",
                   "x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | accept: text/event-stream | anthropic-version: 2023-06-01 | content-length: 166",
                   "authorization: Bearer endpoint-bearer-0123456789abcdef | content-type: application/json | accept: text/event-stream | content-length: 151"

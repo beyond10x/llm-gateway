@@ -286,28 +286,56 @@ fn adversary_routes_the_output_clamps_count_to_a_messages_route_is_sent_anthropi
     );
 }
 
-/// A route name follows llm's rule only (1..=256 printable ASCII bytes without `/`), so a
-/// document llm admits with a 256-byte route name is served under that name: the gateway's
-/// inventory target id `<route>.<wire>` must not push it past a bound llm never applied.
+/// A route name llm admits (1..=256 printable ASCII bytes without `/`) may still be longer than
+/// the gateway serves: its inventory target id `<route>.<wire>` must fit one 256-byte label.
+/// Re-pinned in correction round 1, as decided: the gateway publishes its own bound,
+/// `MAX_ROUTE_NAME_BYTES`, serves a name at it, and refuses a longer one `config:value` naming
+/// the bound, quoting only the start of the name.
 #[test]
 fn adversary_routes_a_route_name_of_llms_full_length_is_served() {
-    let fixture = Fixture::new("adv-routes-long-name");
-    let endpoint = Endpoint::start();
-    let name = "r".repeat(256);
-    assert!(
-        llm_gateway_cli::Routes::parse(&format!(
+    let bound = llm_gateway_cli::MAX_ROUTE_NAME_BYTES;
+    let document = |name: &str| {
+        format!(
             "format: llm.routes/1\nendpoints:\n  lab: {{base_url: http://127.0.0.1:8000/v1, protocol: messages, auth: {{kind: anonymous}}}}\nroutes:\n  {name}: lab/small\n"
-        ))
-        .is_ok(),
+        )
+    };
+    assert!(
+        llm_models::routes::Routes::parse(&document(&"r".repeat(256))).is_ok(),
         "llm refuses the name, so the boundary is llm's"
     );
+    let endpoint = Endpoint::start();
+    let at_bound = Fixture::new("adv-routes-long-name-at-bound");
     let config = routes_deployment(
-        &fixture,
+        &at_bound,
         endpoint.address,
-        &format!("  {name}: anthropic/claude-opus-4-1\n"),
+        &format!("  {}: anthropic/claude-opus-4-1\n", "r".repeat(bound)),
     );
-    match start(&config, &fixture.dir) {
+    match start(&config, &at_bound.dir) {
         Ok(server) => drop(server),
-        Err(stderr) => panic!("a route name llm admits refused the start: {stderr:?}"),
+        Err(stderr) => panic!("a route name at the gateway's bound refused the start: {stderr:?}"),
+    }
+    for length in [bound + 1, 256] {
+        let fixture = Fixture::new(&format!("adv-routes-long-name-{length}"));
+        let name = "r".repeat(length);
+        let config = routes_deployment(
+            &fixture,
+            endpoint.address,
+            &format!("  {name}: anthropic/claude-opus-4-1\n"),
+        );
+        let Err(stderr) = start(&config, &fixture.dir) else {
+            panic!("a {length}-byte route name was served past the gateway's bound");
+        };
+        let line = stderr
+            .iter()
+            .find(|line| line.starts_with("b10x-llm-gateway: refused config:value: routes.r"))
+            .unwrap_or_else(|| panic!("{length}: {stderr:?}"));
+        assert!(
+            line.contains(&format!("at most {bound} bytes")),
+            "{length}: {line}"
+        );
+        assert!(
+            !line.contains(&name),
+            "{length}: the whole name is echoed: {line}"
+        );
     }
 }

@@ -86,7 +86,9 @@ entities:
   # derived from the route's endpoint: `endpoint_id` the route name, `wires` the endpoint's
   # protocol alone, `upstream_model` the route's model id, `base_url` the endpoint's (which must
   # name its API path), `auth_kind` the endpoint's, `credential_file` its `file:` secret,
-  # `credential_header` its `auth.header`, no `headers`, and `billing_kind` llm's expansion of
+  # `credential_header` its `auth.header`, `headers` one, `anthropic-version` set to llm's
+  # `ANTHROPIC_VERSION`, for a `messages` endpoint and none for any other (DECIDED in correction
+  # round 1), and `billing_kind` llm's expansion of
   # the endpoint: `SelfHosted` for an `Anonymous` endpoint, `Metered` otherwise. The inventory
   # names its provider `routes` and its endpoint the route's endpoint name. Observed through the
   # `Relay` command's `routes_document` (llm-gateway.gateway) and by `routes_*` in

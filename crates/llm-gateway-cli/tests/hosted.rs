@@ -654,6 +654,60 @@ fn hosted_static_headers_reach_the_endpoint_beside_its_credential() {
     }
 }
 
+/// Adversary, story:hosted-static-headers: the output clamp's count is a request to the endpoint
+/// too, so it carries the static headers, after `host` and before the credential, as the relayed
+/// request does. The unit's own test sends no `max_tokens`, so no count runs in it.
+#[test]
+fn adversary_static_headers_reach_the_output_clamps_count_too() {
+    let fixture = Fixture::new("adversary-static-headers-count");
+    let credential = fixture.endpoint_credential();
+    let endpoint = Endpoint::start();
+    let tables = format!(
+        "{}context_window = 8192\n[hosted.claude.headers]\nanthropic-version = \"2023-06-01\"\n",
+        hosted_table(
+            "claude",
+            &endpoint.base_url(),
+            &api_key_keys(&credential, "x-api-key")
+        ),
+    );
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &tables,
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let answer = post(
+        server.address,
+        "/v1/messages",
+        r#"{"model":"claude","max_tokens":16,"messages":[]}"#,
+    );
+    server.stop();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    let seen = endpoint.seen();
+    assert_eq!(
+        seen.iter().map(Received::request_line).collect::<Vec<_>>(),
+        [
+            "POST /v1/messages/count_tokens HTTP/1.1",
+            "POST /v1/messages HTTP/1.1",
+        ]
+    );
+    for request in &seen {
+        assert_eq!(
+            request.names(),
+            [
+                "host",
+                "anthropic-version",
+                "x-api-key",
+                "content-type",
+                "content-length",
+                "connection"
+            ],
+            "{request:?}"
+        );
+        assert_eq!(request.header("anthropic-version"), Some("2023-06-01"));
+    }
+}
+
 /// A hosted endpoint that fails is answered `upstream-failed` and is kept: the next request
 /// reaches the same endpoint, since nothing replaces it. A Runpod model beside it, whose
 /// provider declares no connection, is still answered `target-unavailable` (criterion 7: the

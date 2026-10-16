@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-16T03:57:52Z",
+  "actor": "human:timo",
+  "artifact": "story:ingress-auth-optional",
+  "kind": "story",
+  "revision": 34,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway-cli --test hosted ingress_ (base: config:schema unknown field ingress_auth; unit: warning line before listening, 200 without a credential, 401 on /metrics and /v1/routes); a run of the binary pasted into the concept page; scenarios ingress-none-*"
+  }
+}

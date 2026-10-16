@@ -18,7 +18,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.mdx";
 
 /// The date the list below was last checked against the code.
-const AS_OF: &str = "2026-10-14";
+const AS_OF: &str = "2026-10-16";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -196,6 +196,27 @@ pub const CAPABILITIES: &[Capability] = &[
         "Hosted endpoints",
         "A model declared as [hosted.<alias>] is relayed to any server that speaks its wire at an http or https base URL, with a bearer, an API key in a named header, or no credential, read from a file. https is verified against the same roots as a pod. Tested against loopback endpoints, not against a vendor API.",
         "crates/llm-gateway-cli/tests/hosted.rs::hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path",
+        DOCUMENT,
+    ),
+    shipped(
+        "Relay",
+        "A hosted base_url may carry a path",
+        "A hosted endpoint's base path replaces the wire path's leading /v1, so https://openrouter.ai/api/v1 is asked on /api/v1/chat/completions and a base URL ending in /v1 works as written; host stays the authority. A path with an empty, . or .. segment, a query, a fragment or user information is refused at start. Tested against loopback endpoints.",
+        "crates/llm-gateway-cli/tests/hosted.rs::hosted_a_base_url_path_replaces_the_v1_prefix_and_host_stays_the_authority",
+        DOCUMENT,
+    ),
+    shipped(
+        "Relay",
+        "Static headers per hosted endpoint",
+        "[hosted.<alias>.headers] declares non-secret request headers, such as anthropic-version or X-Title, sent with every request to that endpoint. Framing headers, authorization and the endpoint's credential header are refused at start, and client headers are still never forwarded. Tested against loopback endpoints.",
+        "crates/llm-gateway-cli/tests/hosted.rs::hosted_static_headers_reach_the_endpoint_beside_its_credential",
+        DOCUMENT,
+    ),
+    shipped(
+        "Binary",
+        "Model calls without a credential, on request",
+        "ingress_auth = \"none\" serves the three wire paths without a credential, for a gateway behind something that authenticates already, and the binary warns before it listens. The counters and the route inventory still take the owner secret, and refuse everything when there is none. bearer, the default, is unchanged.",
+        "crates/llm-gateway-cli/tests/hosted.rs::ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed",
         DOCUMENT,
     ),
     shipped(

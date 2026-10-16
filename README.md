@@ -112,7 +112,11 @@ b10x-llm-gateway: stopped by SIGTERM accepted=2 completed=2
 The document is closed: an unknown key at any level is refused as `config:schema`, naming the line
 and the keys that are allowed. A relative `owner_secret_file` is resolved from the working
 directory. At least one `[models.<alias>]` or `[hosted.<alias>]` table is required
-(`config:value` otherwise).
+(`config:value` otherwise). `ingress_auth = "none"` serves model calls without a credential, for
+a gateway behind something that authenticates already; `owner_secret_file` is then optional, the
+counters and the route inventory still take the owner secret (and refuse everything without
+one), and the binary writes a warning line before it listens. `bearer`, the default, requires
+`owner_secret_file`.
 `spec/domains/deployment.yaml` holds every key, default and range.
 
 Every file the binary reads goes through a trusted-file reader. It opens the file once, without
@@ -131,9 +135,12 @@ Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' 
 ([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1).
 
 A `[hosted.<alias>]` table serves a model from a hosted endpoint instead of a pod: `wires`,
-`base_url` (`http://` or `https://` and a `host[:port]`, no path), `auth_kind` (`anonymous`,
+`base_url` (`http://` or `https://`, a `host[:port]` and an optional base path that replaces
+the wire path's leading `/v1`, so `https://openrouter.ai/api/v1` asks `/api/v1/chat/completions`),
+`auth_kind` (`anonymous`,
 `bearer` or `api-key`), `credential_file` unless anonymous, `credential_header` for `api-key`,
-and optionally `billing_kind`, `upstream_model`, `context_window` and `tool_calling`. The
+and optionally `billing_kind`, `upstream_model`, `context_window`, `tool_calling` and a
+`[hosted.<alias>.headers]` table of static non-secret headers such as `anthropic-version`. The
 credential file is read once at startup under the owner secret's rules (`endpoint-credential:<rule>`);
 a `bearer` endpoint is sent `authorization: Bearer <credential>`, an `api-key` endpoint the
 credential in its named header. An `https` endpoint is verified against the same compiled-in

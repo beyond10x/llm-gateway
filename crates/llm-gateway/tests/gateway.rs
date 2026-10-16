@@ -4,9 +4,9 @@
 //! upstream credential appearing on the wire and without any secret source being consulted.
 
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle, Label,
-    OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, TargetLimits,
+    AuthKind, BasePath, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle,
+    Label, OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, StaticHeader, TargetLimits,
     TargetProvenance, TargetRefusal, TargetSummary, Verdict, Wire,
 };
 use std::{
@@ -1063,6 +1063,39 @@ fn enforced_bounds() -> Vec<Bound> {
             value: 33_554_432,
             direction: Direction::Maximum,
             admits: Box::new(|n| a_relayed_body_of_exactly(usize::try_from(n).unwrap()).is_none()),
+        },
+    ]
+    .into_iter()
+    .chain(hosted_endpoint_bounds())
+    .collect()
+}
+
+/// The bounds of a `BasePath` (story:hosted-base-path) and a `StaticHeader`
+/// (story:hosted-static-headers).
+fn hosted_endpoint_bounds() -> Vec<Bound> {
+    vec![
+        // The whole path, its leading `/` included.
+        Bound {
+            name: "base-path-bytes",
+            value: 256,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| {
+                BasePath::new(&format!("/{}", "a".repeat(usize::try_from(n).unwrap() - 1))).is_ok()
+            }),
+        },
+        Bound {
+            name: "base-path-segments",
+            value: 32,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| BasePath::new(&"/a".repeat(usize::try_from(n).unwrap())).is_ok()),
+        },
+        Bound {
+            name: "static-header-value-bytes",
+            value: 1024,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| {
+                StaticHeader::new("x-title", &"v".repeat(usize::try_from(n).unwrap())).is_ok()
+            }),
         },
     ]
 }

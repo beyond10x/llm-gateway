@@ -8,7 +8,8 @@ use crate::{
     trusted,
 };
 use llm_gateway::{
-    AuthKind, BillingKind, CredentialHeader, GatewayConfig, ReasoningEffort, ToolCalling,
+    AuthKind, BillingKind, CredentialHeader, GatewayConfig, IngressAuth, ReasoningEffort,
+    StaticHeader, ToolCalling,
 };
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
 use serde::Deserialize;
@@ -48,7 +49,10 @@ macro_rules! from_string_only {
 #[serde(deny_unknown_fields)]
 struct Document {
     listen: SocketAddr,
-    owner_secret_file: PathBuf,
+    #[serde(default)]
+    ingress_auth: IngressAuthDocument,
+    #[serde(default)]
+    owner_secret_file: Option<PathBuf>,
     #[serde(default)]
     providers: BTreeMap<String, ProviderDocument>,
     #[serde(default)]
@@ -80,6 +84,145 @@ struct HostedDocument {
     /// `config:schema`, as a Runpod model's `reasoning_effort` is.
     #[serde(default)]
     reasoning_effort: Option<String>,
+    /// `[hosted.<alias>.headers]`: static request headers, name to value.
+    /// Read through [`header_table`], so a refusal of its shape quotes no value.
+    #[serde(default, deserialize_with = "header_table")]
+    headers: BTreeMap<String, String>,
+}
+
+/// The key under which the toml crate presents a datetime to a visitor as a one-entry table.
+const TOML_DATETIME_KEY: &str = "$__toml_private_datetime";
+
+/// `[hosted.<alias>.headers]` as a table of names to strings. serde's own refusal of a value of
+/// the wrong shape quotes it (`invalid type: string "authorization: Bearer …"`), and a header
+/// value may be a credential somebody put in the wrong place, so this one names the shape and
+/// never the value: a table whose values are not all strings, or anything but a table.
+fn header_table<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, String>, D::Error> {
+    struct Table;
+
+    impl<'de> serde::de::Visitor<'de> for Table {
+        type Value = BTreeMap<String, String>;
+
+        fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            formatter.write_str("a table of header names to string values")
+        }
+
+        fn visit_map<A: serde::de::MapAccess<'de>>(
+            self,
+            mut map: A,
+        ) -> Result<Self::Value, A::Error> {
+            let mut table = BTreeMap::new();
+            while let Some(name) = map.next_key::<String>()? {
+                // The toml crate hands a datetime over as a one-entry table under this key, whose
+                // name is a valid token: it is a datetime, not a header.
+                if name == TOML_DATETIME_KEY {
+                    return Err(serde::de::Error::custom(
+                        "headers must be a table of header names to string values, not a datetime",
+                    ));
+                }
+                let Some(value) = map.next_value::<Opaque>()?.0 else {
+                    return Err(serde::de::Error::custom(
+                        "every value of headers must be a string",
+                    ));
+                };
+                table.insert(name, value);
+            }
+            Ok(table)
+        }
+
+        fn visit_str<E: serde::de::Error>(self, _text: &str) -> Result<Self::Value, E> {
+            Err(not_a_table("a string"))
+        }
+
+        fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<Self::Value, E> {
+            Err(not_a_table("an integer"))
+        }
+
+        fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<Self::Value, E> {
+            Err(not_a_table("an integer"))
+        }
+
+        fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<Self::Value, E> {
+            Err(not_a_table("a float"))
+        }
+
+        fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<Self::Value, E> {
+            Err(not_a_table("a boolean"))
+        }
+    }
+
+    /// The refusal of a `headers` of the wrong shape, naming the shape and never the value.
+    fn not_a_table<E: serde::de::Error>(shape: &str) -> E {
+        E::custom(format!(
+            "headers must be a table of header names to string values, not {shape}"
+        ))
+    }
+
+    /// A value read whole and kept only when it is a string, so nothing else is quoted.
+    struct Opaque(Option<String>);
+
+    impl<'de> serde::Deserialize<'de> for Opaque {
+        fn deserialize<D: serde::Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+            struct Any;
+
+            impl<'de> serde::de::Visitor<'de> for Any {
+                type Value = Opaque;
+
+                fn expecting(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                    formatter.write_str("a string")
+                }
+
+                fn visit_str<E: serde::de::Error>(self, text: &str) -> Result<Opaque, E> {
+                    Ok(Opaque(Some(text.to_owned())))
+                }
+
+                fn visit_string<E: serde::de::Error>(self, text: String) -> Result<Opaque, E> {
+                    Ok(Opaque(Some(text)))
+                }
+
+                fn visit_i64<E: serde::de::Error>(self, _: i64) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_u64<E: serde::de::Error>(self, _: u64) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_f64<E: serde::de::Error>(self, _: f64) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_bool<E: serde::de::Error>(self, _: bool) -> Result<Opaque, E> {
+                    Ok(Opaque(None))
+                }
+
+                fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                    self,
+                    mut seq: A,
+                ) -> Result<Opaque, A::Error> {
+                    while seq.next_element::<serde::de::IgnoredAny>()?.is_some() {}
+                    Ok(Opaque(None))
+                }
+
+                fn visit_map<A: serde::de::MapAccess<'de>>(
+                    self,
+                    mut map: A,
+                ) -> Result<Opaque, A::Error> {
+                    while map
+                        .next_entry::<serde::de::IgnoredAny, serde::de::IgnoredAny>()?
+                        .is_some()
+                    {}
+                    Ok(Opaque(None))
+                }
+            }
+
+            deserializer.deserialize_any(Any)
+        }
+    }
+
+    deserializer.deserialize_map(Table)
 }
 
 enum AuthKindDocument {
@@ -138,6 +281,16 @@ enum CloudTypeDocument {
 }
 
 from_string_only!(CloudTypeDocument { "SECURE" => Secure, "COMMUNITY" => Community });
+
+/// `ingress_auth` (`llm-gateway.deployment.IngressAuth`).
+#[derive(Default)]
+enum IngressAuthDocument {
+    #[default]
+    Bearer,
+    None,
+}
+
+from_string_only!(IngressAuthDocument { "bearer" => Bearer, "none" => None });
 
 #[derive(Default)]
 enum ThinkingDocument {
@@ -298,7 +451,7 @@ pub struct Model {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hosted {
     pub wires: Vec<Wire>,
-    /// `http://` or `https://` and an authority, nothing else but an optional final `/`. Never
+    /// `http://` or `https://`, an authority and an optional base path, as written. Never
     /// rendered by the route inventory.
     pub base_url: String,
     pub auth_kind: AuthKind,
@@ -315,13 +468,18 @@ pub struct Hosted {
     pub tool_calling: ToolCalling,
     /// The effort a messages-wire request naming none is given, when declared.
     pub reasoning_effort: Option<ReasoningEffort>,
+    /// The static headers every request to the endpoint carries, in name order
+    /// (story:hosted-static-headers).
+    pub headers: Vec<StaticHeader>,
 }
 
 /// A loaded and validated deployment document.
 #[derive(Debug, Clone)]
 pub struct Deployment {
     pub gateway: GatewayConfig,
-    pub owner_secret_file: PathBuf,
+    /// The owner secret's file: present whenever `gateway.ingress_auth` is `Bearer`, and
+    /// optional when it is `None` (story:ingress-auth-optional).
+    pub owner_secret_file: Option<PathBuf>,
     pub providers: BTreeMap<String, Provider>,
     pub models: BTreeMap<String, Model>,
     /// The models hosted endpoints serve, by alias. No alias is in both tables.
@@ -430,8 +588,19 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         let loaded = validate_hosted(&at, &alias, declared)?;
         hosted.insert(alias, loaded);
     }
+    let ingress_auth = match document.ingress_auth {
+        IngressAuthDocument::Bearer => IngressAuth::Bearer,
+        IngressAuthDocument::None => IngressAuth::None,
+    };
+    ensure(
+        ingress_auth == IngressAuth::None || document.owner_secret_file.is_some(),
+        "owner_secret_file",
+        "is required unless ingress_auth is none",
+    )?;
+    let mut gateway = GatewayConfig::new(document.listen);
+    gateway.ingress_auth = ingress_auth;
     Ok(Deployment {
-        gateway: GatewayConfig::new(document.listen),
+        gateway,
         owner_secret_file: document.owner_secret_file,
         providers,
         models,
@@ -464,8 +633,10 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         Err(crate::hosted::BaseUrlError::Malformed) => {
             return Err(value(
                 &key("base_url"),
-                "must be http:// or https:// and a host[:port] of at most 256 printable ASCII \
-                 characters, with no path, query, fragment or user information",
+                "must be http:// or https://, a host[:port] of at most 256 printable ASCII \
+                 characters and an optional base path of at most 32 segments and 256 bytes, each \
+                 segment one or more of A-Z a-z 0-9 - . _ ~ and neither . nor .., with no query, \
+                 fragment or user information",
             ));
         }
         Err(crate::hosted::BaseUrlError::CleartextCredential) => {
@@ -511,7 +682,11 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
             })
         })
         .transpose()?;
+    let headers = static_headers(&key("headers"), &declared.headers)?;
+    crate::hosted::check_headers(&headers, credential_header.as_ref())
+        .map_err(|error| value(&key("headers"), &error.to_string()))?;
     Ok(Hosted {
+        headers,
         wires: declared.wires,
         base_url: declared.base_url,
         auth_kind,
@@ -530,6 +705,22 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         },
         reasoning_effort,
     })
+}
+
+/// `[hosted.<alias>.headers]`, each checked as a [`StaticHeader`] and sorted by its lowercase
+/// name. The refusal names the key and the rule, never a name or a value.
+fn static_headers(
+    key: &str,
+    declared: &BTreeMap<String, String>,
+) -> Result<Vec<StaticHeader>, Refusal> {
+    let mut headers = declared
+        .iter()
+        .map(|(name, text)| {
+            StaticHeader::new(name, text).map_err(|error| value(key, &error.to_string()))
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    headers.sort_by(|left, right| left.name().cmp(right.name()));
+    Ok(headers)
 }
 
 fn value(key: &str, rule: &str) -> Refusal {

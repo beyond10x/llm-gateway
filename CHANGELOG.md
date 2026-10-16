@@ -4,6 +4,29 @@ Every release is a source release tagged `<version>`; the crates are not publish
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- A hosted model's `base_url` may carry a path. The path replaces the wire path's leading `/v1`,
+  so `https://openrouter.ai/api/v1` sends Chat requests to `/api/v1/chat/completions` and a
+  `base_url` ending in `/v1` works as OpenAI-compatible clients write it; a `base_url` without a
+  path reaches the wire path as before. The output clamp's count follows the same rule, and
+  `host` stays the authority. A base path with an empty, `.` or `..` segment, a `%`, a query, a
+  fragment or user information is refused `config:value`.
+- A hosted model may declare `[hosted.<alias>.headers]`, static non-secret request headers sent
+  with every request to its endpoint (Anthropic's `anthropic-version`, OpenRouter's
+  `HTTP-Referer` and `X-Title`), lowercase and in name order after `host`. A header the gateway
+  writes or that frames a message, `authorization`, the endpoint's own `credential_header`, a
+  repeated name, more than 32 headers, and a value that is empty, over 1024 bytes or not
+  printable ASCII are refused `config:value`. Client headers are still never forwarded.
+- Ingress authentication for model calls is optional: `ingress_auth = "none"` serves the three
+  wire paths without a credential, for a gateway behind something that authenticates already,
+  and the binary writes `warning ingress auth is off` before `listening on`. `owner_secret_file`
+  is then optional; `/metrics`, `/v1/routes` and unknown paths still take the owner secret, and
+  without one they refuse every request. `bearer`, the default, is unchanged, except that a
+  document without `owner_secret_file` is now refused `config:value` rather than
+  `config:schema`. The library gains `GatewayConfig::ingress_auth` (`IngressAuth`) and
+  `NoOwnerVerifier`.
+
 ## 0.8.0 (2026-10-16)
 
 - Claude Code on the Messages wire: an effort of `max` (`output_config.effort` or

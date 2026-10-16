@@ -514,10 +514,11 @@ mod relay {
     use super::{Observed, label, token_code, unavailable, verifier_code};
     use ess_conformance::target::TargetError;
     use llm_gateway::{
-        CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
-        GatewayHandle, OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
-        RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer,
-        TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
+        BasePath, CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
+        GatewayHandle, IngressAuth, NoOwnerVerifier, OwnerToken, OwnerVerifier, ReasoningEffort,
+        Relay, RelayError, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory,
+        SharedSecretVerifier, StaticHeader, StaticHeaderError, TargetBearer, TargetRefusal,
+        ToolCalling, UsageRecord, UsageRecords, Wire,
     };
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProxyConnector,
@@ -574,6 +575,9 @@ mod relay {
         #[serde(default)]
         cold_starts: usize,
         steps: Vec<Step>,
+        /// `bearer`, the default, or `none`: the Gateway's `ingress_auth`.
+        #[serde(default)]
+        ingress_auth: Option<String>,
     }
 
     #[derive(Deserialize)]
@@ -611,6 +615,9 @@ mod relay {
         pod: String,
         /// `http` or `https`; an `https` endpoint's pod serves TLS.
         scheme: String,
+        /// Appended to `<scheme>://<authority>` to make the endpoint.s `base_url`.
+        #[serde(default)]
+        base_path: Option<String>,
         /// `trusted`, the default, or `untrusted`: whose root issued the pod's certificate.
         #[serde(default)]
         certificate: Option<String>,
@@ -620,6 +627,9 @@ mod relay {
         credential: Option<String>,
         #[serde(default)]
         credential_header: Option<String>,
+        /// Static header names to values.
+        #[serde(default)]
+        headers: BTreeMap<String, String>,
     }
 
     impl EndpointInput {
@@ -1293,6 +1303,14 @@ mod relay {
             self.inner.credential_header()
         }
 
+        fn base_path(&self) -> Option<&BasePath> {
+            self.inner.base_path()
+        }
+
+        fn headers(&self) -> &[StaticHeader] {
+            self.inner.headers()
+        }
+
         fn held(&self) -> bool {
             self.inner.held()
         }
@@ -1386,6 +1404,16 @@ mod relay {
         }
     }
 
+    fn static_header_code(error: StaticHeaderError) -> &'static str {
+        match error {
+            StaticHeaderError::NameLength => "name-length",
+            StaticHeaderError::NameNotAToken => "name-not-a-token",
+            StaticHeaderError::Reserved => "reserved",
+            StaticHeaderError::ValueLength => "value-length",
+            StaticHeaderError::ValueNotPrintable => "value-not-printable",
+        }
+    }
+
     fn credential_header_code(error: CredentialHeaderError) -> &'static str {
         match error {
             CredentialHeaderError::Length => "length",
@@ -1425,9 +1453,24 @@ mod relay {
                 .pod_index(authorities.len())
                 .and_then(|index| authorities.get(index))
                 .ok_or_else(|| "fixture:endpoint-pod".to_owned())?;
-            let base_url = format!("{}://{authority}", endpoint.scheme);
+            let base_url = format!(
+                "{}://{authority}{}",
+                endpoint.scheme,
+                endpoint.base_path.as_deref().unwrap_or_default()
+            );
+            let mut headers = endpoint
+                .headers
+                .iter()
+                .map(|(name, value)| {
+                    StaticHeader::new(name, value)
+                        .map_err(|error| format!("static-header:{}", static_header_code(error)))
+                })
+                .collect::<Result<Vec<_>, _>>()?;
+            headers.sort_by(|left, right| left.name().cmp(right.name()));
             let hosted = HostedEndpoint::new(&base_url, credential)
-                .map_err(|_| "endpoint:base-url".to_owned())?;
+                .map_err(|_| "endpoint:base-url".to_owned())?
+                .with_headers(headers)
+                .map_err(|_| "endpoint:headers".to_owned())?;
             endpoints.insert(model.alias.clone(), hosted);
         }
         Ok(endpoints)
@@ -1440,10 +1483,23 @@ mod relay {
         records: Arc<Records>,
         tls_root: Option<&[u8]>,
     ) -> Result<GatewayHandle, String> {
-        let token = OwnerToken::new(program.secret.as_bytes().to_vec())
-            .map_err(|error| format!("token:{}", token_code(error)))?;
-        let verifier = SharedSecretVerifier::new(token)
-            .map_err(|error| format!("verifier:{}", verifier_code(error)))?;
+        let ingress_auth = match program.ingress_auth.as_deref() {
+            None | Some("bearer") => IngressAuth::Bearer,
+            Some("none") => IngressAuth::None,
+            Some(_) => return Err("fixture:unknown-ingress-auth".to_owned()),
+        };
+        // With ingress auth off and no secret the gateway has no owner at all.
+        let verifier: Arc<dyn OwnerVerifier> =
+            if ingress_auth == IngressAuth::None && program.secret.is_empty() {
+                Arc::new(NoOwnerVerifier)
+            } else {
+                let token = OwnerToken::new(program.secret.as_bytes().to_vec())
+                    .map_err(|error| format!("token:{}", token_code(error)))?;
+                Arc::new(
+                    SharedSecretVerifier::new(token)
+                        .map_err(|error| format!("verifier:{}", verifier_code(error)))?,
+                )
+            };
         let relay_error = |error| format!("relay:{}", relay_code(error));
         let mut models = Vec::new();
         for model in &program.models {
@@ -1520,7 +1576,8 @@ mod relay {
             .map_err(|_| "fixture:bind-address".to_owned())?;
         let mut config = GatewayConfig::new(bind);
         config.read_timeout = WAIT;
-        Gateway::bind_with_relay(config, Arc::new(verifier), inventory, relay)
+        config.ingress_auth = ingress_auth;
+        Gateway::bind_with_relay(config, verifier, inventory, relay)
             .map_err(|_| "bind:refused".to_owned())
     }
 
@@ -1709,6 +1766,10 @@ mod relay {
                 .is_none_or(|effort| ReasoningEffort::from_name(effort).is_some())
         });
         endpoints_agree
+            && matches!(
+                program.ingress_auth.as_deref(),
+                None | Some("bearer" | "none")
+            )
             && efforts_known
             && program.steps.len() <= MAX_STEPS
             && program.cold_starts <= MAX_STEPS

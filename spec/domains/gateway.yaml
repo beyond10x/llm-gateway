@@ -87,9 +87,26 @@ types:
       - {name: Unavailable, attributes: {code: unavailable, status: 503, message: "the gateway is not ready to serve inspection"}}
       - {name: UpstreamFailed, attributes: {code: upstream-failed, status: 502, message: "the model target could not be reached or failed; the next request asks for a replacement"}}
       - {name: WireNotServed, attributes: {code: wire-not-served, status: 400, message: "the model is not served on this wire"}}
-  # A wire the gateway relays, each on its own path, to the same path at the target (rows R6-R8):
+  # A wire the gateway relays, each on its own path, to the same path at the target, joined to a
+  # hosted endpoint's base path when it has one (Relay step 7; rows R6-R8):
   # `chat` is `POST /v1/chat/completions` (OpenAI chat completions), `responses` is
   # `POST /v1/responses` (the Codex wire), `messages` is `POST /v1/messages` (Anthropic messages).
+  # Whether a request to a wire path of a gateway composed with a relay takes the owner
+  # credential (server.rs IngressAuth). `Bearer`, the default, authenticates it at step 5 of the
+  # `Exchange` order like every other path. `None` admits it without reading `authorization`
+  # at all, so a missing, malformed, repeated or wrong credential is no refusal and is never
+  # forwarded.
+  # Nothing else changes: the probes and public routes as before, and `/metrics`, `/v1/routes`,
+  # `/v1/routes/{alias}` and every other path still authenticate, so the surface still cannot be
+  # enumerated without the credential. An embedding with no owner at all composes the gateway
+  # with `NoOwnerVerifier`, which accepts no credential (scenarios
+  # ingress-none-a-model-call-without-a-credential-is-relayed,
+  # ingress-none-without-an-owner-secret-the-owner-surface-stays-refused,
+  # ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret).
+  # DECIDED 2026-10-16 (story:ingress-auth-optional).
+  - name: llm-gateway.gateway.IngressAuth
+    kind: enum
+    variants: [Bearer, None]
   - name: llm-gateway.gateway.Wire
     kind: enum
     variants: [Chat, Responses, Messages]
@@ -179,9 +196,19 @@ types:
   # itself or that frames a message (llm-gateway.deployment.HostedDeclaration lists them). It is
   # checked when the embedding builds it, so it can neither end its line nor add a second
   # framing or `authorization` header to the head.
+  #
+  # A target's static header (relay.rs StaticHeader::new; the `headers` of
+  # llm-gateway.upstream.HostedEndpoint): `static-header:name-length` for an empty name or one
+  # over 64 bytes, `static-header:name-not-a-token` for a name byte that is no RFC 9110 token
+  # character, `static-header:reserved` for a name `credential-header:reserved` refuses,
+  # `static-header:value-length` for an empty value or one over 1024 bytes
+  # (`static-header-value-bytes`), and `static-header:value-not-printable` for a value byte
+  # outside 0x20-0x7e or a leading or trailing space. The binary's endpoint then refuses a set
+  # of more than 32, two names equal without regard to case, or a name equal to the endpoint's
+  # own credential header as `endpoint:headers`.
   - name: llm-gateway.gateway.CompositionRefusal
     kind: enum
-    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii, CredentialHeaderLength, CredentialHeaderNotAToken, CredentialHeaderReserved]
+    variants: [TokenEmpty, TokenTooLarge, TokenNotPrintableAscii, VerifierSecretTooShort, LabelLength, LabelNotPrintableAscii, InventoryRouteWithoutTarget, InventoryTooManyTargets, InventoryNonContiguousPositions, InventoryDuplicateTarget, InventoryDuplicateAlias, InventoryMalformedDigest, InventoryTooManyRoutes, RelayNoWire, RelayRepeatedWire, RelayDuplicateModel, BearerEmpty, BearerTooLarge, BearerNotPrintableAscii, CredentialHeaderLength, CredentialHeaderNotAToken, CredentialHeaderReserved, StaticHeaderNameLength, StaticHeaderNameNotAToken, StaticHeaderReserved, StaticHeaderValueLength, StaticHeaderValueNotPrintable]
 entities:
   # One gateway: one owner verifier, one route inventory snapshot, one listener
   # (server.rs GatewayConfig, GatewayHandle).
@@ -235,6 +262,9 @@ entities:
       # ESS-LIMIT: a deadline is no ESS construct;
       # `clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes` holds it.
       - {name: count_timeout_ms, type: Integer}
+      # `GatewayConfig::ingress_auth`: whether a model call takes the owner credential
+      # (IngressAuth). An embedding may set it; `GatewayConfig::new` defaults it to `Bearer`.
+      - {name: ingress_auth, type: llm-gateway.gateway.IngressAuth}
       # Ready is set once by the embedding; a drain is one way for the life of the handle
       # (server.rs mark_ready, begin_drain).
       - {name: ready, type: Boolean}
@@ -312,7 +342,8 @@ entities:
   #      of the `Exchange` order below: an unauthenticated relay is refused before any byte of
   #      its body is read. DECIDED: llmgw serves its wires without authentication
   #      (`--insecure`, llmgw README.md:28); llm-gateway admits only its owner's bearer
-  #      credential.
+  #      credential, unless the embedding sets `ingress_auth` to `None` (IngressAuth): then
+  #      step 5 is skipped for a wire path, and no credential is read.
   #   2. A wire path takes `POST` only; another method is `method-not-allowed` with
   #      `allow: POST`. Before `mark_ready` a relay is `unavailable`, like inspection.
   #   3. W1: the body is framed by `content-length` or `transfer-encoding: chunked` and nothing
@@ -395,7 +426,17 @@ entities:
   #      request, are the embedding's (llm-gateway.deployment, rows L6 and K28); the gateway
   #      holds nothing itself. The request goes to the same path at the target, with `host` set
   #      to the target's authority and a `content-length` (`r6_*`, `r7_*` and `r8_*` in
-  #      tests/wire_relay.rs).
+  #      tests/wire_relay.rs). A target with a base path (`RelayTarget::base_path`, a hosted
+  #      endpoint whose `base_url` names one) is asked on that path joined to the wire path,
+  #      the base path replacing the wire path's leading `/v1`, the count of the output clamp
+  #      below included (llm-gateway.upstream.HostedEndpoint `base_url`; scenario
+  #      hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path); `host` is still the
+  #      authority alone. A target with static headers (`RelayTarget::headers`, a hosted
+  #      endpoint's `headers`) is sent each as `<name>: <value>` after `host`, in name order,
+  #      before the credential and the framing headers, on the relayed request and on the
+  #      count alike (scenario hosted-static-headers-reach-the-endpoint-and-the-clients-never-do).
+  #      A `StaticHeader` is checked when the embedding builds it, so it can neither end its
+  #      line, nor replace or repeat a header the gateway writes, nor carry `authorization`.
   #      B8: a target that carries a bearer (the model's vLLM key, which the embedding reads)
   #      is sent `authorization: Bearer <key>`; a target without one is sent no
   #      `authorization`. A target that also names a credential header (an `api-key` hosted
@@ -480,8 +521,9 @@ entities:
     fields: &relay_facts
       - {name: valid_program, type: Boolean}
       # Why the gateway could not be composed: `token:<rule>`, `verifier:<rule>`,
-      # `label:<rule>`, `relay:<rule>`, `bearer:<rule>`, `credential-header:<rule>`, or
-      # `endpoint:base-url` for an endpoint the binary refuses.
+      # `label:<rule>`, `relay:<rule>`, `bearer:<rule>`, `credential-header:<rule>`,
+      # `static-header:<rule>`, `endpoint:base-url` for an endpoint the binary refuses, or
+      # `endpoint:headers` for a static header set it refuses.
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
       # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer and
@@ -574,7 +616,8 @@ commands:
   #      goes on to step 5, so without a credential it is `credential-absent`, and with the
   #      owner's it is `method-not-allowed` with `allow: GET, HEAD` at step 8 (scenarios
   #      `r1-*` and `r5-*`).
-  #   5. Owner authentication, before any further decoding: no `authorization` is
+  #   5. Owner authentication, before any further decoding (a wire path of a gateway whose
+  #      `ingress_auth` is `None` skips this step, IngressAuth): no `authorization` is
   #      `credential-absent`, one that is not a single bearer token is `credential-malformed`
   #      (the scheme is matched without regard to case), and a token that is not the owner's
   #      is `credential-rejected`. So an unauthenticated request to an unknown path, with any
@@ -620,7 +663,10 @@ commands:
   - name: llm-gateway.gateway.Relay
     input:
       # A bounded fixture program:
-      #   secret  the owner secret
+      #   secret  the owner secret; with `ingress_auth` `none` it may be empty, and the gateway
+      #           is then composed with `NoOwnerVerifier`, which accepts no credential
+      #   ingress_auth  optional, `bearer` (the default) or `none`, the Gateway's
+      #           `ingress_auth`; any other value makes the program invalid
       #   models  `[{alias, upstream_model, wires, bearer, tool_calling, max_model_len,
       #           context_window, reasoning_effort}]`, the relayed models;
       #           `wires` names `chat`, `responses`, `messages`; the optional `bearer` is the key
@@ -634,8 +680,12 @@ commands:
       #           invalid;
       #           the optional `endpoint` serves the model by a hosted endpoint
       #           (llm-gateway.upstream.HostedEndpoint) instead of the source's current pod:
-      #           `{pod, scheme, certificate, auth_kind, credential, credential_header}`, where
+      #           `{pod, scheme, base_path, certificate, auth_kind, credential,
+      #           credential_header, headers}`, where `headers` is an object of static header
+      #           names to values (none unless given), and
       #           `pod` names the fixture pod at the endpoint's authority (`pod-1`, …),
+      #           `base_path` is appended to `<scheme>://<authority>` to make the endpoint's
+      #           `base_url` (none unless given),
       #           `scheme` is `http` or `https` (that pod then serves TLS), `certificate` is
       #           `trusted` (the default: a certificate for the pod's address from the run's
       #           test root, the only root the client trusts) or `untrusted` (one from a root it

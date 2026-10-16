@@ -7,15 +7,15 @@ use crate::{
     trusted,
 };
 use llm_gateway::{
-    AuthKind, BillingKind, GatewayHandle, Label, OwnerToken, RouteInventory, RouteSummary,
-    SharedSecretVerifier, ShutdownReport, TargetLimits, TargetProvenance, TargetSummary,
-    TokenError,
+    AuthKind, BillingKind, GatewayHandle, IngressAuth, Label, NoOwnerVerifier, OwnerToken,
+    OwnerVerifier, RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport,
+    TargetLimits, TargetProvenance, TargetSummary, TokenError,
 };
 use signal_hook::{
     consts::{SIGINT, SIGTERM},
     iterator::Signals,
 };
-use std::{fmt, net::SocketAddr};
+use std::{fmt, net::SocketAddr, sync::Arc};
 
 /// The signal that ended a served process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,12 +40,16 @@ pub struct Stopped {
     pub report: ShutdownReport,
 }
 
-/// Reads the owner secret through the trusted-file reader and builds the owner verifier.
+/// Reads the owner secret through the trusted-file reader and builds the owner verifier; with no
+/// `owner_secret_file` (`ingress_auth = "none"`) it is [`NoOwnerVerifier`], accepting nothing.
 ///
 /// # Errors
 /// An `owner-secret:*` [`Refusal`].
-pub fn owner_verifier(deployment: &Deployment) -> Result<SharedSecretVerifier, Refusal> {
-    let text = trusted::read(&deployment.owner_secret_file, &trusted::OWNER_SECRET)?;
+pub fn owner_verifier(deployment: &Deployment) -> Result<Arc<dyn OwnerVerifier>, Refusal> {
+    let Some(path) = &deployment.owner_secret_file else {
+        return Ok(Arc::new(NoOwnerVerifier));
+    };
+    let text = trusted::read(path, &trusted::OWNER_SECRET)?;
     // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
     let material = text.trim_end_matches(|character: char| character.is_ascii_whitespace());
     let token = OwnerToken::new(material.as_bytes().to_vec()).map_err(|error| {
@@ -56,15 +60,16 @@ pub fn owner_verifier(deployment: &Deployment) -> Result<SharedSecretVerifier, R
             } else {
                 StartupRefusal::OwnerSecretNotAToken
             },
-            format!("{}: {error}", deployment.owner_secret_file.display()),
+            format!("{}: {error}", path.display()),
         )
     })?;
-    SharedSecretVerifier::new(token).map_err(|error| {
+    let verifier = SharedSecretVerifier::new(token).map_err(|error| {
         Refusal::new(
             StartupRefusal::OwnerSecretTooShort,
-            format!("{}: {error}", deployment.owner_secret_file.display()),
+            format!("{}: {error}", path.display()),
         )
-    })
+    })?;
+    Ok(Arc::new(verifier))
 }
 
 fn label(value: &str) -> Result<Label, Refusal> {
@@ -181,6 +186,10 @@ pub fn start_with(
     crate::start_connected(deployment, |transport| transport, std::sync::Arc::new(pods))
 }
 
+/// The line written, after the `b10x-llm-gateway: ` prefix and before `listening on`, when the
+/// document turns ingress authentication off (story:ingress-auth-optional).
+pub const INGRESS_AUTH_OFF: &str = "warning ingress auth is off (ingress_auth = \"none\"): model calls are served without a credential";
+
 /// Writes one line to standard error. A standard error that is gone (a log reader that exited)
 /// changes nothing: the line is lost, and the exit status still says what happened.
 fn report(line: fmt::Arguments<'_>) {
@@ -198,12 +207,14 @@ pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
     // Events (row O3) go to standard error beside the lines `report` writes, which they leave
     // unchanged; at the default level they are one `usage` event per authenticated model call.
     crate::install_logging();
+    let mut ingress_auth = IngressAuth::Bearer;
     let running = match crate::load(&args.config).and_then(|deployment| {
         tracing::debug!(
             models = deployment.models.len(),
             digest = %deployment.digest,
             "deployment loaded"
         );
+        ingress_auth = deployment.gateway.ingress_auth;
         start_with(&deployment, pods)
     }) {
         Ok(running) => running,
@@ -212,6 +223,9 @@ pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
+    if ingress_auth == IngressAuth::None {
+        report(format_args!("{INGRESS_AUTH_OFF}"));
+    }
     report(format_args!("listening on {}", running.local_addr()));
     let stopped = running.wait_for_stop();
     report(format_args!(

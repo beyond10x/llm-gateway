@@ -26,9 +26,9 @@ Every response is `cache-control: no-store` and `connection: close`: one request
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the inventory |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias |
 | `GET`, `HEAD` | `/metrics` | owner | The counters as Prometheus text ([Scrape the counters](../guides/scrape-the-counters.md)) |
-| `POST` | `/v1/chat/completions` | owner | The `chat` wire, relayed ([The relay](relay.md)) |
-| `POST` | `/v1/responses` | owner | The `responses` wire, relayed |
-| `POST` | `/v1/messages` | owner | The `messages` wire, relayed |
+| `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([The relay](relay.md)) |
+| `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed |
+| `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed |
 
 ## The order a request is decided in
 
@@ -45,10 +45,38 @@ Every response is `cache-control: no-store` and `connection: close`: one request
    to an unknown path is `credential-absent`, not `path-unknown`, so the surface cannot be
    enumerated without the credential. The comparison is of SHA-256 digests in constant time, and a
    rejected credential is never echoed back. Every `401` carries `www-authenticate: Bearer`.
+   The one exception is opt-in: with `ingress_auth = "none"` (below) the three wire paths take
+   no credential.
 6. **The route**: inspection, the counters or a wire. An unknown path is `path-unknown`; a method
    the path does not take is `method-not-allowed` with an `allow` header.
 
 [Refusals](../reference/refusals.md) lists every code with its status and message.
+
+## Model calls without a credential
+
+A gateway behind something that authenticates already, a mesh, a private network or one
+machine, can serve model calls without a credential. In the deployment document:
+
+```toml
+listen = "127.0.0.1:8080"
+ingress_auth = "none"
+```
+
+The three wire paths then read no `authorization` header: a missing, malformed, repeated or
+wrong one is no refusal, and it is never forwarded. Everything else is unchanged. The probes and the public
+routes answer as before, and `/metrics`, `/v1/routes` and every unknown path still take the
+owner secret. Without an `owner_secret_file` there is no owner, so those paths refuse every
+request: `credential-absent` without a credential, `credential-rejected` with a bearer token,
+and `credential-malformed` with anything else, as with a secret. The binary
+says ingress auth is off before it listens:
+
+```text
+b10x-llm-gateway: warning ingress auth is off (ingress_auth = "none"): model calls are served without a credential
+b10x-llm-gateway: listening on 127.0.0.1:8080
+```
+
+`ingress_auth = "bearer"`, the default, keeps every model call behind the owner secret, and then
+`owner_secret_file` is required.
 
 ## Route inspection
 

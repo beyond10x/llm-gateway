@@ -221,3 +221,11 @@ scenarios:
 - gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml
 - gateway/scenarios/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml
 - gateway/scenarios/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml
+- gateway/scenarios/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path.yaml
+- gateway/scenarios/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing.yaml
+- gateway/scenarios/hosted-static-headers-reach-the-endpoint-and-the-clients-never-do.yaml
+- gateway/scenarios/hosted-a-static-header-carrying-authorization-composes-nothing.yaml
+- gateway/scenarios/hosted-a-static-header-naming-the-endpoints-credential-header-composes-nothing.yaml
+- gateway/scenarios/ingress-none-a-model-call-without-a-credential-is-relayed.yaml
+- gateway/scenarios/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused.yaml
+- gateway/scenarios/ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret.yaml

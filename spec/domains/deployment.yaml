@@ -7,11 +7,14 @@ domain: llm-gateway.deployment
 # K29, K30, D2).
 #
 # The command line is closed: `--config <CONFIG>`, `-h`/`--help`, `-V`/`--version`, no
-# subcommand and no positional argument. llmgw's `--insecure` (C3) has no counterpart: the gateway
-# authenticates every request outside its two probes, so the document names the owner secret
-# instead.
+# subcommand and no positional argument. llmgw's `--insecure` (C3) has no command-line
+# counterpart: the document's `ingress_auth` (DeploymentConfiguration below) decides whether a
+# model call takes the owner secret, and it takes it unless the document says `none`.
 #
 # What the process writes to standard error, one line each:
+#   `b10x-llm-gateway: warning ingress auth is off (ingress_auth = "none"): model calls are
+#   served without a credential`, once, before `listening on`, for a document whose
+#   `ingress_auth` is `none`;
 #   `b10x-llm-gateway: listening on <address>` once the gateway is bound and marked ready;
 #   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
@@ -237,6 +240,10 @@ types:
   - name: llm-gateway.deployment.StartupRefusal
     kind: enum
     variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, ListenBind, SignalInstall]
+  # `ingress_auth`: `bearer` (default) or `none`; maps onto llm-gateway.gateway.IngressAuth.
+  - name: llm-gateway.deployment.IngressAuth
+    kind: enum
+    variants: [Bearer, None]
   # The signal that ended a served process.
   - name: llm-gateway.deployment.StopSignal
     kind: enum
@@ -374,14 +381,22 @@ types:
   # ESS-LIMIT: the rules are not struct invariants, for the reason ModelDeclaration gives; the
   # crate tests named `hosted_*` in crates/llm-gateway-cli/tests/config.rs prove them.
   #   wires              non-empty, no repeat
-  #   base_url           `http://` or `https://` and an authority `host[:port]` of at most 256
-  #                      printable ASCII bytes, then nothing but an optional final `/`: no path,
-  #                      query, fragment or user information. An `https` host is a DNS name or
+  #   base_url           `http://` or `https://`, an authority `host[:port]` of at most 256
+  #                      printable ASCII bytes, then an optional base path: no query, fragment
+  #                      or user information. An `https` host is a DNS name or
   #                      an IP address the TLS client can verify a certificate for. An `http`
   #                      host is a loopback literal (`127.0.0.0/8`, `::1`) or `localhost`
   #                      unless `auth_kind` is `anonymous`: no credential is sent in cleartext
   #                      to a remote host. The refusal names `hosted.<alias>.base_url` and
-  #                      quotes no credential
+  #                      quotes no credential.
+  #                      The base path (llm-gateway.upstream.HostedEndpoint `base_url` has the
+  #                      join rule): nothing or `/` is none; otherwise `/` and 1..=32 segments
+  #                      joined by `/`, each one or more of `A-Z a-z 0-9 - . _ ~` and neither
+  #                      `.` nor `..`, at most 256 bytes, one final `/` dropped. An empty
+  #                      segment, a `%`, `\`, `?`, `#`, `@` or any other byte is `config:value`.
+  #                      DECIDED 2026-10-16 (story:hosted-base-path): a path was refused before;
+  #                      a vendor whose API lives below a prefix (`https://openrouter.ai/api/v1`)
+  #                      is now reached without a proxy in front of it
   #   auth_kind          `anonymous`, `bearer` or `api-key`
   #   credential_file    absent exactly when `auth_kind` is `anonymous`; read through the
   #                      trusted-file reader (`endpoint-credential:<rule>`). A credential goes
@@ -392,6 +407,20 @@ types:
   #                      `content-type`, `content-length`, `connection`, `transfer-encoding`,
   #                      `te`, `trailer`, `upgrade`, `expect`, `keep-alive`,
   #                      `proxy-authorization`, `proxy-connection`)
+  #   headers            optional table of static, non-secret request headers, name to string
+  #                      value, written into every request head sent to the endpoint
+  #                      (llm-gateway.gateway `Relay`, step 7): at most 32 entries; a name is
+  #                      1..=64 RFC 9110 token characters, matched without regard to case and
+  #                      written lowercase, two names equal without regard to case are refused,
+  #                      and a name is none of the headers `credential_header` may not be (below)
+  #                      and not the endpoint's own `credential_header`: a credential stays in
+  #                      `credential_file`; a value is 1..=1024 bytes of 0x20-0x7e with no
+  #                      leading or trailing space, so no CR, LF or NUL. The refusal names
+  #                      `hosted.<alias>.headers` and quotes no value.
+  #                      DECIDED 2026-10-16 (story:hosted-static-headers): a vendor API needs
+  #                      headers of its own (Anthropic's `anthropic-version`, OpenRouter's
+  #                      `HTTP-Referer` and `X-Title`), and no client header is forwarded, so the
+  #                      document declares them per endpoint
   #   billing_kind       `metered`, `subscription` or `self-hosted`, default `metered`
   #   upstream_model     1..=256 printable ASCII, default the alias
   #   context_window     optional, 4096..=2000000: what the public routes publish
@@ -408,6 +437,7 @@ types:
       - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
       - {name: credential_file, type: 'Optional<String>'}
       - {name: credential_header, type: 'Optional<String>'}
+      - {name: headers, type: 'Map<String, String>'}
       - {name: billing_kind, type: llm-gateway.upstream.BillingKind}
       - {name: upstream_model, type: String}
       - {name: context_window, type: 'Optional<Integer>'}
@@ -415,7 +445,21 @@ types:
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
   # The closed TOML deployment document. `listen` maps onto llm-gateway.gateway `Gateway`'s
   # bind address (row K1); `owner_secret_file` is read through the trusted-file reader and
-  # becomes the gateway's shared-secret owner verifier. A relative `owner_secret_file` is
+  # becomes the gateway's shared-secret owner verifier.
+  # `ingress_auth` (IngressAuth) maps onto llm-gateway.gateway `Gateway`'s `ingress_auth`:
+  # `bearer`, the default, requires `owner_secret_file` (`config:value` when it is absent) and
+  # every model call takes the owner secret, as before; `none` makes `owner_secret_file`
+  # optional and admits a model call without a credential. With `none` and no
+  # `owner_secret_file` the owner-only surface (`/metrics`, `/v1/routes`) has no owner at all:
+  # the gateway is composed with a verifier that accepts no credential, so those paths are
+  # refused (`credential-absent` without a header, `credential-rejected` with a bearer token,
+  # `credential-malformed` with anything else, as with a secret). With `none`
+  # and an `owner_secret_file` they take that secret, as with `bearer`. Any other value is
+  # `config:schema`.
+  # DECIDED 2026-10-16 (story:ingress-auth-optional): a gateway behind something that
+  # authenticates already (a mesh, a private network, one machine) need not make its local
+  # clients hold a token; the owner-only surface stays closed because nothing in that case asks
+  # for it, and the startup line above says the model calls are open. A relative `owner_secret_file` is
   # resolved from the process's working directory, not from the document's directory
   # (`k30_a_relative_owner_secret_file_is_read_from_the_working_directory` in
   # crates/llm-gateway-cli/tests/binary.rs). At least one model, of `models` or `hosted`, is
@@ -429,7 +473,8 @@ types:
     kind: struct
     fields:
       - {name: listen, type: String}
-      - {name: owner_secret_file, type: String}
+      - {name: ingress_auth, type: llm-gateway.deployment.IngressAuth}
+      - {name: owner_secret_file, type: 'Optional<String>'}
       - {name: providers, type: 'Map<String, llm-gateway.deployment.ProviderDeclaration>'}
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}

@@ -38,8 +38,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
-    "contract_digest": "slice-sha256/2:58bda81d3f3cdd6e2b50585cd16429284c19af7dae2a53ef14eef774ad450bd3",
+    "source_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
+    "contract_digest": "slice-sha256/2:99871452056ed2d616c070c2e7e0bf1c256e5334c45f543ee88b50bda355d6df",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -103,6 +103,9 @@
         "listen": {
           "type": "string"
         },
+        "ingress_auth": {
+          "$ref": "#/$defs/llm-gateway.deployment.IngressAuth"
+        },
         "owner_secret_file": {
           "type": "string"
         },
@@ -130,7 +133,7 @@
       },
       "required": [
         "listen",
-        "owner_secret_file",
+        "ingress_auth",
         "providers",
         "models",
         "hosted"
@@ -170,6 +173,13 @@
         "credential_header": {
           "type": "string"
         },
+        "headers": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "x-ess-map-key": "String"
+        },
         "billing_kind": {
           "$ref": "#/$defs/llm-gateway.upstream.BillingKind"
         },
@@ -190,6 +200,7 @@
         "wires",
         "base_url",
         "auth_kind",
+        "headers",
         "billing_kind",
         "upstream_model",
         "tool_calling"
@@ -205,6 +216,16 @@
         "Low",
         "Medium",
         "Xhigh"
+      ]
+    },
+    "llm-gateway.deployment.IngressAuth": {
+      "title": "IngressAuth",
+      "x-ess-name": "llm-gateway.deployment.IngressAuth",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "None"
       ]
     },
     "llm-gateway.deployment.ModelDeclaration": {

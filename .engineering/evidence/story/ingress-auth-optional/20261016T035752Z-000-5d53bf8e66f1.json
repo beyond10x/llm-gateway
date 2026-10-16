@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-16T03:57:52Z",
+  "actor": "human:timo",
+  "artifact": "story:ingress-auth-optional",
+  "kind": "story",
+  "revision": 34,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check steps on wave/2026-10-16-w01 at b15999c (RUSTUP_TOOLCHAIN=1.98.0): cargo test 662 passed 0 failed, fmt, clippy -D warnings, docs generate --check, ess specify validate, conformance 232 of 232 on three runs; all exit 0"
+  }
+}

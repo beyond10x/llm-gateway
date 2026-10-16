@@ -9,10 +9,13 @@
 
 mod support;
 
-use llm_gateway::{AuthKind, BillingKind, CredentialHeader, ReasoningEffort, ToolCalling};
+use llm_gateway::{
+    AuthKind, BillingKind, CredentialHeader, IngressAuth, ReasoningEffort, ToolCalling,
+};
 use llm_gateway_cli::{Wire, load, vllm_keys};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking};
 use std::{
+    fmt::Write as _,
     net::SocketAddr,
     path::{Path, PathBuf},
     time::Duration,
@@ -35,6 +38,64 @@ fn with_model_keys(text: &str, lines: &str) -> String {
     )
 }
 
+/// story:ingress-auth-optional: `ingress_auth = "none"` makes `owner_secret_file` optional;
+/// `bearer`, written or by default, requires it (`config:value`); any other value is
+/// `config:schema`.
+#[test]
+fn ingress_auth_none_makes_the_owner_secret_optional_and_bearer_requires_it() {
+    let fixture = Fixture::new("ingress-auth");
+    let control = base(&fixture);
+    let secret = format!(
+        "owner_secret_file = \"{}\"\n",
+        fixture.owner_secret().display()
+    );
+    assert!(control.contains(&secret), "{control}");
+    let open = mutate(&control, &secret, "ingress_auth = \"none\"\n");
+    let loaded = load(&fixture.config(&open)).unwrap();
+    assert_eq!(loaded.gateway.ingress_auth, IngressAuth::None);
+    assert_eq!(loaded.owner_secret_file, None);
+    let open_with_secret = mutate(
+        &control,
+        &secret,
+        &format!("ingress_auth = \"none\"\n{secret}"),
+    );
+    let loaded = load(&fixture.config(&open_with_secret)).unwrap();
+    assert_eq!(loaded.gateway.ingress_auth, IngressAuth::None);
+    assert_eq!(loaded.owner_secret_file, Some(fixture.owner_secret()));
+    let bearer = mutate(
+        &control,
+        &secret,
+        &format!("ingress_auth = \"bearer\"\n{secret}"),
+    );
+    assert_eq!(
+        load(&fixture.config(&bearer)).unwrap().gateway.ingress_auth,
+        IngressAuth::Bearer
+    );
+    for (case, replace) in [
+        ("bearer without a secret", "ingress_auth = \"bearer\"\n"),
+        ("the default without a secret", ""),
+    ] {
+        let refusal = load(&fixture.config(&mutate(&control, &secret, replace))).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+        assert!(
+            refusal.to_string().contains("owner_secret_file"),
+            "{case}: {refusal}"
+        );
+    }
+    for value in ["\"open\"", "\"NONE\"", "\"\"", "true", "{ none = {} }"] {
+        let text = mutate(
+            &control,
+            &secret,
+            &format!("ingress_auth = {value}\n{secret}"),
+        );
+        assert_eq!(
+            load(&fixture.config(&text)).unwrap_err().code(),
+            "config:schema",
+            "{value}"
+        );
+    }
+}
+
 #[test]
 fn k29_the_base_document_is_accepted() {
     // The control every refusal below is measured against.
@@ -45,7 +106,11 @@ fn k29_the_base_document_is_accepted() {
         deployment.gateway.bind,
         "127.0.0.1:0".parse::<SocketAddr>().unwrap()
     );
-    assert_eq!(deployment.owner_secret_file, fixture.path("owner-secret"));
+    assert_eq!(
+        deployment.owner_secret_file,
+        Some(fixture.path("owner-secret"))
+    );
+    assert_eq!(deployment.gateway.ingress_auth, IngressAuth::Bearer);
     assert_eq!(deployment.models.len(), 1);
     assert_eq!(deployment.models["small"].provider, "runpod");
     assert_eq!(deployment.models["small"].context_window, 65536);
@@ -1205,6 +1270,71 @@ fn credential_cases(credential: &Path, bearer: &str) -> Vec<(&'static str, Strin
     ]
 }
 
+/// story:hosted-base-path: the out-of-rule base paths, each a `(case, find, replace)` on the
+/// control's `base_url` line.
+fn base_path_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
+    vec![
+        (
+            "a dot-dot segment",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/api/../admin\"".to_owned(),
+        ),
+        (
+            "a dot segment",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/./v1\"".to_owned(),
+        ),
+        (
+            "an empty segment",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/api//v1\"".to_owned(),
+        ),
+        (
+            "two final slashes",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/v1//\"".to_owned(),
+        ),
+        (
+            "a percent-encoded byte in the path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/api%2F..\"".to_owned(),
+        ),
+        (
+            "a backslash in the path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/api\\\\v1\"".to_owned(),
+        ),
+        (
+            "a query after a path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/v1?a=1\"".to_owned(),
+        ),
+        (
+            "a fragment after a path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/v1#a\"".to_owned(),
+        ),
+        (
+            "user information before a path",
+            base_url.to_owned(),
+            "base_url = \"https://user@api.example.test/v1\"".to_owned(),
+        ),
+        (
+            "a path of 33 segments",
+            base_url.to_owned(),
+            format!("base_url = \"https://api.example.test{}\"", "/a".repeat(33)),
+        ),
+        (
+            "a path over 256 bytes",
+            base_url.to_owned(),
+            format!(
+                "base_url = \"https://api.example.test/{}\"",
+                "a".repeat(256)
+            ),
+        ),
+    ]
+}
+
 /// The out-of-rule cases of a hosted endpoint's `base_url`, each a `(case, find, replace)` on the
 /// control's `base_url` line.
 fn base_url_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
@@ -1218,11 +1348,6 @@ fn base_url_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
             "no scheme",
             base_url.to_owned(),
             "base_url = \"api.example.test\"".to_owned(),
-        ),
-        (
-            "a path",
-            base_url.to_owned(),
-            "base_url = \"https://api.example.test/v1\"".to_owned(),
         ),
         (
             "a query",
@@ -1335,6 +1460,7 @@ fn hosted_every_value_outside_its_rule_is_refused() {
     let cases = [
         credential_cases(&credential, &bearer),
         base_url_cases(base_url),
+        base_path_cases(base_url),
         declaration_cases(&bearer),
     ]
     .concat();
@@ -1374,10 +1500,171 @@ fn hosted_every_value_outside_its_rule_is_refused() {
         "https://api.example.test:8443/",
         "https://[::1]:8443",
         "https://127.0.0.1:443",
+        "https://api.example.test/v1",
+        "https://openrouter.example.test/api/v1/",
+        "https://api.example.test/a-b_c.d~e/V2",
     ] {
         let text = mutate(&control, base_url, &format!("base_url = \"{url}\""));
         assert!(load(&fixture.config(&text)).is_ok(), "{url}: refused");
     }
+    // A base path of exactly 32 segments and of exactly 256 bytes is accepted; the base URL is
+    // kept as written.
+    for url in [
+        format!("https://api.example.test{}", "/a".repeat(32)),
+        format!("https://api.example.test/{}", "a".repeat(255)),
+    ] {
+        let text = mutate(&control, base_url, &format!("base_url = \"{url}\""));
+        let loaded = load(&fixture.config(&text));
+        assert!(loaded.is_ok(), "{url}: refused");
+        assert_eq!(loaded.unwrap().hosted["remote"].base_url, url);
+    }
+}
+
+/// story:hosted-static-headers: `[hosted.<alias>.headers]` loads as lowercase names in name
+/// order with their values as written.
+#[test]
+fn hosted_static_headers_load_lowercase_in_name_order() {
+    let fixture = Fixture::new("hosted-headers");
+    let credential = fixture.endpoint_credential();
+    let text = format!(
+        "{}[hosted.remote.headers]\nX-Title = \"b10x gateway\"\nanthropic-version = \"2023-06-01\"\n\"HTTP-Referer\" = \"https://example.test/app\"\n",
+        hosted(&fixture, &api_key_keys(&credential, "x-api-key"))
+    );
+    let deployment = load(&fixture.config(&text)).unwrap();
+    let headers: Vec<(&str, &str)> = deployment.hosted["remote"]
+        .headers
+        .iter()
+        .map(|header| (header.name(), header.value()))
+        .collect();
+    assert_eq!(
+        headers,
+        [
+            ("anthropic-version", "2023-06-01"),
+            ("http-referer", "https://example.test/app"),
+            ("x-title", "b10x gateway"),
+        ]
+    );
+    let none = load(&fixture.config(&hosted(&fixture, &bearer_keys(&credential)))).unwrap();
+    assert!(none.hosted["remote"].headers.is_empty());
+}
+
+/// `count` static headers `x-h0` … , one line each.
+fn many_headers(count: usize) -> String {
+    (0..count).fold(String::new(), |mut lines, index| {
+        writeln!(lines, "x-h{index} = \"v\"").unwrap();
+        lines
+    })
+}
+
+/// The out-of-rule static headers, each a `(case, lines)` under `[hosted.remote.headers]`.
+fn static_header_cases() -> Vec<(&'static str, String)> {
+    vec![
+        ("host", "Host = \"elsewhere.test\"\n".to_owned()),
+        (
+            "authorization",
+            "authorization = \"Bearer leaked-value\"\n".to_owned(),
+        ),
+        ("content-length", "content-length = \"5\"\n".to_owned()),
+        (
+            "transfer-encoding",
+            "transfer-encoding = \"chunked\"\n".to_owned(),
+        ),
+        ("connection", "Connection = \"keep-alive\"\n".to_owned()),
+        (
+            "proxy-authorization",
+            "proxy-authorization = \"Basic leaked-value\"\n".to_owned(),
+        ),
+        (
+            "the credential header",
+            "X-Api-Key = \"leaked-value\"\n".to_owned(),
+        ),
+        (
+            "a name repeated in another case",
+            "x-title = \"a\"\nX-Title = \"b\"\n".to_owned(),
+        ),
+        ("an empty name", "\"\" = \"v\"\n".to_owned()),
+        (
+            "a name of 65 bytes",
+            format!("{} = \"v\"\n", "k".repeat(65)),
+        ),
+        ("a name with a space", "\"x title\" = \"v\"\n".to_owned()),
+        ("a name with a colon", "\"x:title\" = \"v\"\n".to_owned()),
+        ("an empty value", "x-title = \"\"\n".to_owned()),
+        (
+            "a value of 1025 bytes",
+            format!("x-title = \"{}\"\n", "v".repeat(1025)),
+        ),
+        (
+            "a value with CR LF",
+            "x-title = \"a\\r\\nx-injected: b\"\n".to_owned(),
+        ),
+        ("a value with LF", "x-title = \"a\\nb\"\n".to_owned()),
+        ("a value with NUL", "x-title = \"a\\u0000b\"\n".to_owned()),
+        ("a value with a tab", "x-title = \"a\\tb\"\n".to_owned()),
+        (
+            "a value with a leading space",
+            "x-title = \" a\"\n".to_owned(),
+        ),
+        (
+            "a value with a trailing space",
+            "x-title = \"a \"\n".to_owned(),
+        ),
+        (
+            "a value outside ASCII",
+            "x-title = \"caf\u{e9}\"\n".to_owned(),
+        ),
+        ("33 headers", many_headers(33)),
+    ]
+}
+
+/// story:hosted-static-headers: every static header outside its rule is `config:value` naming
+/// `hosted.remote.headers`, and quoting no value; each boundary on its own side loads.
+#[test]
+fn hosted_static_headers_outside_their_rule_are_refused() {
+    let fixture = Fixture::new("hosted-headers-out-of-rule");
+    let credential = fixture.endpoint_credential();
+    let control = hosted(&fixture, &api_key_keys(&credential, "x-api-key"));
+    let table = |lines: &str| format!("{control}[hosted.remote.headers]\n{lines}");
+    for (case, lines) in static_header_cases() {
+        match load(&fixture.config(&table(&lines))) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => {
+                assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+                let message = refusal.to_string();
+                assert!(
+                    message.contains("hosted.remote.headers"),
+                    "{case}: {message}"
+                );
+                assert!(!message.contains("leaked-value"), "{case}: {message}");
+            }
+        }
+    }
+    for (case, lines) in [
+        ("32 headers", many_headers(32)),
+        (
+            "a name of 64 bytes",
+            format!("{} = \"v\"\n", "k".repeat(64)),
+        ),
+        (
+            "a value of 1024 bytes",
+            format!("x-title = \"{}\"\n", "v".repeat(1024)),
+        ),
+        (
+            "a value with inner spaces",
+            "x-title = \"a b  c\"\n".to_owned(),
+        ),
+    ] {
+        assert!(
+            load(&fixture.config(&table(&lines))).is_ok(),
+            "{case}: refused"
+        );
+    }
+    // A value that is not a string leaves the closed document.
+    let mistyped = table("x-title = 5\n");
+    assert_eq!(
+        load(&fixture.config(&mistyped)).unwrap_err().code(),
+        "config:schema"
+    );
 }
 
 /// An unknown key, a missing required key and a closed value outside its set leave the closed

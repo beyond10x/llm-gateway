@@ -1,0 +1,41 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path
+summary: an endpoint whose base_url ends /api/v1 is asked on /api/v1 joined to every wire path, the output clamp's count included, and an endpoint without a path on the wire path itself
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"routed","upstream_model":"vendor/routed","wires":["chat","responses","messages"],"context_window":4096,"endpoint":{"pod":"pod-1","scheme":"http","base_path":"/api/v1","auth_kind":"bearer","credential":"endpoint-bearer-0123456789abcdef"}},{"alias":"plain","upstream_model":"vendor-plain","wires":["chat"],"endpoint":{"pod":"pod-2","scheme":"http","base_path":"/","auth_kind":"anonymous"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"resp-1\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":4000}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"msg-1\"}"]}],[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-2\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"routed\",\"messages\":[]}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"routed\",\"input\":\"hi\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"routed\",\"max_tokens\":32000,\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"plain\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 relayed'
+    upstream:
+    - 'pod-1 POST /api/v1/chat/completions {"model":"vendor/routed","messages":[]}'
+    - 'pod-1 POST /api/v1/responses {"model":"vendor/routed","input":"hi"}'
+    - 'pod-1 POST /api/v1/messages/count_tokens {"model":"vendor/routed","max_tokens":32000,"messages":[]}'
+    - 'pod-1 POST /api/v1/messages {"model":"vendor/routed","max_tokens":96,"messages":[]}'
+    - 'pod-2 POST /v1/chat/completions {"model":"vendor-plain","messages":[]}'
+    authorizations:
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    - 'absent'
+    secret_upstream: false
+    acquired: 4
+    released: 4
+    invalidated: []

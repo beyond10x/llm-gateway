@@ -20,6 +20,9 @@
     "count_timeout_ms": {
       "type": "integer"
     },
+    "ingress_auth": {
+      "$ref": "#/$defs/llm-gateway.gateway.IngressAuth"
+    },
     "ready": {
       "type": "boolean"
     },
@@ -36,6 +39,7 @@
     "max_concurrent_requests",
     "read_timeout_ms",
     "count_timeout_ms",
+    "ingress_auth",
     "ready",
     "draining",
     "state"
@@ -44,8 +48,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "a7e7c7f97881421d86cdddf69a3513ed1163c2ed17637cd59e968907109c60db",
-    "contract_digest": "slice-sha256/2:ceada420cc3e5f5250cb293ebd28dbd1b3172ce74eee15859dce14539f6fe756",
+    "source_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
+    "contract_digest": "slice-sha256/2:28f6680d10bbddcbde781f642fa0f177467d8e41000e753e5b050c36db79ce5b",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -56,6 +60,16 @@
       "type": "string",
       "enum": [
         "Declared"
+      ]
+    },
+    "llm-gateway.gateway.IngressAuth": {
+      "title": "IngressAuth",
+      "x-ess-name": "llm-gateway.gateway.IngressAuth",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "None"
       ]
     }
   }

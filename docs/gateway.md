@@ -105,9 +105,9 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the snapshot. |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
 | `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
-| `POST` | `/v1/chat/completions` | owner | The `chat` wire, relayed ([the relay](#the-relay)). |
-| `POST` | `/v1/responses` | owner | The `responses` wire, relayed. |
-| `POST` | `/v1/messages` | owner | The `messages` wire, relayed. |
+| `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([the relay](#the-relay)). |
+| `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed. |
+| `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed. |
 
 The unauthenticated surface is a closed set of four literal paths with two literal methods. The
 two probes are matched before anything else — including before load is shed — so that a
@@ -184,7 +184,18 @@ path it does not serve: after authentication, `path-unknown` to `GET` and `HEAD`
 A request to a wire path is decided in this order:
 
 1. Probes, shedding and owner authentication, exactly as for inspection. llmgw serves its wires
-   without authentication; llm-gateway admits only its owner's bearer credential.
+   without authentication; llm-gateway admits only its owner's bearer credential, unless the
+   embedding sets `GatewayConfig::ingress_auth` to `IngressAuth::None`. Then a wire path of a
+   gateway composed with a relay skips authentication: `authorization` is not read, so a
+   missing, malformed, repeated or wrong credential is no refusal, and it is never forwarded.
+   Every other
+   path still authenticates, so `/metrics`, `/v1/routes` and an unknown path stay closed and the
+   surface still cannot be enumerated. An embedding with no owner at all composes the gateway
+   with `NoOwnerVerifier`, which accepts no credential: the owner-only paths are then
+   `credential-absent` without one and `credential-rejected` with a bearer token (anything else
+   is `credential-malformed`, as with a secret). The binary does exactly
+   this for `ingress_auth = "none"` without an `owner_secret_file`, and says so on standard
+   error before it listens.
 2. `POST` only (`method-not-allowed`, `allow: POST`), and `unavailable` before `mark_ready`.
 3. The body: `content-length` or `transfer-encoding: chunked`, nothing else
    (`request-malformed`). A declared length over `request-body-bytes` is `body-too-large` before a
@@ -263,7 +274,24 @@ A request to a wire path is decided in this order:
    responses wires are relayed without a count. The count runs only on a target `acquire`
    handed out, so it never wakes a pod the relay would not have woken. Then `POST` to the same
    path at the
-   target with `host` set to the target's authority and a `content-length`. A target whose
+   target with `host` set to the target's authority and a `content-length`. A target with a
+   `BasePath` (`RelayTarget::base_path`: a hosted endpoint whose `base_url` names a path) is
+   asked on that path joined to the wire path instead, the base path replacing the wire path's
+   leading `/v1`, and so is its count: `/api/v1` asks `/api/v1/chat/completions` and
+   `/api/v1/messages/count_tokens`, `/v1` asks the wire path itself. `host` stays the
+   authority. A `BasePath` is `/` and 1 to `base-path-segments` segments of `A-Z a-z 0-9 - . _ ~`,
+   none of them empty, `.` or `..`, at most `base-path-bytes` long with one final `/` dropped,
+   refused as `BasePathError::Length`, `NotAPath` and `DotSegment`; so it can neither end the
+   request line nor leave the prefix it names. A target with static headers
+   (`RelayTarget::headers`: a hosted endpoint's `headers`, such as `anthropic-version`) is sent
+   each as `<name>: <value>` right after `host`, in the order given (the binary gives name
+   order), on the request and on its count. A `StaticHeader` name follows the
+   `CredentialHeader` rule below and is held lowercase; its value is 1 to
+   `static-header-value-bytes` of 0x20-0x7e with no leading or trailing space; refused as
+   `StaticHeaderError::NameLength`, `NameNotAToken`, `Reserved`, `ValueLength` and
+   `ValueNotPrintable`. So no static header can end its line, replace or repeat a header the
+   gateway writes, or carry `authorization`; one named like the target's own credential header
+   is not written, so the head never carries that header twice. A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target whose `credential_header` also names a `CredentialHeader`
    (an `api-key` hosted endpoint) is sent `<header>: <key>` instead, and no `authorization`; a
@@ -473,6 +501,9 @@ list written by hand.
 | `shared-secret-bytes` | `MIN_SHARED_SECRET_BYTES` | 32 |
 | `label-bytes` | `MAX_LABEL_BYTES` | 256 |
 | `credential-header-bytes` | `MAX_CREDENTIAL_HEADER_BYTES` | 64 |
+| `base-path-bytes` | `MAX_BASE_PATH_BYTES` | 256 |
+| `base-path-segments` | `MAX_BASE_PATH_SEGMENTS` | 32 |
+| `static-header-value-bytes` | `MAX_STATIC_HEADER_VALUE_BYTES` | 1024 |
 | `targets-per-route` | `MAX_TARGETS_PER_ROUTE` | 64 |
 | `routes` | `MAX_ROUTES` | 4096 |
 | `digest-characters` | `DIGEST_CHARACTERS` | 64 |
@@ -490,7 +521,8 @@ one past it, through the public API or over a socket, never by reading a configu
 not a bound has to be named in the exemption list in `tests/gateway.rs` with a reason, rather
 than being invisible.
 
-`owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `targets-per-route`, `routes`,
+`owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `base-path-bytes`,
+`base-path-segments`, `static-header-value-bytes`, `targets-per-route`, `routes`,
 `request-head-bytes`, `concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
 `digest-characters` is an exact length. `request-head-bytes` and `concurrent-requests` are
 `GatewayConfig` defaults an embedding may override; they and `request-body-bytes` (32 MiB, as

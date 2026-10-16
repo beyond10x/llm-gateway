@@ -1,0 +1,32 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-static-headers-reach-the-endpoint-and-the-clients-never-do
+summary: an endpoint's declared static headers reach it lowercase, in name order, after host and before its credential, while the client's own anthropic-version and anthropic-beta never do
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"claude","upstream_model":"vendor-claude","wires":["messages"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"api-key","credential":"endpoint-api-key-0123456789abcdef","credential_header":"x-api-key","headers":{"anthropic-version":"2023-06-01","X-Title":"b10x gateway"}}},{"alias":"plain","upstream_model":"vendor-plain","wires":["chat"],"endpoint":{"pod":"pod-2","scheme":"http","auth_kind":"anonymous"}}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"msg-1\"}"]}],[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"claude\",\"messages\":[]}","headers":["anthropic-version: 2099-01-01","anthropic-beta: client-beta"]},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"plain\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '200 relayed'
+    upstream:
+    - 'pod-1 POST /v1/messages {"model":"vendor-claude","messages":[]}'
+    - 'pod-2 POST /v1/chat/completions {"model":"vendor-plain","messages":[]}'
+    received_heads:
+    - 'anthropic-version: 2023-06-01 | x-title: b10x gateway | x-api-key: endpoint-api-key-0123456789abcdef | content-type: application/json | content-length: 39 | connection: close'
+    - 'content-type: application/json | content-length: 38 | connection: close'
+    secret_upstream: false
+    acquired: 2
+    released: 2

@@ -26,7 +26,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | Key | Required | Rule |
 | --- | --- | --- |
 | `listen` | yes | A socket address, `127.0.0.1:8080`. An address that cannot be bound is refused as `listen:bind`. |
-| `owner_secret_file` | yes | The file holding the owner's secret. A relative path is read from the working directory. |
+| `ingress_auth` | no | `bearer`, the default: every model call takes the owner secret. `none`: model calls take no credential, and the binary says so on standard error before it listens ([model calls without a credential](../concepts/single-owner-gateway.md#model-calls-without-a-credential)). Any other value is `config:schema`. |
+| `owner_secret_file` | with `bearer` | The file holding the owner's secret. A relative path is read from the working directory. Required unless `ingress_auth` is `none` (`config:value`); without it, `/metrics` and `/v1/routes` refuse every request. |
 | `[providers.<name>]` | no | Providers models name. A name is 1 to 64 of `a-z`, `0-9`, `-`, `_`, `.`, without a leading dash. |
 | `[models.<alias>]` | at least one model, here or in `hosted` | The models Runpod pods serve, under the same naming rule. |
 | `[hosted.<alias>]` | at least one model, here or in `models` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
@@ -82,21 +83,36 @@ held. Two proven model declarations are in
 
 A model served by a hosted endpoint: any server that speaks the model's wires, a vendor API or an
 OpenAI-compatible server somebody else runs. Nothing is started or stopped for it. A request goes
-to the same path at the endpoint, and the route inventory lists each of its targets with its
-`auth_kind` and `billing_kind`, never its URL or credential.
+to the endpoint's base path joined to the wire path (below), and the route inventory lists each
+of its targets with its `auth_kind` and `billing_kind`, never its URL or credential.
 
 | Key | Default | Rule |
 | --- | --- | --- |
 | `wires` | required | A non-empty set of `chat`, `responses`, `messages`, none repeated. |
-| `base_url` | required | `http://` or `https://` and a `host[:port]` of at most 256 characters, then at most a final `/`: no path, query, fragment or user information. An `http` URL for a `bearer` or `api-key` endpoint must name a loopback host (`127.0.0.0/8`, `::1` or `localhost`): a credential is never sent in cleartext to a remote host. |
+| `base_url` | required | `http://` or `https://`, a `host[:port]` of at most 256 characters, then an optional base path: no query, fragment or user information. A base path is 1 to 32 segments of `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`, at most 256 bytes, with no empty, `.` or `..` segment; one final `/` is dropped. An `http` URL for a `bearer` or `api-key` endpoint must name a loopback host (`127.0.0.0/8`, `::1` or `localhost`): a credential is never sent in cleartext to a remote host. |
 | `auth_kind` | required | `anonymous`, `bearer` or `api-key`. |
 | `credential_file` | absent | The file holding the credential: required unless `auth_kind` is `anonymous`, and refused when it is. |
 | `credential_header` | absent | The header an `api-key` endpoint receives the credential in, 1 to 64 token characters: required for `api-key`, refused otherwise, and never `authorization`, `host` or a header that frames a message. |
+| `[hosted.<alias>.headers]` | absent | Static, non-secret request headers, name to string value, sent with every request (below). |
 | `billing_kind` | `metered` | `metered`, `subscription` or `self-hosted`. |
 | `upstream_model` | the alias | The model name the endpoint expects, 1 to 256 printable ASCII characters. |
 | `context_window` | absent | 4096 to 2000000 tokens, what the public routes publish. |
 | `tool_calling` | `absent` | `parsed` or `absent`. |
 | `reasoning_effort` | absent | `low`, `medium` or `xhigh`: the effort a Messages request that names none is sent with. Any other value, `high` and `max` included, is `config:value`. |
+
+Every wire path starts `/v1/`. A `base_url` without a path, or with only `/`, is asked on the
+wire path itself. A base path replaces the wire path's leading `/v1`, so a `base_url` written
+the way OpenAI-compatible clients write one, ending in `/v1`, works as written:
+
+| `base_url` | Chat request goes to |
+| --- | --- |
+| `https://api.example.test` | `/v1/chat/completions` |
+| `https://api.example.test/v1` | `/v1/chat/completions` |
+| `https://openrouter.ai/api/v1` | `/api/v1/chat/completions` |
+| `https://gateway.example.test/openai` | `/openai/chat/completions` |
+
+The output clamp's count on the Messages wire follows the same rule
+(`/api/v1/messages/count_tokens` for the third row). The `host` header is the authority alone.
 
 A `bearer` endpoint is sent `authorization: Bearer <credential>`, an `api-key` endpoint
 `<credential_header>: <credential>` and no `authorization`, and an `anonymous` one neither. A
@@ -106,6 +122,31 @@ is refused at start as `config:value`, naming the endpoint and quoting no creden
 `https` endpoint is reached over the same TLS client as a pod, verified against the same roots
 compiled into the binary; a certificate that does not verify is `upstream-failed` before any byte
 of the request is sent. A failed endpoint is kept: the next request asks it again.
+
+No header of the client's request reaches an endpoint. A vendor API that needs a header of its
+own gets it from `[hosted.<alias>.headers]`: Anthropic's `anthropic-version`, OpenRouter's
+`HTTP-Referer` and `X-Title`. Each is sent lowercase, right after `host`, in name order, on
+every request to that endpoint. At most 32; a name is 1 to 64 token characters, and two names
+that differ only in case are refused; a value is 1 to 1024 printable ASCII characters with no
+leading or trailing space, so no line break. A name the gateway writes itself or that frames a
+message (`host`, `authorization`, `content-type`, `content-length`, `connection`,
+`transfer-encoding`, `te`, `trailer`, `upgrade`, `expect`, `keep-alive`,
+`proxy-authorization`, `proxy-connection`) is refused, and so is the endpoint's own
+`credential_header`: a credential belongs in `credential_file`. Every refusal is `config:value`
+naming `hosted.<alias>.headers`, and quotes no value.
+
+```toml
+[hosted.claude]
+wires = ["messages"]
+base_url = "https://api.anthropic.com"
+auth_kind = "api-key"
+credential_file = "/etc/llm-gateway/anthropic-key"
+credential_header = "x-api-key"
+upstream_model = "claude-model"
+
+[hosted.claude.headers]
+anthropic-version = "2023-06-01"
+```
 
 The gateway does not start a hosted endpoint, so it cannot set the server's chat-template
 defaults; a Qwen3.8 template asked for no effort thinks at `xhigh`, its deepest. With

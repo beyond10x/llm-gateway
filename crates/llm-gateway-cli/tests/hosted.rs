@@ -523,6 +523,323 @@ fn hosted_the_binary_relays_each_auth_kind_to_its_endpoint_on_the_same_path() {
     }
 }
 
+/// story:hosted-base-path, criteria 1 and 3: an endpoint whose `base_url` carries the path
+/// `/api/v1/` is asked on `/api/v1` joined to each wire path, the output clamp's count
+/// included, with `host` the authority alone; one whose `base_url` ends in `/v1` is asked on the
+/// wire path itself.
+#[test]
+fn hosted_a_base_url_path_replaces_the_v1_prefix_and_host_stays_the_authority() {
+    let fixture = Fixture::new("hosted-base-path");
+    let (routed, versioned) = (Endpoint::start(), Endpoint::start());
+    let tables = format!(
+        "{}{}",
+        hosted_table(
+            "routed",
+            &format!("{}/api/v1/", routed.base_url()),
+            "auth_kind = \"anonymous\"\ncontext_window = 8192\n"
+        ),
+        hosted_table(
+            "versioned",
+            &format!("{}/v1", versioned.base_url()),
+            "auth_kind = \"anonymous\"\n"
+        ),
+    );
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &tables,
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let answers = [
+        post(
+            server.address,
+            "/v1/chat/completions",
+            r#"{"model":"routed","messages":[]}"#,
+        ),
+        post(
+            server.address,
+            "/v1/messages",
+            r#"{"model":"routed","max_tokens":16,"messages":[]}"#,
+        ),
+        post(
+            server.address,
+            "/v1/chat/completions",
+            r#"{"model":"versioned","messages":[]}"#,
+        ),
+    ];
+    server.stop();
+    for answer in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    let seen = routed.seen();
+    assert_eq!(
+        seen.iter().map(Received::request_line).collect::<Vec<_>>(),
+        [
+            "POST /api/v1/chat/completions HTTP/1.1",
+            "POST /api/v1/messages/count_tokens HTTP/1.1",
+            "POST /api/v1/messages HTTP/1.1",
+        ]
+    );
+    for request in &seen {
+        assert_eq!(
+            request.header("host"),
+            Some(routed.address.to_string().as_str()),
+            "{request:?}"
+        );
+    }
+    assert_eq!(
+        versioned
+            .seen()
+            .iter()
+            .map(Received::request_line)
+            .collect::<Vec<_>>(),
+        ["POST /v1/chat/completions HTTP/1.1"]
+    );
+}
+
+/// story:hosted-static-headers, criterion 1: an endpoint's declared headers reach it on every
+/// request, lowercase and in name order after `host`, beside its credential, and the client's own
+/// `anthropic-version` still does not.
+#[test]
+fn hosted_static_headers_reach_the_endpoint_beside_its_credential() {
+    let fixture = Fixture::new("hosted-static-headers");
+    let credential = fixture.endpoint_credential();
+    let endpoint = Endpoint::start();
+    let tables = format!(
+        "{}[hosted.claude.headers]\nanthropic-version = \"2023-06-01\"\nX-Title = \"b10x gateway\"\n",
+        hosted_table(
+            "claude",
+            &endpoint.base_url(),
+            &api_key_keys(&credential, "x-api-key")
+        ),
+    );
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &tables,
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let body = r#"{"model":"claude","messages":[]}"#;
+    let answer = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/messages HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nanthropic-version: 2099-01-01\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    let chat = post(server.address, "/v1/chat/completions", body);
+    server.stop();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(chat.starts_with("HTTP/1.1 200 "), "{chat}");
+    let seen = endpoint.seen();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    for request in &seen {
+        assert_eq!(
+            request.names(),
+            [
+                "host",
+                "anthropic-version",
+                "x-title",
+                "x-api-key",
+                "content-type",
+                "content-length",
+                "connection"
+            ],
+            "{request:?}"
+        );
+        assert_eq!(request.header("anthropic-version"), Some("2023-06-01"));
+        assert_eq!(request.header("x-title"), Some("b10x gateway"));
+        assert_eq!(request.header("x-api-key"), Some(ENDPOINT_CREDENTIAL));
+    }
+}
+
+/// story:ingress-auth-optional, criteria 1, 2 and 4: a document with `ingress_auth = "none"` and
+/// no `owner_secret_file` starts, writes the warning line before `listening on`, relays a model
+/// call without a credential, and refuses the owner-only surface whatever is presented.
+#[test]
+fn ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed() {
+    let fixture = Fixture::new("ingress-none");
+    let endpoint = Endpoint::start();
+    let config = fixture.config(&format!(
+        "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\n\n{}",
+        hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n")
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let before = server.written.clone();
+    let body = r#"{"model":"open","messages":[]}"#;
+    let relayed = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    let absent = String::from_utf8_lossy(&exchange(
+        server.address,
+        "GET /metrics HTTP/1.1\r\nhost: gateway\r\n\r\n",
+    ))
+    .into_owned();
+    let rejected = String::from_utf8_lossy(&exchange(
+        server.address,
+        "GET /v1/routes HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer a-guess-0123456789abcdef0123456789abcdef\r\n\r\n",
+    ))
+    .into_owned();
+    server.stop();
+    assert_eq!(
+        before,
+        [
+            "b10x-llm-gateway: warning ingress auth is off (ingress_auth = \"none\"): model calls are served without a credential".to_owned(),
+            before.last().cloned().unwrap_or_default(),
+        ],
+        "{before:?}"
+    );
+    assert!(before[1].starts_with(LISTENING), "{before:?}");
+    assert!(relayed.starts_with("HTTP/1.1 200 "), "{relayed}");
+    assert!(relayed.contains(ENDPOINT_ANSWER), "{relayed}");
+    assert!(absent.starts_with("HTTP/1.1 401 "), "{absent}");
+    assert!(absent.contains("credential-absent"), "{absent}");
+    assert!(rejected.starts_with("HTTP/1.1 401 "), "{rejected}");
+    assert!(rejected.contains("credential-rejected"), "{rejected}");
+    assert_eq!(endpoint.seen().len(), 1);
+}
+
+/// story:ingress-auth-optional, criterion 2: with `ingress_auth = "none"` and an
+/// `owner_secret_file`, a model call needs no credential while the counters and the route
+/// inventory are served to that secret only.
+#[test]
+fn ingress_none_with_a_secret_serves_the_owner_surface_to_that_secret_only() {
+    let fixture = Fixture::new("ingress-none-secret");
+    let endpoint = Endpoint::start();
+    let config = fixture.config(&format!(
+        "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\nowner_secret_file = \"{}\"\n\n{}",
+        fixture.owner_secret().display(),
+        hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n")
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let body = r#"{"model":"open","messages":[]}"#;
+    let relayed = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    let mut owner = Vec::new();
+    for path in ["/metrics", "/v1/routes"] {
+        let answered = String::from_utf8_lossy(&get(server.address, path)).into_owned();
+        let absent = String::from_utf8_lossy(&exchange(
+            server.address,
+            &format!("GET {path} HTTP/1.1\r\nhost: gateway\r\n\r\n"),
+        ))
+        .into_owned();
+        let rejected = String::from_utf8_lossy(&exchange(
+            server.address,
+            &format!(
+                "GET {path} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer a-guess-0123456789abcdef0123456789abcdef\r\n\r\n"
+            ),
+        ))
+        .into_owned();
+        owner.push((path, answered, absent, rejected));
+    }
+    server.stop();
+    assert!(relayed.starts_with("HTTP/1.1 200 "), "{relayed}");
+    for (path, answered, absent, rejected) in owner {
+        assert!(answered.starts_with("HTTP/1.1 200 "), "{path}: {answered}");
+        assert!(absent.contains("credential-absent"), "{path}: {absent}");
+        assert!(
+            rejected.contains("credential-rejected"),
+            "{path}: {rejected}"
+        );
+    }
+}
+
+/// story:ingress-auth-optional, criterion 3: a document that says nothing of `ingress_auth`
+/// writes no warning and still refuses a model call without the owner's credential.
+#[test]
+fn ingress_bearer_by_default_writes_no_warning_and_refuses_an_unauthenticated_call() {
+    let fixture = Fixture::new("ingress-default");
+    let endpoint = Endpoint::start();
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n"),
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let before = server.written.clone();
+    let body = r#"{"model":"open","messages":[]}"#;
+    let refused = String::from_utf8_lossy(&exchange(
+        server.address,
+        &format!(
+            "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        ),
+    ))
+    .into_owned();
+    server.stop();
+    assert_eq!(before.len(), 1, "{before:?}");
+    assert!(before[0].starts_with(LISTENING), "{before:?}");
+    assert!(refused.starts_with("HTTP/1.1 401 "), "{refused}");
+    assert!(refused.contains("credential-absent"), "{refused}");
+    assert!(endpoint.seen().is_empty());
+}
+
+/// Adversary, story:hosted-static-headers: the output clamp's count is a request to the endpoint
+/// too, so it carries the static headers, after `host` and before the credential, as the relayed
+/// request does. The unit's own test sends no `max_tokens`, so no count runs in it.
+#[test]
+fn adversary_static_headers_reach_the_output_clamps_count_too() {
+    let fixture = Fixture::new("adversary-static-headers-count");
+    let credential = fixture.endpoint_credential();
+    let endpoint = Endpoint::start();
+    let tables = format!(
+        "{}context_window = 8192\n[hosted.claude.headers]\nanthropic-version = \"2023-06-01\"\n",
+        hosted_table(
+            "claude",
+            &endpoint.base_url(),
+            &api_key_keys(&credential, "x-api-key")
+        ),
+    );
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &tables,
+    ));
+    let server = Server::start(&shipped(), &config, None);
+    let answer = post(
+        server.address,
+        "/v1/messages",
+        r#"{"model":"claude","max_tokens":16,"messages":[]}"#,
+    );
+    server.stop();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    let seen = endpoint.seen();
+    assert_eq!(
+        seen.iter().map(Received::request_line).collect::<Vec<_>>(),
+        [
+            "POST /v1/messages/count_tokens HTTP/1.1",
+            "POST /v1/messages HTTP/1.1",
+        ]
+    );
+    for request in &seen {
+        assert_eq!(
+            request.names(),
+            [
+                "host",
+                "anthropic-version",
+                "x-api-key",
+                "content-type",
+                "content-length",
+                "connection"
+            ],
+            "{request:?}"
+        );
+        assert_eq!(request.header("anthropic-version"), Some("2023-06-01"));
+    }
+}
+
 /// A hosted endpoint that fails is answered `upstream-failed` and is kept: the next request
 /// reaches the same endpoint, since nothing replaces it. A Runpod model beside it, whose
 /// provider declares no connection, is still answered `target-unavailable` (criterion 7: the

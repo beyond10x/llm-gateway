@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.IngressAuth",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "595efdfb690f416b8b94eb8e0864f1998df2ec319e2ab583e525497d74c38d33",
+    "contract_digest": "slice-sha256/2:b9459a5d16eaba207083c975ea05db3040aa5e0c79bc5320a69ad5b1850515a6",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.IngressAuth": {
+      "title": "IngressAuth",
+      "x-ess-name": "llm-gateway.gateway.IngressAuth",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Bearer",
+        "None"
+      ]
+    }
+  }
+}

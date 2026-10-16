@@ -227,6 +227,35 @@ closed_enum! {
 }
 
 closed_enum! {
+    /// Why a [`crate::BasePath`] cannot be built. The rejected path is never quoted.
+    BasePathError {
+        /// Longer than 256 bytes, or more than 32 segments.
+        Length => "a base path is at most 256 bytes of at most 32 segments";
+        /// Not `/` and segments of one or more of `A-Z a-z 0-9 - . _ ~`: an empty segment, or
+        /// any other byte.
+        NotAPath => "a base path is / and segments of one or more of A-Z a-z 0-9 - . _ ~";
+        /// A segment that is `.` or `..`.
+        DotSegment => "a base path has no . or .. segment";
+    }
+}
+
+closed_enum! {
+    /// Why a [`crate::StaticHeader`] cannot be built. Neither the name nor the value is quoted.
+    StaticHeaderError {
+        /// An empty name, or one longer than 64 bytes.
+        NameLength => "a static header name must be 1..=64 bytes";
+        /// A name byte that is not an RFC 9110 token character.
+        NameNotAToken => "a static header name must be one RFC 9110 token";
+        /// A header the gateway writes itself, or one that frames a message.
+        Reserved => "a static header cannot be one the gateway writes or one that frames a message";
+        /// An empty value, or one longer than 1024 bytes.
+        ValueLength => "a static header value must be 1..=1024 bytes";
+        /// A value byte outside 0x20-0x7e, or a leading or trailing space.
+        ValueNotPrintable => "a static header value must be printable ASCII without a leading or trailing space";
+    }
+}
+
+closed_enum! {
     /// Why relayed models cannot be composed (row K11).
     RelayError {
         /// A model that declares no wire.

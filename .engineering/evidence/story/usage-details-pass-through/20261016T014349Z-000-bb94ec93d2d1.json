@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-16T01:43:49Z",
+  "actor": "human:timo",
+  "artifact": "story:usage-details-pass-through",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway --test wire_relay usage_; two usage conformance scenarios"
+  }
+}

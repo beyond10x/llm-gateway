@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:max-tokens-clamp
 kind: story
-status: active
+status: implemented
 title: A messages request never asks for more output than the context window has room for
 relations:
 - decomposes: epic:client-access
@@ -34,10 +34,11 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: website/docs/reference/refusals.md
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-15T12:58:58Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":2}}}
 - {from: "proposed", to: "active", at: "2026-10-15T12:58:58Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":2}}}
+- {from: "active", to: "implemented", at: "2026-10-16T01:43:52Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":4,"verification":1}}}
 ---
 ## Outcome
 

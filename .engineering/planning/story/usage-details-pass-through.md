@@ -2,16 +2,17 @@
 format: aep.planning-md/3
 id: story:usage-details-pass-through
 kind: story
-status: active
+status: implemented
 title: Usage details, cached tokens included, reach the client unchanged on the chat and messages wires
 relations:
 - decomposes: epic:gateway-features
 - depends_on: story:max-tokens-clamp
 - serves: vision:portable-model-inference
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-15T17:42:26Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-15T17:42:27Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-16T01:43:53Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1,"verification":1}}}
 ---
 ## Outcome
 

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:effort-default
 kind: story
-status: active
+status: implemented
 title: A Claude Code turn reaches the pod with an effort the template accepts, the model's declared one when it names none
 relations:
 - decomposes: epic:client-access
@@ -33,10 +33,11 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: website/docs/reference/deployment-document.md
-revision: 8
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-15T12:58:57Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-10-15T12:58:57Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-16T01:43:52Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":5,"verification":1}}}
 ---
 ## Outcome
 

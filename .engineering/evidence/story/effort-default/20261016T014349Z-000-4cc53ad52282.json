@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-16T01:43:49Z",
+  "actor": "human:timo",
+  "artifact": "story:effort-default",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway --test wire_relay effort_; effort conformance scenarios"
+  }
+}

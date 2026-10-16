@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:claude-code-wire
 kind: story
-status: active
+status: implemented
 title: The messages wire answers what Claude Code sends, settled from the qualification record
 relations:
 - decomposes: epic:client-access
@@ -36,10 +36,11 @@ scope:
   path: spec/domains/clients.yaml
 - confidence: inferred
   path: spec/domains/gateway.yaml
-revision: 12
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-15T09:40:44Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"review_outcome":1}}}
 - {from: "proposed", to: "active", at: "2026-10-15T09:40:44Z", actor: "human:timo", revision: 12, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-10-16T01:43:52Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 ## Outcome
 

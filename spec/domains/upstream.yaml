@@ -61,7 +61,8 @@ entities:
   # `gpu_types` and `max_model_len` a hosted model does not have.
   #
   # How a relayed request reaches it (llm-gateway.gateway `Relay`, steps 7-8): the request goes
-  # to the same path at the endpoint's authority, `host` set to that authority, on each wire the
+  # to the wire's path joined to the endpoint's base path (`base_url` below) at the endpoint's
+  # authority, `host` set to that authority, on each wire the
   # model declares; the endpoint is handed out at once, never held, and is kept when a request
   # through it fails (`upstream-failed`): there is nothing to replace. An `http` endpoint is
   # reached over plain TCP; an `https` endpoint over the binary's one TLS client with the
@@ -90,9 +91,22 @@ entities:
       # The model name the endpoint expects; the alias unless the declaration names another.
       # The relay rewrites the request's `model` to it (row W2).
       - {name: upstream_model, type: String}
-      # Where requests go: `http://` or `https://` and an authority `host[:port]`, nothing else
-      # but an optional final `/` (no path, query, fragment or user information). The port
-      # defaults to 80 for `http` and 443 for `https`. An `http` endpoint whose `auth_kind` is
+      # Where requests go: `http://` or `https://`, an authority `host[:port]`, and an optional
+      # base path (no query, fragment or user information; the path's rule is
+      # llm-gateway.deployment `HostedDeclaration`'s). The port
+      # defaults to 80 for `http` and 443 for `https`.
+      # The join rule. Every wire path starts `/v1/` (`/v1/chat/completions`, `/v1/responses`,
+      # `/v1/messages`, and the output clamp's `/v1/messages/count_tokens`). A `base_url` with no
+      # path, or only `/`, has no base path, and the request goes to the wire path. A base path
+      # `B` replaces the wire path's leading `/v1`: the request goes to `B` followed by the rest
+      # of the wire path. `https://openrouter.ai/api/v1` and `chat` reach
+      # `/api/v1/chat/completions`; `https://api.openai.com/v1` and `responses` reach
+      # `/v1/responses`; `https://gw.example/openai` and `chat` reach `/openai/chat/completions`.
+      # `host` is the authority alone, whatever the path.
+      # DECIDED 2026-10-16 (story:hosted-base-path): the base path replaces `/v1` rather than
+      # being prepended to it, which is how OpenAI-compatible clients read a base URL that ends
+      # `/v1`, while a base URL without a path, the only form admitted before, keeps reaching the
+      # wire path unchanged. An `http` endpoint whose `auth_kind` is
       # not `Anonymous` must be on a loopback literal (`127.0.0.0/8`, `::1`) or `localhost`:
       # a credential is never sent in cleartext to a remote host, and the document is refused
       # `config:value` otherwise (llm-gateway.deployment `HostedDeclaration`). Never rendered

@@ -1,0 +1,23 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: hosted-a-base-path-that-could-leave-its-prefix-composes-nothing
+summary: a base_url whose path holds a dot-dot segment is refused endpoint:base-url, so nothing is composed and no pod is asked
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"routed","upstream_model":"vendor-routed","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"http","base_path":"/api/../admin","auth_kind":"anonymous"}}],"pods":[[]],"steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: 'endpoint:base-url'
+    results: []
+    upstream: []
+    connections: []
+    acquired: 0

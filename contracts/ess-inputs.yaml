@@ -221,3 +221,5 @@ scenarios:
 - gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml
 - gateway/scenarios/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml
 - gateway/scenarios/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml
+- gateway/scenarios/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path.yaml
+- gateway/scenarios/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing.yaml

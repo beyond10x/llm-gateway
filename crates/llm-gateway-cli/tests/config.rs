@@ -1220,9 +1220,59 @@ fn base_url_cases(base_url: &str) -> Vec<(&'static str, String, String)> {
             "base_url = \"api.example.test\"".to_owned(),
         ),
         (
-            "a path",
+            "a dot-dot segment",
             base_url.to_owned(),
-            "base_url = \"https://api.example.test/v1\"".to_owned(),
+            "base_url = \"https://api.example.test/api/../admin\"".to_owned(),
+        ),
+        (
+            "a dot segment",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/./v1\"".to_owned(),
+        ),
+        (
+            "an empty segment",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/api//v1\"".to_owned(),
+        ),
+        (
+            "two final slashes",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/v1//\"".to_owned(),
+        ),
+        (
+            "a percent-encoded byte in the path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/api%2F..\"".to_owned(),
+        ),
+        (
+            "a backslash in the path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/api\\\\v1\"".to_owned(),
+        ),
+        (
+            "a query after a path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/v1?a=1\"".to_owned(),
+        ),
+        (
+            "a fragment after a path",
+            base_url.to_owned(),
+            "base_url = \"https://api.example.test/v1#a\"".to_owned(),
+        ),
+        (
+            "user information before a path",
+            base_url.to_owned(),
+            "base_url = \"https://user@api.example.test/v1\"".to_owned(),
+        ),
+        (
+            "a path of 33 segments",
+            base_url.to_owned(),
+            format!("base_url = \"https://api.example.test{}\"", "/a".repeat(33)),
+        ),
+        (
+            "a path over 256 bytes",
+            base_url.to_owned(),
+            format!("base_url = \"https://api.example.test/{}\"", "a".repeat(256)),
         ),
         (
             "a query",
@@ -1374,9 +1424,23 @@ fn hosted_every_value_outside_its_rule_is_refused() {
         "https://api.example.test:8443/",
         "https://[::1]:8443",
         "https://127.0.0.1:443",
+        "https://api.example.test/v1",
+        "https://openrouter.example.test/api/v1/",
+        "https://api.example.test/a-b_c.d~e/V2",
     ] {
         let text = mutate(&control, base_url, &format!("base_url = \"{url}\""));
         assert!(load(&fixture.config(&text)).is_ok(), "{url}: refused");
+    }
+    // A base path of exactly 32 segments and of exactly 256 bytes is accepted; the base URL is
+    // kept as written.
+    for url in [
+        format!("https://api.example.test{}", "/a".repeat(32)),
+        format!("https://api.example.test/{}", "a".repeat(255)),
+    ] {
+        let text = mutate(&control, base_url, &format!("base_url = \"{url}\""));
+        let loaded = load(&fixture.config(&text));
+        assert!(loaded.is_ok(), "{url}: refused");
+        assert_eq!(loaded.unwrap().hosted["remote"].base_url, url);
     }
 }
 

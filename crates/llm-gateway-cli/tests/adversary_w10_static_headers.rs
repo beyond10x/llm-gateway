@@ -106,7 +106,10 @@ fn adversary_every_reserved_name_in_any_case_is_refused() {
         .expect_err(name);
         let message = refusal.to_string();
         assert_eq!(refusal.code(), "config:value", "{name}: {message}");
-        assert!(message.contains("hosted.remote.headers"), "{name}: {message}");
+        assert!(
+            message.contains("hosted.remote.headers"),
+            "{name}: {message}"
+        );
         assert!(!message.contains(LEAK), "{name}: {message}");
     }
 }

@@ -311,7 +311,8 @@ pub trait RelayTarget: Send {
     }
 
     /// The static headers the target is sent with every request, the output clamp's count
-    /// included, after `host` and in the order given. The default sends none.
+    /// included, after `host` and in the order given; one named like the credential header the
+    /// target is sent is skipped. The default sends none.
     fn headers(&self) -> &[StaticHeader] {
         &[]
     }
@@ -1111,7 +1112,15 @@ fn request_head(target: &dyn RelayTarget, wire_path: &str, length: usize) -> Req
         .base_path()
         .map_or_else(|| wire_path.to_owned(), |base| base.join(wire_path));
     let mut start = format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority());
+    // A static header never repeats the credential header written below: the credential wins.
+    let credential_name = target
+        .bearer()
+        .and(target.credential_header())
+        .map(CredentialHeader::as_str);
     for header in target.headers() {
+        if credential_name == Some(header.name()) {
+            continue;
+        }
         start.push_str(header.name());
         start.push_str(": ");
         start.push_str(header.value());

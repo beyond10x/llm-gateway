@@ -17,6 +17,9 @@ use crate::{
     },
     inventory::Label,
     metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
+    translate::{
+        AnswerFraming, TranslatedAnswer, TranslationFailure, TranslationRequest, Translator,
+    },
 };
 use std::{
     collections::BTreeMap,
@@ -96,6 +99,13 @@ impl TargetBearer {
         let bearer = Self(material);
         auth::check_token(&bearer.0)?;
         Ok(bearer)
+    }
+
+    /// The material, for an embedding whose own transport sends it (the binary's translator,
+    /// story:gateway-translation). The relay writes it into the head it sends and nowhere else;
+    /// whoever reads it here holds it to the same rule.
+    pub fn expose(&self) -> &[u8] {
+        &self.0
     }
 }
 
@@ -283,11 +293,28 @@ impl BasePath {
     }
 }
 
+/// How a target is reached by a transport of the embedding's that opens its own connection: a
+/// translator's HTTP client (story:gateway-translation). The byte relay never reads it, because
+/// [`RelayTarget::connect`] already opens the right connection.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub enum TargetScheme {
+    /// Plain HTTP. The default.
+    #[default]
+    Http,
+    /// HTTPS.
+    Https,
+}
+
 /// One target, held for as long as a relayed answer streams and released when dropped.
 pub trait RelayTarget: Send {
     /// The target's `host[:port]`. It is sent as `host`, and it is what the gateway names back
     /// in [`RelayTargets::invalidate`] when a request through this target fails.
     fn authority(&self) -> &str;
+
+    /// How a translator reaches [`Self::authority`]. [`TargetScheme::Http`], the default.
+    fn scheme(&self) -> TargetScheme {
+        TargetScheme::Http
+    }
 
     /// The credential this target expects, sent as `authorization: Bearer <key>`. `None`, the
     /// default, sends no `authorization`. The client's own headers are never forwarded, so the
@@ -505,6 +532,9 @@ pub struct Relay {
     targets: Arc<dyn RelayTargets>,
     metrics: Arc<Metrics>,
     records: Arc<dyn UsageRecords>,
+    /// Where a request on a wire its model does not declare goes; without one it is refused
+    /// `wire-not-served` (story:gateway-translation).
+    translator: Option<Arc<dyn Translator>>,
 }
 
 impl Relay {
@@ -531,9 +561,25 @@ impl Relay {
             targets,
             metrics: Arc::new(Metrics::default()),
             records: Arc::new(NoRecords),
+            translator: None,
         };
         relay.register();
         Ok(relay)
+    }
+
+    /// Hands every request on a wire its model does not declare to `translator`, which
+    /// translates it for the model's first declared wire (story:gateway-translation). A model's
+    /// series are then registered on every wire, since it is served on every wire.
+    #[must_use]
+    pub fn with_translator(mut self, translator: Arc<dyn Translator>) -> Self {
+        self.translator = Some(translator);
+        self.register();
+        self
+    }
+
+    /// Whether a translator was composed: then every model accepts every wire.
+    pub(crate) fn translates(&self) -> bool {
+        self.translator.is_some()
     }
 
     /// Counts into `metrics` instead, registering every (model, wire) pair in it at zero. An
@@ -554,7 +600,12 @@ impl Relay {
 
     fn register(&self) {
         for model in self.models.values() {
-            for wire in &model.wires {
+            let wires: &[Wire] = if self.translates() {
+                &Wire::ALL
+            } else {
+                &model.wires
+            };
+            for wire in wires {
                 self.metrics.register(model.alias.as_str(), *wire);
             }
         }
@@ -959,26 +1010,196 @@ pub(crate) struct Call {
     pub(crate) response_bytes: u64,
 }
 
-/// The relayed model the body names, if it serves this request (relay steps 4 and 5). Decided
-/// before any target is asked for, so a request the model cannot answer never wakes a pod.
+/// A model that serves a request, and the translator when the request is translated.
+type Served<'r> = (&'r RelayModel, Option<&'r Arc<dyn Translator>>);
+
+/// The relayed model the body names, if it serves this request (relay steps 4 and 5), and the
+/// translator when the request's wire is not one the model declares. Decided before any target
+/// is asked for, so a request the model cannot answer never wakes a pod.
 fn served_model<'r>(
     relay: &'r Relay,
     analysis: &body::Analysis,
     wire: Wire,
     call: &mut Call,
-) -> Result<&'r RelayModel, RefusalCode> {
+) -> Result<Served<'r>, RefusalCode> {
     let model = relay
         .models
         .get(&analysis.model)
         .ok_or(RefusalCode::ModelUnknown)?;
     call.model = Some(model.alias.as_str().to_string());
-    if !model.wires.contains(&wire) {
-        return Err(RefusalCode::WireNotServed);
-    }
+    let translator = if model.wires.contains(&wire) {
+        None
+    } else {
+        Some(
+            relay
+                .translator
+                .as_ref()
+                .ok_or(RefusalCode::WireNotServed)?,
+        )
+    };
     if analysis.offers_tools && model.tool_calling == ToolCalling::Absent {
         return Err(RefusalCode::ToolsNotServed);
     }
-    Ok(model)
+    Ok((model, translator))
+}
+
+/// Acquires the target for `alias`, counting a request held for a starting target on its route
+/// with the time it waited (rows O1, O2): the target says it held it, or the source gave up past
+/// its hold budget.
+fn acquire(relay: &Relay, alias: &str, wire: Wire) -> Result<Box<dyn RelayTarget>, RefusalCode> {
+    let asked = Instant::now();
+    let acquired = relay.targets.acquire(alias);
+    let cold_start = match &acquired {
+        Ok(target) => target.held(),
+        Err(refusal) => *refusal == TargetRefusal::ColdStart,
+    };
+    if cold_start {
+        relay
+            .metrics
+            .count_cold_start_hold(alias, wire, asked.elapsed());
+    }
+    acquired.map_err(TargetRefusal::refusal)
+}
+
+/// The translated path (story:gateway-translation; relay step 5): the translator prepares the
+/// request before any target is asked for, then runs it against the acquired target, writing
+/// the client's answer itself. The target is released after the last byte.
+fn translate(
+    stream: &mut TcpStream,
+    body: &[u8],
+    (model, translator): (&RelayModel, &dyn Translator),
+    admitted: Admitted,
+    relay: &Relay,
+    limits: &Limits,
+    call: &mut Call,
+) -> Result<(), RefusalCode> {
+    let prepared = translator.prepare(&TranslationRequest {
+        ingress: admitted.wire,
+        upstream: model.wires[0],
+        model,
+        body,
+    })?;
+    let alias = model.alias.as_str();
+    let target = acquire(relay, alias, admitted.wire)?;
+    let mut answer = ClientAnswer {
+        stream,
+        timeout: limits.timeout,
+        chunked: admitted.chunked_answer,
+        framing: None,
+        gone: false,
+        written: 0,
+    };
+    let ran = prepared.run(target.as_ref(), &mut answer);
+    let Some(framing) = answer.framing else {
+        return match ran {
+            Ok(()) => Err(RefusalCode::UpstreamRefused),
+            Err(TranslationFailure::UpstreamFailed) => {
+                relay.targets.invalidate(alias, target.authority());
+                relay.metrics.count_invalidation();
+                Err(RefusalCode::UpstreamFailed)
+            }
+            Err(TranslationFailure::Refused(code)) => Err(code),
+        };
+    };
+    answer.finish(framing);
+    call.target_status = answer.status();
+    call.response_bytes = answer.written;
+    // The target is released only now, after the last byte: row L12's hold.
+    drop(target);
+    Ok(())
+}
+
+/// The relay's [`TranslatedAnswer`] over the client's connection.
+struct ClientAnswer<'s> {
+    stream: &'s mut TcpStream,
+    timeout: Duration,
+    /// The client asked in HTTP/1.1 or later, so a stream may be chunked.
+    chunked: bool,
+    /// The framing the head declared, with its status, once it was written.
+    framing: Option<(u16, AnswerFraming)>,
+    gone: bool,
+    /// Body bytes written to the client.
+    written: u64,
+}
+
+impl ClientAnswer<'_> {
+    fn write(&mut self, bytes: &[u8]) -> bool {
+        if self.gone {
+            return false;
+        }
+        if !crate::server::write_by(self.stream, bytes, Instant::now() + self.timeout) {
+            self.gone = true;
+        }
+        !self.gone
+    }
+
+    fn status(&self) -> Option<u16> {
+        self.framing.map(|(status, _)| status)
+    }
+
+    /// Ends a chunked stream with its last chunk, unless the client is gone.
+    fn finish(&mut self, framing: (u16, AnswerFraming)) {
+        if framing.1 == AnswerFraming::Stream && self.chunked {
+            self.write(b"0\r\n\r\n");
+        }
+    }
+}
+
+impl TranslatedAnswer for ClientAnswer<'_> {
+    fn head(&mut self, status: u16, content_type: &str, framing: AnswerFraming) -> bool {
+        if self.framing.is_some() || self.gone {
+            return false;
+        }
+        self.framing = Some((status, framing));
+        let phrase = crate::server::relayed_phrase(status);
+        // A content type that could end its line is not written.
+        let content_type = if content_type
+            .bytes()
+            .all(|byte| (0x20..0x7f).contains(&byte))
+        {
+            format!("content-type: {content_type}\r\n")
+        } else {
+            String::new()
+        };
+        let framing = match framing {
+            AnswerFraming::Length(length) => format!("content-length: {length}\r\n"),
+            AnswerFraming::Stream if self.chunked => "transfer-encoding: chunked\r\n".to_owned(),
+            AnswerFraming::Stream => String::new(),
+        };
+        let head = format!(
+            "HTTP/1.1 {status} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n"
+        );
+        self.write(head.as_bytes())
+    }
+
+    fn body(&mut self, bytes: &[u8]) -> bool {
+        let Some((_, framing)) = self.framing else {
+            return false;
+        };
+        let size = u64::try_from(bytes.len()).unwrap_or(u64::MAX);
+        let there = match framing {
+            AnswerFraming::Length(length) => {
+                if self.written.saturating_add(size) > length {
+                    return false;
+                }
+                self.write(bytes)
+            }
+            AnswerFraming::Stream if self.chunked => {
+                if bytes.is_empty() {
+                    return !self.gone;
+                }
+                let mut framed = format!("{:x}\r\n", bytes.len()).into_bytes();
+                framed.extend_from_slice(bytes);
+                framed.extend_from_slice(b"\r\n");
+                self.write(&framed)
+            }
+            AnswerFraming::Stream => self.write(bytes),
+        };
+        if there {
+            self.written = self.written.saturating_add(size);
+        }
+        there
+    }
 }
 
 /// Relays one admitted request, filling `call` as it learns. A refusal is returned for the
@@ -1006,7 +1227,18 @@ pub(crate) fn serve(
         read_body(&mut input, admitted.framing, limits.line_bytes)?
     };
     let analysis = body::analyse(&body)?;
-    let model = served_model(relay, &analysis, admitted.wire, call)?;
+    let (model, translator) = served_model(relay, &analysis, admitted.wire, call)?;
+    if let Some(translator) = translator {
+        return translate(
+            stream,
+            &body,
+            (model, translator.as_ref()),
+            admitted,
+            relay,
+            limits,
+            call,
+        );
+    }
     let messages = admitted.wire == Wire::Messages;
     let mut rewritten = analysis.rewritten(
         &body,
@@ -1017,20 +1249,7 @@ pub(crate) fn serve(
     drop(body);
     let window = model.window().filter(|_| messages);
     let alias = model.alias.as_str();
-    let asked = Instant::now();
-    let acquired = relay.targets.acquire(alias);
-    // A request held for a starting target is counted on its route, with the time it waited
-    // (rows O1, O2): the target says it held it, or the source gave up past its hold budget.
-    let cold_start = match &acquired {
-        Ok(target) => target.held(),
-        Err(refusal) => *refusal == TargetRefusal::ColdStart,
-    };
-    if cold_start {
-        relay
-            .metrics
-            .count_cold_start_hold(alias, admitted.wire, asked.elapsed());
-    }
-    let target = acquired.map_err(TargetRefusal::refusal)?;
+    let target = acquire(relay, alias, admitted.wire)?;
     // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
     // never wakes a pod the relay would not have woken. A count that fails decides nothing.
     if let (Some(window), Some(_)) = (window, rewritten.max_tokens()) {

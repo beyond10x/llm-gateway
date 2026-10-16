@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 
-//! The `b10x-llm-gateway` binary's deployment document, trusted-file reader and serving loop.
+//! The `b10x-llm-gateway` binary's deployment document, trusted-file reader, serving loop and
+//! translator ([`LlmTranslator`], over llm 0.6.0's client crates and a tokio runtime).
 //!
 //! The specification is `spec/domains/deployment.yaml` (`llm-gateway.deployment`). The binary
 //! reads one closed TOML document through a same-handle trusted-file reader, composes the
@@ -16,6 +17,7 @@ mod refusal;
 mod relaying;
 mod serve;
 mod tls;
+mod translate;
 mod trusted;
 
 pub use config::{Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
@@ -37,3 +39,7 @@ pub use serve::{
     start_with,
 };
 pub use tls::ProxyConnector;
+pub use translate::{
+    DEFAULT_CONTEXT_WINDOW, LlmTranslator, REASONING_EFFORTS, TRANSLATION_CONNECT_TIMEOUT,
+    TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT,
+};

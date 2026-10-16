@@ -2,9 +2,11 @@
 
 `llm-gateway` admits exactly one authenticated owner and lets that owner read the routes a
 deployment serves. This milestone is authentication, liveness, readiness, graceful shutdown and
-read-only route inspection, and the relay of three model-call wires to a target the embedding
-hands out ([below](#the-relay)). Protocol translation between wires, multi-tenant accounts and
-quotas are not in it, and the crate contains nothing that could do them.
+read-only route inspection, the relay of three model-call wires to a target the embedding
+hands out ([below](#the-relay)), and the port through which a translator the embedding composes
+answers a wire the model's upstream does not speak ([Translation](#translation)). The crate
+itself translates no protocol, and multi-tenant accounts and quotas are not in it; it contains
+nothing that could do them.
 
 ## What the crate cannot do, structurally
 
@@ -209,7 +211,9 @@ A request to a wire path is decided in this order:
 4. One well-formed UTF-8 JSON object (`body-not-json`), with exactly one top-level `model`
    string (`model-absent`; a second top-level `model` is `body-not-json`, because the target
    could read the other), naming a relayed model after unescaping (`model-unknown`).
-5. The model must declare the path's wire (`wire-not-served`). Then a body whose top-level
+5. The model must declare the path's wire, or the relay must have a `Translator`
+   (`Relay::with_translator`), which then takes the request ([Translation](#translation));
+   without one another wire is `wire-not-served`. Then a body whose top-level
    `tools` is a non-empty array, sent to a model whose `ToolCalling` is `Absent`, is
    `tools-not-served` (400): a pod started without `--enable-auto-tool-choice` and a
    `--tool-call-parser` cannot answer it. No `tools` key, `"tools": []`, a `tools` that is not
@@ -379,6 +383,143 @@ the sources and what a live record still has to show. The cases are the `claude_
   included, reaches Claude Code byte for byte (step 9). vLLM writes no `ping` event, and the
   gateway adds none.
 
+## Translation
+
+A model's declared `wires` are the wires its upstream speaks. A request on one of them takes the
+byte relay above, unchanged. A request on another wire, to a relay composed with a `Translator`
+(`Relay::with_translator`), is translated through llm's neutral turn for the model's **first**
+declared wire. The binary always composes one (`llm_gateway_cli::LlmTranslator`, over llm 0.6.0's
+ingress decoders, protocol clients and ingress encoders); a relay without one refuses the
+request `wire-not-served`, as before. This is translation of a published subset, not a claim of
+vendor API equivalence: a field outside the subset is refused, never dropped. The specification
+is step 5 of the `Relay` command of `spec/domains/gateway.yaml`; the scenarios are
+`contracts/gateway/scenarios/translate-*.yaml`.
+
+| Client wire | Upstream `chat` | Upstream `responses` | Upstream `messages` |
+| --- | --- | --- | --- |
+| `chat` | relayed byte for byte | translated | translated |
+| `responses` | translated | relayed byte for byte | translated |
+| `messages` | translated | translated | relayed byte for byte |
+
+### The request
+
+The port's order, all of it before any target is asked for, so a refused request never wakes a
+pod:
+
+1. Steps 1-5 of the relay, `tools-not-served` included.
+2. The body is decoded with llm 0.6.0's decoder for the client's wire. A field or value outside
+   the subset, or past its size bound (llm's 16 MiB request bound included), is
+   `translation-unsupported`; a value breaking one of its rules (contradictory output limits, a
+   tool result answering no call, a value of the wrong kind) is `translation-invalid`.
+3. Reasoning state the client replays (a Messages `thinking` or `redacted_thinking` block, a
+   Responses `reasoning` item) is `translation-opaque-state`: it was minted by another serving
+   binding, the upstream speaks another protocol, and the gateway binds no carried state.
+4. The turn is checked against the model's capabilities: tools and tool choice when its
+   `ToolCalling` is `Parsed`; `temperature` and `top_p`; the efforts `minimal`, `low`, `medium`,
+   `high` and `xhigh`; a context window and output limit of its `max_model_len`, else its
+   `context_window`, else 200000. Then it is projected for the upstream wire. Either refusal is
+   `translation-unsupported` or `translation-invalid` by the same rule.
+
+What each client wire's decoder accepts, from llm 0.6.0:
+
+- **`chat`** (`llm_chat::SUPPORTED_REQUEST_FIELDS`): `model`, `messages`, `tools`,
+  `tool_choice`, `max_completion_tokens`, `max_tokens` (equal when both are given),
+  `temperature`, `top_p`, `reasoning_effort`, `stream` and `stream_options.include_usage`.
+  Messages are `system` or `developer` before the conversation, `user`, `assistant` (text and
+  `tool_calls`) and `tool`; content is a string or `text` parts; tools are `function` tools with
+  a `parameters` schema; `tool_choice` is `auto`, `required` or a named function. Refused by name:
+  `n`, `logprobs`, `top_logprobs`, `response_format`, `seed`, `stop`, `frequency_penalty`,
+  `presence_penalty`, `logit_bias`, `functions`, `function_call`, `parallel_tool_calls`,
+  `modalities`, `audio`, `prediction`, `web_search_options`, `store`, `metadata`,
+  `service_tier`, `user`.
+- **`responses`** (`llm_responses::ACCEPTED_BODY_FIELDS`): `model`, `input`, `tools`,
+  `tool_choice`, `max_output_tokens`, `temperature`, `top_p`, `reasoning` (`effort` only), and
+  `stream: true`, `store: false` and `include: ["reasoning.encrypted_content"]`, each required
+  with exactly that value. `input` holds one leading `developer` message, `user` and
+  `assistant` messages of one text part each, `function_call` and `function_call_output` items
+  (an output is the envelope `{"ok":…,"output":…}` as a string); tools are `function` tools
+  with `strict: false`. A translated responses request is always streamed.
+- **`messages`** (`llm_messages::decode_request`): `model`, `max_tokens` (positive), `system`
+  (a string or one text block), `messages` (`user` and `assistant`, with string content or
+  `text`, `tool_use` and `tool_result` blocks whose content is a string), `tools` (`name`,
+  `description`, `input_schema`), `stream`, `temperature` (at most 1), `top_p`,
+  `output_config.effort` and `tool_choice` (`auto`, `any`, `tool`).
+
+### The upstream
+
+The target the source hands out supplies the scheme (`RelayTarget::scheme`: a hosted endpoint's
+base URL scheme, `https` for a Runpod proxy endpoint), the authority, the base path and the
+credential. The turn is sent once, with llm's client for the upstream wire, to
+`<scheme>://<authority>` and the base path (`/v1` without one) joined to the wire's path:
+`/chat/completions`, `/responses` or `/messages`. The credential goes as its kind says
+(`authorization: Bearer`, the endpoint's `credential_header`, or none), resolved from the
+target's `TargetBearer` (`TargetBearer::expose`); the owner's credential and the client's
+headers never do. llm's client sends its own protocol headers (`accept: text/event-stream`, and
+`anthropic-version: 2023-06-01` on messages) and trusts the `webpki-roots` Mozilla roots; a
+hosted endpoint's static `headers` are not sent on a translated request. The projection is
+llm's: every upstream is asked for a stream (chat with `stream_options.include_usage`), a
+responses upstream with `store: false`; a messages upstream gets `max_tokens` from the request,
+else the model's window, and llm's rolling `cache_control` breakpoint on the last block. Neither
+the messages effort mapping of step 6 nor the output clamp's count of step 7 applies.
+
+The exchange is bounded by llm's transport: 10 s to connect, 120 s for the answer's head and
+between two reads, and 3600 s in all. These are timeouts, not size bounds, so they are not in
+[Bounds](#bounds); `crates/llm-gateway-cli/src/translate.rs` holds them.
+
+### The answer
+
+The answer is written on the client's wire, its head once, on the first event or at the
+outcome: `200` with `content-type: text/event-stream` and chunked framing for a streamed request
+(responses always; chat and messages with `stream: true`), and `application/json` with a
+`content-length` for a non-streamed one (`chat.completion` or a `message` object), each with
+`cache-control: no-store` and `connection: close`. Each server-sent event is the one llm's
+encoder writes: `event: <type>` and `data: <json>` on responses and messages, `data: <json>` on
+chat, which ends `data: [DONE]`. Identifiers (`chatcmpl-`, `resp_`, `msg_`) and `created` are
+the gateway's own. The upstream's reported counters are carried and an unreported one stays
+unreported; on a messages client the input total is sent only when the upstream reports both
+cache counters, which only a messages upstream does. Reasoning text is relayed where the
+client's wire has a place for it (chat `reasoning_content`, a responses reasoning summary) and
+withheld on a messages client, whose `thinking` block needs a signature only a messages
+upstream makes. Continuation state the upstream mints for its own wire (Responses reasoning
+items, Messages signed thinking) is not carried to another wire.
+
+A failure before any output: an upstream that could not be reached, timed out, was unavailable
+or answered `408` or any `5xx` (llm reads each as a transport failure whose dispatch is unknown)
+is `upstream-failed`, reported to the target source as at step 8; any other (another `4xx`, an
+authentication or rate-limit refusal, an answer that is not an event stream) is
+`upstream-refused` (502) and the target is kept. Unlike the byte relay, which relays a `500` as
+the model's own answer, a translated request cannot carry an upstream's error body to another
+wire, so it is never relayed. An
+answer llm's encoder refuses before any output is `translation-unrepresentable` (502). After
+output, an upstream failure or an encoder refusal ends the stream with the wire's terminal
+error and nothing else: `response.failed` (responses), an `error` event (messages), or
+`data: {"error":{"code":"translation-unrepresentable"|"upstream-failed",…}}` and no
+`[DONE]` (chat). A client that stops reading (a write to it fails) cancels the turn, which drops
+the upstream connection; nothing is retried or replayed. The target is released after the last
+byte. The usage record carries the status of the answer written and its translated bytes.
+
+### Known limits
+
+Each statement about a refused field is backed by a test that feeds the request to llm's decoder
+(`translation_known_limit_*` in `crates/llm-gateway-cli/tests/translation.rs`).
+
+- **Claude Code.** Its first turn is outside the messages subset: `thinking` is refused, then a
+  `system` of more than one block, then `cache_control` on a content block, then effort `max`,
+  which no capability names; and every later turn replays signed `thinking` blocks
+  (`translation-opaque-state`). Claude Code reaches a model through translation only once llm's
+  subset grows; until then point it at a model whose upstream speaks messages, which `GET /`
+  profiles.
+- **Codex.** `instructions`, `parallel_tool_calls`, `prompt_cache_key`, `text` and a
+  `reasoning.summary` are each refused by the responses subset, and a turn replaying a reasoning
+  item is `translation-opaque-state`. Codex reaches a model through translation only once llm's
+  subset grows; `GET /` profiles only models whose upstream speaks responses.
+- **Encoder refusals** (llm `story:ingress-block-boundaries`): a responses client cannot be sent
+  two assistant messages back to back, or a message another item interrupts (text, reasoning,
+  text from a chat upstream; text, a call, text); a messages client cannot be sent redacted
+  thinking between streamed blocks, or tool arguments that are not a JSON object; a chat client
+  cannot be sent a terminal reason it has no name for (an `incomplete` other than its content
+  filter). Each ends the stream with the terminal error above.
+
 ## Counters and usage records
 
 Every request to a wire path that passed owner authentication makes one `UsageRecord` once its
@@ -450,8 +591,13 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `route-unknown` | 404 | no such route alias |
 | `target-unavailable` | 503 | no model target is available |
 | `tools-not-served` | 400 | the model does not serve tool calls |
+| `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |
+| `translation-opaque-state` | 400 | the request carries reasoning state the gateway cannot send to the model's upstream |
+| `translation-unrepresentable` | 502 | the model's answer cannot be written on this wire |
+| `translation-unsupported` | 400 | the request uses a field or value outside the subset the gateway translates |
 | `unavailable` | 503 | the gateway is not ready to serve inspection |
 | `upstream-failed` | 502 | the model target could not be reached or failed; the next request asks for a replacement |
+| `upstream-refused` | 502 | the model target refused the translated request |
 | `wire-not-served` | 400 | the model is not served on this wire |
 
 This table is the published contract, and it is checked rather than maintained by hand.

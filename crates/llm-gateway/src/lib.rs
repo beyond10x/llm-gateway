@@ -24,9 +24,15 @@
 //!   hands out, rewriting only `model` (and on the messages wire a `high` or `max` effort, or
 //!   adding a model's declared effort to a request naming none), and streams the answer back as
 //!   it arrives. The target opens its own connection; this crate opens none.
+//! - **Hand other wires to a translator.** A request on a wire its model's upstream does not
+//!   declare goes to the [`Translator`] the embedding composed with
+//!   [`Relay::with_translator`], which decodes it before any target is asked for and writes
+//!   the answer through a [`TranslatedAnswer`]; without one it is refused `wire-not-served`.
+//!   The translator is the embedding's: this crate holds only the port.
 //!
-//! What it deliberately does not do: protocol translation between wires, resolving a secret,
-//! opening a connection, and multi-tenant accounts or quotas. Credential material is
+//! What it deliberately does not do: protocol translation itself (it holds the port, not a
+//! protocol codec), resolving a secret, opening a connection, and multi-tenant accounts or
+//! quotas. Credential material is
 //! resolved by the embedding — from `llm-credentials` or anywhere else — and injected once, so
 //! a server deployment never assumes a desktop keychain. See `docs/gateway.md`.
 
@@ -39,6 +45,7 @@ mod listing;
 mod metrics;
 mod relay;
 mod server;
+mod translate;
 
 pub use auth::{
     Authenticated, NoOwnerVerifier, OwnerToken, OwnerVerifier, SharedSecretVerifier, Verdict,
@@ -54,6 +61,10 @@ pub use inventory::{
 pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
 pub use relay::{
     BasePath, CredentialHeader, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, StaticHeader, TargetBearer, ToolCalling, Wire,
+    RelayTargets, StaticHeader, TargetBearer, TargetScheme, ToolCalling, Wire,
 };
 pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};
+pub use translate::{
+    AnswerFraming, TranslatedAnswer, Translation, TranslationFailure, TranslationRequest,
+    Translator,
+};

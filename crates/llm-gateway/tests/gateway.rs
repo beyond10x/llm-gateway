@@ -610,31 +610,31 @@ fn relay_request(path: &str, body: &str) -> String {
     )
 }
 
-fn provoke(code: RefusalCode) -> Provocation {
-    let plain = |raw: &str| Provocation {
-        ready: true,
-        max_head_bytes: 8192,
-        max_concurrent_requests: 64,
-        raw: raw.to_string(),
-        relayed: false,
-        translated: false,
-    };
-    let owned = |raw: String| Provocation {
+/// `raw` to a ready gateway composed without a relay.
+fn owned(raw: String) -> Provocation {
+    Provocation {
         ready: true,
         max_head_bytes: 8192,
         max_concurrent_requests: 64,
         raw,
         relayed: false,
         translated: false,
-    };
-    let relayed = |path: &str, body: &str| Provocation {
-        ready: true,
-        max_head_bytes: 8192,
-        max_concurrent_requests: 64,
-        raw: relay_request(path, body),
+    }
+}
+
+fn plain(raw: &str) -> Provocation {
+    owned(raw.to_string())
+}
+
+/// An authenticated `body` on `path` to a ready gateway composed with [`provoking_relay`].
+fn relayed(path: &str, body: &str) -> Provocation {
+    Provocation {
         relayed: true,
-        translated: false,
-    };
+        ..owned(relay_request(path, body))
+    }
+}
+
+fn provoke(code: RefusalCode) -> Provocation {
     let chat = "/v1/chat/completions";
     match code {
         RefusalCode::BodyTooLarge => Provocation {

@@ -159,7 +159,7 @@ impl RelayTargets for Targets {
 }
 
 impl RelayTarget for Target {
-    fn authority(&self) -> &str {
+    fn authority(&self) -> &'static str {
         "pod.example.test:8000"
     }
 
@@ -229,9 +229,10 @@ fn compose(translator: Option<Fixture>, https: bool) -> Composed {
         https,
         ..Targets::default()
     });
-    let asked = translator
-        .as_ref()
-        .map_or_else(|| Arc::new(Asked::default()), |fixture| Arc::clone(&fixture.asked));
+    let asked = translator.as_ref().map_or_else(
+        || Arc::new(Asked::default()),
+        |fixture| Arc::clone(&fixture.asked),
+    );
     let mut relay = Relay::new(
         vec![
             model("chat-only", vec![Wire::Chat]),
@@ -243,8 +244,9 @@ fn compose(translator: Option<Fixture>, https: bool) -> Composed {
     if let Some(translator) = translator {
         relay = relay.with_translator(Arc::new(translator));
     }
-    let verifier =
-        Arc::new(SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap());
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
     let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
     config.read_timeout = WAIT;
     let handle = Gateway::bind_with_relay(
@@ -377,7 +379,10 @@ fn translate_a_prepared_translation_streams_its_answer_and_releases_the_target()
             head,
             "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncache-control: no-store\r\nconnection: close\r\ntransfer-encoding: chunked"
         );
-        assert_eq!(body, "b\r\ndata: one\n\n\r\nb\r\ndata: two\n\n\r\n0\r\n\r\n");
+        assert_eq!(
+            body,
+            "b\r\ndata: one\n\n\r\nb\r\ndata: two\n\n\r\n0\r\n\r\n"
+        );
         let scheme = if https { "https" } else { "http" };
         assert_eq!(
             *composed.asked.ran.lock().unwrap(),
@@ -442,13 +447,12 @@ fn translate_a_failure_before_output_is_answered_and_only_an_unreachable_target_
         ),
     ] {
         let composed = compose(Some(fixture(None, Script::Fail(failure))), false);
-        let raw = send(
-            composed.handle.local_addr(),
-            CHAT,
-            "{\"model\":\"two\"}",
-        );
+        let raw = send(composed.handle.local_addr(), CHAT, "{\"model\":\"two\"}");
         assert!(raw.starts_with("HTTP/1.1 502 "), "{raw}");
-        assert!(body_of(&raw).contains(&format!("\"{}\"", code.wire())), "{raw}");
+        assert!(
+            body_of(&raw).contains(&format!("\"{}\"", code.wire())),
+            "{raw}"
+        );
         let invalidated = composed.targets.invalidated.lock().unwrap().clone();
         if reported {
             assert_eq!(invalidated, vec!["two pod.example.test:8000".to_owned()]);
@@ -477,7 +481,8 @@ fn translate_a_declared_wire_is_relayed_byte_for_byte_and_tools_are_refused_firs
 /// A client that has gone is reported to the translation by the writer: the write fails.
 #[test]
 fn translate_a_client_that_has_gone_is_reported_by_the_writer() {
-    let pieces: Vec<&'static str> = std::iter::repeat_n("data: chunk-of-an-answer\n\n", 4096).collect();
+    let pieces: Vec<&'static str> =
+        std::iter::repeat_n("data: chunk-of-an-answer\n\n", 4096).collect();
     let composed = compose(Some(fixture(None, sse(pieces))), false);
     let mut stream = TcpStream::connect(composed.handle.local_addr()).unwrap();
     let body = "{\"model\":\"two\"}";
@@ -493,7 +498,12 @@ fn translate_a_client_that_has_gone_is_reported_by_the_writer() {
     drop(stream);
     composed.handle.shutdown();
     let writes = composed.asked.writes.lock().unwrap().clone();
-    assert_eq!(writes.last(), Some(&false), "{} writes, none failed", writes.len());
+    assert_eq!(
+        writes.last(),
+        Some(&false),
+        "{} writes, none failed",
+        writes.len()
+    );
     assert!(writes.len() < 4096);
 }
 
@@ -517,17 +527,17 @@ fn translate_the_listing_names_every_wire_and_the_upstream_wires_only_with_a_tra
 /// `Debug`; a target that says nothing of its scheme is `http`.
 #[test]
 fn translate_a_target_exposes_its_bearer_and_defaults_to_http() {
-    let bearer = TargetBearer::new(b"pod-key-1".to_vec()).unwrap();
-    assert_eq!(bearer.expose(), b"pod-key-1");
-    assert_eq!(format!("{bearer:?}"), "TargetBearer([REDACTED])");
     struct Plain;
     impl RelayTarget for Plain {
-        fn authority(&self) -> &str {
+        fn authority(&self) -> &'static str {
             "a"
         }
         fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
             Err(io::ErrorKind::Unsupported.into())
         }
     }
+    let bearer = TargetBearer::new(b"pod-key-1".to_vec()).unwrap();
+    assert_eq!(bearer.expose(), b"pod-key-1");
+    assert_eq!(format!("{bearer:?}"), "TargetBearer([REDACTED])");
     assert_eq!(Plain.scheme(), TargetScheme::Http);
 }

@@ -693,7 +693,8 @@ fn public(request: &Request<'_>, shared: &Shared) -> Outcome {
     }
     let models = shared.relay.iter().flat_map(Relay::models);
     if request.path == listing::MODELS {
-        return Outcome::Public(JSON, listing::models(models));
+        let translates = shared.relay.as_ref().is_some_and(Relay::translates);
+        return Outcome::Public(JSON, listing::models(models, translates));
     }
     let answer = InstructionAnswer::choose(request.header("user-agent"));
     let origin = listing::origin(request.header("host"), &shared.local_addr);

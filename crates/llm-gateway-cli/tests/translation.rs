@@ -13,7 +13,9 @@ use llm_gateway::{
     Label, RefusalCode, RelayModel, RelayTarget, RelayTargets, TargetRefusal, TargetScheme,
     ToolCalling, TranslationRequest, Translator, Wire,
 };
-use llm_gateway_cli::{EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, ProxyConnector};
+use llm_gateway_cli::{
+    EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, ProxyConnector,
+};
 use std::{
     collections::BTreeMap,
     io::{BufRead, BufReader, Read, Write},
@@ -225,15 +227,29 @@ fn translation_the_binary_reaches_an_api_key_endpoint_on_its_base_path_with_its_
     let seen = upstream.seen();
     assert_eq!(seen.len(), 1, "{seen:?}");
     let request = &seen[0];
-    assert!(request.starts_with("POST /api/v1/messages HTTP/1.1\r\n"), "{request}");
-    assert_eq!(header(request, "x-api-key"), Some(ENDPOINT_CREDENTIAL), "{request}");
-    assert_eq!(header(request, "anthropic-version"), Some("2023-06-01"), "{request}");
+    assert!(
+        request.starts_with("POST /api/v1/messages HTTP/1.1\r\n"),
+        "{request}"
+    );
+    assert_eq!(
+        header(request, "x-api-key"),
+        Some(ENDPOINT_CREDENTIAL),
+        "{request}"
+    );
+    assert_eq!(
+        header(request, "anthropic-version"),
+        Some("2023-06-01"),
+        "{request}"
+    );
     assert_eq!(header(request, "authorization"), None, "{request}");
     assert_eq!(header(request, "x-title"), None, "{request}");
     assert!(!request.contains(OWNER_SECRET), "{request}");
     assert!(request.contains("\"model\":\"served-local\""), "{request}");
     assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
-    assert!(answer.contains("content-type: text/event-stream\r\n"), "{answer}");
+    assert!(
+        answer.contains("content-type: text/event-stream\r\n"),
+        "{answer}"
+    );
     assert!(answer.contains("\"content\":\"Hello\""), "{answer}");
     assert!(answer.contains("data: [DONE]"), "{answer}");
 }
@@ -259,13 +275,26 @@ fn translation_the_binary_reaches_a_bearer_endpoint_on_v1_with_its_bearer_only()
     let seen = upstream.seen();
     assert_eq!(seen.len(), 1, "{seen:?}");
     let request = &seen[0];
-    assert!(request.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"), "{request}");
+    assert!(
+        request.starts_with("POST /v1/chat/completions HTTP/1.1\r\n"),
+        "{request}"
+    );
     let bearer = format!("Bearer {ENDPOINT_CREDENTIAL}");
-    assert_eq!(header(request, "authorization"), Some(bearer.as_str()), "{request}");
+    assert_eq!(
+        header(request, "authorization"),
+        Some(bearer.as_str()),
+        "{request}"
+    );
     assert!(!request.contains(OWNER_SECRET), "{request}");
     assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
-    assert!(answer.contains("content-type: application/json\r\n"), "{answer}");
-    assert!(answer.contains("\"content\":[{\"text\":\"Hello\",\"type\":\"text\"}]"), "{answer}");
+    assert!(
+        answer.contains("content-type: application/json\r\n"),
+        "{answer}"
+    );
+    assert!(
+        answer.contains("\"content\":[{\"text\":\"Hello\",\"type\":\"text\"}]"),
+        "{answer}"
+    );
     assert!(answer.contains("\"stop_reason\":\"end_turn\""), "{answer}");
 }
 
@@ -292,20 +321,28 @@ fn translation_a_hosted_target_reports_its_base_urls_scheme() {
             HostedEndpoint::new(url, EndpointCredential::Anonymous).unwrap(),
         );
     }
-    let targets = HostedTargets::new(endpoints, Arc::new(ProxyConnector::shipped()), Arc::new(Nothing));
+    let targets = HostedTargets::new(
+        endpoints,
+        Arc::new(ProxyConnector::shipped()),
+        Arc::new(Nothing),
+    );
     let scheme = |alias: &str| targets.acquire(alias).map(|target| target.scheme()).ok();
     assert_eq!(scheme("plain"), Some(TargetScheme::Http));
     assert_eq!(scheme("tls"), Some(TargetScheme::Https));
 }
 
 fn relay_model(alias: &str, wires: Vec<Wire>) -> RelayModel {
-    RelayModel::new(Label::new(alias).unwrap(), Label::new("served").unwrap(), wires)
-        .unwrap()
-        .with_tool_calling(ToolCalling::Parsed)
+    RelayModel::new(
+        Label::new(alias).unwrap(),
+        Label::new("served").unwrap(),
+        wires,
+    )
+    .unwrap()
+    .with_tool_calling(ToolCalling::Parsed)
 }
 
 fn prepared(ingress: Wire, upstream: Wire, body: &[u8]) -> Option<RefusalCode> {
-    let translator = LlmTranslator::new().unwrap();
+    let translator = LlmTranslator::new();
     let model = relay_model("code", vec![upstream]);
     translator
         .prepare(&TranslationRequest {
@@ -320,11 +357,14 @@ fn prepared(ingress: Wire, upstream: Wire, body: &[u8]) -> Option<RefusalCode> {
 /// The body of an authored fixture request: everything after its provenance header and its
 /// HTTP head.
 fn fixture_body(text: &str) -> String {
-    let request: String = text
-        .lines()
-        .skip_while(|line| line.starts_with('#'))
-        .map(|line| format!("{line}\n"))
-        .collect();
+    let request = text.lines().skip_while(|line| line.starts_with('#')).fold(
+        String::new(),
+        |mut request, line| {
+            request.push_str(line);
+            request.push('\n');
+            request
+        },
+    );
     request.split_once("\n\n").unwrap().1.to_owned()
 }
 
@@ -380,7 +420,10 @@ fn translation_known_limit_claude_codes_first_turn_is_outside_the_messages_subse
         .unwrap()
         .remove("cache_control");
     let decoded = llm_messages::decode_request(body.to_string().as_bytes(), &origin).unwrap();
-    assert_eq!(decoded.request.sampling.reasoning_effort.as_deref(), Some("max"));
+    assert_eq!(
+        decoded.request.sampling.reasoning_effort.as_deref(),
+        Some("max")
+    );
     for upstream in [Wire::Chat, Wire::Responses] {
         assert_eq!(
             prepared(Wire::Messages, upstream, body.to_string().as_bytes()),
@@ -390,7 +433,10 @@ fn translation_known_limit_claude_codes_first_turn_is_outside_the_messages_subse
     }
     body["output_config"]["effort"] = serde_json::json!("high");
     for upstream in [Wire::Chat, Wire::Responses] {
-        assert_eq!(prepared(Wire::Messages, upstream, body.to_string().as_bytes()), None);
+        assert_eq!(
+            prepared(Wire::Messages, upstream, body.to_string().as_bytes()),
+            None
+        );
     }
 }
 
@@ -418,18 +464,45 @@ fn translation_known_limit_codex_fields_are_outside_the_responses_subset() {
         llm_core::Id::new("code").unwrap(),
     );
     assert!(llm_responses::ingest_request(&binding, &base).is_ok());
-    assert_eq!(prepared(Wire::Responses, Wire::Chat, base.to_string().as_bytes()), None);
+    assert_eq!(
+        prepared(Wire::Responses, Wire::Chat, base.to_string().as_bytes()),
+        None
+    );
     for (field, value, message) in [
-        ("instructions", serde_json::json!("Be brief."), "request body carries a field outside the pinned subset"),
-        ("parallel_tool_calls", serde_json::json!(false), "request body carries a field outside the pinned subset"),
-        ("prompt_cache_key", serde_json::json!("session-1"), "request body carries a field outside the pinned subset"),
-        ("text", serde_json::json!({"verbosity":"low"}), "request body carries a field outside the pinned subset"),
-        ("reasoning", serde_json::json!({"effort":"medium","summary":"auto"}), "`reasoning` carries a field outside the pinned subset"),
+        (
+            "instructions",
+            serde_json::json!("Be brief."),
+            "request body carries a field outside the pinned subset",
+        ),
+        (
+            "parallel_tool_calls",
+            serde_json::json!(false),
+            "request body carries a field outside the pinned subset",
+        ),
+        (
+            "prompt_cache_key",
+            serde_json::json!("session-1"),
+            "request body carries a field outside the pinned subset",
+        ),
+        (
+            "text",
+            serde_json::json!({"verbosity":"low"}),
+            "request body carries a field outside the pinned subset",
+        ),
+        (
+            "reasoning",
+            serde_json::json!({"effort":"medium","summary":"auto"}),
+            "`reasoning` carries a field outside the pinned subset",
+        ),
     ] {
         let mut body = base.clone();
         body[field] = value;
         let error = llm_responses::ingest_request(&binding, &body).unwrap_err();
-        assert_eq!((error.code, error.message.as_str()), (llm_core::ErrorCode::Unsupported, message), "{field}");
+        assert_eq!(
+            (error.code, error.message.as_str()),
+            (llm_core::ErrorCode::Unsupported, message),
+            "{field}"
+        );
         assert_eq!(
             prepared(Wire::Responses, Wire::Chat, body.to_string().as_bytes()),
             Some(RefusalCode::TranslationUnsupported),
@@ -448,7 +521,7 @@ fn translation_a_model_is_translated_under_its_declared_capabilities() {
             "{{\"model\":\"code\",\"messages\":[{{\"role\":\"user\",\"content\":\"Hi\"}}]{extra}}}"
         )
     };
-    let translator = LlmTranslator::new().unwrap();
+    let translator = LlmTranslator::new();
     let windowed = relay_model("code", vec![Wire::Messages]).with_max_model_len(4096);
     let prepare = |translator: &LlmTranslator, model: &RelayModel, body: &str| {
         translator
@@ -465,15 +538,31 @@ fn translation_a_model_is_translated_under_its_declared_capabilities() {
         (",\"temperature\":0.5,\"top_p\":0.9", None),
         (",\"reasoning_effort\":\"minimal\"", None),
         (",\"reasoning_effort\":\"xhigh\"", None),
-        (",\"reasoning_effort\":\"max\"", Some(RefusalCode::TranslationUnsupported)),
+        (
+            ",\"reasoning_effort\":\"max\"",
+            Some(RefusalCode::TranslationUnsupported),
+        ),
         (",\"max_tokens\":4096", None),
-        (",\"max_tokens\":4097", Some(RefusalCode::TranslationUnsupported)),
-        (",\"temperature\":1.5", Some(RefusalCode::TranslationUnsupported)),
+        (
+            ",\"max_tokens\":4097",
+            Some(RefusalCode::TranslationUnsupported),
+        ),
+        (
+            ",\"temperature\":1.5",
+            Some(RefusalCode::TranslationUnsupported),
+        ),
     ] {
-        assert_eq!(prepare(&translator, &windowed, &request(extra)), refused, "{extra}");
+        assert_eq!(
+            prepare(&translator, &windowed, &request(extra)),
+            refused,
+            "{extra}"
+        );
     }
     let unwindowed = relay_model("code", vec![Wire::Messages]);
-    assert_eq!(prepare(&translator, &unwindowed, &request(",\"max_tokens\":200000")), None);
+    assert_eq!(
+        prepare(&translator, &unwindowed, &request(",\"max_tokens\":200000")),
+        None
+    );
     assert_eq!(
         prepare(&translator, &unwindowed, &request(",\"max_tokens\":200001")),
         Some(RefusalCode::TranslationUnsupported)
@@ -485,12 +574,14 @@ fn translation_a_model_is_translated_under_its_declared_capabilities() {
         Some(RefusalCode::TranslationUnsupported)
     );
     assert_eq!(prepare(&translator, &windowed, &request(tools)), None);
-    let narrowed = LlmTranslator::new()
-        .unwrap()
-        .with_capabilities("code", llm_core::Capabilities::text(1024, 512));
+    let narrowed =
+        LlmTranslator::new().with_capabilities("code", llm_core::Capabilities::text(1024, 512));
     assert_eq!(
         prepare(&narrowed, &windowed, &request(",\"max_tokens\":513")),
         Some(RefusalCode::TranslationUnsupported)
     );
-    assert_eq!(prepare(&narrowed, &windowed, &request(",\"max_tokens\":512")), None);
+    assert_eq!(
+        prepare(&narrowed, &windowed, &request(",\"max_tokens\":512")),
+        None
+    );
 }

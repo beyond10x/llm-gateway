@@ -9,6 +9,11 @@
 //! certificate verification complete before the connection is handed back, so a certificate the
 //! gateway does not trust costs no request byte and no credential. The endpoint is handed out at
 //! once, never held, and kept when a request through it fails: nothing replaces it.
+//!
+//! A translated request (story:gateway-translation) reaches the endpoint through llm's HTTP
+//! client instead, over the scheme [`RelayTarget::scheme`] reports, to the base path, with the
+//! credential; the endpoint's static headers are not sent on it, because llm's clients take no
+//! caller headers and the headers were declared for the wire they were written for.
 
 use crate::{
     config::{Deployment, Hosted, Wire},
@@ -21,7 +26,7 @@ use crate::{
 use llm_gateway::{
     AuthKind, BasePath, CredentialHeader, Label, RelayStream, RelayTarget, RelayTargets,
     RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance, TargetRefusal,
-    TargetSummary,
+    TargetScheme, TargetSummary,
 };
 use rustls::pki_types::ServerName;
 use std::{
@@ -324,6 +329,14 @@ struct HostedTarget {
 impl RelayTarget for HostedTarget {
     fn authority(&self) -> &str {
         &self.endpoint.authority
+    }
+
+    /// The base URL's scheme, which a translated request reaches the endpoint over.
+    fn scheme(&self) -> TargetScheme {
+        match self.endpoint.scheme {
+            Scheme::Http => TargetScheme::Http,
+            Scheme::Https => TargetScheme::Https,
+        }
     }
 
     fn bearer(&self) -> Option<&TargetBearer> {

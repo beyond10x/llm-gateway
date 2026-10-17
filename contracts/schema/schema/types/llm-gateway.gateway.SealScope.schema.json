@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.SealScope",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "5240168c2120631b8f8295b7ff167bcea2d6ccc2c83164eb6d07e3c65b31963c",
+    "contract_digest": "slice-sha256/2:a2e2defc2a5ce563ea12383d159239a553ac4a35cd3de1a740a705a55cdba2e0",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.SealScope": {
+      "title": "SealScope",
+      "x-ess-name": "llm-gateway.gateway.SealScope",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "upstream_model": {
+          "type": "string"
+        },
+        "client_wire": {
+          "$ref": "#/$defs/llm-gateway.gateway.Wire"
+        },
+        "upstream_wire": {
+          "$ref": "#/$defs/llm-gateway.gateway.Wire"
+        }
+      },
+      "required": [
+        "alias",
+        "upstream_model",
+        "client_wire",
+        "upstream_wire"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.gateway.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.gateway.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    }
+  }
+}

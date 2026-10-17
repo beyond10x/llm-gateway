@@ -37,19 +37,26 @@ mod emulated;
 mod pool;
 mod provider;
 mod request;
+mod spend;
 mod transport;
 
-pub use config::{CloudType, ConfigError, NetworkVolume, RunpodModel, Thinking, VllmSettings};
+pub use config::{
+    CloudType, ConfigError, NetworkVolume, RunpodModel, RunpodProfile, Thinking, VllmSettings,
+};
 pub use emulated::EmulatedRunpod;
 /// The hosting-contract values a [`RunpodPool`] is built from, so a composer can build one
 /// without naming `b10x-llm-provision` itself.
 pub use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
-pub use pool::{CleanupReport, Clock, Hold, ManualClock, PoolError, RunpodPool, StreamLease};
+pub use pool::{
+    CleanupReport, Clock, Hold, ManualClock, ModelPhase, ModelStatus, PoolError, RunpodPool,
+    StreamLease,
+};
 pub use provider::{RunpodProvider, Unserviceable};
 pub use request::{
     LEGACY_POD_NAME_PREFIX, NON_THINKING_SAMPLING, POD_NAME_PREFIX, TAG_EPOCH, TAG_OWNER,
     TAG_REQUEST, Tags, in_namespace, pod_name, pod_request, vllm_entrypoint,
 };
+pub use spend::{AccountSpend, SpendCeiling, SpendPolicy, SpendRefusal, micro_usd, usd};
 pub use transport::{
     ConnectorsBinding, ConnectorsRunpod, CreateAnswer, POD_CREATE_BODY_KEYS, Pod, PodListing,
     PodRequest, PodStatus, PodStream, PodTls, Probe, ProbeTarget, RunpodTransport, TerminateAnswer,

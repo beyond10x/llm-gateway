@@ -7,7 +7,7 @@ use crate::{
     inventory::RouteInventory,
     listing::{self, InstructionAnswer},
     metrics::{Disposition, Metrics, UsageRecord},
-    relay::{self, Admitted, Call, Relay, Wire},
+    relay::{self, Admitted, Call, ModelStatus, Relay, Wire},
 };
 use std::{
     io::{self, Read, Write},
@@ -38,6 +38,10 @@ const COLD_START_RETRY_AFTER_SECONDS: u64 = 30;
 const UNKNOWN_PHRASE: &str = "Unknown";
 const ROUTES: &str = "/v1/routes";
 const ROUTES_PREFIX: &str = "/v1/routes/";
+/// The lifecycle routes' common prefix (`llm-gateway.gateway.LifecycleRoute`).
+const MODELS_PREFIX: &str = "/v1/models/";
+const WAKE_SUFFIX: &str = "/wake";
+const STATUS_SUFFIX: &str = "/status";
 /// The owner's counters as Prometheus text (row R4).
 const METRICS: &str = "/metrics";
 const JSON: &str = "application/json";
@@ -312,6 +316,39 @@ enum Outcome {
     NotAllowed(&'static str),
     /// A relay the head admitted; its body has not been read yet.
     Relay(Admitted),
+    /// A lifecycle route's answer: `202` for a wake, `200` for a status.
+    Lifecycle(u16, String),
+}
+
+/// One of the owner's two lifecycle routes per relayed model (story:model-wake-and-status).
+#[derive(Clone, Copy)]
+enum Lifecycle {
+    /// `POST /v1/models/{alias}/wake`.
+    Wake,
+    /// `GET` or `HEAD /v1/models/{alias}/status`.
+    Status,
+}
+
+impl Lifecycle {
+    /// The route and its alias, when `path` is a lifecycle path: the bytes between
+    /// [`MODELS_PREFIX`] and the route's last segment, compared as they are; an empty alias is
+    /// none.
+    fn of(path: &str) -> Option<(Self, &str)> {
+        let rest = path.strip_prefix(MODELS_PREFIX)?;
+        let (route, alias) = if let Some(alias) = rest.strip_suffix(WAKE_SUFFIX) {
+            (Self::Wake, alias)
+        } else {
+            (Self::Status, rest.strip_suffix(STATUS_SUFFIX)?)
+        };
+        (!alias.is_empty()).then_some((route, alias))
+    }
+
+    const fn allow(self) -> &'static str {
+        match self {
+            Self::Wake => "POST",
+            Self::Status => "GET, HEAD",
+        }
+    }
 }
 
 fn serve(mut stream: TcpStream, shared: &Shared) {
@@ -416,6 +453,7 @@ fn record(
         reasoning_output_tokens: None,
         response_bytes,
         duration_ms: u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX),
+        profile: call.profile,
     });
 }
 
@@ -433,6 +471,8 @@ fn linger(stream: &mut TcpStream, deadline: Instant) {
             break;
         }
         match stream.read(&mut chunk) {
+            // An interrupted read is retried: a signal is not the client closing.
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             Ok(0) | Err(_) => break,
             Ok(read) => discarded += u64::try_from(read).unwrap_or(u64::MAX),
         }
@@ -467,6 +507,8 @@ fn read_head(
             return Err(RefusalCode::RequestMalformed);
         }
         match stream.read(&mut chunk[..room]) {
+            // An interrupted read is retried: a signal is not the peer stopping.
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             // A peer that stops early, times out or resets never delivered a head.
             Ok(0) | Err(_) => return Err(RefusalCode::RequestMalformed),
             Ok(read) => buffer.extend_from_slice(&chunk[..read]),
@@ -609,7 +651,9 @@ fn dispatch(head: &str, shared: &Shared) -> Decision {
         Err(code) => return Decision::refused(code),
     };
     let head_only = request.head_only();
-    let linger = shared.relay.is_some() && Wire::from_path(request.path).is_some();
+    // A wake is a `POST` too, and may still be sending a body it is refused for.
+    let linger = shared.relay.is_some()
+        && (Wire::from_path(request.path).is_some() || Lifecycle::of(request.path).is_some());
     let (outcome, recorded) = decide(&request, shared);
     Decision {
         outcome,
@@ -661,6 +705,9 @@ fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
     if let (Some(wire), Some(_)) = (Wire::from_path(request.path), &shared.relay) {
         return (admit(request, shared, wire), Some(wire));
     }
+    if let (Some((route, alias)), Some(relay)) = (Lifecycle::of(request.path), &shared.relay) {
+        return (lifecycle(request, shared, relay, route, alias), None);
+    }
     if request.path == METRICS {
         return (scrape(request, shared), None);
     }
@@ -700,6 +747,60 @@ fn public(request: &Request<'_>, shared: &Shared) -> Outcome {
     let origin = listing::origin(request.header("host"), &shared.local_addr);
     shared.metrics.count_instruction_view();
     Outcome::Public(answer.content_type(), answer.render(models, &origin))
+}
+
+/// A lifecycle route (`llm-gateway.gateway.LifecycleRoute`), after authentication: its method,
+/// a declared body and readiness are decided before the target source is asked anything.
+fn lifecycle(
+    request: &Request<'_>,
+    shared: &Shared,
+    relay: &Relay,
+    route: Lifecycle,
+    alias: &str,
+) -> Outcome {
+    let allowed = match route {
+        Lifecycle::Wake => request.method == "POST",
+        Lifecycle::Status => request.is_read(),
+    };
+    if !allowed {
+        return Outcome::NotAllowed(route.allow());
+    }
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    if !serves_inspection(shared) {
+        return Outcome::Refused(RefusalCode::Unavailable);
+    }
+    let answered = match route {
+        Lifecycle::Wake => relay.wake(alias).map(|status| (202, status)),
+        Lifecycle::Status => relay.status(alias).map(|status| (200, status)),
+    };
+    match answered {
+        Ok((code, status)) => Outcome::Lifecycle(code, lifecycle_body(alias, &status)),
+        Err(code) => Outcome::Refused(code),
+    }
+}
+
+/// `{"model","phase","sub_phase"?,"profile"?}`: a value the source did not report, or reported
+/// empty, is absent, never `""`.
+fn lifecycle_body(alias: &str, status: &ModelStatus) -> String {
+    let mut writer = crate::json::Writer::new();
+    writer.begin_object();
+    writer.key("model");
+    writer.string(alias);
+    writer.key("phase");
+    writer.string(status.phase.code());
+    for (key, value) in [
+        ("sub_phase", &status.sub_phase),
+        ("profile", &status.profile),
+    ] {
+        if let Some(value) = value.as_deref().filter(|value| !value.is_empty()) {
+            writer.key(key);
+            writer.string(value);
+        }
+    }
+    writer.end_object();
+    writer.finish()
 }
 
 fn declares_body(request: &Request<'_>) -> bool {
@@ -791,7 +892,9 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
         Outcome::Served(body) | Outcome::Metrics(body) | Outcome::Public(_, body) => {
             (200, body.clone(), None)
         }
-        Outcome::Probe(status, body) => (*status, body.clone(), None),
+        Outcome::Probe(status, body) | Outcome::Lifecycle(status, body) => {
+            (*status, body.clone(), None)
+        }
         Outcome::Refused(code) => refused(*code),
         Outcome::NotAllowed(allow) => {
             let code = RefusalCode::MethodNotAllowed;
@@ -874,6 +977,7 @@ fn refusal_body(code: RefusalCode) -> String {
 fn reason_phrase(status: u16) -> &'static str {
     match status {
         200 => "OK",
+        202 => "Accepted",
         400 => "Bad Request",
         401 => "Unauthorized",
         404 => "Not Found",
@@ -891,7 +995,6 @@ fn reason_phrase(status: u16) -> &'static str {
 pub(crate) fn relayed_phrase(status: u16) -> &'static str {
     match status {
         201 => "Created",
-        202 => "Accepted",
         422 => "Unprocessable Content",
         429 => "Too Many Requests",
         500 => "Internal Server Error",
@@ -934,9 +1037,10 @@ mod tests {
     #[test]
     fn every_status_the_crate_can_answer_carries_a_reason_phrase() {
         let mut statuses: Vec<u16> = RefusalCode::ALL.iter().map(|code| code.status()).collect();
-        // The two the probe and inspection paths answer with outside a refusal.
+        // The two the probe and inspection paths answer with outside a refusal, and a wake's.
         statuses.push(200);
         statuses.push(503);
+        statuses.push(202);
         for status in statuses {
             assert_ne!(
                 reason_phrase(status),

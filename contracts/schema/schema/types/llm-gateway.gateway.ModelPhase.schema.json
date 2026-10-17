@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.ModelPhase",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
+    "contract_digest": "slice-sha256/2:df111c0d75067c010e02690f1c3825ddc715e2c4b104f84105406711f3cdb959",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.ModelPhase": {
+      "title": "ModelPhase",
+      "x-ess-name": "llm-gateway.gateway.ModelPhase",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Stopped",
+        "Starting",
+        "Ready",
+        "Stopping"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "Ready": "ready",
+            "Starting": "starting",
+            "Stopped": "stopped",
+            "Stopping": "stopping"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,8 +1,53 @@
 # Changelog
 
-Every release is a source release tagged `<version>`; the crates are not published. The
+Every release is tagged `<version>` and publishes the source and, from the first release after
+0.9.0, the gateway image; the crates are not published. The
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
+
+## 0.10.0 (2026-10-17)
+
+- The owner can wake a model ahead of demand and read its phase without a model call:
+  `POST /v1/models/<alias>/wake` starts a Runpod model's pod as a request would, through the same
+  spend check and profile fallback, and answers `202` at once with its status; while the pod
+  starts or serves it starts nothing more. `GET /v1/models/<alias>/status` answers `stopped`,
+  `starting` (with the provider's sub-phase), `ready` or `stopping` and the profile, read from
+  the pool's records with no provider call. Both take the owner credential; a hosted model or a
+  route has neither and is answered `path-unknown`. A model of a provider with no `connectors`
+  connection is `target-unavailable` to a wake and `stopped` to a status, beside a connected
+  provider too, and a sub-phase or profile reported empty is left out of the answer.
+- A read of a target that an interrupt (a signal, a stop and continue) cuts short keeps the read
+  timeout it began with, on a plain connection and on a pod's TLS connection: it is answered
+  `upstream-failed` when that timeout is spent, however often it is interrupted.
+- Every release tag now publishes the gateway image `ghcr.io/beyond10x/llm-gateway:<version>`
+  for `linux/amd64` and `linux/arm64`, each built natively from the root `Dockerfile` and labelled
+  with the tag's commit, through the `Release image` workflow (`.github/workflows/release.yml`).
+  It never replaces a version the registry already holds, and a registry answer other than not
+  found, or a missing docker, stops the release instead of passing it. The package is private when
+  first created.
+- A guide, Run on Kubernetes, runs the released image with the file rules unchanged: Secrets copied by an init container into an `emptyDir` the `nonroot` user owns at `0400`, the refusal an `fsGroup` causes (`owner-secret:unsafe-mode`, pasted from a run and asserted by a test), probes, and a `preStop` sleep with a `terminationGracePeriodSeconds` that covers the longest answer.
+- A model may declare ordered `[[models.<alias>.profiles]]`, each a GPU type list with its vLLM
+  settings. When Runpod refuses every create of a profile for capacity (the connectors failure
+  code `capacity`), the start moves on to the next profile, inside the same startup deadline and
+  with the spend check before every create; any other refusal ends the start. Two profiles sharing
+  a name or a GPU type are refused `profile-conflict`. The flat declaration is the one profile
+  `default`, unchanged, and the usage record names the profile of the pod that served.
+- A messages request served by a fallback profile is clamped to that profile's `max_model_len`,
+  and `GET /v1/models` lists the smallest window among a model's profiles. A start sends no
+  further create, of a profile's next GPU type or of the next profile, once its startup deadline
+  has passed, and ends `no-capacity`.
+- A provider may declare `daily_cap_usd` and `total_cap_usd`, spend ceilings for its account,
+  and each model `price_per_hour_usd`. Before every pod create the pool checks the account's
+  reported spend plus its live pods' and the new pod's estimates against each ceiling; a start
+  that would pass one, or whose spend is unknown, is refused `spend-ceiling` (503) with no
+  create, counted in `llmgw_pod_start_spend_refusals_total`. The reported spend is read through
+  the connectors operation `billing.pods`, which needs a connectors release that offers it.
+- The shipped gateway enforces the spend ceilings: its Runpod pool is built with them, as every
+  other composition's is. A live pod counts at least its startup estimate, so two starts in a
+  row do not share one headroom; a reported amount in whole cents is read exactly; a
+  `billing.pods` result with no status refuses the start.
+- A spend ceiling binds only the account of the provider that declares it: a ceiling declared on
+  a provider other than the connected one no longer refuses the connected provider's pod starts.
 
 ## 0.9.0 (2026-10-16)
 

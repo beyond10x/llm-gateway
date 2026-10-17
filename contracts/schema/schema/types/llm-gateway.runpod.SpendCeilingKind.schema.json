@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.SpendCeilingKind",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
+    "contract_digest": "slice-sha256/2:08ed73fc1c141730ba50893e4a71a38484c63c4fd794f0697f97fc7435b8e39a",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.SpendCeilingKind": {
+      "title": "SpendCeilingKind",
+      "x-ess-name": "llm-gateway.runpod.SpendCeilingKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Daily",
+        "Total"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "Daily": "daily",
+            "Total": "total"
+          }
+        }
+      ]
+    }
+  }
+}

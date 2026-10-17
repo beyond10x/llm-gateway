@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-17T01:20:31Z",
+  "actor": "human:timo",
+  "artifact": "story:model-wake-and-status",
+  "kind": "story",
+  "revision": 15,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-w12-model-wake-and-status-pass-1",
+    "reference": "83bc996",
+    "review": "review-result:adversary-w12-model-wake-and-status-pass-1",
+    "outcome": "fixed"
+  }
+}

@@ -1183,3 +1183,185 @@ fn clamp_a_runpod_model_is_clamped_to_its_max_model_len_a_hosted_one_to_its_cont
     assert_eq!(requests_so_far(&open), [count("open"), relay("open", 3096)]);
     assert_eq!(requests_so_far(&bare), [relay("bare", 32000)]);
 }
+
+// --- story:spend-caps: a pod start that would pass a spend ceiling ---------------------------
+
+/// The deployment with a daily ceiling of 10 USD on its provider and a price of 2 USD an hour
+/// on `small`, whose default 600-second startup deadline makes a start estimate 0.333334 USD.
+fn capped(fixture: &Fixture) -> Deployment {
+    deployment(fixture, |text| {
+        let text = mutate(
+            &text,
+            "kind = \"runpod-vllm\"\n",
+            "kind = \"runpod-vllm\"\ndaily_cap_usd = 10\n",
+        );
+        mutate(
+            &text,
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nprice_per_hour_usd = 2\n",
+        )
+    })
+}
+
+fn spent(runpod: &EmulatedRunpod, daily_micro_usd: u64) {
+    runpod.set_account_spend(Some(llm_runpod::AccountSpend {
+        daily_micro_usd,
+        total_micro_usd: daily_micro_usd,
+    }));
+}
+
+#[test]
+fn spend_a_start_past_the_ceiling_is_spend_ceiling_at_once_with_no_create_and_is_counted() {
+    let fixture = Fixture::new("spend-over");
+    let deployment = capped(&fixture);
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    spent(&runpod, 9_666_667);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, took) = timed_chat(running.local_addr());
+    let after = scrape(running.local_addr());
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 503 "), "{answer}");
+    assert!(answer.contains("\"code\":\"spend-ceiling\""), "{answer}");
+    assert_eq!(header(&answer, "retry-after"), None, "{answer}");
+    assert!(took < Duration::from_secs(5), "not held: {took:?}");
+    assert_eq!(runpod.create_calls(), 0);
+    assert_eq!(runpod.spend_reads(), 1);
+    assert_eq!(after["llmgw_pod_start_spend_refusals_total"], "1");
+    assert_eq!(after["llmgw_pod_start_failures_total"], "0");
+    assert_eq!(after["llmgw_pod_starts_total"], "0");
+    assert_eq!(
+        after["llmgw_route_refusals_total{model=\"small\",wire=\"chat\"}"],
+        "1"
+    );
+    assert!(pod.received().is_empty());
+}
+
+#[test]
+fn spend_a_start_at_the_ceiling_is_created_and_served() {
+    let fixture = Fixture::new("spend-at");
+    let deployment = capped(&fixture);
+    let mut pod = Pod::start(1, "{\"id\":\"served\"}");
+    let runpod = EmulatedRunpod::new();
+    spent(&runpod, 9_666_666);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, _) = timed_chat(running.local_addr());
+    let after = scrape(running.local_addr());
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert_eq!(runpod.create_calls(), 1);
+    assert_eq!(after["llmgw_pod_start_spend_refusals_total"], "0");
+    assert_eq!(pod.received().len(), 1);
+}
+
+#[test]
+fn spend_the_pool_is_metered_exactly_when_a_ceiling_is_declared() {
+    let fixture = Fixture::new("spend-ledger");
+    let plain = deployment(&fixture, |text| text);
+    let unmetered = llm_gateway_cli::compute_authorization_for(&plain).unwrap();
+    assert_eq!(unmetered.reservation.as_str(), "unmetered");
+    assert!(!llm_gateway_cli::spend_policy(&plain).unwrap().is_metered());
+    let deployment = capped(&fixture);
+    let metered = llm_gateway_cli::compute_authorization_for(&deployment).unwrap();
+    assert_eq!(metered.ledger.as_str(), "b10x-llm-gateway");
+    assert_eq!(metered.reservation.as_str(), "spend-ceiling");
+    let policy = llm_gateway_cli::spend_policy(&deployment).unwrap();
+    assert!(policy.is_metered());
+    assert_eq!(policy.daily_cap_micro_usd, Some(10_000_000));
+    assert_eq!(policy.total_cap_micro_usd, None);
+    assert_eq!(policy.price_per_hour_micro_usd[&small()], 2_000_000);
+}
+
+// ---- story:model-profile-fallback: the usage record names the profile that served ----
+
+/// Everything the test binary's global subscriber writes, kept in memory.
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl Write for Captured {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The binary's records as its default filter logs them, from every test of this binary: a
+/// test reads only the lines of its own model alias.
+fn usage_log() -> &'static Captured {
+    static LOG: std::sync::OnceLock<Captured> = std::sync::OnceLock::new();
+    LOG.get_or_init(|| {
+        let captured = Captured::default();
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_env_filter(llm_gateway_cli::log_filter(None))
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+        captured
+    })
+}
+
+#[test]
+fn a_relayed_call_names_the_profile_of_the_pod_that_served() {
+    let log = usage_log();
+    let fixture = Fixture::new("profile-record");
+    let deployment = deployment(&fixture, |text| {
+        let text = mutate(&text, "[models.small]", "[models.profiled]");
+        let text = mutate(
+            &text,
+            "gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n",
+            "",
+        );
+        format!(
+            "{text}\n[[models.profiled.profiles]]\nname = \"l40s-1k\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n\n[[models.profiled.profiles]]\nname = \"h100-2k\"\ngpu_types = [\"NVIDIA H100 NVL\"]\nmax_model_len = 2048\n"
+        )
+    });
+    let pod = Pod::start(1, "{\"id\":\"chat-1\",\"object\":\"chat.completion\"}");
+    let runpod = EmulatedRunpod::new();
+    runpod.no_capacity_gpu("NVIDIA L40S");
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let answer = post(
+        running.local_addr(),
+        "/v1/chat/completions",
+        OWNER_SECRET,
+        "{\"model\":\"profiled\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+    );
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    let gpus: Vec<String> = runpod
+        .requests()
+        .iter()
+        .map(|request| request.gpu_type.clone())
+        .collect();
+    assert_eq!(gpus, ["NVIDIA L40S", "NVIDIA H100 NVL"]);
+    let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
+    let records: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains("usage record") && line.contains("model=\"profiled\""))
+        .collect();
+    assert_eq!(records.len(), 1, "{text}");
+    assert!(records[0].contains("profile=\"h100-2k\""), "{}", records[0]);
+}

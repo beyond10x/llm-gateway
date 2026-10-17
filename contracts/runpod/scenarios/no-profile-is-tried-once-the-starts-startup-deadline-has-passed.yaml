@@ -1,0 +1,31 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: no-profile-is-tried-once-the-starts-startup-deadline-has-passed
+summary: two capacity refusals that take 800 s of a 600 s startup deadline end the start before the next profile is tried; nothing is created and the deployment is withdrawn
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"startup_deadline_ms":600000,"profiles":[{"name":"l40s-32k","gpu_types":["NVIDIA L40S","NVIDIA A40"],"vllm":{"max_model_len":32768}},{"name":"h100-64k","gpu_types":["NVIDIA H100 NVL"],"vllm":{"max_model_len":65536}}]}},"steps":[{"step":"no_capacity_gpu","gpu":"NVIDIA L40S"},{"step":"no_capacity_gpu","gpu":"NVIDIA A40"},{"step":"create_takes","ms":400000},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ok
+    - ok
+    - err:no-capacity
+    create_calls: 2
+    requested_gpus:
+    - NVIDIA L40S
+    - NVIDIA A40
+    pods: []
+    leases: []
+    phases:
+    - qwen-1:cancelled
+    stop_required: []

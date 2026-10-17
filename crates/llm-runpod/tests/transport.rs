@@ -22,10 +22,10 @@ use llm_provision::{
     ResourceKey,
 };
 use llm_runpod::{
-    CloudType, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, ManualClock, NetworkVolume,
-    POD_CREATE_BODY_KEYS, PodRequest, PodStatus, PodStream, PodTls, Probe, ProbeTarget,
-    RunpodModel, RunpodProvider, RunpodTransport, TerminateAnswer, Thinking, Unserviceable,
-    VllmSettings, started_at_ms,
+    AccountSpend, CloudType, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, ManualClock,
+    NetworkVolume, POD_CREATE_BODY_KEYS, PodRequest, PodStatus, PodStream, PodTls, Probe,
+    ProbeTarget, RunpodModel, RunpodProfile, RunpodProvider, RunpodTransport, SpendPolicy,
+    SpendRefusal, TerminateAnswer, Thinking, Unserviceable, VllmSettings, started_at_ms,
 };
 use serde_json::{Value, json};
 
@@ -514,6 +514,8 @@ fn provider_model() -> RunpodModel {
         idle_timeout_ms: 600_000,
         crash_restart_limit: 2,
         crash_window_ms: 600_000,
+        profile: "default".to_owned(),
+        fallbacks: Vec::new(),
     }
 }
 
@@ -576,6 +578,81 @@ fn a_refused_create_through_the_provider_tries_the_next_gpu() {
         .map(|call| input(call)["body"]["gpuTypeIds"].clone())
         .collect();
     assert_eq!(gpus, [json!(["NVIDIA A40"]), json!(["NVIDIA L40S"])]);
+}
+
+/// connectors' code for a provider capacity answer (`capacity`, semantics.md:915-921) is the one
+/// refusal that is `NoCapacity`; every other refused create stays `Refused`.
+#[test]
+fn a_refused_create_whose_failure_code_is_capacity_is_no_capacity() {
+    for (code, expected) in [
+        ("capacity", CreateAnswer::NoCapacity),
+        ("provider_refused", CreateAnswer::Refused),
+        ("invalid_input", CreateAnswer::Refused),
+    ] {
+        let fixture = Fixture::new(&format!("create_refused_{code}"));
+        fixture.script(&json!({"operations invoke pod.create": [failed("refused", code)]}));
+        assert_eq!(
+            fixture.transport().create_pod(&request("NVIDIA A40")),
+            expected,
+            "{code}"
+        );
+    }
+}
+
+/// Through the provider: every GPU of the first profile out of capacity moves the start on to
+/// the next profile, with that profile's vLLM settings, in the same `create`.
+#[test]
+fn a_capacity_refusal_through_the_provider_moves_on_to_the_next_profile() {
+    let fixture = Fixture::new("provider_capacity");
+    fixture.script(&json!({"operations invoke pod.create": [
+        failed("refused", "capacity"),
+        failed("refused", "capacity"),
+        invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
+    ]}));
+    let mut model = provider_model();
+    model.profile = "small".to_owned();
+    model.fallbacks = vec![RunpodProfile {
+        name: "large".to_owned(),
+        gpu_types: vec!["NVIDIA H100 NVL".to_owned()],
+        vllm: VllmSettings {
+            max_model_len: 32_768,
+            ..provider_model().vllm
+        },
+    }];
+    let mut provider = RunpodProvider::new(
+        ConnectorsRunpod::new(fixture.binding(Duration::from_secs(20))),
+        Identifier::new("runpod").expect("provider"),
+        Identifier::new("acct").expect("account"),
+        BTreeMap::from([(Identifier::new("qwen").expect("alias"), model)]),
+        Arc::new(ManualClock::new(0)),
+    );
+    let outcome = provider.create(&create_request());
+    assert_eq!(outcome.dispatch, Dispatch::Accepted);
+    let calls = fixture.calls_of("operations invoke pod.create");
+    let gpus: Vec<Value> = calls
+        .iter()
+        .map(|call| input(call)["body"]["gpuTypeIds"].clone())
+        .collect();
+    assert_eq!(
+        gpus,
+        [
+            json!(["NVIDIA A40"]),
+            json!(["NVIDIA L40S"]),
+            json!(["NVIDIA H100 NVL"])
+        ]
+    );
+    let entrypoint = input(calls.last().expect("a create"))["body"]["dockerEntrypoint"].clone();
+    let args: Vec<&str> = entrypoint
+        .as_array()
+        .expect("entrypoint")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    let at = args
+        .iter()
+        .position(|arg| *arg == "--max-model-len")
+        .expect("--max-model-len");
+    assert_eq!(args.get(at + 1), Some(&"32768"));
 }
 
 // ---- Acceptance 3: a listing is complete only when it is whole ----
@@ -1202,4 +1279,153 @@ fn a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again() {
             "{name}"
         );
     }
+}
+
+// The account's reported spend: `billing.pods` (Runpod `GET /billing/pods`, `PodBilling`), a read
+// the connectors v0.37.0 catalog does not select yet; the fixture is taught it
+// (`spec/domains/runpod.yaml`, `ConnectorsOperation`).
+
+fn billed(body: &Value) -> Value {
+    json!({"stdout": {
+        "adapter": "gpu", "operation": "billing.pods", "revision": "revision-7",
+        "result": {"status": 200, "body": body},
+    }})
+}
+
+const DAY_START: &str = "2026-10-16T00:00:00.000Z";
+
+fn day_start() -> u64 {
+    started_at_ms(DAY_START).expect("day start")
+}
+
+#[test]
+fn billing_reads_billing_pods_once_as_a_read_and_sums_today_and_the_total() {
+    let fixture = Fixture::new("billing_sums");
+    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([
+        {"amount": 2.5, "time": "2026-10-15T00:00:00.000Z", "timeBilledMs": 1},
+        {"amount": 1.25, "time": DAY_START},
+        {"amount": 0.000_000_4, "time": "2026-10-16T13:00:00Z"},
+    ]))]}));
+    let spend = fixture.transport().account_spend(day_start());
+    assert_eq!(
+        spend,
+        Some(AccountSpend {
+            daily_micro_usd: 1_250_000,
+            total_micro_usd: 3_750_000,
+        }),
+        "each amount is rounded to the nearest micro-USD"
+    );
+    let invokes = fixture.calls_of("operations invoke billing.pods");
+    assert_eq!(invokes.len(), 1);
+    assert_eq!(input(&invokes[0]), json!({"bucketSize": "day"}));
+    assert_eq!(
+        arg(&invokes[0], "--approval-file"),
+        None,
+        "a read takes no approval"
+    );
+    assert!(
+        fixture
+            .calls_of("approvals prepare billing.pods")
+            .is_empty()
+    );
+}
+
+#[test]
+fn billing_an_empty_answer_is_no_spend() {
+    let fixture = Fixture::new("billing_empty");
+    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([]))]}));
+    assert_eq!(
+        fixture.transport().account_spend(day_start()),
+        Some(AccountSpend {
+            daily_micro_usd: 0,
+            total_micro_usd: 0,
+        })
+    );
+}
+
+#[test]
+fn billing_an_answer_that_is_not_wholly_readable_is_unanswered() {
+    let entry = |amount: Value, time: Value| json!([{"amount": 1, "time": DAY_START}, {"amount": amount, "time": time}]);
+    for (case, answer) in [
+        ("negative", billed(&entry(json!(-1), json!(DAY_START)))),
+        ("text amount", billed(&entry(json!("1"), json!(DAY_START)))),
+        ("no amount", billed(&json!([{"time": DAY_START}]))),
+        ("no time", billed(&json!([{"amount": 1}]))),
+        (
+            "bad time",
+            billed(&entry(json!(1), json!("2026-10-16 00:00:00"))),
+        ),
+        ("not an array", billed(&json!({"amount": 1}))),
+        (
+            "a 500",
+            json!({"stdout": {"result": {"status": 500, "body": []}}}),
+        ),
+        ("a failure", failed("not_attempted", "unavailable")),
+        ("garbage", json!({"raw": "not json"})),
+    ] {
+        let fixture = Fixture::new(&format!("billing_unreadable_{}", case.replace(' ', "_")));
+        fixture.script(&json!({"operations invoke billing.pods": [answer]}));
+        assert_eq!(
+            fixture.transport().account_spend(day_start()),
+            None,
+            "{case}"
+        );
+    }
+}
+
+#[test]
+fn billing_without_the_operation_in_the_catalog_is_unanswered_and_invokes_nothing() {
+    let fixture = Fixture::new("billing_absent");
+    fixture.script(&json!({"operations describe billing.pods": [
+        {"exit": 2, "stdout": {"error": {"code": "not_found"}}}
+    ]}));
+    assert_eq!(fixture.transport().account_spend(day_start()), None);
+    assert!(
+        fixture
+            .calls_of("operations invoke billing.pods")
+            .is_empty()
+    );
+}
+
+#[test]
+fn billing_with_a_ceiling_and_no_billing_operation_the_provider_sends_no_create() {
+    let fixture = Fixture::new("billing_provider_refuses");
+    fixture.script(&json!({"operations describe billing.pods": [
+        {"exit": 2, "stdout": {"error": {"code": "not_found"}}}
+    ]}));
+    let mut provider = provider(&fixture);
+    provider.set_spend(Some(SpendPolicy {
+        daily_cap_micro_usd: Some(10_000_000),
+        total_cap_micro_usd: None,
+        price_per_hour_micro_usd: BTreeMap::from([(
+            Identifier::new("qwen").expect("alias"),
+            2_000_000,
+        )]),
+    }));
+    let outcome: CreateOutcome = provider.create(&create_request());
+    assert_eq!(outcome.dispatch, Dispatch::NotSent);
+    assert_eq!(provider.take_spend_refusal(), Some(SpendRefusal::Unknown));
+    assert!(fixture.calls_of("operations invoke pod.create").is_empty());
+    assert!(fixture.calls_of("approvals prepare pod.create").is_empty());
+}
+
+/// Adversarial pass over story:spend-caps. A billed amount Runpod reports with two decimals is
+/// an exact number of micro-USD; `ceil(usd * 1e6)` overstates 1188 of the first 100 000 cent
+/// amounts by one micro-USD through float error (4.03 * 1e6 is 4030000.0000000005). With a
+/// ceiling of 5.03 and a start estimated at 1, a reported 4.03 projects exactly the ceiling,
+/// which `spend.rs` says is admitted, and the overstated 4.030001 refuses it.
+#[test]
+fn adversary_w12_a_billed_amount_in_cents_is_read_exactly() {
+    let fixture = Fixture::new("adversary_w12_billing_cents");
+    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([
+        {"amount": 4.03, "time": DAY_START},
+        {"amount": 8.05, "time": "2026-10-15T00:00:00.000Z"},
+    ]))]}));
+    assert_eq!(
+        fixture.transport().account_spend(day_start()),
+        Some(AccountSpend {
+            daily_micro_usd: 4_030_000,
+            total_micro_usd: 12_080_000,
+        })
+    );
 }

@@ -107,6 +107,8 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the snapshot. |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
 | `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
+| `POST` | `/v1/models/{alias}/wake` | owner | Starts the model's pod and answers `202` at once with its status ([the lifecycle routes](#the-lifecycle-routes)). |
+| `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase and profile; starts nothing. |
 | `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([the relay](#the-relay)). |
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed. |
 | `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed. |
@@ -151,7 +153,8 @@ still takes the owner credential.
 `GET /v1/models` is `{"object":"list","data":[…]}`, one entry per model in alias order:
 `{"id":<alias>,"object":"model","owned_by":"llm-gateway","max_model_len"?:<n>,"wires":[…]}`.
 `max_model_len` is what `RelayModel::with_max_model_len` declared, and absent, never `0`, when
-nothing was.
+nothing was. The binary declares a Runpod model's as the smallest `max_model_len` among its
+profiles.
 
 `GET /` chooses its answer from the lowercased `user-agent`, by the first rule that holds:
 containing `codex`, a Codex `config.toml` profile per model (`text/plain; charset=utf-8`);
@@ -164,6 +167,54 @@ Loom `chat`) and parses tool calls; each profile names the model's alias and the
 request's `host` when it is only letters, digits, `.`, `-`, `_`, `:`, `[` and `]`, and the
 listener's address otherwise. The owner token is named as the setting that carries it, never
 given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_views_total`.
+
+## The lifecycle routes
+
+A gateway composed with a relay serves two owner routes per relayed model, so the owner can start
+a model ahead of demand and read where its start is without sending a model call. `{alias}` is
+the rest of the path between `/v1/models/` and the last segment, compared byte for byte with the
+relayed models' aliases (nothing is percent-decoded; an empty alias is no lifecycle path). They
+are not wire paths, so they take the owner credential under `IngressAuth::None` too, and they
+are decided after the probes, shedding and authentication, in this order, before the target
+source is asked anything:
+
+1. A method the route does not take is `method-not-allowed`, with `allow: POST` for the wake and
+   `allow: GET, HEAD` for the status.
+2. A declared body is `body-not-allowed`, and before `mark_ready` the route is `unavailable`.
+3. An alias no relayed model has is `model-unknown`.
+4. A model whose target source starts nothing for it is `path-unknown`: the route does not
+   exist for it. `RelayTargets::wake` and `RelayTargets::status` answer `None` by default, and
+   the binary answers `None` for a hosted endpoint and a route of the routes document, which are
+   relayed upstreams with no lifecycle.
+
+Then `POST /v1/models/{alias}/wake` asks the source to start the model's target as a request's
+first ask for it would (`RelayTargets::wake`) and answers `202` at once with the status the
+source reports after that ask; it never waits for the target to serve. While a start is in
+progress, or the target is ready, a wake starts nothing more and answers `202` the same way. A
+refusal is the one `acquire` would have earned: `target-unavailable`, `spend-ceiling` (503,
+without `retry-after`) or `model-cold-start` (with `retry-after: 30`).
+`GET /v1/models/{alias}/status` asks the source for the status (`RelayTargets::status`), which
+starts nothing, and answers `200`; `HEAD` answers the same without a body.
+
+Both answers are `application/json`, a `ModelStatus` in this key order, a value the source did
+not report absent, never empty:
+
+```json
+{"model":"small","phase":"starting","sub_phase":"pending","profile":"l40s-32k"}
+```
+
+`phase` is a `ModelPhase`, named by what a request for the model would meet: `stopped` (no pod
+is live; a request starts one), `starting` (a request is held while the pod starts), `ready`
+(the pod was last observed serving) and `stopping` (a previous pod owes a stop not yet
+confirmed; nothing starts meanwhile). `sub_phase` is the provider's own word for the pod while
+it starts, and `profile` the profile it was started on. Neither route makes a usage record or
+counts a series of its own. The specification is `llm-gateway.gateway.LifecycleRoute`; the
+scenarios are `contracts/gateway/scenarios/wake-*`.
+
+In the binary a Runpod model's wake is one `RunpodPool::wake`, so its spend check and its
+profile fallback are a request's, and the pod it starts, a spend refusal or a failed start is
+counted as a request's would be (`docs/hosting.md`, "Waking a model and reading its phase").
+Its status is `RunpodPool::status`, read from the hosting state machine with no provider call.
 
 ## The relay
 
@@ -247,14 +298,20 @@ A request to a wire path is decided in this order:
 7. `acquire`, which hands out a target or a `TargetRefusal`: `Unavailable` is
    `target-unavailable` (503), and `ColdStart`, the model's target still starting when the
    request's hold budget passed, is `model-cold-start` (503) with `retry-after: 30`, as llmgw's
-   `model_cold_start` (row W6). It is the only refusal that carries `retry-after`. The embedding
+   `model_cold_start` (row W6). It is the only refusal that carries `retry-after`.
+   `SpendCeiling`, starting the model's pod would pass a spend ceiling of its provider account
+   or that account's spend is unknown, is `spend-ceiling` (503), answered at once and without
+   `retry-after`; its message names neither the ceiling nor the amount. The embedding
    holds the request while its target starts and owns the hold budget; the Runpod composition
    asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
-   `docs/hosting.md`). Then, on the messages wire only, the output clamp. A model's window `w`
-   is its `max_model_len`, else its `context_window`, else it has none: the binary declares a
-   Runpod model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
+   `docs/hosting.md`). Then, on the messages wire only, the output clamp. The window `w` is the
+   `max_model_len` the target handed out states (`RelayTarget::max_model_len`), else the model's
+   `max_model_len`, else its `context_window`, else it has none: the binary declares a Runpod
+   model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
    `context_window` and never its `max_model_len`, so a hosted model without a `context_window`
-   has no window. For a model with a window and a body whose top-level `max_tokens` is one
+   has no window. A Runpod pod states the `max_model_len` of the profile it was started on, so a
+   call served by a fallback profile is clamped to that profile's window; a pod whose profile is
+   unknown is clamped to the model's, the smallest among its profiles. For a model with a window and a body whose top-level `max_tokens` is one
    non-negative JSON integer (digits only, named once at the top level), the gateway first sends
    `POST /v1/messages/count_tokens` to the target `acquire` handed out, over a connection of its
    own, with the head and credential described below and the body step 6 wrote; vLLM v0.27.1
@@ -578,7 +635,8 @@ counters, then leaves the crate through the `UsageRecords` port the embedding im
 (`Relay::with_records`); the binary writes each as one `tracing` event at `info`.
 
 `GET /metrics` serves llmgw's 13 counters under their llmgw names, so a scrape configured for
-llmgw keeps working. It takes the owner credential and readiness like inspection, and answers
+llmgw keeps working, and one of the gateway's own, `llmgw_pod_start_spend_refusals_total`, after
+llmgw's eight process-wide series; its prefix keeps one scrape configuration for every series. It takes the owner credential and readiness like inspection, and answers
 `content-type: text/plain; version=0.0.4; charset=utf-8`. The text is rendered inside this crate,
 which takes no dependency for it.
 
@@ -592,6 +650,7 @@ which takes no dependency for it.
 | `llmgw_pod_reaps_total` | | deployments and pods the embedding's cleanup pass stopped |
 | `llmgw_endpoint_invalidations_total` | | each target reported to `invalidate` |
 | `llmgw_cold_start_wait_seconds_total` | | seconds `acquire` took for a request held for a starting target |
+| `llmgw_pod_start_spend_refusals_total` | | pod starts the embedding refused for a spend ceiling, each answered `spend-ceiling` (`Metrics::count_pod_start_spend_refusal`) |
 | `llmgw_route_requests_total` | `model`, `wire` | records naming a relayed model on a wire it declares |
 | `llmgw_route_refusals_total` | `model`, `wire` | the same, refused or no target answered |
 | `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
@@ -634,6 +693,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `request-malformed` | 400 | the request is not well-formed HTTP |
 | `request-too-large` | 431 | the request head exceeds its byte bound |
 | `route-unknown` | 404 | no such route alias |
+| `spend-ceiling` | 503 | the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown |
 | `target-unavailable` | 503 | no model target is available |
 | `tools-not-served` | 400 | the model does not serve tool calls |
 | `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |
@@ -645,6 +705,11 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `upstream-failed` | 502 | the model target could not be reached or failed; the next request asks for a replacement |
 | `upstream-refused` | 502 | the model target refused the translated request |
 | `wire-not-served` | 400 | the model is not served on this wire |
+
+The lifecycle routes add no code of their own: a model with no lifecycle (a hosted endpoint or a
+route of the routes document) is `path-unknown`, an alias no relayed model has `model-unknown`,
+and a wake the target source refuses `target-unavailable`, `spend-ceiling` or
+`model-cold-start`, as its acquisition would be ([the lifecycle routes](#the-lifecycle-routes)).
 
 This table is the published contract, and it is checked rather than maintained by hand.
 `RefusalCode`, `RefusalCode::ALL`, `wire`, `status` and `reason` are generated from a single

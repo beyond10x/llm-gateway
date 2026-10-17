@@ -520,6 +520,7 @@ mod relay {
         SharedSecretVerifier, StaticHeader, StaticHeaderError, TargetBearer, TargetRefusal,
         ToolCalling, UsageRecord, UsageRecords, Wire,
     };
+    use llm_gateway::{ModelPhase, ModelStatus};
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, PodConnector,
         ProxyConnector, Routes,
@@ -595,6 +596,70 @@ mod relay {
         /// the routes document names is read.
         #[serde(default)]
         route_credentials: BTreeMap<String, String>,
+        /// The source's answers to the lifecycle routes for the models its pods serve; without
+        /// it the source starts no pod for any model.
+        #[serde(default)]
+        lifecycle: Option<LifecycleInput>,
+    }
+
+    /// The source's scripted lifecycle answers, one per ask, in order.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct LifecycleInput {
+        #[serde(default)]
+        wake: Vec<LifecycleAnswer>,
+        #[serde(default)]
+        status: Vec<LifecycleAnswer>,
+    }
+
+    /// A `ModelStatus`, or for a wake a refusal named by its code.
+    #[derive(Deserialize, Clone)]
+    #[serde(deny_unknown_fields)]
+    struct LifecycleAnswer {
+        #[serde(default)]
+        phase: Option<String>,
+        #[serde(default)]
+        sub_phase: Option<String>,
+        #[serde(default)]
+        profile: Option<String>,
+        #[serde(default)]
+        refusal: Option<String>,
+    }
+
+    impl LifecycleAnswer {
+        fn status(&self) -> Option<ModelStatus> {
+            let code = self.phase.as_deref()?;
+            let phase = ModelPhase::ALL
+                .into_iter()
+                .find(|phase| phase.code() == code)?;
+            Some(ModelStatus {
+                phase,
+                sub_phase: self.sub_phase.clone(),
+                profile: self.profile.clone(),
+            })
+        }
+
+        fn refused(&self) -> Option<TargetRefusal> {
+            let code = self.refusal.as_deref()?;
+            TargetRefusal::ALL
+                .iter()
+                .copied()
+                .find(|refusal| refusal.refusal().wire() == code)
+        }
+
+        /// A status, or (`may_refuse`) a refusal, and never both.
+        fn valid(&self, may_refuse: bool) -> bool {
+            match (&self.refusal, self.status()) {
+                (None, Some(_)) => true,
+                (Some(_), None) => {
+                    may_refuse
+                        && self.refused().is_some()
+                        && self.sub_phase.is_none()
+                        && self.profile.is_none()
+                }
+                _ => false,
+            }
+        }
     }
 
     #[derive(Deserialize)]
@@ -612,6 +677,10 @@ mod relay {
         /// What `GET /v1/models` lists as `max_model_len` (row R5).
         #[serde(default)]
         max_model_len: Option<u64>,
+        /// The `max_model_len` every target handed out for this model states, which the output
+        /// clamp takes before the model's own window.
+        #[serde(default)]
+        target_max_model_len: Option<u64>,
         /// What `GET /` tells each client as its context window (row R1).
         #[serde(default)]
         context_window: Option<u64>,
@@ -1302,14 +1371,19 @@ mod relay {
         pods: Vec<PodSlot>,
         /// Each model's bearer, set once the gateway is composed.
         bearers: Mutex<BTreeMap<String, Arc<TargetBearer>>>,
+        /// The `max_model_len` each model's targets state.
+        windows: BTreeMap<String, u64>,
         current: Mutex<usize>,
         cold: AtomicUsize,
+        /// The scripted wake and status answers; `None` starts no pod for any model.
+        lifecycle: Option<Mutex<(VecDeque<LifecycleAnswer>, VecDeque<LifecycleAnswer>)>>,
     }
 
     struct Target {
         authority: String,
         script: Arc<Mutex<VecDeque<AnswerInput>>>,
         bearer: Option<Arc<TargetBearer>>,
+        max_model_len: Option<u64>,
     }
 
     impl RelayTargets for Source {
@@ -1339,6 +1413,7 @@ mod relay {
                 authority: authority.clone(),
                 script: Arc::clone(script),
                 bearer,
+                max_model_len: self.windows.get(alias).copied(),
             }))
         }
 
@@ -1350,6 +1425,26 @@ mod relay {
                 *current += 1;
             }
         }
+
+        /// The next scripted wake answer; past the script, `target-unavailable`.
+        fn wake(&self, _alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+            let next = self.lifecycle.as_ref()?.lock().ok()?.0.pop_front();
+            Some(match next {
+                Some(answer) => answer
+                    .status()
+                    .ok_or_else(|| answer.refused().unwrap_or(TargetRefusal::Unavailable)),
+                None => Err(TargetRefusal::Unavailable),
+            })
+        }
+
+        /// The next scripted status; past the script, `stopped`.
+        fn status(&self, _alias: &str) -> Option<ModelStatus> {
+            let next = self.lifecycle.as_ref()?.lock().ok()?.1.pop_front();
+            Some(
+                next.and_then(|answer| answer.status())
+                    .unwrap_or(ModelStatus::new(ModelPhase::Stopped)),
+            )
+        }
     }
 
     impl RelayTarget for Target {
@@ -1359,6 +1454,10 @@ mod relay {
 
         fn bearer(&self) -> Option<&TargetBearer> {
             self.bearer.as_deref()
+        }
+
+        fn max_model_len(&self) -> Option<u64> {
+            self.max_model_len
         }
 
         fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -1391,6 +1490,8 @@ mod relay {
         acquired: AtomicUsize,
         released: Arc<AtomicUsize>,
         invalidated: Mutex<Vec<String>>,
+        /// Every lifecycle ask, as `wake <alias>` or `status <alias>`.
+        lifecycle_asks: Mutex<Vec<String>>,
     }
 
     /// A target the gateway holds, counted released when it is dropped.
@@ -1418,6 +1519,16 @@ mod relay {
             record(&self.invalidated, named);
             self.inner.invalidate(alias, authority);
         }
+
+        fn wake(&self, alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+            record(&self.lifecycle_asks, format!("wake {alias}"));
+            self.inner.wake(alias)
+        }
+
+        fn status(&self, alias: &str) -> Option<ModelStatus> {
+            record(&self.lifecycle_asks, format!("status {alias}"));
+            self.inner.status(alias)
+        }
     }
 
     impl RelayTarget for Counted {
@@ -1443,6 +1554,10 @@ mod relay {
 
         fn held(&self) -> bool {
             self.inner.held()
+        }
+
+        fn max_model_len(&self) -> Option<u64> {
+            self.inner.max_model_len()
         }
 
         fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -1749,6 +1864,7 @@ mod relay {
             acquired: AtomicUsize::new(0),
             released: Arc::new(AtomicUsize::new(0)),
             invalidated: Mutex::new(Vec::new()),
+            lifecycle_asks: Mutex::new(Vec::new()),
         });
         *counting = Some(Arc::clone(&targets));
         let relay = Relay::new(models, targets)
@@ -1984,6 +2100,12 @@ mod relay {
             )
             && matches!(program.translation.as_deref(), None | Some("off" | "on"))
             && efforts_known
+            && program.lifecycle.as_ref().is_none_or(|lifecycle| {
+                lifecycle.wake.len() <= MAX_STEPS
+                    && lifecycle.status.len() <= MAX_STEPS
+                    && lifecycle.wake.iter().all(|answer| answer.valid(true))
+                    && lifecycle.status.iter().all(|answer| answer.valid(false))
+            })
             && program.steps.len() <= MAX_STEPS
             && program.cold_starts <= MAX_STEPS
             && pods <= MAX_PODS
@@ -2039,7 +2161,8 @@ mod relay {
             "valid_program": false, "error_code": null, "results": [], "bodies": [],
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
-            "scrapes": [], "connections": [], "received_heads": [], "upstream_ends": []
+            "scrapes": [], "connections": [], "received_heads": [], "upstream_ends": [],
+            "lifecycle_asks": []
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -2092,8 +2215,19 @@ mod relay {
                 })
                 .collect(),
             bearers: Mutex::new(BTreeMap::new()),
+            windows: program
+                .models
+                .iter()
+                .filter_map(|model| Some((model.alias.clone(), model.target_max_model_len?)))
+                .collect(),
             current: Mutex::new(0),
             cold: AtomicUsize::new(program.cold_starts),
+            lifecycle: program.lifecycle.as_ref().map(|lifecycle| {
+                Mutex::new((
+                    lifecycle.wake.iter().cloned().collect(),
+                    lifecycle.status.iter().cloned().collect(),
+                ))
+            }),
         });
         let records = Arc::new(Records::default());
         let mut counting = None;
@@ -2120,6 +2254,7 @@ mod relay {
             facts["acquired"] = json!(counting.acquired.load(Ordering::SeqCst));
             facts["invalidated"] = json!(taken(&counting.invalidated));
             facts["released"] = json!(counting.released.load(Ordering::SeqCst));
+            facts["lifecycle_asks"] = json!(taken(&counting.lifecycle_asks));
         }
         facts
     }

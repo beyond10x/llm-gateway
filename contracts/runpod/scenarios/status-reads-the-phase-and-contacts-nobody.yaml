@@ -1,0 +1,30 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: status-reads-the-phase-and-contacts-nobody
+summary: status reads the phase, the provider's sub-phase and the profile from the records the last step left, and lists, probes and creates nothing
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"status","alias":"qwen"},{"step":"ready_after","probes":1},{"step":"ensure","alias":"qwen"},{"step":"status","alias":"qwen"},{"step":"set_status","pod":"pod1","status":"Created"},{"step":"status","alias":"qwen"},{"step":"ensure","alias":"qwen"},{"step":"status","alias":"qwen"},{"step":"status","alias":"absent"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - status phase=stopped sub_phase=none profile=none
+    - ok
+    - err:starting
+    - status phase=starting sub_phase=running profile=default
+    - ok
+    - status phase=starting sub_phase=running profile=default
+    - err:starting
+    - status phase=starting sub_phase=pending profile=default
+    - err:unknown-model
+    create_calls: 1
+    lists: 2
+    spend_reads: 0

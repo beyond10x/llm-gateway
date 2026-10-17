@@ -186,6 +186,27 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "Spend ceilings on pod starts",
+        "A provider's daily_cap_usd and total_cap_usd are checked before every pod create against the reported spend and the pods' estimates; a start that would pass one, or whose spend is unknown, is spend-ceiling with no create. Tested over the emulator; the live spend read needs a connectors release that offers billing.pods.",
+        "crates/llm-gateway-cli/tests/relaying.rs::spend_a_start_past_the_ceiling_is_spend_ceiling_at_once_with_no_create_and_is_counted",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
+        "Model profiles with capacity fallback",
+        "A model may declare ordered profiles, each GPU types with their vLLM settings; when Runpod refuses every create of a profile for capacity the start moves on to the next profile inside the same startup deadline and spend check, and the usage record names the profile that served. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/relaying.rs::a_relayed_call_names_the_profile_of_the_pod_that_served",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
+        "Wake a model and read its phase",
+        "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model has neither and is path-unknown. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/wake_status.rs::wake_starts_the_pod_once_at_once_status_reads_it_without_a_call_and_a_request_reuses_it",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
         "Relay to a Runpod pod from the binary over verified TLS",
         "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
         "crates/llm-gateway-cli/tests/pod_tls.rs::tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors",

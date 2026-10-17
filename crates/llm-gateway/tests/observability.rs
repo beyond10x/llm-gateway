@@ -24,9 +24,10 @@ const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const WAIT: Duration = Duration::from_secs(10);
 const PROMETHEUS: &str = "text/plain; version=0.0.4; charset=utf-8";
 
-/// llmgw's 13 series, in the order llm-gateway.telemetry lists them: eight process-wide, then
+/// llmgw's 13 series and the gateway's own spend-refusal series, in the order
+/// llm-gateway.telemetry lists them: nine process-wide, then
 /// five per model and wire.
-const PROCESS_SERIES: [&str; 8] = [
+const PROCESS_SERIES: [&str; 9] = [
     "llmgw_inference_requests_total",
     "llmgw_upstream_failures_total",
     "llmgw_instruction_views_total",
@@ -35,6 +36,7 @@ const PROCESS_SERIES: [&str; 8] = [
     "llmgw_pod_reaps_total",
     "llmgw_endpoint_invalidations_total",
     "llmgw_cold_start_wait_seconds_total",
+    "llmgw_pod_start_spend_refusals_total",
 ];
 const ROUTE_SERIES: [&str; 5] = [
     "llmgw_route_requests_total",
@@ -60,6 +62,8 @@ enum Script {
     Refused,
     /// Answers that the model is still starting past its hold budget.
     ColdStart,
+    /// Hands out a target on a pod of this profile, whose connection answers these raw bytes.
+    Profiled(&'static str, &'static str),
 }
 
 #[derive(Default)]
@@ -71,6 +75,7 @@ struct Source {
 struct Target {
     answer: Option<&'static str>,
     held: bool,
+    profile: Option<&'static str>,
 }
 
 /// One in-memory connection: reads the scripted answer, swallows what is written.
@@ -99,17 +104,25 @@ impl RelayTargets for Source {
             Some(Script::Answer(answer)) => Ok(Box::new(Target {
                 answer: Some(answer),
                 held: false,
+                profile: None,
+            })),
+            Some(Script::Profiled(answer, profile)) => Ok(Box::new(Target {
+                answer: Some(answer),
+                held: false,
+                profile: Some(profile),
             })),
             Some(Script::Held(wait, answer)) => {
                 thread::sleep(wait);
                 Ok(Box::new(Target {
                     answer: Some(answer),
                     held: true,
+                    profile: None,
                 }))
             }
             Some(Script::Refused) => Ok(Box::new(Target {
                 answer: None,
                 held: false,
+                profile: None,
             })),
             Some(Script::ColdStart) => Err(TargetRefusal::ColdStart),
             None => Err(TargetRefusal::Unavailable),
@@ -128,6 +141,10 @@ impl RelayTarget for Target {
 
     fn held(&self) -> bool {
         self.held
+    }
+
+    fn profile(&self) -> Option<String> {
+        self.profile.map(str::to_owned)
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -806,14 +823,55 @@ fn o1_the_embeddings_pod_counters_are_served_as_counted() {
     metrics.count_pod_start();
     metrics.count_pod_start_failure();
     metrics.count_pod_reaps(3);
+    metrics.count_pod_start_spend_refusal();
+    metrics.count_pod_start_spend_refusal();
     let scraped = samples(&scrape(handle.local_addr()));
     assert_eq!(scraped["llmgw_pod_starts_total"], "2");
     assert_eq!(scraped["llmgw_pod_start_failures_total"], "1");
     assert_eq!(scraped["llmgw_pod_reaps_total"], "3");
+    assert_eq!(scraped["llmgw_pod_start_spend_refusals_total"], "2");
     // The metrics handed in carry the relay's routes too.
     assert_eq!(
         scraped[&route("llmgw_route_requests_total", "code", "chat")],
         "0"
     );
     assert!(metrics.render().contains("llmgw_pod_reaps_total 3\n"));
+}
+
+/// story:model-profile-fallback: the record names the profile of the pod that served the call;
+/// a target that reports none, and a call no target served, name none.
+#[test]
+fn a_record_names_the_profile_of_the_pod_that_served_and_none_otherwise() {
+    let fixture = relaying(
+        vec![Script::Profiled(ANSWER, "h100-64k"), Script::Answer(ANSWER)],
+        true,
+    );
+    let address = fixture.handle.local_addr();
+    let profiled = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    let unprofiled = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    let unavailable = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"code\"}",
+        true,
+    );
+    assert_eq!(profiled.status, 200);
+    assert_eq!(unprofiled.status, 200);
+    assert_eq!(unavailable.status, 503);
+    let served: Vec<Option<String>> = fixture
+        .records()
+        .iter()
+        .map(|record| record.profile.clone())
+        .collect();
+    assert_eq!(served, [Some("h100-64k".to_owned()), None, None]);
 }

@@ -12,7 +12,9 @@ use llm_gateway::{
     AuthKind, BillingKind, CredentialHeader, GatewayConfig, IngressAuth, ReasoningEffort,
     StaticHeader, ToolCalling,
 };
-use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking, VllmSettings};
+use llm_runpod::{
+    CloudType, ConnectorsBinding, NetworkVolume, RunpodProfile, Thinking, VllmSettings,
+};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::{
@@ -259,6 +261,10 @@ struct ProviderDocument {
     cloud_type: CloudTypeDocument,
     #[serde(default)]
     connectors: Option<ConnectorsDocument>,
+    #[serde(default)]
+    daily_cap_usd: Option<f64>,
+    #[serde(default)]
+    total_cap_usd: Option<f64>,
 }
 
 /// `[providers.<name>.connectors]` (`llm-gateway.deployment.ConnectorsDeclaration`).
@@ -323,12 +329,17 @@ struct ModelDocument {
     context_window: u32,
     hf_model: String,
     image: String,
-    gpu_types: Vec<String>,
-    max_model_len: u32,
-    #[serde(default = "default_max_num_seqs")]
-    max_num_seqs: u32,
-    #[serde(default = "default_gpu_util")]
-    gpu_util: f64,
+    /// The flat declaration of the one profile `default`; refused beside `profiles`.
+    #[serde(default)]
+    gpu_types: Option<Vec<String>>,
+    #[serde(default)]
+    max_model_len: Option<u32>,
+    #[serde(default)]
+    max_num_seqs: Option<u32>,
+    #[serde(default)]
+    gpu_util: Option<f64>,
+    #[serde(default)]
+    profiles: Option<Vec<ProfileDocument>>,
     #[serde(default = "default_disk_gb")]
     disk_gb: u32,
     #[serde(default)]
@@ -338,7 +349,7 @@ struct ModelDocument {
     #[serde(default)]
     sampling: Option<String>,
     #[serde(default)]
-    extra_vllm_args: Vec<String>,
+    extra_vllm_args: Option<Vec<String>>,
     #[serde(default)]
     network_volume_id: Option<String>,
     #[serde(default = "default_volume_mount_path")]
@@ -356,7 +367,27 @@ struct ModelDocument {
     vllm_api_key_file: Option<PathBuf>,
     #[serde(default)]
     tool_calling: ToolCallingDocument,
+    #[serde(default)]
+    price_per_hour_usd: Option<f64>,
 }
+
+/// One `[[models.<alias>.profiles]]` entry, or the flat keys as the one profile `default`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct ProfileDocument {
+    name: String,
+    gpu_types: Vec<String>,
+    max_model_len: u32,
+    #[serde(default = "default_max_num_seqs")]
+    max_num_seqs: u32,
+    #[serde(default = "default_gpu_util")]
+    gpu_util: f64,
+    #[serde(default)]
+    extra_vllm_args: Vec<String>,
+}
+
+/// The most profiles one model may declare.
+const MAX_PROFILES: usize = 8;
 
 fn default_max_num_seqs() -> u32 {
     8
@@ -420,6 +451,10 @@ pub struct Provider {
     /// The connectors connection the provider's pods are reached through, when it declares
     /// one; `None` leaves its models answered `target-unavailable`.
     pub connectors: Option<ConnectorsBinding>,
+    /// The account's daily spend ceiling in micro-USD (`daily_cap_usd`); `None` is none.
+    pub daily_cap_micro_usd: Option<u64>,
+    /// The account's total spend ceiling in micro-USD (`total_cap_usd`); `None` is none.
+    pub total_cap_micro_usd: Option<u64>,
 }
 
 /// `[models.<alias>]`, with every default applied and every rule checked.
@@ -430,9 +465,16 @@ pub struct Model {
     pub context_window: u32,
     pub hf_model: String,
     pub image: String,
+    /// The first profile's GPU types.
     pub gpu_types: Vec<String>,
     pub disk_gb: u32,
+    /// The first profile's vLLM settings.
     pub vllm: VllmSettings,
+    /// The first profile's name; `default` for the flat declaration.
+    pub profile: String,
+    /// The profiles after the first, in order. Each shares the model's thinking, reasoning
+    /// effort and sampling.
+    pub fallbacks: Vec<RunpodProfile>,
     pub cache: Option<NetworkVolume>,
     pub data_center_ids: Vec<String>,
     pub idle_timeout_minutes: u64,
@@ -448,6 +490,10 @@ pub struct Model {
     /// `parsed`. A request offering tools to an `Absent` model is refused before a pod is
     /// asked for.
     pub tool_calling: ToolCalling,
+    /// The most the model's pod costs per hour on any of its GPU types, in micro-USD
+    /// (`price_per_hour_usd`), which the spend check prices its pods by. Required once a
+    /// provider declares a spend ceiling.
+    pub price_per_hour_micro_usd: Option<u64>,
 }
 
 /// `[hosted.<alias>]`, with every default applied and every rule checked: a model a hosted
@@ -584,35 +630,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
             "at least one model, of models, hosted or the routes document, is required",
         ));
     }
-    let mut providers = BTreeMap::new();
-    for (name, provider) in document.providers {
-        closed_name(&format!("providers.{name}"), &name)?;
-        let cloud_type = match provider.cloud_type {
-            CloudTypeDocument::Secure => CloudType::Secure,
-            CloudTypeDocument::Community => CloudType::Community,
-        };
-        let connectors = provider
-            .connectors
-            .map(|table| connectors_binding(&format!("providers.{name}.connectors"), table))
-            .transpose()?;
-        providers.insert(
-            name,
-            Provider {
-                kind: provider.kind,
-                cloud_type,
-                connectors,
-            },
-        );
-    }
-    ensure(
-        providers
-            .values()
-            .filter(|provider| provider.connectors.is_some())
-            .count()
-            <= 1,
-        "providers",
-        "may declare at most one connectors connection",
-    )?;
+    let (providers, metered) = providers(document.providers)?;
     let mut models = BTreeMap::new();
     for (alias, model) in document.models {
         let at = format!("models.{alias}");
@@ -623,7 +641,13 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
                 "must name a declared provider",
             ));
         }
-        models.insert(alias, validate_model(&at, model)?);
+        let model = validate_model(&at, model)?;
+        ensure(
+            metered == 0 || model.price_per_hour_micro_usd.is_some(),
+            &format!("{at}.price_per_hour_usd"),
+            "is required once a provider declares a spend ceiling",
+        )?;
+        models.insert(alias, model);
     }
     let mut hosted = BTreeMap::new();
     for (alias, declared) in document.hosted {
@@ -658,6 +682,64 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         routes: Routes::default(),
         digest,
     })
+}
+
+/// `[providers.<name>]`, checked: the providers, and how many of them declare a spend ceiling
+/// (at most one).
+fn providers(
+    declared: BTreeMap<String, ProviderDocument>,
+) -> Result<(BTreeMap<String, Provider>, usize), Refusal> {
+    let mut providers = BTreeMap::new();
+    for (name, provider) in declared {
+        closed_name(&format!("providers.{name}"), &name)?;
+        let cloud_type = match provider.cloud_type {
+            CloudTypeDocument::Secure => CloudType::Secure,
+            CloudTypeDocument::Community => CloudType::Community,
+        };
+        let connectors = provider
+            .connectors
+            .map(|table| connectors_binding(&format!("providers.{name}.connectors"), table))
+            .transpose()?;
+        let daily_cap_micro_usd = provider
+            .daily_cap_usd
+            .map(|usd| amount(&format!("providers.{name}.daily_cap_usd"), usd, MAX_CAP_USD))
+            .transpose()?;
+        let total_cap_micro_usd = provider
+            .total_cap_usd
+            .map(|usd| amount(&format!("providers.{name}.total_cap_usd"), usd, MAX_CAP_USD))
+            .transpose()?;
+        providers.insert(
+            name,
+            Provider {
+                kind: provider.kind,
+                cloud_type,
+                connectors,
+                daily_cap_micro_usd,
+                total_cap_micro_usd,
+            },
+        );
+    }
+    ensure(
+        providers
+            .values()
+            .filter(|provider| provider.connectors.is_some())
+            .count()
+            <= 1,
+        "providers",
+        "may declare at most one connectors connection",
+    )?;
+    let metered = providers
+        .values()
+        .filter(|provider| {
+            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
+        })
+        .count();
+    ensure(
+        metered <= 1,
+        "providers",
+        "may declare a spend ceiling on at most one provider",
+    )?;
+    Ok((providers, metered))
 }
 
 /// `[hosted.<alias>]`, checked (`llm-gateway.deployment.HostedDeclaration`).
@@ -859,11 +941,109 @@ fn bounded_text(key: &str, value: &str, limit: usize) -> Result<(), Refusal> {
     )
 }
 
-fn validate_model(at: &str, model: ModelDocument) -> Result<Model, Refusal> {
+fn validate_model(at: &str, mut model: ModelDocument) -> Result<Model, Refusal> {
+    let profiles = declared_profiles(at, &mut model)?;
     check_serving(at, &model)?;
-    check_vllm(at, &model)?;
-    check_placement(at, &model)?;
-    Ok(into_model(model))
+    check_vllm(at, &model, &profiles)?;
+    check_placement(at, &model, &profiles)?;
+    check_profile_conflict(at, &profiles)?;
+    let price = model
+        .price_per_hour_usd
+        .map(|usd| {
+            amount(
+                &format!("{at}.price_per_hour_usd"),
+                usd,
+                MAX_PRICE_PER_HOUR_USD,
+            )
+        })
+        .transpose()?;
+    Ok(Model {
+        price_per_hour_micro_usd: price,
+        ..into_model(model, profiles)
+    })
+}
+
+/// The model's profiles, each with the key its values are named under: the `profiles` list,
+/// or the flat keys as the one profile `default`, named under the model's own key.
+fn declared_profiles(
+    at: &str,
+    model: &mut ModelDocument,
+) -> Result<Vec<(String, ProfileDocument)>, Refusal> {
+    let Some(profiles) = model.profiles.take() else {
+        let (Some(gpu_types), Some(max_model_len)) = (model.gpu_types.take(), model.max_model_len)
+        else {
+            return Err(Refusal::new(
+                StartupRefusal::ConfigSchema,
+                format!("{at}: missing gpu_types and max_model_len, or profiles"),
+            ));
+        };
+        return Ok(vec![(
+            at.to_owned(),
+            ProfileDocument {
+                name: "default".to_owned(),
+                gpu_types,
+                max_model_len,
+                max_num_seqs: model.max_num_seqs.unwrap_or_else(default_max_num_seqs),
+                gpu_util: model.gpu_util.unwrap_or_else(default_gpu_util),
+                extra_vllm_args: model.extra_vllm_args.take().unwrap_or_default(),
+            },
+        )]);
+    };
+    let key = format!("{at}.profiles");
+    let flat = model.gpu_types.is_some()
+        || model.max_model_len.is_some()
+        || model.max_num_seqs.is_some()
+        || model.gpu_util.is_some()
+        || model.extra_vllm_args.is_some();
+    ensure(
+        !flat,
+        &key,
+        "replaces gpu_types, max_model_len, max_num_seqs, gpu_util and extra_vllm_args: declare them in each profile",
+    )?;
+    ensure(
+        (1..=MAX_PROFILES).contains(&profiles.len()),
+        &key,
+        &format!("must hold 1..={MAX_PROFILES} profiles"),
+    )?;
+    Ok(profiles
+        .into_iter()
+        .enumerate()
+        .map(|(index, profile)| (format!("{key}[{index}]"), profile))
+        .collect())
+}
+
+/// No two profiles of a model share a name or a GPU type, so a pod's GPU type names its
+/// profile.
+fn check_profile_conflict(at: &str, profiles: &[(String, ProfileDocument)]) -> Result<(), Refusal> {
+    let mut names = BTreeSet::new();
+    let mut gpus: BTreeSet<&str> = BTreeSet::new();
+    for (_, profile) in profiles {
+        let own: BTreeSet<&str> = profile.gpu_types.iter().map(String::as_str).collect();
+        ensure(
+            names.insert(profile.name.as_str()) && gpus.is_disjoint(&own),
+            &format!("{at}.profiles"),
+            "profile-conflict: two profiles share a name or a GPU type",
+        )?;
+        gpus.extend(own);
+    }
+    Ok(())
+}
+
+/// The most a spend ceiling may be, in USD.
+const MAX_CAP_USD: f64 = 1_000_000.0;
+/// The most a model's price per hour may be, in USD.
+const MAX_PRICE_PER_HOUR_USD: f64 = 1_000.0;
+
+/// A declared USD amount in micro-USD: finite, above 0, at most `max` and at least one
+/// micro-USD, or `config:value` naming `key`. The value is never quoted.
+fn amount(key: &str, usd: f64, max: f64) -> Result<u64, Refusal> {
+    let rule =
+        format!("must be a finite amount above 0 and at most {max} USD, of at least 0.000001");
+    if usd.is_finite() && usd <= max {
+        llm_runpod::micro_usd(usd).ok_or_else(|| value(key, &rule))
+    } else {
+        Err(value(key, &rule))
+    }
 }
 
 /// What the gateway serves and how long it holds a request.
@@ -905,17 +1085,28 @@ fn check_serving(at: &str, model: &ModelDocument) -> Result<(), Refusal> {
 }
 
 /// What reaches `vllm serve`.
-fn check_vllm(at: &str, model: &ModelDocument) -> Result<(), Refusal> {
+fn check_vllm(
+    at: &str,
+    model: &ModelDocument,
+    profiles: &[(String, ProfileDocument)],
+) -> Result<(), Refusal> {
     let key = |name: &str| format!("{at}.{name}");
-    within(
-        at,
-        "max_model_len",
-        &model.max_model_len,
-        &(1_024..=model.context_window),
-    )?;
-    within(at, "max_num_seqs", &model.max_num_seqs, &(1..=1_024))?;
-    // A range check that is false for NaN as well.
-    within(at, "gpu_util", &model.gpu_util, &(0.1..=1.0))?;
+    for (profile_at, profile) in profiles {
+        within(
+            profile_at,
+            "max_model_len",
+            &profile.max_model_len,
+            &(1_024..=model.context_window),
+        )?;
+        within(
+            profile_at,
+            "max_num_seqs",
+            &profile.max_num_seqs,
+            &(1..=1_024),
+        )?;
+        // A range check that is false for NaN as well.
+        within(profile_at, "gpu_util", &profile.gpu_util, &(0.1..=1.0))?;
+    }
     bounded_text(&key("hf_model"), &model.hf_model, 200)?;
     if let Some(effort) = &model.reasoning_effort {
         ensure(
@@ -929,29 +1120,48 @@ fn check_vllm(at: &str, model: &ModelDocument) -> Result<(), Refusal> {
             .is_ok_and(|parsed| parsed.is_object());
         ensure(object, &key("sampling"), "must be a JSON object")?;
     }
-    ensure(
-        model.extra_vllm_args.len() <= 64,
-        &key("extra_vllm_args"),
-        "must hold at most 64 entries",
-    )?;
-    for argument in &model.extra_vllm_args {
-        bounded_text(&key("extra_vllm_args"), argument, 256)?;
+    for (profile_at, profile) in profiles {
+        let key = format!("{profile_at}.extra_vllm_args");
+        ensure(
+            profile.extra_vllm_args.len() <= 64,
+            &key,
+            "must hold at most 64 entries",
+        )?;
+        for argument in &profile.extra_vllm_args {
+            bounded_text(&key, argument, 256)?;
+        }
     }
     Ok(())
 }
 
 /// Where a pod is placed and what it mounts.
-fn check_placement(at: &str, model: &ModelDocument) -> Result<(), Refusal> {
+fn check_placement(
+    at: &str,
+    model: &ModelDocument,
+    profiles: &[(String, ProfileDocument)],
+) -> Result<(), Refusal> {
     let key = |name: &str| format!("{at}.{name}");
     within(at, "disk_gb", &model.disk_gb, &(10..=2_000))?;
     bounded_text(&key("image"), &model.image, 200)?;
-    ensure(
-        (1..=16).contains(&model.gpu_types.len()),
-        &key("gpu_types"),
-        "must name 1..=16 candidates",
-    )?;
-    for gpu in &model.gpu_types {
-        bounded_text(&key("gpu_types"), gpu, 64)?;
+    for (profile_at, profile) in profiles {
+        let gpu_key = format!("{profile_at}.gpu_types");
+        ensure(
+            (1..=16).contains(&profile.gpu_types.len()),
+            &gpu_key,
+            "must name 1..=16 candidates",
+        )?;
+        for gpu in &profile.gpu_types {
+            bounded_text(&gpu_key, gpu, 64)?;
+        }
+        ensure(
+            (1..=32).contains(&profile.name.len())
+                && profile
+                    .name
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_')),
+            &format!("{profile_at}.name"),
+            "must be 1..=32 of A-Z, a-z, 0-9, - and _",
+        )?;
     }
     if let Some(volume) = &model.network_volume_id {
         ensure(
@@ -996,31 +1206,53 @@ fn check_placement(at: &str, model: &ModelDocument) -> Result<(), Refusal> {
 }
 
 /// The checked document, mapped onto the settings llm-gateway already has.
-fn into_model(model: ModelDocument) -> Model {
+fn into_model(model: ModelDocument, profiles: Vec<(String, ProfileDocument)>) -> Model {
     let cache = model.network_volume_id.map(|volume_id| NetworkVolume {
         volume_id,
         mount_path: model.volume_mount_path,
     });
+    let thinking = match model.thinking {
+        ThinkingDocument::On => Thinking::On,
+        ThinkingDocument::Off => Thinking::Off,
+    };
+    let vllm = |profile: &ProfileDocument| VllmSettings {
+        max_model_len: profile.max_model_len,
+        max_num_seqs: profile.max_num_seqs,
+        gpu_memory_utilization: profile.gpu_util,
+        thinking,
+        reasoning_effort: model.reasoning_effort.clone(),
+        sampling: model.sampling.clone(),
+        extra_args: profile.extra_vllm_args.clone(),
+    };
+    let mut profiles = profiles.into_iter().map(|(_, profile)| profile);
+    // `declared_profiles` holds at least one.
+    let first = profiles.next().unwrap_or_else(|| ProfileDocument {
+        name: "default".to_owned(),
+        gpu_types: Vec::new(),
+        max_model_len: 0,
+        max_num_seqs: default_max_num_seqs(),
+        gpu_util: default_gpu_util(),
+        extra_vllm_args: Vec::new(),
+    });
+    let first_vllm = vllm(&first);
+    let fallbacks = profiles
+        .map(|profile| RunpodProfile {
+            vllm: vllm(&profile),
+            name: profile.name,
+            gpu_types: profile.gpu_types,
+        })
+        .collect();
     Model {
         provider: model.provider,
         wires: model.wires,
         context_window: model.context_window,
         hf_model: model.hf_model,
         image: model.image,
-        gpu_types: model.gpu_types,
+        gpu_types: first.gpu_types,
         disk_gb: model.disk_gb,
-        vllm: VllmSettings {
-            max_model_len: model.max_model_len,
-            max_num_seqs: model.max_num_seqs,
-            gpu_memory_utilization: model.gpu_util,
-            thinking: match model.thinking {
-                ThinkingDocument::On => Thinking::On,
-                ThinkingDocument::Off => Thinking::Off,
-            },
-            reasoning_effort: model.reasoning_effort,
-            sampling: model.sampling,
-            extra_args: model.extra_vllm_args,
-        },
+        vllm: first_vllm,
+        profile: first.name,
+        fallbacks,
         cache,
         data_center_ids: model.data_center_ids,
         idle_timeout_minutes: model.idle_timeout_minutes,
@@ -1033,5 +1265,6 @@ fn into_model(model: ModelDocument) -> Model {
             ToolCallingDocument::Parsed => ToolCalling::Parsed,
             ToolCallingDocument::Absent => ToolCalling::Absent,
         },
+        price_per_hour_micro_usd: None,
     }
 }

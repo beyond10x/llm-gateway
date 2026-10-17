@@ -26,8 +26,9 @@ use llm_gateway::{
 };
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
-    HostingPolicy, Identifier, LeaseRegistry, PodListing, PodStream, PodTls, PoolError,
-    RunpodModel, RunpodPool, RunpodTransport, StreamLease,
+    HostingPolicy, Identifier, LeaseRegistry, ModelPhase, ModelStatus, PodListing, PodStream,
+    PodTls, PoolError, RunpodModel, RunpodPool, RunpodTransport, SpendPolicy, SpendRefusal,
+    StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -47,10 +48,14 @@ pub const CONTROLLER: &str = "b10x-llm-gateway";
 pub const PROVIDER: &str = "runpod";
 /// The Runpod account. The gateway holds no Runpod credential (row K7), so it names none.
 pub const ACCOUNT: &str = "default";
-/// The budget ledger the hosting contract attaches each pod to. No ledger is consulted yet.
+/// The budget ledger the hosting contract attaches each pod to.
 pub const LEDGER: &str = "b10x-llm-gateway";
-/// The reservation every pod is created under.
+/// The reservation every pod is created under when no provider declares a spend ceiling: no
+/// ledger is consulted.
 pub const RESERVATION: &str = "unmetered";
+/// The reservation every pod is created under when a provider declares a spend ceiling: each
+/// create is admitted by the pool's spend check.
+pub const METERED_RESERVATION: &str = "spend-ceiling";
 /// The longest a pod lives before it owes a stop: 24 hours.
 pub const MAX_LIFETIME_MS: u64 = 86_400_000;
 /// How long one ownership lease lasts: 5 minutes, five cleanup intervals.
@@ -157,7 +162,7 @@ pub fn hosting_policy(deployment: &Deployment) -> Result<HostingPolicy, Refusal>
     Ok(policy)
 }
 
-/// The fixed authorization every pod is created under.
+/// The unmetered authorization a pod is created under when no spend ceiling is declared.
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] if a fixed value were invalid.
@@ -166,6 +171,62 @@ pub fn compute_authorization() -> Result<ComputeAuthorization, Refusal> {
         ledger: identifier(LEDGER, "the ledger")?,
         reservation: identifier(RESERVATION, "the reservation")?,
     })
+}
+
+/// The authorization every pod of `deployment` is created under: the reservation
+/// [`METERED_RESERVATION`] when [`spend_policy`] binds a spend ceiling (one declared by a
+/// provider that one of its models runs on), [`RESERVATION`] otherwise.
+///
+/// # Errors
+/// As [`spend_policy`].
+pub fn compute_authorization_for(deployment: &Deployment) -> Result<ComputeAuthorization, Refusal> {
+    let reservation = if spend_policy(deployment)?.is_metered() {
+        METERED_RESERVATION
+    } else {
+        RESERVATION
+    };
+    Ok(ComputeAuthorization {
+        ledger: identifier(LEDGER, "the ledger")?,
+        reservation: identifier(reservation, "the reservation")?,
+    })
+}
+
+/// The spend ledger the pool built from `deployment` checks every create against: the ceilings
+/// of the one provider that declares any (the document allows at most one) when one of
+/// `deployment`'s models runs on it, and every model's declared price per hour. The pool bills
+/// the account of the providers its models name, so a ceiling declared on a provider no model
+/// names binds nothing here. With no such ceiling it is unmetered and the pool reads no spend.
+///
+/// # Errors
+/// A `config:value` [`Refusal`] for a model alias that is not an identifier.
+pub fn spend_policy(deployment: &Deployment) -> Result<SpendPolicy, Refusal> {
+    let mut policy = SpendPolicy::default();
+    let billed = |name: &String| {
+        deployment
+            .models
+            .values()
+            .any(|model| &model.provider == name)
+    };
+    if let Some(provider) = deployment
+        .providers
+        .iter()
+        .filter(|(name, _)| billed(name))
+        .map(|(_, provider)| provider)
+        .find(|provider| {
+            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
+        })
+    {
+        policy.daily_cap_micro_usd = provider.daily_cap_micro_usd;
+        policy.total_cap_micro_usd = provider.total_cap_micro_usd;
+    }
+    for (alias, model) in &deployment.models {
+        if let Some(price) = model.price_per_hour_micro_usd {
+            policy
+                .price_per_hour_micro_usd
+                .insert(identifier(alias, "a model alias")?, price);
+        }
+    }
+    Ok(policy)
 }
 
 /// `idle_timeout_minutes` as the pool's idle window. 0 is no idle grace (row K27): the pool takes
@@ -223,6 +284,8 @@ fn runpod_model(
         idle_timeout_ms: idle_timeout_ms(model.idle_timeout_minutes),
         crash_restart_limit: CRASH_RESTART_LIMIT,
         crash_window_ms: CRASH_WINDOW_MS,
+        profile: model.profile.clone(),
+        fallbacks: model.fallbacks.clone(),
     };
     declared.validate().map_err(|error| {
         Refusal::new(
@@ -259,6 +322,7 @@ pub fn runpod_pool<T: RunpodTransport>(
     transport: T,
     clock: Arc<dyn Clock>,
 ) -> Result<RunpodPool<T>, Refusal> {
+    let spend = spend_policy(deployment)?;
     RunpodPool::new(
         hosting_policy(deployment)?,
         Arc::new(LeaseRegistry::default()),
@@ -266,6 +330,7 @@ pub fn runpod_pool<T: RunpodTransport>(
         runpod_models(deployment)?,
         clock,
     )
+    .map(|pool| pool.with_spend(spend))
     .map_err(|error| {
         Refusal::new(
             StartupRefusal::ConfigValue,
@@ -280,10 +345,12 @@ struct Relayed {
     bearer: Arc<TargetBearer>,
     /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
     hold: Duration,
+    /// Each profile's `max_model_len` by profile name: the window of a pod started on it.
+    windows: BTreeMap<String, u64>,
 }
 
 /// What each model of `deployment` needs at acquisition: its alias, its vLLM key as the bearer,
-/// and its hold.
+/// its hold, and its profiles' windows.
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] for a model that names no `vllm_api_key_file`: its pod always
@@ -313,10 +380,23 @@ fn relayed_models(
                 alias: identifier(alias, &format!("models.{alias}"))?,
                 bearer: Arc::new(bearer),
                 hold: Duration::from_secs(model.request_hold_seconds),
+                windows: profile_windows(model).collect(),
             },
         );
     }
     Ok(models)
+}
+
+/// Each profile of `model` with its `max_model_len`, the first profile first.
+fn profile_windows(model: &Model) -> impl Iterator<Item = (String, u64)> + '_ {
+    std::iter::once((model.profile.clone(), u64::from(model.vllm.max_model_len))).chain(
+        model.fallbacks.iter().map(|fallback| {
+            (
+                fallback.name.clone(),
+                u64::from(fallback.vllm.max_model_len),
+            )
+        }),
+    )
 }
 
 /// The gateway's targets: the pod the pool hands out for each alias.
@@ -347,7 +427,7 @@ impl<T> PoolTargets<T> {
     ) -> Result<Self, Refusal> {
         Ok(Self::from_relayed(
             relayed_models(deployment, keys)?,
-            compute_authorization()?,
+            compute_authorization_for(deployment)?,
             pool,
             connector,
             stopping,
@@ -379,9 +459,15 @@ impl<T> PoolTargets<T> {
     /// deployment it creates anew, so a deployment not yet counted for its alias is a create the
     /// pool submitted. A request that binds to a pod another request started counts nothing.
     fn count_start(&self, alias: &str, hold: &Hold) {
-        let Some(deployment) = hold.deployment() else {
-            return;
-        };
+        if let Some(deployment) = hold.deployment() {
+            self.count_started(alias, deployment);
+        }
+    }
+
+    /// Counts `deployment`, found starting for `alias`, as a pod start unless it already was.
+    /// A wake that submitted a create finds its own deployment starting; one that found a pod
+    /// a request or an earlier wake started finds it counted.
+    fn count_started(&self, alias: &str, deployment: &Identifier) {
         let mut started = self.started.lock().unwrap_or_else(PoisonError::into_inner);
         if started.get(alias) != Some(deployment) {
             started.insert(alias.to_owned(), deployment.clone());
@@ -392,6 +478,25 @@ impl<T> PoolTargets<T> {
                 deployment = deployment.as_str(),
                 "pod start submitted"
             );
+        }
+    }
+
+    /// Counts a pod start the spend check refused, and writes the ceiling and the excess,
+    /// which the client's refusal never names, into a `warn` event.
+    fn count_spend_refusal(&self, alias: &str, refusal: SpendRefusal) {
+        self.metrics.count_pod_start_spend_refusal();
+        match refusal {
+            SpendRefusal::Over { over_micro_usd, .. } => tracing::warn!(
+                model = alias,
+                ceiling = refusal.code(),
+                over_usd = llm_runpod::usd(over_micro_usd).as_str(),
+                "pod start refused by a spend ceiling"
+            ),
+            SpendRefusal::Unknown => tracing::warn!(
+                model = alias,
+                ceiling = refusal.code(),
+                "pod start refused by a spend ceiling"
+            ),
         }
     }
 
@@ -488,14 +593,20 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         .ok_or(TargetRefusal::Unavailable)?
                         .to_owned();
                     let scheme = scheme(endpoint);
+                    // The window of the profile the pod was started on; a pod whose profile is
+                    // unknown leaves the model's, the smallest of its profiles'.
+                    let max_model_len = lease
+                        .profile()
+                        .and_then(|profile| relayed.windows.get(profile).copied());
                     return Ok(Box::new(PodTarget {
                         authority,
                         scheme,
+                        max_model_len,
                         bearer: Arc::clone(&relayed.bearer),
                         connector: Arc::clone(&self.connector),
                         // A hold binds only to a pod it found starting (rows O1, O2).
                         held: hold.deployment().is_some(),
-                        _lease: lease,
+                        lease,
                     }));
                 }
                 Err(PoolError::Starting | PoolError::Stopping) if !stopping && !hold.lost() => {
@@ -516,6 +627,10 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         );
                     }
                 }
+                Err(PoolError::SpendCeiling(refusal)) => {
+                    self.count_spend_refusal(alias, refusal);
+                    return Err(TargetRefusal::SpendCeiling);
+                }
                 Err(_) => return Err(TargetRefusal::Unavailable),
             }
         }
@@ -531,6 +646,75 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
             });
         }
     }
+
+    /// The owner's wake (story:model-wake-and-status): one `RunpodPool::wake`, the first ask
+    /// of a held request, so the spend check and the profile fallback are a request's, and
+    /// its pod start, spend refusal or start failure is counted as a request's would be. A
+    /// spend refusal is `spend-ceiling`; every other pool refusal `target-unavailable`. Once
+    /// the gateway starts to stop it starts nothing and steps nothing: a model starting or
+    /// ready is answered its status, any other `target-unavailable`. A model this pool does
+    /// not run (one of a provider with no `connectors` connection) is `target-unavailable`, as
+    /// its requests are.
+    fn wake(&self, alias: &str) -> Option<Result<llm_gateway::ModelStatus, TargetRefusal>> {
+        let Some(relayed) = self.models.get(alias) else {
+            return Some(Err(TargetRefusal::Unavailable));
+        };
+        if self.stopping.load(Ordering::SeqCst) {
+            return Some(match self.pool.status(&relayed.alias) {
+                Ok(status) if matches!(status.phase, ModelPhase::Starting | ModelPhase::Ready) => {
+                    Ok(gateway_status(&status))
+                }
+                _ => Err(TargetRefusal::Unavailable),
+            });
+        }
+        Some(match self.pool.wake(&relayed.alias, &self.authorization) {
+            Ok(status) => {
+                if status.phase == ModelPhase::Starting
+                    && let Some(deployment) = &status.deployment
+                {
+                    self.count_started(alias, deployment);
+                }
+                Ok(gateway_status(&status))
+            }
+            Err(PoolError::SpendCeiling(refusal)) => {
+                self.count_spend_refusal(alias, refusal);
+                Err(TargetRefusal::SpendCeiling)
+            }
+            Err(error) => {
+                self.count_failure(alias, error);
+                Err(TargetRefusal::Unavailable)
+            }
+        })
+    }
+
+    /// `RunpodPool::status`: the phase the pool's records hold, with no provider call. A model
+    /// this pool does not run (one of a provider with no `connectors` connection) is `stopped`,
+    /// as [`Unconnected`] answers it.
+    fn status(&self, alias: &str) -> Option<llm_gateway::ModelStatus> {
+        let stopped = || llm_gateway::ModelStatus::new(llm_gateway::ModelPhase::Stopped);
+        let Some(relayed) = self.models.get(alias) else {
+            return Some(stopped());
+        };
+        Some(
+            self.pool
+                .status(&relayed.alias)
+                .map_or_else(|_| stopped(), |status| gateway_status(&status)),
+        )
+    }
+}
+
+/// The pool's status as the gateway answers it.
+fn gateway_status(status: &ModelStatus) -> llm_gateway::ModelStatus {
+    llm_gateway::ModelStatus {
+        phase: match status.phase {
+            ModelPhase::Stopped => llm_gateway::ModelPhase::Stopped,
+            ModelPhase::Starting => llm_gateway::ModelPhase::Starting,
+            ModelPhase::Ready => llm_gateway::ModelPhase::Ready,
+            ModelPhase::Stopping => llm_gateway::ModelPhase::Stopping,
+        },
+        sub_phase: status.sub_phase.map(str::to_owned),
+        profile: status.profile.clone(),
+    }
 }
 
 /// One pod, held through its [`StreamLease`] until the relayed answer has ended.
@@ -541,7 +725,9 @@ struct PodTarget {
     connector: Arc<dyn PodConnector>,
     /// The request was held while this pod started.
     held: bool,
-    _lease: StreamLease,
+    /// The `max_model_len` of the profile the pod was started on, when it is known.
+    max_model_len: Option<u64>,
+    lease: StreamLease,
 }
 
 impl RelayTarget for PodTarget {
@@ -555,6 +741,14 @@ impl RelayTarget for PodTarget {
 
     fn bearer(&self) -> Option<&TargetBearer> {
         Some(&self.bearer)
+    }
+
+    fn profile(&self) -> Option<String> {
+        self.lease.profile().map(str::to_owned)
+    }
+
+    fn max_model_len(&self) -> Option<u64> {
+        self.max_model_len
     }
 
     fn held(&self) -> bool {
@@ -688,7 +882,10 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
 }
 
-/// Targets for models no pool serves: every acquisition is `target-unavailable`.
+/// Targets for models no pool serves: every acquisition and every wake is
+/// `target-unavailable`, and every such model is `stopped`, as [`PoolTargets`] answers a model
+/// of a provider it does not run. Only a Runpod model reaches it: a
+/// hosted model is answered before it ([`HostedTargets`]).
 struct Unconnected;
 
 impl RelayTargets for Unconnected {
@@ -697,6 +894,16 @@ impl RelayTargets for Unconnected {
     }
 
     fn invalidate(&self, _alias: &str, _failed: &str) {}
+
+    fn wake(&self, _alias: &str) -> Option<Result<llm_gateway::ModelStatus, TargetRefusal>> {
+        Some(Err(TargetRefusal::Unavailable))
+    }
+
+    fn status(&self, _alias: &str) -> Option<llm_gateway::ModelStatus> {
+        Some(llm_gateway::ModelStatus::new(
+            llm_gateway::ModelPhase::Stopped,
+        ))
+    }
 }
 
 /// Whether the work directory is an existing directory of the effective user with no group or
@@ -756,17 +963,21 @@ where
     let Some((provider, binding)) = connected else {
         return compose(deployment, parts, Arc::new(Unconnected), None);
     };
+    // The pool runs this provider's models on this provider's account: the subset holds no
+    // other provider, so no other provider's spend ceiling binds it.
     let mut subset = deployment.clone();
     subset.models.retain(|_, model| &model.provider == provider);
+    subset.providers.retain(|name, _| name == provider);
     if subset.models.is_empty() {
         return compose(deployment, parts, Arc::new(Unconnected), None);
     }
     // Every check the pool and its targets make, made before the transport is built: whether
     // a document is valid never depends on the connection, and a refused document costs no
     // `connectors` call.
-    let models = runpod_models(&subset)?;
-    let policy = hosting_policy(&subset)?;
-    let authorization = compute_authorization()?;
+    runpod_models(&subset)?;
+    hosting_policy(&subset)?;
+    spend_policy(&subset)?;
+    let authorization = compute_authorization_for(&subset)?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let mut transport = ConnectorsRunpod::new(binding.clone());
     transport.set_tls(Arc::new(ProbeOver(Arc::clone(&pods))));
@@ -782,20 +993,13 @@ where
             transport.set_vllm_key(alias, key.expose().to_vec());
         }
     }
-    let pool = RunpodPool::new(
-        policy,
-        Arc::new(LeaseRegistry::default()),
+    // The one constructor every composition builds its pool with, so none starts a pod
+    // without the spend ceilings the document declares.
+    let pool = Arc::new(runpod_pool(
+        &subset,
         wrap(transport),
-        models,
         Arc::new(WallClock::default()),
-    )
-    .map_err(|error| {
-        Refusal::new(
-            StartupRefusal::ConfigValue,
-            format!("the Runpod pool cannot be composed: {error}"),
-        )
-    })?;
-    let pool = Arc::new(pool);
+    )?);
     let targets = PoolTargets::from_relayed(
         relayed,
         authorization,
@@ -845,10 +1049,13 @@ impl Parts {
 
 /// Every model of the document as the relay serves it: on its wires, under its alias, with its
 /// `tool_calling`, and with the `max_model_len` and `context_window` the public routes publish
-/// (rows R5, R1). A hosted model is relayed under its `upstream_model`, and publishes the
-/// `context_window` it declares and no `max_model_len`. Only a hosted model gives a messages
-/// request naming no effort its declared `reasoning_effort`: a Runpod model's is already its
-/// server's default chat-template argument. A route of the routes document is relayed as
+/// (rows R5, R1). A Runpod model's `max_model_len` is the smallest of its profiles': the window
+/// every pod it may be served by takes; the output clamp takes the window of the profile the
+/// serving pod was started on instead ([`PodTarget`]). A hosted model is relayed under its
+/// `upstream_model`, and publishes the `context_window` it declares and no `max_model_len`.
+/// Only a hosted model gives a messages request naming no effort its declared
+/// `reasoning_effort`: a Runpod model's is already its server's default chat-template
+/// argument. A route of the routes document is relayed as
 /// [`crate::Routes::relay_models`] says.
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
@@ -889,7 +1096,12 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                     )
                 })?
                 .with_tool_calling(model.tool_calling)
-                .with_max_model_len(u64::from(model.vllm.max_model_len))
+                .with_max_model_len(
+                    profile_windows(model)
+                        .map(|(_, window)| window)
+                        .min()
+                        .unwrap_or(u64::from(model.vllm.max_model_len)),
+                )
                 .with_context_window(u64::from(model.context_window)),
         );
     }
@@ -949,6 +1161,10 @@ fn compose(
         stopping,
     })
 }
+
+#[cfg(test)]
+#[path = "relaying_stop_tests.rs"]
+mod stop_tests;
 
 #[cfg(test)]
 mod tests {

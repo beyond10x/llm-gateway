@@ -306,7 +306,7 @@ through `b10x-llm-providers`, and uses neither: it calls only `descriptions::run
 | namespace | `llmgw-` | `b10x-llm-`; a name starting with `llmgw-` is never listed, adopted, swept or terminated |
 | adoption after restart | any pod with the matching name | only the durable record's exact key, or its request id; a pod labelled for another owner is not adopted, and one taken over at a newer epoch is reported as transferred. After a takeover — the snapshot's previous lease holder gone and its claim expired — the new owner finds its inherited pods still labelled for that holder, because Runpod cannot relabel a pod; the contract parks such a record in `ownership-lost`, and the pool terminates the pod itself, but only when its label still names exactly the holder the snapshot records. A pod labelled for any other controller is never terminated |
 | single-flight start | an atomic phase flip on a watch channel | one mutex across a whole pool step: the first caller declares and submits, every later caller sees the live deployment and is told `starting` |
-| GPU choice | ordered; each refusal tries the next | the same, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false` |
+| GPU choice | ordered; each refusal tries the next | the same within a profile, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false`. A model may declare ordered profiles (below); the next profile is tried only when every create of the one before was refused for capacity |
 | crash recovery | two decreasing uptimes during startup terminate the pod | Runpod reports no uptime, so a restart is the pod's `lastStartedAt` (read by `pods.list` with `id`) moving forward: a value later than the last one seen is one restart, and the first value, an equal or an earlier one, or none, is not. The same count, at any time, but only restarts inside the model's declared `crash_window_ms` count (window end inclusive), so sparse restarts over a long life are not a loop; a pod refusing its vLLM key is terminated too; the next request starts a new deployment |
 | startup deadline | the caller's hold budget; the pod keeps starting | the pod's deadline is separate from a request's hold budget (`request_hold_seconds`, row K28): a pod that has not served within its declared deadline is terminated, because it is a billed resource serving nobody. A pod that served and then answers a definite "not ready" gets the same bound, counted from the last time it was seen ready (`stopped-serving`); unknown readiness neither starts nor ends that clock |
 | idle reaper | idle past the timeout, never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement |
@@ -331,14 +331,32 @@ present and not running. `pod-exited` and `stopped-serving`, like `crash-loop`,
 held on that pod is answered `stopping`, and a cleanup pass that retires a pod refuses nobody
 and reports it as `replaced`; the gateway answers each of them `target-unavailable`.
 
+A model declares one or more profiles: its own `gpu_types` and `vllm` are the first, named
+`profile` (`default` for a deployment document without `profiles`), and `fallbacks` the rest, in
+order (`RunpodProfile`: name, GPU types, vLLM settings). A start tries the GPU types of the first
+profile in order, the spend check immediately before each create. A create refused for capacity
+(`CreateAnswer::NoCapacity`, the connectors failure code `capacity`) or for any other reason
+(`Refused`) moves on to the profile's next GPU type. When every create of a profile was refused
+for capacity, the next profile is tried; a profile with any other refusal ends the start, as do a
+lost create answer and a spend refusal. Every profile is tried inside the one create of the one
+start, so one startup deadline, counted from that submission, covers them all, and binds the
+creates: before each create, of the profile's next GPU type and of the next profile, the provider
+reads the clock, and once more than `startup_deadline_ms` has passed it sends none and the start
+ends as one whose every create was refused (`no-capacity`, the deployment withdrawn). A GPU type belongs
+to at most one profile of a model, so a pod's GPU type names its profile, after an adoption too:
+`StreamLease::profile` reports it, and the gateway's usage record carries it as `profile`.
+
 The pool also answers `stopping` while a model's deployment owes a stop that is not confirmed,
-and `no-capacity` when every declared GPU type refused its create; neither creates anything. It
+and `no-capacity` when every declared GPU type refused its create, or every one tried before the
+start's startup deadline passed; neither creates anything. It
 answers `unknown-model` for an alias nobody declared, without contacting Runpod,
 `invalid-model` when a declaration is refused, and `hosting` when the controller refuses. A
 model declaration is refused with `no-gpu` when it names no GPU type, `gpu-utilization` for a
 `gpu_memory_utilization` outside (0, 1], `zero-setting` for a zero count, limit, deadline or
-window, `secret-reference` for a secret name that is not `[A-Za-z0-9_]+`, and `unsafe-text` for
-an empty or unprintable value bound for the pod's command line or environment.
+window, `secret-reference` for a secret name that is not `[A-Za-z0-9_]+`, `unsafe-text` for
+an empty or unprintable value bound for the pod's command line or environment, or a profile name
+that is not 1 to 32 of `A-Za-z0-9-_`, and `profile-conflict` when two profiles share a name or a
+GPU type. Every fallback profile is checked as the model is.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out.
@@ -354,7 +372,7 @@ control plane and no credential for it. `spec/domains/runpod.yaml` declares ever
 | --- | --- | --- |
 | list | `pods.list` with no filter | `complete` only when the whole answer is one array of pods and every pod parses; a truncated, throttled (`rate_limited`), interrupted or partly unreadable answer is not complete |
 | get | `pods.list` with `id` (v0.37.0 selects no `GetPod`) | the pod's `lastStartedAt`, for crash detection |
-| create | `pod.create`, one per GPU choice | `Created` for `applied` with a readable pod; `Refused` only for `refused`; `unknown` is resolved by one `pods.list` on the pod's `name`, which is per model alias (`Created` only if exactly one pod of that name carries this create's `B10X_LLM_REQUEST` tag, `Lost` otherwise); `not_attempted`, a timeout, a non-zero exit with no classification and unparseable output are `Lost` |
+| create | `pod.create`, one per GPU choice | `Created` for `applied` with a readable pod; `NoCapacity` for `refused` with the failure code `capacity`, `Refused` for any other `refused`; `unknown` is resolved by one `pods.list` on the pod's `name`, which is per model alias (`Created` only if exactly one pod of that name carries this create's `B10X_LLM_REQUEST` tag, `Lost` otherwise); `not_attempted`, a timeout, a non-zero exit with no classification and unparseable output are `Lost` |
 | terminate | `pod.terminate` with `podId` | `Terminated` for `applied`; `Refused` for `refused`, including `404`/`not_found`, which does not prove the pod is gone; anything else `Lost` |
 
 Each write is prepared and issued for its exact input (`approvals prepare`, `approvals issue`
@@ -461,7 +479,8 @@ Every input is fixed or read from the document (`spec/domains/deployment.yaml`):
 
 | Input | Source | Value |
 | --- | --- | --- |
-| `ComputeAuthorization` | fixed | ledger `b10x-llm-gateway`, reservation `unmetered`; no budget ledger is consulted yet |
+| `ComputeAuthorization` | fixed, and the document | ledger `b10x-llm-gateway`; reservation `spend-ceiling` when a provider declares a spend ceiling, `unmetered` otherwise |
+| `SpendPolicy` | the document | `daily_cap_usd` and `total_cap_usd` of the one provider that declares any, and every model's `price_per_hour_usd`, in micro-USD ([spend ceilings](#spend-ceilings)) |
 | clock | fixed | `WallClock`: system time in Unix milliseconds, never moving backwards |
 | `LeaseRegistry` | fixed | one empty in-process registry per run |
 | `HostingPolicy` | fixed, and the document | controller `b10x-llm-gateway`, provider `runpod`, account `default`, ledger `b10x-llm-gateway`, `max_lifetime_ms` 86400000 (24 h), `lease_ms` 300000 (5 min); `max_active` is the number of declared models |
@@ -497,6 +516,105 @@ starts a replacement; the next request does. A record whose create answer was lo
 (`uncertain`) keeps its holds waiting, because its pod may still be adopted and serve. A hold of
 0 asks once, starting the pod if none is live, and answers `model-cold-start` at once. `l6_*`, `w6_*` and `k28_*` in
 `crates/llm-gateway-cli/tests/relaying.rs` prove it.
+
+### Waking a model and reading its phase
+
+The owner's lifecycle routes (`docs/gateway.md`, "The lifecycle routes") drive the pool through
+two calls.
+
+`RunpodPool::status` reads the slot's current deployment from the controller's records and
+contacts nobody: no listing, probe, create or spend read. Its phase is `stopped` for a slot with
+no current deployment or one in a terminal phase, `stopping` for `stop-required`, `ready` for
+`requested` or `active` whose last observation was ready, and `starting` otherwise (`declared`,
+`uncertain`, or last observed not ready or of unknown readiness). While starting it carries the
+provider state the pod was last observed in: `pending` for a pod Runpod reports `CREATED` or
+`EXITED`, `running` for `RUNNING` (the container runs and vLLM does not answer ready yet), and
+none when the record holds no observed state, as after a restart. The profile is the one the
+pod's GPU type names, as a lease reports it. `ready` is the pool's last observation, made by
+the last step (a request, a wake, or the cleanup pass every 60 seconds), not a fresh probe.
+
+`RunpodPool::wake` is one `ensure`, the first ask of a held request, with a ready lease dropped
+at once, then `status`. A wake therefore starts a pod exactly as a request would: through the
+spend check before each create and the profile fallback, answering `starting` once its create is
+submitted. While a start is in progress or the pod is ready it creates nothing. A wake that
+finds the pod ready is a use of it, as a request's ask is, so its idle window starts again; a
+status is not. Every refusal of `ensure` is its own; the binary answers `spend-ceiling` for a
+spend refusal and `target-unavailable` for any other (`no-capacity` once every profile was
+refused, `stopping` while a previous pod's stop is unconfirmed, a retired pod's reason). The pod
+a wake starts counts in `llmgw_pod_starts_total`, a spend refusal in
+`llmgw_pod_start_spend_refusals_total`, a failed start in `llmgw_pod_start_failures_total`.
+Once the gateway starts to stop, a wake starts nothing and steps nothing: it answers the status
+of a model starting or ready and `target-unavailable` otherwise. A model of a provider whose
+`connectors` connection is absent or unreachable is `target-unavailable` to a wake and
+`stopped` to a status. The scenarios are `contracts/runpod/scenarios/a-wake-*` and `status-*`;
+`crates/llm-runpod/tests/wake_status.rs` and `crates/llm-gateway-cli/tests/wake_status.rs`
+prove the rest.
+
+### Spend ceilings
+
+A `[providers.<name>]` table may declare `daily_cap_usd` and `total_cap_usd`, the account's spend
+ceilings in USD (each finite, above 0, at most 1000000 and at least 0.000001; `config:value`
+otherwise). At most one provider declares one, and once one does every `[models.<alias>]`
+declares `price_per_hour_usd` (above 0, at most 1000): the most its pod costs per hour on any of
+its GPU types. Amounts are held as integer micro-USD, so a ceiling compares exactly.
+
+A ceiling binds only the account of the provider that declares it. The pool is built for one
+provider, the one whose models it runs (in the shipped binary, the provider that declares the
+`connectors` connection), and it bills that provider's account, so it checks only that
+provider's ceilings. A ceiling declared on another provider does not bind the pool, and the
+document is still accepted: when the connected provider declares none, the pool reads no spend.
+
+The spend check, `RunpodProvider::admit_spend`, runs immediately before every create the
+provider sends, once per declared GPU type it tries, and needs no relayed request. Without a
+ceiling it reads nothing. With one it adds, at the pool clock's instant:
+
+- the account's reported spend, read afresh for each check: today's since the UTC day's start,
+  and the total;
+- the running estimate of the pool's live pods: for every record of this controller that
+  occupies a slot, its model's price times the time since its create was submitted, and never
+  less than its price times its startup deadline, so a pod submitted moments ago counts what
+  its own start was admitted at and two starts in a row never share one headroom;
+- the estimate of the pod about to start: its model's price times its startup deadline.
+
+Each estimate is rounded up to the next micro-USD; a reported amount and a declared ceiling or
+price are rounded to the nearest, so an amount billed in whole cents is read exactly. The price
+is always the declared one, never the pod listing's. The daily projection is compared with the daily ceiling first, then
+the total one with the total ceiling. A projection equal to its ceiling is admitted; one
+micro-USD past it is refused. A spend read that fails or answers nothing, or a model with no
+price, is refused too: no ceiling is ever assumed met. A refused check sends no create and tries
+no further GPU type; the deployment is withdrawn (`cancelled`), the pool answers
+`spend-ceiling`, the request is answered `spend-ceiling` (503) at once without `retry-after`,
+`llmgw_pod_start_spend_refusals_total` counts it, and a `warn` event, `pod start refused by a
+spend ceiling`, names the model, the ceiling (`daily`, `total` or `unknown`) and the excess in
+USD. The client's message names neither.
+
+The check errs toward refusing, and its billing assumptions are unchecked against a live
+account:
+
+- The running estimate counts a live pod's whole time since submission, so it may count again
+  hours the reported spend already holds.
+- A pod this pool holds no record for (another controller's, or a previous run's before its
+  orphan sweep) is counted only once the reported spend holds it.
+- A pool pod that has been stopped leaves the running estimate when its record stops
+  occupying a slot, which can be before the provider bills its last stretch. Until the reported
+  spend holds that stretch, neither part counts it. This lag errs toward admitting.
+- The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`: each
+  entry's `amount` is taken as USD and its `time` as the bucket's start. Neither reading has been
+  checked against a live account.
+- The total is the sum of `billing.pods` over the provider's default time window, since the
+  read names none. If that window is bounded, spend billed before it is not counted and the
+  total ceiling is understated.
+- A `billing.pods` result is read only when it carries a 2xx `status`; one with no status is
+  unanswered, never zero spend, and refuses the start.
+
+**The live spend read needs a connectors release.** `ConnectorsRunpod` reads the account's spend
+through the connectors operation `billing.pods`, which the connectors v0.37.0 Runpod catalog does
+not select. Until a connectors release offers it, `operations describe` refuses it, every spend
+read is unanswered, and a deployment that declares a ceiling starts no pod: every start is
+answered `spend-ceiling`. A deployment that declares none is unaffected. `spend.rs` and the
+`billing_*` cases of `transport.rs` in `crates/llm-runpod/tests`, the ceiling scenarios under
+`contracts/runpod/scenarios`, and `spend_*` in `crates/llm-gateway-cli/tests/config.rs` and
+`tests/relaying.rs` prove it.
 
 **`idle_timeout_minutes = 0` means no idle grace** (row K27). The pod is stopped by the first
 cleanup pass that finds it with no request in flight, and never sooner than its measured cold

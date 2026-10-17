@@ -13,7 +13,7 @@ any level is refused as `config:schema`, naming the line and the keys allowed th
 outside its rule is refused as `config:value`. Either refusal exits 1 before anything is bound.
 
 ```text
-b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `tool_calling`
+b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `profiles`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `tool_calling`, `price_per_hour_usd`
 ```
 
 The document holds no Runpod API key: that key stays in the connectors keyring, which is why
@@ -40,6 +40,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `kind` | required | `runpod-vllm` |
 | `cloud_type` | `SECURE` | `SECURE` or `COMMUNITY` |
 | `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one. |
+| `daily_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in one UTC day. A pod start of one of this provider's models that would pass it is refused `spend-ceiling`; a ceiling binds no other provider's pods. |
+| `total_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
 
 :::caution[A connectors provider starts real, billed pods]
 With a `connectors` table and real Runpod credentials, the binary creates pods on that account
@@ -49,6 +51,11 @@ space or leading dash), `work_directory` (an absolute path) and `timeout_seconds
 default 60).
 :::
 
+A spend ceiling is checked before every pod create against the account's reported spend, the
+running pods' estimates and the new pod's estimate over its startup deadline. The reported spend
+is read through a connectors operation that no connectors release offers yet, so until one does,
+a provider that declares a ceiling starts no pod and every start is refused `spend-ceiling`.
+
 ## `[models.<alias>]`
 
 | Key | Default | Rule |
@@ -57,10 +64,11 @@ default 60).
 | `wires` | required | A non-empty set of `chat`, `responses`, `messages`, none repeated. |
 | `tool_calling` | `absent` | `parsed` or `absent`. A non-empty `tools` array sent to an `absent` model is `tools-not-served`. |
 | `context_window` | required | 4096 to 2000000 tokens. |
-| `max_model_len` | required | 1024 to `context_window`. |
+| `max_model_len` | required without `profiles` | 1024 to `context_window`. |
 | `hf_model` | required | 1 to 200 printable ASCII characters. |
 | `image` | required | 1 to 200 printable ASCII characters. |
-| `gpu_types` | required | 1 to 16 candidates, tried in order, each 1 to 64 printable ASCII characters. |
+| `gpu_types` | required without `profiles` | 1 to 16 candidates, tried in order, each 1 to 64 printable ASCII characters. |
+| `profiles` | absent | 1 to 8 `[[models.<alias>.profiles]]` tables, tried in order (below). Refused beside `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` or `extra_vllm_args`. |
 | `max_num_seqs` | 8 | 1 to 1024. |
 | `gpu_util` | 0.90 | 0.1 to 1.0. |
 | `disk_gb` | 80 | 10 to 2000. |
@@ -75,6 +83,20 @@ default 60).
 | `start_wait_seconds` | 600 | 10 to 3600: the pod's startup deadline. |
 | `request_hold_seconds` | `start_wait_seconds` | 0 to `start_wait_seconds`: how long one request waits for a starting pod. |
 | `vllm_api_key_file` | absent | The file holding the key the model's vLLM server expects. |
+| `price_per_hour_usd` | absent | Above 0, at most 1000: the most the model's pod costs per hour on any of its GPU types, which the spend check prices it by. Required once a provider declares a spend ceiling. |
+
+Without `profiles`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` and
+`extra_vllm_args` are the model's one profile, named `default`. With it, each
+`[[models.<alias>.profiles]]` table declares them for one profile: `name` (required, 1 to 32 of
+`A-Za-z0-9-_`), `gpu_types` and `max_model_len` (required), `max_num_seqs`, `gpu_util` and
+`extra_vllm_args`, under the rules above; any other key is `config:schema`. A start tries the
+first profile's GPU types in order, and moves on to the next profile only when Runpod refused
+every one of them for capacity, inside the same startup deadline and with the spend check before
+each create; once `start_wait_seconds` have passed since the start began, no further create is
+sent and the start ends `no-capacity`. A request is clamped to the `max_model_len` of the profile
+its pod was started on, and `GET /v1/models` lists the smallest among the profiles. Two profiles sharing a name or a GPU type are refused as `config:value` with the rule
+`profile-conflict`. Every other key of the model, `thinking` and `sampling` included, holds for
+every profile. The usage record names the profile of the pod that served a request (`profile`).
 
 The Runpod settings reach a pod only once the binary can start one; today they are checked and
 held. Two proven model declarations are in

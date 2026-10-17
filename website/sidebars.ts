@@ -22,6 +22,7 @@ const sidebars: SidebarsConfig = {
         'guides/set-up-a-client',
         'guides/translate-between-wires',
         'guides/scrape-the-counters',
+        'guides/run-on-kubernetes',
         'guides/run-the-checks',
       ],
     },

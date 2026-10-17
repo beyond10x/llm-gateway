@@ -26,6 +26,9 @@
     "lists": {
       "type": "integer"
     },
+    "spend_reads": {
+      "type": "integer"
+    },
     "requested_gpus": {
       "type": "array",
       "items": {
@@ -45,6 +48,12 @@
       }
     },
     "leases": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "lease_profiles": {
       "type": "array",
       "items": {
         "type": "string"
@@ -107,6 +116,7 @@
     "terminations",
     "pods",
     "leases",
+    "lease_profiles",
     "cleanups",
     "phases",
     "observed",
@@ -120,8 +130,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:38fd68babdb254022a39cdee9ca22ff82d4e8841497a66d19cfa04f4f9223ee0",
+    "source_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
+    "contract_digest": "slice-sha256/2:45e5297f12b8518d2cf90110d5448cfe11a390431ee5737a8366b4f25498cc37",
     "regenerate": "ess generate"
   },
   "$defs": {

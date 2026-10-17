@@ -1793,3 +1793,342 @@ fn hosted_a_reasoning_effort_of_low_medium_or_xhigh_loads_and_any_other_is_refus
         Some("high")
     );
 }
+
+// --- story:spend-caps --------------------------------------------------------------------------
+
+/// `text` with `lines` added to its `[providers.runpod]` table.
+fn with_provider_keys(text: &str, lines: &str) -> String {
+    mutate(
+        text,
+        "kind = \"runpod-vllm\"\n",
+        &format!("kind = \"runpod-vllm\"\n{lines}"),
+    )
+}
+
+#[test]
+fn spend_ceilings_and_prices_are_absent_unless_declared_and_read_in_micro_usd() {
+    let fixture = Fixture::new("spend-read");
+    let plain = load(&fixture.config(&base(&fixture))).unwrap();
+    assert_eq!(plain.providers["runpod"].daily_cap_micro_usd, None);
+    assert_eq!(plain.providers["runpod"].total_cap_micro_usd, None);
+    assert_eq!(plain.models["small"].price_per_hour_micro_usd, None);
+    let capped = with_model_keys(
+        &with_provider_keys(
+            &base(&fixture),
+            "daily_cap_usd = 25.5\ntotal_cap_usd = 1000000\n",
+        ),
+        "price_per_hour_usd = 0.000001\n",
+    );
+    let deployment = load(&fixture.config(&capped)).unwrap();
+    assert_eq!(
+        deployment.providers["runpod"].daily_cap_micro_usd,
+        Some(25_500_000)
+    );
+    assert_eq!(
+        deployment.providers["runpod"].total_cap_micro_usd,
+        Some(1_000_000_000_000)
+    );
+    assert_eq!(deployment.models["small"].price_per_hour_micro_usd, Some(1));
+    let only_total = with_model_keys(
+        &with_provider_keys(&base(&fixture), "total_cap_usd = 3\n"),
+        "price_per_hour_usd = 1000\n",
+    );
+    let deployment = load(&fixture.config(&only_total)).unwrap();
+    assert_eq!(deployment.providers["runpod"].daily_cap_micro_usd, None);
+    assert_eq!(
+        deployment.models["small"].price_per_hour_micro_usd,
+        Some(1_000_000_000)
+    );
+}
+
+#[test]
+fn spend_a_ceiling_or_price_outside_its_rule_is_a_value_refusal() {
+    let fixture = Fixture::new("spend-out-of-rule");
+    let priced = |provider: &str, model: &str| {
+        with_model_keys(&with_provider_keys(&base(&fixture), provider), model)
+    };
+    let price = "price_per_hour_usd = 2\n";
+    for (case, text) in [
+        ("daily zero", priced("daily_cap_usd = 0\n", price)),
+        ("daily negative", priced("daily_cap_usd = -1.5\n", price)),
+        ("daily nan", priced("daily_cap_usd = nan\n", price)),
+        ("daily inf", priced("daily_cap_usd = inf\n", price)),
+        ("daily above", priced("daily_cap_usd = 1000000.5\n", price)),
+        (
+            "daily below a micro",
+            priced("daily_cap_usd = 0.0000004\n", price),
+        ),
+        ("total zero", priced("total_cap_usd = 0.0\n", price)),
+        ("total -inf", priced("total_cap_usd = -inf\n", price)),
+        (
+            "price zero",
+            priced("daily_cap_usd = 5\n", "price_per_hour_usd = 0\n"),
+        ),
+        (
+            "price above",
+            priced("daily_cap_usd = 5\n", "price_per_hour_usd = 1000.01\n"),
+        ),
+        ("price nan", priced("", "price_per_hour_usd = nan\n")),
+        ("price missing", priced("daily_cap_usd = 5\n", "")),
+    ] {
+        match load(&fixture.config(&text)) {
+            Ok(_) => panic!("{case}: accepted"),
+            Err(refusal) => assert_eq!(refusal.code(), "config:value", "{case}"),
+        }
+    }
+    let second = format!(
+        "{}\n[providers.other]\nkind = \"runpod-vllm\"\ntotal_cap_usd = 4\n",
+        priced("daily_cap_usd = 5\n", price)
+    );
+    let refusal = load(&fixture.config(&second)).unwrap_err();
+    assert_eq!(refusal.code(), "config:value");
+    assert!(refusal.to_string().contains("providers"), "{refusal}");
+}
+
+#[test]
+fn spend_a_ceiling_written_as_text_is_a_schema_refusal() {
+    let fixture = Fixture::new("spend-schema");
+    let text = with_provider_keys(&base(&fixture), "daily_cap_usd = \"5\"\n");
+    assert_eq!(
+        load(&fixture.config(&text)).unwrap_err().code(),
+        "config:schema"
+    );
+}
+
+// ---- story:model-profile-fallback: `[[models.<alias>.profiles]]` ----
+
+const FLAT_PLACEMENT: &str = "gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n";
+
+const TWO_PROFILES: &str = r#"
+[[models.small.profiles]]
+name = "l40s-16k"
+gpu_types = ["NVIDIA L40S", "NVIDIA A40"]
+max_model_len = 16384
+
+[[models.small.profiles]]
+name = "h100-32k"
+gpu_types = ["NVIDIA H100 NVL"]
+max_model_len = 32768
+max_num_seqs = 16
+gpu_util = 0.95
+extra_vllm_args = ["--speculative-config", "{\"method\":\"mtp\"}"]
+"#;
+
+/// `[models.small]` with its flat placement keys removed and `profiles` appended.
+fn with_profiles(fixture: &Fixture, profiles: &str) -> String {
+    format!("{}{profiles}", mutate(&base(fixture), FLAT_PLACEMENT, ""))
+}
+
+#[test]
+fn profiles_an_ordered_list_loads_as_the_first_profile_and_its_fallbacks() {
+    let fixture = Fixture::new("profiles-ordered");
+    let deployment = load(&fixture.config(&with_profiles(&fixture, TWO_PROFILES))).unwrap();
+    let model = &deployment.models["small"];
+    assert_eq!(model.profile, "l40s-16k");
+    assert_eq!(model.gpu_types, ["NVIDIA L40S", "NVIDIA A40"]);
+    assert_eq!(model.vllm.max_model_len, 16_384);
+    assert_eq!(model.vllm.max_num_seqs, 8, "the default");
+    assert_eq!(model.fallbacks.len(), 1);
+    let fallback = &model.fallbacks[0];
+    assert_eq!(fallback.name, "h100-32k");
+    assert_eq!(fallback.gpu_types, ["NVIDIA H100 NVL"]);
+    assert_eq!(fallback.vllm.max_model_len, 32_768);
+    assert_eq!(fallback.vllm.max_num_seqs, 16);
+    assert!((fallback.vllm.gpu_memory_utilization - 0.95).abs() < f64::EPSILON);
+    assert_eq!(
+        fallback.vllm.extra_args,
+        ["--speculative-config", r#"{"method":"mtp"}"#]
+    );
+    assert_eq!(
+        fallback.vllm.thinking, model.vllm.thinking,
+        "thinking is the model's, shared by every profile"
+    );
+}
+
+/// The existing single declaration is the one-profile case: one profile named `default`, and
+/// every setting it loaded before.
+#[test]
+fn profiles_the_flat_declaration_is_one_profile_named_default() {
+    let fixture = Fixture::new("profiles-flat");
+    let deployment = load(&fixture.config(&base(&fixture))).unwrap();
+    let model = &deployment.models["small"];
+    assert_eq!(model.profile, "default");
+    assert!(model.fallbacks.is_empty());
+    assert_eq!(model.gpu_types, ["NVIDIA L40S"]);
+    assert_eq!(model.vllm.max_model_len, 1024);
+    let one = with_profiles(
+        &fixture,
+        "\n[[models.small.profiles]]\nname = \"default\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n",
+    );
+    let written = load(&fixture.config(&one)).unwrap();
+    assert_eq!(
+        written.models["small"], *model,
+        "one written profile named default is the flat declaration"
+    );
+}
+
+#[test]
+fn profiles_a_flat_placement_key_beside_them_is_refused_as_a_value() {
+    let fixture = Fixture::new("profiles-flat-beside");
+    for flat in [
+        "gpu_types = [\"NVIDIA L40S\"]\n",
+        "max_model_len = 1024\n",
+        "max_num_seqs = 8\n",
+        "gpu_util = 0.9\n",
+        "extra_vllm_args = []\n",
+    ] {
+        let text = with_profiles(&fixture, TWO_PROFILES).replacen(
+            "image = \"vllm/vllm-openai:v0.27.1\"\n",
+            &format!("image = \"vllm/vllm-openai:v0.27.1\"\n{flat}"),
+            1,
+        );
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{flat}: {refusal}");
+        assert!(
+            refusal.to_string().contains("models.small.profiles"),
+            "{flat}: {refusal}"
+        );
+    }
+}
+
+#[test]
+fn profiles_a_shared_gpu_type_or_a_repeated_name_is_a_profile_conflict() {
+    let fixture = Fixture::new("profiles-conflict");
+    for (case, find, replace) in [
+        (
+            "a GPU type in two profiles",
+            "gpu_types = [\"NVIDIA H100 NVL\"]",
+            "gpu_types = [\"NVIDIA H100 NVL\", \"NVIDIA A40\"]",
+        ),
+        (
+            "a repeated name",
+            "name = \"h100-32k\"",
+            "name = \"l40s-16k\"",
+        ),
+    ] {
+        let text = mutate(&with_profiles(&fixture, TWO_PROFILES), find, replace);
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+        assert!(
+            refusal.to_string().contains("profile-conflict"),
+            "{case}: {refusal}"
+        );
+    }
+}
+
+/// Each profile is held to the model's rules, and the list to its own.
+#[test]
+fn profiles_every_profile_value_outside_its_rule_is_refused() {
+    let fixture = Fixture::new("profiles-rules");
+    let text = with_profiles(&fixture, TWO_PROFILES);
+    assert!(
+        load(&fixture.config(&text)).is_ok(),
+        "the control is refused"
+    );
+    let cases = [
+        (
+            "a context past the window",
+            "max_model_len = 32768",
+            "max_model_len = 65537",
+        ),
+        (
+            "a context under 1024",
+            "max_model_len = 32768",
+            "max_model_len = 1023",
+        ),
+        (
+            "no GPU type",
+            "gpu_types = [\"NVIDIA H100 NVL\"]",
+            "gpu_types = []",
+        ),
+        ("zero sequences", "max_num_seqs = 16", "max_num_seqs = 0"),
+        (
+            "a utilization above one",
+            "gpu_util = 0.95",
+            "gpu_util = 1.01",
+        ),
+        (
+            "a name with a space",
+            "name = \"h100-32k\"",
+            "name = \"h100 32k\"",
+        ),
+        ("an empty name", "name = \"h100-32k\"", "name = \"\""),
+        (
+            "a name over 32 characters",
+            "name = \"h100-32k\"",
+            "name = \"h100-32k-aaaaaaaaaaaaaaaaaaaaaaaaa\"",
+        ),
+        (
+            "an argument that is not printable",
+            "extra_vllm_args = [",
+            "extra_vllm_args = [\"\\u0007\", ",
+        ),
+    ];
+    for (case, find, replace) in cases {
+        let refusal = load(&fixture.config(&mutate(&text, find, replace))).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+        assert!(
+            refusal.to_string().contains("models.small.profiles"),
+            "{case}: {refusal}"
+        );
+    }
+    let empty = format!(
+        "{}profiles = []\n",
+        mutate(&base(&fixture), FLAT_PLACEMENT, "")
+    );
+    assert_eq!(
+        load(&fixture.config(&empty)).unwrap_err().code(),
+        "config:value",
+        "an empty list"
+    );
+    let mut nine = String::new();
+    for index in 0..9 {
+        let _ = write!(
+            nine,
+            "\n[[models.small.profiles]]\nname = \"p{index}\"\ngpu_types = [\"GPU {index}\"]\nmax_model_len = 1024\n"
+        );
+    }
+    assert_eq!(
+        load(&fixture.config(&with_profiles(&fixture, &nine)))
+            .unwrap_err()
+            .code(),
+        "config:value",
+        "nine profiles"
+    );
+}
+
+#[test]
+fn profiles_a_missing_or_unknown_key_is_refused_as_schema() {
+    let fixture = Fixture::new("profiles-schema");
+    let without_placement = mutate(&base(&fixture), FLAT_PLACEMENT, "");
+    for (case, text) in [
+        ("neither profiles nor gpu_types", without_placement),
+        (
+            "a profile without a name",
+            mutate(
+                &with_profiles(&fixture, TWO_PROFILES),
+                "name = \"h100-32k\"\n",
+                "",
+            ),
+        ),
+        (
+            "a profile without max_model_len",
+            mutate(
+                &with_profiles(&fixture, TWO_PROFILES),
+                "max_model_len = 32768\n",
+                "",
+            ),
+        ),
+        (
+            "an unknown profile key",
+            mutate(
+                &with_profiles(&fixture, TWO_PROFILES),
+                "max_num_seqs = 16\n",
+                "max_num_seqs = 16\ndisk_gb = 80\n",
+            ),
+        ),
+    ] {
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:schema", "{case}: {refusal}");
+    }
+}

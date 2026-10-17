@@ -14,7 +14,7 @@ mod probe;
 
 use std::collections::BTreeMap;
 
-use crate::CloudType;
+use crate::{AccountSpend, CloudType};
 
 pub use connectors::{ConnectorsBinding, ConnectorsRunpod, POD_CREATE_BODY_KEYS, started_at_ms};
 pub use probe::{PodStream, PodTls};
@@ -73,7 +73,10 @@ pub struct PodRequest {
 pub enum CreateAnswer {
     /// The control plane answered with the pod it created.
     Created(Pod),
-    /// Refused — for Runpod usually "no capacity for this GPU type here". Nothing was created.
+    /// Refused for capacity: the provider has no machine of this GPU type free here (the
+    /// `connectors` failure code `capacity`). Nothing was created.
+    NoCapacity,
+    /// Refused for any other reason. Nothing was created.
     Refused,
     /// The answer never arrived. A pod may or may not exist.
     Lost,
@@ -132,4 +135,12 @@ pub trait RunpodTransport {
     /// `lastStartedAt`), or `None` while that is unknown. A value later than the previous one
     /// means the container restarted.
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64>;
+    /// The account's reported spend: since `day_start_ms` (the current UTC day's start, in
+    /// milliseconds since the Unix epoch) and in all. Allocates nothing. `None` when the read
+    /// failed or answered nothing, which the spend check never takes for a met ceiling; a
+    /// transport that cannot read spend keeps this default.
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
+        let _ = day_start_ms;
+        None
+    }
 }

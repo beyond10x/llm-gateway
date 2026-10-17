@@ -1,0 +1,30 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready
+summary: a wake submits the one create a request would and answers starting at once; further wakes while it starts and once it serves create nothing
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"ready_after","probes":1},{"step":"wake","alias":"qwen"},{"step":"wake","alias":"qwen"},{"step":"wake","alias":"qwen"},{"step":"wake","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - woke phase=starting sub_phase=running profile=default
+    - woke phase=starting sub_phase=running profile=default
+    - woke phase=ready sub_phase=none profile=default
+    - woke phase=ready sub_phase=none profile=default
+    create_calls: 1
+    requested_gpus:
+    - NVIDIA L40S
+    pods:
+    - pod1:b10x-llm-qwen:running
+    phases:
+    - qwen-1:active

@@ -24,6 +24,10 @@
 //!   hands out, rewriting only `model` (and on the messages wire a `high` or `max` effort, or
 //!   adding a model's declared effort to a request naming none), and streams the answer back as
 //!   it arrives. The target opens its own connection; this crate opens none.
+//! - **Wake a model and read its phase.** Composed with a [`Relay`], the gateway serves the
+//!   owner `POST /v1/models/{alias}/wake` and `GET /v1/models/{alias}/status`, answered from
+//!   [`RelayTargets::wake`] and [`RelayTargets::status`] as a [`ModelStatus`]; a model whose
+//!   source starts nothing for it has neither.
 //! - **Hand other wires to a translator.** A request on a wire its model's upstream does not
 //!   declare goes to the [`Translator`] the embedding composed with
 //!   [`Relay::with_translator`], which decodes it before any target is asked for and writes
@@ -60,8 +64,9 @@ pub use inventory::{
 };
 pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
 pub use relay::{
-    BasePath, CredentialHeader, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, StaticHeader, TargetBearer, TargetScheme, ToolCalling, Wire,
+    BasePath, CredentialHeader, ModelPhase, ModelStatus, ReasoningEffort, Relay, RelayModel,
+    RelayStream, RelayTarget, RelayTargets, StaticHeader, TargetBearer, TargetScheme, ToolCalling,
+    Wire, read_within_timeout,
 };
 pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};
 pub use translate::{

@@ -19,9 +19,13 @@
 //!   --idempotency-key <key>` (connectors `docs/local-approvals.md`). It is never sent twice; a
 //!   call refused before dispatch for a reason one step can mend is repeated once after it
 //!   ([`ConnectorsRunpod::recovery`]).
-//! * A create is `Refused` only when connectors classifies it `refused`. An `unknown` create is
+//! * A create is refused only when connectors classifies it `refused`: `NoCapacity` when the
+//!   failure's code is `capacity`, `Refused` for any other code. An `unknown` create is
 //!   resolved by one `pods.list` on the pod's name and its request tag; everything else is
 //!   `Lost`.
+//! * The account's spend is a read of `billing.pods` (Runpod `GET /billing/pods`), which
+//!   connectors v0.37.0's catalog does not select yet: until a connectors release offers it,
+//!   every spend read is unanswered, and a pool with a spend ceiling starts no pod.
 
 use std::{
     collections::BTreeMap,
@@ -46,8 +50,8 @@ use serde_json::{Map, Value, json};
 
 use super::probe::{self, BearerKey, PodTls};
 use crate::{
-    CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget, RunpodTransport,
-    TerminateAnswer,
+    AccountSpend, CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget,
+    RunpodTransport, TerminateAnswer, spend::reported_micro_usd,
 };
 
 /// Every key a `pod.create` `body` may carry, as Runpod's pinned `PodCreateInput` names it
@@ -81,6 +85,10 @@ pub const POD_CREATE_BODY_KEYS: &[&str] = &[
 const POD_CREATE: &str = "pod.create";
 const PODS_LIST: &str = "pods.list";
 const POD_TERMINATE: &str = "pod.terminate";
+/// Runpod `GET /billing/pods` (`PodBilling`), the account's reported spend. connectors v0.37.0's
+/// Runpod catalog does not select it: until a release does, `operations describe` refuses it
+/// and every spend read is unanswered.
+const BILLING_PODS: &str = "billing.pods";
 
 /// The most a CLI answer may print before it is treated as unreadable.
 const MAX_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
@@ -244,6 +252,14 @@ impl Answer {
             return None;
         }
         result.get("body")
+    }
+
+    /// [`Self::body`], only when the result says it succeeded: a `result.status` that is
+    /// present and 2xx. An answer that is read as an amount uses this, so a result that never
+    /// said it succeeded is unanswered rather than an empty body read as nothing spent.
+    fn confirmed_body(&self) -> Option<&Value> {
+        self.result.as_ref()?.get("result")?.get("status")?;
+        self.body()
     }
 }
 
@@ -455,25 +471,30 @@ impl ConnectorsRunpod {
 
     /// One read: `operations invoke` of `pods.list` with these filters.
     fn read(&mut self, filters: &Value) -> Answer {
-        let Some(input) = self.new_file(
-            &format!("{}.json", file_stem(PODS_LIST)),
-            filters.to_string().as_bytes(),
+        self.read_operation(PODS_LIST, filters)
+    }
+
+    /// One read of `operation` (no approval, never a write) with this input.
+    fn read_operation(&mut self, operation: &'static str, input: &Value) -> Answer {
+        let Some(path) = self.new_file(
+            &format!("{}.json", file_stem(operation)),
+            input.to_string().as_bytes(),
         ) else {
             return Answer::lost();
         };
-        let mut answer = self.read_once(&input);
+        let mut answer = self.read_once(operation, &path);
         // Refused before dispatch for a reason one step can mend: mend it, repeat once.
         if let Some(recovery) = Self::recovery(&answer)
-            && self.recover(PODS_LIST, recovery)
+            && self.recover(operation, recovery)
         {
-            answer = self.read_once(&input);
+            answer = self.read_once(operation, &path);
         }
-        let _ = fs::remove_file(&input);
+        let _ = fs::remove_file(&path);
         answer
     }
 
-    fn read_once(&mut self, input: &Path) -> Answer {
-        let Some((schema, revision)) = self.describe(PODS_LIST) else {
+    fn read_once(&mut self, operation: &'static str, input: &Path) -> Answer {
+        let Some((schema, revision)) = self.describe(operation) else {
             return Answer::lost();
         };
         self.run(&[
@@ -484,7 +505,7 @@ impl ConnectorsRunpod {
             "--connection",
             &self.binding.connection,
             "--operation",
-            PODS_LIST,
+            operation,
             "--schema",
             &schema,
             "--revision",
@@ -758,6 +779,9 @@ impl RunpodTransport for ConnectorsRunpod {
                 .body()
                 .and_then(pod_of)
                 .map_or(CreateAnswer::Lost, CreateAnswer::Created),
+            Some("refused") if answer.failure("code") == Some("capacity") => {
+                CreateAnswer::NoCapacity
+            }
             Some("refused") => CreateAnswer::Refused,
             // The pod may exist and may be billed: one read by its name, never a resend. The name
             // is per model alias, not per create, and Runpod names need not be unique: only a pod
@@ -808,6 +832,26 @@ impl RunpodTransport for ConnectorsRunpod {
             .get("lastStartedAt")
             .and_then(Value::as_str)
             .and_then(started_at_ms)
+    }
+
+    /// `billing.pods` with `{"bucketSize":"day"}`, read only when the whole answer is: a 2xx
+    /// `status`, present, and every entry a finite, non-negative `amount` in USD and a `time`
+    /// in `lastStartedAt`'s form. Each amount is rounded to the nearest micro-USD.
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
+        let answer = self.read_operation(BILLING_PODS, &json!({ "bucketSize": "day" }));
+        let mut spend = AccountSpend {
+            daily_micro_usd: 0,
+            total_micro_usd: 0,
+        };
+        for entry in answer.confirmed_body()?.as_array()? {
+            let amount = reported_micro_usd(entry.get("amount")?.as_f64()?)?;
+            let time = started_at_ms(entry.get("time")?.as_str()?)?;
+            spend.total_micro_usd = spend.total_micro_usd.checked_add(amount)?;
+            if time >= day_start_ms {
+                spend.daily_micro_usd = spend.daily_micro_usd.checked_add(amount)?;
+            }
+        }
+        Some(spend)
     }
 }
 

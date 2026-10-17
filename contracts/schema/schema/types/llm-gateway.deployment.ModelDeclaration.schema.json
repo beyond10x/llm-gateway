@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:fdfbfa9aef532abaed8f4b8bf28cc5396554fbd2a2189c26405e77d96dcc89f0",
+    "source_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
+    "contract_digest": "slice-sha256/2:ea51675c64bceea4bbecf705ed30d63c105f085121ea16fcdb37f3092551e925",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -60,6 +60,12 @@
           "format": "decimal",
           "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/llm-gateway.deployment.ProfileDeclaration"
+          }
+        },
         "disk_gb": {
           "type": "integer"
         },
@@ -104,6 +110,11 @@
         },
         "tool_calling": {
           "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
+        },
+        "price_per_hour_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         }
       },
       "required": [
@@ -112,19 +123,57 @@
         "context_window",
         "hf_model",
         "image",
-        "gpu_types",
-        "max_model_len",
-        "max_num_seqs",
-        "gpu_util",
         "disk_gb",
         "thinking",
-        "extra_vllm_args",
         "volume_mount_path",
         "data_center_ids",
         "idle_timeout_minutes",
         "start_wait_seconds",
         "request_hold_seconds",
         "tool_calling"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.ProfileDeclaration": {
+      "title": "ProfileDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ProfileDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "gpu_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_model_len": {
+          "type": "integer"
+        },
+        "max_num_seqs": {
+          "type": "integer"
+        },
+        "gpu_util": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "extra_vllm_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "gpu_types",
+        "max_model_len",
+        "max_num_seqs",
+        "gpu_util",
+        "extra_vllm_args"
       ],
       "additionalProperties": false
     },

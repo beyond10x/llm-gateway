@@ -5,21 +5,27 @@
 //! in-process `EmulatedRunpod` — and reports what those calls returned. It reimplements no
 //! lifecycle rule, reads no suite and branches on no scenario name: every answer, pod call,
 //! lease and cleanup below comes back out of the pool or the emulator. The one fixture it adds is
-//! a transport wrapper that keeps answering "not ready" for a pod that already served, which the
-//! emulator cannot script on its own (the crate's `tests/adversary2.rs` uses the same wrapper).
+//! a transport wrapper for two arrangements the emulator cannot script on its own: a pod that
+//! already served keeps answering "not ready" (the crate's `tests/adversary2.rs` uses the same
+//! wrapper), and every create takes a while of the pool's clock, as a `connectors` write does
+//! (the crate's `tests/adversary_w12_profiles.rs` uses the same wrapper).
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Barrier, Mutex, PoisonError},
+    sync::{
+        Arc, Barrier, Mutex, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
     thread,
 };
 
 use ess_conformance::target::TargetError;
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 use llm_runpod::{
-    CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock, NetworkVolume, PodListing,
-    PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel, RunpodPool, RunpodTransport,
-    StreamLease, TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
+    AccountSpend, CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock, ModelStatus,
+    NetworkVolume, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel,
+    RunpodPool, RunpodProfile, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease,
+    TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -70,7 +76,17 @@ struct Program {
     models: BTreeMap<String, ModelInput>,
     #[serde(default)]
     max_active: Option<u32>,
+    /// The pool's spend ceilings in USD (`SpendLedger`); absent is no ceiling.
+    #[serde(default)]
+    spend: Option<SpendInput>,
     steps: Vec<Step>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields, default)]
+struct SpendInput {
+    daily_cap_usd: Option<f64>,
+    total_cap_usd: Option<f64>,
 }
 
 /// Overrides on the crate test suite's reference model (`tests/runpod.rs` `model()`).
@@ -90,6 +106,20 @@ struct ModelInput {
     idle_timeout_ms: Option<u64>,
     crash_restart_limit: Option<u32>,
     crash_window_ms: Option<u64>,
+    /// The model's declared price per hour in USD, which the spend check prices it by.
+    price_per_hour_usd: Option<f64>,
+    /// Ordered profiles. The first replaces the model's `gpu_types` and `vllm`; a missing vLLM
+    /// field of a profile takes the runner's default.
+    profiles: Option<Vec<ProfileInput>>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct ProfileInput {
+    name: String,
+    gpu_types: Vec<String>,
+    #[serde(default)]
+    vllm: VllmInput,
 }
 
 #[derive(Deserialize, Clone)]
@@ -126,6 +156,15 @@ enum Step {
     },
     /// Drop every kept lease.
     Release,
+    /// One `wake` (the owner's lifecycle route): an `ensure`, a ready lease dropped, then the
+    /// model's status.
+    Wake {
+        alias: String,
+    },
+    /// One `status`, which contacts nobody.
+    Status {
+        alias: String,
+    },
     /// `ensure` until ready, moving the clock after each `starting`; the lease is dropped.
     UntilReady {
         alias: String,
@@ -147,6 +186,9 @@ enum Step {
         models: Option<BTreeMap<String, ModelInput>>,
     },
     RefuseGpu {
+        gpu: String,
+    },
+    NoCapacityGpu {
         gpu: String,
     },
     LoseNextCreate {
@@ -190,13 +232,49 @@ enum Step {
     Wedge {
         pod: String,
     },
+    /// Every create from now on takes `ms` of the pool's clock before it is answered.
+    CreateTakes {
+        ms: u64,
+    },
+    /// Spend reads from now on answer this reported spend, in USD.
+    AccountSpend {
+        daily_usd: f64,
+        total_usd: f64,
+    },
+    /// Spend reads from now on answer from these billed amounts: today's spend is those at or
+    /// after the UTC day's start the read asks for.
+    Billed {
+        entries: Vec<BilledInput>,
+    },
 }
 
-/// The emulator, plus the one arrangement it cannot script: a pod that stops serving.
-#[derive(Clone, Default)]
+/// One billed amount: `usd` at the pool clock's instant `at_ms`.
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct BilledInput {
+    at_ms: u64,
+    usd: f64,
+}
+
+/// The emulator, plus the two arrangements it cannot script: a pod that stops serving, and a
+/// create that takes time on the pool's clock.
+#[derive(Clone)]
 struct Fixture {
     runpod: EmulatedRunpod,
     wedged: Arc<Mutex<BTreeSet<String>>>,
+    clock: ManualClock,
+    create_ms: Arc<AtomicU64>,
+}
+
+impl Fixture {
+    fn new(clock: ManualClock) -> Self {
+        Self {
+            runpod: EmulatedRunpod::new(),
+            wedged: Arc::default(),
+            clock,
+            create_ms: Arc::default(),
+        }
+    }
 }
 
 impl RunpodTransport for Fixture {
@@ -204,6 +282,7 @@ impl RunpodTransport for Fixture {
         self.runpod.list_pods()
     }
     fn create_pod(&mut self, request: &PodRequest) -> CreateAnswer {
+        self.clock.advance(self.create_ms.load(Ordering::SeqCst));
         self.runpod.create_pod(request)
     }
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
@@ -222,23 +301,93 @@ impl RunpodTransport for Fixture {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.runpod.container_started_at(pod_id)
     }
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
+        self.runpod.account_spend(day_start_ms)
+    }
+}
+
+/// A USD amount of a program in micro-USD: 0, or a positive amount of at least one micro-USD.
+fn amount(usd: f64) -> Result<u64, String> {
+    if usd == 0.0 {
+        return Ok(0);
+    }
+    llm_runpod::micro_usd(usd).ok_or_else(|| "fixture:invalid-amount".to_owned())
+}
+
+/// The program's spend ledger: its ceilings and every model's price.
+fn spend_policy(
+    spend: Option<&SpendInput>,
+    models: &BTreeMap<String, ModelInput>,
+) -> Result<SpendPolicy, String> {
+    let cap = |usd: Option<f64>| usd.map(amount).transpose();
+    let mut prices = BTreeMap::new();
+    for (alias, model) in models {
+        if let Some(price) = model.price_per_hour_usd {
+            prices.insert(ident(alias)?, amount(price)?);
+        }
+    }
+    Ok(SpendPolicy {
+        daily_cap_micro_usd: cap(spend.and_then(|spend| spend.daily_cap_usd))?,
+        total_cap_micro_usd: cap(spend.and_then(|spend| spend.total_cap_usd))?,
+        price_per_hour_micro_usd: prices,
+    })
 }
 
 fn ident(value: &str) -> Result<Identifier, String> {
     Identifier::new(value).map_err(|_| "fixture:invalid-identifier".to_owned())
 }
 
+fn build_vllm(vllm: &VllmInput) -> Result<VllmSettings, String> {
+    Ok(VllmSettings {
+        max_model_len: vllm.max_model_len.unwrap_or(65_536),
+        max_num_seqs: vllm.max_num_seqs.unwrap_or(8),
+        gpu_memory_utilization: vllm.gpu_memory_utilization.unwrap_or(0.9),
+        thinking: match vllm.thinking.as_deref() {
+            None | Some("off") => Thinking::Off,
+            Some("on") => Thinking::On,
+            Some(_) => return Err("fixture:unknown-thinking".to_owned()),
+        },
+        reasoning_effort: vllm.reasoning_effort.clone(),
+        sampling: vllm.sampling.clone(),
+        extra_args: vllm
+            .extra_args
+            .clone()
+            .unwrap_or_else(|| vec!["--kv-cache-dtype".to_owned(), "fp8".to_owned()]),
+    })
+}
+
 fn build_model(input: &ModelInput) -> Result<RunpodModel, String> {
-    let vllm = &input.vllm;
+    let profiles = input.profiles.as_deref().unwrap_or_default();
+    let (profile, gpu_types, first_vllm) = match profiles.first() {
+        Some(first) => (
+            first.name.clone(),
+            Some(first.gpu_types.clone()),
+            build_vllm(&first.vllm)?,
+        ),
+        None => (
+            "default".to_owned(),
+            input.gpu_types.clone(),
+            build_vllm(&input.vllm)?,
+        ),
+    };
+    let fallbacks = profiles
+        .iter()
+        .skip(1)
+        .map(|profile| {
+            Ok(RunpodProfile {
+                name: profile.name.clone(),
+                gpu_types: profile.gpu_types.clone(),
+                vllm: build_vllm(&profile.vllm)?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(RunpodModel {
         hf_model: input
             .hf_model
             .clone()
             .unwrap_or_else(|| "Qwen/Qwen3.8-27B-FP8".to_owned()),
         image: ident(input.image.as_deref().unwrap_or("vllm/vllm-openai:v0.27.1"))?,
-        gpu_types: input
-            .gpu_types
-            .clone()
+        gpu_types: gpu_types
             .unwrap_or_else(|| vec!["NVIDIA L40S".to_owned(), "NVIDIA H100 NVL".to_owned()]),
         cloud_type: match input.cloud_type.as_deref() {
             None | Some("SECURE") => CloudType::Secure,
@@ -251,22 +400,7 @@ fn build_model(input: &ModelInput) -> Result<RunpodModel, String> {
             mount_path: cache.mount_path.clone(),
         }),
         data_center_ids: input.data_center_ids.clone().unwrap_or_default(),
-        vllm: VllmSettings {
-            max_model_len: vllm.max_model_len.unwrap_or(65_536),
-            max_num_seqs: vllm.max_num_seqs.unwrap_or(8),
-            gpu_memory_utilization: vllm.gpu_memory_utilization.unwrap_or(0.9),
-            thinking: match vllm.thinking.as_deref() {
-                None | Some("off") => Thinking::Off,
-                Some("on") => Thinking::On,
-                Some(_) => return Err("fixture:unknown-thinking".to_owned()),
-            },
-            reasoning_effort: vllm.reasoning_effort.clone(),
-            sampling: vllm.sampling.clone(),
-            extra_args: vllm
-                .extra_args
-                .clone()
-                .unwrap_or_else(|| vec!["--kv-cache-dtype".to_owned(), "fp8".to_owned()]),
-        },
+        vllm: first_vllm,
         api_key_secret: input
             .api_key_secret
             .clone()
@@ -275,6 +409,8 @@ fn build_model(input: &ModelInput) -> Result<RunpodModel, String> {
         idle_timeout_ms: input.idle_timeout_ms.unwrap_or(1_800_000),
         crash_restart_limit: input.crash_restart_limit.unwrap_or(2),
         crash_window_ms: input.crash_window_ms.unwrap_or(600_000),
+        profile,
+        fallbacks,
     })
 }
 
@@ -303,6 +439,15 @@ fn refusal(error: PoolError) -> String {
     match error {
         PoolError::InvalidModel(config) => format!("invalid-model:{}", config.code()),
         PoolError::Hosting(hosting) => format!("hosting:{}", hosting.code()),
+        PoolError::SpendCeiling(SpendRefusal::Over {
+            ceiling,
+            over_micro_usd,
+        }) => format!(
+            "spend-ceiling:{}:over_usd={}",
+            ceiling.code(),
+            llm_runpod::usd(over_micro_usd)
+        ),
+        PoolError::SpendCeiling(SpendRefusal::Unknown) => "spend-ceiling:unknown".to_owned(),
         other => other.code().to_owned(),
     }
 }
@@ -333,6 +478,16 @@ fn cleanup(report: &CleanupReport) -> String {
     )
 }
 
+/// A `wake` or `status` answer: `<word> phase=<..> sub_phase=<..|none> profile=<..|none>`.
+fn status_fact(word: &str, status: &ModelStatus) -> String {
+    format!(
+        "{word} phase={} sub_phase={} profile={}",
+        status.phase.code(),
+        status.sub_phase.unwrap_or("none"),
+        status.profile.as_deref().unwrap_or("none")
+    )
+}
+
 fn lease_fact(lease: &StreamLease) -> String {
     format!(
         "{} {}",
@@ -349,11 +504,14 @@ struct Run {
     registry: Arc<LeaseRegistry>,
     policy: HostingPolicy,
     models: BTreeMap<Identifier, RunpodModel>,
+    spend: SpendPolicy,
     pool: Arc<RunpodPool<Fixture>>,
     /// Pools a restart replaced. They stay alive, as a crashed process's claims would.
     replaced: Vec<Arc<RunpodPool<Fixture>>>,
     held: Vec<StreamLease>,
     leases: Vec<String>,
+    /// The profile each ready lease names, `unknown` when it names none.
+    lease_profiles: Vec<String>,
     cleanups: Vec<String>,
 }
 
@@ -375,6 +533,8 @@ impl Run {
             match self.pool.ensure(&alias, &authorization) {
                 Ok(lease) => {
                     self.leases.push(lease_fact(&lease));
+                    self.lease_profiles
+                        .push(lease.profile().unwrap_or("unknown").to_owned());
                     if keep {
                         self.held.push(lease);
                     }
@@ -385,6 +545,26 @@ impl Run {
             }
         }
         "never-ready".to_owned()
+    }
+
+    fn wake(&self, alias: &str) -> String {
+        let (Ok(alias), Ok(authorization)) = (ident(alias), Self::authorization()) else {
+            return "err:fixture:invalid-identifier".to_owned();
+        };
+        match self.pool.wake(&alias, &authorization) {
+            Ok(status) => status_fact("woke", &status),
+            Err(error) => format!("err:{}", refusal(error)),
+        }
+    }
+
+    fn status(&self, alias: &str) -> String {
+        let Ok(alias) = ident(alias) else {
+            return "err:fixture:invalid-identifier".to_owned();
+        };
+        match self.pool.status(&alias) {
+            Ok(status) => status_fact("status", &status),
+            Err(error) => format!("err:{}", refusal(error)),
+        }
     }
 
     fn concurrent(&self, alias: &str, callers: usize) -> String {
@@ -431,6 +611,7 @@ impl Run {
             Arc::new(self.clock.clone()),
         ) {
             Ok(pool) => {
+                let pool = pool.with_spend(self.spend.clone());
                 let previous = std::mem::replace(&mut self.pool, Arc::new(pool));
                 self.replaced.push(previous);
                 self.models = models;
@@ -478,6 +659,8 @@ impl Run {
                 max_attempts,
             } => return self.ensure(alias, Some(max_attempts.unwrap_or(20)), true),
             Step::Release => self.held.clear(),
+            Step::Wake { alias } => return self.wake(alias),
+            Step::Status { alias } => return self.status(alias),
             Step::Concurrent { alias, callers } => return self.concurrent(alias, *callers),
             Step::Advance { ms } => self.clock.advance(*ms),
             Step::Reap => match self.pool.reap() {
@@ -486,12 +669,36 @@ impl Run {
             },
             Step::Restart { models } => return self.restart(models.as_ref()),
             Step::RefuseGpu { gpu } => runpod.refuse_gpu(gpu),
+            Step::NoCapacityGpu { gpu } => runpod.no_capacity_gpu(gpu),
             Step::LoseNextCreate { allocates } => runpod.lose_next_create(*allocates),
+            Step::CreateTakes { ms } => self.fixture.create_ms.store(*ms, Ordering::SeqCst),
             Step::ReadyAfter { probes } => runpod.ready_after(*probes),
             Step::Uptimes { script } => runpod.uptimes(script.clone()),
             Step::RefuseCredential { pod } => runpod.refuse_credential(pod),
             Step::PartialListing { partial } => runpod.partial_listing(*partial),
             Step::ProbeUnreachable { unreachable } => runpod.probe_unreachable(*unreachable),
+            Step::AccountSpend {
+                daily_usd,
+                total_usd,
+            } => match (amount(*daily_usd), amount(*total_usd)) {
+                (Ok(daily_micro_usd), Ok(total_micro_usd)) => {
+                    runpod.set_account_spend(Some(AccountSpend {
+                        daily_micro_usd,
+                        total_micro_usd,
+                    }));
+                }
+                (Err(code), _) | (_, Err(code)) => return format!("err:{code}"),
+            },
+            Step::Billed { entries } => {
+                let mut billed = Vec::with_capacity(entries.len());
+                for entry in entries {
+                    match amount(entry.usd) {
+                        Ok(micro_usd) => billed.push((entry.at_ms, micro_usd)),
+                        Err(code) => return format!("err:{code}"),
+                    }
+                }
+                runpod.set_billed(billed);
+            }
             Step::SetStatus { pod, status } => {
                 let status = match status.as_str() {
                     "Created" => PodStatus::Created,
@@ -525,6 +732,7 @@ fn emulator_facts(facts: &mut Value, runpod: &EmulatedRunpod) {
     let requests = runpod.requests();
     facts["create_calls"] = json!(runpod.create_calls());
     facts["lists"] = json!(runpod.lists());
+    facts["spend_reads"] = json!(runpod.spend_reads());
     facts["requested_gpus"] = json!(
         requests
             .iter()
@@ -634,7 +842,7 @@ fn pool_facts(facts: &mut Value, run: &Run) {
 fn run(program_json: &str) -> Value {
     let mut facts = json!({
         "valid_program": false, "error_code": null, "results": [], "create_calls": null,
-        "lists": null, "requested_gpus": [], "terminations": [], "pods": [], "leases": [],
+        "lists": null, "spend_reads": null, "requested_gpus": [], "terminations": [], "pods": [], "leases": [], "lease_profiles": [],
         "cleanups": [], "phases": [], "observed": [], "stop_required": [], "transferred": [],
         "last_request": null, "last_entrypoint": [], "last_env": []
     });
@@ -648,17 +856,22 @@ fn run(program_json: &str) -> Value {
         return facts;
     }
     facts["valid_program"] = json!(true);
-    let setup = build_models(&program.models)
-        .and_then(|models| Ok((models, policy(program.max_active.unwrap_or(16))?)));
-    let (models, policy) = match setup {
+    let setup = build_models(&program.models).and_then(|models| {
+        Ok((
+            models,
+            policy(program.max_active.unwrap_or(16))?,
+            spend_policy(program.spend.as_ref(), &program.models)?,
+        ))
+    });
+    let (models, policy, spend) = match setup {
         Ok(setup) => setup,
         Err(code) => {
             facts["error_code"] = json!(code);
             return facts;
         }
     };
-    let fixture = Fixture::default();
     let clock = ManualClock::new(1_000);
+    let fixture = Fixture::new(clock.clone());
     let registry = Arc::new(LeaseRegistry::default());
     let pool = match RunpodPool::new(
         policy.clone(),
@@ -667,7 +880,7 @@ fn run(program_json: &str) -> Value {
         models.clone(),
         Arc::new(clock.clone()),
     ) {
-        Ok(pool) => pool,
+        Ok(pool) => pool.with_spend(spend.clone()),
         Err(error) => {
             facts["error_code"] = json!(refusal(error));
             emulator_facts(&mut facts, &fixture.runpod);
@@ -680,15 +893,18 @@ fn run(program_json: &str) -> Value {
         registry,
         policy,
         models,
+        spend,
         pool: Arc::new(pool),
         replaced: Vec::new(),
         held: Vec::new(),
         leases: Vec::new(),
+        lease_profiles: Vec::new(),
         cleanups: Vec::new(),
     };
     let results: Vec<String> = program.steps.iter().map(|step| run.step(step)).collect();
     facts["results"] = json!(results);
     facts["leases"] = json!(run.leases);
+    facts["lease_profiles"] = json!(run.lease_profiles);
     facts["cleanups"] = json!(run.cleanups);
     emulator_facts(&mut facts, &run.fixture.runpod);
     pool_facts(&mut facts, &run);

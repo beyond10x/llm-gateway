@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-17T01:21:01Z",
+  "actor": "human:timo",
+  "artifact": "story:relay-read-interrupted",
+  "kind": "story",
+  "revision": 9,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "package gates on the integrated head 991401a (clippy -D warnings and test --no-fail-fast for b10x-llm-runpod 149, b10x-llm-gateway 248, b10x-llm-gateway-cli 291 with 1 ignored, b10x-llm-gateway-conformance 11, llm-gateway-docs 22; 0 failed); conformance 277 of 277 on three runs",
+    "reference": "the wave scratch directory, wakefix/green-logs"
+  }
+}

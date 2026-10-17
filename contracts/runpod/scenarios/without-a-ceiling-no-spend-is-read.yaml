@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: without-a-ceiling-no-spend-is-read
+summary: a pool with no ceiling reads no spend and creates as before
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"price_per_hour_usd":2,"startup_deadline_ms":1800000}},"steps":[{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - err:starting
+    create_calls: 1
+    spend_reads: 0

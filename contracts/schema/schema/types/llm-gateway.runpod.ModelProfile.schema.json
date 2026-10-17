@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.ModelProfile",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
+    "contract_digest": "slice-sha256/2:08ceb49994a1b7b0d0d06c3fb12416e67e8a04d775a913b81677edb275fc4015",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.ModelProfile": {
+      "title": "ModelProfile",
+      "x-ess-name": "llm-gateway.runpod.ModelProfile",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "gpu_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_model_len": {
+          "type": "integer"
+        },
+        "max_num_seqs": {
+          "type": "integer"
+        },
+        "gpu_memory_utilization": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "extra_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "gpu_types",
+        "max_model_len",
+        "max_num_seqs",
+        "gpu_memory_utilization",
+        "extra_args"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

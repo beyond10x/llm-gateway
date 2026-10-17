@@ -58,6 +58,9 @@ pub struct UsageRecord {
     pub response_bytes: u64,
     /// From the end of the request head to the last byte relayed or the refusal written.
     pub duration_ms: u64,
+    /// The profile of the pod that served the call. `None` for a hosted endpoint, a target
+    /// that names no profile, and a call no target served.
+    pub profile: Option<String>,
 }
 
 /// Where the gateway hands each [`UsageRecord`]. The embedding implements it; it is called on
@@ -79,8 +82,9 @@ struct Series {
     help: &'static str,
 }
 
-/// The eight process-wide series, in llmgw's order (matrix row O1).
-const PROCESS: [Series; 8] = [
+/// The nine process-wide series: llmgw's eight in llmgw's order (matrix row O1), then the
+/// gateway's own spend-refusal series.
+const PROCESS: [Series; 9] = [
     Series {
         name: "llmgw_inference_requests_total",
         help: "Model calls the gateway was asked to relay, one per usage record.",
@@ -112,6 +116,10 @@ const PROCESS: [Series; 8] = [
     Series {
         name: "llmgw_cold_start_wait_seconds_total",
         help: "Seconds requests spent held for a starting target.",
+    },
+    Series {
+        name: "llmgw_pod_start_spend_refusals_total",
+        help: "Pod starts refused because they would pass a spend ceiling or the spend is unknown.",
     },
 ];
 
@@ -151,6 +159,7 @@ enum Process {
     EndpointInvalidations,
     /// Kept in milliseconds and rendered in seconds.
     ColdStartWait,
+    PodStartSpendRefusals,
 }
 
 /// A per-route counter, by its place in [`ROUTE`].
@@ -167,7 +176,7 @@ enum Route {
 /// shares it with the relay through [`crate::Relay::with_metrics`]. Every counter only grows.
 #[derive(Debug, Default)]
 pub struct Metrics {
-    process: [AtomicU64; 8],
+    process: [AtomicU64; 9],
     /// Per (alias, wire) a relayed model declares, registered at zero when the relay is
     /// composed. A call on any other pair feeds the process-wide series only.
     routes: Mutex<BTreeMap<(String, Wire), [u64; 5]>>,
@@ -183,6 +192,12 @@ impl Metrics {
     /// (`llmgw_pod_start_failures_total`).
     pub fn count_pod_start_failure(&self) {
         self.add(Process::PodStartFailures, 1);
+    }
+
+    /// Counts a pod start the spend check refused, answered `spend-ceiling`
+    /// (`llmgw_pod_start_spend_refusals_total`).
+    pub fn count_pod_start_spend_refusal(&self) {
+        self.add(Process::PodStartSpendRefusals, 1);
     }
 
     /// Counts deployments and pods a cleanup pass stopped (`llmgw_pod_reaps_total`).
@@ -362,6 +377,7 @@ mod tests {
             reasoning_output_tokens: None,
             response_bytes: 0,
             duration_ms: 1,
+            profile: None,
         });
         let text = metrics.render();
         assert!(text.contains("\nllmgw_inference_requests_total 1\n"));

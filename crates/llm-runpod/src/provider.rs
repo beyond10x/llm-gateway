@@ -20,8 +20,9 @@ use llm_provision::{
 
 use crate::{
     Clock, CreateAnswer, Pod, PodStatus, Probe, ProbeTarget, RunpodModel, RunpodTransport,
-    TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
+    SpendPolicy, SpendRefusal, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
     request::{Tags, in_namespace, pod_request},
+    spend::{DAY_MS, admit, estimate},
 };
 
 /// Why a pod can no longer serve and has to be replaced.
@@ -56,6 +57,15 @@ pub struct RunpodProvider<T> {
     clock: Arc<dyn Clock>,
     /// llm's Runpod provider description: where a running pod serves inference.
     description: ProviderDescription,
+    /// The account's spend ceilings and the declared prices; `None` checks nothing.
+    spend: Option<SpendPolicy>,
+    /// The pool's live pods the spend check estimates: model alias and submission instant.
+    live: Vec<(Identifier, u64)>,
+    /// Why the last create was refused by the spend check, until taken.
+    spend_refusal: Option<SpendRefusal>,
+    /// The GPU type of each pod by incarnation, as its create or a listing reported it: a GPU
+    /// type belongs to at most one profile of a model, so it names the pod's profile.
+    gpus: BTreeMap<String, String>,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RunpodProvider<T> {
@@ -90,7 +100,73 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             health: BTreeMap::new(),
             clock,
             description: descriptions::runpod(),
+            spend: None,
+            live: Vec::new(),
+            spend_refusal: None,
+            gpus: BTreeMap::new(),
         }
+    }
+
+    /// Sets the spend ceilings every create is checked against; `None` checks nothing.
+    pub fn set_spend(&mut self, spend: Option<SpendPolicy>) {
+        self.spend = spend;
+    }
+
+    /// The live pods the spend check counts, as `(model alias, submission instant)`: every
+    /// record of the controller whose phase occupies a slot. The pool sets them before each
+    /// provision.
+    pub fn set_live(&mut self, live: Vec<(Identifier, u64)>) {
+        self.live = live;
+    }
+
+    /// Why the spend check refused the last create, once: taking it clears it.
+    pub fn take_spend_refusal(&mut self) -> Option<SpendRefusal> {
+        self.spend_refusal.take()
+    }
+
+    /// The spend check (`spec/domains/runpod.yaml`, `SpendLedger`), run immediately before
+    /// every create: whether a pod of the model `alias` may start now without passing a spend
+    /// ceiling. With no ceiling declared it reads nothing and admits. Otherwise it reads the
+    /// account's spend once, adds the running estimate of the live pods ([`Self::set_live`]),
+    /// each at least its own startup estimate, and the estimate of this one over its startup deadline, and compares the sum with each
+    /// ceiling, the daily one first. It needs no relayed request, so any start path may call it.
+    ///
+    /// # Errors
+    ///
+    /// [`SpendRefusal::Over`] when a ceiling would be passed, and [`SpendRefusal::Unknown`]
+    /// when the spend read failed or answered nothing, or a live pod's model or this one has
+    /// no declared price, or this model is not declared.
+    pub fn admit_spend(&mut self, alias: &Identifier) -> Result<(), SpendRefusal> {
+        let Some(policy) = self.spend.as_ref().filter(|policy| policy.is_metered()) else {
+            return Ok(());
+        };
+        let price = |alias: &Identifier| policy.price_per_hour_micro_usd.get(alias).copied();
+        let startup_ms = |alias: &Identifier| {
+            self.models
+                .get(alias)
+                .map(|model| model.startup_deadline_ms)
+        };
+        let now = self.clock.now_ms();
+        let mut estimated = estimate(
+            price(alias).ok_or(SpendRefusal::Unknown)?,
+            startup_ms(alias).ok_or(SpendRefusal::Unknown)?,
+        );
+        for (live, submitted_at) in &self.live {
+            let price = price(live).ok_or(SpendRefusal::Unknown)?;
+            // A pod counts at least what its own start was admitted at: one submitted moments
+            // ago would otherwise add nothing, and two starts in a row would share one headroom.
+            let running = estimate(price, now.saturating_sub(*submitted_at)).max(estimate(
+                price,
+                startup_ms(live).ok_or(SpendRefusal::Unknown)?,
+            ));
+            estimated = estimated.saturating_add(running);
+        }
+        let policy = policy.clone();
+        let reported = self
+            .transport
+            .account_spend(now - now % DAY_MS)
+            .ok_or(SpendRefusal::Unknown)?;
+        admit(&policy, reported, estimated)
     }
 
     fn model_of(&self, key: &ResourceKey) -> Option<&RunpodModel> {
@@ -100,6 +176,19 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             .strip_prefix(crate::POD_NAME_PREFIX)
             .and_then(|alias| Identifier::new(alias).ok())?;
         self.models.get(&alias)
+    }
+
+    /// The profile of the model this pod was started on, named by the pod's GPU type; `None`
+    /// while the pod's GPU type is unknown or in no profile of its model.
+    pub fn profile_of(&self, key: &ResourceKey) -> Option<String> {
+        let gpu = self.gpus.get(key.incarnation.as_str())?;
+        self.model_of(key)?.profile_of_gpu(gpu).map(str::to_owned)
+    }
+
+    fn remember_gpu(&mut self, pod: &Pod) {
+        if let Some(gpu) = &pod.gpu_type {
+            self.gpus.insert(pod.id.clone(), gpu.clone());
+        }
     }
 
     /// Why this pod has to be replaced, if it does.
@@ -216,6 +305,91 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         }
         probe
     }
+
+    /// Tries each GPU type of one profile in order, the spend check before each create, until
+    /// the start's startup deadline, counted from `started_ms`, has passed.
+    fn create_on(
+        &mut self,
+        request: &CreateRequest,
+        model: &RunpodModel,
+        tags: &Tags<'_>,
+        started_ms: u64,
+    ) -> ProfileOutcome {
+        let not_sent = ProfileOutcome::Done(Box::new(CreateOutcome {
+            dispatch: Dispatch::NotSent,
+            resource: None,
+        }));
+        let mut all_capacity = true;
+        for gpu in &model.gpu_types {
+            let body = pod_request(
+                request.spec.resource_name.as_str(),
+                request.spec.model.as_str(),
+                gpu,
+                model,
+                tags,
+            );
+            // The start's one startup deadline binds its creates too: once it has passed, no
+            // further create is sent, of this profile or of the next. A create answered after
+            // it would start a pod the pool retires at once.
+            if self.clock.now_ms().saturating_sub(started_ms) > model.startup_deadline_ms {
+                return ProfileOutcome::PastDeadline;
+            }
+            // The spend check runs immediately before each create, so every GPU type tried, of
+            // every profile, is admitted on its own. A refused check sends nothing and tries no
+            // further GPU type and no further profile.
+            if let Err(refusal) = self.admit_spend(&request.spec.model) {
+                self.spend_refusal = Some(refusal);
+                return not_sent;
+            }
+            match self.transport.create_pod(&body) {
+                CreateAnswer::Created(pod) => {
+                    self.remember_gpu(&pod);
+                    return ProfileOutcome::Done(Box::new(match self.describe(&pod, None) {
+                        Some(resource) => CreateOutcome {
+                            dispatch: Dispatch::Accepted,
+                            resource: Some(resource),
+                        },
+                        // Created, but with an identity this contract cannot hold: as
+                        // unaccountable as a lost answer.
+                        None => CreateOutcome {
+                            dispatch: Dispatch::Unknown,
+                            resource: None,
+                        },
+                    }));
+                }
+                // Placement fails per host, so the next declared GPU of the profile is tried
+                // whatever the refusal.
+                CreateAnswer::NoCapacity => {}
+                CreateAnswer::Refused => all_capacity = false,
+                // A lost answer may have allocated. Trying another GPU could pay twice.
+                CreateAnswer::Lost => {
+                    return ProfileOutcome::Done(Box::new(CreateOutcome {
+                        dispatch: Dispatch::Unknown,
+                        resource: None,
+                    }));
+                }
+            }
+        }
+        if all_capacity {
+            ProfileOutcome::NoCapacity
+        } else {
+            ProfileOutcome::Refused
+        }
+    }
+}
+
+/// How one profile's creates ended.
+enum ProfileOutcome {
+    /// Created, lost, or not sent: the start ends with this outcome. Boxed: an outcome holds a
+    /// whole resource, the other variants nothing.
+    Done(Box<CreateOutcome>),
+    /// Every create of the profile was refused for capacity: the next profile is tried.
+    NoCapacity,
+    /// At least one create was refused for another reason: the start ends, rejected.
+    Refused,
+    /// The start's startup deadline passed before the next create: the start ends, rejected,
+    /// with no further create sent.
+    PastDeadline,
 }
 
 /// Drops every restart more than `window_ms` before `now_ms`.
@@ -230,13 +404,15 @@ fn prune_restarts(restarts: &mut VecDeque<u64>, now_ms: u64, window_ms: u64) {
 
 impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
     fn create(&mut self, request: &CreateRequest) -> CreateOutcome {
+        // A refusal belongs to the create it stopped; an older one is never reported for this.
+        self.spend_refusal = None;
         let not_sent = CreateOutcome {
             dispatch: Dispatch::NotSent,
             resource: None,
         };
         // An undeclared model, or a specification whose image is not the declared one, is
         // never sent: this adapter does not silently substitute either.
-        let Some(model) = self.models.get(&request.spec.model) else {
+        let Some(model) = self.models.get(&request.spec.model).cloned() else {
             return not_sent;
         };
         if model.image != request.spec.image {
@@ -247,38 +423,18 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
             epoch: request.epoch,
             request_id: request.request_id.as_str(),
         };
-        for gpu in &model.gpu_types {
-            let body = pod_request(
-                request.spec.resource_name.as_str(),
-                request.spec.model.as_str(),
-                gpu,
-                model,
-                &tags,
-            );
-            match self.transport.create_pod(&body) {
-                CreateAnswer::Created(pod) => {
-                    return match self.describe(&pod, None) {
-                        Some(resource) => CreateOutcome {
-                            dispatch: Dispatch::Accepted,
-                            resource: Some(resource),
-                        },
-                        // Created, but with an identity this contract cannot hold: as
-                        // unaccountable as a lost answer.
-                        None => CreateOutcome {
-                            dispatch: Dispatch::Unknown,
-                            resource: None,
-                        },
-                    };
-                }
-                // Placement fails per host, so the next declared GPU is tried.
-                CreateAnswer::Refused => {}
-                // A lost answer may have allocated. Trying another GPU could pay twice.
-                CreateAnswer::Lost => {
-                    return CreateOutcome {
-                        dispatch: Dispatch::Unknown,
-                        resource: None,
-                    };
-                }
+        // Profiles are tried in order, inside this one create: one submission, so one startup
+        // deadline, counted from now as the pool counts the pod's, covers every profile. The
+        // next profile is tried only when every create of the one before was refused for
+        // capacity, and only while that deadline has not passed.
+        let started_ms = self.clock.now_ms();
+        let mut index = 0;
+        while let Some((_, profile)) = model.with_profile(index) {
+            index += 1;
+            match self.create_on(request, &profile, &tags, started_ms) {
+                ProfileOutcome::Done(outcome) => return *outcome,
+                ProfileOutcome::NoCapacity => {}
+                ProfileOutcome::Refused | ProfileOutcome::PastDeadline => break,
             }
         }
         CreateOutcome {
@@ -293,6 +449,7 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
         let dispatch = match self.transport.terminate_pod(key.incarnation.as_str()) {
             TerminateAnswer::Terminated => {
                 self.health.remove(key.incarnation.as_str());
+                self.gpus.remove(key.incarnation.as_str());
                 return StopOutcome {
                     dispatch: Dispatch::Accepted,
                     evidence: Identifier::new(format!("runpod-terminated-{}", key.incarnation))
@@ -321,6 +478,7 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
             if pod.status == PodStatus::Exited {
                 self.health.entry(pod.id.clone()).or_default().exited = true;
             }
+            self.remember_gpu(pod);
             let probe = (pod.status == PodStatus::Running).then(|| self.poll(pod));
             match self.describe(pod, probe.as_ref()) {
                 Some(resource) => resources.push(resource),

@@ -60,6 +60,8 @@ loopback pod, never against Runpod. No client has run a live session against it.
 - **Ask the gateway how to configure a client**: Codex, Claude Code or Loom.
   [Set up a client](guides/set-up-a-client.md)
 - **Scrape llmgw's 13 counters** from `GET /metrics`. [Scrape the counters](guides/scrape-the-counters.md)
+- **Run the released image on Kubernetes** with Secrets the file rules accept and a stop that
+  drains. [Run on Kubernetes](guides/run-on-kubernetes.md)
 - **Embed the gateway library** in your own binary with your own target pool: the relay, the
   bounds and every refusal are the library's. [The relay](concepts/relay.md)
 - **Run the gate**: Rust, the specification, conformance and these pages.

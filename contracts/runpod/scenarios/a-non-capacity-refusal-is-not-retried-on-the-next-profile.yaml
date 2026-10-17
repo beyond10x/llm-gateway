@@ -1,0 +1,28 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-non-capacity-refusal-is-not-retried-on-the-next-profile
+summary: a profile with a create refused for any reason but capacity ends the start; the next profile is never tried
+timeline:
+- at: '2026-10-16T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"profiles":[{"name":"l40s-32k","gpu_types":["NVIDIA L40S","NVIDIA A40"],"vllm":{"max_model_len":32768}},{"name":"h100-64k","gpu_types":["NVIDIA H100 NVL"]}]}},"steps":[{"step":"refuse_gpu","gpu":"NVIDIA L40S"},{"step":"no_capacity_gpu","gpu":"NVIDIA A40"},{"step":"ensure","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - ok
+    - err:no-capacity
+    create_calls: 2
+    requested_gpus:
+    - NVIDIA L40S
+    - NVIDIA A40
+    pods: []
+    leases: []
+    lease_profiles: []

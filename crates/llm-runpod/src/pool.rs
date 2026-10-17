@@ -27,7 +27,8 @@ use llm_provision::{
 };
 
 use crate::{
-    ConfigError, RunpodModel, RunpodProvider, RunpodTransport, Unserviceable, request::in_namespace,
+    ConfigError, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy, SpendRefusal,
+    Unserviceable, request::in_namespace,
 };
 
 /// A trusted Unix-millisecond clock. It must never move backwards.
@@ -70,7 +71,8 @@ pub enum PoolError {
     Starting,
     /// The deployment owes a stop that has not been confirmed. Nothing new is created meanwhile.
     Stopping,
-    /// Every declared GPU type was refused. Nothing was created.
+    /// Every declared GPU type was refused, or every one tried before the start's startup
+    /// deadline passed. Nothing was created.
     NoCapacity,
     /// The pod crash-looped and was terminated. The next request starts a fresh one.
     CrashLoop,
@@ -85,6 +87,9 @@ pub enum PoolError {
     StoppedServing,
     /// The hosting controller refused.
     Hosting(HostingError),
+    /// The spend check refused the create it ran before: no create was sent and the deployment
+    /// is withdrawn. It says which ceiling and by how much, or that the spend is unknown.
+    SpendCeiling(SpendRefusal),
 }
 
 impl PoolError {
@@ -102,6 +107,7 @@ impl PoolError {
             Self::PodExited => "pod-exited",
             Self::StoppedServing => "stopped-serving",
             Self::Hosting(_) => "hosting",
+            Self::SpendCeiling(_) => "spend-ceiling",
         }
     }
 }
@@ -111,6 +117,7 @@ impl std::fmt::Display for PoolError {
         match self {
             Self::InvalidModel(error) => write!(formatter, "invalid Runpod model: {error}"),
             Self::Hosting(error) => write!(formatter, "hosting refused: {error}"),
+            Self::SpendCeiling(refusal) => write!(formatter, "pod start refused: {refusal}"),
             other => formatter.write_str(match other {
                 Self::UnknownModel => "no model is declared under this alias",
                 Self::Starting => "the model is starting",
@@ -130,6 +137,59 @@ impl std::fmt::Display for PoolError {
 }
 
 impl std::error::Error for PoolError {}
+
+/// Where a model's pod is, named by what a request for it would meet
+/// (`llm-gateway.gateway.ModelPhase`; [`RunpodPool::status`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelPhase {
+    /// No live deployment: a request starts one.
+    Stopped,
+    /// A request is held: declared, uncertain, or not observed ready.
+    Starting,
+    /// Last observed serving.
+    Ready,
+    /// The deployment owes a stop that is not confirmed; nothing starts meanwhile.
+    Stopping,
+}
+
+impl ModelPhase {
+    /// Every phase, in declaration order.
+    pub const ALL: [Self; 4] = [Self::Stopped, Self::Starting, Self::Ready, Self::Stopping];
+
+    /// The stable code, `llm-gateway.gateway.ModelPhase`'s.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Starting => "starting",
+            Self::Ready => "ready",
+            Self::Stopping => "stopping",
+        }
+    }
+}
+
+/// One model's phase as the controller's records hold it ([`RunpodPool::status`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelStatus {
+    pub phase: ModelPhase,
+    /// While [`ModelPhase::Starting`], the provider's own word for the pod as last observed
+    /// (`ProviderState::code`: `pending` or `running`); `None` in any other phase, and when the
+    /// record holds no observed state.
+    pub sub_phase: Option<&'static str>,
+    /// The profile the pod's GPU type names, as [`StreamLease::profile`]; `None` while stopped
+    /// or unknown.
+    pub profile: Option<String>,
+    /// The slot's current deployment; `None` while stopped.
+    pub deployment: Option<Identifier>,
+}
+
+impl ModelStatus {
+    const STOPPED: Self = Self {
+        phase: ModelPhase::Stopped,
+        sub_phase: None,
+        profile: None,
+        deployment: None,
+    };
+}
 
 /// What one cleanup pass did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -183,6 +243,7 @@ pub struct StreamLease {
     deployment: Identifier,
     endpoint: Option<String>,
     served_model: Option<Identifier>,
+    profile: Option<String>,
 }
 
 impl StreamLease {
@@ -196,6 +257,11 @@ impl StreamLease {
     /// The model the pod itself says it serves. `None` when it did not say.
     pub fn served_model(&self) -> Option<&Identifier> {
         self.served_model.as_ref()
+    }
+    /// The profile of the model the pod was started on, named by the pod's GPU type. `None`
+    /// when the pod's GPU type is unknown or in no profile of the model.
+    pub fn profile(&self) -> Option<&str> {
+        self.profile.as_deref()
     }
 }
 
@@ -426,6 +492,19 @@ impl<T: RunpodTransport> RunpodPool<T> {
         })
     }
 
+    /// The pool with these spend ceilings: every create it sends is checked against them
+    /// first ([`RunpodProvider::admit_spend`]), and a refused one is
+    /// [`PoolError::SpendCeiling`]. A policy that declares no ceiling checks nothing.
+    #[must_use]
+    pub fn with_spend(mut self, spend: SpendPolicy) -> Self {
+        self.inner
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .provider
+            .set_spend(Some(spend));
+        self
+    }
+
     fn lock(&self) -> MutexGuard<'_, Inner<T>> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -556,6 +635,8 @@ impl<T: RunpodTransport> RunpodPool<T> {
             Phase::StopRequired => Err(PoolError::Stopping),
             Phase::Requested | Phase::Active if ready_now(&record, now) => {
                 let observed = record.observed.as_ref();
+                let profile =
+                    observed.and_then(|observed| inner.provider.profile_of(&observed.key));
                 let slot = inner.slots.get(alias).ok_or(PoolError::UnknownModel)?;
                 slot.usage.in_flight.fetch_add(1, Ordering::SeqCst);
                 slot.usage.last_used_ms.fetch_max(now, Ordering::SeqCst);
@@ -565,6 +646,7 @@ impl<T: RunpodTransport> RunpodPool<T> {
                     deployment,
                     endpoint: observed.and_then(|observed| observed.endpoint.clone()),
                     served_model: observed.and_then(|observed| observed.served_model.clone()),
+                    profile,
                 })
             }
             _ => Err(PoolError::Starting),
@@ -646,6 +728,42 @@ impl<T: RunpodTransport> RunpodPool<T> {
         Ok(requested)
     }
 
+    /// Where `alias`'s pod is, read from the controller's records as the last step left them.
+    /// Contacts nobody: no listing, probe, create or spend read.
+    ///
+    /// # Errors
+    ///
+    /// [`PoolError::UnknownModel`] for an undeclared alias.
+    pub fn status(&self, alias: &Identifier) -> Result<ModelStatus, PoolError> {
+        let inner = self.lock();
+        if !inner.models.contains_key(alias) {
+            return Err(PoolError::UnknownModel);
+        }
+        Ok(inner.status_of(alias))
+    }
+
+    /// The owner's wake: one [`Self::ensure`], a ready lease dropped at once, then
+    /// [`Self::status`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::ensure`], but never [`PoolError::Starting`].
+    pub fn wake(
+        &self,
+        alias: &Identifier,
+        authorization: &ComputeAuthorization,
+    ) -> Result<ModelStatus, PoolError> {
+        // The first ask of a held request: it starts a pod when none is live, through the same
+        // spend check and profile fallback, and starts nothing while one starts or serves. A
+        // ready lease is a use of the pod, as a request's is; it is dropped at once.
+        match self.ensure(alias, authorization) {
+            Ok(lease) => drop(lease),
+            Err(PoolError::Starting) => {}
+            Err(error) => return Err(error),
+        }
+        self.status(alias)
+    }
+
     /// The controller's view. Contacts nobody.
     pub fn view(&self) -> HostingView {
         self.lock().controller.view()
@@ -685,6 +803,39 @@ impl<T: RunpodTransport> Inner<T> {
             .into_iter()
             .filter(|record| !record.phase.terminal())
             .collect()
+    }
+
+    /// The slot's phase as its current record holds it. Reads the records and the provider's
+    /// remembered GPU types only; calls nothing.
+    fn status_of(&self, alias: &Identifier) -> ModelStatus {
+        let current = self.slots.get(alias).and_then(|slot| slot.current.clone());
+        let Some((deployment, record)) =
+            current.and_then(|deployment| Some((deployment.clone(), self.record(&deployment)?)))
+        else {
+            return ModelStatus::STOPPED;
+        };
+        let observed = record.observed.as_ref();
+        let (phase, sub_phase) = match record.phase {
+            phase if phase.terminal() => return ModelStatus::STOPPED,
+            Phase::StopRequired => (ModelPhase::Stopping, None),
+            Phase::Requested | Phase::Active
+                if observed.is_some_and(llm_provision::ProvisionedDeployment::is_ready) =>
+            {
+                (ModelPhase::Ready, None)
+            }
+            _ => (
+                ModelPhase::Starting,
+                observed
+                    .and_then(|observed| observed.state)
+                    .map(ProviderState::code),
+            ),
+        };
+        ModelStatus {
+            phase,
+            sub_phase,
+            profile: observed.and_then(|observed| self.provider.profile_of(&observed.key)),
+            deployment: Some(deployment),
+        }
     }
 
     /// Clears a slot whose deployment has reached a terminal phase.
@@ -1001,6 +1152,16 @@ impl<T: RunpodTransport> Inner<T> {
                 },
             )
             .and_then(|_| {
+                // The spend check before the create counts every pod this controller's
+                // records hold as occupying a slot, from its submission.
+                let live = self
+                    .live_records()
+                    .into_iter()
+                    .filter(|record| record.phase.occupies_a_slot())
+                    .filter_map(|record| Some((record.requested.model, record.started_at_ms?)))
+                    .collect();
+                self.provider.set_live(live);
+                let _stale = self.provider.take_spend_refusal();
                 self.apply(
                     now,
                     HostingCommand::Provision {
@@ -1022,7 +1183,10 @@ impl<T: RunpodTransport> Inner<T> {
             }
         };
         if receipt.phase == Some(Phase::Cancelled) {
-            return Err(PoolError::NoCapacity);
+            return Err(self
+                .provider
+                .take_spend_refusal()
+                .map_or(PoolError::NoCapacity, PoolError::SpendCeiling));
         }
         if let Some(slot) = self.slots.get_mut(alias) {
             slot.current = Some(deployment);

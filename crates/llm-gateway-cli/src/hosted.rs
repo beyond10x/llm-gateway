@@ -24,9 +24,9 @@ use crate::{
     trusted,
 };
 use llm_gateway::{
-    AuthKind, BasePath, CredentialHeader, Label, RelayStream, RelayTarget, RelayTargets,
-    RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance, TargetRefusal,
-    TargetScheme, TargetSummary,
+    AuthKind, BasePath, CredentialHeader, Label, ModelStatus, RelayStream, RelayTarget,
+    RelayTargets, RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance,
+    TargetRefusal, TargetScheme, TargetSummary,
 };
 use rustls::pki_types::ServerName;
 use std::{
@@ -318,6 +318,24 @@ impl RelayTargets for HostedTargets {
         if !self.endpoints.contains_key(alias) {
             self.rest.invalidate(alias, authority);
         }
+    }
+
+    /// A hosted model has no lifecycle: nothing here starts its endpoint, so its wake is
+    /// `None`, answered `path-unknown` (story:model-wake-and-status). Any other alias is
+    /// `rest`'s.
+    fn wake(&self, alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+        if self.endpoints.contains_key(alias) {
+            return None;
+        }
+        self.rest.wake(alias)
+    }
+
+    /// As [`Self::wake`]: `None` for a hosted model, `rest`'s for any other.
+    fn status(&self, alias: &str) -> Option<ModelStatus> {
+        if self.endpoints.contains_key(alias) {
+            return None;
+        }
+        self.rest.status(alias)
     }
 }
 

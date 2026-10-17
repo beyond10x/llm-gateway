@@ -41,8 +41,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "725cca46253f461545041d3212ebce36edd9ec4fcfec828c0e6908856e528b9c",
-    "contract_digest": "slice-sha256/2:38415d200dbd89c2a795f2f43368f1d23a54bdbb57e58f3004394a0d60987e95",
+    "source_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
+    "contract_digest": "slice-sha256/2:7eac802354e32535d7012c782d444b511fd5ddbfb906d9ea28da8237cebef5c7",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -275,6 +275,12 @@
           "format": "decimal",
           "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         },
+        "profiles": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/llm-gateway.deployment.ProfileDeclaration"
+          }
+        },
         "disk_gb": {
           "type": "integer"
         },
@@ -319,6 +325,11 @@
         },
         "tool_calling": {
           "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
+        },
+        "price_per_hour_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         }
       },
       "required": [
@@ -327,19 +338,57 @@
         "context_window",
         "hf_model",
         "image",
-        "gpu_types",
-        "max_model_len",
-        "max_num_seqs",
-        "gpu_util",
         "disk_gb",
         "thinking",
-        "extra_vllm_args",
         "volume_mount_path",
         "data_center_ids",
         "idle_timeout_minutes",
         "start_wait_seconds",
         "request_hold_seconds",
         "tool_calling"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.ProfileDeclaration": {
+      "title": "ProfileDeclaration",
+      "x-ess-name": "llm-gateway.deployment.ProfileDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "gpu_types": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "max_model_len": {
+          "type": "integer"
+        },
+        "max_num_seqs": {
+          "type": "integer"
+        },
+        "gpu_util": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "extra_vllm_args": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": [
+        "name",
+        "gpu_types",
+        "max_model_len",
+        "max_num_seqs",
+        "gpu_util",
+        "extra_vllm_args"
       ],
       "additionalProperties": false
     },
@@ -357,6 +406,16 @@
         },
         "connectors": {
           "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
+        },
+        "daily_cap_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        },
+        "total_cap_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
         }
       },
       "required": [

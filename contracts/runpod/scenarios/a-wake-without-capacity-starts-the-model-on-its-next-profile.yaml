@@ -1,0 +1,27 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-wake-without-capacity-starts-the-model-on-its-next-profile
+summary: a wake whose first profile has no capacity starts the model on its next profile, as a request would, and names that profile
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"profiles":[{"name":"l40s-32k","gpu_types":["NVIDIA L40S"],"vllm":{"max_model_len":32768}},{"name":"h100-64k","gpu_types":["NVIDIA H100 NVL"],"vllm":{"max_model_len":65536}}]}},"steps":[{"step":"no_capacity_gpu","gpu":"NVIDIA L40S"},{"step":"wake","alias":"qwen"},{"step":"status","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - woke phase=starting sub_phase=running profile=h100-64k
+    - status phase=starting sub_phase=running profile=h100-64k
+    create_calls: 2
+    requested_gpus:
+    - NVIDIA L40S
+    - NVIDIA H100 NVL
+    pods:
+    - pod1:b10x-llm-qwen:running

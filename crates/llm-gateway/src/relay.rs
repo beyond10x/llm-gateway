@@ -22,6 +22,7 @@ use crate::{
     },
 };
 use std::{
+    any::Any,
     collections::BTreeMap,
     fmt,
     io::{self, Read, Write},
@@ -78,9 +79,61 @@ impl Wire {
 }
 
 /// One connection to a target: whatever the embedding opened, read and written as bytes.
-pub trait RelayStream: Read + Write + Send {}
+///
+/// It is `Any` so the relay can tell a plain `TcpStream` from any other stream (see
+/// [`read_within_timeout`]).
+pub trait RelayStream: Read + Write + Send + Any {}
 
-impl<T: Read + Write + Send> RelayStream for T {}
+impl<T: Read + Write + Send + 'static> RelayStream for T {}
+
+/// Runs one read of `socket` under the socket's read timeout measured from the first attempt.
+///
+/// A socket with a read timeout answers a signal, or a stop and continue, with `EINTR`
+/// (`man 7 signal`), and the next `read` restarts the whole timeout, so a read retried with no
+/// deadline of its own waits for ever on a silent peer while signals keep arriving. Here `read`
+/// is retried on `Interrupted` with the socket's read timeout shrunk to what is left of the
+/// original; nothing left is `TimedOut`, as a plain timeout is. The original timeout is put
+/// back on every path. A socket with no read timeout is retried as before. `read` must read
+/// `socket` or a handle on the same connection.
+///
+/// # Errors
+/// What `read` returns, `TimedOut` once the timeout has passed, or the socket's own error when
+/// its timeout cannot be read or set.
+pub fn read_within_timeout<T>(
+    socket: &TcpStream,
+    mut read: impl FnMut() -> io::Result<T>,
+) -> io::Result<T> {
+    let Some(total) = socket.read_timeout()? else {
+        loop {
+            match read() {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                other => return other,
+            }
+        }
+    };
+    let start = Instant::now();
+    let mut shrunk = false;
+    let result = loop {
+        match read() {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                let left = total.saturating_sub(start.elapsed());
+                if left.is_zero() {
+                    break Err(io::ErrorKind::TimedOut.into());
+                }
+                shrunk = true;
+                if let Err(error) = socket.set_read_timeout(Some(left)) {
+                    break Err(error);
+                }
+            }
+            other => break other,
+        }
+    };
+    if shrunk {
+        let restored = socket.set_read_timeout(Some(total));
+        return result.and_then(|value| restored.map(|()| value));
+    }
+    result
+}
 
 /// The credential a target expects as `authorization: Bearer <key>` (row B8): for a Runpod pod,
 /// the model's vLLM key. The embedding resolves it and builds this once; the gateway only
@@ -352,6 +405,21 @@ pub trait RelayTarget: Send {
         false
     }
 
+    /// The profile of the model the target's pod was started on, which the usage record names.
+    /// `None`, the default, is a target that is not a pod of a profiled model, or one whose
+    /// profile is unknown.
+    fn profile(&self) -> Option<String> {
+        None
+    }
+
+    /// The longest sequence the target's server takes, when the target knows it: a pod of a
+    /// profiled model states its profile's `max_model_len`. The output clamp keeps a messages
+    /// request within it, ahead of the model's own [`RelayModel::window`]. `None`, the default,
+    /// leaves the model's window.
+    fn max_model_len(&self) -> Option<u64> {
+        None
+    }
+
     /// Opens one connection to the target. Its read and write timeouts are the target's.
     ///
     /// # Errors
@@ -368,12 +436,82 @@ pub trait RelayTargets: Send + Sync {
     /// # Errors
     /// [`TargetRefusal::Unavailable`] when none can be had, answered `target-unavailable`;
     /// [`TargetRefusal::ColdStart`] when the target is still starting and the request's hold
-    /// budget has passed, answered `model-cold-start` with `retry-after: 30` (row W6).
+    /// budget has passed, answered `model-cold-start` with `retry-after: 30` (row W6);
+    /// [`TargetRefusal::SpendCeiling`] when starting the target would pass a spend ceiling,
+    /// answered `spend-ceiling` at once, without `retry-after`.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal>;
 
     /// A request for `alias` through the target at `authority` failed (row W7): drop that
     /// endpoint if it is still the current one, so the next acquisition starts a replacement.
     fn invalidate(&self, alias: &str, authority: &str);
+
+    /// The owner's wake of `alias` (`POST /v1/models/{alias}/wake`, story:model-wake-and-status):
+    /// start the model's target as the first ask of [`Self::acquire`] would, without holding
+    /// anything, and report the status after it. While a start is in progress or the target is
+    /// ready it starts nothing more. `None`, the default, is a model this source starts nothing
+    /// for (a hosted endpoint): the gateway answers `path-unknown`.
+    ///
+    /// # Errors
+    /// The [`TargetRefusal`] `acquire` would have answered, answered with its refusal.
+    fn wake(&self, _alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+        None
+    }
+
+    /// Where `alias`'s target is (`GET /v1/models/{alias}/status`), read without starting
+    /// anything. `None`, the default, as for [`Self::wake`].
+    fn status(&self, _alias: &str) -> Option<ModelStatus> {
+        None
+    }
+}
+
+/// Where a model's target is, named by what a request for the model would meet
+/// (`llm-gateway.gateway.ModelPhase`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModelPhase {
+    /// No target is live: a request starts one.
+    Stopped,
+    /// A request is held while the target starts.
+    Starting,
+    /// The target was last observed serving: a request is relayed to it.
+    Ready,
+    /// A previous target owes a stop not yet confirmed; nothing starts meanwhile.
+    Stopping,
+}
+
+impl ModelPhase {
+    /// Every phase, in declaration order.
+    pub const ALL: [Self; 4] = [Self::Stopped, Self::Starting, Self::Ready, Self::Stopping];
+
+    /// The code a lifecycle route answers.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Starting => "starting",
+            Self::Ready => "ready",
+            Self::Stopping => "stopping",
+        }
+    }
+}
+
+/// What a lifecycle route answers for one model (`llm-gateway.gateway.ModelStatus`): its
+/// phase, the provider's own word for the target while it starts, and the profile it was
+/// started on. A value the source does not know is `None`, and the answer leaves its key out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelStatus {
+    pub phase: ModelPhase,
+    pub sub_phase: Option<String>,
+    pub profile: Option<String>,
+}
+
+impl ModelStatus {
+    /// A status with neither a sub-phase nor a profile.
+    pub const fn new(phase: ModelPhase) -> Self {
+        Self {
+            phase,
+            sub_phase: None,
+            profile: None,
+        }
+    }
 }
 
 /// Whether a model's server parses tool calls (`llm-gateway.clients.ToolCalling`).
@@ -507,7 +645,8 @@ impl RelayModel {
 
     /// The window the output clamp keeps a messages request within: the declared
     /// `max_model_len`, else the declared `context_window`, else none, and a model without one
-    /// is never counted.
+    /// is never counted. A target that states its own [`RelayTarget::max_model_len`] replaces
+    /// it for the calls it serves.
     pub fn window(&self) -> Option<u64> {
         self.max_model_len.or(self.context_window)
     }
@@ -620,6 +759,27 @@ impl Relay {
         &self.metrics
     }
 
+    /// The owner's wake of `alias` (`llm-gateway.gateway.LifecycleRoute`): `model-unknown` for
+    /// an alias no relayed model has, `path-unknown` for a model the source starts nothing for,
+    /// and otherwise what the source answered.
+    pub(crate) fn wake(&self, alias: &str) -> Result<ModelStatus, RefusalCode> {
+        if !self.models.contains_key(alias) {
+            return Err(RefusalCode::ModelUnknown);
+        }
+        self.targets
+            .wake(alias)
+            .ok_or(RefusalCode::PathUnknown)?
+            .map_err(TargetRefusal::refusal)
+    }
+
+    /// The status of `alias`, refused as [`Self::wake`] is.
+    pub(crate) fn status(&self, alias: &str) -> Result<ModelStatus, RefusalCode> {
+        if !self.models.contains_key(alias) {
+            return Err(RefusalCode::ModelUnknown);
+        }
+        self.targets.status(alias).ok_or(RefusalCode::PathUnknown)
+    }
+
     /// Feeds a record to the counters, then hands it to the embedding.
     pub(crate) fn observe(&self, record: &UsageRecord) {
         self.metrics.record(record);
@@ -705,16 +865,38 @@ impl Buffered<'_> {
             self.start = 0;
         }
         let mut chunk = [0_u8; RELAY_CHUNK];
-        let read = match &mut self.source {
-            Source::Client(stream, deadline) => {
-                let left = deadline.saturating_duration_since(Instant::now());
-                if left.is_zero() {
-                    return Err(io::ErrorKind::TimedOut.into());
+        // A socket with a read timeout answers a signal, or a stop and continue, with `EINTR`
+        // whatever `SA_RESTART` says (`man 7 signal`): such a read is retried, never taken for
+        // a peer that failed, and a retry of the target's read keeps the timeout it began with.
+        let read = loop {
+            let read = match &mut self.source {
+                Source::Client(stream, deadline) => {
+                    let left = deadline.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return Err(io::ErrorKind::TimedOut.into());
+                    }
+                    stream.set_read_timeout(Some(left))?;
+                    stream.read(&mut chunk)
                 }
-                stream.set_read_timeout(Some(left))?;
-                stream.read(&mut chunk)?
+                Source::Target(stream) => {
+                    // A plain `TcpStream` is read within its read timeout from the first
+                    // attempt. Any other stream keeps today's retry below: the pod's TLS
+                    // stream (`crates/llm-gateway-cli/src/tls.rs`) bounds its own socket reads
+                    // with the same helper, so it never surfaces `Interrupted`.
+                    let any: &mut dyn Any = &mut **stream;
+                    if let Some(tcp) = any.downcast_mut::<TcpStream>() {
+                        let tcp = &*tcp;
+                        let mut reader = tcp;
+                        read_within_timeout(tcp, || reader.read(&mut chunk))
+                    } else {
+                        stream.read(&mut chunk)
+                    }
+                }
+            };
+            match read {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                read => break read?,
             }
-            Source::Target(stream) => stream.read(&mut chunk)?,
         };
         self.buffer.extend_from_slice(&chunk[..read]);
         Ok(read > 0)
@@ -1008,6 +1190,8 @@ pub(crate) struct Call {
     pub(crate) target_status: Option<u16>,
     /// Decoded body bytes of the answer written to the client.
     pub(crate) response_bytes: u64,
+    /// The profile the acquired target named, once one was acquired.
+    pub(crate) profile: Option<String>,
 }
 
 /// A model that serves a request, and the translator when the request is translated.
@@ -1046,7 +1230,12 @@ fn served_model<'r>(
 /// Acquires the target for `alias`, counting a request held for a starting target on its route
 /// with the time it waited (rows O1, O2): the target says it held it, or the source gave up past
 /// its hold budget.
-fn acquire(relay: &Relay, alias: &str, wire: Wire) -> Result<Box<dyn RelayTarget>, RefusalCode> {
+fn acquire(
+    relay: &Relay,
+    alias: &str,
+    wire: Wire,
+    call: &mut Call,
+) -> Result<Box<dyn RelayTarget>, RefusalCode> {
     let asked = Instant::now();
     let acquired = relay.targets.acquire(alias);
     let cold_start = match &acquired {
@@ -1058,7 +1247,9 @@ fn acquire(relay: &Relay, alias: &str, wire: Wire) -> Result<Box<dyn RelayTarget
             .metrics
             .count_cold_start_hold(alias, wire, asked.elapsed());
     }
-    acquired.map_err(TargetRefusal::refusal)
+    let target = acquired.map_err(TargetRefusal::refusal)?;
+    call.profile = target.profile();
+    Ok(target)
 }
 
 /// The translated path (story:gateway-translation; relay step 5): the translator prepares the
@@ -1080,7 +1271,7 @@ fn translate(
         body,
     })?;
     let alias = model.alias.as_str();
-    let target = acquire(relay, alias, admitted.wire)?;
+    let target = acquire(relay, alias, admitted.wire, call)?;
     let mut answer = ClientAnswer {
         stream,
         timeout: limits.timeout,
@@ -1274,9 +1465,13 @@ pub(crate) fn serve(
         model.reasoning_effort.filter(|_| messages),
     );
     drop(body);
-    let window = model.window().filter(|_| messages);
     let alias = model.alias.as_str();
-    let target = acquire(relay, alias, admitted.wire)?;
+    let target = acquire(relay, alias, admitted.wire, call)?;
+    // The window of the server that answers: the one the target states, else the model's.
+    let window = target
+        .max_model_len()
+        .or_else(|| model.window())
+        .filter(|_| messages);
     // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
     // never wakes a pod the relay would not have woken. A count that fails decides nothing.
     if let (Some(window), Some(_)) = (window, rewritten.max_tokens()) {
@@ -1556,6 +1751,7 @@ mod tests {
             let expected = match refusal {
                 TargetRefusal::Unavailable => RefusalCode::TargetUnavailable,
                 TargetRefusal::ColdStart => RefusalCode::ModelColdStart,
+                TargetRefusal::SpendCeiling => RefusalCode::SpendCeiling,
             };
             assert_eq!(refusal.refusal(), expected);
             assert_eq!(expected.status(), 503);
@@ -1738,6 +1934,58 @@ mod tests {
         fn flush(&mut self) -> std::io::Result<()> {
             Ok(())
         }
+    }
+
+    /// Serves `answer` a few bytes at a time, each read preceded by one that is interrupted, as a
+    /// socket with a read timeout is when its thread takes a signal or its process is stopped
+    /// and continued (`man 7 signal`): `EINTR` whatever `SA_RESTART` says.
+    struct Interrupting {
+        answer: &'static [u8],
+        offset: usize,
+        interrupted: bool,
+    }
+
+    impl std::io::Read for Interrupting {
+        fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+            self.interrupted = !self.interrupted;
+            if self.interrupted {
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            let count = buffer.len().min(5).min(self.answer.len() - self.offset);
+            buffer[..count].copy_from_slice(&self.answer[self.offset..self.offset + count]);
+            self.offset += count;
+            Ok(count)
+        }
+    }
+
+    impl std::io::Write for Interrupting {
+        fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+            Ok(buffer.len())
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    /// An interrupted read of the target's answer is retried, not taken for a target that
+    /// failed: under a signal or a stop and continue it answered `upstream-failed` (502).
+    #[test]
+    fn an_interrupted_read_of_the_answer_is_retried() {
+        let mut stream = Interrupting {
+            answer:
+                b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}",
+            offset: 0,
+            interrupted: false,
+        };
+        let mut input = super::Buffered {
+            source: super::Source::Target(&mut stream),
+            buffer: Vec::new(),
+            start: 0,
+        };
+        let head = super::read_answer_head(&mut input, 1_024).unwrap();
+        assert_eq!(head.status, 200);
+        assert_eq!(input.take(2).unwrap(), b"{}");
     }
 
     /// The buffer holds what is unread plus one read, however the reads fall across lines: a

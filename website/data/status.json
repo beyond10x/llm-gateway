@@ -116,6 +116,27 @@
     },
     {
       "area": "Relay",
+      "detail": "A provider's daily_cap_usd and total_cap_usd are checked before every pod create against the reported spend and the pods' estimates; a start that would pass one, or whose spend is unknown, is spend-ceiling with no create. Tested over the emulator; the live spend read needs a connectors release that offers billing.pods.",
+      "href": "/docs/concepts/relay",
+      "label": "Spend ceilings on pod starts",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "A model may declare ordered profiles, each GPU types with their vLLM settings; when Runpod refuses every create of a profile for capacity the start moves on to the next profile inside the same startup deadline and spend check, and the usage record names the profile that served. Tested over the emulator.",
+      "href": "/docs/concepts/relay",
+      "label": "Model profiles with capacity fallback",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model has neither and is path-unknown. Tested over the emulator.",
+      "href": "/docs/concepts/relay",
+      "label": "Wake a model and read its phase",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
       "href": "/docs/concepts/relay",
       "label": "Relay to a Runpod pod from the binary over verified TLS",

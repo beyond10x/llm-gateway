@@ -2,12 +2,28 @@
 format: aep.planning-md/3
 id: story:kubernetes-deployment-guide
 kind: story
-status: draft
+status: implemented
 title: A guide runs the released image on Kubernetes with the file rules unchanged
 relations:
 - decomposes: epic:gateway
 - depends_on: story:release-image
-revision: 1
+- serves: vision:portable-model-inference
+scope:
+- confidence: inferred
+  path: CHANGELOG.md
+- confidence: inferred
+  path: crates/llm-gateway-cli/tests/trusted.rs
+- confidence: inferred
+  path: website/docs/guides/run-on-kubernetes.md
+- confidence: inferred
+  path: website/docs/index.md
+- confidence: inferred
+  path: website/sidebars.ts
+revision: 9
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-16T20:21:00Z", actor: "human:timo", revision: 7}
+- {from: "proposed", to: "active", at: "2026-10-16T20:21:00Z", actor: "human:timo", revision: 8}
+- {from: "active", to: "implemented", at: "2026-10-17T01:21:02Z", actor: "human:timo", revision: 9, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

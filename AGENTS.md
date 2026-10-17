@@ -45,10 +45,11 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 249 of at least 249 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 277 of at least 277 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | The generated site pages equal what `llm-gateway-docs` generates, and no hand-written page carries a raw admonition title, a story id or a `/home/` path | `crates/llm-gateway-docs/tests/generate.rs::check_fails_on_every_kind_of_drift` |
 | Every `shipped` item on the status page names a test that exists | `crates/llm-gateway-docs/src/status.rs::a_vanished_test_or_a_shipped_item_without_one_is_refused` |
 | The refusal reference lists every code `RefusalCode::ALL` and `StartupRefusal::ALL` hold | `crates/llm-gateway-docs/tests/generate.rs::refusal_reference_lists_every_code_the_gateway_can_emit` |
+| A pushed `<major>.<minor>.<patch>` tag, and nothing else, publishes `ghcr.io/beyond10x/llm-gateway:<version>` for `linux/amd64` and `linux/arm64`, natively, labelled with the tag's commit, never replacing an existing version, with `contents: read` and `packages: write` only and every action pinned by commit SHA | `crates/llm-gateway-cli/tests/release_workflow.rs` |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
 | No test makes a paid call or provisions an external resource. Tests run against `EmulatedRunpod` or a fixture, never a live API. | `crates/llm-runpod/tests/transport.rs` drives `ConnectorsRunpod` against the `connectors-fixture` binary and a loopback pod; every other Runpod test drives `EmulatedRunpod` |
 
@@ -169,8 +170,20 @@ scenario or a dependency, or changes the gate.
 ## Releases
 
 Versions are workspace-wide (`[workspace.package] version`) and tags are bare (`0.1.0`); every
-crate is `publish = false`, so a release is a source release with no assets. There is no release
-workflow. The first release is 0.1.0, the version the workspace already carries.
+crate is `publish = false`, so a release publishes no crate. The first release is 0.1.0, the
+version the workspace already carries.
+
+The release workflow `.github/workflows/release.yml` (`Release image`) runs on a pushed
+`<major>.<minor>.<patch>` tag and nothing else. It builds the root `Dockerfile` natively on
+GitHub-hosted runners, `ubuntu-24.04` for `linux/amd64` and `ubuntu-24.04-arm` for `linux/arm64`
+(no emulation), pushes each platform's image by digest and then the manifest list
+`ghcr.io/beyond10x/llm-gateway:<version>`, with `SOURCE_SHA` set to the tag's commit so that the
+image's `org.opencontainers.image.revision` label names it. Before any push it refuses a version
+the registry already holds, and fails saying so; the manifest job checks again before it tags.
+It holds `contents: read` and `packages: write` only, logs in with `GITHUB_TOKEN` and no other
+secret, and pins every action by commit SHA with its tag in a comment. The bot App's tag push
+(step 3) starts it. `crates/llm-gateway-cli/tests/release_workflow.rs` checks the file; nothing
+runs it locally.
 
 1. On the wave's integration branch, one commit `release: llm-gateway <version>` that sets the
    workspace version (and `Cargo.lock`), moves README.md's status line, renames `CHANGELOG.md`'s
@@ -179,8 +192,11 @@ workflow. The first release is 0.1.0, the version the workspace already carries.
 2. The wave pull request, green `Gate` and `Shared source gates`, merged through the bot App.
 3. Tag `<version>` on the merge commit and publish the GitHub Release `llm-gateway <version>`, both
    as the bot (`b10x-gates bot -- tag` and `push`, `b10x-gates api` `POST /releases`).
-4. Verify the tag's commit, `Gate` and `Shared source gates` on it, and the Release; only then
-   report it released.
+4. Verify the tag's commit, `Gate` and `Shared source gates` on it, the Release, the `Release
+   image` run for the tag, and the image: `docker buildx imagetools inspect
+   ghcr.io/beyond10x/llm-gateway:<version>` lists `linux/amd64` and `linux/arm64`, and the
+   revision label names the tag's commit. Record the manifest list's digest in a new
+   `docs/verification/` record. Only then report it released.
 
 ## Publishing
 

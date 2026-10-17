@@ -34,8 +34,10 @@ it translates no protocol itself, but holds the port through which the binary tr
 request on a wire the model's upstream does not speak, within llm 0.7.0's published subset
 ([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, never
 dropped. Claude Code's first turn and Codex's first turn are carried to another wire with their
-controls (effort, thinking, parallel tool calls, cache and verbosity hints); a later turn that
-replays reasoning another upstream minted is still refused. The binary relays to a Runpod pod at its `https` proxy URL over
+controls (effort, thinking, parallel tool calls, cache and verbosity hints). Codex's later turns
+are served too: the gateway hands a Responses client the upstream's reasoning state sealed for
+the route and binds it on the next turn of that route only; Claude Code's later turns, which
+replay reasoning another upstream minted, are still refused. The binary relays to a Runpod pod at its `https` proxy URL over
 TLS, but that path has run only against a fixture of the `connectors` CLI and a loopback pod,
 never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a hosted endpoint
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never

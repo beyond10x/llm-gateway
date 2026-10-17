@@ -270,10 +270,21 @@ that names no output limit gets half the model's window (200000 when it declares
   a chat or messages upstream: the instructions and the developer message become the system
   prompt, `parallel_tool_calls` and the effort are sent under the upstream wire's names, the
   cache key and verbosity where the wire has them, and the item ids and `client_metadata` never.
-- **Codex's later turns** and **Claude Code's later turns** replay the reasoning their previous
-  answer carried (a `reasoning` item, a signed `thinking` block), minted for another upstream.
-  A translated route refuses them `translation-opaque-state`. Point a client that keeps its
-  reasoning at a model whose upstream speaks its own wire; `GET /` profiles only those.
+- **Codex's later turns** replay the `reasoning` items of its previous answer. On a translated
+  route the gateway hands a Responses client the upstream's reasoning state sealed for that
+  route: each `reasoning` item's `encrypted_content` is `llmgw-seal-1.` followed by the state
+  and a tag under a key the gateway generates when it starts and never writes out. The next
+  turn on the same route is served: a Messages upstream gets back the signed `thinking` block it
+  minted, and a Chat upstream, which mints no state, gets the turn without the item. An item the
+  gateway did not seal for this route since it last started is refused
+  `translation-opaque-state`: one from another route or upstream wire, an altered or forged
+  seal, an upstream's own encrypted reasoning, and any item sealed before a restart. After a
+  restart, start a new conversation.
+- **Claude Code's later turns** replay the signed `thinking` blocks of its previous answer. No
+  seal is handed to a Messages client (llm's Messages encoder places a block the stream did not
+  show after every streamed one), so a translated route still refuses those turns
+  `translation-opaque-state`. Point Claude Code at a model whose upstream speaks Messages;
+  `GET /` profiles only those.
 - **Still refused by name**: structured output (`output_config.format`, `text.format`,
   `response_format`), `context_management`, `thinking.display`, hosted and custom tools, a
   thinking budget to a chat or responses upstream, and an instruction in the middle of the
@@ -286,7 +297,7 @@ that names no output limit gets half the model's window (200000 when it declares
 | --- | --- | --- |
 | `translation-unsupported` | 400 | a field or value outside the subset, or past its size bound |
 | `translation-invalid` | 400 | a value breaking a rule of the subset, such as two output limits that disagree |
-| `translation-opaque-state` | 400 | the request replays reasoning state (a `thinking` block, a `reasoning` item) another upstream minted |
+| `translation-opaque-state` | 400 | the request replays reasoning state (a `thinking` block, a `reasoning` item) the gateway did not seal for this route since it last started |
 | `upstream-refused` | 502 | before any output the upstream's answer status refused the translated request (`401`, `403`, `429`, another `4xx`), or its answer broke its wire (ended cleanly before its end event, called a tool not offered) |
 | `upstream-failed` | 502 | before any output the upstream could not be reached, answered `408` or `5xx`, timed out, or reset or cut its connection |
 | `translation-unrepresentable` | 502 | the answer cannot be written on the client's wire, and nothing of it was |

@@ -13,7 +13,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | Path | What it is |
 | --- | --- |
 | `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency; it holds the translation port (`Translator`) and translates nothing itself |
-| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `b10x-llm-models`), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`) over llm 0.7.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`. It carries the dependencies the gateway crate must not have |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `b10x-llm-models`), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.7.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`. It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests, `ConnectorsRunpod` the production transport, which reaches the control plane only through the `connectors` CLI |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
@@ -132,8 +132,10 @@ and `keychain` features would let llm resolve a secret, and the gateway reads ev
 through its own trusted-file reader instead. No `aws-lc` crate
 enters `Cargo.lock`: rustls runs on `ring` only. llm 0.7.0's decoders refuse every key they do
 not name, at every level, so the translator runs no key check of its own; they carry Claude
-Code's and Codex's first turns, and a replayed reasoning item is still refused
-`translation-opaque-state` (`crates/llm-gateway-cli/tests/translation.rs`).
+Code's and Codex's first turns. A replayed reasoning item is bound only when it is a seal the
+translator made for that route since it started (`crates/llm-gateway-cli/src/seal.rs`, HMAC-SHA256
+on `ring`, encoded with `base64`); every other one is still refused `translation-opaque-state`
+(`crates/llm-gateway-cli/tests/translation.rs`).
 
 ## Documents
 

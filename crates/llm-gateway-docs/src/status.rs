@@ -243,8 +243,15 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Claude Code's and Codex's first turns on a translated route",
-        "Claude Code's first turn reaches a chat or responses upstream, and Codex's first turn a chat or messages upstream, with their effort, thinking, parallel tool calls and cache and verbosity hints under the upstream wire's names; effort max reaches chat and responses as xhigh. A later turn that replays reasoning another upstream minted is still refused translation-opaque-state. Tested with captured client requests against loopback fixture upstreams, not a vendor API.",
+        "Claude Code's first turn reaches a chat or responses upstream, and Codex's first turn a chat or messages upstream, with their effort, thinking, parallel tool calls and cache and verbosity hints under the upstream wire's names; effort max reaches chat and responses as xhigh. Claude Code's later turn, which replays reasoning another upstream minted, is still refused translation-opaque-state. Tested with captured client requests against loopback fixture upstreams, not a vendor API.",
         "crates/llm-gateway-cli/tests/translation.rs::translation_codexs_first_turn_is_carried_to_chat",
+        Some("/docs/guides/translate-between-wires"),
+    ),
+    shipped(
+        "Relay",
+        "Codex's later turns on a translated route",
+        "A translated answer to a responses client carries the upstream's reasoning state sealed for its route under a key the gateway generates at start and never writes out; the next turn on that route is served, a messages upstream getting back the thinking block it signed and a chat upstream the turn without it. An item from another route or wire, an altered or forged seal and one sealed before a restart are refused translation-opaque-state. No seal reaches a messages client. Tested with Codex's captured two-turn exchange against loopback fixture upstreams, not a vendor API.",
+        "crates/llm-gateway-cli/tests/translation.rs::translation_codexs_two_turns_reach_a_messages_upstream_with_the_thinking_it_signed",
         Some("/docs/guides/translate-between-wires"),
     ),
     shipped(

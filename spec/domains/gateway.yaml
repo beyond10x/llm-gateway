@@ -60,11 +60,56 @@ domain: llm-gateway.gateway
 #   `output_config.format`, `text.format`, a hosted tool, a `strict` chat function) is
 #   `translation-unsupported`. Claude Code's first turn and Codex's first turn are carried
 #   (scenario translate-a-coding-agents-turn-reaches-another-wire-with-its-controls). Codex's
-#   second turn replays a reasoning item, which is still `translation-opaque-state`.
+#   second turn replays a reasoning item, which is still `translation-opaque-state` (but see
+#   the decision on sealed reasoning state below).
 #   A model is translated under the reasoning efforts `minimal` to `xhigh`, and `none` as well
 #   when its upstream is chat or responses: llm 0.7.0 checks the effort the upstream wire
 #   receives, so effort `max` reaches a chat or responses upstream as `xhigh` and disabled
 #   thinking as `none`, while `max` and `none` stay refused on a messages upstream.
+# DECIDED 2026-10-17 (story:cross-wire-reasoning-state, design A): reasoning state the gateway
+#   minted, sealed and bound per route. Codex replays the reasoning items of its previous answer
+#   on every turn, so a translated route that refused every carried item refused Codex's second
+#   turn.
+#   - The key: the translator generates one HMAC-SHA256 key when it starts (`ring`'s system
+#     random source) and never writes it out, logs it or hands it to anything. A gateway that
+#     could not generate one seals nothing and carries every answer as before.
+#   - The seal: when an answer to a responses client on a translated route carries upstream
+#     reasoning state (a messages upstream's signed `thinking` or `redacted_thinking` block,
+#     llm `Item::Opaque`), the client is handed, for each block, a finished `reasoning` item
+#     whose `encrypted_content` is the gateway's seal: `llmgw-seal-1.`, the upstream's block as
+#     JSON in unpadded base64url, `.`, and in unpadded base64url the HMAC of a fixed label, the
+#     route (the model's alias and its upstream model), the client's wire, the upstream wire and
+#     those JSON bytes, each length-prefixed. The first such item is the one the streamed
+#     reasoning opened, under its `id`, its summary the reasoning shown. A chat upstream mints
+#     no state: when it streamed reasoning (`reasoning_content`), the open reasoning item is
+#     finished with a seal over `null`, so a client that replays it replays nothing.
+#   - The scope: a seal binds exactly that route and those two wires. The client sees the state
+#     it carries; the seal does not hide it, it attributes it: only this gateway, since it last
+#     started, could have made it.
+#   - Binding: a carried item (llm `Item::UnattributedOpaque`) on a translated request is bound
+#     only when the client's wire is responses, it is a `reasoning` item, and its
+#     `encrypted_content` is a seal that verifies, in constant time, under the running key for
+#     the request's route and wires. Then the sealed block is sent to the messages upstream at
+#     the item's place, as llm `Item::Opaque` of that request's binding (`TurnRequest`'s
+#     binding of the target the relay acquired), byte for byte as the upstream gave it, and a
+#     sealed `null` is dropped before the turn is projected for a chat upstream. Everything
+#     else is `translation-opaque-state` (400) before any target is asked for: an item without
+#     a seal, a seal that does not verify (forged, or any byte of it altered), one made for
+#     another route or another pair of wires, and one made before the gateway last started
+#     (the key is gone). A request is bound whole or refused whole.
+#   - Not sealed: nothing is sealed toward a chat client (llm's chat encoder carries no opaque
+#     state) or a messages client (llm's messages encoder places a block the stream did not
+#     show after every streamed block, so a replayed block would reach the upstream out of its
+#     place); their answers carry no upstream state, as before, and a carried `thinking` block
+#     from such a client is `translation-opaque-state`. Same-wire routes are relayed byte for
+#     byte and unchanged.
+#   - Nothing leaks: the refusal is the fixed one; no log line, event, metric or usage record
+#     carries a seal, its key or the state it holds.
+# ESS-LIMIT: that a seal cannot be made or altered without the key is a property of HMAC, no
+#   ESS construct. The scenarios observe what the gateway does with a seal it made for the same
+#   route (bound), for another route (refused), with one altered or forged (refused) and with
+#   one made before a restart (refused); `seal_*` in crates/llm-gateway-cli/src/seal.rs hold the
+#   rest (every byte position, every field of the route, the key never rendered).
 # DECIDED 2026-10-16 (correction round 2): an llm `protocol` failure before output is
 #   `upstream-refused` and invalidates nothing; only `transport`, `deadline` and `unavailable`
 #   replace the target.
@@ -536,9 +581,14 @@ entities:
   #      translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target,
   #      `translation_guard_*` in crates/llm-gateway-cli/tests/translation_guards.rs), and
   #      carries the fields coding-agent clients send as llm's "Client request fields" rule
-  #      says (scenario translate-a-coding-agents-turn-reaches-another-wire-with-its-controls), refuses
-  #      carried reasoning state
-  #      `translation-opaque-state`, a field or value outside the subset (llm `unsupported`,
+  #      says (scenario translate-a-coding-agents-turn-reaches-another-wire-with-its-controls), binds
+  #      carried reasoning state only when it is a seal the gateway made for this route and
+  #      these wires since it last started, and refuses every other carried item
+  #      `translation-opaque-state` (the decision on sealed reasoning state above; scenarios
+  #      translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it,
+  #      translate-sealed-reasoning-state-from-another-route-is-refused,
+  #      translate-altered-or-forged-sealed-reasoning-state-is-refused,
+  #      translate-sealed-reasoning-state-from-before-a-restart-is-refused), a field or value outside the subset (llm `unsupported`,
   #      `too-large`) `translation-unsupported` and one breaking its rules (llm
   #      `invalid-request`, `protocol`) `translation-invalid`, checks the turn against the
   #      model's capabilities (tools and tool choice when its tool calling is `Parsed`,
@@ -759,7 +809,9 @@ entities:
       # `<status> scraped` when served or `<status> <refusal code>`. A request whose client
       # closed early (`close_after_bytes`) is `<status> closed`.
       - {name: results, type: 'List<String>'}
-      # The body each request received, decoded from its HTTP framing, in order.
+      # The body each request received, decoded from its HTTP framing, in order. Each reasoning
+      # seal in it (`llmgw-seal-1.` and the base64url and `.` characters after it), which
+      # differs on every run because its key does, is written `<sealed>`.
       - {name: bodies, type: 'List<String>'}
       # Per request, `content-type=<value> cache-control=<value> allow=<value>`, `absent` for a
       # header that was not sent.
@@ -995,8 +1047,17 @@ commands:
       #           result is then `<status> closed`) and `half_close` (default true: the client
       #           shuts its sending side once the request is written; false keeps it open, as
       #           a client waiting for a non-streamed translated answer must, since the gateway
-      #           reads a closed sending side as a client gone). Every request carries
-      #           `host: gateway`.
+      #           reads a closed sending side as a client gone), `sealed_from` (the index,
+      #           from 0, of an earlier request step: every `<sealed>` in this body is replaced
+      #           by the first reasoning seal, `llmgw-seal-1.…`, the client received in that
+      #           step's answer; a program naming a step that is not an earlier request makes
+      #           the program invalid, and a step whose answer carried no seal sends `<sealed>`
+      #           as it is) and `alter_seal` (default false: with `sealed_from`, the first
+      #           character of the seal's state part is replaced by another before it is sent).
+      #           Every request carries `host: gateway`. `{step: restart}` stops the gateway and
+      #           composes it again from the same program: a new translator, and so a new seal
+      #           key, over the same target source and pods; it is unready until the next
+      #           `mark_ready`, and its result is `ok`.
       - {name: program_json, type: String}
     outcomes:
       - name: observed

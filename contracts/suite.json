@@ -134,6 +134,11 @@
       "llm-gateway.gateway/authored/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint",
       "llm-gateway.gateway/authored/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502",
       "llm-gateway.gateway/authored/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement",
+      "llm-gateway.gateway/authored/wake-and-status-are-refused-before-the-target-source-is-asked",
+      "llm-gateway.gateway/authored/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown",
+      "llm-gateway.gateway/authored/wake-and-status-take-the-owner-credential-under-ingress-auth-none",
+      "llm-gateway.gateway/authored/wake-answers-202-at-once-and-status-200-and-neither-asks-for-a-target",
+      "llm-gateway.gateway/authored/wake-the-target-source-refuses-is-answered-what-acquire-would-be",
       "llm-gateway.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create",
       "llm-gateway.hosting/authored/a-create-taken-over-before-any-listing-confirmed-it-is-disowned",
       "llm-gateway.hosting/authored/a-create-that-never-left-the-process-allocates-nothing",
@@ -234,6 +239,9 @@
       "llm-gateway.runpod/authored/a-start-under-the-daily-ceiling-is-created",
       "llm-gateway.runpod/authored/a-start-under-the-total-ceiling-is-created",
       "llm-gateway.runpod/authored/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped",
+      "llm-gateway.runpod/authored/a-wake-over-the-daily-ceiling-is-refused-before-any-create",
+      "llm-gateway.runpod/authored/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready",
+      "llm-gateway.runpod/authored/a-wake-without-capacity-starts-the-model-on-its-next-profile",
       "llm-gateway.runpod/authored/a-zero-crash-window-is-refused",
       "llm-gateway.runpod/authored/adversary-w2-a-gpu-memory-utilization-of-zero-is-refused",
       "llm-gateway.runpod/authored/an-exited-pod-is-terminated-and-replaced",
@@ -252,6 +260,8 @@
       "llm-gateway.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
       "llm-gateway.runpod/authored/restarts-spread-over-more-than-the-crash-window-are-not-a-crash-loop",
       "llm-gateway.runpod/authored/spend-billed-before-the-utc-days-start-is-not-todays",
+      "llm-gateway.runpod/authored/status-names-a-pod-that-owes-an-unconfirmed-stop-stopping",
+      "llm-gateway.runpod/authored/status-reads-the-phase-and-contacts-nobody",
       "llm-gateway.runpod/authored/the-crash-restart-limit-is-reached-at-exactly-its-count",
       "llm-gateway.runpod/authored/the-create-request-carries-the-declared-vllm-settings",
       "llm-gateway.runpod/authored/the-idle-limit-is-never-below-the-measured-cold-start",
@@ -928,6 +938,31 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w7-an-upstream-502-503-or-504-drops-the-endpoint-and-the-next-request-reaches-a-replacement"
       },
+      "gateway/scenarios/wake-and-status-are-refused-before-the-target-source-is-asked.yaml": {
+        "digest": "sha256:6f9e0721a8e73b8a2dbfe7b4645cc9035ebaa280faffb5d4ceb8489455001a02",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/wake-and-status-are-refused-before-the-target-source-is-asked"
+      },
+      "gateway/scenarios/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown.yaml": {
+        "digest": "sha256:720f8a60907b2c736dcf4aa6de802a023543dabfb49922b233088124bf8332b6",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown"
+      },
+      "gateway/scenarios/wake-and-status-take-the-owner-credential-under-ingress-auth-none.yaml": {
+        "digest": "sha256:348d757fd5177297d103b296e6c2cdb836dbae9a01a830e2a2c19ad8e3218a33",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/wake-and-status-take-the-owner-credential-under-ingress-auth-none"
+      },
+      "gateway/scenarios/wake-answers-202-at-once-and-status-200-and-neither-asks-for-a-target.yaml": {
+        "digest": "sha256:fad5d687b40c4ce8c478893f396c1de652a600db19e5b06b0e82a59a2bf9557c",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/wake-answers-202-at-once-and-status-200-and-neither-asks-for-a-target"
+      },
+      "gateway/scenarios/wake-the-target-source-refuses-is-answered-what-acquire-would-be.yaml": {
+        "digest": "sha256:1a61505839f78c6195e5c58a774605a553aa66a8afa3153d8af9f884646157f3",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/wake-the-target-source-refuses-is-answered-what-acquire-would-be"
+      },
       "hosting/scenarios/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create.yaml": {
         "digest": "sha256:549f141aa28732dd000fe453ce6721a549db813b798748285df8ad5552fb7382",
         "disposition": "accepted",
@@ -1428,6 +1463,21 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/a-stream-on-a-retired-pod-does-not-keep-its-replacement-from-being-reaped"
       },
+      "runpod/scenarios/a-wake-over-the-daily-ceiling-is-refused-before-any-create.yaml": {
+        "digest": "sha256:c3ae136d4bbb545018115f0bad23f22823ff712c7aea5ce9ced57c78c34cab27",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-wake-over-the-daily-ceiling-is-refused-before-any-create"
+      },
+      "runpod/scenarios/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready.yaml": {
+        "digest": "sha256:c1085759923ea4dad30646886528f68881289a36afe718220f8e2abe7cc03ee2",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready"
+      },
+      "runpod/scenarios/a-wake-without-capacity-starts-the-model-on-its-next-profile.yaml": {
+        "digest": "sha256:925f2f140e474be2bae7c2dfce4a5e4952628882caea9b9ab7a93a2036eaf29a",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/a-wake-without-capacity-starts-the-model-on-its-next-profile"
+      },
       "runpod/scenarios/a-zero-crash-window-is-refused.yaml": {
         "digest": "sha256:6fe097f6c1d1ced50c0b6621b628804f0a8ef8abaf4621be63f4def048079f7c",
         "disposition": "accepted",
@@ -1518,6 +1568,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/spend-billed-before-the-utc-days-start-is-not-todays"
       },
+      "runpod/scenarios/status-names-a-pod-that-owes-an-unconfirmed-stop-stopping.yaml": {
+        "digest": "sha256:d02ab19fc7f074e77a15ab70a24578d764245afd253b103d80dbe1027d6180bc",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/status-names-a-pod-that-owes-an-unconfirmed-stop-stopping"
+      },
+      "runpod/scenarios/status-reads-the-phase-and-contacts-nobody.yaml": {
+        "digest": "sha256:c5f891f30c4ea8af0650b5e9ee8a1578636c5eebb24c83d5c4a21a086ef62d1e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/status-reads-the-phase-and-contacts-nobody"
+      },
       "runpod/scenarios/the-crash-restart-limit-is-reached-at-exactly-its-count.yaml": {
         "digest": "sha256:5b88cebe404b10891a8682c7110b955a9056df360a0bd90b938c22eb48f7264a",
         "disposition": "accepted",
@@ -1565,7 +1625,7 @@
       }
     },
     "counts": {
-      "authored": 260,
+      "authored": 270,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1590,9 +1650,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "ff6fbbc8e04d1714a830b5c831ee551ef5c83f04e708547dd0f9b4a9ea1171bf",
+    "contract_digest": "9261aca574391939f14e437b133c24252a19ecbef48f3255c6ebfffdc81715d7",
     "scenario_initial_state": "empty",
-    "spec_digest": "1321518e595ff4b45b3ff973faffa0beaac48efd3b3fcbb9f10dae89a0282916",
+    "spec_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -14728,6 +14788,551 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/wake-and-status-are-refused-before-the-target-source-is-asked": {
+      "purpose": "an unready gateway, a missing credential, a method the route does not take, a declared body and an unknown alias are refused before the target source is asked",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"lifecycle\":{\"wake\":[{\"phase\":\"starting\",\"sub_phase\":\"running\",\"profile\":\"default\"}],\"status\":[]},\"steps\":[{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\",\"method\":\"GET\"},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"{}\"},{\"step\":\"request\",\"path\":\"/v1/models/absent/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/absent/status\",\"body\":\"\",\"method\":\"GET\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=POST",
+                  "content-type=application/json cache-control=no-store allow=GET, HEAD",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "wake small"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "503 unavailable",
+                  "ok",
+                  "401 credential-absent",
+                  "405 method-not-allowed",
+                  "405 method-not-allowed",
+                  "400 body-not-allowed",
+                  "404 model-unknown",
+                  "404 model-unknown",
+                  "202 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown": {
+      "purpose": "a hosted endpoint, and a model whose target source starts no pod, have no lifecycle routes and are answered path-unknown without any connection",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"routed\",\"upstream_model\":\"vendor-routed\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/routed/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/routed/status\",\"body\":\"\",\"method\":\"GET\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"GET\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "wake routed",
+                  "status routed",
+                  "wake small",
+                  "status small"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "404 path-unknown",
+                  "404 path-unknown",
+                  "404 path-unknown",
+                  "404 path-unknown"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/wake-and-status-take-the-owner-credential-under-ingress-auth-none": {
+      "purpose": "with model calls admitted without a credential, the lifecycle routes still take the owner's",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"none\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"lifecycle\":{\"wake\":[],\"status\":[{\"phase\":\"stopped\"}]},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"GET\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"GET\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "{\"model\":\"small\",\"phase\":\"stopped\"}"
+                ]
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "status small"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "401 credential-absent",
+                  "401 credential-absent",
+                  "200 answered"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/wake-answers-202-at-once-and-status-200-and-neither-asks-for-a-target": {
+      "purpose": "the owner's wake answers 202 with the phase the target source reports and status answers 200, HEAD without a body; no target is acquired and no usage record is made",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"lifecycle\":{\"wake\":[{\"phase\":\"starting\",\"sub_phase\":\"pending\",\"profile\":\"l40s-32k\"},{\"phase\":\"starting\",\"sub_phase\":\"running\",\"profile\":\"l40s-32k\"}],\"status\":[{\"phase\":\"starting\",\"sub_phase\":\"running\",\"profile\":\"l40s-32k\"},{\"phase\":\"ready\",\"profile\":\"l40s-32k\"},{\"phase\":\"stopped\"}]},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"GET\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"GET\"},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"HEAD\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"model\":\"small\",\"phase\":\"starting\",\"sub_phase\":\"pending\",\"profile\":\"l40s-32k\"}",
+                  "{\"model\":\"small\",\"phase\":\"starting\",\"sub_phase\":\"running\",\"profile\":\"l40s-32k\"}",
+                  "{\"model\":\"small\",\"phase\":\"starting\",\"sub_phase\":\"running\",\"profile\":\"l40s-32k\"}",
+                  "{\"model\":\"small\",\"phase\":\"ready\",\"profile\":\"l40s-32k\"}",
+                  ""
+                ]
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "wake small",
+                  "status small",
+                  "wake small",
+                  "status small",
+                  "status small"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "202 answered",
+                  "200 answered",
+                  "202 answered",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/wake-the-target-source-refuses-is-answered-what-acquire-would-be": {
+      "purpose": "a wake the target source refuses is answered as a request's acquisition would be, spend-ceiling and target-unavailable without retry-after and model-cold-start with it",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"lifecycle\":{\"wake\":[{\"refusal\":\"spend-ceiling\"},{\"refusal\":\"target-unavailable\"},{\"refusal\":\"model-cold-start\"}],\"status\":[]},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "wake small",
+                  "wake small",
+                  "wake small",
+                  "wake small"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "503 spend-ceiling",
+                  "503 target-unavailable",
+                  "503 model-cold-start",
+                  "503 target-unavailable"
+                ]
+              },
+              "retry_after": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent",
+                  "30",
+                  "absent"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.hosting.Exercise/outcome/observed": {
       "purpose": "`llm-gateway.hosting.Exercise` answers `observed` for an input no other branch's guard claims",
       "source": [
@@ -24932,6 +25537,300 @@
         }
       ]
     },
+    "llm-gateway.runpod/authored/a-wake-over-the-daily-ceiling-is-refused-before-any-create": {
+      "purpose": "a wake runs the spend check a request's start runs, so a projection past the daily ceiling sends no create and the model stays stopped",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"price_per_hour_usd\":2,\"startup_deadline_ms\":1800000}},\"spend\":{\"daily_cap_usd\":10},\"steps\":[{\"step\":\"account_spend\",\"daily_usd\":9.5,\"total_usd\":50},{\"step\":\"wake\",\"alias\":\"qwen\"},{\"step\":\"status\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:cancelled"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": []
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "err:spend-ceiling:daily:over_usd=0.500000",
+                  "status phase=stopped sub_phase=none profile=none"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 1.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready": {
+      "purpose": "a wake submits the one create a request would and answers starting at once; further wakes while it starts and once it serves create nothing",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"ready_after\",\"probes\":1},{\"step\":\"wake\",\"alias\":\"qwen\"},{\"step\":\"wake\",\"alias\":\"qwen\"},{\"step\":\"wake\",\"alias\":\"qwen\"},{\"step\":\"wake\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:active"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": [
+                  "pod1:b10x-llm-qwen:running"
+                ]
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": [
+                  "NVIDIA L40S"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "woke phase=starting sub_phase=running profile=default",
+                  "woke phase=starting sub_phase=running profile=default",
+                  "woke phase=ready sub_phase=none profile=default",
+                  "woke phase=ready sub_phase=none profile=default"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/a-wake-without-capacity-starts-the-model-on-its-next-profile": {
+      "purpose": "a wake whose first profile has no capacity starts the model on its next profile, as a request would, and names that profile",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"profiles\":[{\"name\":\"l40s-32k\",\"gpu_types\":[\"NVIDIA L40S\"],\"vllm\":{\"max_model_len\":32768}},{\"name\":\"h100-64k\",\"gpu_types\":[\"NVIDIA H100 NVL\"],\"vllm\":{\"max_model_len\":65536}}]}},\"steps\":[{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA L40S\"},{\"step\":\"wake\",\"alias\":\"qwen\"},{\"step\":\"status\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "pods": {
+                "kind": "literal",
+                "value": [
+                  "pod1:b10x-llm-qwen:running"
+                ]
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": [
+                  "NVIDIA L40S",
+                  "NVIDIA H100 NVL"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "woke phase=starting sub_phase=running profile=h100-64k",
+                  "status phase=starting sub_phase=running profile=h100-64k"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
     "llm-gateway.runpod/authored/a-zero-crash-window-is-refused": {
       "purpose": "a zero count, limit or deadline is refused at construction",
       "source": [
@@ -26579,6 +27478,199 @@
               "spend_reads": {
                 "kind": "literal",
                 "value": 1.0
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/status-names-a-pod-that-owes-an-unconfirmed-stop-stopping": {
+      "purpose": "a lost create is starting with no sub-phase, the stop its missed deadline owes is stopping, and a wake meanwhile starts nothing",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"insert_pod\",\"name\":\"b10x-llm-untagged\",\"env\":{}},{\"step\":\"lose_next_create\",\"allocates\":false},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"status\",\"alias\":\"qwen\"},{\"step\":\"advance\",\"ms\":600001},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"status\",\"alias\":\"qwen\"},{\"step\":\"wake\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:stop-required"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "inserted:pod1",
+                  "ok",
+                  "err:starting",
+                  "status phase=starting sub_phase=none profile=none",
+                  "ok",
+                  "err:startup-deadline",
+                  "status phase=stopping sub_phase=none profile=none",
+                  "err:stopping"
+                ]
+              },
+              "stop_required": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1"
+                ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/status-reads-the-phase-and-contacts-nobody": {
+      "purpose": "status reads the phase, the provider's sub-phase and the profile from the records the last step left, and lists, probes and creates nothing",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{}},\"steps\":[{\"step\":\"status\",\"alias\":\"qwen\"},{\"step\":\"ready_after\",\"probes\":1},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"status\",\"alias\":\"qwen\"},{\"step\":\"set_status\",\"pod\":\"pod1\",\"status\":\"Created\"},{\"step\":\"status\",\"alias\":\"qwen\"},{\"step\":\"ensure\",\"alias\":\"qwen\"},{\"step\":\"status\",\"alias\":\"qwen\"},{\"step\":\"status\",\"alias\":\"absent\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "lists": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "status phase=stopped sub_phase=none profile=none",
+                  "ok",
+                  "err:starting",
+                  "status phase=starting sub_phase=running profile=default",
+                  "ok",
+                  "status phase=starting sub_phase=running profile=default",
+                  "err:starting",
+                  "status phase=starting sub_phase=pending profile=default",
+                  "err:unknown-model"
+                ]
+              },
+              "spend_reads": {
+                "kind": "literal",
+                "value": 0.0
               }
             }
           },

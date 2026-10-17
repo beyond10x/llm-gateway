@@ -137,6 +137,59 @@ impl std::fmt::Display for PoolError {
 
 impl std::error::Error for PoolError {}
 
+/// Where a model's pod is, named by what a request for it would meet
+/// (`llm-gateway.gateway.ModelPhase`; [`RunpodPool::status`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ModelPhase {
+    /// No live deployment: a request starts one.
+    Stopped,
+    /// A request is held: declared, uncertain, or not observed ready.
+    Starting,
+    /// Last observed serving.
+    Ready,
+    /// The deployment owes a stop that is not confirmed; nothing starts meanwhile.
+    Stopping,
+}
+
+impl ModelPhase {
+    /// Every phase, in declaration order.
+    pub const ALL: [Self; 4] = [Self::Stopped, Self::Starting, Self::Ready, Self::Stopping];
+
+    /// The stable code, `llm-gateway.gateway.ModelPhase`'s.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Starting => "starting",
+            Self::Ready => "ready",
+            Self::Stopping => "stopping",
+        }
+    }
+}
+
+/// One model's phase as the controller's records hold it ([`RunpodPool::status`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelStatus {
+    pub phase: ModelPhase,
+    /// While [`ModelPhase::Starting`], the provider's own word for the pod as last observed
+    /// (`ProviderState::code`: `pending` or `running`); `None` in any other phase, and when the
+    /// record holds no observed state.
+    pub sub_phase: Option<&'static str>,
+    /// The profile the pod's GPU type names, as [`StreamLease::profile`]; `None` while stopped
+    /// or unknown.
+    pub profile: Option<String>,
+    /// The slot's current deployment; `None` while stopped.
+    pub deployment: Option<Identifier>,
+}
+
+impl ModelStatus {
+    const STOPPED: Self = Self {
+        phase: ModelPhase::Stopped,
+        sub_phase: None,
+        profile: None,
+        deployment: None,
+    };
+}
+
 /// What one cleanup pass did.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct CleanupReport {
@@ -672,6 +725,30 @@ impl<T: RunpodTransport> RunpodPool<T> {
         inner.submit_owed_stops(now);
         inner.forget_terminal(alias);
         Ok(requested)
+    }
+
+    /// Where `alias`'s pod is, read from the controller's records as the last step left them.
+    /// Contacts nobody: no listing, probe, create or spend read.
+    ///
+    /// # Errors
+    ///
+    /// [`PoolError::UnknownModel`] for an undeclared alias.
+    pub fn status(&self, _alias: &Identifier) -> Result<ModelStatus, PoolError> {
+        Err(PoolError::UnknownModel)
+    }
+
+    /// The owner's wake: one [`Self::ensure`], a ready lease dropped at once, then
+    /// [`Self::status`].
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::ensure`], but never [`PoolError::Starting`].
+    pub fn wake(
+        &self,
+        _alias: &Identifier,
+        _authorization: &ComputeAuthorization,
+    ) -> Result<ModelStatus, PoolError> {
+        Err(PoolError::UnknownModel)
     }
 
     /// The controller's view. Contacts nobody.

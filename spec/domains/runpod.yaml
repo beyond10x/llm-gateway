@@ -419,6 +419,34 @@ entities:
   # (`d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one`). Dropping a pool stops no
   # pod: pods outlive the process, and a pool started with no records sweeps every pod its
   # controller created as an orphan in its first cleanup pass (`the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods`).
+  # DECIDED 2026-10-17 (story:model-wake-and-status): the owner's lifecycle routes
+  # (llm-gateway.gateway.LifecycleRoute) read and drive the pool through two calls.
+  #   `status` reads the slot's current deployment from the controller's records and contacts
+  #           nobody: no listing, no probe, no create, no spend read
+  #           (`status-reads-the-phase-and-contacts-nobody`). Its phase
+  #           (llm-gateway.gateway.ModelPhase) is `stopped` for a slot with no current
+  #           deployment or one in a terminal phase; `stopping` for `stop-required`; `ready`
+  #           for `requested` or `active` whose last observation was ready; `starting`
+  #           otherwise (`declared`, `uncertain`, or `requested` or `active` last observed
+  #           not ready or of unknown readiness), with the sub-phase the provider last
+  #           reported for the pod while it starts (llm-gateway.hosting `ProviderState`:
+  #           `pending` for a pod Runpod reports `CREATED` or `EXITED`, `running` for `RUNNING`;
+  #           none when the record holds no observed state, after a restart for one). The
+  #           profile is the pod's GPU type's (ModelProfile, as a lease names it), for every
+  #           phase but `stopped`, and none while unknown. `ready` is the pool's last
+  #           observation, made by the last step (a request, a wake, or the cleanup pass the
+  #           binary runs every 60 seconds), not a fresh probe; a request still observes again.
+  #           An undeclared alias is `unknown-model`.
+  #   `wake`  is one `ensure` (an `ensure_held` with a fresh `Hold`, the first ask of a held
+  #           request), a ready lease dropped at once, then `status`. So a wake starts a pod
+  #           exactly as a request would, through the same spend check before each create and
+  #           the same profile fallback (`a-wake-over-the-daily-ceiling-is-refused-before-any-create`,
+  #           `a-wake-without-capacity-starts-the-model-on-its-next-profile`), answers
+  #           `starting` at once after submitting its create, and while a start is in progress
+  #           or the pod is ready it creates nothing (`a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready`).
+  #           Every refusal of `ensure` is its own: `spend-ceiling`, `no-capacity`, `stopping`
+  #           while a previous pod's stop is unconfirmed, a retire reason. A wake that finds the
+  #           pod ready is a use of it, as a request's ask is: its idle window starts again.
   - name: llm-gateway.runpod.Pool
     identity: {name: id, type: String}
     fields:
@@ -486,7 +514,9 @@ entities:
       - {name: error_code, type: 'Optional<String>'}
       # One entry per step, in order: `ok`, `ready`, or `err:<pool refusal code>`; a
       # `spend-ceiling` refusal is `err:spend-ceiling:<daily|total>:over_usd=<excess>` or
-      # `err:spend-ceiling:unknown` (SpendRefusal).
+      # `err:spend-ceiling:unknown` (SpendRefusal). A `wake` step that is answered is
+      # `woke phase=<phase> sub_phase=<sub-phase|none> profile=<profile|none>`, and a `status`
+      # step `status phase=<..> sub_phase=<..> profile=<..>` the same way (Pool `wake`, `status`).
       - {name: results, type: 'List<String>'}
       # Control-plane counters read from the emulator. Absent, never zero, when no emulator
       # was ever built.

@@ -1021,6 +1021,10 @@ fn compose(
 }
 
 #[cfg(test)]
+#[path = "relaying_stop_tests.rs"]
+mod stop_tests;
+
+#[cfg(test)]
 mod tests {
     use super::{Cleanup, authority, idle_timeout_ms, secret_name};
     use std::{

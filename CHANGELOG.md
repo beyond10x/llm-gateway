@@ -30,6 +30,18 @@ Nothing in any release is deployed or qualified against a live client.
   carries reasoning state the gateway did not seal for this route". No seal is handed to a
   Messages client, so Claude Code's later turns stay refused. No log line, event, metric or
   refusal carries a seal or the state in it.
+- `GET /metrics` also serves, per model, a latency histogram
+  `llmgw_request_duration_seconds{model}` with fixed buckets from 0.05 to 300 seconds, and an
+  outcome counter `llmgw_requests_total{model,outcome}`, `outcome` being `ok`, `upstream_error`,
+  `timeout` or `refused`. Every model is registered at zero; labels are model aliases and fixed
+  words only. `docs/gateway.md` lists the buckets and maps every refusal code to an outcome.
+- `metrics_listen` in the deployment document binds a second listener that answers
+  `GET /metrics` without the owner secret and refuses every other method and path with
+  `404 path-unknown`. `metrics_bearer_file`, read by the credential-file rules
+  (`metrics-bearer:<rule>` refusals), makes a scrape send that token; without it the listener is
+  open. `metrics_listen` must differ from `listen`, and the owner-guarded `/metrics` is
+  unchanged. The guides Scrape the counters and Run on Kubernetes (scrape port and network
+  policy) describe it.
 
 ## 0.11.0 (2026-10-17)
 

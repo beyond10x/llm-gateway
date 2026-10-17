@@ -12,6 +12,8 @@ pub enum Source {
     VllmApiKey,
     /// A file a hosted model's `credential_file` names.
     EndpointCredential,
+    /// The file `metrics_bearer_file` names.
+    MetricsBearer,
 }
 
 macro_rules! refusals {
@@ -80,6 +82,14 @@ refusals! {
     EndpointCredentialTooLarge => "endpoint-credential:too-large",
     EndpointCredentialNotUtf8 => "endpoint-credential:not-utf8",
     EndpointCredentialNotAToken => "endpoint-credential:not-a-token",
+    MetricsBearerUnreadable => "metrics-bearer:unreadable",
+    MetricsBearerSymlink => "metrics-bearer:symlink",
+    MetricsBearerNotRegular => "metrics-bearer:not-regular",
+    MetricsBearerUntrustedOwner => "metrics-bearer:untrusted-owner",
+    MetricsBearerUnsafeMode => "metrics-bearer:unsafe-mode",
+    MetricsBearerTooLarge => "metrics-bearer:too-large",
+    MetricsBearerNotUtf8 => "metrics-bearer:not-utf8",
+    MetricsBearerNotAToken => "metrics-bearer:not-a-token",
     ListenBind => "listen:bind",
     SignalInstall => "signal:install",
     }
@@ -166,6 +176,15 @@ impl FileRule {
             (Source::EndpointCredential, Self::NotUtf8) => {
                 StartupRefusal::EndpointCredentialNotUtf8
             }
+            (Source::MetricsBearer, Self::Unreadable) => StartupRefusal::MetricsBearerUnreadable,
+            (Source::MetricsBearer, Self::Symlink) => StartupRefusal::MetricsBearerSymlink,
+            (Source::MetricsBearer, Self::NotRegular) => StartupRefusal::MetricsBearerNotRegular,
+            (Source::MetricsBearer, Self::UntrustedOwner) => {
+                StartupRefusal::MetricsBearerUntrustedOwner
+            }
+            (Source::MetricsBearer, Self::UnsafeMode) => StartupRefusal::MetricsBearerUnsafeMode,
+            (Source::MetricsBearer, Self::TooLarge) => StartupRefusal::MetricsBearerTooLarge,
+            (Source::MetricsBearer, Self::NotUtf8) => StartupRefusal::MetricsBearerNotUtf8,
         }
     }
 }
@@ -258,6 +277,7 @@ mod tests {
                     "owner-secret",
                     "vllm-api-key",
                     "endpoint-credential",
+                    "metrics-bearer",
                     "listen",
                     "signal"
                 ]
@@ -284,6 +304,7 @@ mod tests {
             (Source::OwnerSecret, "owner-secret:"),
             (Source::VllmApiKey, "vllm-api-key:"),
             (Source::EndpointCredential, "endpoint-credential:"),
+            (Source::MetricsBearer, "metrics-bearer:"),
         ] {
             let codes: BTreeSet<&str> = rules.iter().map(|r| r.refusal(source).code()).collect();
             assert_eq!(codes.len(), rules.len());

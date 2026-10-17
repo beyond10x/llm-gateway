@@ -928,7 +928,12 @@ entities:
       # Per `scrape` step, in order: `<n> <status> content-type=<value>`, then for a served
       # scrape every sample line of its body as `<n> <line>`, where `<n>` counts scrapes from 1.
       # `llmgw_cold_start_wait_seconds_total` is measured, so its value is written `bounded`
-      # when it is at most the time the run has taken, and as served otherwise.
+      # when it is at most the time the run has taken, and as served otherwise. So is every
+      # model's `llmgw_request_duration_seconds` (llm-gateway.telemetry): a `_bucket` sample of
+      # a finite `le` is written `cumulative` when its value is at least the bucket before it
+      # and at most the `+Inf` bucket's, and as served otherwise; `_sum` is written `bounded`
+      # when it is at most `_count` times the time the run has taken; the `+Inf` bucket and
+      # `_count` are written as served.
       - {name: scrapes, type: 'List<String>'}
       # Per reply a fixture pod began to write, in order, `<pod> complete` when it wrote every
       # chunk of its answer, or `<pod> cut` when its connection closed before it had: a write

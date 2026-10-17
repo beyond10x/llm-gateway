@@ -166,8 +166,8 @@ entities:
   #
   # UNMAPPED: how the deployment document declares a model's ordered targets and its fallback
   # flag. Today the binary builds one target per wire, numbers positions by wire rather than by
-  # alternative, and sets `fallback_enabled` false (crates/llm-gateway-cli/src/serve.rs:96,
-  # 117). Owner: story:target-fallback.
+  # alternative, and sets `fallback_enabled` false (crates/llm-gateway-cli/src/serve.rs:122,
+  # 143). Owner: story:target-fallback.
   - name: llm-gateway.upstream.TargetAttempt
     identity: {name: attempt_id, type: String}
     fields:

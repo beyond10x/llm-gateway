@@ -248,6 +248,20 @@
     },
     {
       "area": "Observability",
+      "detail": "llmgw_request_duration_seconds{model}, a histogram with fixed buckets from 0.05 to 300 seconds, and llmgw_requests_total{model,outcome}, outcome one of ok, upstream_error, timeout and refused; every model registered at zero, labelled only by its alias and fixed words.",
+      "href": "/docs/guides/scrape-the-counters",
+      "label": "Latency and outcomes per model",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "metrics_listen binds a second listener that answers GET /metrics and nothing else, without the owner secret; metrics_bearer_file makes a scrape send its own token.",
+      "href": "/docs/guides/scrape-the-counters",
+      "label": "A scrape listener without the owner secret",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
       "detail": "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
       "href": "/docs/guides/scrape-the-counters",
       "label": "One usage record per authenticated wire request",
@@ -276,7 +290,7 @@
     },
     {
       "area": "Specification",
-      "detail": "The system llm-gateway is specified in ESS; the gate answers at least 210 of 210 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+      "detail": "The system llm-gateway is specified in ESS; the gate answers at least 278 of 278 scenarios, skips none, and fails on drift between the specification and its generated suite.",
       "href": "/docs/guides/run-the-checks",
       "label": "ESS specification and conformance suite",
       "status": "shipped"

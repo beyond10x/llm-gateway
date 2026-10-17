@@ -28,6 +28,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `listen` | yes | A socket address, `127.0.0.1:8080`. An address that cannot be bound is refused as `listen:bind`. |
 | `ingress_auth` | no | `bearer`, the default: every model call takes the owner secret. `none`: model calls take no credential, and the binary says so on standard error before it listens ([model calls without a credential](../concepts/single-owner-gateway.md#model-calls-without-a-credential)). Any other value is `config:schema`. |
 | `owner_secret_file` | with `bearer` | The file holding the owner's secret. A relative path is read from the working directory. Required unless `ingress_auth` is `none` (`config:value`); without it, `/metrics` and `/v1/routes` refuse every request. |
+| `metrics_listen` | no | A top-level key beside `listen`: a socket address for a second listener that answers `GET /metrics` with the same counters and nothing else: it takes no owner secret, every other method or path is `404 path-unknown`, and no model route is reachable on it ([scrape without the owner secret](../guides/scrape-the-counters.md#scrape-without-the-owner-secret)). Absent by default, which binds none. It must differ from `listen` (`config:value`); an address that cannot be bound is refused as `listen:bind`, naming `metrics_listen`. It stops with the gateway. |
+| `metrics_bearer_file` | no | The file holding the token a scrape of `metrics_listen` must send as `authorization: Bearer`; without it that listener is open, so bind it only on an address a network policy guards. Allowed only with `metrics_listen` (`config:value`). Read once at start by the [credential-file rules](#credential-files), refused as `metrics-bearer:<rule>`. |
 | `[providers.<name>]` | no | Providers models name. A name is 1 to 64 of `a-z`, `0-9`, `-`, `_`, `.`, without a leading dash. |
 | `routes` | no | The path of an llm `llm.routes/1` document whose routes are served beside the tables below ([`routes`](#routes)). A relative path is read from the working directory. |
 | `[models.<alias>]` | at least one model, here, in `hosted` or in `routes` | The models Runpod pods serve, under the same naming rule. |
@@ -249,9 +251,10 @@ and UTF-8.
 | `vllm_api_key_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | `credential_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | a route endpoint's `file:` secret | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
+| `metrics_bearer_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 
 A broken rule is refused as `<source>:<rule>`, the source being `config`, `owner-secret`,
-`vllm-api-key` or `endpoint-credential` (a routes document is a `config` file, a route's key file an `endpoint-credential` one):
+`vllm-api-key`, `endpoint-credential` or `metrics-bearer` (a routes document is a `config` file, a route's key file an `endpoint-credential` one):
 
 ```text
 b10x-llm-gateway: refused owner-secret:unsafe-mode: owner-secret: has mode 644; none of 077 may be set
@@ -261,8 +264,8 @@ b10x-llm-gateway: refused owner-secret:unsafe-mode: owner-secret: has mode 644; 
 
 ### Credential files {#credential-files}
 
-A hosted model's `credential_file` and a route endpoint's `file:` secret are read by the same
-rules. Anything that writes one, by hand,
+A hosted model's `credential_file`, a route endpoint's `file:` secret and `metrics_bearer_file`
+are read by the same rules (`metrics_bearer_file` refused as `metrics-bearer:<rule>`). Anything that writes one, by hand,
 [`b10x-llm-gateway credential set`](../guides/store-an-upstream-key.md) or another tool, aims at
 this reader:
 

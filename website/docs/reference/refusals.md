@@ -89,6 +89,14 @@ Before it serves, the binary refuses a start with one line on standard error, `b
 | `endpoint-credential:too-large` |
 | `endpoint-credential:not-utf8` |
 | `endpoint-credential:not-a-token` |
+| `metrics-bearer:unreadable` |
+| `metrics-bearer:symlink` |
+| `metrics-bearer:not-regular` |
+| `metrics-bearer:untrusted-owner` |
+| `metrics-bearer:unsafe-mode` |
+| `metrics-bearer:too-large` |
+| `metrics-bearer:not-utf8` |
+| `metrics-bearer:not-a-token` |
 | `listen:bind` |
 | `signal:install` |
 

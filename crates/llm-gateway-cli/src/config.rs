@@ -56,6 +56,12 @@ struct Document {
     ingress_auth: IngressAuthDocument,
     #[serde(default)]
     owner_secret_file: Option<PathBuf>,
+    /// The metrics listener's address (story:prometheus-metrics).
+    #[serde(default)]
+    metrics_listen: Option<SocketAddr>,
+    /// The token a scrape of the metrics listener presents.
+    #[serde(default)]
+    metrics_bearer_file: Option<PathBuf>,
     #[serde(default)]
     providers: BTreeMap<String, ProviderDocument>,
     #[serde(default)]
@@ -530,6 +536,11 @@ pub struct Deployment {
     /// The owner secret's file: present whenever `gateway.ingress_auth` is `Bearer`, and
     /// optional when it is `None` (story:ingress-auth-optional).
     pub owner_secret_file: Option<PathBuf>,
+    /// Where the metrics listener binds, serving `GET /metrics` without the owner credential;
+    /// never `gateway.bind`. `None` binds none.
+    pub metrics_listen: Option<SocketAddr>,
+    /// The file of the token a scrape must present; only with `metrics_listen`.
+    pub metrics_bearer_file: Option<PathBuf>,
     pub providers: BTreeMap<String, Provider>,
     pub models: BTreeMap<String, Model>,
     /// The models hosted endpoints serve, by alias. No alias is in both tables.
@@ -670,11 +681,23 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         "owner_secret_file",
         "is required unless ingress_auth is none",
     )?;
+    ensure(
+        document.metrics_listen != Some(document.listen),
+        "metrics_listen",
+        "must differ from listen",
+    )?;
+    ensure(
+        document.metrics_bearer_file.is_none() || document.metrics_listen.is_some(),
+        "metrics_bearer_file",
+        "is allowed only with metrics_listen",
+    )?;
     let mut gateway = GatewayConfig::new(document.listen);
     gateway.ingress_auth = ingress_auth;
     Ok(Deployment {
         gateway,
         owner_secret_file: document.owner_secret_file,
+        metrics_listen: document.metrics_listen,
+        metrics_bearer_file: document.metrics_bearer_file,
         providers,
         models,
         hosted,

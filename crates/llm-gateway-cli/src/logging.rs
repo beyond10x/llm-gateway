@@ -59,6 +59,7 @@ impl UsageRecords for TracingRecords {
             model = record.model.as_deref(),
             wire = %record.wire.label(),
             disposition = %disposition(record.disposition),
+            outcome = %record.outcome.label(),
             refusal = record.refusal.map(|code| tracing::field::display(code.wire())),
             status = record.status,
             target_status = record.target_status,

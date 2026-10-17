@@ -226,7 +226,8 @@ types:
   # Why startup is refused, reported as `<source>:<rule>`. Sources are `config` (the deployment
   # document), `owner-secret` (the file `owner_secret_file` names), `vllm-api-key` (a file a
   # model's `vllm_api_key_file` names), `endpoint-credential` (a file a hosted model's
-  # `credential_file` names), `listen` and `signal`.
+  # `credential_file` names), `metrics-bearer` (the file `metrics_bearer_file` names), `listen`
+  # and `signal`.
   #
   # The trusted-file rules apply to every file (llmgw `src/trusted.rs:21-42`): the file is opened
   # once without following a final symlink and every check reads that handle. `vllm-api-key`
@@ -272,12 +273,17 @@ types:
   # bearer or as the value of an `api-key` endpoint's `credential_header`):
   #   `endpoint-credential:too-large`    a credential over 4096 bytes
   #   `endpoint-credential:not-a-token`  empty, or not one printable ASCII token
+  # Metrics bearer rules (story:prometheus-metrics), the endpoint credential's rules in every
+  # trusted-file rule and after trimming; every message starts `metrics_bearer_file <path>:`:
+  #   `metrics-bearer:too-large`    a token over 4096 bytes
+  #   `metrics-bearer:not-a-token`  empty, or not one printable ASCII token
   # Process rules:
-  #   `listen:bind`     the listen address cannot be bound
+  #   `listen:bind`     the listen address, or the `metrics_listen` address, cannot be bound; the
+  #                     message names which
   #   `signal:install`  SIGINT and SIGTERM handlers cannot be installed
   - name: llm-gateway.deployment.StartupRefusal
     kind: enum
-    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, ListenBind, SignalInstall]
+    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, MetricsBearerUnreadable, MetricsBearerSymlink, MetricsBearerNotRegular, MetricsBearerUntrustedOwner, MetricsBearerUnsafeMode, MetricsBearerTooLarge, MetricsBearerNotUtf8, MetricsBearerNotAToken, ListenBind, SignalInstall]
   # `ingress_auth`: `bearer` (default) or `none`; maps onto llm-gateway.gateway.IngressAuth.
   - name: llm-gateway.deployment.IngressAuth
     kind: enum
@@ -656,12 +662,24 @@ types:
   # model's provider; a hosted model's carry the declaration's `auth_kind` and `billing_kind`,
   # provider and account `hosted`, endpoint the alias and model its `upstream_model`. No target
   # renders a base URL, a credential file or a credential.
+  # DECIDED 2026-10-17 (story:prometheus-metrics): `metrics_listen` and `metrics_bearer_file`
+  # are top-level keys beside `listen` (the document has no `[gateway]` table).
+  # `metrics_listen`, optional and absent by default, is a `<address>:<port>` the gateway binds a
+  # second listener on, serving
+  # `GET /metrics` without the owner credential and nothing else (llm-gateway.telemetry). It
+  # must differ from `listen` (`config:value` naming `metrics_listen`). `metrics_bearer_file`,
+  # optional, names the trusted file of the token a scrape must send as `authorization: Bearer`
+  # (StartupRefusal `metrics-bearer:*`); it is `config:value` without `metrics_listen`. Without
+  # it the listener is open, and the guides say to bind it only on an address a network policy
+  # guards. A relative path is resolved from the working directory, as `owner_secret_file`.
   - name: llm-gateway.deployment.DeploymentConfiguration
     kind: struct
     fields:
       - {name: listen, type: String}
       - {name: ingress_auth, type: llm-gateway.deployment.IngressAuth}
       - {name: owner_secret_file, type: 'Optional<String>'}
+      - {name: metrics_listen, type: 'Optional<String>'}
+      - {name: metrics_bearer_file, type: 'Optional<String>'}
       - {name: providers, type: 'Map<String, llm-gateway.deployment.ProviderDeclaration>'}
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}

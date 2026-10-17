@@ -20,7 +20,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
 | `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served at `https://beyond10x.github.io/llm-gateway/`, deployed by the `Documentation site` workflow |
-| `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
+| `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters, the per-model `llmgw_requests_total{model,outcome}` counter and `llmgw_request_duration_seconds{model}` histogram, the metrics-only listener and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
 | `docs/` | The gateway and hosting contracts, the llmgw capability matrix, dated verification records, and designs under `docs/design/` |
 | `.engineering/` | The AEP planning store and per-story evidence |
@@ -45,7 +45,7 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 277 of at least 277 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 278 of at least 278 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | The generated site pages equal what `llm-gateway-docs` generates, and no hand-written page carries a raw admonition title, a story id or a `/home/` path | `crates/llm-gateway-docs/tests/generate.rs::check_fails_on_every_kind_of_drift` |
 | Every `shipped` item on the status page names a test that exists | `crates/llm-gateway-docs/src/status.rs::a_vanished_test_or_a_shipped_item_without_one_is_refused` |
 | The refusal reference lists every code `RefusalCode::ALL`, `StartupRefusal::ALL` and `CredentialRefusal::ALL` hold | `crates/llm-gateway-docs/tests/generate.rs::refusal_reference_lists_every_code_the_gateway_can_emit` |

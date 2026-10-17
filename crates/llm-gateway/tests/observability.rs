@@ -45,6 +45,14 @@ const ROUTE_SERIES: [&str; 5] = [
     "llmgw_route_cold_start_holds_total",
     "llmgw_route_response_bytes_total",
 ];
+/// The two per-model series after them (story:prometheus-metrics), each with its `# TYPE`.
+const MODEL_SERIES: [(&str, &str); 2] = [
+    ("llmgw_requests_total", "counter"),
+    ("llmgw_request_duration_seconds", "histogram"),
+];
+/// The samples one model registers at zero: four outcomes, twelve finite buckets and `+Inf`,
+/// then `_sum` and `_count`.
+const MODEL_SAMPLES: usize = 4 + 13 + 2;
 
 fn label(value: &str) -> Label {
     Label::new(value).unwrap()
@@ -395,10 +403,11 @@ fn r4_metrics_is_prometheus_text_carrying_llmgws_13_series_names_in_order() {
             .unwrap_or_else(|| panic!("{line:?}"));
         let (name, text) = help.split_once(' ').unwrap();
         assert!(!text.is_empty(), "{name} has no help text");
-        assert_eq!(
-            lines.next(),
-            Some(format!("# TYPE {name} counter").as_str())
-        );
+        let kind = MODEL_SERIES
+            .iter()
+            .find_map(|(model, kind)| (*model == name).then_some(*kind))
+            .unwrap_or("counter");
+        assert_eq!(lines.next(), Some(format!("# TYPE {name} {kind}").as_str()));
         while lines.peek().is_some_and(|next| !next.starts_with('#')) {
             let sample = lines.next().unwrap();
             assert!(sample.starts_with(name), "{sample:?} under {name}");
@@ -408,6 +417,7 @@ fn r4_metrics_is_prometheus_text_carrying_llmgws_13_series_names_in_order() {
     let expected: Vec<String> = PROCESS_SERIES
         .iter()
         .chain(ROUTE_SERIES.iter())
+        .chain(MODEL_SERIES.iter().map(|(name, _)| name))
         .map(|name| (*name).to_owned())
         .collect();
     assert_eq!(names, expected);
@@ -464,7 +474,36 @@ fn o2_every_declared_model_and_wire_is_registered_at_zero_before_any_request() {
         // A wire the model does not declare has no series.
         assert!(!scraped.contains_key(&route(series, "code", "messages")));
     }
-    assert_eq!(scraped.len(), PROCESS_SERIES.len() + 3 * ROUTE_SERIES.len());
+    // Each model's outcome counter and histogram are registered at zero too.
+    for model in ["code", "a\\\"b\\\\c"] {
+        for outcome in ["ok", "upstream_error", "timeout", "refused"] {
+            let series = format!("llmgw_requests_total{{model=\"{model}\",outcome=\"{outcome}\"}}");
+            assert_eq!(
+                scraped.get(&series).map(String::as_str),
+                Some("0"),
+                "{series}"
+            );
+        }
+        for tail in [
+            "_bucket{model=\"MODEL\",le=\"+Inf\"}",
+            "_count{model=\"MODEL\"}",
+            "_sum{model=\"MODEL\"}",
+        ] {
+            let series = format!(
+                "llmgw_request_duration_seconds{}",
+                tail.replace("MODEL", model)
+            );
+            assert_eq!(
+                scraped.get(&series).map(String::as_str),
+                Some("0"),
+                "{series}"
+            );
+        }
+    }
+    assert_eq!(
+        scraped.len(),
+        PROCESS_SERIES.len() + 3 * ROUTE_SERIES.len() + 2 * MODEL_SAMPLES
+    );
 }
 
 // --- O1, O2: one record per call, and the series it feeds ----------------------------------------

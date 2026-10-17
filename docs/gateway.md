@@ -113,6 +113,9 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed. |
 | `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed. |
 
+An embedding may bind a second, metrics-only listener beside this surface
+([scraping the counters](#scraping-the-counters)); nothing in this table is reachable on it.
+
 The unauthenticated surface is a closed set of four literal paths with two literal methods. The
 two probes are matched before anything else — including before load is shed — so that a
 liveness probe never carries the owner credential and never fails because the gateway is busy.
@@ -703,7 +706,7 @@ answer or refusal is written, before the connection is closed: the alias of the 
 body named (absent when it named none), the wire, its `Disposition` (`Relayed`, `Refused` or
 `UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
 status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
-request head to the last byte written. The token counters and the model the target reported are
+request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The token counters and the model the target reported are
 always absent for now. A translated request whose client went away before any answer was
 written (a non-streamed client that closed while it waited) is recorded `Relayed` with status 0,
 no target status and 0 response bytes: status 0 means no answer was written because the client
@@ -713,7 +716,9 @@ counters, then leaves the crate through the `UsageRecords` port the embedding im
 
 `GET /metrics` serves llmgw's 13 counters under their llmgw names, so a scrape configured for
 llmgw keeps working, and one of the gateway's own, `llmgw_pod_start_spend_refusals_total`, after
-llmgw's eight process-wide series; its prefix keeps one scrape configuration for every series. It takes the owner credential and readiness like inspection, and answers
+llmgw's eight process-wide series, and after the route series two per model: the outcome counter
+and the latency histogram ([latency and outcomes per model](#latency-and-outcomes-per-model)). Its
+prefix keeps one scrape configuration for every series. It takes the owner credential and readiness like inspection, and answers
 `content-type: text/plain; version=0.0.4; charset=utf-8`. The text is rendered inside this crate,
 which takes no dependency for it.
 
@@ -733,6 +738,8 @@ which takes no dependency for it.
 | `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
 | `llmgw_route_cold_start_holds_total` | `model`, `wire` | requests held for a starting target: the target says it held them (`RelayTarget::held`), or `acquire` answered `model-cold-start` |
 | `llmgw_route_response_bytes_total` | `model`, `wire` | the records' response bytes |
+| `llmgw_requests_total` | `model`, `outcome` | records naming a relayed model, by how the call ended |
+| `llmgw_request_duration_seconds` | `model` | a histogram of the same records' durations, in seconds |
 
 Every (model, wire) pair a relayed model declares is registered at zero when the relay is
 composed, so an uncalled route reads 0 instead of being absent; a request for another pair feeds
@@ -740,6 +747,98 @@ the process-wide series only. A gateway composed without a relay serves the proc
 alone. An embedding that counts pod events shares one `Metrics` with the relay
 (`Relay::with_metrics`). The upstream and status series count as llmgw does (llmgw
 `src/lib.rs:598-629` at `048ebd8`). The specification is `spec/domains/telemetry.yaml`.
+
+### Latency and outcomes per model
+
+Every relayed model, Runpod or hosted or a route of the routes document, is registered at zero
+in both per-model series when the relay is composed: all four outcomes, every bucket, the sum and
+the count. Each usage record naming a relayed model feeds both, whatever wire it came on; a
+record naming no relayed model feeds neither. The `model` label is the alias from the deployment
+document and `outcome` a fixed word: no label or value carries a credential, a prompt, a
+completion, an upstream model name or an endpoint address.
+
+`llmgw_request_duration_seconds` observes the record's `duration_ms`, from the end of the request
+head to the last byte written, in seconds. A record falls in every bucket whose bound is at least
+its duration, so the buckets are cumulative, as the Prometheus text format writes them, followed
+by `_sum` in seconds and `_count`.
+The histogram's buckets are `0.05`, `0.1`, `0.25`, `0.5`, `1`, `2.5`, `5`, `10`, `30`, `60`, `120`, `300` and `+Inf` seconds.
+
+```text
+llmgw_requests_total{model="code",outcome="ok"} 3
+llmgw_requests_total{model="code",outcome="upstream_error"} 1
+llmgw_requests_total{model="code",outcome="timeout"} 0
+llmgw_requests_total{model="code",outcome="refused"} 1
+llmgw_request_duration_seconds_bucket{model="code",le="0.05"} 5
+…
+llmgw_request_duration_seconds_bucket{model="code",le="+Inf"} 5
+llmgw_request_duration_seconds_sum{model="code"} 0.012
+llmgw_request_duration_seconds_count{model="code"} 5
+```
+
+### Call outcomes
+
+A relayed answer is `ok`, whatever its status: a 4xx or a 500 the target answered reached the
+client. A refusal is counted by its code. `upstream-failed` is `timeout` when the target's read
+timeout passed before its answer head arrived, and `upstream_error` otherwise (an unreachable
+target, a connection closed without an answer, a malformed head, or a 502, 503 or 504 from the
+target). A translated request's transport timeout is reported by the translator as an upstream
+failure, and is `upstream_error`. `crates/llm-gateway/src/metrics.rs` checks this table against
+every code the gateway can emit.
+
+| Code | Outcome |
+| --- | --- |
+| `body-incomplete` | `refused` |
+| `body-not-allowed` | `refused` |
+| `body-not-json` | `refused` |
+| `body-too-large` | `refused` |
+| `context-exceeded` | `refused` |
+| `credential-absent` | `refused` |
+| `credential-malformed` | `refused` |
+| `credential-rejected` | `refused` |
+| `method-not-allowed` | `refused` |
+| `model-absent` | `refused` |
+| `model-cold-start` | `timeout` |
+| `model-unknown` | `refused` |
+| `overloaded` | `refused` |
+| `path-unknown` | `refused` |
+| `request-malformed` | `refused` |
+| `request-too-large` | `refused` |
+| `route-unknown` | `refused` |
+| `spend-ceiling` | `refused` |
+| `target-unavailable` | `refused` |
+| `tools-not-served` | `refused` |
+| `translation-invalid` | `refused` |
+| `translation-opaque-state` | `refused` |
+| `translation-too-large` | `upstream_error` |
+| `translation-unrepresentable` | `upstream_error` |
+| `translation-unsupported` | `refused` |
+| `unavailable` | `refused` |
+| `upstream-failed` | `upstream_error`, or `timeout` when the target's read timed out before its answer head |
+| `upstream-refused` | `upstream_error` |
+| `wire-not-served` | `refused` |
+
+A code that makes no usage record (a credential refusal, `overloaded`, a request before the
+head was read) is in the table for completeness and is never counted.
+
+### Scraping the counters
+
+`GatewayHandle::serve_metrics(address, bearer)` binds a second listener that serves the same
+text as the owner's `/metrics` without the owner credential, so a monitoring stack never holds
+the credential that can make paid model calls. The binary binds it when the deployment document
+sets the top-level `metrics_listen`, a key beside `listen` (the scrape token is the top-level
+`metrics_bearer_file`).
+
+- It answers `GET` and `HEAD` on exactly `/metrics`. Any other method or path is
+  `404 path-unknown`, so no model route, probe, public route or inspection path is reachable on
+  it.
+- With a bearer (the binary's `metrics_bearer_file`), a scrape presents that token as
+  `authorization: Bearer <token>`, compared in constant time: none is `credential-absent`, a
+  value that is not one bearer token `credential-malformed` and another token, the owner's
+  included, `credential-rejected`, each `401`. Without one the listener is open: bind it only on
+  an address a network policy guards.
+- It serves before `mark_ready` and while draining, so a drain stays visible, and it stops with
+  the gateway's shutdown or drop.
+- The owner-guarded `/metrics` of the serving listener is unchanged.
 
 ## Refusals
 

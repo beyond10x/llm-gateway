@@ -34,7 +34,7 @@ scope:
   path: website/docs/guides/store-an-upstream-key.md
 - confidence: inferred
   path: website/docs/reference/deployment-document.md
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T05:23:01Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-17T05:23:01Z", actor: "human:timo", revision: 4}
@@ -62,15 +62,18 @@ the reader's rules so that both writers aim at one reader.
   Exactly one of `--model` and `--route`. Loading the target reads the document (and the routes
   document for `--route`) and no credential file, owner secret or key. Refused: an unknown alias or
   route, an anonymous endpoint, a model that is not a hosted endpoint.
-- **Key input.** A hidden prompt on `/dev/tty` (echo off, restored on every path), or `--stdin` for
-  scripts; never an argument or an environment variable. One line: the terminator (`\n`) ends the
+- **Key input.** A hidden prompt on `/dev/tty` (echo off, restored on every path; Ctrl-C, Ctrl-D or a
+  hang-up before the newline cancels, `credential:input-cancelled`, and a partial line is never
+  taken), or `--stdin` for scripts; never an argument or an environment variable. One line: the terminator (`\n`) ends the
   key and is not part of it. Refused: empty, any other CR or LF, leading or trailing whitespace,
   anything but one printable ASCII token of at most 4096 bytes (the reader's token rule).
 - **Probe** (default; `--no-probe` skips it): `GET <base_url>/models` (the base URL with its path,
-  so `https://api.openai.com/v1` probes `/v1/models`) with the entry's own credential header
+  so `https://api.openai.com/v1` probes `/v1/models`; a base URL with no path probes `/v1/models`,
+  the path the gateway uses for a relayed request) with the entry's own credential header
   (`authorization: Bearer <key>` or the `api-key` header it names) and its static headers (so
   Anthropic's `anthropic-version` is sent), over the TLS client the gateway uses for hosted
-  endpoints. No model call. 401 or 403 refuses and writes nothing; a transport failure refuses and
+  endpoints. No model call. Interim `1xx` answers, with their headers, are skipped: the status is the
+  first final one. The whole probe (connect, TLS, status line) ends within 30 s overall. 401 or 403 refuses and writes nothing; a transport failure, or no answer within 30 s, refuses and
   writes nothing (`--no-probe` to store anyway); any other status stores and says which code.
 - **Write.** A temporary file in the target's directory, created exclusively with mode 0600 and
   without following a symlink, written, flushed, then read back through the same trusted-file
@@ -81,7 +84,10 @@ the reader's rules so that both writers aim at one reader.
 - **Output.** One line on success,
   `b10x-llm-gateway: credential stored <path> probe <passed|skipped|not-rejected> http <code|->`,
   exit status 0; a refusal is `b10x-llm-gateway: refused <code>: <message>`, exit status 1; a
-  command-line error is clap's, exit status 2. No line, event or refusal carries the key or any
+  command-line error prints one fixed usage line naming the error kind and
+  `b10x-llm-gateway credential set --help`, never an argument's value, exit status 2. A refusal
+  naming an unknown `--model` or `--route` quotes the value only if it is at most 64 characters of
+  `A-Z a-z 0-9 . _ -`, and otherwise says "the given name". No line, event or refusal carries the key or any
   part of it.
 - **Compatible.** `b10x-llm-gateway --config <file>` with no subcommand serves exactly as before.
 

@@ -5,6 +5,24 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- `b10x-llm-gateway credential set --config <file> --model <alias>` (or `--route <name>` for a
+  route of the routes document) stores one upstream key in the file the deployment already names
+  for it, the documented way to store one. The key comes from a hidden prompt on the terminal or
+  from standard input with `--stdin`, never from an argument or the environment, and is held to
+  the reader's token rule. Unless `--no-probe`, it is checked first with one
+  `GET <base path>/models` (`/v1/models` when the base URL has no path) carrying the entry's own
+  credential header and static headers over the gateway's TLS client, within 30 seconds overall
+  and past any interim `1xx` answer: `401` or `403`, or a probe that cannot connect or does not
+  answer in time, stores nothing. A command-line error prints one fixed usage line and never an
+  argument's value. The file
+  is written exactly as the key, mode `0600`, in a directory only you or root can write, read
+  back through the server's own reader and only then renamed over the old one. Refusals are
+  `credential:<rule>` codes, listed in the refusal reference; no line carries the key.
+  `b10x-llm-gateway --config <file>` serves exactly as before. A guide, Store an upstream key,
+  and the deployment document reference's rules for a credential file describe it.
+
 ## 0.10.0 (2026-10-17)
 
 - The owner can wake a model ahead of demand and read its phase without a model call:

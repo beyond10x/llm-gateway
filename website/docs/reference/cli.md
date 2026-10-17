@@ -23,7 +23,7 @@ Usage: b10x-llm-gateway --config <CONFIG>
 | --- | --- | --- | --- |
 | `--config <CONFIG>` | yes | none | Path to the closed TOML deployment document. |
 
-The command line takes nothing else: a subcommand, a positional argument or another option is a usage error. The document the option names is described in [the deployment document](./deployment-document.md).
+The serving command line takes nothing else: a positional argument or another option is a usage error. The one other command, `credential set` below, is reached only when `credential` is the first argument. The document the option names is described in [the deployment document](./deployment-document.md).
 
 ## Exit status
 
@@ -34,3 +34,21 @@ The command line takes nothing else: a subcommand, a positional argument or anot
 | 2 | a usage error, reported by clap | clap's usage message |
 
 While it serves, the process writes `b10x-llm-gateway: listening on <address>` once. `RUST_LOG` sets the level of the structured events it writes beside these lines (default `info`).
+
+## `b10x-llm-gateway credential set`
+
+> Store one upstream key in the file the deployment document names for it
+
+```text
+Usage: b10x-llm-gateway credential set [OPTIONS] --config <CONFIG> <--model <ALIAS>|--route <NAME>>
+```
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--config <CONFIG>` | yes | none | Path to the closed TOML deployment document. |
+| `--model <ALIAS>` | no | none | A `[hosted.<alias>]` model: its key goes to the entry's `credential_file`. |
+| `--route <NAME>` | no | none | A route of the routes document the deployment names: its key goes to the route's endpoint's `file:` secret. |
+| `--stdin` | no | none | Read the key from standard input, one line, instead of a hidden prompt. |
+| `--no-probe` | no | none | Store without probing the endpoint first. |
+
+Exactly one of `--model` and `--route` is required. The key is never an argument or an environment variable: it is read from a hidden prompt on the terminal, or from standard input with `--stdin`, one line whose newline is not part of it. On success the command writes one line, `b10x-llm-gateway: credential stored <path> probe <passed|skipped|not-rejected> http <code|->`, and exits 0; a refusal is `b10x-llm-gateway: refused <code>: <message>` with exit status 1 and writes nothing ([the refusal reference](./refusals.md#credential-refusals)); a usage error is clap's, exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks through it.

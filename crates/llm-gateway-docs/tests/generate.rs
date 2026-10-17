@@ -12,7 +12,7 @@ use std::{
 };
 
 use llm_gateway::RefusalCode;
-use llm_gateway_cli::StartupRefusal;
+use llm_gateway_cli::{CredentialRefusal, StartupRefusal};
 
 const CLI_PAGE: &str = "website/docs/reference/cli.md";
 const CRATES_PAGE: &str = "website/docs/reference/crates.md";
@@ -157,6 +157,9 @@ fn refusal_reference_lists_every_code_the_gateway_can_emit() {
     let (gateway, startup) = page
         .split_once("## Startup refusals")
         .expect("the page lists the binary's startup refusals");
+    let (startup, credential) = startup
+        .split_once("## Credential refusals")
+        .expect("the page lists the credential command's refusals");
     let mut missing = Vec::new();
     for code in RefusalCode::ALL {
         let row = format!(
@@ -175,6 +178,12 @@ fn refusal_reference_lists_every_code_the_gateway_can_emit() {
             missing.push(row);
         }
     }
+    for refusal in CredentialRefusal::ALL {
+        let row = format!("| `{}` |", refusal.code());
+        if !credential.contains(&row) {
+            missing.push(row);
+        }
+    }
     assert!(missing.is_empty(), "{REFUSALS_PAGE} lacks: {missing:?}");
     let rows = |part: &str| part.lines().filter(|line| line.starts_with("| `")).count();
     assert_eq!(
@@ -186,6 +195,11 @@ fn refusal_reference_lists_every_code_the_gateway_can_emit() {
         rows(startup),
         StartupRefusal::ALL.len(),
         "one row per startup code"
+    );
+    assert_eq!(
+        rows(credential),
+        CredentialRefusal::ALL.len(),
+        "one row per credential code"
     );
 }
 

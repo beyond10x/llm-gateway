@@ -1,4 +1,5 @@
-//! Why startup is refused: `llm-gateway.deployment.StartupRefusal`.
+//! Why startup is refused, `llm-gateway.deployment.StartupRefusal`, and why `credential set`
+//! is, `llm-gateway.deployment.CredentialRefusal`.
 
 use std::fmt;
 
@@ -13,15 +14,15 @@ pub enum Source {
     EndpointCredential,
 }
 
-macro_rules! startup_refusals {
-    ($($variant:ident => $code:literal,)+) => {
-        /// The closed set of startup refusals, each with its stable `<source>:<rule>` code.
+macro_rules! refusals {
+    ($(#[$doc:meta])* $name:ident { $($variant:ident => $code:literal,)+ }) => {
+        $(#[$doc])*
         #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-        pub enum StartupRefusal {
+        pub enum $name {
             $($variant,)+
         }
 
-        impl StartupRefusal {
+        impl $name {
             /// Every refusal, in the specification's order.
             pub const ALL: &'static [Self] = &[$(Self::$variant,)+];
 
@@ -42,7 +43,9 @@ macro_rules! startup_refusals {
     };
 }
 
-startup_refusals! {
+refusals! {
+    /// The closed set of startup refusals, each with its stable `<source>:<rule>` code.
+    StartupRefusal {
     ConfigUnreadable => "config:unreadable",
     ConfigSymlink => "config:symlink",
     ConfigNotRegular => "config:not-regular",
@@ -79,6 +82,29 @@ startup_refusals! {
     EndpointCredentialNotAToken => "endpoint-credential:not-a-token",
     ListenBind => "listen:bind",
     SignalInstall => "signal:install",
+    }
+}
+
+refusals! {
+    /// The closed set of `credential set` refusals, each with its stable `credential:<rule>`
+    /// code. The command also refuses with the [`StartupRefusal`] the server's own loader or
+    /// reader gives (`config:*`, `endpoint-credential:*`).
+    CredentialRefusal {
+        UnknownTarget => "credential:unknown-target",
+        NotHosted => "credential:not-hosted",
+        Anonymous => "credential:anonymous",
+        NoTerminal => "credential:no-terminal",
+        InputCancelled => "credential:input-cancelled",
+        InputUnreadable => "credential:input-unreadable",
+        InputEmpty => "credential:input-empty",
+        InputTooLarge => "credential:input-too-large",
+        InputNotAToken => "credential:input-not-a-token",
+        ProbeRejected => "credential:probe-rejected",
+        ProbeUnreachable => "credential:probe-unreachable",
+        DirectoryMissing => "credential:directory-missing",
+        DirectoryUnsafe => "credential:directory-unsafe",
+        Write => "credential:write",
+    }
 }
 
 /// The trusted-file rules, shared by every source.
@@ -182,25 +208,42 @@ impl std::error::Error for Refusal {}
 
 #[cfg(test)]
 mod tests {
-    use super::{FileRule, Source, StartupRefusal};
+    use super::{CredentialRefusal, FileRule, Source, StartupRefusal};
     use std::{collections::BTreeSet, fs, path::Path};
+
+    /// The variants `deployment.yaml` declares for the enum `name`.
+    fn declared(name: &str) -> Vec<String> {
+        let spec = Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
+            .join("../../spec/domains/deployment.yaml");
+        let text = fs::read_to_string(spec).unwrap();
+        let declared = text
+            .split(&format!("- name: llm-gateway.deployment.{name}\n"))
+            .nth(1)
+            .and_then(|rest| rest.split("variants: [").nth(1))
+            .and_then(|rest| rest.split(']').next())
+            .expect("the specification declares the variants");
+        declared.split(',').map(|v| v.trim().to_owned()).collect()
+    }
 
     /// The Rust set and the specification's set are the same list: a variant added on one side
     /// only fails here, whichever side it is.
     #[test]
     fn the_refusals_are_exactly_the_specified_variants() {
-        let spec = Path::new(&std::env::var_os("CARGO_MANIFEST_DIR").unwrap())
-            .join("../../spec/domains/deployment.yaml");
-        let text = fs::read_to_string(spec).unwrap();
-        let declared = text
-            .split("- name: llm-gateway.deployment.StartupRefusal")
-            .nth(1)
-            .and_then(|rest| rest.split("variants: [").nth(1))
-            .and_then(|rest| rest.split(']').next())
-            .expect("the specification declares StartupRefusal variants");
-        let declared: Vec<&str> = declared.split(',').map(str::trim).collect();
         let implemented: Vec<&str> = StartupRefusal::ALL.iter().map(|r| r.name()).collect();
-        assert_eq!(implemented, declared);
+        assert_eq!(implemented, declared("StartupRefusal"));
+        let implemented: Vec<&str> = CredentialRefusal::ALL.iter().map(|r| r.name()).collect();
+        assert_eq!(implemented, declared("CredentialRefusal"));
+    }
+
+    #[test]
+    fn every_credential_code_is_unique_and_a_credential_rule() {
+        let codes: BTreeSet<&str> = CredentialRefusal::ALL.iter().map(|r| r.code()).collect();
+        assert_eq!(codes.len(), CredentialRefusal::ALL.len());
+        let startup: BTreeSet<&str> = StartupRefusal::ALL.iter().map(|r| r.code()).collect();
+        for code in codes {
+            let rule = code.strip_prefix("credential:").expect(code);
+            assert!(!rule.is_empty() && !startup.contains(code), "{code}");
+        }
     }
 
     #[test]

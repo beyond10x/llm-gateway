@@ -7,7 +7,10 @@ domain: llm-gateway.deployment
 # K29, K30, D2).
 #
 # The command line is closed: `--config <CONFIG>`, `-h`/`--help`, `-V`/`--version`, no
-# subcommand and no positional argument. llmgw's `--insecure` (C3) has no command-line
+# subcommand and no positional argument. Amended 2026-10-17: one command is added beside it,
+# `b10x-llm-gateway credential set` (CredentialSetCommand below), reached only when `credential`
+# is the first argument; any other command line is the serving one above, unchanged, so a first
+# argument that is not `credential` is still a command-line error. llmgw's `--insecure` (C3) has no command-line
 # counterpart: the document's `ingress_auth` (DeploymentConfiguration below) decides whether a
 # model call takes the owner secret, and it takes it unless the document says `none`.
 #
@@ -663,6 +666,123 @@ types:
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}
       - {name: routes, type: 'Optional<String>'}
+  # Why `b10x-llm-gateway credential set` refused (CredentialSetCommand), reported as
+  # `credential:<rule>`:
+  #   `credential:unknown-target`     `--model` names no `[hosted.*]` or `[models.*]` alias, or
+  #                                   `--route` no route of the routes document the deployment
+  #                                   names; the message quotes the given name only when it is at
+  #                                   most 64 characters of `A-Z a-z 0-9 . _ -`, and otherwise
+  #                                   says "the given name"
+  #   `credential:not-hosted`         `--model` names a `[models.*]` (Runpod) model, whose key
+  #                                   is not an upstream key
+  #   `credential:anonymous`          the target's endpoint is `anonymous`: it takes no key
+  #   `credential:no-terminal`        no `--stdin`, and `/dev/tty` cannot be opened or set to
+  #                                   read without echo
+  #   `credential:input-cancelled`    the prompt was ended by Ctrl-C, Ctrl-D or a hang-up (end of
+  #                                   input before a newline)
+  #   `credential:input-unreadable`   reading the key failed
+  #   `credential:input-empty`        nothing before the terminator
+  #   `credential:input-too-large`    a key over 4096 bytes
+  #   `credential:input-not-a-token`  anything but one printable ASCII token: a CR, an LF other
+  #                                   than the one terminator, a space, a tab, a control or a
+  #                                   non-ASCII byte, leading or trailing whitespace included
+  #   `credential:probe-rejected`     the probe was answered 401 or 403
+  #   `credential:probe-unreachable`  the probe failed in transport: no connection, a TLS
+  #                                   certificate the gateway does not trust, a timeout (the
+  #                                   whole probe is bounded by 30 s) or no HTTP status line
+  #   `credential:directory-missing`  the target's directory does not exist or is not a
+  #                                   directory
+  #   `credential:directory-unsafe`   the target's directory is owned by neither the effective
+  #                                   user nor root, or is group- or world-writable (mode &
+  #                                   0o022): another user could replace the file the gateway
+  #                                   reads
+  #   `credential:write`              the temporary file could not be created, written, flushed
+  #                                   or renamed over the target
+  # No message quotes the key or any part of it.
+  - name: llm-gateway.deployment.CredentialRefusal
+    kind: enum
+    variants: [UnknownTarget, NotHosted, Anonymous, NoTerminal, InputCancelled, InputUnreadable, InputEmpty, InputTooLarge, InputNotAToken, ProbeRejected, ProbeUnreachable, DirectoryMissing, DirectoryUnsafe, Write]
+  # What `credential set` stores a key for: a `[hosted.<alias>]` model (`--model`) or a route of
+  # the routes document (`--route`).
+  - name: llm-gateway.deployment.CredentialTargetKind
+    kind: enum
+    variants: [Model, Route]
+  # The probe's outcome, as the success line writes it: `passed` (a 2xx answer), `skipped`
+  # (`--no-probe`), `not-rejected` (any status but 2xx, 401 and 403).
+  - name: llm-gateway.deployment.CredentialProbe
+    kind: enum
+    variants: [Passed, Skipped, NotRejected]
+  # DECIDED 2026-10-17 (the owner's request): `b10x-llm-gateway credential set --config <CONFIG>
+  # (--model <ALIAS> | --route <NAME>) [--stdin] [--no-probe]` stores one upstream key in the file
+  # the deployment already names for it, so that the next start reads it. It is the documented
+  # way to store a key; the reader's rules below are the ones both it and any other writer aim at.
+  # ESS-LIMIT: the rules are not struct invariants: a terminal, a file mode, a rename and an HTTP
+  # probe are process-environment facts no conformance command models. The crate tests in
+  # crates/llm-gateway-cli/tests/credential_set.rs prove them.
+  #   the target rule   read from the document only, through `load` (the deployment document
+  #                     and, for `--route`, the routes document it names); no credential file,
+  #                     owner secret or key is read. `--model` takes a `[hosted.<alias>]`
+  #                     declaration's `credential_file`, `auth_kind`, `credential_header`,
+  #                     `base_url` and `headers`; `--route` takes the route's endpoint's `file:`
+  #                     secret (a `~/` path below `HOME`, `config:value` naming
+  #                     `routes.<endpoint>.auth.secret` without an absolute `HOME`), its auth,
+  #                     its base URL and the static header a `messages` endpoint is sent
+  #                     (`anthropic-version`). There is no provider preset. Exactly one of
+  #                     `--model` and `--route` (a command-line error otherwise). A document the
+  #                     server would refuse to load is refused with the server's `config:*` code
+  #                     (StartupRefusal). Refused: an unknown alias or route
+  #                     (`credential:unknown-target`), a `[models.*]` model
+  #                     (`credential:not-hosted`), an anonymous endpoint (`credential:anonymous`)
+  #   the input rule    a hidden prompt on `/dev/tty` (echo, canonical input and signal keys
+  #                     off, restored on every path; Ctrl-C, Ctrl-D or a hang-up, end of input
+  #                     before a newline, cancels and a partial line is never taken), or standard input
+  #                     with `--stdin`; never an argument or an environment variable. One line:
+  #                     the first `\n` ends the key and is not part of it (end of input does
+  #                     too); nothing may follow it. The key is one printable ASCII token of
+  #                     1..=4096 bytes, the reader's token rule (`credential:input-*`)
+  #   the probe rule    unless `--no-probe`: one `GET <base path>/models` (`/v1/models` without a
+  #                     base path, the path the gateway relays a `/v1/models` request to: a base
+  #                     path replaces the wire path's leading `/v1`) to the endpoint's authority, sent `host`, the entry's own
+  #                     credential header (`authorization: Bearer <key>`, or `<credential_header>:
+  #                     <key>`), its static headers, `accept: application/json` and
+  #                     `connection: close`, over the TLS client the gateway reaches every `https`
+  #                     hosted endpoint with (plain TCP for a loopback `http` one). The whole
+  #                     probe, connect, TLS handshake and status line, ends within 30 s overall
+  #                     (10 s bounds each connect, read and write inside it), else it is a
+  #                     transport failure. Interim `1xx` answers, with their headers, are
+  #                     skipped: the status is the first final one. No model is called. 401 or 403 is
+  #                     `credential:probe-rejected` and a transport failure
+  #                     `credential:probe-unreachable`, and either writes nothing; a 2xx answer is
+  #                     `passed` and any other status `not-rejected`, and both store
+  #   the write rule    the target's directory must exist (`credential:directory-missing`) and
+  #                     be owned by the user or root and not group- or world-writable
+  #                     (`credential:directory-unsafe`). A temporary file `.<name>.<pid>.tmp` in
+  #                     it is created exclusively, mode 0600, without following a symlink,
+  #                     written with exactly the key's bytes, flushed to disk, then read back
+  #                     through the trusted-file reader and token rule the server applies at
+  #                     start (the endpoint-credential policy; its `endpoint-credential:<rule>`
+  #                     code if it refuses) and compared with the key; only then is it renamed
+  #                     over the target. Any refusal leaves the target as it was and removes the
+  #                     temporary file
+  #   the output rule   on success one line on standard error, `b10x-llm-gateway: credential
+  #                     stored <path> probe <passed|skipped|not-rejected> http <code|->`, exit
+  #                     status 0; a refusal is `b10x-llm-gateway: refused <code>: <message>`,
+  #                     exit status 1; a command-line error prints one fixed usage line naming
+  #                     the error kind and `b10x-llm-gateway credential set --help`, never an
+  #                     argument's value, exit status 2. No line, event or refusal carries the key
+  #                     or any part of it
+  # The reader's rules for a credential file, which every writer aims at: a regular file, not a
+  # symbolic link, owned by the effective user or root, no group or world permission bit, at most
+  # 4098 bytes, UTF-8, and once trailing ASCII whitespace is trimmed one printable ASCII token of
+  # at most 4096 bytes (StartupRefusal's endpoint-credential rules).
+  - name: llm-gateway.deployment.CredentialSetCommand
+    kind: struct
+    fields:
+      - {name: config, type: String}
+      - {name: target_kind, type: llm-gateway.deployment.CredentialTargetKind}
+      - {name: target, type: String}
+      - {name: stdin, type: Boolean}
+      - {name: probe, type: Boolean}
 entities:
   # One run of the binary. A refused start has a `refusal` and no `listening`; a served run has
   # `listening`, and `stopped_by` once a signal ended it.
@@ -678,4 +798,18 @@ entities:
       - {name: stopped_by, type: 'Optional<llm-gateway.deployment.StopSignal>'}
       # The graceful stop's report, as `accepted=<n> completed=<n>`.
       - {name: shutdown, type: 'Optional<String>'}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  # One run of `b10x-llm-gateway credential set` (CredentialSetCommand). A stored run has `path`,
+  # `probe` and, when a probe was answered, `http_status`; a refused run has `refusal` or
+  # `startup_refusal` (a `config:*` or `endpoint-credential:*` code the server's own reader gave)
+  # and leaves the target as it was.
+  - name: llm-gateway.deployment.CredentialSetRun
+    identity: {name: run_id, type: String}
+    fields:
+      - {name: command, type: llm-gateway.deployment.CredentialSetCommand}
+      - {name: path, type: 'Optional<String>'}
+      - {name: probe, type: 'Optional<llm-gateway.deployment.CredentialProbe>'}
+      - {name: http_status, type: 'Optional<Integer>'}
+      - {name: refusal, type: 'Optional<llm-gateway.deployment.CredentialRefusal>'}
+      - {name: startup_refusal, type: 'Optional<llm-gateway.deployment.StartupRefusal>'}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}

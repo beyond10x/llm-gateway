@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-17T07:56:32Z",
+  "actor": "human:timo",
+  "artifact": "story:credential-set-command",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "package gates on ca38481 (merged as b9a94e1): test, clippy -D warnings on Rust 1.98.0 for b10x-llm-gateway-cli and llm-gateway-docs, 336 passed, 0 failed; fmt clean; generate --check current; conformance 277 of 277 on three runs; ess 0.61.0 specify validate valid",
+    "reference": "the wave scratch directory"
+  }
+}

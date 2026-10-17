@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:credential-set-command
 kind: story
-status: active
+status: implemented
 title: The owner stores an upstream key with b10x-llm-gateway credential set
 relations:
 - decomposes: epic:gateway-features
@@ -34,10 +34,11 @@ scope:
   path: website/docs/guides/store-an-upstream-key.md
 - confidence: inferred
   path: website/docs/reference/deployment-document.md
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T05:23:01Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-17T05:23:01Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-10-17T07:56:35Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

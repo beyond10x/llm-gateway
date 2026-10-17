@@ -278,6 +278,53 @@ fn adversary_w15_every_variant_of_a_seal_is_refused_and_the_genuine_one_still_bi
             .as_str()
             .unwrap()
             .to_owned();
+    let variants = seal_variants(&sealed, &null_sealed);
+    let mut failures = Vec::new();
+    for (name, content) in &variants {
+        let answer = server.post("/v1/responses", &second_turn("code", content));
+        if !refused_opaque_state(&answer) {
+            failures.push(format!(
+                "{name}: {}",
+                answer.lines().next().unwrap_or("<no answer>")
+            ));
+        }
+    }
+    // The genuine seal on the chat route is not the chat route's.
+    let crossed = server.post(
+        "/v1/responses",
+        &second_turn("chatty", &serde_json::json!(sealed)),
+    );
+    if !refused_opaque_state(&crossed) {
+        failures.push(format!(
+            "messages seal on the chat route: {}",
+            crossed.lines().next().unwrap_or("")
+        ));
+    }
+    assert_eq!(
+        code.so_far().len(),
+        1,
+        "a refused variant reached the upstream"
+    );
+    let bound = server.post(
+        "/v1/responses",
+        &second_turn("code", &serde_json::json!(sealed)),
+    );
+    assert!(
+        bound.starts_with("HTTP/1.1 200 OK\r\n"),
+        "the genuine seal after the variants: {bound}"
+    );
+    drop(server);
+    assert!(
+        failures.is_empty(),
+        "not refused translation-opaque-state: {failures:#?}"
+    );
+    assert_eq!(code.seen().len(), 2);
+    assert_eq!(chat.seen().len(), 1);
+}
+
+/// Every re-encoding, truncation, padding, splice, oversize and cross-route variant of `sealed`,
+/// the messages route's seal, with `null_sealed`, the chat route's seal over `null`.
+fn seal_variants(sealed: &str, null_sealed: &str) -> Vec<(&'static str, serde_json::Value)> {
     assert!(sealed.starts_with(SEAL_PREFIX), "{sealed}");
     assert!(null_sealed.starts_with(SEAL_PREFIX), "{null_sealed}");
     let (state, tag) = sealed[SEAL_PREFIX.len()..].split_once('.').unwrap();
@@ -327,8 +374,8 @@ fn adversary_w15_every_variant_of_a_seal_is_refused_and_the_genuine_one_still_bi
         ("empty string", serde_json::json!("")),
         ("null", serde_json::Value::Null),
         ("number", serde_json::json!(1)),
-        ("array", serde_json::json!([sealed.clone()])),
-        ("object", serde_json::json!({"seal": sealed.clone()})),
+        ("array", serde_json::json!([sealed])),
+        ("object", serde_json::json!({"seal": sealed})),
         (
             "null state under its tag",
             serde_json::json!(format!("{SEAL_PREFIX}{null_state}.{tag}")),
@@ -337,10 +384,7 @@ fn adversary_w15_every_variant_of_a_seal_is_refused_and_the_genuine_one_still_bi
             "this state under the null tag",
             serde_json::json!(format!("{SEAL_PREFIX}{state}.{null_tag}")),
         ),
-        (
-            "the chat route's null seal",
-            serde_json::json!(null_sealed.clone()),
-        ),
+        ("the chat route's null seal", serde_json::json!(null_sealed)),
         (
             "oversized state",
             serde_json::json!(format!("{SEAL_PREFIX}{}{state}.{tag}", "A".repeat(1 << 20))),
@@ -353,47 +397,7 @@ fn adversary_w15_every_variant_of_a_seal_is_refused_and_the_genuine_one_still_bi
     if standard != sealed {
         variants.push(("standard alphabet", serde_json::json!(standard)));
     }
-    let mut failures = Vec::new();
-    for (name, content) in &variants {
-        let answer = server.post("/v1/responses", &second_turn("code", content));
-        if !refused_opaque_state(&answer) {
-            failures.push(format!(
-                "{name}: {}",
-                answer.lines().next().unwrap_or("<no answer>")
-            ));
-        }
-    }
-    // The genuine seal on the chat route is not the chat route's.
-    let crossed = server.post(
-        "/v1/responses",
-        &second_turn("chatty", &serde_json::json!(sealed)),
-    );
-    if !refused_opaque_state(&crossed) {
-        failures.push(format!(
-            "messages seal on the chat route: {}",
-            crossed.lines().next().unwrap_or("")
-        ));
-    }
-    assert_eq!(
-        code.so_far().len(),
-        1,
-        "a refused variant reached the upstream"
-    );
-    let bound = server.post(
-        "/v1/responses",
-        &second_turn("code", &serde_json::json!(sealed)),
-    );
-    assert!(
-        bound.starts_with("HTTP/1.1 200 OK\r\n"),
-        "the genuine seal after the variants: {bound}"
-    );
-    drop(server);
-    assert!(
-        failures.is_empty(),
-        "not refused translation-opaque-state: {failures:#?}"
-    );
-    assert_eq!(code.seen().len(), 2);
-    assert_eq!(chat.seen().len(), 1);
+    variants
 }
 
 /// A same-wire route (a responses client to a responses upstream) is relayed byte for byte: a

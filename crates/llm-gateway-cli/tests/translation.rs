@@ -1,8 +1,9 @@
 //! story:gateway-translation, what the conformance program cannot reach: the shipped binary
 //! always composes its translator; a translated request reaches a hosted endpoint on its base
 //! path with its credential as its kind says and nothing else of the gateway's; a hosted target
-//! reports its scheme; and the known limits of llm 0.6.0's translated subset, each pinned by
-//! feeding the request to the decoder the gateway uses.
+//! reports its scheme; and what llm 0.7.0 does with Claude Code's and Codex's turns: carried and
+//! relayed where it carries them, refused by name where it does not, and Codex's replayed
+//! reasoning item still refused as carried state.
 //!
 //! Every upstream is a loopback fixture recording what it receives; nothing leaves the machine
 //! and no credential is real.
@@ -368,16 +369,45 @@ fn fixture_body(text: &str) -> String {
     request.split_once("\n\n").unwrap().1.to_owned()
 }
 
-/// Known limit: Claude Code's first turn (the authored fixture of `crates/llm-gateway`) is
-/// outside llm 0.6.0's messages subset, field after field: `thinking`, a `system` of more than
-/// one block, `cache_control` on a content block, and then effort `max`, which no capability
-/// names. The gateway answers each `translation-unsupported`.
-#[test]
-fn translation_known_limit_claude_codes_first_turn_is_outside_the_messages_subset() {
-    let body: serde_json::Value = serde_json::from_str(&fixture_body(include_str!(
-        "../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt"
-    )))
-    .unwrap();
+/// Claude Code's first turn (the authored fixture of `crates/llm-gateway`).
+const CLAUDE_CODE_FIRST_TURN: &str =
+    include_str!("../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt");
+/// Codex 0.160.0's first and second turns, captured and sanitized in llm 0.7.0
+/// (`tests/fixtures/codex/README.md`).
+const CODEX_FIRST_TURN: &str = include_str!("fixtures/codex/first-turn.json");
+const CODEX_SECOND_TURN: &str = include_str!("fixtures/codex/second-turn.json");
+
+/// The JSON body of the one request `seen` holds.
+fn upstream_body(seen: &[String]) -> serde_json::Value {
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    serde_json::from_str(seen[0].split_once("\r\n\r\n").unwrap().1).unwrap()
+}
+
+/// Posts `body` on `path` to the shipped binary serving `code` from a hosted endpoint that
+/// speaks only `wire`, and returns the gateway's answer and the body the endpoint received.
+fn through_the_binary(
+    name: &str,
+    wire: &str,
+    answer: &'static str,
+    path: &str,
+    body: &str,
+) -> (String, serde_json::Value) {
+    let fixture = Fixture::new(name);
+    let upstream = Upstream::start(1, answer);
+    let table = format!(
+        "[hosted.code]\nwires = [\"{wire}\"]\nbase_url = \"http://{}/v1\"\nupstream_model = \"served\"\nauth_kind = \"anonymous\"\ntool_calling = \"parsed\"\n",
+        upstream.address
+    );
+    let server = Server::start(&document(&fixture, &table));
+    let answer = server.post(path, body);
+    drop(server);
+    // A refused turn never reaches the upstream, whose recorder would wait for it forever.
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    (answer, upstream_body(&upstream.seen()))
+}
+
+/// llm 0.7.0's messages decoder's refusal of `body`, read as a client's.
+fn messages_refusal(body: &serde_json::Value) -> (llm_core::ErrorCode, String) {
     let origin = llm_core::Provenance {
         protocol: llm_core::Protocol::Messages,
         provider: llm_core::Id::new("client").unwrap(),
@@ -386,129 +416,328 @@ fn translation_known_limit_claude_codes_first_turn_is_outside_the_messages_subse
         model: llm_core::Id::new("code").unwrap(),
         binding_revision: llm_core::Id::new("ingress").unwrap(),
     };
-    let refused = |body: &serde_json::Value| {
-        let error = llm_messages::decode_request(body.to_string().as_bytes(), &origin).unwrap_err();
-        (error.code, error.message)
-    };
-    let mut body = body;
-    assert_eq!(
-        refused(&body),
-        (
-            llm_core::ErrorCode::Unsupported,
-            "Messages field is outside the declared subset: thinking".to_owned()
-        )
-    );
-    body.as_object_mut().unwrap().remove("thinking");
-    assert_eq!(
-        refused(&body),
-        (
-            llm_core::ErrorCode::Unsupported,
-            "Messages system shape is outside the declared subset".to_owned()
-        )
-    );
-    body.as_object_mut().unwrap().remove("system");
-    assert_eq!(
-        refused(&body),
-        (
-            llm_core::ErrorCode::Unsupported,
-            "Messages field is outside the declared subset: messages[].content[].cache_control"
-                .to_owned()
-        )
-    );
-    body["messages"][0]["content"][0]
-        .as_object_mut()
-        .unwrap()
-        .remove("cache_control");
-    let decoded = llm_messages::decode_request(body.to_string().as_bytes(), &origin).unwrap();
-    assert_eq!(
-        decoded.request.sampling.reasoning_effort.as_deref(),
-        Some("max")
-    );
+    let error = llm_messages::decode_request(body.to_string().as_bytes(), &origin).unwrap_err();
+    (error.code, error.message)
+}
+
+/// Claude Code's first turn is carried to a chat and a responses upstream: `thinking`
+/// adaptive, a `system` of two text blocks, `cache_control` on a block and effort `max`, which
+/// reaches either wire as `xhigh`. Through the binary, the chat upstream is sent the system
+/// blocks as one system message, the effort as `xhigh`, the tools, and no `cache_control`,
+/// `thinking` or `output_config`; the client is answered on its own wire.
+#[test]
+fn translation_claude_codes_first_turn_is_carried_to_chat_and_responses() {
+    let body = fixture_body(CLAUDE_CODE_FIRST_TURN);
     for upstream in [Wire::Chat, Wire::Responses] {
         assert_eq!(
-            prepared(Wire::Messages, upstream, body.to_string().as_bytes()),
-            Some(RefusalCode::TranslationUnsupported),
-            "effort max to {upstream:?}"
+            prepared(Wire::Messages, upstream, body.as_bytes()),
+            None,
+            "Claude Code's first turn to {upstream:?}"
         );
     }
-    body["output_config"]["effort"] = serde_json::json!("high");
-    for upstream in [Wire::Chat, Wire::Responses] {
-        assert_eq!(
-            prepared(Wire::Messages, upstream, body.to_string().as_bytes()),
-            None
+    let (answer, sent) = through_the_binary(
+        "translation-claude-code",
+        "chat",
+        CHAT_ANSWER,
+        "/v1/messages",
+        &body,
+    );
+    let fixture: serde_json::Value = serde_json::from_str(&body).unwrap();
+    assert_eq!(sent["model"], "served", "{sent}");
+    assert_eq!(sent["reasoning_effort"], "xhigh", "{sent}");
+    assert_eq!(
+        sent["max_completion_tokens"], fixture["max_tokens"],
+        "{sent}"
+    );
+    assert_eq!(sent["messages"][0]["role"], "system", "{sent}");
+    let system = sent["messages"][0]["content"].as_str().unwrap();
+    for block in fixture["system"].as_array().unwrap() {
+        assert!(system.contains(block["text"].as_str().unwrap()), "{system}");
+    }
+    assert_eq!(
+        sent["tools"].as_array().unwrap().len(),
+        fixture["tools"].as_array().unwrap().len(),
+        "{sent}"
+    );
+    let text = sent.to_string();
+    for absent in ["cache_control", "thinking", "output_config", "max_tokens\""] {
+        assert!(
+            !text.contains(absent),
+            "{absent} reached a chat upstream: {text}"
         );
+    }
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert!(answer.contains("event: message_stop"), "{answer}");
+    assert!(answer.contains("\"text\":\"Hello\""), "{answer}");
+}
+
+/// Codex's first turn is carried to a chat upstream: `instructions` and the developer message
+/// that opens `input` become the system message, `parallel_tool_calls`, `prompt_cache_key` and
+/// the effort reach it, and the item ids, `client_metadata` and the reasoning summary, which no
+/// chat request carries, do not. The client is answered on the responses wire.
+#[test]
+fn translation_codexs_first_turn_is_carried_to_chat() {
+    let codex: serde_json::Value = serde_json::from_str(CODEX_FIRST_TURN).unwrap();
+    let (answer, sent) = through_the_binary(
+        "translation-codex-chat",
+        "chat",
+        CHAT_ANSWER,
+        "/v1/responses",
+        CODEX_FIRST_TURN,
+    );
+    assert_eq!(sent["model"], "served", "{sent}");
+    assert_eq!(
+        sent["parallel_tool_calls"], codex["parallel_tool_calls"],
+        "{sent}"
+    );
+    assert_eq!(
+        sent["prompt_cache_key"], codex["prompt_cache_key"],
+        "{sent}"
+    );
+    assert_eq!(
+        sent["reasoning_effort"], codex["reasoning"]["effort"],
+        "{sent}"
+    );
+    assert_eq!(sent["messages"][0]["role"], "system", "{sent}");
+    let system = sent["messages"][0]["content"].as_str().unwrap();
+    assert!(
+        system.starts_with(codex["instructions"].as_str().unwrap()),
+        "{system}"
+    );
+    for part in codex["input"][0]["content"].as_array().unwrap() {
+        assert!(system.contains(part["text"].as_str().unwrap()), "{system}");
+    }
+    assert_eq!(
+        sent["tools"].as_array().unwrap().len(),
+        codex["tools"].as_array().unwrap().len(),
+        "{sent}"
+    );
+    let text = sent.to_string();
+    for absent in ["msg_00000000", "client_metadata", "x-codex", "summary"] {
+        assert!(
+            !text.contains(absent),
+            "{absent} reached a chat upstream: {text}"
+        );
+    }
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert!(answer.contains("event: response.completed"), "{answer}");
+}
+
+/// Codex's first turn is carried to a messages upstream: the instructions are its `system`,
+/// `parallel_tool_calls` false is `tool_choice.disable_parallel_tool_use`, the effort is
+/// `output_config.effort`, and a request naming no output limit is given the default one.
+#[test]
+fn translation_codexs_first_turn_is_carried_to_messages() {
+    let codex: serde_json::Value = serde_json::from_str(CODEX_FIRST_TURN).unwrap();
+    let (answer, sent) = through_the_binary(
+        "translation-codex-messages",
+        "messages",
+        MESSAGES_ANSWER,
+        "/v1/responses",
+        CODEX_FIRST_TURN,
+    );
+    assert_eq!(sent["model"], "served", "{sent}");
+    assert_eq!(sent["max_tokens"], 16_384, "{sent}");
+    assert_eq!(
+        sent["output_config"]["effort"], codex["reasoning"]["effort"],
+        "{sent}"
+    );
+    assert_eq!(
+        sent["tool_choice"]["disable_parallel_tool_use"],
+        serde_json::json!(codex["parallel_tool_calls"] == false),
+        "{sent}"
+    );
+    assert!(
+        sent["system"]
+            .to_string()
+            .contains(codex["instructions"].as_str().unwrap()),
+        "{sent}"
+    );
+    let text = sent.to_string();
+    for absent in [
+        "msg_00000000",
+        "client_metadata",
+        "prompt_cache_key",
+        "summary",
+    ] {
+        assert!(
+            !text.contains(absent),
+            "{absent} reached a messages upstream: {text}"
+        );
+    }
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert!(answer.contains("event: response.completed"), "{answer}");
+}
+
+/// Codex's second turn replays the reasoning item its first answer carried, encrypted for the
+/// upstream that minted it: a translated route still refuses it `translation-opaque-state`
+/// before asking for a target. The rest of the turn, the function call and its plain-string
+/// output, is carried.
+#[test]
+fn translation_codexs_second_turn_is_refused_for_its_reasoning_item_only() {
+    let mut codex: serde_json::Value = serde_json::from_str(CODEX_SECOND_TURN).unwrap();
+    for upstream in [Wire::Chat, Wire::Messages] {
+        assert_eq!(
+            prepared(Wire::Responses, upstream, CODEX_SECOND_TURN.as_bytes()),
+            Some(RefusalCode::TranslationOpaqueState),
+            "Codex's second turn to {upstream:?}"
+        );
+    }
+    let input = codex["input"].as_array_mut().unwrap();
+    let before = input.len();
+    input.retain(|item| item["type"] != "reasoning");
+    assert_eq!(input.len(), before - 1);
+    assert!(input.iter().any(|item| item["type"] == "function_call"));
+    assert!(
+        input
+            .iter()
+            .any(|item| item["type"] == "function_call_output")
+    );
+    for upstream in [Wire::Chat, Wire::Messages] {
+        assert_eq!(
+            prepared(Wire::Responses, upstream, codex.to_string().as_bytes()),
+            None,
+            "Codex's second turn without its reasoning item to {upstream:?}"
+        );
+    }
+    let (_, sent) = through_the_binary(
+        "translation-codex-second",
+        "chat",
+        CHAT_ANSWER,
+        "/v1/responses",
+        &codex.to_string(),
+    );
+    let messages = sent["messages"].as_array().unwrap();
+    let call = messages
+        .iter()
+        .find(|message| message.get("tool_calls").is_some())
+        .unwrap_or_else(|| panic!("no tool call reached the upstream: {sent}"));
+    assert_eq!(call["tool_calls"][0]["id"], "call_capture_1", "{sent}");
+    let result = messages
+        .iter()
+        .find(|message| message["role"] == "tool")
+        .unwrap_or_else(|| panic!("no tool result reached the upstream: {sent}"));
+    assert_eq!(result["tool_call_id"], "call_capture_1", "{sent}");
+}
+
+/// What llm 0.7.0 still refuses, it refuses by name, and the gateway answers each
+/// `translation-unsupported` before asking for a target: Claude Code's structured-output turn
+/// (`output_config.format`), `thinking.display`, `context_management` and `safeguards`, and a
+/// `system` message inside `messages` by its role; on Responses, `text.format` and a hosted
+/// tool.
+#[test]
+fn translation_fields_llm_still_refuses_are_refused_by_name() {
+    let base: serde_json::Value =
+        serde_json::from_str(&fixture_body(CLAUDE_CODE_FIRST_TURN)).unwrap();
+    let structured: serde_json::Value = serde_json::from_str(&fixture_body(include_str!(
+        "../../llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt"
+    )))
+    .unwrap();
+    let mut display = base.clone();
+    display["thinking"]["display"] = serde_json::json!("summarized");
+    let mut context = base.clone();
+    context["context_management"] =
+        serde_json::json!({"edits": [{"type": "clear_tool_uses_20250919"}]});
+    let mut safeguards = base.clone();
+    safeguards["safeguards"] = serde_json::json!({});
+    let mut midway = base.clone();
+    midway["messages"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"role": "system", "content": "Be brief."}));
+    for (name, body) in [
+        ("output_config.format", &structured),
+        ("display", &display),
+        ("context_management", &context),
+        ("safeguards", &safeguards),
+        ("Messages role is outside the declared subset", &midway),
+    ] {
+        let (code, message) = messages_refusal(body);
+        assert_eq!(code, llm_core::ErrorCode::Unsupported, "{name}: {message}");
+        assert!(message.contains(name), "{name}: {message}");
+        for upstream in [Wire::Chat, Wire::Responses] {
+            assert_eq!(
+                prepared(Wire::Messages, upstream, body.to_string().as_bytes()),
+                Some(RefusalCode::TranslationUnsupported),
+                "{name} to {upstream:?}"
+            );
+        }
+    }
+    let codex: serde_json::Value = serde_json::from_str(CODEX_FIRST_TURN).unwrap();
+    let mut format = codex.clone();
+    format["text"] = serde_json::json!({"format": {"type": "json_schema", "name": "answer", "schema": {"type": "object"}}});
+    let mut hosted = codex;
+    hosted["tools"]
+        .as_array_mut()
+        .unwrap()
+        .push(serde_json::json!({"type": "web_search"}));
+    for (name, body) in [("text.format", &format), ("web_search", &hosted)] {
+        for upstream in [Wire::Chat, Wire::Messages] {
+            assert_eq!(
+                prepared(Wire::Responses, upstream, body.to_string().as_bytes()),
+                Some(RefusalCode::TranslationUnsupported),
+                "{name} to {upstream:?}"
+            );
+        }
     }
 }
 
-/// Known limit: the top-level fields Codex sends beside the subset are refused by
-/// `ingest_request` (`ACCEPTED_BODY_FIELDS`), and so is a `reasoning.summary`; the gateway
-/// answers each `translation-unsupported`.
+/// llm 0.7.0 checks the effort the upstream wire receives: effort `max` reaches a chat or
+/// responses upstream as `xhigh`, and disabled thinking as `none`, both of which the gateway
+/// admits there; a messages upstream receives `max` and `none` as they are, and is not
+/// translated either. A thinking budget has no name on chat or responses.
 #[test]
-fn translation_known_limit_codex_fields_are_outside_the_responses_subset() {
-    let base = serde_json::json!({
-        "model": "code",
-        "input": [{"type":"message","role":"user","content":[{"type":"input_text","text":"Hi"}]}],
-        "stream": true,
-        "store": false,
-        "include": ["reasoning.encrypted_content"],
-    });
-    let binding = llm_responses::Binding::new(
-        llm_core::Provenance {
-            protocol: llm_core::Protocol::Responses,
-            provider: llm_core::Id::new("client").unwrap(),
-            account: llm_core::Id::new("client").unwrap(),
-            endpoint: llm_core::Id::new("ingress").unwrap(),
-            model: llm_core::Id::new("code").unwrap(),
-            binding_revision: llm_core::Id::new("ingress").unwrap(),
-        },
-        llm_core::Id::new("code").unwrap(),
-    );
-    assert!(llm_responses::ingest_request(&binding, &base).is_ok());
-    assert_eq!(
-        prepared(Wire::Responses, Wire::Chat, base.to_string().as_bytes()),
-        None
-    );
-    for (field, value, message) in [
-        (
-            "instructions",
-            serde_json::json!("Be brief."),
-            "request body carries a field outside the pinned subset",
-        ),
-        (
-            "parallel_tool_calls",
-            serde_json::json!(false),
-            "request body carries a field outside the pinned subset",
-        ),
-        (
-            "prompt_cache_key",
-            serde_json::json!("session-1"),
-            "request body carries a field outside the pinned subset",
-        ),
-        (
-            "text",
-            serde_json::json!({"verbosity":"low"}),
-            "request body carries a field outside the pinned subset",
-        ),
-        (
-            "reasoning",
-            serde_json::json!({"effort":"medium","summary":"auto"}),
-            "`reasoning` carries a field outside the pinned subset",
-        ),
-    ] {
-        let mut body = base.clone();
-        body[field] = value;
-        let error = llm_responses::ingest_request(&binding, &body).unwrap_err();
+fn translation_an_effort_is_checked_as_the_upstream_wire_receives_it() {
+    let messages = |extra: &str| {
+        format!(
+            "{{\"model\":\"code\",\"max_tokens\":64,\"messages\":[{{\"role\":\"user\",\"content\":\"Hi\"}}]{extra}}}"
+        )
+    };
+    let chat = |extra: &str| {
+        format!(
+            "{{\"model\":\"code\",\"messages\":[{{\"role\":\"user\",\"content\":\"Hi\"}}]{extra}}}"
+        )
+    };
+    for upstream in [Wire::Chat, Wire::Responses] {
+        for (extra, refused) in [
+            (",\"output_config\":{\"effort\":\"max\"}", None),
+            (",\"thinking\":{\"type\":\"disabled\"}", None),
+            (",\"thinking\":{\"type\":\"adaptive\"}", None),
+            (
+                ",\"thinking\":{\"type\":\"enabled\",\"budget_tokens\":1024}",
+                Some(RefusalCode::TranslationUnsupported),
+            ),
+            (
+                ",\"thinking\":{\"type\":\"disabled\"},\"output_config\":{\"effort\":\"low\"}",
+                Some(RefusalCode::TranslationUnsupported),
+            ),
+        ] {
+            assert_eq!(
+                prepared(Wire::Messages, upstream, messages(extra).as_bytes()),
+                refused,
+                "{extra} to {upstream:?}"
+            );
+        }
+    }
+    for effort in ["max", "none"] {
         assert_eq!(
-            (error.code, error.message.as_str()),
-            (llm_core::ErrorCode::Unsupported, message),
-            "{field}"
-        );
-        assert_eq!(
-            prepared(Wire::Responses, Wire::Chat, body.to_string().as_bytes()),
+            prepared(
+                Wire::Chat,
+                Wire::Messages,
+                chat(&format!(",\"reasoning_effort\":\"{effort}\"")).as_bytes()
+            ),
             Some(RefusalCode::TranslationUnsupported),
-            "{field}"
+            "{effort} to a messages upstream"
         );
     }
+    assert_eq!(
+        prepared(
+            Wire::Chat,
+            Wire::Responses,
+            chat(",\"reasoning_effort\":\"none\"").as_bytes()
+        ),
+        None
+    );
 }
 
 /// The capabilities a model is translated under: tools when it parses tool calls, sampling,

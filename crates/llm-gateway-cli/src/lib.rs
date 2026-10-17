@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 //! The `b10x-llm-gateway` binary's deployment document, trusted-file reader, serving loop and
-//! translator ([`LlmTranslator`], over llm 0.6.0's client crates and a tokio runtime).
+//! translator ([`LlmTranslator`], over llm 0.7.0's client crates and a tokio runtime).
 //!
 //! The specification is `spec/domains/deployment.yaml` (`llm-gateway.deployment`). The binary
 //! reads one closed TOML document through a same-handle trusted-file reader, composes the
@@ -47,6 +47,7 @@ pub use serve::{
 };
 pub use tls::ProxyConnector;
 pub use translate::{
-    DEFAULT_CONTEXT_WINDOW, LlmTranslator, MESSAGES_DEFAULT_OUTPUT_TOKENS, REASONING_EFFORTS,
-    TRANSLATION_CONNECT_TIMEOUT, TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT,
+    DEFAULT_CONTEXT_WINDOW, LlmTranslator, MESSAGES_DEFAULT_OUTPUT_TOKENS, NO_REASONING_EFFORT,
+    REASONING_EFFORTS, TRANSLATION_CONNECT_TIMEOUT, TRANSLATION_READ_TIMEOUT,
+    TRANSLATION_TURN_TIMEOUT,
 };

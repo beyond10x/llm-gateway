@@ -1,11 +1,10 @@
 //! story:gateway-translation, correction round 1: no key of a translated request is dropped.
 //!
-//! llm 0.6.0's decoders refuse an unknown top-level field, but its chat and responses decoders
-//! pass over keys at levels below the top they do not read. For each client wire, one request
-//! carrying every nested level the decoder reads is prepared, then the same request with one
-//! unknown key added at each level: every one must be `translation-unsupported`. A level the
-//! decoder itself closes passes the probe as well, so each probe pins the subset whichever side
-//! holds it.
+//! llm 0.6.0's chat and responses decoders passed over keys at levels below the top they did not
+//! read, and the gateway closed those levels itself; llm 0.7.0's decoders refuse every unknown key
+//! at every level by its path. For each client wire, one request carrying every nested level the
+//! decoder reads is prepared, then the same request with one unknown key added at each level:
+//! every one must be `translation-unsupported`, whichever side holds the subset.
 
 use llm_gateway::{
     Label, RefusalCode, RelayModel, ToolCalling, TranslationRequest, Translator, Wire,
@@ -90,7 +89,7 @@ fn chat_base() -> Value {
     })
 }
 
-/// Chat (`llm_chat::decode_ingress_request`, llm 0.6.0 `crates/llm-chat/src/ingress.rs` and
+/// Chat (`llm_chat::decode_ingress_request`, llm 0.7.0 `crates/llm-chat/src/ingress.rs` and
 /// `docs/chat.md`): every level it reads, closed.
 #[test]
 fn translation_guard_chat_refuses_an_unknown_key_at_every_level() {
@@ -198,8 +197,11 @@ fn responses_base() -> Value {
     })
 }
 
-/// Responses (`llm_responses::ingest_request`, llm 0.6.0 `crates/llm-responses/src/request.rs`):
-/// every level it reads, closed.
+/// Responses (`llm_responses::ingest_request`, llm 0.7.0 `crates/llm-responses/src/request.rs`):
+/// every level it reads, closed. An item's `id` is not a probe: llm 0.7.0 reads it as the
+/// unforwarded name `input-item-ids` (Codex sends one on every item), and the request carrying
+/// it is prepared. Nor is an assistant `output_text` part's empty `annotations`, which a
+/// replayed answer carries and which loses nothing; a non-empty one is refused.
 #[test]
 fn translation_guard_responses_refuses_an_unknown_key_at_every_level() {
     let base = responses_base();
@@ -212,7 +214,6 @@ fn translation_guard_responses_refuses_an_unknown_key_at_every_level() {
             with_unknown_key(&base, "/input/0/content/0"),
         ),
         ("a user message", with_unknown_key(&base, "/input/1")),
-        ("input[].id", with(&base, "/input/1", "id", json!("msg_1"))),
         (
             "a user message's part",
             with_unknown_key(&base, "/input/1/content/0"),
@@ -228,13 +229,36 @@ fn translation_guard_responses_refuses_an_unknown_key_at_every_level() {
         ),
         ("an assistant message", with_unknown_key(&base, "/input/4")),
         (
-            "input[].content[].annotations",
-            with(&base, "/input/4/content/0", "annotations", json!([])),
+            "input[].content[].annotations, not empty",
+            with(
+                &base,
+                "/input/4/content/0",
+                "annotations",
+                json!([{"type": "url_citation"}]),
+            ),
         ),
         ("a tool", with_unknown_key(&base, "/tools/0")),
         ("tool_choice", with_unknown_key(&base, "/tool_choice")),
     ];
     assert_closed(Wire::Responses, Wire::Chat, &base, &probes);
+    assert_eq!(
+        prepare(
+            Wire::Responses,
+            Wire::Chat,
+            &with(&base, "/input/1", "id", json!("msg_1"))
+        ),
+        None,
+        "input[].id"
+    );
+    assert_eq!(
+        prepare(
+            Wire::Responses,
+            Wire::Chat,
+            &with(&base, "/input/4/content/0", "annotations", json!([]))
+        ),
+        None,
+        "an assistant part's empty annotations"
+    );
 }
 
 fn messages_base() -> Value {
@@ -258,7 +282,7 @@ fn messages_base() -> Value {
     })
 }
 
-/// Messages (`llm_messages::decode_request`, llm 0.6.0 `crates/llm-messages/src/codec.rs`): the
+/// Messages (`llm_messages::decode_request`, llm 0.7.0 `crates/llm-messages/src/codec.rs`): the
 /// decoder closes every level it reads itself; the probes pin that.
 #[test]
 fn translation_guard_messages_refuses_an_unknown_key_at_every_level() {

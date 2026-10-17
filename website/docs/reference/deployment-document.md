@@ -197,7 +197,7 @@ upstream_model = "vendor-large-2"
 `routes = "<path>"` names a routes document in llm's `llm.routes/1` format: endpoints, each with
 a `base_url`, a `protocol` and an `auth`, and routes, each a name for `<endpoint>/<model-id>`,
 optionally with its `capabilities`. The binary reads it once at start and parses it with llm
-0.6.0's own parser, which reads no secret and no other file. Each route is then served as a model
+0.7.0's own parser, which reads no secret and no other file. Each route is then served as a model
 under its route name, from a hosted endpoint built from its endpoint: on the endpoint's wire
 alone, relayed byte for byte, and translated from the other two
 ([translate between wires](../guides/translate-between-wires.md#serve-the-models-of-a-routes-document)).

@@ -2,7 +2,7 @@
 //! when, and what it does with the answer. The translator here is a fixture that speaks no
 //! protocol: it records what it was asked and writes a scripted answer through the writer the
 //! relay provides, so these cases hold the relay's half of the contract with no llm crate in the
-//! build. The binary's translator, over llm 0.6.0, is held by the `translate-*` conformance
+//! build. The binary's translator, over llm 0.7.0, is held by the `translate-*` conformance
 //! scenarios and `crates/llm-gateway-cli/tests/translation.rs`.
 
 use llm_gateway::{

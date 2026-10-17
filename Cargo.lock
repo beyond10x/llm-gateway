@@ -114,22 +114,22 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "b10x-llm-blocking"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.6.0",
+ "b10x-llm-core",
  "tokio",
 ]
 
 [[package]]
 name = "b10x-llm-chat"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.6.0",
- "b10x-llm-credentials 0.6.0",
+ "b10x-llm-core",
+ "b10x-llm-credentials",
  "b10x-llm-http",
- "b10x-llm-providers 0.6.0",
+ "b10x-llm-providers",
  "http",
  "serde",
  "serde_json",
@@ -138,19 +138,8 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-core"
-version = "0.5.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.5.0#f860905e7e8a03626dbfd5167dbd1fbe7681ae17"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
- "tokio-util",
-]
-
-[[package]]
-name = "b10x-llm-core"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
  "serde",
  "serde_json",
@@ -160,22 +149,10 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-credentials"
-version = "0.5.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.5.0#f860905e7e8a03626dbfd5167dbd1fbe7681ae17"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.5.0",
- "serde",
- "thiserror",
- "tokio",
- "zeroize",
-]
-
-[[package]]
-name = "b10x-llm-credentials"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
-dependencies = [
- "b10x-llm-core 0.6.0",
+ "b10x-llm-core",
  "serde",
  "thiserror",
  "tokio",
@@ -192,14 +169,14 @@ version = "0.11.0"
 dependencies = [
  "b10x-llm-blocking",
  "b10x-llm-chat",
- "b10x-llm-core 0.6.0",
- "b10x-llm-credentials 0.6.0",
+ "b10x-llm-core",
+ "b10x-llm-credentials",
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
  "b10x-llm-http",
  "b10x-llm-messages",
  "b10x-llm-models",
- "b10x-llm-providers 0.6.0",
+ "b10x-llm-providers",
  "b10x-llm-responses",
  "b10x-llm-runpod",
  "clap",
@@ -238,10 +215,10 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-http"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.6.0",
+ "b10x-llm-core",
  "bytes",
  "httpdate",
  "reqwest",
@@ -252,13 +229,13 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-messages"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.6.0",
- "b10x-llm-credentials 0.6.0",
+ "b10x-llm-core",
+ "b10x-llm-credentials",
  "b10x-llm-http",
- "b10x-llm-providers 0.6.0",
+ "b10x-llm-providers",
  "http",
  "serde",
  "serde_json",
@@ -271,15 +248,15 @@ version = "0.11.0"
 
 [[package]]
 name = "b10x-llm-models"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
  "b10x-llm-chat",
- "b10x-llm-core 0.6.0",
- "b10x-llm-credentials 0.6.0",
+ "b10x-llm-core",
+ "b10x-llm-credentials",
  "b10x-llm-http",
  "b10x-llm-messages",
- "b10x-llm-providers 0.6.0",
+ "b10x-llm-providers",
  "b10x-llm-responses",
  "b10x-llm-routing",
  "serde",
@@ -288,28 +265,11 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-providers"
-version = "0.5.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.5.0#f860905e7e8a03626dbfd5167dbd1fbe7681ae17"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.5.0",
- "b10x-llm-credentials 0.5.0",
- "http",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "toml",
- "url",
- "zeroize",
-]
-
-[[package]]
-name = "b10x-llm-providers"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
-dependencies = [
- "b10x-llm-core 0.6.0",
- "b10x-llm-credentials 0.6.0",
+ "b10x-llm-core",
+ "b10x-llm-credentials",
  "http",
  "serde",
  "serde_json",
@@ -326,24 +286,24 @@ version = "0.11.0"
 
 [[package]]
 name = "b10x-llm-responses"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.6.0",
- "b10x-llm-credentials 0.6.0",
+ "b10x-llm-core",
+ "b10x-llm-credentials",
  "b10x-llm-http",
- "b10x-llm-providers 0.6.0",
+ "b10x-llm-providers",
  "serde_json",
  "tokio",
 ]
 
 [[package]]
 name = "b10x-llm-routing"
-version = "0.6.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.6.0#74921f7cc61ed198cdf610ffbcd200515ef3de56"
+version = "0.7.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
 dependencies = [
- "b10x-llm-core 0.6.0",
- "b10x-llm-providers 0.6.0",
+ "b10x-llm-core",
+ "b10x-llm-providers",
  "serde",
  "serde_json",
  "sha2",
@@ -354,7 +314,7 @@ dependencies = [
 name = "b10x-llm-runpod"
 version = "0.11.0"
 dependencies = [
- "b10x-llm-providers 0.5.0",
+ "b10x-llm-providers",
  "b10x-llm-provision",
  "rustix",
  "serde_json",

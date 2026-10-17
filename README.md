@@ -31,9 +31,11 @@ are llm's. The gateway library relays the owner's chat, responses and messages r
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
 it translates no protocol itself, but holds the port through which the binary translates a
-request on a wire the model's upstream does not speak, within llm 0.6.0's published subset
-([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, and
-Claude Code's and Codex's requests fall outside it today. The binary relays to a Runpod pod at its `https` proxy URL over
+request on a wire the model's upstream does not speak, within llm 0.7.0's published subset
+([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, never
+dropped. Claude Code's first turn and Codex's first turn are carried to another wire with their
+controls (effort, thinking, parallel tool calls, cache and verbosity hints); a later turn that
+replays reasoning another upstream minted is still refused. The binary relays to a Runpod pod at its `https` proxy URL over
 TLS, but that path has run only against a fixture of the `connectors` CLI and a loopback pod,
 never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a hosted endpoint
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never

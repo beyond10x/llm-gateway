@@ -1,7 +1,7 @@
 ---
 title: Translate between wires
 sidebar_position: 4
-description: When the gateway relays a request byte for byte and when it translates it to the wire the model's upstream speaks, what each wire's translated subset accepts, and the limits that matter for Claude Code and Codex.
+description: When the gateway relays a request byte for byte and when it translates it to the wire the model's upstream speaks, what each wire's translated subset accepts, how Claude Code's and Codex's turns are carried, and what is still refused.
 lede: A model's declared wires are the wires its upstream speaks. A request on one of them is relayed unchanged; a request on another is translated within llm's published subset, and a field outside it is refused, never dropped.
 source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crates/llm-gateway-cli/src/translate.rs, crates/llm-gateway-cli/src/routes.rs, crates/llm-gateway-cli/tests/translation.rs, crates/llm-gateway-cli/tests/routes.rs, contracts/gateway/scenarios/translate-*.yaml and routes-*.yaml; every output below is pasted from a run of the binary
 ---
@@ -10,7 +10,7 @@ source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crat
 
 The binary answers all three wires for every model. When the client's wire is one the model
 declares, the request goes to the upstream byte for byte, as [the relay](../concepts/relay.md)
-describes. When it is not, the gateway decodes the request with llm 0.6.0's decoder for the
+describes. When it is not, the gateway decodes the request with llm 0.7.0's decoder for the
 client's wire, sends the turn to the upstream with llm's client for the model's **first** declared
 wire, and writes the answer back on the client's wire with llm's encoder.
 
@@ -52,15 +52,15 @@ curl -s http://127.0.0.1:8080/v1/models
 {"object":"list","data":[{"id":"claude","object":"model","owned_by":"llm-gateway","wires":["chat","responses","messages"],"upstream_wires":["messages"]}]}
 ```
 
-A chat request naming `n`, and a responses request naming Codex's `instructions`, are refused
-before any target is asked for:
+A chat request naming `n`, and a responses request asking for structured output with
+`text.format`, are refused before any target is asked for:
 
 ```bash
 token="authorization: Bearer $(cat owner-secret)"
 curl -s http://127.0.0.1:8080/v1/chat/completions -H "$token" \
   -d '{"model":"claude","n":2,"messages":[{"role":"user","content":"Hi"}]}'
 curl -s http://127.0.0.1:8080/v1/responses -H "$token" \
-  -d '{"model":"claude","instructions":"Be brief.","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Hi"}]}],"stream":true,"store":false,"include":["reasoning.encrypted_content"]}'
+  -d '{"model":"claude","text":{"format":{"type":"json_schema","name":"answer","schema":{"type":"object"}}},"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Hi"}]}],"stream":true,"store":false,"include":["reasoning.encrypted_content"]}'
 ```
 
 ```json
@@ -68,15 +68,19 @@ curl -s http://127.0.0.1:8080/v1/responses -H "$token" \
 {"error":{"code":"translation-unsupported","message":"the request uses a field or value outside the subset the gateway translates"}}
 ```
 
-A chat request inside the subset is translated and sent to the endpoint as a messages request;
-nothing listens there, so it fails before any output:
+A responses request carrying Codex's `instructions`, and a chat request, are inside the subset:
+each is translated and sent to the endpoint as a messages request; nothing listens there, so each
+fails before any output:
 
 ```bash
+curl -s http://127.0.0.1:8080/v1/responses -H "$token" \
+  -d '{"model":"claude","instructions":"Be brief.","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Hi"}]}],"stream":true,"store":false,"include":["reasoning.encrypted_content"]}'
 curl -s http://127.0.0.1:8080/v1/chat/completions -H "$token" \
   -d '{"model":"claude","messages":[{"role":"user","content":"Hi"}]}'
 ```
 
 ```json
+{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed; the next request asks for a replacement"}}
 {"error":{"code":"upstream-failed","message":"the model target could not be reached or failed; the next request asks for a replacement"}}
 ```
 
@@ -193,19 +197,24 @@ export CLAUDE_CODE_MAX_CONTEXT_TOKENS='200000'
 ```
 
 Claude Code on `codex` is relayed to Anthropic as it sends its requests, `thinking` and all,
-with the route's `anthropic-version`. A translated route gets no client profile: llm 0.6.0's
-subset refuses the requests Codex and Claude Code send (the [known limits](#known-limits)
-below). On this document, Codex's `instructions` to `codex` and Claude Code's `thinking` to
-`claude` are each refused before any request leaves the gateway:
+with the route's `anthropic-version`. `GET /` profiles a model only on a wire its upstream
+speaks, so a translated route gets no client profile. Codex's first turn to `codex` and Claude
+Code's first turn to `claude` are translated and sent ([how](#claude-code-and-codex)). What llm
+still refuses is refused before any request leaves the gateway: here Codex asking for structured
+output with `text.format` to `codex`, Claude Code's `thinking.display` and a thinking budget,
+which Chat Completions cannot hold, to `claude`:
 
 ```bash
 curl -s http://127.0.0.1:8080/v1/responses -H "$token" \
-  -d '{"model":"codex","instructions":"Be brief.","input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Hi"}]}],"stream":true,"store":false,"include":["reasoning.encrypted_content"]}'
+  -d '{"model":"codex","instructions":"Be brief.","text":{"format":{"type":"json_schema","name":"answer","schema":{"type":"object"}}},"input":[{"type":"message","role":"user","content":[{"type":"input_text","text":"Hi"}]}],"stream":true,"store":false,"include":["reasoning.encrypted_content"]}'
+curl -s http://127.0.0.1:8080/v1/messages -H "$token" \
+  -d '{"model":"claude","max_tokens":1024,"thinking":{"type":"adaptive","display":"summarized"},"messages":[{"role":"user","content":"Hi"}]}'
 curl -s http://127.0.0.1:8080/v1/messages -H "$token" \
   -d '{"model":"claude","max_tokens":1024,"thinking":{"type":"enabled","budget_tokens":512},"messages":[{"role":"user","content":"Hi"}]}'
 ```
 
 ```json
+{"error":{"code":"translation-unsupported","message":"the request uses a field or value outside the subset the gateway translates"}}
 {"error":{"code":"translation-unsupported","message":"the request uses a field or value outside the subset the gateway translates"}}
 {"error":{"code":"translation-unsupported","message":"the request uses a field or value outside the subset the gateway translates"}}
 ```
@@ -221,26 +230,55 @@ its `tools` decides whether a tool request on its own wire is relayed or refused
 
 ## What each wire's subset accepts
 
+Every field a decoder reads is carried, translated to the upstream wire's name for it, sent only
+where the upstream wire has it (a hint, such as a cache key or verbosity), or refused by name.
+Every other key is refused by its path, at every level, never dropped.
+
 - **Chat**: `model`, `messages` (`system` or `developer` first, `user`, `assistant` with text and
-  `tool_calls`, `tool`), `tools` (`function`), `tool_choice` (`auto`, `required`, a named
-  function), `max_completion_tokens` or `max_tokens`, `temperature`, `top_p`,
-  `reasoning_effort`, `stream` and `stream_options.include_usage`.
-- **Responses**: `model`, `input` (one leading `developer` message, `user` and `assistant`
-  messages of one text part, `function_call`, `function_call_output`), `tools` (`function` with
-  `strict: false`), `tool_choice`, `max_output_tokens`, `temperature`, `top_p`,
-  `reasoning.effort`, and exactly `stream: true`, `store: false` and
-  `include: ["reasoning.encrypted_content"]`.
-- **Messages**: `model`, `max_tokens`, `system` (a string or one text block), `messages`
-  (`text`, `tool_use` and `tool_result` blocks), `tools`, `stream`, `temperature` (at most 1),
-  `top_p`, `output_config.effort` and `tool_choice`.
+  `tool_calls`, `tool`), `tools` (`function`, not `strict`), `tool_choice` (`auto`, `required`,
+  a named function), `max_completion_tokens` or `max_tokens`, `temperature`, `top_p`,
+  `reasoning_effort`, `parallel_tool_calls`, `prompt_cache_key`, `verbosity`, `stream` and
+  `stream_options.include_usage`.
+- **Responses**: `model`, `instructions`, `input` (leading `developer` messages, `user` and
+  `assistant` messages of one text part, `function_call`, `function_call_output`, each item
+  with an optional `id`), `tools` (`function` with `strict: false`), `tool_choice`,
+  `max_output_tokens`, `temperature`, `top_p`, `reasoning.effort` and `reasoning.summary`,
+  `parallel_tool_calls`, `prompt_cache_key`, `text.verbosity`, `client_metadata`, and exactly
+  `stream: true`, `store: false` and `include: ["reasoning.encrypted_content"]`.
+- **Messages**: `model`, `max_tokens`, `system` (a string or text blocks), `messages` (`text`,
+  `tool_use` and `tool_result` blocks), `tools`, `stream`, `temperature` (at most 1), `top_p`,
+  `thinking`, `output_config.effort`, `tool_choice` (with `disable_parallel_tool_use`),
+  `metadata` and `cache_control`.
 
 A request is also checked against the model's capabilities: tools only when its tool calling is
-`parsed`, the efforts `minimal` to `xhigh`, and an output limit no larger than the model's window
-(its `max_model_len`, else its `context_window`, else 200000). Every nested level is closed
-too: a key a level does not list, such as a tool's `strict`, a message's `name` or a part's
-`cache_control`, is refused rather than dropped. A Messages upstream asked by a request that
-names no output limit gets half the model's window (200000 when it declares none), at most
+`parsed`, the efforts `minimal` to `xhigh` (and `none` when the upstream speaks chat or
+responses) as the upstream wire receives them, and an output limit no larger than the model's
+window (its `max_model_len`, else its `context_window`, else 200000). Effort `max` reaches a chat
+or responses upstream as `xhigh`, and disabled thinking as `none`; a messages upstream would
+receive `max` and `none` as they are, and refuses both. A Messages upstream asked by a request
+that names no output limit gets half the model's window (200000 when it declares none), at most
 16384 tokens, so the input keeps room.
+
+## Claude Code and Codex
+
+- **Claude Code's first turn** (adaptive `thinking`, a `system` of two text blocks,
+  `cache_control` and effort `max`) is carried to a chat or responses upstream: the system
+  blocks become one system message (a developer message on responses), the effort is `xhigh`, and `thinking` and `cache_control`,
+  which those wires have no place for, are not sent.
+- **Codex's first turn** (`instructions`, a developer message, item ids, `parallel_tool_calls`,
+  `prompt_cache_key`, `text.verbosity`, `reasoning.summary` and `client_metadata`) is carried to
+  a chat or messages upstream: the instructions and the developer message become the system
+  prompt, `parallel_tool_calls` and the effort are sent under the upstream wire's names, the
+  cache key and verbosity where the wire has them, and the item ids and `client_metadata` never.
+- **Codex's later turns** and **Claude Code's later turns** replay the reasoning their previous
+  answer carried (a `reasoning` item, a signed `thinking` block), minted for another upstream.
+  A translated route refuses them `translation-opaque-state`. Point a client that keeps its
+  reasoning at a model whose upstream speaks its own wire; `GET /` profiles only those.
+- **Still refused by name**: structured output (`output_config.format`, `text.format`,
+  `response_format`), `context_management`, `thinking.display`, hosted and custom tools, a
+  thinking budget to a chat or responses upstream, and an instruction in the middle of the
+  conversation (a `system` message inside Messages `messages`, a `developer` message after the
+  first item of Responses `input`).
 
 ## Refusals
 
@@ -274,13 +312,6 @@ Messages effort mapping, and the Messages output clamp's token count.
 
 ## Known limits
 
-- **Claude Code** sends `thinking`, a `system` of two blocks, `cache_control` on content and
-  effort `max`, each outside the messages subset, and replays signed `thinking` blocks on every
-  later turn. Point Claude Code at a model whose upstream speaks `messages`; `GET /` profiles only
-  those.
-- **Codex** sends `instructions`, `parallel_tool_calls`, `prompt_cache_key`, `text` and
-  `reasoning.summary`, each outside the responses subset. Point Codex at a model whose upstream
-  speaks `responses`; `GET /` profiles only those.
 - **Answers llm's encoders refuse**: two assistant messages back to back, or a message another
   item interrupts, to a responses client; redacted thinking between streamed blocks, or tool
   arguments that are not a JSON object, to a messages client; a terminal reason a chat client has

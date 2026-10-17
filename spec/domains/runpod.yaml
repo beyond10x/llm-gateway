@@ -542,7 +542,7 @@ entities:
       - {name: pods, type: 'List<String>'}
       # Every ready lease handed out, as `<endpoint or none> <served model or unreported>`.
       # An endpoint is the pod's inference base URL as llm's Runpod provider description builds
-      # it (b10x-llm-providers 0.5.0, `descriptions::runpod().inference_base_url(<pod id>)`):
+      # it (b10x-llm-providers 0.7.0, `descriptions::runpod().inference_base_url(<pod id>)`):
       # `https://<pod id>-8000.proxy.runpod.net/v1/`, `/v1/` included. Only a running pod whose
       # id the description accepts (1-48 bytes of `[a-z0-9]`) has one; any other pod reports
       # none. A running pod with no endpoint is observed `ready=false` whatever its probe

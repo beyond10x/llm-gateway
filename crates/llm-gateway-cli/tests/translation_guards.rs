@@ -200,7 +200,8 @@ fn responses_base() -> Value {
 /// Responses (`llm_responses::ingest_request`, llm 0.7.0 `crates/llm-responses/src/request.rs`):
 /// every level it reads, closed. An item's `id` is not a probe: llm 0.7.0 reads it as the
 /// unforwarded name `input-item-ids` (Codex sends one on every item), and the request carrying
-/// it is prepared.
+/// it is prepared. Nor is an assistant `output_text` part's empty `annotations`, which a
+/// replayed answer carries and which loses nothing; a non-empty one is refused.
 #[test]
 fn translation_guard_responses_refuses_an_unknown_key_at_every_level() {
     let base = responses_base();
@@ -228,8 +229,13 @@ fn translation_guard_responses_refuses_an_unknown_key_at_every_level() {
         ),
         ("an assistant message", with_unknown_key(&base, "/input/4")),
         (
-            "input[].content[].annotations",
-            with(&base, "/input/4/content/0", "annotations", json!([])),
+            "input[].content[].annotations, not empty",
+            with(
+                &base,
+                "/input/4/content/0",
+                "annotations",
+                json!([{"type": "url_citation"}]),
+            ),
         ),
         ("a tool", with_unknown_key(&base, "/tools/0")),
         ("tool_choice", with_unknown_key(&base, "/tool_choice")),
@@ -243,6 +249,15 @@ fn translation_guard_responses_refuses_an_unknown_key_at_every_level() {
         ),
         None,
         "input[].id"
+    );
+    assert_eq!(
+        prepare(
+            Wire::Responses,
+            Wire::Chat,
+            &with(&base, "/input/4/content/0", "annotations", json!([]))
+        ),
+        None,
+        "an assistant part's empty annotations"
     );
 }
 

@@ -622,8 +622,9 @@ fn translation_codexs_second_turn_is_refused_for_its_reasoning_item_only() {
 
 /// What llm 0.7.0 still refuses, it refuses by name, and the gateway answers each
 /// `translation-unsupported` before asking for a target: Claude Code's structured-output turn
-/// (`output_config.format`), `thinking.display`, `context_management`, `safeguards` and a
-/// `system` message inside `messages`; on Responses, `text.format` and a hosted tool.
+/// (`output_config.format`), `thinking.display`, `context_management` and `safeguards`, and a
+/// `system` message inside `messages` by its role; on Responses, `text.format` and a hosted
+/// tool.
 #[test]
 fn translation_fields_llm_still_refuses_are_refused_by_name() {
     let base: serde_json::Value =
@@ -649,7 +650,7 @@ fn translation_fields_llm_still_refuses_are_refused_by_name() {
         ("display", &display),
         ("context_management", &context),
         ("safeguards", &safeguards),
-        ("system", &midway),
+        ("Messages role is outside the declared subset", &midway),
     ] {
         let (code, message) = messages_refusal(body);
         assert_eq!(code, llm_core::ErrorCode::Unsupported, "{name}: {message}");

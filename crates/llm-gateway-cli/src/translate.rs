@@ -1,5 +1,5 @@
 //! The binary's translator (story:gateway-translation): `llm_gateway`'s [`Translator`] port over
-//! llm 0.6.0's ingress decoders, protocol clients and ingress encoders, and a tokio runtime the
+//! llm 0.7.0's ingress decoders, protocol clients and ingress encoders, and a tokio runtime the
 //! binary owns.
 //!
 //! [`Translator::prepare`] runs on the gateway's worker thread before any target is asked for:
@@ -52,8 +52,13 @@ pub const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
 /// The most output a request to a messages upstream that names no limit is given; it is given
 /// half the window it is translated under when that is less.
 pub const MESSAGES_DEFAULT_OUTPUT_TOKENS: u64 = 16_384;
-/// The reasoning efforts a model is translated under: llm's vocabulary below `max`.
+/// The reasoning efforts a model is translated under: llm's vocabulary below `max`. llm 0.7.0
+/// checks the effort the upstream wire receives, so `max` reaches a chat or responses upstream as
+/// `xhigh`, and a messages upstream as `max`, which this list refuses.
 pub const REASONING_EFFORTS: [&str; 5] = ["minimal", "low", "medium", "high", "xhigh"];
+/// The effort a chat or responses upstream receives for disabled thinking, admitted there beside
+/// [`REASONING_EFFORTS`]; a messages upstream has no such effort.
+pub const NO_REASONING_EFFORT: &str = "none";
 /// The name the binding's account gives the target's credential; only the resolver below
 /// answers it.
 const SECRET_REFERENCE: &str = "target-credential";
@@ -206,10 +211,11 @@ impl LlmTranslator {
         }
     }
 
-    /// The capabilities `model` is translated under: an override, else tools and tool choice
-    /// when it parses tool calls, temperature and `top_p`, [`REASONING_EFFORTS`], and a context
-    /// window and output limit of its window, else [`DEFAULT_CONTEXT_WINDOW`].
-    fn capabilities(&self, model: &RelayModel) -> Capabilities {
+    /// The capabilities `model` is translated under for `upstream`: an override, else tools and
+    /// tool choice when it parses tool calls, temperature and `top_p`, [`REASONING_EFFORTS`]
+    /// (and [`NO_REASONING_EFFORT`] for a chat or responses upstream), and a context window and
+    /// output limit of its window, else [`DEFAULT_CONTEXT_WINDOW`].
+    fn capabilities(&self, model: &RelayModel, upstream: Wire) -> Capabilities {
         if let Some(declared) = self.capabilities.get(model.alias().as_str()) {
             return declared.clone();
         }
@@ -222,7 +228,9 @@ impl LlmTranslator {
             top_p: true,
             reasoning_efforts: REASONING_EFFORTS
                 .iter()
-                .map(|&effort| effort.to_owned())
+                .copied()
+                .chain((upstream != Wire::Messages).then_some(NO_REASONING_EFFORT))
+                .map(ToOwned::to_owned)
                 .collect(),
             context_window: window,
             max_output_tokens: window,
@@ -340,143 +348,11 @@ struct Decoded {
     include_usage: bool,
 }
 
-/// Refuses an object at `level` that holds a key outside `allowed`; anything else passes, for
-/// the decoder to judge. The diagnostic names the level, never the key the client sent.
-fn closed(value: &Value, allowed: &[&str], level: &str) -> Result<(), Error> {
-    match value.as_object() {
-        Some(object) if object.keys().any(|key| !allowed.contains(&key.as_str())) => {
-            Err(Error::unsupported(format!(
-                "a request {level} carries a key outside the subset"
-            )))
-        }
-        _ => Ok(()),
-    }
-}
-
-/// Refuses a `type` other than `function` where the decoder reads the object as a function
-/// but not its `type`.
-fn function_typed(value: &Value, level: &str) -> Result<(), Error> {
-    match value.get("type") {
-        None => Ok(()),
-        Some(kind) if kind == "function" => Ok(()),
-        Some(_) => Err(Error::unsupported(format!(
-            "a request {level} names a type outside the subset"
-        ))),
-    }
-}
-
-/// The chat subset closed at every level below the top that llm 0.6.0's decoder reads, which
-/// passes over any other key there (`crates/llm-chat/src/ingress.rs` `decode_messages`,
-/// `content_text`, `decode_tool_call`, `decode_tools`, `decode_tool_choice`; `docs/chat.md`).
-/// The top level and `stream_options` the decoder closes itself; a role it does not know it
-/// refuses.
-fn chat_closed(body: &Value) -> Result<(), Error> {
-    for message in body
-        .get("messages")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let allowed: &[&str] = match message.get("role").and_then(Value::as_str) {
-            Some("system" | "developer" | "user") => &["role", "content"],
-            Some("assistant") => &["role", "content", "tool_calls"],
-            Some("tool") => &["role", "content", "tool_call_id"],
-            _ => continue,
-        };
-        closed(message, allowed, "messages[]")?;
-        for part in message
-            .get("content")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            closed(part, &["type", "text"], "messages[].content[]")?;
-        }
-        for call in message
-            .get("tool_calls")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            closed(call, &["id", "type", "function"], "messages[].tool_calls[]")?;
-            function_typed(call, "messages[].tool_calls[]")?;
-            if let Some(function) = call.get("function") {
-                closed(
-                    function,
-                    &["name", "arguments"],
-                    "messages[].tool_calls[].function",
-                )?;
-            }
-        }
-    }
-    for tool in body
-        .get("tools")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        closed(tool, &["type", "function"], "tools[]")?;
-        if let Some(function) = tool.get("function") {
-            closed(
-                function,
-                &["name", "description", "parameters"],
-                "tools[].function",
-            )?;
-        }
-    }
-    if let Some(choice) = body.get("tool_choice").filter(|choice| choice.is_object()) {
-        closed(choice, &["type", "function"], "tool_choice")?;
-        function_typed(choice, "tool_choice")?;
-        if let Some(function) = choice.get("function") {
-            closed(function, &["name"], "tool_choice.function")?;
-        }
-    }
-    Ok(())
-}
-
-/// The responses subset closed at every level below the top that llm 0.6.0's decoder reads,
-/// which passes over any other key there (`crates/llm-responses/src/request.rs`
-/// `input_to_item`, `content_text`, `wire_to_tool_choice`). The top level, `reasoning` and
-/// `tools[]` the decoder closes itself; a `reasoning` item is refused as carried state, and an
-/// item of another type the decoder refuses.
-fn responses_closed(body: &Value) -> Result<(), Error> {
-    for item in body
-        .get("input")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-    {
-        let kind = item.get("type").and_then(Value::as_str);
-        let allowed: &[&str] = match kind {
-            Some("message") => &["type", "role", "content"],
-            Some("function_call") => &["type", "call_id", "name", "arguments"],
-            Some("function_call_output") => &["type", "call_id", "output"],
-            _ => continue,
-        };
-        closed(item, allowed, "input[]")?;
-        if kind == Some("message") {
-            for part in item
-                .get("content")
-                .and_then(Value::as_array)
-                .into_iter()
-                .flatten()
-            {
-                closed(part, &["type", "text"], "input[].content[]")?;
-            }
-        }
-    }
-    if let Some(choice) = body.get("tool_choice").filter(|choice| choice.is_object()) {
-        closed(choice, &["type", "name"], "tool_choice")?;
-    }
-    Ok(())
-}
-
 fn decode(ingress: Wire, alias: &str, body: &[u8]) -> Result<Decoded, Error> {
     match ingress {
         Wire::Chat => {
             let value: Value = serde_json::from_slice(body)
                 .map_err(|_| Error::invalid("the request body is not JSON"))?;
-            chat_closed(&value)?;
             let decoded = llm_chat::decode_ingress_request(&value)?;
             Ok(Decoded {
                 request: decoded.request,
@@ -487,7 +363,6 @@ fn decode(ingress: Wire, alias: &str, body: &[u8]) -> Result<Decoded, Error> {
         Wire::Responses => {
             let value: Value = serde_json::from_slice(body)
                 .map_err(|_| Error::invalid("the request body is not JSON"))?;
-            responses_closed(&value)?;
             // The body must name the model the binding answers to: the alias the client named.
             let reading =
                 llm_responses::Binding::new(ingress_provenance(ingress, alias)?, id(alias)?);
@@ -545,7 +420,7 @@ impl Translator for LlmTranslator {
         {
             return Err(RefusalCode::TranslationOpaqueState);
         }
-        let capabilities = self.capabilities(request.model);
+        let capabilities = self.capabilities(request.model, request.upstream);
         // A messages upstream needs an output limit, and the whole window leaves no room for
         // the input: a request naming none is given half the window it is translated under
         // (the model's, else the capabilities'), at most MESSAGES_DEFAULT_OUTPUT_TOKENS.

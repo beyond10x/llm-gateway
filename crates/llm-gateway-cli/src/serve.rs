@@ -197,12 +197,21 @@ fn report(line: fmt::Arguments<'_>) {
     drop(writeln!(std::io::stderr(), "b10x-llm-gateway: {line}"));
 }
 
-/// The `b10x-llm-gateway` process over `pods`: parse the command line, install logging, load the
+/// The `b10x-llm-gateway` process over `pods`: with `credential` as the first argument, the
+/// `credential set` command, which reaches `https` endpoints over `pods` too; otherwise parse the
+/// serving command line, install logging, load the
 /// document, [`start_with`] `pods`, serve until SIGINT or SIGTERM, and stop gracefully, writing
 /// the lines `spec/domains/deployment.yaml` names. The shipped binary's `main` passes
 /// [`crate::ProxyConnector::shipped`]; only the `gateway-tls-seam` test program passes another.
 pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
     use clap::Parser as _;
+    // `credential …` first is the one other command; anything else is the serving line, parsed
+    // exactly as before.
+    if let crate::cli::Invocation::Credential(args) =
+        crate::cli::Invocation::from_args(std::env::args_os().collect())
+    {
+        return crate::credential::main(args, &pods);
+    }
     let args = crate::cli::Cli::parse();
     // Events (row O3) go to standard error beside the lines `report` writes, which they leave
     // unchanged; at the default level they are one `usage` event per authenticated model call.

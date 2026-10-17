@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-17T07:56:33Z",
+  "actor": "human:timo",
+  "artifact": "story:credential-set-command",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "five findings fixed in ca38481; both red tests pass",
+    "review": "review-result:adversary-w13-credential-set-command-pass-1",
+    "outcome": "fixed"
+  }
+}

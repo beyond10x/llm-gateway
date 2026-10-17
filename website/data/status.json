@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-10-16",
+  "asOf": "2026-10-17",
   "format": "b10x-status/1",
   "items": [
     {
@@ -196,6 +196,13 @@
       "detail": "The document, the routes document it names, the owner secret, each vLLM key file and each endpoint credential file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
       "href": "/docs/reference/deployment-document",
       "label": "Trusted-file reader",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
+      "detail": "b10x-llm-gateway credential set --config <file> --model <alias> (or --route <name>) reads the key from a hidden prompt or --stdin, probes GET <base path>/models with the entry's own credential header and static headers (401 or 403 stores nothing), and writes the file the document names, mode 0600, read back through the server's own reader before it replaces the old one. Tested against loopback endpoints, not against a vendor API.",
+      "href": "/docs/guides/store-an-upstream-key",
+      "label": "Store an upstream key with credential set",
       "status": "shipped"
     },
     {

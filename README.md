@@ -20,7 +20,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.10.0, released 2026-10-17 as a source release with the gateway image; tested
+**Status: 0.11.0, released 2026-10-17 as a source release with the gateway image; tested
 against in-process fakes and loopback; nothing is deployed or qualified.**
 [CHANGELOG.md](CHANGELOG.md) lists every release and what is unreleased.
 
@@ -157,6 +157,15 @@ credential in its named header. An `https` endpoint is verified against the same
 roots as a pod. A credential goes over plain `http` only to a loopback host (`127.0.0.0/8`,
 `::1`, `localhost`); any other `http` endpoint that is not `anonymous` is refused as
 `config:value`.
+
+To store a hosted endpoint's key, run
+`b10x-llm-gateway credential set --config gateway.toml --model <alias>` (or `--route <name>` for
+a route of the routes document). It reads the key from a hidden prompt, or from standard input
+with `--stdin`, probes `GET <base path>/models` with it unless `--no-probe` (`401` or `403`
+stores nothing), and writes the file the document names, mode `0600`, read back through the
+gateway's own reader first. The next start reads it. The
+[Store an upstream key](https://beyond10x.github.io/llm-gateway/docs/guides/store-an-upstream-key/)
+guide walks through it.
 
 A top-level `routes = "<path>"` names an llm `llm.routes/1` document instead, or as well. Each
 route is served under its route name from its endpoint: relayed byte for byte on the endpoint's

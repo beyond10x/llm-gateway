@@ -1,11 +1,12 @@
 //! The refusal reference, from `llm_gateway::RefusalCode::ALL`: every code the gateway can emit,
 //! with the status and the fixed message the code itself returns, and every startup refusal of the
-//! binary, from `llm_gateway_cli::StartupRefusal::ALL`.
+//! binary, from `llm_gateway_cli::StartupRefusal::ALL`, and every refusal of its `credential set`
+//! command, from `llm_gateway_cli::CredentialRefusal::ALL`.
 
 use std::fmt::Write as _;
 
 use llm_gateway::RefusalCode;
-use llm_gateway_cli::StartupRefusal;
+use llm_gateway_cli::{CredentialRefusal, StartupRefusal};
 
 use crate::{GITHUB, front_matter};
 
@@ -57,6 +58,19 @@ pub fn page() -> String {
     for refusal in StartupRefusal::ALL {
         let _ = writeln!(out, "| `{}` |", refusal.code());
     }
+    let _ = write!(
+        out,
+        "\n## Credential refusals\n\n`b10x-llm-gateway credential set` refuses with the same line, \
+         `b10x-llm-gateway: refused <code>: <message>`, and exit status 1, writing nothing. Besides \
+         the startup codes the server's own loader and reader give (a `config:*` code for the \
+         document, an `endpoint-credential:*` code for a key file it would not read), its codes are \
+         these, generated from `CredentialRefusal::ALL` in the same file; \
+         [the deployment document](./deployment-document.md#credential-files) says which rule each \
+         one keeps. No message quotes the key.\n\n| Credential code |\n| --- |\n"
+    );
+    for refusal in CredentialRefusal::ALL {
+        let _ = writeln!(out, "| `{}` |", refusal.code());
+    }
     out
 }
 
@@ -68,6 +82,10 @@ mod tests {
     fn every_code_is_one_row_in_code_order() {
         let page = page();
         let (gateway, startup) = page.split_once("## Startup refusals").unwrap();
+        let (startup, credential) = startup.split_once("## Credential refusals").unwrap();
+        let credential_rows = credential.lines().filter(|line| line.starts_with("| `"));
+        assert_eq!(credential_rows.count(), CredentialRefusal::ALL.len());
+        assert!(credential.contains("| `credential:probe-rejected` |"));
         let rows: Vec<_> = gateway
             .lines()
             .filter(|line| line.starts_with("| `"))

@@ -38,7 +38,7 @@ llm-models = { package = "b10x-llm-models", git = "https://github.com/beyond10x/
 llm-providers = { package = "b10x-llm-providers", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
 llm-responses = { package = "b10x-llm-responses", git = "https://github.com/beyond10x/llm", tag = "0.6.0" }
 llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
-rustix = { version = "1.1", features = ["fs", "process"] }
+rustix = { version = "1.1", features = ["fs", "process", "termios"] }
 # The pod connection's TLS client (spec/domains/deployment.yaml, the pod endpoint rule): rustls
 # on its ring provider, never aws-lc-rs, trusting the roots webpki-roots compiles in.
 rustls = { version = "0.23.46", default-features = false, features = ["ring", "std", "tls12"] }

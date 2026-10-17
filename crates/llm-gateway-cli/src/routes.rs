@@ -121,6 +121,21 @@ impl RouteEndpoint {
     pub fn secret(&self) -> Option<&SecretFile> {
         self.secret.as_ref()
     }
+
+    /// The base URL as llm normalises it, for `credential set`'s probe; never rendered.
+    pub(crate) fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// The header an `api-key` endpoint receives its credential in.
+    pub(crate) fn credential_header(&self) -> Option<&CredentialHeader> {
+        self.credential_header.as_ref()
+    }
+
+    /// The static headers every request to the endpoint is sent ([`endpoint_headers`]).
+    pub(crate) fn static_headers(&self) -> Result<Vec<StaticHeader>, Refusal> {
+        endpoint_headers(self.wire)
+    }
 }
 
 /// One route of the document: a served model.
@@ -253,7 +268,11 @@ impl Routes {
         &self.digest
     }
 
-    fn endpoint_of(&self, route: &Route) -> Result<&RouteEndpoint, Refusal> {
+    /// The endpoint `route` names.
+    ///
+    /// # Errors
+    /// `config:value` naming `routes.<route>` for an undeclared endpoint.
+    pub(crate) fn endpoint_of(&self, route: &Route) -> Result<&RouteEndpoint, Refusal> {
         self.endpoints.get(&route.endpoint).ok_or_else(|| {
             value(
                 &format!("routes.{}", route.name),

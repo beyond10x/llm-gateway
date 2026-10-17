@@ -2,13 +2,38 @@
 format: aep.planning-md/3
 id: story:cross-wire-reasoning-state
 kind: story
-status: draft
+status: active
 title: A translated route serves a client's next turn that replays the reasoning state the gateway gave it
 relations:
 - decomposes: epic:gateway-features
 - informed_by: story:gateway-translation
 - serves: vision:portable-model-inference
-revision: 1
+- depends_on: story:llm-0-7-0-pin
+scope:
+- confidence: cited
+  path: CHANGELOG.md
+- confidence: cited
+  path: contracts/gateway/scenarios/translate-carried-reasoning-state-is-refused-without-asking-for-a-target.yaml
+- confidence: inferred
+  path: crates/llm-gateway-cli/Cargo.toml
+- confidence: cited
+  path: crates/llm-gateway-cli/src/translate.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/translation.rs
+- confidence: inferred
+  path: crates/llm-gateway/src/error.rs
+- confidence: cited
+  path: docs/gateway.md
+- confidence: inferred
+  path: spec/domains/clients.yaml
+- confidence: cited
+  path: spec/domains/gateway.yaml
+- confidence: cited
+  path: website/docs/guides/translate-between-wires.md
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-17T10:09:02Z", actor: "human:timo", revision: 4}
+- {from: "proposed", to: "active", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 5}
 ---
 ## Outcome
 

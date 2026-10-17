@@ -2,11 +2,13 @@
 format: aep.planning-md/3
 id: dependency-blocker:llm-0-7-0-ingress
 kind: dependency-blocker
-status: open
+status: cleared
 title: llm 0.6.0's ingress refuses the fields Claude Code and Codex send
 relations:
 - blocks: story:client-profiles-translated
-revision: 1
+revision: 2
+transitions:
+- {from: "open", to: "cleared", at: "2026-10-17T10:09:13Z", actor: "human:timo", revision: 2}
 ---
 ## What is missing
 

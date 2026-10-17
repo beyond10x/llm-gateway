@@ -7,6 +7,7 @@ title: GET /metrics counts tokens by direction and cache tokens by kind per mode
 relations:
 - decomposes: epic:gateway-features
 - depends_on: story:usage-records
+- informed_by: story:prometheus-metrics
 revision: 1
 ---
 ## Outcome

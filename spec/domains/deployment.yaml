@@ -393,6 +393,12 @@ types:
   # DECIDED 2026-10-16 (story:model-profile-fallback): a model may declare `[[models.<alias>.profiles]]`;
   # the flat declaration is the one-profile case and keeps its meaning. Proved by `profiles_*`
   # in crates/llm-gateway-cli/tests/config.rs.
+  # DECIDED 2026-10-17: the relayed model's `max_model_len` (`GET /v1/models`) is the smallest
+  # among its profiles, and a pod states the `max_model_len` of the profile it was started on,
+  # which the output clamp takes (llm-gateway.gateway Relay step 7): a call served by a fallback
+  # profile is clamped to that profile's window
+  # (`adv_profiles_a_call_served_by_a_fallback_profile_is_clamped_to_that_profiles_max_model_len`
+  # in crates/llm-gateway-cli/tests/adversary_w12_profiles.rs).
   # DECIDED 2026-10-08 (story:model-tool-calling): `tool_calling` is the model's own key, and a
   # document that omits it declares `Absent`. An omitted key then refuses a tool request as
   # `tools-not-served` before a pod is asked for, instead of starting and billing a pod that

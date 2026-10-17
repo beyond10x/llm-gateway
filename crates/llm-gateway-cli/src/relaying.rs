@@ -329,10 +329,12 @@ struct Relayed {
     bearer: Arc<TargetBearer>,
     /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
     hold: Duration,
+    /// Each profile's `max_model_len` by profile name: the window of a pod started on it.
+    windows: BTreeMap<String, u64>,
 }
 
 /// What each model of `deployment` needs at acquisition: its alias, its vLLM key as the bearer,
-/// and its hold.
+/// its hold, and its profiles' windows.
 ///
 /// # Errors
 /// A `config:value` [`Refusal`] for a model that names no `vllm_api_key_file`: its pod always
@@ -362,10 +364,23 @@ fn relayed_models(
                 alias: identifier(alias, &format!("models.{alias}"))?,
                 bearer: Arc::new(bearer),
                 hold: Duration::from_secs(model.request_hold_seconds),
+                windows: profile_windows(model).collect(),
             },
         );
     }
     Ok(models)
+}
+
+/// Each profile of `model` with its `max_model_len`, the first profile first.
+fn profile_windows(model: &Model) -> impl Iterator<Item = (String, u64)> + '_ {
+    std::iter::once((model.profile.clone(), u64::from(model.vllm.max_model_len))).chain(
+        model.fallbacks.iter().map(|fallback| {
+            (
+                fallback.name.clone(),
+                u64::from(fallback.vllm.max_model_len),
+            )
+        }),
+    )
 }
 
 /// The gateway's targets: the pod the pool hands out for each alias.
@@ -556,9 +571,15 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                         .ok_or(TargetRefusal::Unavailable)?
                         .to_owned();
                     let scheme = scheme(endpoint);
+                    // The window of the profile the pod was started on; a pod whose profile is
+                    // unknown leaves the model's, the smallest of its profiles'.
+                    let max_model_len = lease
+                        .profile()
+                        .and_then(|profile| relayed.windows.get(profile).copied());
                     return Ok(Box::new(PodTarget {
                         authority,
                         scheme,
+                        max_model_len,
                         bearer: Arc::clone(&relayed.bearer),
                         connector: Arc::clone(&self.connector),
                         // A hold binds only to a pod it found starting (rows O1, O2).
@@ -613,6 +634,8 @@ struct PodTarget {
     connector: Arc<dyn PodConnector>,
     /// The request was held while this pod started.
     held: bool,
+    /// The `max_model_len` of the profile the pod was started on, when it is known.
+    max_model_len: Option<u64>,
     lease: StreamLease,
 }
 
@@ -631,6 +654,10 @@ impl RelayTarget for PodTarget {
 
     fn profile(&self) -> Option<String> {
         self.lease.profile().map(str::to_owned)
+    }
+
+    fn max_model_len(&self) -> Option<u64> {
+        self.max_model_len
     }
 
     fn held(&self) -> bool {
@@ -915,10 +942,13 @@ impl Parts {
 
 /// Every model of the document as the relay serves it: on its wires, under its alias, with its
 /// `tool_calling`, and with the `max_model_len` and `context_window` the public routes publish
-/// (rows R5, R1). A hosted model is relayed under its `upstream_model`, and publishes the
-/// `context_window` it declares and no `max_model_len`. Only a hosted model gives a messages
-/// request naming no effort its declared `reasoning_effort`: a Runpod model's is already its
-/// server's default chat-template argument. A route of the routes document is relayed as
+/// (rows R5, R1). A Runpod model's `max_model_len` is the smallest of its profiles': the window
+/// every pod it may be served by takes; the output clamp takes the window of the profile the
+/// serving pod was started on instead ([`PodTarget`]). A hosted model is relayed under its
+/// `upstream_model`, and publishes the `context_window` it declares and no `max_model_len`.
+/// Only a hosted model gives a messages request naming no effort its declared
+/// `reasoning_effort`: a Runpod model's is already its server's default chat-template
+/// argument. A route of the routes document is relayed as
 /// [`crate::Routes::relay_models`] says.
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
@@ -959,7 +989,12 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                     )
                 })?
                 .with_tool_calling(model.tool_calling)
-                .with_max_model_len(u64::from(model.vllm.max_model_len))
+                .with_max_model_len(
+                    profile_windows(model)
+                        .map(|(_, window)| window)
+                        .min()
+                        .unwrap_or(u64::from(model.vllm.max_model_len)),
+                )
                 .with_context_window(u64::from(model.context_window)),
         );
     }

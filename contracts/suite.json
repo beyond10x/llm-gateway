@@ -43,6 +43,7 @@
       "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted",
       "llm-gateway.gateway/authored/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged",
       "llm-gateway.gateway/authored/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed",
+      "llm-gateway.gateway/authored/clamp-the-window-the-serving-target-states-wins-over-the-models",
       "llm-gateway.gateway/authored/claude-code-adaptive-thinking-reaches-the-target-unchanged",
       "llm-gateway.gateway/authored/claude-code-anthropic-headers-never-reach-the-target",
       "llm-gateway.gateway/authored/claude-code-structured-output-format-reaches-the-target-unchanged",
@@ -247,6 +248,8 @@
       "llm-gateway.runpod/authored/concurrent-callers-of-a-slow-pod-all-wait-on-one-create",
       "llm-gateway.runpod/authored/concurrent-first-requests-create-exactly-one-pod",
       "llm-gateway.runpod/authored/every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod",
+      "llm-gateway.runpod/authored/no-gpu-type-of-a-profile-is-tried-once-the-starts-startup-deadline-has-passed",
+      "llm-gateway.runpod/authored/no-profile-is-tried-once-the-starts-startup-deadline-has-passed",
       "llm-gateway.runpod/authored/one-restart-below-the-crash-limit-is-not-a-crash-loop",
       "llm-gateway.runpod/authored/reasoning-effort-and-explicit-sampling-reach-the-entrypoint",
       "llm-gateway.runpod/authored/restarts-inside-the-crash-window-are-a-crash-loop",
@@ -452,6 +455,11 @@
         "digest": "sha256:a04828fbe727b9b6ce29fbe39f2ca3226ce1a94cbeb45fae5abbd69b83f02558",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed"
+      },
+      "gateway/scenarios/clamp-the-window-the-serving-target-states-wins-over-the-models.yaml": {
+        "digest": "sha256:9688d79ad0de37819e8c9398b8df4a8d0c3d001c47002cef61dc6491473ea11f",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/clamp-the-window-the-serving-target-states-wins-over-the-models"
       },
       "gateway/scenarios/claude-code-adaptive-thinking-reaches-the-target-unchanged.yaml": {
         "digest": "sha256:e05ed5c221a2ffc1a78dbe1480ba1db9b563e4a4be4c5633490e719fa8efabe1",
@@ -1488,6 +1496,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.runpod/authored/every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod"
       },
+      "runpod/scenarios/no-gpu-type-of-a-profile-is-tried-once-the-starts-startup-deadline-has-passed.yaml": {
+        "digest": "sha256:adfcfc03ecda4ba6855ab93d5ef2e3f7c84d3b2fc9ecc3852b34ddf8f524dbd8",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/no-gpu-type-of-a-profile-is-tried-once-the-starts-startup-deadline-has-passed"
+      },
+      "runpod/scenarios/no-profile-is-tried-once-the-starts-startup-deadline-has-passed.yaml": {
+        "digest": "sha256:dcf7be92dbb06ac7047480a677d3ec04ea6b2cb3b1ee189af53fc998e35f6057",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.runpod/authored/no-profile-is-tried-once-the-starts-startup-deadline-has-passed"
+      },
       "runpod/scenarios/one-restart-below-the-crash-limit-is-not-a-crash-loop.yaml": {
         "digest": "sha256:ac1d0fa28bf11674e68db01cbcc1daa113bd0ab7896ca191eb14bcc1ec62712e",
         "disposition": "accepted",
@@ -1565,7 +1583,7 @@
       }
     },
     "counts": {
-      "authored": 260,
+      "authored": 263,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -5299,6 +5317,113 @@
                   "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
                   "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
                   "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":1,\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/clamp-the-window-the-serving-target-states-wins-over-the-models": {
+      "purpose": "a target that states a max_model_len shorter than the model's declared one, as a pod started on a fallback profile does, is the window the output clamp keeps a messages request within",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"],\"bearer\":\"vllm-key-code-0123456789abcdef\",\"max_model_len\":2048,\"target_max_model_len\":1024,\"context_window\":65536}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"input_tokens\\\":1000}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"max_tokens\\\":32000,\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages/count_tokens {\"model\":\"served-code\",\"max_tokens\":32000,\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":24,\"messages\":[]}"
                 ]
               },
               "valid_program": {
@@ -26122,6 +26247,220 @@
               "results": {
                 "kind": "literal",
                 "value": [
+                  "ok",
+                  "ok",
+                  "err:no-capacity"
+                ]
+              },
+              "stop_required": {
+                "kind": "literal",
+                "value": []
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/no-gpu-type-of-a-profile-is-tried-once-the-starts-startup-deadline-has-passed": {
+      "purpose": "two capacity refusals that take 800 s of a 600 s startup deadline end the start before the profile's third GPU type is tried, although it has capacity",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"startup_deadline_ms\":600000,\"gpu_types\":[\"NVIDIA L40S\",\"NVIDIA A40\",\"NVIDIA H100 NVL\"]}},\"steps\":[{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA L40S\"},{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA A40\"},{\"step\":\"create_takes\",\"ms\":400000},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "leases": {
+                "kind": "literal",
+                "value": []
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:cancelled"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": []
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": [
+                  "NVIDIA L40S",
+                  "NVIDIA A40"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "ok",
+                  "ok",
+                  "err:no-capacity"
+                ]
+              },
+              "stop_required": {
+                "kind": "literal",
+                "value": []
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.runpod/authored/no-profile-is-tried-once-the-starts-startup-deadline-has-passed": {
+      "purpose": "two capacity refusals that take 800 s of a 600 s startup deadline end the start before the next profile is tried; nothing is created and the deployment is withdrawn",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.runpod"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.runpod.Exercise"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.runpod.LastExecution"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.runpod.Exercise",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":{\"qwen\":{\"startup_deadline_ms\":600000,\"profiles\":[{\"name\":\"l40s-32k\",\"gpu_types\":[\"NVIDIA L40S\",\"NVIDIA A40\"],\"vllm\":{\"max_model_len\":32768}},{\"name\":\"h100-64k\",\"gpu_types\":[\"NVIDIA H100 NVL\"],\"vllm\":{\"max_model_len\":65536}}]}},\"steps\":[{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA L40S\"},{\"step\":\"no_capacity_gpu\",\"gpu\":\"NVIDIA A40\"},{\"step\":\"create_takes\",\"ms\":400000},{\"step\":\"ensure\",\"alias\":\"qwen\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.runpod.Exercise",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.runpod.LastExecution"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "create_calls": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "leases": {
+                "kind": "literal",
+                "value": []
+              },
+              "phases": {
+                "kind": "literal",
+                "value": [
+                  "qwen-1:cancelled"
+                ]
+              },
+              "pods": {
+                "kind": "literal",
+                "value": []
+              },
+              "requested_gpus": {
+                "kind": "literal",
+                "value": [
+                  "NVIDIA L40S",
+                  "NVIDIA A40"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
                   "ok",
                   "ok",
                   "err:no-capacity"

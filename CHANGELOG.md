@@ -12,6 +12,10 @@ Nothing in any release is deployed or qualified against a live client.
   with the spend check before every create; any other refusal ends the start. Two profiles sharing
   a name or a GPU type are refused `profile-conflict`. The flat declaration is the one profile
   `default`, unchanged, and the usage record names the profile of the pod that served.
+- A messages request served by a fallback profile is clamped to that profile's `max_model_len`,
+  and `GET /v1/models` lists the smallest window among a model's profiles. A start sends no
+  further create, of a profile's next GPU type or of the next profile, once its startup deadline
+  has passed, and ends `no-capacity`.
 - A provider may declare `daily_cap_usd` and `total_cap_usd`, spend ceilings for its account,
   and each model `price_per_hour_usd`. Before every pod create the pool checks the account's
   reported spend plus its live pods' and the new pod's estimates against each ceiling; a start

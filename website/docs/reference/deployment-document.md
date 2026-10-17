@@ -92,7 +92,9 @@ Without `profiles`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` and
 `extra_vllm_args`, under the rules above; any other key is `config:schema`. A start tries the
 first profile's GPU types in order, and moves on to the next profile only when Runpod refused
 every one of them for capacity, inside the same startup deadline and with the spend check before
-each create. Two profiles sharing a name or a GPU type are refused as `config:value` with the rule
+each create; once `start_wait_seconds` have passed since the start began, no further create is
+sent and the start ends `no-capacity`. A request is clamped to the `max_model_len` of the profile
+its pod was started on, and `GET /v1/models` lists the smallest among the profiles. Two profiles sharing a name or a GPU type are refused as `config:value` with the rule
 `profile-conflict`. Every other key of the model, `thinking` and `sampling` included, holds for
 every profile. The usage record names the profile of the pod that served a request (`profile`).
 

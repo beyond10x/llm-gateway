@@ -359,6 +359,14 @@ pub trait RelayTarget: Send {
         None
     }
 
+    /// The longest sequence the target's server takes, when the target knows it: a pod of a
+    /// profiled model states its profile's `max_model_len`. The output clamp keeps a messages
+    /// request within it, ahead of the model's own [`RelayModel::window`]. `None`, the default,
+    /// leaves the model's window.
+    fn max_model_len(&self) -> Option<u64> {
+        None
+    }
+
     /// Opens one connection to the target. Its read and write timeouts are the target's.
     ///
     /// # Errors
@@ -516,7 +524,8 @@ impl RelayModel {
 
     /// The window the output clamp keeps a messages request within: the declared
     /// `max_model_len`, else the declared `context_window`, else none, and a model without one
-    /// is never counted.
+    /// is never counted. A target that states its own [`RelayTarget::max_model_len`] replaces
+    /// it for the calls it serves.
     pub fn window(&self) -> Option<u64> {
         self.max_model_len.or(self.context_window)
     }
@@ -1301,9 +1310,13 @@ pub(crate) fn serve(
         model.reasoning_effort.filter(|_| messages),
     );
     drop(body);
-    let window = model.window().filter(|_| messages);
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;
+    // The window of the server that answers: the one the target states, else the model's.
+    let window = target
+        .max_model_len()
+        .or_else(|| model.window())
+        .filter(|_| messages);
     // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
     // never wakes a pod the relay would not have woken. A count that fails decides nothing.
     if let (Some(window), Some(_)) = (window, rewritten.max_tokens()) {

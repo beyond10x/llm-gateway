@@ -83,7 +83,17 @@ types:
       # the spend check runs before each create of each profile
       # (`a-capacity-refusal-starts-the-model-on-its-next-profile`). A profile with any create
       # answered `Refused` ends the start here, and so does the last profile
-      # (`a-non-capacity-refusal-is-not-retried-on-the-next-profile`). A lost create
+      # (`a-non-capacity-refusal-is-not-retried-on-the-next-profile`).
+      # DECIDED 2026-10-17: the start's one startup deadline, counted from the instant its
+      # `create` call began, binds its creates too. Before each create, of the next GPU type of
+      # a profile and of the next profile, the provider reads the pool's clock; once more than
+      # `startup_deadline_ms` has passed it sends no further create, and the start ends as one
+      # whose every create was refused: nothing was created, the deployment is withdrawn, and
+      # the answer is `no-capacity`. A later call starts afresh, with a deadline of its own
+      # (`no-profile-is-tried-once-the-starts-startup-deadline-has-passed`,
+      # `no-gpu-type-of-a-profile-is-tried-once-the-starts-startup-deadline-has-passed`,
+      # `adv_profiles_no_profile_is_tried_once_the_starts_deadline_has_passed` in
+      # tests/adversary_w12_profiles.rs). A lost create
       # answer ends the attempt instead: no further GPU is tried, because Runpod takes no
       # idempotency key and `honours_idempotency_key` is `false`; the record is uncertain and
       # is resolved by its request id (`a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id`,

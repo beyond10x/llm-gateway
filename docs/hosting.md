@@ -339,12 +339,16 @@ profile in order, the spend check immediately before each create. A create refus
 (`Refused`) moves on to the profile's next GPU type. When every create of a profile was refused
 for capacity, the next profile is tried; a profile with any other refusal ends the start, as do a
 lost create answer and a spend refusal. Every profile is tried inside the one create of the one
-start, so one startup deadline, counted from that submission, covers them all. A GPU type belongs
+start, so one startup deadline, counted from that submission, covers them all, and binds the
+creates: before each create, of the profile's next GPU type and of the next profile, the provider
+reads the clock, and once more than `startup_deadline_ms` has passed it sends none and the start
+ends as one whose every create was refused (`no-capacity`, the deployment withdrawn). A GPU type belongs
 to at most one profile of a model, so a pod's GPU type names its profile, after an adoption too:
 `StreamLease::profile` reports it, and the gateway's usage record carries it as `profile`.
 
 The pool also answers `stopping` while a model's deployment owes a stop that is not confirmed,
-and `no-capacity` when every declared GPU type refused its create; neither creates anything. It
+and `no-capacity` when every declared GPU type refused its create, or every one tried before the
+start's startup deadline passed; neither creates anything. It
 answers `unknown-model` for an alias nobody declared, without contacting Runpod,
 `invalid-model` when a declaration is refused, and `hosting` when the controller refuses. A
 model declaration is refused with `no-gpu` when it names no GPU type, `gpu-utilization` for a

@@ -114,11 +114,25 @@ A model may list its profiles in order under `[[models.<alias>.profiles]]`; each
 types and the vLLM settings that fit them. A start tries the first profile's GPU types in order;
 when Runpod refuses every one of them for capacity, it tries the next profile, inside the same
 startup deadline and with the spend check before every create. Any other refusal, or a create
-whose answer was lost, ends the start. Thinking, reasoning effort, sampling and every other key
-stay on the model and hold for every profile; `gpu_types`, `max_model_len`, `max_num_seqs`,
-`gpu_util` and `extra_vllm_args` move into the profiles and are refused on the model beside them.
-A GPU type belongs to at most one profile, and the usage record names the profile of the pod that
-served. A model without `profiles` is one profile named `default`.
+whose answer was lost, ends the start. The startup deadline binds the creates too: once
+`start_wait_seconds` have passed since the start began, no further create is sent, of the
+profile's next GPU type or of the next profile, and the start ends `no-capacity` with nothing
+created. Thinking, reasoning effort, sampling and every other key stay on the model and hold for
+every profile; `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` and `extra_vllm_args`
+move into the profiles and are refused on the model beside them. A GPU type belongs to at most
+one profile, and the usage record names the profile of the pod that served. A model without
+`profiles` is one profile named `default`.
+
+Each profile keeps its own window. The output clamp keeps a messages request within the
+`max_model_len` of the profile the serving pod was started on, so a call served by `l40s-32k`
+below is clamped to 32768, not 65536. `GET /v1/models` lists the smallest window among the
+model's profiles, 32768 below: the window every pod of the model takes, whichever profile serves.
+
+A fallback is taken on a provider capacity refusal only: a create answer the transport marks
+`NoCapacity`. The emulator and the connectors fixture mark it. Through `connectors`, Runpod's
+stock-out answer to a create is not yet marked as a capacity refusal (connectors reports a 4xx
+`refused` and a 5xx `unknown`), so until connectors marks it, a start through `connectors` ends
+on the first profile's refusal and never reaches the next profile.
 
 ```toml
 [models."qwen3.8-27b"]

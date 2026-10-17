@@ -69,6 +69,9 @@ domain: llm-gateway.telemetry
 #                                            milliseconds is at least its `duration_ms`
 #                                            (`_bucket` cumulative, then `_sum` in seconds and
 #                                            `_count`), as the Prometheus text format writes one
+# Order. The text lists the series in the order above, and each series' samples in alias order,
+# then by wire in llm-gateway.gateway.Wire's order (`chat`, `responses`, `messages`, not
+# alphabetical), then by outcome in Outcome's order, a histogram's buckets in ascending `le`.
 # A label is a model alias from the document or a fixed word; no label or value carries a
 # credential, a prompt, a completion or a document's content. The token series are not these
 # (story:token-and-cache-metrics).

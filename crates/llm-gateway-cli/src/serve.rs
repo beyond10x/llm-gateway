@@ -72,6 +72,32 @@ pub fn owner_verifier(deployment: &Deployment) -> Result<Arc<dyn OwnerVerifier>,
     Ok(Arc::new(verifier))
 }
 
+/// Reads the metrics listener's scrape token through the trusted-file reader, under the
+/// endpoint credential's rules; `None` without `metrics_bearer_file`.
+///
+/// # Errors
+/// A `metrics-bearer:*` [`Refusal`], its message starting `metrics_bearer_file <path>:`.
+pub fn metrics_bearer(deployment: &Deployment) -> Result<Option<OwnerToken>, Refusal> {
+    let Some(path) = &deployment.metrics_bearer_file else {
+        return Ok(None);
+    };
+    let material = crate::keys::read_token(
+        path,
+        "metrics_bearer_file",
+        &trusted::METRICS_BEARER,
+        (
+            StartupRefusal::MetricsBearerTooLarge,
+            StartupRefusal::MetricsBearerNotAToken,
+        ),
+    )?;
+    OwnerToken::new(material).map(Some).map_err(|error| {
+        Refusal::new(
+            StartupRefusal::MetricsBearerNotAToken,
+            format!("metrics_bearer_file {}: {error}", path.display()),
+        )
+    })
+}
+
 fn label(value: &str) -> Result<Label, Refusal> {
     Label::new(value).map_err(|error| {
         Refusal::new(

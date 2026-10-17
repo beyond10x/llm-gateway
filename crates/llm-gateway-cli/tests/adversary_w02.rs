@@ -176,22 +176,27 @@ fn adv_b9_citations_into_serve_rs_still_land() {
     let serve = fs::read_to_string(root().join("crates/llm-gateway-cli/src/serve.rs")).unwrap();
     let lines: Vec<&str> = serve.lines().collect();
     let range = |from: usize, to: usize| lines[from - 1..to].join("\n");
-    // D2 cites 143-162 for the stop and 165-187 (also C1) for `start`; the lines moved down five
-    // when story:ingress-auth-optional let `owner_verifier` answer without an owner secret.
+    // D2 cites 169-188 for the stop and 191-213 (C1 191-236) for `start`; the lines moved down
+    // five when story:ingress-auth-optional let `owner_verifier` answer without an owner secret,
+    // and 26 more when story:prometheus-metrics added `metrics_bearer` above them.
     assert!(
-        range(143, 162).contains("fn wait_for_stop"),
-        "serve.rs:143-162"
+        range(169, 188).contains("fn wait_for_stop"),
+        "serve.rs:169-188"
     );
-    assert!(range(165, 187).contains("pub fn start"), "serve.rs:165-187");
-    // spec/domains/upstream.yaml cites serve.rs:96 and :117 for the per-wire targets.
+    assert!(range(191, 213).contains("pub fn start"), "serve.rs:191-213");
     assert!(
-        lines[95].contains("targets"),
-        "serve.rs:96 is {:?}",
-        lines[95]
+        range(191, 236).contains("pub fn main_with"),
+        "serve.rs:191-236"
+    );
+    // spec/domains/upstream.yaml cites serve.rs:122 and :143 for the per-wire targets.
+    assert!(
+        lines[121].contains("targets"),
+        "serve.rs:122 is {:?}",
+        lines[121]
     );
     assert!(
-        lines[116].contains("RouteSummary"),
-        "serve.rs:117 is {:?}",
-        lines[116]
+        lines[142].contains("RouteSummary"),
+        "serve.rs:143 is {:?}",
+        lines[142]
     );
 }

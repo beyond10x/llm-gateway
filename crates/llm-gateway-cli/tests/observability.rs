@@ -5,7 +5,7 @@
 
 mod support;
 
-use llm_gateway::{Disposition, RefusalCode, UsageRecord, UsageRecords, Wire};
+use llm_gateway::{Disposition, Outcome, RefusalCode, UsageRecord, UsageRecords, Wire};
 use llm_gateway_cli::{TracingRecords, log_filter};
 use rustix::process::{Pid, Signal, kill_process};
 use std::{
@@ -51,6 +51,7 @@ fn record(disposition: Disposition, refusal: Option<RefusalCode>, status: u16) -
         model: Some("small".to_owned()),
         wire: Wire::Chat,
         disposition,
+        outcome: Outcome::of(refusal, false),
         refusal,
         status,
         target_status: (refusal.is_none()).then_some(status),
@@ -110,6 +111,7 @@ fn o3_each_usage_record_is_one_structured_info_event() {
         }
     }
     assert!(lines[0].contains("disposition=Relayed"), "{}", lines[0]);
+    assert!(lines[0].contains("outcome=ok"), "{}", lines[0]);
     assert!(lines[0].contains(" status=200"), "{}", lines[0]);
     assert!(lines[0].contains("target_status=200"), "{}", lines[0]);
     assert!(!lines[0].contains("refusal="), "{}", lines[0]);
@@ -119,6 +121,7 @@ fn o3_each_usage_record_is_one_structured_info_event() {
         lines[1]
     );
     assert!(lines[1].contains("refusal=upstream-failed"), "{}", lines[1]);
+    assert!(lines[1].contains("outcome=upstream_error"), "{}", lines[1]);
     assert!(lines[1].contains(" status=502"), "{}", lines[1]);
     assert!(!lines[1].contains("target_status="), "{}", lines[1]);
 }

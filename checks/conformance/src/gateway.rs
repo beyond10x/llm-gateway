@@ -2292,7 +2292,10 @@ mod relay {
         let samples: Vec<&str> = text.lines().filter(|line| !line.starts_with('#')).collect();
         let run = run_started.elapsed();
         scrapes.extend(samples.iter().enumerate().map(|(at, line)| {
-            format!("{index} {}", histogram(&samples, at, run).unwrap_or_else(|| waited(line, run)))
+            format!(
+                "{index} {}",
+                histogram(&samples, at, run).unwrap_or_else(|| waited(line, run))
+            )
         }));
         format!("{status} scraped")
     }
@@ -2308,15 +2311,18 @@ mod relay {
         let line = samples[at];
         let (series, value) = line.rsplit_once(' ')?;
         let number = |text: &str| text.parse::<f64>().ok();
-        if series.starts_with(SUM) {
-            let labels = &series[SUM.len()..];
+        if let Some(labels) = series.strip_prefix(SUM) {
             let count = samples
                 .iter()
                 .find_map(|other| other.strip_prefix(COUNT)?.strip_prefix(labels))
                 .and_then(|rest| number(rest.trim()))?;
-            let bounded = number(value)
-                .is_some_and(|sum| (0.0..=count * run.as_secs_f64()).contains(&sum));
-            return Some(if bounded { format!("{series} bounded") } else { line.to_owned() });
+            let bounded =
+                number(value).is_some_and(|sum| (0.0..=count * run.as_secs_f64()).contains(&sum));
+            return Some(if bounded {
+                format!("{series} bounded")
+            } else {
+                line.to_owned()
+            });
         }
         if !series.starts_with(BUCKET) || series.ends_with("le=\"+Inf\"}") {
             return None;
@@ -2325,10 +2331,8 @@ mod relay {
         let value = number(value)?;
         let bucket = |other: &&str| other.starts_with(model) && other.contains(",le=");
         let before = samples[..at]
-            .iter()
-            .rev()
-            .take_while(bucket)
-            .next()
+            .last()
+            .filter(|other| bucket(other))
             .and_then(|other| number(other.rsplit_once(' ')?.1))
             .unwrap_or(0.0);
         let infinite = samples

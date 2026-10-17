@@ -42,8 +42,8 @@ pub use relaying::{
 };
 pub use routes::{MAX_ROUTE_NAME_BYTES, Route, RouteEndpoint, Routes, SecretFile};
 pub use serve::{
-    INGRESS_AUTH_OFF, Running, StopSignal, Stopped, inventory, main_with, owner_verifier, start,
-    start_with,
+    INGRESS_AUTH_OFF, Running, StopSignal, Stopped, inventory, main_with, metrics_bearer,
+    owner_verifier, start, start_with,
 };
 pub use tls::ProxyConnector;
 pub use translate::{

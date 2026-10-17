@@ -1192,6 +1192,9 @@ pub(crate) struct Call {
     pub(crate) response_bytes: u64,
     /// The profile the acquired target named, once one was acquired.
     pub(crate) profile: Option<String>,
+    /// Whether the target's read timed out before its answer head arrived: an
+    /// `upstream-failed` that is counted a `timeout` (`llm-gateway.telemetry.Outcome`).
+    pub(crate) timed_out: bool,
 }
 
 /// A model that serves a request, and the translator when the request is translated.
@@ -1507,8 +1510,15 @@ pub(crate) fn serve(
         buffer: Vec::new(),
         start: 0,
     };
-    let Ok(mut head) = read_answer_head(&mut input, limits.line_bytes) else {
-        return Err(failed());
+    let mut head = match read_answer_head(&mut input, limits.line_bytes) {
+        Ok(head) => head,
+        Err(error) => {
+            call.timed_out = matches!(
+                error.kind(),
+                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+            );
+            return Err(failed());
+        }
     };
     call.target_status = Some(head.status);
     // A gateway status from the target means the pod behind it is gone or unreachable; a

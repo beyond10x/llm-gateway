@@ -1,6 +1,6 @@
 //! The same-handle, bounded trusted-file reader (rows K30 and B9; llmgw `src/trusted.rs:21-42`),
-//! for the document, the routes document it names, the owner secret, each vLLM key and each
-//! endpoint credential.
+//! for the document, the routes document it names, the owner secret, each vLLM key, each
+//! endpoint credential and the metrics bearer.
 //!
 //! The file is opened once without following a final symlink, and every check reads that handle:
 //! a path swapped between a check and the read cannot substitute another file.
@@ -63,6 +63,13 @@ pub(crate) const VLLM_API_KEY: Policy = Policy {
 /// secret's rules.
 pub(crate) const ENDPOINT_CREDENTIAL: Policy = Policy {
     source: Source::EndpointCredential,
+    ..OWNER_SECRET
+};
+
+/// The token a scrape of the metrics listener presents (`metrics_bearer_file`), held to the
+/// owner secret's rules.
+pub(crate) const METRICS_BEARER: Policy = Policy {
+    source: Source::MetricsBearer,
     ..OWNER_SECRET
 };
 

@@ -187,7 +187,10 @@ fn the_histogram_observes_an_answer_on_each_of_the_three_wires() {
         Script::Answer(ANSWER),
     ]);
     for wire in Wire::ALL {
-        assert_eq!(call(gateway.local_addr(), wire.path(), r#"{"model":"code"}"#), 200);
+        assert_eq!(
+            call(gateway.local_addr(), wire.path(), r#"{"model":"code"}"#),
+            200
+        );
     }
     let text = scrape(gateway.local_addr());
     let count = r#"llmgw_request_duration_seconds_count{model="code"}"#;
@@ -218,15 +221,27 @@ fn each_outcome_advances_by_one_for_exactly_its_call() {
         Script::Unavailable,
     ]);
     let address = gateway.local_addr();
-    let expected = [(200, "ok"), (502, "upstream_error"), (502, "timeout"), (503, "refused")];
+    let expected = [
+        (200, "ok"),
+        (502, "upstream_error"),
+        (502, "timeout"),
+        (503, "refused"),
+    ];
     let mut seen = [0_u64; 4];
     for (status, name) in expected {
-        assert_eq!(call(address, "/v1/chat/completions", r#"{"model":"code"}"#), status);
+        assert_eq!(
+            call(address, "/v1/chat/completions", r#"{"model":"code"}"#),
+            status
+        );
         let text = scrape(address);
         let index = OUTCOMES.iter().position(|each| *each == name).unwrap();
         seen[index] += 1;
         for (at, each) in OUTCOMES.iter().enumerate() {
-            assert_eq!(outcome(&text, "code", each), seen[at], "after {name}: {each}");
+            assert_eq!(
+                outcome(&text, "code", each),
+                seen[at],
+                "after {name}: {each}"
+            );
             assert_eq!(outcome(&text, "idle", each), 0);
         }
     }
@@ -270,8 +285,11 @@ fn the_metrics_listener_serves_the_counters_without_a_credential_and_nothing_els
     );
     assert_eq!(status, 401);
     assert!(body.contains("credential-absent"));
-    drop(gateway.shutdown());
-    assert!(TcpStream::connect(address).is_err(), "the listener stops with the gateway");
+    let _report = gateway.shutdown();
+    assert!(
+        TcpStream::connect(address).is_err(),
+        "the listener stops with the gateway"
+    );
 }
 
 #[test]
@@ -279,12 +297,23 @@ fn a_metrics_bearer_refuses_a_missing_or_wrong_scrape_token() {
     let (_gateway, address) = scrape_listener(Some(SCRAPER));
     for (header, code) in [
         (String::new(), "credential-absent"),
-        ("authorization: Basic abc\r\n".to_owned(), "credential-malformed"),
-        (format!("authorization: Bearer {OWNER}\r\n"), "credential-rejected"),
-        ("authorization: Bearer scrape-token\r\n".to_owned(), "credential-rejected"),
+        (
+            "authorization: Basic abc\r\n".to_owned(),
+            "credential-malformed",
+        ),
+        (
+            format!("authorization: Bearer {OWNER}\r\n"),
+            "credential-rejected",
+        ),
+        (
+            "authorization: Bearer scrape-token\r\n".to_owned(),
+            "credential-rejected",
+        ),
     ] {
-        let (status, body) =
-            exchange(address, &format!("GET /metrics HTTP/1.1\r\nhost: m\r\n{header}\r\n"));
+        let (status, body) = exchange(
+            address,
+            &format!("GET /metrics HTTP/1.1\r\nhost: m\r\n{header}\r\n"),
+        );
         assert_eq!(status, 401, "{header:?}");
         assert!(body.contains(code), "{header:?}: {body}");
     }
@@ -313,7 +342,10 @@ fn no_rendered_series_carries_a_key_the_owner_token_or_request_or_answer_text() 
     let address_metrics = gateway
         .serve_metrics("127.0.0.1:0".parse().unwrap(), None)
         .unwrap();
-    assert_eq!(call(gateway.local_addr(), "/v1/chat/completions", &body), 200);
+    assert_eq!(
+        call(gateway.local_addr(), "/v1/chat/completions", &body),
+        200
+    );
     assert_eq!(call(gateway.local_addr(), "/v1/responses", &body), 502);
     for text in [
         scrape(gateway.local_addr()),

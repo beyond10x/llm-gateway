@@ -5,6 +5,44 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## 0.12.0 (2026-10-17)
+
+- The translator runs on llm 0.7.0 (`b10x-llm-gateway-cli`'s llm crates and `b10x-llm-runpod`'s
+  `b10x-llm-providers` at tag `0.7.0`). On a translated route, Claude Code's first turn
+  (adaptive `thinking`, a `system` of text blocks, `cache_control`, effort `max`) and Codex's
+  first turn (`instructions`, item ids, `parallel_tool_calls`, `prompt_cache_key`,
+  `text.verbosity`, `reasoning.summary`, `client_metadata`) are carried to another wire instead
+  of refused: effort `max` reaches a chat or responses upstream as `xhigh`, disabled thinking as
+  `none`, and a hint the upstream wire has no place for is not sent. A key llm does not name is
+  still refused at every level, now by llm itself. Still refused `translation-unsupported`:
+  structured output, `context_management`, `thinking.display`, hosted tools, a thinking budget
+  to a chat or responses upstream, and a mid-conversation instruction. Claude Code's later
+  turns, which replay reasoning another upstream minted, are still `translation-opaque-state`.
+  The refusal codes are unchanged.
+- Codex's later turns are served on a translated route. A translated answer to a Responses
+  client carries the upstream's reasoning state as a `reasoning` item whose `encrypted_content`
+  is a seal (`llmgw-seal-1.`): the state and an HMAC-SHA256 tag over the route and both wires,
+  under a key the gateway generates when it starts and never writes out. The next turn on the
+  same route binds it: a Messages upstream gets back the signed `thinking` block it minted, and a
+  Chat upstream gets the turn without the item. An item the gateway did not seal for that route
+  since it last started (another route or wire, altered, forged, an upstream's own, or sealed
+  before a restart) is still `translation-opaque-state`, whose message is now "the request
+  carries reasoning state the gateway did not seal for this route". No seal is handed to a
+  Messages client, so Claude Code's later turns stay refused. No log line, event, metric or
+  refusal carries a seal or the state in it.
+- `GET /metrics` also serves, per model, a latency histogram
+  `llmgw_request_duration_seconds{model}` with fixed buckets from 0.05 to 300 seconds, and an
+  outcome counter `llmgw_requests_total{model,outcome}`, `outcome` being `ok`, `upstream_error`,
+  `timeout` or `refused`. Every model is registered at zero; labels are model aliases and fixed
+  words only. `docs/gateway.md` lists the buckets and maps every refusal code to an outcome.
+- `metrics_listen` in the deployment document binds a second listener that answers
+  `GET /metrics` without the owner secret and refuses every other method and path with
+  `404 path-unknown`. `metrics_bearer_file`, read by the credential-file rules
+  (`metrics-bearer:<rule>` refusals), makes a scrape send that token; without it the listener is
+  open. `metrics_listen` must differ from `listen`, and the owner-guarded `/metrics` is
+  unchanged. The guides Scrape the counters and Run on Kubernetes (scrape port and network
+  policy) describe it.
+
 ## 0.11.0 (2026-10-17)
 
 - `b10x-llm-gateway credential set --config <file> --model <alias>` (or `--route <name>` for a

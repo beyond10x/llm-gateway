@@ -1066,3 +1066,155 @@ fn live_no_option_selects_the_emulator() {
         assert!(!help.contains(absent), "--help offers {absent:?}: {help}");
     }
 }
+
+// --- The metrics listener: `metrics_listen` and `metrics_bearer_file` --------------------------
+
+const SCRAPE_TOKEN: &str = "scrape-token-not-the-owner-secret";
+
+/// The fixture's valid document with `lines` among its top-level keys, before the first table.
+fn with_top_level(fixture: &Fixture, listen: &str, lines: &str) -> PathBuf {
+    let text = document(listen, &fixture.owner_secret());
+    fixture.config(&mutate(
+        &text,
+        "\n\n[providers.runpod]",
+        &format!("\n{lines}\n[providers.runpod]"),
+    ))
+}
+
+#[test]
+fn metrics_listen_serves_the_counters_without_the_owner_and_takes_its_scrape_token() {
+    let fixture = Fixture::new("metrics-listen");
+    let bearer = fixture.write(
+        "scrape-token",
+        format!("{SCRAPE_TOKEN}\n").as_bytes(),
+        0o600,
+    );
+    let scrape = free_address();
+    let config = with_top_level(
+        &fixture,
+        "127.0.0.1:0",
+        &format!(
+            "metrics_listen = \"{scrape}\"\nmetrics_bearer_file = \"{}\"\n",
+            bearer.display()
+        ),
+    );
+    let server = Server::start(&config);
+    let answered = get(scrape, "/metrics", Some(SCRAPE_TOKEN));
+    assert_eq!(status(&answered), "200", "{answered}");
+    for sample in [
+        "llmgw_requests_total{model=\"small\",outcome=\"ok\"} 0\n",
+        "llmgw_requests_total{model=\"small\",outcome=\"refused\"} 0\n",
+        "llmgw_request_duration_seconds_bucket{model=\"small\",le=\"+Inf\"} 0\n",
+    ] {
+        assert!(
+            body(&answered).contains(sample),
+            "{sample} is missing: {answered}"
+        );
+    }
+    for (token, code) in [
+        (None, "credential-absent"),
+        (Some(OWNER_SECRET), "credential-rejected"),
+    ] {
+        let refused = get(scrape, "/metrics", token);
+        assert_eq!(status(&refused), "401", "{refused}");
+        assert!(body(&refused).contains(code), "{refused}");
+    }
+    for path in ["/health", "/v1/routes", "/v1/models"] {
+        let refused = get(scrape, path, Some(SCRAPE_TOKEN));
+        assert_eq!(status(&refused), "404", "{path}: {refused}");
+        assert!(body(&refused).contains("path-unknown"), "{refused}");
+    }
+    // The serving listener's `/metrics` still takes the owner, and only the owner.
+    let owner = get(server.address, "/metrics", Some(SCRAPE_TOKEN));
+    assert_eq!(status(&owner), "401", "{owner}");
+    let owner = get(server.address, "/metrics", Some(OWNER_SECRET));
+    assert_eq!(status(&owner), "200", "{owner}");
+    server.stop();
+    assert!(
+        TcpStream::connect(scrape).is_err(),
+        "the metrics listener stops with the process"
+    );
+}
+
+#[test]
+fn metrics_settings_that_break_a_rule_are_refused() {
+    let fixture = Fixture::new("metrics-refused");
+    let listen = free_address();
+    let same = with_top_level(
+        &fixture,
+        &listen.to_string(),
+        &format!("metrics_listen = \"{listen}\"\n"),
+    );
+    assert_refused(&run_config(&same), "config:value");
+    let token = fixture.write("scrape-token", b"scrape-token\n", 0o600);
+    let alone = with_top_level(
+        &fixture,
+        "127.0.0.1:0",
+        &format!("metrics_bearer_file = \"{}\"\n", token.display()),
+    );
+    assert_refused(&run_config(&alone), "config:value");
+    let holder = TcpListener::bind("127.0.0.1:0").unwrap();
+    let held = with_top_level(
+        &fixture,
+        "127.0.0.1:0",
+        &format!("metrics_listen = \"{}\"\n", holder.local_addr().unwrap()),
+    );
+    let finished = run_config(&held);
+    assert_refused(&finished, "listen:bind");
+    assert!(
+        finished.stderr.contains("metrics_listen"),
+        "{}",
+        finished.stderr
+    );
+    drop(holder);
+    for (name, bytes, mode, code) in [
+        (
+            "open-token",
+            &b"scrape-token\n"[..],
+            0o644,
+            "metrics-bearer:unsafe-mode",
+        ),
+        (
+            "blank-token",
+            &b" \n"[..],
+            0o600,
+            "metrics-bearer:not-a-token",
+        ),
+        (
+            "spaced-token",
+            &b"two words\n"[..],
+            0o600,
+            "metrics-bearer:not-a-token",
+        ),
+    ] {
+        let token = fixture.write(name, bytes, mode);
+        let config = with_top_level(
+            &fixture,
+            "127.0.0.1:0",
+            &format!(
+                "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
+                free_address(),
+                token.display()
+            ),
+        );
+        let finished = run_config(&config);
+        assert_refused(&finished, code);
+        assert!(
+            finished.stderr.contains("metrics_bearer_file "),
+            "{}",
+            finished.stderr
+        );
+    }
+    // The positive control: the same document with a valid token file is served.
+    let token = fixture.write("good-token", format!("{SCRAPE_TOKEN}\n").as_bytes(), 0o600);
+    let config = with_top_level(
+        &fixture,
+        "127.0.0.1:0",
+        &format!(
+            "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
+            free_address(),
+            token.display()
+        ),
+    );
+    Server::start(&config).stop();
+}

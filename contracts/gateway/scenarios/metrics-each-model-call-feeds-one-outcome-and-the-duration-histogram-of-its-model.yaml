@@ -1,0 +1,79 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model
+summary: each model call advances its outcome and the duration histogram of its model
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"a\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"a\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"a\"}"]},{"transport":"refused"}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"elsewhere\"}"},{"step":"scrape"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    - 502 upstream-failed
+    - 503 target-unavailable
+    - 404 model-unknown
+    - 200 scraped
+    records:
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent
+    - model=code wire=responses disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent
+    - model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    - model=code wire=chat disposition=Refused refusal=target-unavailable status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    - model=absent wire=chat disposition=Refused refusal=model-unknown status=404 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    scrapes:
+    - '1 200 content-type=text/plain; version=0.0.4; charset=utf-8'
+    - '1 llmgw_inference_requests_total 6'
+    - '1 llmgw_upstream_failures_total 1'
+    - '1 llmgw_instruction_views_total 0'
+    - '1 llmgw_pod_starts_total 0'
+    - '1 llmgw_pod_start_failures_total 0'
+    - '1 llmgw_pod_reaps_total 0'
+    - '1 llmgw_endpoint_invalidations_total 1'
+    - '1 llmgw_cold_start_wait_seconds_total bounded'
+    - '1 llmgw_pod_start_spend_refusals_total 0'
+    - '1 llmgw_route_requests_total{model="code",wire="chat"} 3'
+    - '1 llmgw_route_requests_total{model="code",wire="responses"} 1'
+    - '1 llmgw_route_requests_total{model="code",wire="messages"} 1'
+    - '1 llmgw_route_refusals_total{model="code",wire="chat"} 2'
+    - '1 llmgw_route_refusals_total{model="code",wire="responses"} 0'
+    - '1 llmgw_route_refusals_total{model="code",wire="messages"} 0'
+    - '1 llmgw_route_upstream_status_failures_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_upstream_status_failures_total{model="code",wire="responses"} 0'
+    - '1 llmgw_route_upstream_status_failures_total{model="code",wire="messages"} 0'
+    - '1 llmgw_route_cold_start_holds_total{model="code",wire="chat"} 0'
+    - '1 llmgw_route_cold_start_holds_total{model="code",wire="responses"} 0'
+    - '1 llmgw_route_cold_start_holds_total{model="code",wire="messages"} 0'
+    - '1 llmgw_route_response_bytes_total{model="code",wire="chat"} 10'
+    - '1 llmgw_route_response_bytes_total{model="code",wire="responses"} 10'
+    - '1 llmgw_route_response_bytes_total{model="code",wire="messages"} 10'
+    - '1 llmgw_requests_total{model="code",outcome="ok"} 3'
+    - '1 llmgw_requests_total{model="code",outcome="upstream_error"} 1'
+    - '1 llmgw_requests_total{model="code",outcome="timeout"} 0'
+    - '1 llmgw_requests_total{model="code",outcome="refused"} 1'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="0.05"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="0.1"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="0.25"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="0.5"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="1"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="2.5"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="5"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="10"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="30"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="60"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="120"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="300"} cumulative'
+    - '1 llmgw_request_duration_seconds_bucket{model="code",le="+Inf"} 5'
+    - '1 llmgw_request_duration_seconds_sum{model="code"} bounded'
+    - '1 llmgw_request_duration_seconds_count{model="code"} 5'

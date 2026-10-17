@@ -32,8 +32,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
-    "contract_digest": "slice-sha256/2:aa1924b2a02d994f1da7d433df7c83a945fc37dc6c4878c12b57335f470c14e3",
+    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
+    "contract_digest": "slice-sha256/2:b94a273ccb85bf101c367b2aa7f7dd326f0e6bb12b49325791bab97fc39b71bd",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -52,7 +52,8 @@
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Counter"
+        "Counter",
+        "Histogram"
       ]
     },
     "llm-gateway.telemetry.SeriesScope": {
@@ -62,7 +63,8 @@
       "type": "string",
       "enum": [
         "Process",
-        "ModelWire"
+        "ModelWire",
+        "Model"
       ]
     }
   }

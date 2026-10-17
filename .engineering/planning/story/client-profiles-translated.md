@@ -2,15 +2,37 @@
 format: aep.planning-md/3
 id: story:client-profiles-translated
 kind: story
-status: draft
+status: active
 title: GET / offers each client only models its requests reach, translated or native
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
+- depends_on: story:llm-0-7-0-pin
 scope:
 - confidence: cited
+  path: contracts/gateway/scenarios
+- confidence: inferred
+  path: crates/llm-gateway-cli/src/translate.rs
+- confidence: cited
   path: crates/llm-gateway/src/listing.rs
-revision: 2
+- confidence: inferred
+  path: crates/llm-gateway/src/relay.rs
+- confidence: cited
+  path: crates/llm-gateway/src/server.rs
+- confidence: inferred
+  path: crates/llm-gateway/src/translate.rs
+- confidence: inferred
+  path: crates/llm-gateway/tests/public_listing.rs
+- confidence: cited
+  path: docs/gateway.md
+- confidence: cited
+  path: spec/domains/clients.yaml
+- confidence: cited
+  path: spec/domains/gateway.yaml
+revision: 6
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 5}
+- {from: "proposed", to: "active", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 6}
 ---
 ## Outcome
 

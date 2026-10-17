@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-17T19:00:38Z",
+  "actor": "human:timo",
+  "artifact": "story:cross-wire-reasoning-state",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "full gate on wave/2026-10-17-w02 (b46f0ce, steps after fmt rerun on b913cea) on Rust 1.98.0: cargo test --workspace 866 passed, 0 failed, 103 binaries; fmt clean; clippy --workspace --all-targets -D warnings clean; generate --check current; ess specify validate valid; conformance 283 of 283 on three runs"
+  }
+}

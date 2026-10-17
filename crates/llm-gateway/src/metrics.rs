@@ -27,6 +27,54 @@ pub enum Disposition {
     UpstreamFailed,
 }
 
+/// How one model call ended, as `llmgw_requests_total` labels it (`llm-gateway.telemetry.
+/// Outcome`). The table from every refusal code to one outcome is published in
+/// `docs/gateway.md`, and checked against it here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Outcome {
+    /// An answer reached the client, whatever its status.
+    Ok,
+    /// The target failed, refused the call or closed without an answer.
+    UpstreamError,
+    /// The target's read timeout passed before its answer head, or a start deadline passed.
+    Timeout,
+    /// The gateway refused the call before reaching a target.
+    Refused,
+}
+
+impl Outcome {
+    /// Every outcome, in the order a scrape lists them.
+    pub const ALL: [Self; 4] = [Self::Ok, Self::UpstreamError, Self::Timeout, Self::Refused];
+
+    /// The `outcome` label.
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Ok => "ok",
+            Self::UpstreamError => "upstream_error",
+            Self::Timeout => "timeout",
+            Self::Refused => "refused",
+        }
+    }
+
+    /// The outcome of a call answered `refusal`, or relayed when it is `None`. `timed_out` says
+    /// the target's read timed out before its answer head arrived, which makes an
+    /// `upstream-failed` a timeout.
+    pub const fn of(refusal: Option<RefusalCode>, timed_out: bool) -> Self {
+        match refusal {
+            None => Self::Ok,
+            Some(RefusalCode::ModelColdStart) => Self::Timeout,
+            Some(RefusalCode::UpstreamFailed) if timed_out => Self::Timeout,
+            Some(
+                RefusalCode::UpstreamFailed
+                | RefusalCode::UpstreamRefused
+                | RefusalCode::TranslationUnrepresentable
+                | RefusalCode::TranslationTooLarge,
+            ) => Self::UpstreamError,
+            Some(_) => Self::Refused,
+        }
+    }
+}
+
 /// What the gateway learned about one model call it was asked to relay
 /// (`llm-gateway.telemetry.UsageRecord`). One is made for every request to a wire path that
 /// passed owner authentication, or needed none (`IngressAuth::None`), once its answer or
@@ -37,6 +85,8 @@ pub struct UsageRecord {
     pub model: Option<String>,
     pub wire: Wire,
     pub disposition: Disposition,
+    /// How the call ended for `llmgw_requests_total`.
+    pub outcome: Outcome,
     /// Present exactly when `disposition` is not [`Disposition::Relayed`].
     pub refusal: Option<RefusalCode>,
     /// The status line the client received.
@@ -147,6 +197,48 @@ const ROUTE: [Series; 5] = [
     },
 ];
 
+/// The two per-model series, after the route series (`llm-gateway.telemetry`).
+const MODEL: [Series; 2] = [
+    Series {
+        name: "llmgw_requests_total",
+        help: "Model calls per model, by how they ended.",
+    },
+    Series {
+        name: "llmgw_request_duration_seconds",
+        help: "Seconds from the end of a model call's request head to the last byte written, per model.",
+    },
+];
+
+/// The histogram's finite bucket bounds in milliseconds, published in `docs/gateway.md`; a
+/// record falls in every bucket whose bound is at least its `duration_ms`.
+const BUCKETS_MS: [u64; 12] = [
+    50, 100, 250, 500, 1_000, 2_500, 5_000, 10_000, 30_000, 60_000, 120_000, 300_000,
+];
+
+/// One model's outcome counters and duration histogram.
+#[derive(Debug, Default, Clone, Copy)]
+struct ModelSeries {
+    outcomes: [u64; 4],
+    /// Cumulative: each bucket counts every record at or under its bound.
+    buckets: [u64; 12],
+    sum_ms: u64,
+    count: u64,
+}
+
+impl ModelSeries {
+    fn observe(&mut self, record: &UsageRecord) {
+        let outcome = &mut self.outcomes[record.outcome as usize];
+        *outcome = outcome.saturating_add(1);
+        for (bucket, bound) in self.buckets.iter_mut().zip(BUCKETS_MS) {
+            if record.duration_ms <= bound {
+                *bucket = bucket.saturating_add(1);
+            }
+        }
+        self.sum_ms = self.sum_ms.saturating_add(record.duration_ms);
+        self.count = self.count.saturating_add(1);
+    }
+}
+
 /// A process-wide counter, by its place in [`PROCESS`].
 #[derive(Clone, Copy)]
 enum Process {
@@ -180,6 +272,9 @@ pub struct Metrics {
     /// Per (alias, wire) a relayed model declares, registered at zero when the relay is
     /// composed. A call on any other pair feeds the process-wide series only.
     routes: Mutex<BTreeMap<(String, Wire), [u64; 5]>>,
+    /// Per relayed model, registered at zero when the relay is composed. A record naming no
+    /// registered model feeds none of them.
+    models: Mutex<BTreeMap<String, ModelSeries>>,
 }
 
 impl Metrics {
@@ -212,11 +307,12 @@ impl Metrics {
     }
 
     /// The counters as Prometheus text (format 0.0.4): one `# HELP` and `# TYPE` pair and its
-    /// samples per series, process-wide first, each route in alias and wire order.
+    /// samples per series, process-wide first, each route in alias and wire order, then each
+    /// model's outcome counter and duration histogram in alias order.
     pub fn render(&self) -> String {
         let mut text = String::new();
         for (index, series) in PROCESS.iter().enumerate() {
-            header(&mut text, series);
+            header(&mut text, series, "counter");
             let value = self.process[index].load(Ordering::SeqCst);
             if index == Process::ColdStartWait as usize {
                 let _ = writeln!(text, "{} {}", series.name, seconds(value));
@@ -226,7 +322,7 @@ impl Metrics {
         }
         let routes = self.routes();
         for (index, series) in ROUTE.iter().enumerate() {
-            header(&mut text, series);
+            header(&mut text, series, "counter");
             for ((alias, wire), counters) in routes.iter() {
                 let _ = writeln!(
                     text,
@@ -238,14 +334,55 @@ impl Metrics {
                 );
             }
         }
+        drop(routes);
+        let models = self.models();
+        let [requests, duration] = &MODEL;
+        header(&mut text, requests, "counter");
+        for (alias, model) in models.iter() {
+            for outcome in Outcome::ALL {
+                let _ = writeln!(
+                    text,
+                    "{}{{model=\"{}\",outcome=\"{}\"}} {}",
+                    requests.name,
+                    escape(alias),
+                    outcome.label(),
+                    model.outcomes[outcome as usize]
+                );
+            }
+        }
+        header(&mut text, duration, "histogram");
+        for (alias, model) in models.iter() {
+            let alias = escape(alias);
+            let name = duration.name;
+            for (bound, value) in BUCKETS_MS.iter().zip(model.buckets) {
+                let le = seconds(*bound);
+                let _ = writeln!(
+                    text,
+                    "{name}_bucket{{model=\"{alias}\",le=\"{le}\"}} {value}"
+                );
+            }
+            let _ = writeln!(
+                text,
+                "{name}_bucket{{model=\"{alias}\",le=\"+Inf\"}} {}",
+                model.count
+            );
+            let _ = writeln!(
+                text,
+                "{name}_sum{{model=\"{alias}\"}} {}",
+                seconds(model.sum_ms)
+            );
+            let _ = writeln!(text, "{name}_count{{model=\"{alias}\"}} {}", model.count);
+        }
         text
     }
 
-    /// Registers a (model, wire) pair at zero. Registering one twice changes nothing.
+    /// Registers a (model, wire) pair at zero, and the model's own series. Registering one
+    /// twice changes nothing.
     pub(crate) fn register(&self, alias: &str, wire: Wire) {
         self.routes()
             .entry((alias.to_string(), wire))
             .or_insert([0; 5]);
+        self.models().entry(alias.to_string()).or_default();
     }
 
     /// Feeds the six series a record feeds, as llmgw (`src/lib.rs:598-629` at 048ebd8): a call
@@ -261,6 +398,9 @@ impl Metrics {
         let Some(alias) = &record.model else {
             return;
         };
+        if let Some(model) = self.models().get_mut(alias) {
+            model.observe(record);
+        }
         let mut routes = self.routes();
         if let Some(counters) = routes.get_mut(&(alias.clone(), record.wire)) {
             counters[Route::Requests as usize] += 1;
@@ -304,6 +444,10 @@ impl Metrics {
     fn routes(&self) -> std::sync::MutexGuard<'_, BTreeMap<(String, Wire), [u64; 5]>> {
         self.routes.lock().unwrap_or_else(PoisonError::into_inner)
     }
+
+    fn models(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, ModelSeries>> {
+        self.models.lock().unwrap_or_else(PoisonError::into_inner)
+    }
 }
 
 /// Milliseconds as decimal seconds without trailing zeros: `0`, `1.5`, `1.239`.
@@ -316,9 +460,9 @@ fn seconds(milliseconds: u64) -> String {
     format!("{whole}.{}", digits.trim_end_matches('0'))
 }
 
-fn header(text: &mut String, series: &Series) {
+fn header(text: &mut String, series: &Series, kind: &str) {
     let _ = writeln!(text, "# HELP {} {}", series.name, series.help);
-    let _ = writeln!(text, "# TYPE {} counter", series.name);
+    let _ = writeln!(text, "# TYPE {} {kind}", series.name);
 }
 
 /// A label value as the text format writes it: `\` and `"` escaped. An alias is printable
@@ -329,9 +473,159 @@ fn escape(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{Disposition, Metrics, UsageRecord};
+    use super::{BUCKETS_MS, Disposition, Metrics, Outcome, UsageRecord};
     use crate::{error::RefusalCode, relay::Wire};
     use std::time::Duration;
+
+    const CONTRACT: &str = include_str!("../../../docs/gateway.md");
+
+    /// The `### <title>` subsection of `docs/gateway.md`, up to the next heading.
+    fn subsection(title: &str) -> &'static str {
+        CONTRACT
+            .split_once(&format!("\n### {title}\n"))
+            .unwrap_or_else(|| panic!("docs/gateway.md has no {title} subsection"))
+            .1
+            .split("\n#")
+            .next()
+            .unwrap_or_default()
+    }
+
+    /// The backticked words of `text`, in order.
+    fn quoted(text: &str) -> Vec<&str> {
+        text.split('`').skip(1).step_by(2).collect()
+    }
+
+    fn record(model: &str, refusal: Option<RefusalCode>, duration_ms: u64) -> UsageRecord {
+        UsageRecord {
+            model: Some(model.to_owned()),
+            wire: Wire::Chat,
+            disposition: if refusal.is_some() {
+                Disposition::Refused
+            } else {
+                Disposition::Relayed
+            },
+            outcome: Outcome::of(refusal, false),
+            refusal,
+            status: refusal.map_or(200, RefusalCode::status),
+            target_status: None,
+            reported_model: None,
+            input_tokens: None,
+            output_tokens: None,
+            cached_input_tokens: None,
+            cache_creation_input_tokens: None,
+            reasoning_output_tokens: None,
+            response_bytes: 0,
+            duration_ms,
+            profile: None,
+        }
+    }
+
+    fn sample(text: &str, series: &str) -> String {
+        text.lines()
+            .find_map(|line| line.strip_prefix(series)?.strip_prefix(' '))
+            .unwrap_or_else(|| panic!("no sample {series} in\n{text}"))
+            .to_owned()
+    }
+
+    #[test]
+    fn the_published_buckets_are_the_histograms_and_each_flips_at_its_bound() {
+        let published: Vec<&str> = quoted(
+            subsection("Latency and outcomes per model")
+                .lines()
+                .find(|line| line.starts_with("The histogram's buckets are"))
+                .expect("docs/gateway.md publishes no buckets"),
+        );
+        let rendered: Vec<String> = BUCKETS_MS
+            .iter()
+            .map(|bound| super::seconds(*bound))
+            .collect();
+        let mut expected: Vec<&str> = rendered.iter().map(String::as_str).collect();
+        expected.push("+Inf");
+        assert_eq!(published, expected);
+        for (index, bound) in BUCKETS_MS.iter().enumerate() {
+            let metrics = Metrics::default();
+            metrics.register("m", Wire::Chat);
+            metrics.record(&record("m", None, *bound));
+            metrics.record(&record("m", None, bound + 1));
+            let text = metrics.render();
+            let le = |at: usize| {
+                let series = format!(
+                    "llmgw_request_duration_seconds_bucket{{model=\"m\",le=\"{}\"}}",
+                    rendered[at]
+                );
+                sample(&text, &series)
+            };
+            // At its bound a record is in the bucket; one millisecond over it is not.
+            assert_eq!(le(index), "1", "le={}", rendered[index]);
+            if index > 0 {
+                assert_eq!(le(index - 1), "0", "le={}", rendered[index - 1]);
+            }
+            if index + 1 < BUCKETS_MS.len() {
+                assert_eq!(le(index + 1), "2", "le={}", rendered[index + 1]);
+            }
+            let inf = r#"llmgw_request_duration_seconds_bucket{model="m",le="+Inf"}"#;
+            assert_eq!(sample(&text, inf), "2");
+            let sum = r#"llmgw_request_duration_seconds_sum{model="m"}"#;
+            assert_eq!(sample(&text, sum), super::seconds(2 * bound + 1));
+        }
+    }
+
+    #[test]
+    fn the_published_outcome_table_names_every_refusal_code_with_its_outcome() {
+        let rows: Vec<(&str, Vec<&str>)> = subsection("Call outcomes")
+            .lines()
+            .filter(|line| line.starts_with("| `"))
+            .map(|line| {
+                let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+                assert_eq!(cells.len(), 2, "unexpected outcome row: {line}");
+                (cells[0].trim_matches('`'), quoted(cells[1]))
+            })
+            .collect();
+        assert_eq!(
+            rows.len(),
+            RefusalCode::ALL.len(),
+            "one row per refusal code"
+        );
+        for code in RefusalCode::ALL {
+            let (_, outcomes) = rows
+                .iter()
+                .find(|(published, _)| *published == code.wire())
+                .unwrap_or_else(|| panic!("{} has no outcome row", code.wire()));
+            let plain = Outcome::of(Some(*code), false).label();
+            let timed_out = Outcome::of(Some(*code), true).label();
+            assert_eq!(outcomes.first(), Some(&plain), "{}", code.wire());
+            let mut expected = vec![plain];
+            if timed_out != plain {
+                expected.push(timed_out);
+            }
+            assert_eq!(*outcomes, expected, "{}", code.wire());
+        }
+        assert_eq!(Outcome::of(None, false), Outcome::Ok);
+        assert_eq!(Outcome::of(None, true), Outcome::Ok);
+        let labels: Vec<&str> = Outcome::ALL.iter().map(|each| each.label()).collect();
+        assert_eq!(labels, ["ok", "upstream_error", "timeout", "refused"]);
+    }
+
+    #[test]
+    fn a_registered_model_counts_its_outcomes_and_an_unregistered_one_none() {
+        let metrics = Metrics::default();
+        metrics.register("m", Wire::Chat);
+        metrics.record(&record("m", Some(RefusalCode::WireNotServed), 7));
+        metrics.record(&record("elsewhere", None, 7));
+        let text = metrics.render();
+        assert_eq!(
+            sample(
+                &text,
+                r#"llmgw_requests_total{model="m",outcome="refused"}"#
+            ),
+            "1"
+        );
+        assert_eq!(
+            sample(&text, r#"llmgw_request_duration_seconds_count{model="m"}"#),
+            "1"
+        );
+        assert!(!text.contains("elsewhere"));
+    }
 
     #[test]
     fn a_label_value_escapes_its_backslash_and_quote() {
@@ -366,6 +660,7 @@ mod tests {
             model: Some("elsewhere".to_owned()),
             wire: Wire::Messages,
             disposition: Disposition::UpstreamFailed,
+            outcome: Outcome::UpstreamError,
             refusal: Some(RefusalCode::UpstreamFailed),
             status: 502,
             target_status: None,

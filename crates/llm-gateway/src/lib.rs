@@ -62,7 +62,7 @@ pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,
 };
-pub use metrics::{Disposition, Metrics, UsageRecord, UsageRecords};
+pub use metrics::{Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
 pub use relay::{
     BasePath, CredentialHeader, ModelPhase, ModelStatus, ReasoningEffort, Relay, RelayModel,
     RelayStream, RelayTarget, RelayTargets, StaticHeader, TargetBearer, TargetScheme, ToolCalling,

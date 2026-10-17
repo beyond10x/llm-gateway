@@ -198,7 +198,7 @@ fn tool_answer(bytes: usize) -> String {
 /// `docs/gateway.md` "Bounds of the translated path" publishes the bounds a translated answer is
 /// held to: 65536 events, 33554432 bytes, a 1048576-byte line, and an outcome of 4096 items or
 /// 16 MiB; "an answer at a bound is written whole". A tool call of 70000 argument bytes, in
-/// 15 events of under 9 KiB each, passes none of them, and the byte relay relays it. llm 0.6.0's
+/// 15 events of under 9 KiB each, passes none of them, and the byte relay relays it. llm 0.7.0's
 /// messages stream decoder refuses streamed tool arguments past 65536 bytes
 /// (`MAX_TOOL_ARGUMENT_BYTES`, `crates/llm-messages/src/decode.rs` `input_json_delta`), so the
 /// answer ends with `translation-too-large`'s terminal error, whose message names three bounds

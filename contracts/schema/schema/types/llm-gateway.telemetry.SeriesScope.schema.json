@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
-    "contract_digest": "slice-sha256/2:cdabf7684bd52328bf234a49797fe53725e4f11e76b1f9f34100b0b03ec5a114",
+    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
+    "contract_digest": "slice-sha256/2:65d79717697fffcbb6c93680dc2273b1e0a123f21cbc134c905571319a3388f3",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -16,7 +16,8 @@
       "type": "string",
       "enum": [
         "Process",
-        "ModelWire"
+        "ModelWire",
+        "Model"
       ]
     }
   }

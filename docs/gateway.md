@@ -113,6 +113,9 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed. |
 | `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed. |
 
+An embedding may bind a second, metrics-only listener beside this surface
+([scraping the counters](#scraping-the-counters)); nothing in this table is reachable on it.
+
 The unauthenticated surface is a closed set of four literal paths with two literal methods. The
 two probes are matched before anything else — including before load is shed — so that a
 liveness probe never carries the owner credential and never fails because the gateway is busy.
@@ -445,7 +448,7 @@ the sources and what a live record still has to show. The cases are the `claude_
 A model's declared `wires` are the wires its upstream speaks. A request on one of them takes the
 byte relay above, unchanged. A request on another wire, to a relay composed with a `Translator`
 (`Relay::with_translator`), is translated through llm's neutral turn for the model's **first**
-declared wire. The binary always composes one (`llm_gateway_cli::LlmTranslator`, over llm 0.6.0's
+declared wire. The binary always composes one (`llm_gateway_cli::LlmTranslator`, over llm 0.7.0's
 ingress decoders, protocol clients and ingress encoders); a relay without one refuses the
 request `wire-not-served`, as before. This is translation of a published subset, not a claim of
 vendor API equivalence: a field outside the subset is refused, never dropped. The specification
@@ -464,68 +467,96 @@ The port's order, all of it before any target is asked for, so a refused request
 pod:
 
 1. Steps 1-5 of the relay, `tools-not-served` included.
-2. The body is decoded with llm 0.6.0's decoder for the client's wire. A field or value outside
+2. The body is decoded with llm 0.7.0's decoder for the client's wire. A field or value outside
    the subset, or past its size bound (llm's 16 MiB request bound included), is
    `translation-unsupported`; a value breaking one of its rules (contradictory output limits, a
    tool result answering no call, a value of the wrong kind) is `translation-invalid`.
 3. Reasoning state the client replays (a Messages `thinking` or `redacted_thinking` block, a
-   Responses `reasoning` item) is `translation-opaque-state`: it was minted by another serving
-   binding, the upstream speaks another protocol, and the gateway binds no carried state.
+   Responses `reasoning` item) is bound only when it is a seal this gateway made for this route
+   since it last started ("Reasoning state on a translated route" below). Every other carried
+   item is `translation-opaque-state`, and the request with it: it was minted by another serving
+   binding, for another route or before a restart, and the gateway binds no state it cannot
+   attribute.
 4. The turn is checked against the model's capabilities: tools and tool choice when its
    `ToolCalling` is `Parsed`; `temperature` and `top_p`; the efforts `minimal`, `low`, `medium`,
-   `high` and `xhigh`; a context window and output limit of its `max_model_len`, else its
+   `high` and `xhigh`, and `none` as well when the upstream is chat or responses, each checked as
+   the upstream wire receives it (llm's `wire_effort`: effort `max` reaches a chat or responses
+   upstream as `xhigh` and disabled thinking as `none`, while a messages upstream receives `max`
+   and `none` as they are, and so refuses them); a context window and output limit of its `max_model_len`, else its
    `context_window`, else 200000. Then it is projected for the upstream wire. Either refusal is
    `translation-unsupported` or `translation-invalid` by the same rule.
 
-What each client wire's decoder accepts, from llm 0.6.0:
+What each client wire's decoder accepts, from llm 0.7.0. Every field a decoder reads has one rule
+(llm's `docs/design.md` "Client request fields"): **carried** to every upstream wire that has the
+concept, **translated** under another name, **advisory** (a hint a wire without the concept
+omits), or **refused** by name. Every key a decoder does not name is refused by its path, at
+every level, so a key outside the subset is `translation-unsupported`, never dropped
+(`translation_guard_*` in `crates/llm-gateway-cli/tests/translation_guards.rs`); the gateway
+runs no key check of its own.
 
 - **`chat`** (`llm_chat::SUPPORTED_REQUEST_FIELDS`): `model`, `messages`, `tools`,
   `tool_choice`, `max_completion_tokens`, `max_tokens` (equal when both are given),
-  `temperature`, `top_p`, `reasoning_effort`, `stream` and `stream_options.include_usage`.
-  Messages are `system` or `developer` before the conversation, `user`, `assistant` (text and
-  `tool_calls`) and `tool`; content is a string or `text` parts; tools are `function` tools with
-  a `parameters` schema; `tool_choice` is `auto`, `required` or a named function. Refused by name:
-  `n`, `logprobs`, `top_logprobs`, `response_format`, `seed`, `stop`, `frequency_penalty`,
-  `presence_penalty`, `logit_bias`, `functions`, `function_call`, `parallel_tool_calls`,
+  `temperature`, `top_p`, `reasoning_effort`, `stream`, `stream_options.include_usage`, and
+  `parallel_tool_calls`, `prompt_cache_key` and `verbosity`. Messages are `system` or
+  `developer` before the conversation, `user`, `assistant` (text and `tool_calls`) and `tool`;
+  content is a string or `text` parts; tools are `function` tools with a `parameters` schema,
+  and a `strict` function is refused; `tool_choice` is `auto`, `required` or a named function.
+  Refused by name: `n`, `logprobs`, `top_logprobs`, `response_format`, `seed`, `stop`,
+  `frequency_penalty`, `presence_penalty`, `logit_bias`, `functions`, `function_call`,
   `modalities`, `audio`, `prediction`, `web_search_options`, `store`, `metadata`,
   `service_tier`, `user`.
-- **`responses`** (`llm_responses::ACCEPTED_BODY_FIELDS`): `model`, `input`, `tools`,
-  `tool_choice`, `max_output_tokens`, `temperature`, `top_p`, `reasoning` (`effort` only), and
-  `stream: true`, `store: false` and `include: ["reasoning.encrypted_content"]`, each required
-  with exactly that value. `input` holds one leading `developer` message, `user` and
-  `assistant` messages of one text part each, `function_call` and `function_call_output` items
-  (an output is the envelope `{"ok":…,"output":…}` as a string); tools are `function` tools
-  with `strict: false`. A translated responses request is always streamed.
+- **`responses`** (`llm_responses::ACCEPTED_BODY_FIELDS`): `model`, `input`, `instructions`,
+  `tools`, `tool_choice`, `max_output_tokens`, `temperature`, `top_p`, `reasoning` (`effort`
+  and `summary`), `parallel_tool_calls`, `prompt_cache_key`, `text.verbosity`,
+  `client_metadata`, and `stream: true`, `store: false` and
+  `include: ["reasoning.encrypted_content"]`, each required with exactly that value.
+  `instructions` and the text parts of the `developer` messages that open `input` are the
+  instructions; `input` then holds `user` and `assistant` messages of one text part each (an
+  assistant part may carry an empty `annotations`), `function_call` and
+  `function_call_output` items (an output that is not the envelope `{"ok":…,"output":…}` is a
+  successful result carrying that string), and an item may carry an `id`, which reaches no
+  upstream. Tools are `function` tools with `strict: false`; a tool of another type is refused
+  by its type. A translated responses request is always streamed.
 - **`messages`** (`llm_messages::decode_request`): `model`, `max_tokens` (positive), `system`
-  (a string or one text block), `messages` (`user` and `assistant`, with string content or
-  `text`, `tool_use` and `tool_result` blocks whose content is a string), `tools` (`name`,
-  `description`, `input_schema`), `stream`, `temperature` (at most 1), `top_p`,
-  `output_config.effort` and `tool_choice` (`auto`, `any`, `tool`).
+  (a string or text blocks, joined by a line feed), `messages` (`user` and `assistant`, with
+  string content or `text`, `tool_use` and `tool_result` blocks whose content is a string),
+  `tools` (`name`, `description`, `input_schema`), `stream`, `temperature` (at most 1), `top_p`,
+  `thinking` (`adaptive`, `enabled` with a budget, `disabled`), `output_config.effort` (any
+  name, `max` included), `tool_choice` (`auto`, `any`, `tool`, and
+  `disable_parallel_tool_use`), `metadata`, and `cache_control` (`ephemeral`, an optional
+  `ttl`) on a system block, a content block or a tool.
 
-Every nested level is closed too: a key a level does not list is `translation-unsupported`,
-never dropped. llm 0.6.0's messages decoder closes each level itself; its chat and responses
-decoders pass over unknown keys below the top level, so the gateway checks those levels before
-decoding (`crates/llm-gateway-cli/src/translate.rs` `chat_closed`, `responses_closed`, from
-llm's `crates/llm-chat/src/ingress.rs`, `docs/chat.md` and `crates/llm-responses/src/request.rs`):
+How a carried or advisory field reaches each upstream wire is llm's table:
 
-| Wire | Level | Keys |
-| --- | --- | --- |
-| chat | a `system`, `developer` or `user` message | `role`, `content` |
-| chat | an `assistant` message | `role`, `content`, `tool_calls` |
-| chat | a `tool` message | `role`, `content`, `tool_call_id` |
-| chat | a content part | `type`, `text` |
-| chat | `tool_calls[]` | `id`, `type` (`function`), `function` |
-| chat | `tool_calls[].function` | `name`, `arguments` |
-| chat | `tools[]`, `tools[].function` | `type`, `function`; `name`, `description`, `parameters` |
-| chat | an object `tool_choice`, its `function` | `type` (`function`), `function`; `name` |
-| responses | a `message` item, its content part | `type`, `role`, `content`; `type`, `text` |
-| responses | a `function_call` item | `type`, `call_id`, `name`, `arguments` |
-| responses | a `function_call_output` item | `type`, `call_id`, `output` |
-| responses | an object `tool_choice` | `type`, `name` |
+| Read as | Messages upstream | Chat upstream | Responses upstream |
+| --- | --- | --- | --- |
+| effort `max` | `output_config.effort` `max` (refused: not a capability) | `reasoning_effort` `xhigh` | `reasoning.effort` `xhigh` |
+| thinking `adaptive` | `thinking` | nothing | nothing |
+| thinking `enabled` with a budget | `thinking` | refused | refused |
+| thinking `disabled`, no effort | `thinking` | `reasoning_effort` `none` | `reasoning.effort` `none` |
+| `parallel_tool_calls` `b` | `tool_choice.disable_parallel_tool_use` `!b` | `parallel_tool_calls` | `parallel_tool_calls` |
+| `cache_control` | its lifetime on llm's own breakpoints | omitted | omitted |
+| `prompt_cache_key` | omitted | `prompt_cache_key` | `prompt_cache_key` |
+| verbosity | omitted | `verbosity` | `text.verbosity` |
+| `reasoning.summary` | omitted | omitted | `reasoning.summary` |
+| an item `id`, `client_metadata`, `metadata` | omitted | omitted | omitted |
 
-So a tool's `strict`, a message's `name`, `refusal` or `reasoning_content`, a part's
-`cache_control` or `annotations`, and an item's `id` or `status` are each refused
-(`translation_guard_*` in `crates/llm-gateway-cli/tests/translation_guards.rs`).
+llm's client reports an omitted advisory hint once the turn has succeeded, as an
+`advisory-omitted` warning event; no client wire's encoder writes a warning, so the client is
+sent none.
+
+So Claude Code's first turn (adaptive `thinking`, a `system` of two text blocks, `cache_control`
+and effort `max`) and Codex's first turn (`instructions`, a developer message, item ids,
+`parallel_tool_calls`, `prompt_cache_key`, `text.verbosity`, `reasoning.summary` and
+`client_metadata`) are carried to another wire (scenario
+`translate-a-coding-agents-turn-reaches-another-wire-with-its-controls`). Codex's second turn
+replays the `reasoning` item its first answer carried: on a chat or messages route, an item this
+gateway sealed for that route is bound (step 3), and the item of a recorded or foreign answer is
+`translation-opaque-state`. Still refused by name,
+`translation-unsupported`: structured output (`output_config.format`, `text.format`,
+`response_format`), `context_management`, `thinking.display`, hosted and custom tools, and an
+instruction in the middle of the conversation (a `system` message inside Messages `messages`, a
+`developer` message after the first item of Responses `input`).
 
 ### The upstream
 
@@ -565,8 +596,56 @@ unreported; on a messages client the input total is sent only when the upstream 
 cache counters, which only a messages upstream does. Reasoning text is relayed where the
 client's wire has a place for it (chat `reasoning_content`, a responses reasoning summary) and
 withheld on a messages client, whose `thinking` block needs a signature only a messages
-upstream makes. Continuation state the upstream mints for its own wire (Responses reasoning
-items, Messages signed thinking) is not carried to another wire.
+upstream makes. Continuation state the upstream mints for its own wire (Messages signed
+thinking) reaches a responses client sealed for the route, as the next section says, and no
+other client.
+
+#### Reasoning state on a translated route
+
+Codex replays the reasoning items of its previous answer on every turn. So that a translated
+route serves that turn without binding state it cannot attribute, the gateway hands a responses
+client reasoning state it sealed itself, and binds only that.
+
+- **The key.** The translator generates one HMAC-SHA256 key from the system's random source when
+  it starts. It is never written out, logged or rendered. A gateway that could not generate one
+  seals nothing and answers as if the upstream minted no state.
+- **What a responses client is handed.** Each signed `thinking` or `redacted_thinking` block of
+  a messages upstream's answer reaches it, in its place, as a finished `reasoning` item whose
+  `encrypted_content` is the seal: `llmgw-seal-1.`, the block as JSON in unpadded base64url, `.`,
+  and in unpadded base64url the HMAC of a fixed label, the route (the model's alias and its
+  upstream model), the client's wire, the upstream wire and those JSON bytes, each
+  length-prefixed. The first such item is the one the streamed reasoning opened, under its `id`,
+  with the reasoning shown as its summary. A chat upstream mints no state; when it shows
+  reasoning (`reasoning_content`), that item is finished with a seal over `null`. The seal does
+  not hide the block, whose thinking the summary already shows; it attributes it to this route.
+- **What is bound.** A replayed `reasoning` item from a responses client whose
+  `encrypted_content` verifies, in constant time, as a seal of the running key for the request's
+  route and wires: the block it carries is sent to the messages upstream at the item's place, as
+  the upstream gave it, under the binding of the target the relay acquired; a seal over `null` is
+  dropped before the turn is projected for the chat upstream. The item's `id` and `summary` are
+  not read.
+- **What is refused**, `translation-opaque-state` (400) for the whole request before any target
+  is asked for: an item without a seal (a recorded turn, or state another gateway or the
+  upstream itself minted); a seal any character of which was altered, or one forged; a seal made
+  for another route, or for the same alias on another pair of wires; and a seal made before the
+  gateway last started, whose key is gone. A client that keeps its conversation across a restart
+  of the gateway starts a new one.
+- **What is not sealed.** Nothing toward a chat client (its wire carries no opaque state) or a
+  messages client (llm's messages encoder places a block the stream did not show after every
+  streamed block, so a replayed block would reach the upstream out of its place); their answers
+  carry no upstream state, and a `thinking` block such a client replays is
+  `translation-opaque-state`. A same-wire route is relayed byte for byte, and its reasoning state
+  with it, unchanged.
+- **What is never logged.** No log line, event, metric, usage record or refusal carries a seal,
+  the key or the state a seal holds.
+
+Scenarios `translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it`,
+`translate-sealed-reasoning-state-from-another-route-is-refused`,
+`translate-altered-or-forged-sealed-reasoning-state-is-refused` and
+`translate-sealed-reasoning-state-from-before-a-restart-is-refused` observe each case;
+`crates/llm-gateway-cli/tests/translation.rs` runs Codex's recorded two-turn exchange through a
+responses-to-chat and a responses-to-messages route, and `seal_*` in
+`crates/llm-gateway-cli/src/seal.rs` check every character of a seal and every part of its route.
 
 A failure before any output, by llm's class of it and whatever was dispatched:
 
@@ -604,8 +683,9 @@ Each statement about a refused field is backed by a test that feeds the request 
   profiles.
 - **Codex.** `instructions`, `parallel_tool_calls`, `prompt_cache_key`, `text` and a
   `reasoning.summary` are each refused by the responses subset, and a turn replaying a reasoning
-  item is `translation-opaque-state`. Codex reaches a model through translation only once llm's
-  subset grows; `GET /` profiles only models whose upstream speaks responses.
+  item the gateway did not seal for the route is `translation-opaque-state`. Codex reaches a
+  model through translation only once llm's subset grows; `GET /` profiles only models whose
+  upstream speaks responses.
 - **Encoder refusals** (llm `story:ingress-block-boundaries`): a responses client cannot be sent
   two assistant messages back to back, or a message another item interrupts (text, reasoning,
   text from a chat upstream; text, a call, text); a messages client cannot be sent redacted
@@ -626,7 +706,7 @@ answer or refusal is written, before the connection is closed: the alias of the 
 body named (absent when it named none), the wire, its `Disposition` (`Relayed`, `Refused` or
 `UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
 status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
-request head to the last byte written. The token counters and the model the target reported are
+request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The token counters and the model the target reported are
 always absent for now. A translated request whose client went away before any answer was
 written (a non-streamed client that closed while it waited) is recorded `Relayed` with status 0,
 no target status and 0 response bytes: status 0 means no answer was written because the client
@@ -636,7 +716,9 @@ counters, then leaves the crate through the `UsageRecords` port the embedding im
 
 `GET /metrics` serves llmgw's 13 counters under their llmgw names, so a scrape configured for
 llmgw keeps working, and one of the gateway's own, `llmgw_pod_start_spend_refusals_total`, after
-llmgw's eight process-wide series; its prefix keeps one scrape configuration for every series. It takes the owner credential and readiness like inspection, and answers
+llmgw's eight process-wide series, and after the route series two per model: the outcome counter
+and the latency histogram ([latency and outcomes per model](#latency-and-outcomes-per-model)). Its
+prefix keeps one scrape configuration for every series. It takes the owner credential and readiness like inspection, and answers
 `content-type: text/plain; version=0.0.4; charset=utf-8`. The text is rendered inside this crate,
 which takes no dependency for it.
 
@@ -656,6 +738,8 @@ which takes no dependency for it.
 | `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
 | `llmgw_route_cold_start_holds_total` | `model`, `wire` | requests held for a starting target: the target says it held them (`RelayTarget::held`), or `acquire` answered `model-cold-start` |
 | `llmgw_route_response_bytes_total` | `model`, `wire` | the records' response bytes |
+| `llmgw_requests_total` | `model`, `outcome` | records naming a relayed model, by how the call ended |
+| `llmgw_request_duration_seconds` | `model` | a histogram of the same records' durations, in seconds |
 
 Every (model, wire) pair a relayed model declares is registered at zero when the relay is
 composed, so an uncalled route reads 0 instead of being absent; a request for another pair feeds
@@ -663,6 +747,98 @@ the process-wide series only. A gateway composed without a relay serves the proc
 alone. An embedding that counts pod events shares one `Metrics` with the relay
 (`Relay::with_metrics`). The upstream and status series count as llmgw does (llmgw
 `src/lib.rs:598-629` at `048ebd8`). The specification is `spec/domains/telemetry.yaml`.
+
+### Latency and outcomes per model
+
+Every relayed model, Runpod or hosted or a route of the routes document, is registered at zero
+in both per-model series when the relay is composed: all four outcomes, every bucket, the sum and
+the count. Each usage record naming a relayed model feeds both, whatever wire it came on; a
+record naming no relayed model feeds neither. The `model` label is the alias from the deployment
+document and `outcome` a fixed word: no label or value carries a credential, a prompt, a
+completion, an upstream model name or an endpoint address.
+
+`llmgw_request_duration_seconds` observes the record's `duration_ms`, from the end of the request
+head to the last byte written, in seconds. A record falls in every bucket whose bound is at least
+its duration, so the buckets are cumulative, as the Prometheus text format writes them, followed
+by `_sum` in seconds and `_count`.
+The histogram's buckets are `0.05`, `0.1`, `0.25`, `0.5`, `1`, `2.5`, `5`, `10`, `30`, `60`, `120`, `300` and `+Inf` seconds.
+
+```text
+llmgw_requests_total{model="code",outcome="ok"} 3
+llmgw_requests_total{model="code",outcome="upstream_error"} 1
+llmgw_requests_total{model="code",outcome="timeout"} 0
+llmgw_requests_total{model="code",outcome="refused"} 1
+llmgw_request_duration_seconds_bucket{model="code",le="0.05"} 5
+…
+llmgw_request_duration_seconds_bucket{model="code",le="+Inf"} 5
+llmgw_request_duration_seconds_sum{model="code"} 0.012
+llmgw_request_duration_seconds_count{model="code"} 5
+```
+
+### Call outcomes
+
+A relayed answer is `ok`, whatever its status: a 4xx or a 500 the target answered reached the
+client. A refusal is counted by its code. `upstream-failed` is `timeout` when the target's read
+timeout passed before its answer head arrived, and `upstream_error` otherwise (an unreachable
+target, a connection closed without an answer, a malformed head, or a 502, 503 or 504 from the
+target). A translated request's transport timeout is reported by the translator as an upstream
+failure, and is `upstream_error`. `crates/llm-gateway/src/metrics.rs` checks this table against
+every code the gateway can emit.
+
+| Code | Outcome |
+| --- | --- |
+| `body-incomplete` | `refused` |
+| `body-not-allowed` | `refused` |
+| `body-not-json` | `refused` |
+| `body-too-large` | `refused` |
+| `context-exceeded` | `refused` |
+| `credential-absent` | `refused` |
+| `credential-malformed` | `refused` |
+| `credential-rejected` | `refused` |
+| `method-not-allowed` | `refused` |
+| `model-absent` | `refused` |
+| `model-cold-start` | `timeout` |
+| `model-unknown` | `refused` |
+| `overloaded` | `refused` |
+| `path-unknown` | `refused` |
+| `request-malformed` | `refused` |
+| `request-too-large` | `refused` |
+| `route-unknown` | `refused` |
+| `spend-ceiling` | `refused` |
+| `target-unavailable` | `refused` |
+| `tools-not-served` | `refused` |
+| `translation-invalid` | `refused` |
+| `translation-opaque-state` | `refused` |
+| `translation-too-large` | `upstream_error` |
+| `translation-unrepresentable` | `upstream_error` |
+| `translation-unsupported` | `refused` |
+| `unavailable` | `refused` |
+| `upstream-failed` | `upstream_error`, or `timeout` when the target's read timed out before its answer head |
+| `upstream-refused` | `upstream_error` |
+| `wire-not-served` | `refused` |
+
+A code that makes no usage record (a credential refusal, `overloaded`, a request before the
+head was read) is in the table for completeness and is never counted.
+
+### Scraping the counters
+
+`GatewayHandle::serve_metrics(address, bearer)` binds a second listener that serves the same
+text as the owner's `/metrics` without the owner credential, so a monitoring stack never holds
+the credential that can make paid model calls. The binary binds it when the deployment document
+sets the top-level `metrics_listen`, a key beside `listen` (the scrape token is the top-level
+`metrics_bearer_file`).
+
+- It answers `GET` and `HEAD` on exactly `/metrics`. Any other method or path is
+  `404 path-unknown`, so no model route, probe, public route or inspection path is reachable on
+  it.
+- With a bearer (the binary's `metrics_bearer_file`), a scrape presents that token as
+  `authorization: Bearer <token>`, compared in constant time: none is `credential-absent`, a
+  value that is not one bearer token `credential-malformed` and another token, the owner's
+  included, `credential-rejected`, each `401`. Without one the listener is open: bind it only on
+  an address a network policy guards.
+- It serves before `mark_ready` and while draining, so a drain stays visible, and it stops with
+  the gateway's shutdown or drop.
+- The owner-guarded `/metrics` of the serving listener is unchanged.
 
 ## Refusals
 
@@ -697,7 +873,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `target-unavailable` | 503 | no model target is available |
 | `tools-not-served` | 400 | the model does not serve tool calls |
 | `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |
-| `translation-opaque-state` | 400 | the request carries reasoning state the gateway cannot send to the model's upstream |
+| `translation-opaque-state` | 400 | the request carries reasoning state the gateway did not seal for this route |
 | `translation-too-large` | 502 | the model's answer passed a bound of the translated path, published in the gateway contract |
 | `translation-unrepresentable` | 502 | the model's answer cannot be written on this wire |
 | `translation-unsupported` | 400 | the request uses a field or value outside the subset the gateway translates |
@@ -807,7 +983,7 @@ in `tests/wire_relay.rs` measures the header, and
 
 ## Bounds of the translated path
 
-The bounds llm 0.6.0 holds a translated answer to, per upstream stream (`llm_http::sse`, and
+The bounds llm 0.7.0 holds a translated answer to, per upstream stream (`llm_http::sse`, and
 llm-core's `MAX_TOOL_ARGUMENT_BYTES`, read by the binary's translator); the gateway crate holds none of them, so they
 are not in [Bounds](#bounds). An answer at a bound is written whole; one past it ends with the
 wire's terminal error carrying `translation-too-large`'s message, or, before any output, is the

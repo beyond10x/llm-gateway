@@ -20,7 +20,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.11.0, released 2026-10-17 as a source release with the gateway image; tested
+**Status: 0.12.0, released 2026-10-17 as a source release with the gateway image; tested
 against in-process fakes and loopback; nothing is deployed or qualified.**
 [CHANGELOG.md](CHANGELOG.md) lists every release and what is unreleased.
 
@@ -31,9 +31,13 @@ are llm's. The gateway library relays the owner's chat, responses and messages r
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
 it translates no protocol itself, but holds the port through which the binary translates a
-request on a wire the model's upstream does not speak, within llm 0.6.0's published subset
-([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, and
-Claude Code's and Codex's requests fall outside it today. The binary relays to a Runpod pod at its `https` proxy URL over
+request on a wire the model's upstream does not speak, within llm 0.7.0's published subset
+([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, never
+dropped. Claude Code's first turn and Codex's first turn are carried to another wire with their
+controls (effort, thinking, parallel tool calls, cache and verbosity hints). Codex's later turns
+are served too: the gateway hands a Responses client the upstream's reasoning state sealed for
+the route and binds it on the next turn of that route only; Claude Code's later turns, which
+replay reasoning another upstream minted, are still refused. The binary relays to a Runpod pod at its `https` proxy URL over
 TLS, but that path has run only against a fixture of the `connectors` CLI and a loopback pod,
 never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a hosted endpoint
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never
@@ -180,7 +184,11 @@ The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model wi
 `max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,
 chosen by `User-Agent`) without a credential; the owner can read
 `GET /v1/routes`, `GET /v1/routes/<alias>` and `GET /metrics`, llmgw's 13 `llmgw_` counters as
-Prometheus text. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
+Prometheus text, with a latency histogram `llmgw_request_duration_seconds{model}` and an outcome
+counter `llmgw_requests_total{model,outcome}` per model. `metrics_listen` binds a second listener
+that serves the same text at `GET /metrics` and nothing else without the owner secret, behind the
+optional scrape token of `metrics_bearer_file`, so a Prometheus server never holds the owner
+secret; without that token it is open, so bind it only where a network policy guards it. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
 The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/responses` and
 `POST /v1/messages` for the wires each model declares. A model whose provider declares
 `connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` over

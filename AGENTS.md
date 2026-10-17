@@ -13,14 +13,14 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | Path | What it is |
 | --- | --- |
 | `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency; it holds the translation port (`Translator`) and translates nothing itself |
-| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `b10x-llm-models`), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`) over llm 0.6.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`. It carries the dependencies the gateway crate must not have |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `b10x-llm-models`), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.7.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`. It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests, `ConnectorsRunpod` the production transport, which reaches the control plane only through the `connectors` CLI |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
 | `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
 | `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served at `https://beyond10x.github.io/llm-gateway/`, deployed by the `Documentation site` workflow |
-| `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
+| `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters, the per-model `llmgw_requests_total{model,outcome}` counter and `llmgw_request_duration_seconds{model}` histogram, the metrics-only listener and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
 | `docs/` | The gateway and hosting contracts, the llmgw capability matrix, dated verification records, and designs under `docs/design/` |
 | `.engineering/` | The AEP planning store and per-story evidence |
@@ -45,7 +45,7 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 277 of at least 277 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 278 of at least 278 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | The generated site pages equal what `llm-gateway-docs` generates, and no hand-written page carries a raw admonition title, a story id or a `/home/` path | `crates/llm-gateway-docs/tests/generate.rs::check_fails_on_every_kind_of_drift` |
 | Every `shipped` item on the status page names a test that exists | `crates/llm-gateway-docs/src/status.rs::a_vanished_test_or_a_shipped_item_without_one_is_refused` |
 | The refusal reference lists every code `RefusalCode::ALL`, `StartupRefusal::ALL` and `CredentialRefusal::ALL` hold | `crates/llm-gateway-docs/tests/generate.rs::refusal_reference_lists_every_code_the_gateway_can_emit` |
@@ -124,13 +124,18 @@ cross-system relation, so those edges are `BOUNDARY:` comments beside the fields
 
 A crate that needs an llm client crate takes it by tag,
 `{ git = "https://github.com/beyond10x/llm", tag = "<release>" }`, never by path.
-`b10x-llm-runpod` takes `b10x-llm-providers` at tag `0.5.0` for the Runpod provider description.
+`b10x-llm-runpod` takes `b10x-llm-providers` at tag `0.7.0` for the Runpod provider description.
 `b10x-llm-gateway-cli` takes `b10x-llm-core`, `-chat`, `-responses`, `-messages`, `-providers`,
-`-credentials`, `-http` and `-blocking` at tag `0.6.0` for its translator, and `b10x-llm-models`
-at tag `0.6.0` with no default feature for the `llm.routes/1` parser: its `environment`, `file`
+`-credentials`, `-http` and `-blocking` at tag `0.7.0` for its translator, and `b10x-llm-models`
+at tag `0.7.0` with no default feature for the `llm.routes/1` parser: its `environment`, `file`
 and `keychain` features would let llm resolve a secret, and the gateway reads every credential
 through its own trusted-file reader instead. No `aws-lc` crate
-enters `Cargo.lock`: rustls runs on `ring` only.
+enters `Cargo.lock`: rustls runs on `ring` only. llm 0.7.0's decoders refuse every key they do
+not name, at every level, so the translator runs no key check of its own; they carry Claude
+Code's and Codex's first turns. A replayed reasoning item is bound only when it is a seal the
+translator made for that route since it started (`crates/llm-gateway-cli/src/seal.rs`, HMAC-SHA256
+on `ring`, encoded with `base64`); every other one is still refused `translation-opaque-state`
+(`crates/llm-gateway-cli/tests/translation.rs`).
 
 ## Documents
 

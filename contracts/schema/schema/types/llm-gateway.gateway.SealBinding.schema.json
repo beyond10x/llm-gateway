@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.SealBinding",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
+    "contract_digest": "slice-sha256/2:6038ea0b6a558283ffdbcb9a4db1c44a763f8fb6cd0e6268cf6573e34f1e6435",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.SealBinding": {
+      "title": "SealBinding",
+      "x-ess-name": "llm-gateway.gateway.SealBinding",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Bound",
+        "Dropped",
+        "Refused"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "refusal",
+          "type": "String",
+          "values": {
+            "Bound": "none",
+            "Dropped": "none",
+            "Refused": "translation-opaque-state"
+          }
+        }
+      ]
+    }
+  }
+}

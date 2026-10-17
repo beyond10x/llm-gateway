@@ -17,6 +17,9 @@
     "disposition": {
       "$ref": "#/$defs/llm-gateway.telemetry.Disposition"
     },
+    "outcome": {
+      "$ref": "#/$defs/llm-gateway.telemetry.Outcome"
+    },
     "refusal": {
       "$ref": "#/$defs/llm-gateway.gateway.Refusal"
     },
@@ -61,6 +64,7 @@
     "record_id",
     "wire",
     "disposition",
+    "outcome",
     "status",
     "response_bytes",
     "duration_ms",
@@ -70,8 +74,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
-    "contract_digest": "slice-sha256/2:38321375813dbef25cbd97d59aebce8dbc6a79768037e2fc82cb98baac68be1b",
+    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
+    "contract_digest": "slice-sha256/2:6baa8135479950d43ca6145732413792cf4d5753330b5919d1699fbc0f25cfe4",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -210,7 +214,7 @@
             "TargetUnavailable": "no model target is available",
             "ToolsNotServed": "the model does not serve tool calls",
             "TranslationInvalid": "the request breaks a rule of the subset the gateway translates",
-            "TranslationOpaqueState": "the request carries reasoning state the gateway cannot send to the model's upstream",
+            "TranslationOpaqueState": "the request carries reasoning state the gateway did not seal for this route",
             "TranslationTooLarge": "the model's answer passed a bound of the translated path, published in the gateway contract",
             "TranslationUnrepresentable": "the model's answer cannot be written on this wire",
             "TranslationUnsupported": "the request uses a field or value outside the subset the gateway translates",
@@ -242,6 +246,18 @@
         "Relayed",
         "Refused",
         "UpstreamFailed"
+      ]
+    },
+    "llm-gateway.telemetry.Outcome": {
+      "title": "Outcome",
+      "x-ess-name": "llm-gateway.telemetry.Outcome",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Ok",
+        "UpstreamError",
+        "Timeout",
+        "Refused"
       ]
     },
     "llm-gateway.telemetry.UsageRecord.State": {

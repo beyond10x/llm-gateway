@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.ReasoningSeal",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
+    "contract_digest": "slice-sha256/2:211864d3f3db89df84f8af60a584b5e398a357e7bd0b06f15c38e3c15e3ac801",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.ReasoningSeal": {
+      "title": "ReasoningSeal",
+      "x-ess-name": "llm-gateway.gateway.ReasoningSeal",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "seal": {
+          "$ref": "#/$defs/llm-gateway.gateway.Seal"
+        },
+        "scope": {
+          "$ref": "#/$defs/llm-gateway.gateway.SealScope"
+        },
+        "state": {},
+        "tag": {
+          "type": "string",
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$",
+          "contentEncoding": "base64"
+        }
+      },
+      "required": [
+        "seal",
+        "scope",
+        "state",
+        "tag"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.gateway.Seal": {
+      "title": "Seal",
+      "x-ess-name": "llm-gateway.gateway.Seal",
+      "x-ess-kind": "newtype",
+      "type": "string",
+      "pattern": "^llmgw-seal-1\\.",
+      "x-ess-alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_."
+    },
+    "llm-gateway.gateway.SealScope": {
+      "title": "SealScope",
+      "x-ess-name": "llm-gateway.gateway.SealScope",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "alias": {
+          "type": "string"
+        },
+        "upstream_model": {
+          "type": "string"
+        },
+        "client_wire": {
+          "$ref": "#/$defs/llm-gateway.gateway.Wire"
+        },
+        "upstream_wire": {
+          "$ref": "#/$defs/llm-gateway.gateway.Wire"
+        }
+      },
+      "required": [
+        "alias",
+        "upstream_model",
+        "client_wire",
+        "upstream_wire"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.gateway.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.gateway.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    }
+  }
+}

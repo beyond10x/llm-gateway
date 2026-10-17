@@ -40,6 +40,11 @@ impl OwnerToken {
     pub(crate) fn digest(&self) -> [u8; 32] {
         sha256(&self.0)
     }
+
+    /// Whether this material's digest is `digest`, compared in constant time.
+    pub(crate) fn matches_digest(&self, digest: &[u8; 32]) -> bool {
+        constant_time_eq(&self.digest(), digest)
+    }
 }
 
 /// The rules every credential this crate holds follows: 1..=4096 bytes of printable US-ASCII,

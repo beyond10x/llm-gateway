@@ -6,7 +6,7 @@ use crate::{
     error::RefusalCode,
     inventory::RouteInventory,
     listing::{self, InstructionAnswer},
-    metrics::{Disposition, Metrics, UsageRecord},
+    metrics::{self, Disposition, Metrics, UsageRecord},
     relay::{self, Admitted, Call, ModelStatus, Relay, Wire},
 };
 use std::{
@@ -187,6 +187,7 @@ impl Gateway {
             shared,
             local_addr,
             accept: Some(accept),
+            scrapers: Vec::new(),
         })
     }
 }
@@ -197,6 +198,8 @@ pub struct GatewayHandle {
     shared: Arc<Shared>,
     local_addr: SocketAddr,
     accept: Option<JoinHandle<()>>,
+    /// The accept loops of the metrics listeners [`GatewayHandle::serve_metrics`] bound.
+    scrapers: Vec<JoinHandle<()>>,
 }
 
 impl GatewayHandle {
@@ -224,6 +227,42 @@ impl GatewayHandle {
         is_ready(&self.shared)
     }
 
+    /// Binds a metrics listener on `bind` and returns the address bound
+    /// (`llm-gateway.telemetry`, docs/gateway.md "Scraping the counters"). It answers `GET` and
+    /// `HEAD` on exactly `/metrics` with the counters, and every other method or path
+    /// `404 path-unknown`, so no model route, probe or inspection path is reachable on it. It
+    /// takes no owner credential: with `bearer` a scrape must present that token as
+    /// `authorization: Bearer`, compared in constant time; without one it is open. It serves
+    /// before [`GatewayHandle::mark_ready`] and while draining, and stops with the gateway.
+    ///
+    /// # Errors
+    /// Returns the operating system's error when the address cannot be bound or cannot be put
+    /// into non-blocking mode.
+    pub fn serve_metrics(
+        &mut self,
+        bind: SocketAddr,
+        bearer: Option<OwnerToken>,
+    ) -> io::Result<SocketAddr> {
+        let listener = TcpListener::bind(bind)?;
+        listener.set_nonblocking(true)?;
+        let local_addr = listener.local_addr()?;
+        let scraper = Arc::new(Scraper {
+            shared: Arc::clone(&self.shared),
+            bearer: bearer.as_ref().map(OwnerToken::digest),
+            in_flight: AtomicU64::new(0),
+        });
+        drop(bearer);
+        self.scrapers
+            .push(thread::spawn(move || scrape_loop(&listener, &scraper)));
+        Ok(local_addr)
+    }
+
+    fn join_scrapers(&mut self) {
+        for scraper in std::mem::take(&mut self.scrapers) {
+            drop(scraper.join());
+        }
+    }
+
     /// Stops accepting, lets every connection already accepted finish, and reports what
     /// happened. This is the graceful stop.
     pub fn shutdown(mut self) -> ShutdownReport {
@@ -237,6 +276,7 @@ impl GatewayHandle {
         if let Some(accept) = self.accept.take() {
             drop(accept.join());
         }
+        self.join_scrapers();
         self.shared.ready.store(false, Ordering::SeqCst);
         ShutdownReport {
             accepted: self.shared.accepted.load(Ordering::SeqCst),
@@ -252,6 +292,7 @@ impl Drop for GatewayHandle {
         if let Some(accept) = self.accept.take() {
             drop(accept.join());
         }
+        self.join_scrapers();
     }
 }
 
@@ -301,6 +342,94 @@ fn accept_loop(listener: &TcpListener, shared: &Arc<Shared>) {
     for connection in connections {
         drop(connection.join());
     }
+}
+
+/// One metrics listener: the gateway it scrapes, the digest of its scrape token, and its
+/// connections being served.
+struct Scraper {
+    shared: Arc<Shared>,
+    bearer: Option<[u8; 32]>,
+    in_flight: AtomicU64,
+}
+
+/// Accepts scrapes while the gateway runs, then waits for those already accepted.
+fn scrape_loop(listener: &TcpListener, scraper: &Arc<Scraper>) {
+    let mut connections: Vec<JoinHandle<()>> = Vec::new();
+    while scraper.shared.running.load(Ordering::SeqCst) {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                scraper.in_flight.fetch_add(1, Ordering::SeqCst);
+                let serving = Arc::clone(scraper);
+                connections.push(thread::spawn(move || {
+                    serve_scrape(stream, &serving);
+                    serving.in_flight.fetch_sub(1, Ordering::SeqCst);
+                }));
+            }
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                connections.retain(|handle| !handle.is_finished());
+                thread::sleep(ACCEPT_POLL);
+            }
+            Err(_) => thread::sleep(ACCEPT_POLL),
+        }
+    }
+    for connection in connections {
+        drop(connection.join());
+    }
+}
+
+/// One connection to a metrics listener: its head, under the gateway's head bound and timeout,
+/// then the counters or a refusal. Nothing but `/metrics` is decided.
+fn serve_scrape(mut stream: TcpStream, scraper: &Scraper) {
+    let config = &scraper.shared.config;
+    let head_only;
+    let outcome = if scraper.in_flight.load(Ordering::SeqCst) > config.max_concurrent_requests {
+        head_only = false;
+        Outcome::Refused(RefusalCode::Overloaded)
+    } else {
+        let deadline = Instant::now() + config.read_timeout;
+        match read_head(&mut stream, config.max_head_bytes, deadline).and_then(|(head, _)| {
+            Request::parse(&head, &|_| false)
+                .map(|request| (request.head_only(), decide_scrape(&request, scraper)))
+        }) {
+            Ok((only, outcome)) => {
+                head_only = only;
+                outcome
+            }
+            Err(code) => {
+                head_only = false;
+                Outcome::Refused(code)
+            }
+        }
+    };
+    write_outcome(
+        &mut stream,
+        &outcome,
+        head_only,
+        Instant::now() + config.read_timeout,
+    );
+    drop(stream.shutdown(Shutdown::Both));
+}
+
+/// A scrape's answer: `GET` or `HEAD` on exactly `/metrics`, else `path-unknown`; then the
+/// scrape token when one is set; then the counters, ready or not.
+fn decide_scrape(request: &Request<'_>, scraper: &Scraper) -> Outcome {
+    if request.path != METRICS || !request.is_read() {
+        return Outcome::Refused(RefusalCode::PathUnknown);
+    }
+    if let Some(expected) = &scraper.bearer
+        && let Err(code) = bearer(request).and_then(|token| {
+            token
+                .matches_digest(expected)
+                .then_some(())
+                .ok_or(RefusalCode::CredentialRejected)
+        })
+    {
+        return Outcome::Refused(code);
+    }
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    Outcome::Metrics(scraper.shared.metrics.render())
 }
 
 /// A decided response, before it is written.
@@ -439,6 +568,7 @@ fn record(
         Some(code) => (Disposition::Refused, code.status(), 0),
     };
     relay.observe(&UsageRecord {
+        outcome: metrics::Outcome::of(refusal, call.timed_out),
         model: call.model,
         wire,
         target_status: call.target_status,
@@ -836,7 +966,9 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
     }
 }
 
-fn authenticate(request: &Request<'_>, shared: &Shared) -> Result<Authenticated, RefusalCode> {
+/// The bearer token `authorization` presents: `credential-absent` without one,
+/// `credential-malformed` when it is not one bearer token.
+fn bearer(request: &Request<'_>) -> Result<OwnerToken, RefusalCode> {
     let presented = request
         .header("authorization")
         .ok_or(RefusalCode::CredentialAbsent)?;
@@ -846,8 +978,12 @@ fn authenticate(request: &Request<'_>, shared: &Shared) -> Result<Authenticated,
     if !scheme.eq_ignore_ascii_case("Bearer") {
         return Err(RefusalCode::CredentialMalformed);
     }
-    let token = OwnerToken::new(material.trim().as_bytes().to_vec())
-        .map_err(|_| RefusalCode::CredentialMalformed)?;
+    OwnerToken::new(material.trim().as_bytes().to_vec())
+        .map_err(|_| RefusalCode::CredentialMalformed)
+}
+
+fn authenticate(request: &Request<'_>, shared: &Shared) -> Result<Authenticated, RefusalCode> {
+    let token = bearer(request)?;
     shared
         .verifier
         .verify(&token)

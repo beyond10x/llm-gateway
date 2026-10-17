@@ -21,8 +21,9 @@ use crate::{
     translate::LlmTranslator,
 };
 use llm_gateway::{
-    Gateway, Label, Metrics, OwnerVerifier, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, RouteInventory, ShutdownReport, TargetBearer, TargetRefusal, TargetScheme,
+    Gateway, Label, Metrics, OwnerToken, OwnerVerifier, Relay, RelayModel, RelayStream,
+    RelayTarget, RelayTargets, RouteInventory, ShutdownReport, TargetBearer, TargetRefusal,
+    TargetScheme,
 };
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
@@ -1027,6 +1028,8 @@ struct Parts {
     metrics: Arc<Metrics>,
     /// Every model as the relay serves it.
     models: Vec<RelayModel>,
+    /// The metrics listener's scrape token, when `metrics_bearer_file` names one.
+    metrics_bearer: Option<OwnerToken>,
 }
 
 impl Parts {
@@ -1036,6 +1039,7 @@ impl Parts {
     fn read(deployment: &Deployment, tls: &Arc<dyn PodConnector>) -> Result<Self, Refusal> {
         Ok(Self {
             verifier: owner_verifier(deployment)?,
+            metrics_bearer: crate::serve::metrics_bearer(deployment)?,
             vllm_keys: crate::keys::vllm_keys(deployment)?,
             hosted: hosted_endpoints(deployment)?,
             tls: Arc::clone(tls),
@@ -1130,6 +1134,7 @@ fn compose(
         stopping,
         metrics,
         models,
+        metrics_bearer,
     } = parts;
     // Every composition serves its hosted models from their endpoints, whatever serves the rest.
     let targets: Arc<dyn RelayTargets> = Arc::new(HostedTargets::new(hosted, tls, targets));
@@ -1144,10 +1149,20 @@ fn compose(
         .with_records(Arc::new(crate::logging::TracingRecords));
     let signals = Running::install_signals()?;
     let bind = deployment.gateway.bind;
-    let handle = Gateway::bind_with_relay(deployment.gateway.clone(), verifier, inventory, relay)
-        .map_err(|error| {
-        Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}"))
-    })?;
+    let mut handle =
+        Gateway::bind_with_relay(deployment.gateway.clone(), verifier, inventory, relay).map_err(
+            |error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")),
+        )?;
+    if let Some(scrape) = deployment.metrics_listen {
+        handle
+            .serve_metrics(scrape, metrics_bearer)
+            .map_err(|error| {
+                Refusal::new(
+                    StartupRefusal::ListenBind,
+                    format!("metrics_listen {scrape}: {error}"),
+                )
+            })?;
+    }
     // One pass before serving: it sweeps the pods a previous run of this controller left. A
     // refused pass changes nothing, and the next one runs on time.
     let cleanup = pass.map(|pass| {

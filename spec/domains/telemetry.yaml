@@ -55,6 +55,35 @@ domain: llm-gateway.telemetry
 # DECIDED 2026-10-16 (story:spend-caps): beside llmgw's 13 the gateway serves one series of its
 # own, `llmgw_pod_start_spend_refusals_total`, process-wide, after llmgw's eight; its prefix
 # keeps one scrape configuration for every series. llmgw had no spend ceiling to count.
+# DECIDED 2026-10-17 (story:prometheus-metrics): after llmgw's 13 and the spend-refusal series
+# the gateway serves two series per model, labelled `model` (the alias) only, registered at zero
+# for every relayed or hosted model when the relay is composed:
+#   llmgw_requests_total{model,outcome}      a counter: every record naming a relayed model,
+#                                            by its `outcome` (Outcome below); all four outcome
+#                                            values of every model are registered at zero
+#   llmgw_request_duration_seconds{model}    a histogram: every record naming a relayed model,
+#                                            observing its `duration_ms` in seconds. Its
+#                                            buckets are fixed, `le` = 0.05, 0.1, 0.25, 0.5, 1,
+#                                            2.5, 5, 10, 30, 60, 120, 300 and +Inf seconds; a
+#                                            record falls in every bucket whose bound in
+#                                            milliseconds is at least its `duration_ms`
+#                                            (`_bucket` cumulative, then `_sum` in seconds and
+#                                            `_count`), as the Prometheus text format writes one
+# Order. The text lists the series in the order above, and each series' samples in alias order,
+# then by wire in llm-gateway.gateway.Wire's order (`chat`, `responses`, `messages`, not
+# alphabetical), then by outcome in Outcome's order, a histogram's buckets in ascending `le`.
+# A label is a model alias from the document or a fixed word; no label or value carries a
+# credential, a prompt, a completion or a document's content. The token series are not these
+# (story:token-and-cache-metrics).
+# DECIDED 2026-10-17 (story:prometheus-metrics): the same text is served, without the owner
+# credential, by an optional second listener, the deployment's `metrics_listen`
+# (llm-gateway.deployment.DeploymentConfiguration). It answers `GET` and `HEAD` on exactly
+# `/metrics` and nothing else: any other method or path is `404 path-unknown`, so no model
+# route, probe or inspection path is reachable on it. With `metrics_bearer_file` it takes that
+# token as `authorization: Bearer` (absent `credential-absent`, not one bearer token
+# `credential-malformed`, another token `credential-rejected`, each 401); without it it is
+# open. It serves before `mark_ready` and while draining, and stops with the gateway. The
+# owner-guarded `/metrics` of the serving listener is unchanged.
 # DECIDED 2026-10-08: `GET /metrics` (and `HEAD`) requires the owner credential, like every path
 # outside the closed two-path probe set and the two public routes, and is served once the
 # gateway is ready, like inspection (llm-gateway.gateway, docs/gateway.md "The HTTP surface").
@@ -82,13 +111,15 @@ domain: llm-gateway.telemetry
 types:
   # `Process`: one series per gateway. `ModelWire`: one series per declared (model, wire) pair,
   # labelled `model` and `wire` (llmgw src/lib.rs:170-178).
+  # `Model`: one series per relayed model, labelled `model` (and `outcome` for the outcome
+  # counter).
   - name: llm-gateway.telemetry.SeriesScope
     kind: enum
-    variants: [Process, ModelWire]
+    variants: [Process, ModelWire, Model]
   # llmgw declares each of its 13 series `# TYPE <name> counter` (llmgw src/lib.rs:147-179).
   - name: llm-gateway.telemetry.SeriesKind
     kind: enum
-    variants: [Counter]
+    variants: [Counter, Histogram]
   # How one call ended, from the gateway's side: relayed to the client with the target's answer
   # (a 4xx or 500 from the target included, row W7), refused by the gateway before any target
   # answered (`target-unavailable` and `model-cold-start` included: the source handed out none),
@@ -99,6 +130,23 @@ types:
   - name: llm-gateway.telemetry.Disposition
     kind: enum
     variants: [Relayed, Refused, UpstreamFailed]
+  # How one model call ended, as `llmgw_requests_total` labels it (story:prometheus-metrics):
+  #   `ok`              Relayed: an answer reached the client, whatever its status
+  #   `upstream_error`  the target failed, refused the call or closed without an answer:
+  #                     `upstream-failed` (not timed out), `upstream-refused`,
+  #                     `translation-unrepresentable`, `translation-too-large`
+  #   `timeout`         the target's read timeout passed before its answer head
+  #                     (`upstream-failed`), or a start deadline passed (`model-cold-start`)
+  #   `refused`         the gateway refused the call before reaching a target: every other
+  #                     refusal code (`spend-ceiling`, `target-unavailable`, `context-exceeded`,
+  #                     a body or model refusal, …)
+  # The table of every refusal code is published in docs/gateway.md, and
+  # crates/llm-gateway/src/metrics.rs checks it against `RefusalCode::ALL`. A translated
+  # request's transport timeout is reported by the translator as an upstream failure and is
+  # counted `upstream_error`.
+  - name: llm-gateway.telemetry.Outcome
+    kind: enum
+    variants: [Ok, UpstreamError, Timeout, Refused]
 entities:
   - name: llm-gateway.telemetry.MetricSeries
     identity: {name: name, type: String}
@@ -117,6 +165,8 @@ entities:
       - {name: model, type: 'Optional<String>'}
       - {name: wire, type: llm-gateway.gateway.Wire}
       - {name: disposition, type: llm-gateway.telemetry.Disposition}
+      # How the call ended for `llmgw_requests_total` (Outcome).
+      - {name: outcome, type: llm-gateway.telemetry.Outcome}
       # Present exactly when `disposition` is `Refused` or `UpstreamFailed`.
       - {name: refusal, type: 'Optional<llm-gateway.gateway.Refusal>'}
       # The status line the client received; 0 when none was written because the client left

@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.SealRefusal",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "5240168c2120631b8f8295b7ff167bcea2d6ccc2c83164eb6d07e3c65b31963c",
+    "contract_digest": "slice-sha256/2:ddef590e39335d80c376625f735c495167473eff909cbb7ef9534b1b27a80489",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.SealRefusal": {
+      "title": "SealRefusal",
+      "x-ess-name": "llm-gateway.gateway.SealRefusal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "NotSealable",
+        "Unsealed",
+        "Altered",
+        "OtherScope",
+        "KeyGone",
+        "StateMismatch"
+      ]
+    }
+  }
+}

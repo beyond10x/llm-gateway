@@ -108,6 +108,7 @@
       "llm-gateway.gateway/authored/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams",
       "llm-gateway.gateway/authored/translate-a-client-that-disconnects-cancels-the-upstream-turn",
       "llm-gateway.gateway/authored/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result",
+      "llm-gateway.gateway/authored/translate-a-coding-agents-turn-reaches-another-wire-with-its-controls",
       "llm-gateway.gateway/authored/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target",
       "llm-gateway.gateway/authored/translate-a-messages-client-reaches-chat-responses-and-messages-upstreams",
       "llm-gateway.gateway/authored/translate-a-messages-upstream-gets-no-effort-rewrite-and-no-count",
@@ -811,8 +812,13 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-a-client-tool-result-reaches-the-upstream-as-its-wires-tool-result"
       },
+      "gateway/scenarios/translate-a-coding-agents-turn-reaches-another-wire-with-its-controls.yaml": {
+        "digest": "sha256:384c85c862e8705cc2b0d93ae518cc2849c02c2dadbf957f3148b982fa770a53",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-a-coding-agents-turn-reaches-another-wire-with-its-controls"
+      },
       "gateway/scenarios/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target.yaml": {
-        "digest": "sha256:89a62b78e4c050fc98567b95250807aeb984638f29b2bd384cd65755aa9feb62",
+        "digest": "sha256:82da3e045d56897170396c9121ae7c480748773d9d1605510b2ade90bbfbbce5",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target"
       },
@@ -1643,7 +1649,7 @@
       }
     },
     "counts": {
-      "authored": 273,
+      "authored": 274,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -12033,8 +12039,8 @@
         }
       ]
     },
-    "llm-gateway.gateway/authored/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target": {
-      "purpose": "a translated request with a field outside the subset, at any level, is translation-unsupported, one breaking a subset rule translation-invalid, and none asks for a target",
+    "llm-gateway.gateway/authored/translate-a-coding-agents-turn-reaches-another-wire-with-its-controls": {
+      "purpose": "a Codex and a Claude Code first turn are each translated to two other wires and reach the upstream with the controls that wire carries",
       "source": [
         {
           "kind": "domain",
@@ -12062,7 +12068,107 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"absent\",\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[],[],[]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"n\\\":2}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"instructions\\\":\\\"Be brief.\\\",\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"parallel_tool_calls\\\":false,\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"prompt_cache_key\\\":\\\"session-1\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true,\\\"text\\\":{\\\"verbosity\\\":\\\"low\\\"}}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"thinking\\\":{\\\"budget_tokens\\\":1024,\\\"type\\\":\\\"enabled\\\"}}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_completion_tokens\\\":20,\\\"max_tokens\\\":10,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\"}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":0,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\"}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"tools\\\":[{\\\"function\\\":{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"}},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"tools\\\":[{\\\"function\\\":{\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\"},\\\"strict\\\":true},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"id\\\":\\\"msg_1\\\",\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"}],\"translation\":\"on\"}"
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200},{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hel\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"lo\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\n\",\"data: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}],[{\"chunks\":[\"event: response.created\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"status\\\":\\\"in_progress\\\"},\\\"type\\\":\\\"response.created\\\"}\\n\\nevent: response.output_item.added\\ndata: {\\\"item\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"in_progress\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.added\\\"}\\n\\nevent: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"Hel\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_text.delta\\ndata: {\\\"content_index\\\":0,\\\"delta\\\":\\\"lo\\\",\\\"item_id\\\":\\\"msg_up\\\",\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_text.delta\\\"}\\n\\n\",\"event: response.output_item.done\\ndata: {\\\"item\\\":{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"},\\\"output_index\\\":0,\\\"type\\\":\\\"response.output_item.done\\\"}\\n\\nevent: response.completed\\ndata: {\\\"response\\\":{\\\"id\\\":\\\"resp_up\\\",\\\"model\\\":\\\"served\\\",\\\"output\\\":[{\\\"content\\\":[{\\\"annotations\\\":[],\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"output_text\\\"}],\\\"id\\\":\\\"msg_up\\\",\\\"role\\\":\\\"assistant\\\",\\\"status\\\":\\\"completed\\\",\\\"type\\\":\\\"message\\\"}],\\\"status\\\":\\\"completed\\\",\\\"usage\\\":{\\\"input_tokens\\\":12,\\\"output_tokens\\\":2}},\\\"type\\\":\\\"response.completed\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}],[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"Hel\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"lo\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\n\",\"event: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"release\":\"progress\",\"status\":200}]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"client_metadata\\\":{\\\"session_id\\\":\\\"session-1\\\"},\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Sandbox: read-only.\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"id\\\":\\\"msg_1\\\",\\\"role\\\":\\\"developer\\\",\\\"type\\\":\\\"message\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"id\\\":\\\"msg_2\\\",\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"instructions\\\":\\\"Be brief.\\\",\\\"model\\\":\\\"chat-up\\\",\\\"parallel_tool_calls\\\":false,\\\"prompt_cache_key\\\":\\\"session-1\\\",\\\"reasoning\\\":{\\\"effort\\\":\\\"high\\\",\\\"summary\\\":\\\"auto\\\"},\\\"store\\\":false,\\\"stream\\\":true,\\\"text\\\":{\\\"verbosity\\\":\\\"low\\\"},\\\"tool_choice\\\":\\\"auto\\\",\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\"},\\\"strict\\\":false,\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"client_metadata\\\":{\\\"session_id\\\":\\\"session-1\\\"},\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Sandbox: read-only.\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"id\\\":\\\"msg_1\\\",\\\"role\\\":\\\"developer\\\",\\\"type\\\":\\\"message\\\"},{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"id\\\":\\\"msg_2\\\",\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"instructions\\\":\\\"Be brief.\\\",\\\"model\\\":\\\"msg-up\\\",\\\"parallel_tool_calls\\\":false,\\\"prompt_cache_key\\\":\\\"session-1\\\",\\\"reasoning\\\":{\\\"effort\\\":\\\"high\\\",\\\"summary\\\":\\\"auto\\\"},\\\"store\\\":false,\\\"stream\\\":true,\\\"text\\\":{\\\"verbosity\\\":\\\"low\\\"},\\\"tool_choice\\\":\\\"auto\\\",\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\"},\\\"strict\\\":false,\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":32000,\\\"messages\\\":[{\\\"content\\\":[{\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"},\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"text\\\"}],\\\"role\\\":\\\"user\\\"}],\\\"metadata\\\":{\\\"user_id\\\":\\\"user-1\\\"},\\\"model\\\":\\\"chat-up\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"max\\\"},\\\"stream\\\":true,\\\"system\\\":[{\\\"text\\\":\\\"Attribution.\\\",\\\"type\\\":\\\"text\\\"},{\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"},\\\"text\\\":\\\"Be brief.\\\",\\\"type\\\":\\\"text\\\"}],\\\"thinking\\\":{\\\"type\\\":\\\"adaptive\\\"},\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"input_schema\\\":{\\\"type\\\":\\\"object\\\"},\\\"name\\\":\\\"lookup\\\"}]}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":32000,\\\"messages\\\":[{\\\"content\\\":[{\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"},\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"text\\\"}],\\\"role\\\":\\\"user\\\"}],\\\"metadata\\\":{\\\"user_id\\\":\\\"user-1\\\"},\\\"model\\\":\\\"resp-up\\\",\\\"output_config\\\":{\\\"effort\\\":\\\"max\\\"},\\\"stream\\\":true,\\\"system\\\":[{\\\"text\\\":\\\"Attribution.\\\",\\\"type\\\":\\\"text\\\"},{\\\"cache_control\\\":{\\\"type\\\":\\\"ephemeral\\\"},\\\"text\\\":\\\"Be brief.\\\",\\\"type\\\":\\\"text\\\"}],\\\"thinking\\\":{\\\"type\\\":\\\"adaptive\\\"},\\\"tools\\\":[{\\\"description\\\":\\\"Find a city\\\",\\\"input_schema\\\":{\\\"type\\\":\\\"object\\\"},\\\"name\\\":\\\"lookup\\\"}]}\",\"path\":\"/v1/messages\",\"step\":\"request\"}],\"translation\":\"on\"}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 4.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 translated",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"messages\":[{\"content\":\"Be brief.\\nSandbox: read-only.\",\"role\":\"system\"},{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"parallel_tool_calls\":false,\"prompt_cache_key\":\"session-1\",\"reasoning_effort\":\"high\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}},\"type\":\"function\"}],\"verbosity\":\"low\"}",
+                  "pod-3 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"output_config\":{\"effort\":\"high\"},\"stream\":true,\"system\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Be brief.\\nSandbox: read-only.\",\"type\":\"text\"}],\"tool_choice\":{\"disable_parallel_tool_use\":true,\"type\":\"auto\"},\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"type\":\"object\"},\"name\":\"lookup\"}]}",
+                  "pod-1 POST /v1/chat/completions {\"max_completion_tokens\":32000,\"messages\":[{\"content\":\"Attribution.\\nBe brief.\",\"role\":\"system\"},{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"reasoning_effort\":\"xhigh\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}},\"type\":\"function\"}]}",
+                  "pod-2 POST /v1/responses {\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Attribution.\\nBe brief.\",\"type\":\"input_text\"}],\"role\":\"developer\",\"type\":\"message\"},{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"role\":\"user\",\"type\":\"message\"}],\"max_output_tokens\":32000,\"model\":\"served-resp\",\"reasoning\":{\"effort\":\"xhigh\"},\"store\":false,\"stream\":true,\"tools\":[{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"},\"type\":\"function\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target": {
+      "purpose": "a translated request with a field llm refuses, at any level, is translation-unsupported, one breaking a subset rule translation-invalid, and none asks for a target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"models\":[{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]},{\"alias\":\"resp-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"tool_calling\":\"absent\",\"upstream_model\":\"served-resp\",\"wires\":[\"responses\"]},{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-3\",\"scheme\":\"http\"},\"tool_calling\":\"parsed\",\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]}],\"pods\":[[],[],[]],\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"n\\\":2}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true,\\\"text\\\":{\\\"format\\\":{\\\"name\\\":\\\"answer\\\",\\\"schema\\\":{\\\"type\\\":\\\"object\\\"},\\\"type\\\":\\\"json_schema\\\"}}}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true,\\\"tools\\\":[{\\\"type\\\":\\\"web_search\\\"}]}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"context_management\\\":{\\\"edits\\\":[{\\\"type\\\":\\\"clear_tool_uses_20250919\\\"}]},\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\"}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"thinking\\\":{\\\"display\\\":\\\"summarized\\\",\\\"type\\\":\\\"adaptive\\\"}}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"thinking\\\":{\\\"budget_tokens\\\":1024,\\\"type\\\":\\\"enabled\\\"}}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"max_completion_tokens\\\":20,\\\"max_tokens\\\":10,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\"}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":0,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\"}\",\"path\":\"/v1/messages\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"resp-up\\\",\\\"tools\\\":[{\\\"function\\\":{\\\"description\\\":\\\"Find a city\\\",\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"properties\\\":{\\\"city\\\":{\\\"type\\\":\\\"string\\\"}},\\\"type\\\":\\\"object\\\"}},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"tools\\\":[{\\\"function\\\":{\\\"name\\\":\\\"lookup\\\",\\\"parameters\\\":{\\\"type\\\":\\\"object\\\"},\\\"strict\\\":true},\\\"type\\\":\\\"function\\\"}]}\",\"path\":\"/v1/chat/completions\",\"step\":\"request\"},{\"body\":\"{\\\"max_tokens\\\":64,\\\"messages\\\":[{\\\"content\\\":\\\"Hi\\\",\\\"role\\\":\\\"user\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"output_config\\\":{\\\"format\\\":{\\\"schema\\\":{\\\"type\\\":\\\"object\\\"},\\\"type\\\":\\\"json_schema\\\"}}}\",\"path\":\"/v1/messages\",\"step\":\"request\"}],\"translation\":\"on\"}"
             }
           },
           "step": "execute_command"

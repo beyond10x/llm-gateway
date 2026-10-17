@@ -153,7 +153,8 @@ still takes the owner credential.
 `GET /v1/models` is `{"object":"list","data":[…]}`, one entry per model in alias order:
 `{"id":<alias>,"object":"model","owned_by":"llm-gateway","max_model_len"?:<n>,"wires":[…]}`.
 `max_model_len` is what `RelayModel::with_max_model_len` declared, and absent, never `0`, when
-nothing was.
+nothing was. The binary declares a Runpod model's as the smallest `max_model_len` among its
+profiles.
 
 `GET /` chooses its answer from the lowercased `user-agent`, by the first rule that holds:
 containing `codex`, a Codex `config.toml` profile per model (`text/plain; charset=utf-8`);
@@ -303,11 +304,14 @@ A request to a wire path is decided in this order:
    `retry-after`; its message names neither the ceiling nor the amount. The embedding
    holds the request while its target starts and owns the hold budget; the Runpod composition
    asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
-   `docs/hosting.md`). Then, on the messages wire only, the output clamp. A model's window `w`
-   is its `max_model_len`, else its `context_window`, else it has none: the binary declares a
-   Runpod model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
+   `docs/hosting.md`). Then, on the messages wire only, the output clamp. The window `w` is the
+   `max_model_len` the target handed out states (`RelayTarget::max_model_len`), else the model's
+   `max_model_len`, else its `context_window`, else it has none: the binary declares a Runpod
+   model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
    `context_window` and never its `max_model_len`, so a hosted model without a `context_window`
-   has no window. For a model with a window and a body whose top-level `max_tokens` is one
+   has no window. A Runpod pod states the `max_model_len` of the profile it was started on, so a
+   call served by a fallback profile is clamped to that profile's window; a pod whose profile is
+   unknown is clamped to the model's, the smallest among its profiles. For a model with a window and a body whose top-level `max_tokens` is one
    non-negative JSON integer (digits only, named once at the top level), the gateway first sends
    `POST /v1/messages/count_tokens` to the target `acquire` handed out, over a connection of its
    own, with the head and credential described below and the body step 6 wrote; vLLM v0.27.1

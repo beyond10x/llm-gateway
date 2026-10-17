@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-16T22:42:33Z",
+  "actor": "human:timo",
+  "artifact": "story:spend-caps",
+  "kind": "story",
+  "revision": 21,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-w12-spend-caps-pass-1",
+    "reference": "7bee3ec",
+    "review": "review-result:adversary-w12-spend-caps-pass-1",
+    "outcome": "fixed"
+  }
+}

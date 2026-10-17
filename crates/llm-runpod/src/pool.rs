@@ -71,7 +71,8 @@ pub enum PoolError {
     Starting,
     /// The deployment owes a stop that has not been confirmed. Nothing new is created meanwhile.
     Stopping,
-    /// Every declared GPU type was refused. Nothing was created.
+    /// Every declared GPU type was refused, or every one tried before the start's startup
+    /// deadline passed. Nothing was created.
     NoCapacity,
     /// The pod crash-looped and was terminated. The next request starts a fresh one.
     CrashLoop,

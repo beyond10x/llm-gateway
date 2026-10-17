@@ -5,12 +5,17 @@
 //! in-process `EmulatedRunpod` — and reports what those calls returned. It reimplements no
 //! lifecycle rule, reads no suite and branches on no scenario name: every answer, pod call,
 //! lease and cleanup below comes back out of the pool or the emulator. The one fixture it adds is
-//! a transport wrapper that keeps answering "not ready" for a pod that already served, which the
-//! emulator cannot script on its own (the crate's `tests/adversary2.rs` uses the same wrapper).
+//! a transport wrapper for two arrangements the emulator cannot script on its own: a pod that
+//! already served keeps answering "not ready" (the crate's `tests/adversary2.rs` uses the same
+//! wrapper), and every create takes a while of the pool's clock, as a `connectors` write does
+//! (the crate's `tests/adversary_w12_profiles.rs` uses the same wrapper).
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Barrier, Mutex, PoisonError},
+    sync::{
+        Arc, Barrier, Mutex, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
     thread,
 };
 
@@ -227,6 +232,10 @@ enum Step {
     Wedge {
         pod: String,
     },
+    /// Every create from now on takes `ms` of the pool's clock before it is answered.
+    CreateTakes {
+        ms: u64,
+    },
     /// Spend reads from now on answer this reported spend, in USD.
     AccountSpend {
         daily_usd: f64,
@@ -247,11 +256,25 @@ struct BilledInput {
     usd: f64,
 }
 
-/// The emulator, plus the one arrangement it cannot script: a pod that stops serving.
-#[derive(Clone, Default)]
+/// The emulator, plus the two arrangements it cannot script: a pod that stops serving, and a
+/// create that takes time on the pool's clock.
+#[derive(Clone)]
 struct Fixture {
     runpod: EmulatedRunpod,
     wedged: Arc<Mutex<BTreeSet<String>>>,
+    clock: ManualClock,
+    create_ms: Arc<AtomicU64>,
+}
+
+impl Fixture {
+    fn new(clock: ManualClock) -> Self {
+        Self {
+            runpod: EmulatedRunpod::new(),
+            wedged: Arc::default(),
+            clock,
+            create_ms: Arc::default(),
+        }
+    }
 }
 
 impl RunpodTransport for Fixture {
@@ -259,6 +282,7 @@ impl RunpodTransport for Fixture {
         self.runpod.list_pods()
     }
     fn create_pod(&mut self, request: &PodRequest) -> CreateAnswer {
+        self.clock.advance(self.create_ms.load(Ordering::SeqCst));
         self.runpod.create_pod(request)
     }
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
@@ -647,6 +671,7 @@ impl Run {
             Step::RefuseGpu { gpu } => runpod.refuse_gpu(gpu),
             Step::NoCapacityGpu { gpu } => runpod.no_capacity_gpu(gpu),
             Step::LoseNextCreate { allocates } => runpod.lose_next_create(*allocates),
+            Step::CreateTakes { ms } => self.fixture.create_ms.store(*ms, Ordering::SeqCst),
             Step::ReadyAfter { probes } => runpod.ready_after(*probes),
             Step::Uptimes { script } => runpod.uptimes(script.clone()),
             Step::RefuseCredential { pod } => runpod.refuse_credential(pod),
@@ -845,8 +870,8 @@ fn run(program_json: &str) -> Value {
             return facts;
         }
     };
-    let fixture = Fixture::default();
     let clock = ManualClock::new(1_000);
+    let fixture = Fixture::new(clock.clone());
     let registry = Arc::new(LeaseRegistry::default());
     let pool = match RunpodPool::new(
         policy.clone(),

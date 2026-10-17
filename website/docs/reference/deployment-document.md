@@ -40,8 +40,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `kind` | required | `runpod-vllm` |
 | `cloud_type` | `SECURE` | `SECURE` or `COMMUNITY` |
 | `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one. |
-| `daily_cap_usd` | absent | Above 0, at most 1000000: the most the account may spend in one UTC day. A pod start that would pass it is refused `spend-ceiling`. |
-| `total_cap_usd` | absent | Above 0, at most 1000000: the most the account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
+| `daily_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in one UTC day. A pod start of one of this provider's models that would pass it is refused `spend-ceiling`; a ceiling binds no other provider's pods. |
+| `total_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
 
 :::caution[A connectors provider starts real, billed pods]
 With a `connectors` table and real Runpod credentials, the binary creates pods on that account
@@ -92,7 +92,9 @@ Without `profiles`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` and
 `extra_vllm_args`, under the rules above; any other key is `config:schema`. A start tries the
 first profile's GPU types in order, and moves on to the next profile only when Runpod refused
 every one of them for capacity, inside the same startup deadline and with the spend check before
-each create. Two profiles sharing a name or a GPU type are refused as `config:value` with the rule
+each create; once `start_wait_seconds` have passed since the start began, no further create is
+sent and the start ends `no-capacity`. A request is clamped to the `max_model_len` of the profile
+its pod was started on, and `GET /v1/models` lists the smallest among the profiles. Two profiles sharing a name or a GPU type are refused as `config:value` with the rule
 `profile-conflict`. Every other key of the model, `thinking` and `sampling` included, holds for
 every profile. The usage record names the profile of the pod that served a request (`profile`).
 

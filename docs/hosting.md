@@ -339,12 +339,16 @@ profile in order, the spend check immediately before each create. A create refus
 (`Refused`) moves on to the profile's next GPU type. When every create of a profile was refused
 for capacity, the next profile is tried; a profile with any other refusal ends the start, as do a
 lost create answer and a spend refusal. Every profile is tried inside the one create of the one
-start, so one startup deadline, counted from that submission, covers them all. A GPU type belongs
+start, so one startup deadline, counted from that submission, covers them all, and binds the
+creates: before each create, of the profile's next GPU type and of the next profile, the provider
+reads the clock, and once more than `startup_deadline_ms` has passed it sends none and the start
+ends as one whose every create was refused (`no-capacity`, the deployment withdrawn). A GPU type belongs
 to at most one profile of a model, so a pod's GPU type names its profile, after an adoption too:
 `StreamLease::profile` reports it, and the gateway's usage record carries it as `profile`.
 
 The pool also answers `stopping` while a model's deployment owes a stop that is not confirmed,
-and `no-capacity` when every declared GPU type refused its create; neither creates anything. It
+and `no-capacity` when every declared GPU type refused its create, or every one tried before the
+start's startup deadline passed; neither creates anything. It
 answers `unknown-model` for an alias nobody declared, without contacting Runpod,
 `invalid-model` when a declaration is refused, and `hosting` when the controller refuses. A
 model declaration is refused with `no-gpu` when it names no GPU type, `gpu-utilization` for a
@@ -550,10 +554,15 @@ prove the rest.
 
 A `[providers.<name>]` table may declare `daily_cap_usd` and `total_cap_usd`, the account's spend
 ceilings in USD (each finite, above 0, at most 1000000 and at least 0.000001; `config:value`
-otherwise). At most one provider declares one, because the pool is one account, and once one
-does every `[models.<alias>]` declares `price_per_hour_usd` (above 0, at most 1000): the most its
-pod costs per hour on any of its GPU types. Amounts are held as integer micro-USD, so a ceiling
-compares exactly.
+otherwise). At most one provider declares one, and once one does every `[models.<alias>]`
+declares `price_per_hour_usd` (above 0, at most 1000): the most its pod costs per hour on any of
+its GPU types. Amounts are held as integer micro-USD, so a ceiling compares exactly.
+
+A ceiling binds only the account of the provider that declares it. The pool is built for one
+provider, the one whose models it runs (in the shipped binary, the provider that declares the
+`connectors` connection), and it bills that provider's account, so it checks only that
+provider's ceilings. A ceiling declared on another provider does not bind the pool, and the
+document is still accepted: when the connected provider declares none, the pool reads no spend.
 
 The spend check, `RunpodProvider::admit_spend`, runs immediately before every create the
 provider sends, once per declared GPU type it tries, and needs no relayed request. Without a
@@ -586,6 +595,9 @@ account:
   hours the reported spend already holds.
 - A pod this pool holds no record for (another controller's, or a previous run's before its
   orphan sweep) is counted only once the reported spend holds it.
+- A pool pod that has been stopped leaves the running estimate when its record stops
+  occupying a slot, which can be before the provider bills its last stretch. Until the reported
+  spend holds that stretch, neither part counts it. This lag errs toward admitting.
 - The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`: each
   entry's `amount` is taken as USD and its `time` as the bucket's start. Neither reading has been
   checked against a live account.

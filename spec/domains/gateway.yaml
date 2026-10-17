@@ -652,11 +652,18 @@ entities:
   #      for an Anthropic upstream, has nothing to serve here (scenario
   #      claude-code-anthropic-headers-never-reach-the-target).
   #      The output clamp, on the messages wire only, after the target is handed out and before
-  #      the request is relayed to it. The model's window `w` is its declared `max_model_len`
+  #      the request is relayed to it. The window `w` is the `max_model_len` the target handed
+  #      out states (`RelayTarget::max_model_len`), else the model's declared `max_model_len`
   #      (`RelayModel::with_max_model_len`), else its declared `context_window`, else it has
   #      none: the binary declares a Runpod model's `max_model_len`, what `vllm serve` is started
   #      with, and a hosted model's `context_window` and never its `max_model_len`, so a hosted
-  #      model declaring no `context_window` has no window. For a model with a window and a body
+  #      model declaring no `context_window` has no window.
+  #      DECIDED 2026-10-17 (story:model-profile-fallback): a pod of a profiled model states the
+  #      `max_model_len` of the profile it was started on, so a call served by a fallback
+  #      profile with a shorter window is clamped to that window, not the first profile's; the
+  #      binary declares the model's `max_model_len` as the smallest among its profiles, which
+  #      is what `GET /v1/models` lists and what a pod whose profile is unknown is clamped to
+  #      (scenario clamp-the-window-the-serving-target-states-wins-over-the-models). For a model with a window and a body
   #      whose top-level `max_tokens` is one non-negative JSON integer (digits only, named once
   #      at the top level), the gateway first sends `POST /v1/messages/count_tokens` to the same
   #      target over a connection of its own, with the head and credential of the relayed
@@ -902,6 +909,9 @@ commands:
       #           deployment document's; the optional `max_model_len` and `context_window` are
       #           what the public routes render (rows R5, R1), absent unless given, and the
       #           first of them given is the model's window for the output clamp (step 7); the
+      #           optional `target_max_model_len` is the `max_model_len` every target the
+      #           source hands out for that model states (`RelayTarget::max_model_len`), none
+      #           unless given, which the output clamp takes before the model's own window; the
       #           optional `reasoning_effort` is `low`, `medium` or `xhigh`, the effort the model
       #           declares (step 6), none unless given, and any other value makes the program
       #           invalid;

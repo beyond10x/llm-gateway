@@ -22,6 +22,7 @@ use crate::{
     },
 };
 use std::{
+    any::Any,
     collections::BTreeMap,
     fmt,
     io::{self, Read, Write},
@@ -78,9 +79,61 @@ impl Wire {
 }
 
 /// One connection to a target: whatever the embedding opened, read and written as bytes.
-pub trait RelayStream: Read + Write + Send {}
+///
+/// It is `Any` so the relay can tell a plain `TcpStream` from any other stream (see
+/// [`read_within_timeout`]).
+pub trait RelayStream: Read + Write + Send + Any {}
 
-impl<T: Read + Write + Send> RelayStream for T {}
+impl<T: Read + Write + Send + 'static> RelayStream for T {}
+
+/// Runs one read of `socket` under the socket's read timeout measured from the first attempt.
+///
+/// A socket with a read timeout answers a signal, or a stop and continue, with `EINTR`
+/// (`man 7 signal`), and the next `read` restarts the whole timeout, so a read retried with no
+/// deadline of its own waits for ever on a silent peer while signals keep arriving. Here `read`
+/// is retried on `Interrupted` with the socket's read timeout shrunk to what is left of the
+/// original; nothing left is `TimedOut`, as a plain timeout is. The original timeout is put
+/// back on every path. A socket with no read timeout is retried as before. `read` must read
+/// `socket` or a handle on the same connection.
+///
+/// # Errors
+/// What `read` returns, `TimedOut` once the timeout has passed, or the socket's own error when
+/// its timeout cannot be read or set.
+pub fn read_within_timeout<T>(
+    socket: &TcpStream,
+    mut read: impl FnMut() -> io::Result<T>,
+) -> io::Result<T> {
+    let Some(total) = socket.read_timeout()? else {
+        loop {
+            match read() {
+                Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+                other => return other,
+            }
+        }
+    };
+    let start = Instant::now();
+    let mut shrunk = false;
+    let result = loop {
+        match read() {
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {
+                let left = total.saturating_sub(start.elapsed());
+                if left.is_zero() {
+                    break Err(io::ErrorKind::TimedOut.into());
+                }
+                shrunk = true;
+                if let Err(error) = socket.set_read_timeout(Some(left)) {
+                    break Err(error);
+                }
+            }
+            other => break other,
+        }
+    };
+    if shrunk {
+        let restored = socket.set_read_timeout(Some(total));
+        return result.and_then(|value| restored.map(|()| value));
+    }
+    result
+}
 
 /// The credential a target expects as `authorization: Bearer <key>` (row B8): for a Runpod pod,
 /// the model's vLLM key. The embedding resolves it and builds this once; the gateway only
@@ -359,6 +412,14 @@ pub trait RelayTarget: Send {
         None
     }
 
+    /// The longest sequence the target's server takes, when the target knows it: a pod of a
+    /// profiled model states its profile's `max_model_len`. The output clamp keeps a messages
+    /// request within it, ahead of the model's own [`RelayModel::window`]. `None`, the default,
+    /// leaves the model's window.
+    fn max_model_len(&self) -> Option<u64> {
+        None
+    }
+
     /// Opens one connection to the target. Its read and write timeouts are the target's.
     ///
     /// # Errors
@@ -584,7 +645,8 @@ impl RelayModel {
 
     /// The window the output clamp keeps a messages request within: the declared
     /// `max_model_len`, else the declared `context_window`, else none, and a model without one
-    /// is never counted.
+    /// is never counted. A target that states its own [`RelayTarget::max_model_len`] replaces
+    /// it for the calls it serves.
     pub fn window(&self) -> Option<u64> {
         self.max_model_len.or(self.context_window)
     }
@@ -805,7 +867,7 @@ impl Buffered<'_> {
         let mut chunk = [0_u8; RELAY_CHUNK];
         // A socket with a read timeout answers a signal, or a stop and continue, with `EINTR`
         // whatever `SA_RESTART` says (`man 7 signal`): such a read is retried, never taken for
-        // a peer that failed.
+        // a peer that failed, and a retry of the target's read keeps the timeout it began with.
         let read = loop {
             let read = match &mut self.source {
                 Source::Client(stream, deadline) => {
@@ -816,7 +878,20 @@ impl Buffered<'_> {
                     stream.set_read_timeout(Some(left))?;
                     stream.read(&mut chunk)
                 }
-                Source::Target(stream) => stream.read(&mut chunk),
+                Source::Target(stream) => {
+                    // A plain `TcpStream` is read within its read timeout from the first
+                    // attempt. Any other stream keeps today's retry below: the pod's TLS
+                    // stream (`crates/llm-gateway-cli/src/tls.rs`) bounds its own socket reads
+                    // with the same helper, so it never surfaces `Interrupted`.
+                    let any: &mut dyn Any = &mut **stream;
+                    if let Some(tcp) = any.downcast_mut::<TcpStream>() {
+                        let tcp = &*tcp;
+                        let mut reader = tcp;
+                        read_within_timeout(tcp, || reader.read(&mut chunk))
+                    } else {
+                        stream.read(&mut chunk)
+                    }
+                }
             };
             match read {
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
@@ -1390,9 +1465,13 @@ pub(crate) fn serve(
         model.reasoning_effort.filter(|_| messages),
     );
     drop(body);
-    let window = model.window().filter(|_| messages);
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;
+    // The window of the server that answers: the one the target states, else the model's.
+    let window = target
+        .max_model_len()
+        .or_else(|| model.window())
+        .filter(|_| messages);
     // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
     // never wakes a pod the relay would not have woken. A count that fails decides nothing.
     if let (Some(window), Some(_)) = (window, rewritten.max_tokens()) {

@@ -13,7 +13,7 @@
 //! the test seam: other roots, and every pod host mapped to one loopback address.
 
 use crate::relaying::PodConnector;
-use llm_gateway::RelayStream;
+use llm_gateway::{RelayStream, read_within_timeout};
 use rustls::{
     ClientConfig, ClientConnection, RootCertStore, StreamOwned,
     pki_types::{CertificateDer, ServerName},
@@ -124,7 +124,7 @@ impl ProxyConnector {
         authority: &str,
         connect: Duration,
         io: Duration,
-    ) -> io::Result<StreamOwned<ClientConnection, TcpStream>> {
+    ) -> io::Result<StreamOwned<ClientConnection, BoundedSocket>> {
         let deadline = Instant::now() + connect;
         let (host, port) =
             split(authority, HTTPS_PORT).ok_or_else(|| invalid("not a host[:port] authority"))?;
@@ -148,7 +148,30 @@ impl ProxyConnector {
         }
         socket.set_read_timeout(Some(io))?;
         socket.set_write_timeout(Some(io))?;
-        Ok(StreamOwned::new(connection, socket))
+        Ok(StreamOwned::new(connection, BoundedSocket(socket)))
+    }
+}
+
+/// The socket under an open pod connection. Each socket read is bounded by the socket's read
+/// timeout measured from its first attempt: an interrupted read (a signal, a stop and continue)
+/// is retried with what is left of that timeout. `rustls` retries an `Interrupted` read itself
+/// with no deadline, restarting the timeout each time, so none may reach it.
+struct BoundedSocket(TcpStream);
+
+impl Read for BoundedSocket {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let mut socket = &self.0;
+        read_within_timeout(&self.0, || socket.read(buffer))
+    }
+}
+
+impl Write for BoundedSocket {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.0.write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
     }
 }
 

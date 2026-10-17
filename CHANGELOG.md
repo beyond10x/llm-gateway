@@ -13,7 +13,9 @@ Nothing in any release is deployed or qualified against a live client.
   starts or serves it starts nothing more. `GET /v1/models/<alias>/status` answers `stopped`,
   `starting` (with the provider's sub-phase), `ready` or `stopping` and the profile, read from
   the pool's records with no provider call. Both take the owner credential; a hosted model or a
-  route has neither and is answered `path-unknown`.
+  route has neither and is answered `path-unknown`. A model of a provider with no `connectors`
+  connection is `target-unavailable` to a wake and `stopped` to a status, beside a connected
+  provider too, and a sub-phase or profile reported empty is left out of the answer.
 - A read of a target that an interrupt (a signal, a stop and continue) cuts short keeps the read
   timeout it began with, on a plain connection and on a pod's TLS connection: it is answered
   `upstream-failed` when that timeout is spent, however often it is interrupted.

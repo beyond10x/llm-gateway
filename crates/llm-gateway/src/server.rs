@@ -781,7 +781,8 @@ fn lifecycle(
     }
 }
 
-/// `{"model","phase","sub_phase"?,"profile"?}`: a value the source did not report is absent.
+/// `{"model","phase","sub_phase"?,"profile"?}`: a value the source did not report, or reported
+/// empty, is absent, never `""`.
 fn lifecycle_body(alias: &str, status: &ModelStatus) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
@@ -789,13 +790,14 @@ fn lifecycle_body(alias: &str, status: &ModelStatus) -> String {
     writer.string(alias);
     writer.key("phase");
     writer.string(status.phase.code());
-    if let Some(sub_phase) = &status.sub_phase {
-        writer.key("sub_phase");
-        writer.string(sub_phase);
-    }
-    if let Some(profile) = &status.profile {
-        writer.key("profile");
-        writer.string(profile);
+    for (key, value) in [
+        ("sub_phase", &status.sub_phase),
+        ("profile", &status.profile),
+    ] {
+        if let Some(value) = value.as_deref().filter(|value| !value.is_empty()) {
+            writer.key(key);
+            writer.string(value);
+        }
     }
     writer.end_object();
     writer.finish()

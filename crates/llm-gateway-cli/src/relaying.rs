@@ -652,9 +652,13 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// its pod start, spend refusal or start failure is counted as a request's would be. A
     /// spend refusal is `spend-ceiling`; every other pool refusal `target-unavailable`. Once
     /// the gateway starts to stop it starts nothing and steps nothing: a model starting or
-    /// ready is answered its status, any other `target-unavailable`.
+    /// ready is answered its status, any other `target-unavailable`. A model this pool does
+    /// not run (one of a provider with no `connectors` connection) is `target-unavailable`, as
+    /// its requests are.
     fn wake(&self, alias: &str) -> Option<Result<llm_gateway::ModelStatus, TargetRefusal>> {
-        let relayed = self.models.get(alias)?;
+        let Some(relayed) = self.models.get(alias) else {
+            return Some(Err(TargetRefusal::Unavailable));
+        };
         if self.stopping.load(Ordering::SeqCst) {
             return Some(match self.pool.status(&relayed.alias) {
                 Ok(status) if matches!(status.phase, ModelPhase::Starting | ModelPhase::Ready) => {
@@ -683,13 +687,19 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
         })
     }
 
-    /// `RunpodPool::status`: the phase the pool's records hold, with no provider call.
+    /// `RunpodPool::status`: the phase the pool's records hold, with no provider call. A model
+    /// this pool does not run (one of a provider with no `connectors` connection) is `stopped`,
+    /// as [`Unconnected`] answers it.
     fn status(&self, alias: &str) -> Option<llm_gateway::ModelStatus> {
-        let relayed = self.models.get(alias)?;
-        self.pool
-            .status(&relayed.alias)
-            .ok()
-            .map(|status| gateway_status(&status))
+        let stopped = || llm_gateway::ModelStatus::new(llm_gateway::ModelPhase::Stopped);
+        let Some(relayed) = self.models.get(alias) else {
+            return Some(stopped());
+        };
+        Some(
+            self.pool
+                .status(&relayed.alias)
+                .map_or_else(|_| stopped(), |status| gateway_status(&status)),
+        )
     }
 }
 
@@ -873,7 +883,8 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
 }
 
 /// Targets for models no pool serves: every acquisition and every wake is
-/// `target-unavailable`, and every such model is `stopped`. Only a Runpod model reaches it: a
+/// `target-unavailable`, and every such model is `stopped`, as [`PoolTargets`] answers a model
+/// of a provider it does not run. Only a Runpod model reaches it: a
 /// hosted model is answered before it ([`HostedTargets`]).
 struct Unconnected;
 

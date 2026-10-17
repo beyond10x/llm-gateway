@@ -268,16 +268,16 @@ fn adversary_w15_every_variant_of_a_seal_is_refused_and_the_genuine_one_still_bi
             hosted_model("chatty", "chat", &chat)
         ),
     ));
-    let sealed = sealed_item(&server.post("/v1/responses", &first_turn("code")))
-        ["encrypted_content"]
-        .as_str()
-        .unwrap()
-        .to_owned();
-    let null_sealed = sealed_item(&server.post("/v1/responses", &first_turn("chatty")))
-        ["encrypted_content"]
-        .as_str()
-        .unwrap()
-        .to_owned();
+    let sealed =
+        sealed_item(&server.post("/v1/responses", &first_turn("code")))["encrypted_content"]
+            .as_str()
+            .unwrap()
+            .to_owned();
+    let null_sealed =
+        sealed_item(&server.post("/v1/responses", &first_turn("chatty")))["encrypted_content"]
+            .as_str()
+            .unwrap()
+            .to_owned();
     assert!(sealed.starts_with(SEAL_PREFIX), "{sealed}");
     assert!(null_sealed.starts_with(SEAL_PREFIX), "{null_sealed}");
     let (state, tag) = sealed[SEAL_PREFIX.len()..].split_once('.').unwrap();
@@ -290,26 +290,65 @@ fn adversary_w15_every_variant_of_a_seal_is_refused_and_the_genuine_one_still_bi
         ("leading space", serde_json::json!(format!(" {sealed}"))),
         ("trailing space", serde_json::json!(format!("{sealed} "))),
         ("trailing newline", serde_json::json!(format!("{sealed}\n"))),
-        ("upper-case prefix", serde_json::json!(format!("LLMGW-SEAL-1.{state}.{tag}"))),
+        (
+            "upper-case prefix",
+            serde_json::json!(format!("LLMGW-SEAL-1.{state}.{tag}")),
+        ),
         ("no prefix", serde_json::json!(format!("{state}.{tag}"))),
-        ("other version", serde_json::json!(format!("llmgw-seal-2.{state}.{tag}"))),
-        ("double dot", serde_json::json!(format!("{SEAL_PREFIX}{state}..{tag}"))),
-        ("tag twice", serde_json::json!(format!("{SEAL_PREFIX}{state}.{tag}.{tag}"))),
-        ("tag cut by one", serde_json::json!(format!("{SEAL_PREFIX}{state}.{}", &tag[..tag.len() - 1]))),
-        ("tag empty", serde_json::json!(format!("{SEAL_PREFIX}{state}."))),
-        ("state empty", serde_json::json!(format!("{SEAL_PREFIX}.{tag}"))),
+        (
+            "other version",
+            serde_json::json!(format!("llmgw-seal-2.{state}.{tag}")),
+        ),
+        (
+            "double dot",
+            serde_json::json!(format!("{SEAL_PREFIX}{state}..{tag}")),
+        ),
+        (
+            "tag twice",
+            serde_json::json!(format!("{SEAL_PREFIX}{state}.{tag}.{tag}")),
+        ),
+        (
+            "tag cut by one",
+            serde_json::json!(format!("{SEAL_PREFIX}{state}.{}", &tag[..tag.len() - 1])),
+        ),
+        (
+            "tag empty",
+            serde_json::json!(format!("{SEAL_PREFIX}{state}.")),
+        ),
+        (
+            "state empty",
+            serde_json::json!(format!("{SEAL_PREFIX}.{tag}")),
+        ),
         ("prefix only", serde_json::json!(SEAL_PREFIX)),
-        ("prefix and dot", serde_json::json!(format!("{SEAL_PREFIX}."))),
+        (
+            "prefix and dot",
+            serde_json::json!(format!("{SEAL_PREFIX}.")),
+        ),
         ("empty string", serde_json::json!("")),
         ("null", serde_json::Value::Null),
         ("number", serde_json::json!(1)),
         ("array", serde_json::json!([sealed.clone()])),
         ("object", serde_json::json!({"seal": sealed.clone()})),
-        ("null state under its tag", serde_json::json!(format!("{SEAL_PREFIX}{null_state}.{tag}"))),
-        ("this state under the null tag", serde_json::json!(format!("{SEAL_PREFIX}{state}.{null_tag}"))),
-        ("the chat route's null seal", serde_json::json!(null_sealed.clone())),
-        ("oversized state", serde_json::json!(format!("{SEAL_PREFIX}{}{state}.{tag}", "A".repeat(1 << 20)))),
-        ("oversized tag", serde_json::json!(format!("{SEAL_PREFIX}{state}.{tag}{}", "A".repeat(1 << 20)))),
+        (
+            "null state under its tag",
+            serde_json::json!(format!("{SEAL_PREFIX}{null_state}.{tag}")),
+        ),
+        (
+            "this state under the null tag",
+            serde_json::json!(format!("{SEAL_PREFIX}{state}.{null_tag}")),
+        ),
+        (
+            "the chat route's null seal",
+            serde_json::json!(null_sealed.clone()),
+        ),
+        (
+            "oversized state",
+            serde_json::json!(format!("{SEAL_PREFIX}{}{state}.{tag}", "A".repeat(1 << 20))),
+        ),
+        (
+            "oversized tag",
+            serde_json::json!(format!("{SEAL_PREFIX}{state}.{tag}{}", "A".repeat(1 << 20))),
+        ),
     ];
     if standard != sealed {
         variants.push(("standard alphabet", serde_json::json!(standard)));
@@ -318,19 +357,41 @@ fn adversary_w15_every_variant_of_a_seal_is_refused_and_the_genuine_one_still_bi
     for (name, content) in &variants {
         let answer = server.post("/v1/responses", &second_turn("code", content));
         if !refused_opaque_state(&answer) {
-            failures.push(format!("{name}: {}", answer.lines().next().unwrap_or("<no answer>")));
+            failures.push(format!(
+                "{name}: {}",
+                answer.lines().next().unwrap_or("<no answer>")
+            ));
         }
     }
     // The genuine seal on the chat route is not the chat route's.
-    let crossed = server.post("/v1/responses", &second_turn("chatty", &serde_json::json!(sealed)));
+    let crossed = server.post(
+        "/v1/responses",
+        &second_turn("chatty", &serde_json::json!(sealed)),
+    );
     if !refused_opaque_state(&crossed) {
-        failures.push(format!("messages seal on the chat route: {}", crossed.lines().next().unwrap_or("")));
+        failures.push(format!(
+            "messages seal on the chat route: {}",
+            crossed.lines().next().unwrap_or("")
+        ));
     }
-    assert_eq!(code.so_far().len(), 1, "a refused variant reached the upstream");
-    let bound = server.post("/v1/responses", &second_turn("code", &serde_json::json!(sealed)));
-    assert!(bound.starts_with("HTTP/1.1 200 OK\r\n"), "the genuine seal after the variants: {bound}");
+    assert_eq!(
+        code.so_far().len(),
+        1,
+        "a refused variant reached the upstream"
+    );
+    let bound = server.post(
+        "/v1/responses",
+        &second_turn("code", &serde_json::json!(sealed)),
+    );
+    assert!(
+        bound.starts_with("HTTP/1.1 200 OK\r\n"),
+        "the genuine seal after the variants: {bound}"
+    );
     drop(server);
-    assert!(failures.is_empty(), "not refused translation-opaque-state: {failures:#?}");
+    assert!(
+        failures.is_empty(),
+        "not refused translation-opaque-state: {failures:#?}"
+    );
     assert_eq!(code.seen().len(), 2);
     assert_eq!(chat.seen().len(), 1);
 }
@@ -361,7 +422,11 @@ fn adversary_w15_a_same_wire_route_relays_a_seal_shaped_item_unchanged() {
         .iter()
         .find(|entry| entry["type"] == "reasoning")
         .unwrap_or_else(|| panic!("the reasoning item did not reach the upstream: {sent}"));
-    assert_eq!(relayed["encrypted_content"], serde_json::json!(forged), "{sent}");
+    assert_eq!(
+        relayed["encrypted_content"],
+        serde_json::json!(forged),
+        "{sent}"
+    );
 }
 
 /// A messages upstream that thinks, signs, then emits a `redacted_thinking` block, then calls

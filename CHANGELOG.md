@@ -17,6 +17,16 @@ Nothing in any release is deployed or qualified against a live client.
   found, or a missing docker, stops the release instead of passing it. The package is private when
   first created.
 - A guide, Run on Kubernetes, runs the released image with the file rules unchanged: Secrets copied by an init container into an `emptyDir` the `nonroot` user owns at `0400`, the refusal an `fsGroup` causes (`owner-secret:unsafe-mode`, pasted from a run and asserted by a test), probes, and a `preStop` sleep with a `terminationGracePeriodSeconds` that covers the longest answer.
+- A model may declare ordered `[[models.<alias>.profiles]]`, each a GPU type list with its vLLM
+  settings. When Runpod refuses every create of a profile for capacity (the connectors failure
+  code `capacity`), the start moves on to the next profile, inside the same startup deadline and
+  with the spend check before every create; any other refusal ends the start. Two profiles sharing
+  a name or a GPU type are refused `profile-conflict`. The flat declaration is the one profile
+  `default`, unchanged, and the usage record names the profile of the pod that served.
+- A messages request served by a fallback profile is clamped to that profile's `max_model_len`,
+  and `GET /v1/models` lists the smallest window among a model's profiles. A start sends no
+  further create, of a profile's next GPU type or of the next profile, once its startup deadline
+  has passed, and ends `no-capacity`.
 - A provider may declare `daily_cap_usd` and `total_cap_usd`, spend ceilings for its account,
   and each model `price_per_hour_usd`. Before every pod create the pool checks the account's
   reported spend plus its live pods' and the new pod's estimates against each ceiling; a start

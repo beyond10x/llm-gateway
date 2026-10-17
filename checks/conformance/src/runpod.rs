@@ -5,12 +5,17 @@
 //! in-process `EmulatedRunpod` — and reports what those calls returned. It reimplements no
 //! lifecycle rule, reads no suite and branches on no scenario name: every answer, pod call,
 //! lease and cleanup below comes back out of the pool or the emulator. The one fixture it adds is
-//! a transport wrapper that keeps answering "not ready" for a pod that already served, which the
-//! emulator cannot script on its own (the crate's `tests/adversary2.rs` uses the same wrapper).
+//! a transport wrapper for two arrangements the emulator cannot script on its own: a pod that
+//! already served keeps answering "not ready" (the crate's `tests/adversary2.rs` uses the same
+//! wrapper), and every create takes a while of the pool's clock, as a `connectors` write does
+//! (the crate's `tests/adversary_w12_profiles.rs` uses the same wrapper).
 
 use std::{
     collections::{BTreeMap, BTreeSet},
-    sync::{Arc, Barrier, Mutex, PoisonError},
+    sync::{
+        Arc, Barrier, Mutex, PoisonError,
+        atomic::{AtomicU64, Ordering},
+    },
     thread,
 };
 
@@ -19,8 +24,8 @@ use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegist
 use llm_runpod::{
     AccountSpend, CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock,
     NetworkVolume, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel,
-    RunpodPool, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease, TAG_REQUEST,
-    TerminateAnswer, Thinking, VllmSettings,
+    RunpodPool, RunpodProfile, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease,
+    TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -103,6 +108,18 @@ struct ModelInput {
     crash_window_ms: Option<u64>,
     /// The model's declared price per hour in USD, which the spend check prices it by.
     price_per_hour_usd: Option<f64>,
+    /// Ordered profiles. The first replaces the model's `gpu_types` and `vllm`; a missing vLLM
+    /// field of a profile takes the runner's default.
+    profiles: Option<Vec<ProfileInput>>,
+}
+
+#[derive(Deserialize, Clone)]
+#[serde(deny_unknown_fields)]
+struct ProfileInput {
+    name: String,
+    gpu_types: Vec<String>,
+    #[serde(default)]
+    vllm: VllmInput,
 }
 
 #[derive(Deserialize, Clone)]
@@ -162,6 +179,9 @@ enum Step {
     RefuseGpu {
         gpu: String,
     },
+    NoCapacityGpu {
+        gpu: String,
+    },
     LoseNextCreate {
         allocates: bool,
     },
@@ -203,6 +223,10 @@ enum Step {
     Wedge {
         pod: String,
     },
+    /// Every create from now on takes `ms` of the pool's clock before it is answered.
+    CreateTakes {
+        ms: u64,
+    },
     /// Spend reads from now on answer this reported spend, in USD.
     AccountSpend {
         daily_usd: f64,
@@ -223,11 +247,25 @@ struct BilledInput {
     usd: f64,
 }
 
-/// The emulator, plus the one arrangement it cannot script: a pod that stops serving.
-#[derive(Clone, Default)]
+/// The emulator, plus the two arrangements it cannot script: a pod that stops serving, and a
+/// create that takes time on the pool's clock.
+#[derive(Clone)]
 struct Fixture {
     runpod: EmulatedRunpod,
     wedged: Arc<Mutex<BTreeSet<String>>>,
+    clock: ManualClock,
+    create_ms: Arc<AtomicU64>,
+}
+
+impl Fixture {
+    fn new(clock: ManualClock) -> Self {
+        Self {
+            runpod: EmulatedRunpod::new(),
+            wedged: Arc::default(),
+            clock,
+            create_ms: Arc::default(),
+        }
+    }
 }
 
 impl RunpodTransport for Fixture {
@@ -235,6 +273,7 @@ impl RunpodTransport for Fixture {
         self.runpod.list_pods()
     }
     fn create_pod(&mut self, request: &PodRequest) -> CreateAnswer {
+        self.clock.advance(self.create_ms.load(Ordering::SeqCst));
         self.runpod.create_pod(request)
     }
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
@@ -289,17 +328,57 @@ fn ident(value: &str) -> Result<Identifier, String> {
     Identifier::new(value).map_err(|_| "fixture:invalid-identifier".to_owned())
 }
 
+fn build_vllm(vllm: &VllmInput) -> Result<VllmSettings, String> {
+    Ok(VllmSettings {
+        max_model_len: vllm.max_model_len.unwrap_or(65_536),
+        max_num_seqs: vllm.max_num_seqs.unwrap_or(8),
+        gpu_memory_utilization: vllm.gpu_memory_utilization.unwrap_or(0.9),
+        thinking: match vllm.thinking.as_deref() {
+            None | Some("off") => Thinking::Off,
+            Some("on") => Thinking::On,
+            Some(_) => return Err("fixture:unknown-thinking".to_owned()),
+        },
+        reasoning_effort: vllm.reasoning_effort.clone(),
+        sampling: vllm.sampling.clone(),
+        extra_args: vllm
+            .extra_args
+            .clone()
+            .unwrap_or_else(|| vec!["--kv-cache-dtype".to_owned(), "fp8".to_owned()]),
+    })
+}
+
 fn build_model(input: &ModelInput) -> Result<RunpodModel, String> {
-    let vllm = &input.vllm;
+    let profiles = input.profiles.as_deref().unwrap_or_default();
+    let (profile, gpu_types, first_vllm) = match profiles.first() {
+        Some(first) => (
+            first.name.clone(),
+            Some(first.gpu_types.clone()),
+            build_vllm(&first.vllm)?,
+        ),
+        None => (
+            "default".to_owned(),
+            input.gpu_types.clone(),
+            build_vllm(&input.vllm)?,
+        ),
+    };
+    let fallbacks = profiles
+        .iter()
+        .skip(1)
+        .map(|profile| {
+            Ok(RunpodProfile {
+                name: profile.name.clone(),
+                gpu_types: profile.gpu_types.clone(),
+                vllm: build_vllm(&profile.vllm)?,
+            })
+        })
+        .collect::<Result<Vec<_>, String>>()?;
     Ok(RunpodModel {
         hf_model: input
             .hf_model
             .clone()
             .unwrap_or_else(|| "Qwen/Qwen3.8-27B-FP8".to_owned()),
         image: ident(input.image.as_deref().unwrap_or("vllm/vllm-openai:v0.27.1"))?,
-        gpu_types: input
-            .gpu_types
-            .clone()
+        gpu_types: gpu_types
             .unwrap_or_else(|| vec!["NVIDIA L40S".to_owned(), "NVIDIA H100 NVL".to_owned()]),
         cloud_type: match input.cloud_type.as_deref() {
             None | Some("SECURE") => CloudType::Secure,
@@ -312,22 +391,7 @@ fn build_model(input: &ModelInput) -> Result<RunpodModel, String> {
             mount_path: cache.mount_path.clone(),
         }),
         data_center_ids: input.data_center_ids.clone().unwrap_or_default(),
-        vllm: VllmSettings {
-            max_model_len: vllm.max_model_len.unwrap_or(65_536),
-            max_num_seqs: vllm.max_num_seqs.unwrap_or(8),
-            gpu_memory_utilization: vllm.gpu_memory_utilization.unwrap_or(0.9),
-            thinking: match vllm.thinking.as_deref() {
-                None | Some("off") => Thinking::Off,
-                Some("on") => Thinking::On,
-                Some(_) => return Err("fixture:unknown-thinking".to_owned()),
-            },
-            reasoning_effort: vllm.reasoning_effort.clone(),
-            sampling: vllm.sampling.clone(),
-            extra_args: vllm
-                .extra_args
-                .clone()
-                .unwrap_or_else(|| vec!["--kv-cache-dtype".to_owned(), "fp8".to_owned()]),
-        },
+        vllm: first_vllm,
         api_key_secret: input
             .api_key_secret
             .clone()
@@ -336,6 +400,8 @@ fn build_model(input: &ModelInput) -> Result<RunpodModel, String> {
         idle_timeout_ms: input.idle_timeout_ms.unwrap_or(1_800_000),
         crash_restart_limit: input.crash_restart_limit.unwrap_or(2),
         crash_window_ms: input.crash_window_ms.unwrap_or(600_000),
+        profile,
+        fallbacks,
     })
 }
 
@@ -425,6 +491,8 @@ struct Run {
     replaced: Vec<Arc<RunpodPool<Fixture>>>,
     held: Vec<StreamLease>,
     leases: Vec<String>,
+    /// The profile each ready lease names, `unknown` when it names none.
+    lease_profiles: Vec<String>,
     cleanups: Vec<String>,
 }
 
@@ -446,6 +514,8 @@ impl Run {
             match self.pool.ensure(&alias, &authorization) {
                 Ok(lease) => {
                     self.leases.push(lease_fact(&lease));
+                    self.lease_profiles
+                        .push(lease.profile().unwrap_or("unknown").to_owned());
                     if keep {
                         self.held.push(lease);
                     }
@@ -558,7 +628,9 @@ impl Run {
             },
             Step::Restart { models } => return self.restart(models.as_ref()),
             Step::RefuseGpu { gpu } => runpod.refuse_gpu(gpu),
+            Step::NoCapacityGpu { gpu } => runpod.no_capacity_gpu(gpu),
             Step::LoseNextCreate { allocates } => runpod.lose_next_create(*allocates),
+            Step::CreateTakes { ms } => self.fixture.create_ms.store(*ms, Ordering::SeqCst),
             Step::ReadyAfter { probes } => runpod.ready_after(*probes),
             Step::Uptimes { script } => runpod.uptimes(script.clone()),
             Step::RefuseCredential { pod } => runpod.refuse_credential(pod),
@@ -729,7 +801,7 @@ fn pool_facts(facts: &mut Value, run: &Run) {
 fn run(program_json: &str) -> Value {
     let mut facts = json!({
         "valid_program": false, "error_code": null, "results": [], "create_calls": null,
-        "lists": null, "spend_reads": null, "requested_gpus": [], "terminations": [], "pods": [], "leases": [],
+        "lists": null, "spend_reads": null, "requested_gpus": [], "terminations": [], "pods": [], "leases": [], "lease_profiles": [],
         "cleanups": [], "phases": [], "observed": [], "stop_required": [], "transferred": [],
         "last_request": null, "last_entrypoint": [], "last_env": []
     });
@@ -757,8 +829,8 @@ fn run(program_json: &str) -> Value {
             return facts;
         }
     };
-    let fixture = Fixture::default();
     let clock = ManualClock::new(1_000);
+    let fixture = Fixture::new(clock.clone());
     let registry = Arc::new(LeaseRegistry::default());
     let pool = match RunpodPool::new(
         policy.clone(),
@@ -785,11 +857,13 @@ fn run(program_json: &str) -> Value {
         replaced: Vec::new(),
         held: Vec::new(),
         leases: Vec::new(),
+        lease_profiles: Vec::new(),
         cleanups: Vec::new(),
     };
     let results: Vec<String> = program.steps.iter().map(|step| run.step(step)).collect();
     facts["results"] = json!(results);
     facts["leases"] = json!(run.leases);
+    facts["lease_profiles"] = json!(run.lease_profiles);
     facts["cleanups"] = json!(run.cleanups);
     emulator_facts(&mut facts, &run.fixture.runpod);
     pool_facts(&mut facts, &run);

@@ -63,6 +63,9 @@ pub struct RunpodProvider<T> {
     live: Vec<(Identifier, u64)>,
     /// Why the last create was refused by the spend check, until taken.
     spend_refusal: Option<SpendRefusal>,
+    /// The GPU type of each pod by incarnation, as its create or a listing reported it: a GPU
+    /// type belongs to at most one profile of a model, so it names the pod's profile.
+    gpus: BTreeMap<String, String>,
 }
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RunpodProvider<T> {
@@ -100,6 +103,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             spend: None,
             live: Vec::new(),
             spend_refusal: None,
+            gpus: BTreeMap::new(),
         }
     }
 
@@ -172,6 +176,19 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             .strip_prefix(crate::POD_NAME_PREFIX)
             .and_then(|alias| Identifier::new(alias).ok())?;
         self.models.get(&alias)
+    }
+
+    /// The profile of the model this pod was started on, named by the pod's GPU type; `None`
+    /// while the pod's GPU type is unknown or in no profile of its model.
+    pub fn profile_of(&self, key: &ResourceKey) -> Option<String> {
+        let gpu = self.gpus.get(key.incarnation.as_str())?;
+        self.model_of(key)?.profile_of_gpu(gpu).map(str::to_owned)
+    }
+
+    fn remember_gpu(&mut self, pod: &Pod) {
+        if let Some(gpu) = &pod.gpu_type {
+            self.gpus.insert(pod.id.clone(), gpu.clone());
+        }
     }
 
     /// Why this pod has to be replaced, if it does.
@@ -288,6 +305,91 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         }
         probe
     }
+
+    /// Tries each GPU type of one profile in order, the spend check before each create, until
+    /// the start's startup deadline, counted from `started_ms`, has passed.
+    fn create_on(
+        &mut self,
+        request: &CreateRequest,
+        model: &RunpodModel,
+        tags: &Tags<'_>,
+        started_ms: u64,
+    ) -> ProfileOutcome {
+        let not_sent = ProfileOutcome::Done(Box::new(CreateOutcome {
+            dispatch: Dispatch::NotSent,
+            resource: None,
+        }));
+        let mut all_capacity = true;
+        for gpu in &model.gpu_types {
+            let body = pod_request(
+                request.spec.resource_name.as_str(),
+                request.spec.model.as_str(),
+                gpu,
+                model,
+                tags,
+            );
+            // The start's one startup deadline binds its creates too: once it has passed, no
+            // further create is sent, of this profile or of the next. A create answered after
+            // it would start a pod the pool retires at once.
+            if self.clock.now_ms().saturating_sub(started_ms) > model.startup_deadline_ms {
+                return ProfileOutcome::PastDeadline;
+            }
+            // The spend check runs immediately before each create, so every GPU type tried, of
+            // every profile, is admitted on its own. A refused check sends nothing and tries no
+            // further GPU type and no further profile.
+            if let Err(refusal) = self.admit_spend(&request.spec.model) {
+                self.spend_refusal = Some(refusal);
+                return not_sent;
+            }
+            match self.transport.create_pod(&body) {
+                CreateAnswer::Created(pod) => {
+                    self.remember_gpu(&pod);
+                    return ProfileOutcome::Done(Box::new(match self.describe(&pod, None) {
+                        Some(resource) => CreateOutcome {
+                            dispatch: Dispatch::Accepted,
+                            resource: Some(resource),
+                        },
+                        // Created, but with an identity this contract cannot hold: as
+                        // unaccountable as a lost answer.
+                        None => CreateOutcome {
+                            dispatch: Dispatch::Unknown,
+                            resource: None,
+                        },
+                    }));
+                }
+                // Placement fails per host, so the next declared GPU of the profile is tried
+                // whatever the refusal.
+                CreateAnswer::NoCapacity => {}
+                CreateAnswer::Refused => all_capacity = false,
+                // A lost answer may have allocated. Trying another GPU could pay twice.
+                CreateAnswer::Lost => {
+                    return ProfileOutcome::Done(Box::new(CreateOutcome {
+                        dispatch: Dispatch::Unknown,
+                        resource: None,
+                    }));
+                }
+            }
+        }
+        if all_capacity {
+            ProfileOutcome::NoCapacity
+        } else {
+            ProfileOutcome::Refused
+        }
+    }
+}
+
+/// How one profile's creates ended.
+enum ProfileOutcome {
+    /// Created, lost, or not sent: the start ends with this outcome. Boxed: an outcome holds a
+    /// whole resource, the other variants nothing.
+    Done(Box<CreateOutcome>),
+    /// Every create of the profile was refused for capacity: the next profile is tried.
+    NoCapacity,
+    /// At least one create was refused for another reason: the start ends, rejected.
+    Refused,
+    /// The start's startup deadline passed before the next create: the start ends, rejected,
+    /// with no further create sent.
+    PastDeadline,
 }
 
 /// Drops every restart more than `window_ms` before `now_ms`.
@@ -321,44 +423,18 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
             epoch: request.epoch,
             request_id: request.request_id.as_str(),
         };
-        for gpu in &model.gpu_types {
-            let body = pod_request(
-                request.spec.resource_name.as_str(),
-                request.spec.model.as_str(),
-                gpu,
-                &model,
-                &tags,
-            );
-            // The spend check runs immediately before each create, so every GPU type tried is
-            // admitted on its own. A refused check sends nothing and tries no further GPU type.
-            if let Err(refusal) = self.admit_spend(&request.spec.model) {
-                self.spend_refusal = Some(refusal);
-                return not_sent;
-            }
-            match self.transport.create_pod(&body) {
-                CreateAnswer::Created(pod) => {
-                    return match self.describe(&pod, None) {
-                        Some(resource) => CreateOutcome {
-                            dispatch: Dispatch::Accepted,
-                            resource: Some(resource),
-                        },
-                        // Created, but with an identity this contract cannot hold: as
-                        // unaccountable as a lost answer.
-                        None => CreateOutcome {
-                            dispatch: Dispatch::Unknown,
-                            resource: None,
-                        },
-                    };
-                }
-                // Placement fails per host, so the next declared GPU is tried.
-                CreateAnswer::Refused => {}
-                // A lost answer may have allocated. Trying another GPU could pay twice.
-                CreateAnswer::Lost => {
-                    return CreateOutcome {
-                        dispatch: Dispatch::Unknown,
-                        resource: None,
-                    };
-                }
+        // Profiles are tried in order, inside this one create: one submission, so one startup
+        // deadline, counted from now as the pool counts the pod's, covers every profile. The
+        // next profile is tried only when every create of the one before was refused for
+        // capacity, and only while that deadline has not passed.
+        let started_ms = self.clock.now_ms();
+        let mut index = 0;
+        while let Some((_, profile)) = model.with_profile(index) {
+            index += 1;
+            match self.create_on(request, &profile, &tags, started_ms) {
+                ProfileOutcome::Done(outcome) => return *outcome,
+                ProfileOutcome::NoCapacity => {}
+                ProfileOutcome::Refused | ProfileOutcome::PastDeadline => break,
             }
         }
         CreateOutcome {
@@ -373,6 +449,7 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
         let dispatch = match self.transport.terminate_pod(key.incarnation.as_str()) {
             TerminateAnswer::Terminated => {
                 self.health.remove(key.incarnation.as_str());
+                self.gpus.remove(key.incarnation.as_str());
                 return StopOutcome {
                     dispatch: Dispatch::Accepted,
                     evidence: Identifier::new(format!("runpod-terminated-{}", key.incarnation))
@@ -401,6 +478,7 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
             if pod.status == PodStatus::Exited {
                 self.health.entry(pod.id.clone()).or_default().exited = true;
             }
+            self.remember_gpu(pod);
             let probe = (pod.status == PodStatus::Running).then(|| self.poll(pod));
             match self.describe(pod, probe.as_ref()) {
                 Some(resource) => resources.push(resource),

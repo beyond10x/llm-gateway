@@ -416,6 +416,7 @@ fn record(
         reasoning_output_tokens: None,
         response_bytes,
         duration_ms: u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX),
+        profile: call.profile,
     });
 }
 

@@ -75,7 +75,25 @@ types:
       # The GPU types are tried one create at a time, in declared order; a refused create tries
       # the next one, and this is the answer when every one refused: nothing was created and the
       # deployment is withdrawn (`a-placement-refusal-falls-through-to-the-next-declared-gpu-in-order`,
-      # `every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod`). A lost create
+      # `every-declared-gpu-refusing-withdraws-the-deployment-and-leaves-no-pod`).
+      # DECIDED 2026-10-16 (story:model-profile-fallback): a model declares an ordered list of
+      # profiles (ModelProfile); the GPU types above are its first profile's. A profile whose
+      # every create was answered `NoCapacity` is followed by the next profile, within the same
+      # `create` call, so the one startup deadline of the start covers every profile tried and
+      # the spend check runs before each create of each profile
+      # (`a-capacity-refusal-starts-the-model-on-its-next-profile`). A profile with any create
+      # answered `Refused` ends the start here, and so does the last profile
+      # (`a-non-capacity-refusal-is-not-retried-on-the-next-profile`).
+      # DECIDED 2026-10-17: the start's one startup deadline, counted from the instant its
+      # `create` call began, binds its creates too. Before each create, of the next GPU type of
+      # a profile and of the next profile, the provider reads the pool's clock; once more than
+      # `startup_deadline_ms` has passed it sends no further create, and the start ends as one
+      # whose every create was refused: nothing was created, the deployment is withdrawn, and
+      # the answer is `no-capacity`. A later call starts afresh, with a deadline of its own
+      # (`no-profile-is-tried-once-the-starts-startup-deadline-has-passed`,
+      # `no-gpu-type-of-a-profile-is-tried-once-the-starts-startup-deadline-has-passed`,
+      # `adv_profiles_no_profile_is_tried_once_the_starts_deadline_has_passed` in
+      # tests/adversary_w12_profiles.rs). A lost create
       # answer ends the attempt instead: no further GPU is tried, because Runpod takes no
       # idempotency key and `honours_idempotency_key` is `false`; the record is uncertain and
       # is resolved by its request id (`a-lost-create-answer-is-never-retried-and-is-adopted-by-request-id`,
@@ -147,6 +165,29 @@ types:
       # types, extra vLLM arguments and sampling as printable text; a reasoning effort is
       # alphanumeric (`a-model-value-that-is-not-printable-is-refused`).
       - {name: UnsafeText, attributes: {code: unsafe-text}}
+      # DECIDED 2026-10-16 (story:model-profile-fallback): two profiles share a name, or one GPU
+      # type is declared in two profiles of the model. A pod's GPU type then names the profile
+      # it was started on exactly, adopted pods included
+      # (`two-profiles-sharing-a-gpu-type-are-refused`). Checked after every other refusal,
+      # over every profile, the first one's settings included.
+      - {name: ProfileConflict, attributes: {code: profile-conflict}}
+  # One declared profile of a model (story:model-profile-fallback,
+  # architecture-decision-record:on-demand-gpu-lifecycle): a name, the GPU types it is placed on
+  # in order, and the vLLM settings that fit them. The model's own `gpu_types` and vLLM settings
+  # are its first profile, named `default` unless the declaration names it; the rest are its
+  # fallbacks, tried in order. Every other setting (image, checkpoint, disk, cache, deadlines,
+  # thinking, sampling, reasoning effort) is the model's and shared. The name is 1..=32 of
+  # `A-Za-z0-9 - _`, and each profile's settings are checked as the model's are
+  # (ConfigRefusal). The profile of a pod is the one whose GPU types hold the pod's GPU type.
+  - name: llm-gateway.runpod.ModelProfile
+    kind: struct
+    fields:
+      - {name: name, type: String}
+      - {name: gpu_types, type: 'List<String>'}
+      - {name: max_model_len, type: Integer}
+      - {name: max_num_seqs, type: Integer}
+      - {name: gpu_memory_utilization, type: Decimal}
+      - {name: extra_args, type: 'List<String>'}
   # What the production transport is built from. `executable` is the `connectors` binary,
   # `adapter` the alias its configuration binds the Runpod catalog provider to (connectors
   # docs/catalog-runpod.md "Authentication", e.g. `gpu`), `connection` the saved connection id.
@@ -253,7 +294,12 @@ types:
   # A create's answer to the provider.
   # DECIDED: `Created` only for `applied` with a pod whose `id` and `name` parse from
   # `result.body`. `Refused` only for `refused`: Runpod made nothing, so the provider may try the
-  # next GPU. `unknown` is resolved by one `pods.list` on the pod's `name`. That name is per
+  # next GPU. DECIDED 2026-10-16 (story:model-profile-fallback): a `refused` create whose
+  # failure `error.data.code` is `capacity` (connectors' code for a provider capacity answer,
+  # `stage = dispatch`, connectors v0.37.0 contracts/cli/v1alpha1/semantics.md:915-921) is
+  # `NoCapacity` instead; every other `refused` stays `Refused`. Both made nothing and both try
+  # the next GPU of the profile; only `NoCapacity` lets the provider move on to the next profile
+  # (PoolRefusal `NoCapacity`). `unknown` is resolved by one `pods.list` on the pod's `name`. That name is per
   # model alias, not per create (`pod_name(resource_name)`), and Runpod's `Pod.name` "does not
   # need to be unique", so the answer is `Created` only if that whole answer holds exactly one
   # pod of that name whose env `B10X_LLM_REQUEST` equals this create's request tag, and `Lost`
@@ -262,7 +308,7 @@ types:
   # create is never retried, here or by the provider.
   - name: llm-gateway.runpod.CreateAnswer
     kind: enum
-    variants: [Created, Refused, Lost]
+    variants: [Created, NoCapacity, Refused, Lost]
   # A terminate's answer. DECIDED: `Terminated` only for `applied`; `refused` (including
   # Runpod's `404` / `not_found`, which does not prove the pod is gone) is `Refused`; anything
   # else is `Lost`.
@@ -398,8 +444,8 @@ entities:
   # (`RunpodPool::with_spend`, `llm_runpod::SpendPolicy`). Amounts are integer micro-USD, so a
   # ceiling compares exactly.
   # DECIDED 2026-10-16: the spend check (`RunpodProvider::admit_spend`) runs immediately before
-  # every create the provider sends, once per declared GPU type it tries, and before nothing
-  # else. With no ceiling declared it reads nothing and admits (`without-a-ceiling-no-spend-is-read`).
+  # every create the provider sends, once per declared GPU type it tries, of every profile it
+  # tries, and before nothing else. With no ceiling declared it reads nothing and admits (`without-a-ceiling-no-spend-is-read`).
   # Otherwise it computes, at the pool clock's instant:
   #   spend = the account's reported spend (`RunpodTransport::account_spend`, read afresh for
   #           each check: today's, everything billed at or after the UTC day's start, and the
@@ -473,6 +519,9 @@ entities:
       # answers, so no ready lease is handed out without an endpoint and its startup deadline
       # retires it. The emulator issues the ids `pod1`, `pod2`, … in creation order.
       - {name: leases, type: 'List<String>'}
+      # The profile (ModelProfile `name`) of the pod behind each ready lease, in the order of
+      # `leases`; `unknown` when the pod's GPU type is in no profile of its model.
+      - {name: lease_profiles, type: 'List<String>'}
       # Every cleanup pass, as `idle=[..] retired=[..] replaced=[..] orphans=[..]`.
       - {name: cleanups, type: 'List<String>'}
       # The controller's records after the last step, as `<deployment>:<phase>`.

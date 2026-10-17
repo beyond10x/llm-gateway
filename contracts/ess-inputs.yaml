@@ -217,6 +217,7 @@ scenarios:
 - gateway/scenarios/hosted-a-declared-effort-never-replaces-a-named-one-or-reaches-another-wire.yaml
 - gateway/scenarios/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged.yaml
 - gateway/scenarios/clamp-a-prompt-that-leaves-no-room-for-output-is-context-exceeded-and-not-relayed.yaml
+- gateway/scenarios/clamp-the-window-the-serving-target-states-wins-over-the-models.yaml
 - gateway/scenarios/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted.yaml
 - gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml
 - gateway/scenarios/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml
@@ -256,5 +257,10 @@ scenarios:
 - runpod/scenarios/a-start-under-the-total-ceiling-is-created.yaml
 - runpod/scenarios/the-spend-check-runs-before-each-create-of-the-gpu-fallback.yaml
 - runpod/scenarios/without-a-ceiling-no-spend-is-read.yaml
+- runpod/scenarios/a-capacity-refusal-starts-the-model-on-its-next-profile.yaml
+- runpod/scenarios/a-non-capacity-refusal-is-not-retried-on-the-next-profile.yaml
+- runpod/scenarios/no-profile-is-tried-once-the-starts-startup-deadline-has-passed.yaml
+- runpod/scenarios/no-gpu-type-of-a-profile-is-tried-once-the-starts-startup-deadline-has-passed.yaml
+- runpod/scenarios/two-profiles-sharing-a-gpu-type-are-refused.yaml
 - runpod/scenarios/a-pod-just-started-counts-its-startup-estimate.yaml
 - runpod/scenarios/spend-billed-before-the-utc-days-start-is-not-todays.yaml

@@ -19,7 +19,8 @@
 //!   --idempotency-key <key>` (connectors `docs/local-approvals.md`). It is never sent twice; a
 //!   call refused before dispatch for a reason one step can mend is repeated once after it
 //!   ([`ConnectorsRunpod::recovery`]).
-//! * A create is `Refused` only when connectors classifies it `refused`. An `unknown` create is
+//! * A create is refused only when connectors classifies it `refused`: `NoCapacity` when the
+//!   failure's code is `capacity`, `Refused` for any other code. An `unknown` create is
 //!   resolved by one `pods.list` on the pod's name and its request tag; everything else is
 //!   `Lost`.
 //! * The account's spend is a read of `billing.pods` (Runpod `GET /billing/pods`), which
@@ -778,6 +779,9 @@ impl RunpodTransport for ConnectorsRunpod {
                 .body()
                 .and_then(pod_of)
                 .map_or(CreateAnswer::Lost, CreateAnswer::Created),
+            Some("refused") if answer.failure("code") == Some("capacity") => {
+                CreateAnswer::NoCapacity
+            }
             Some("refused") => CreateAnswer::Refused,
             // The pod may exist and may be billed: one read by its name, never a resend. The name
             // is per model alias, not per create, and Runpod names need not be unique: only a pod

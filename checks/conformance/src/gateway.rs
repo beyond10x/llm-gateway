@@ -612,6 +612,10 @@ mod relay {
         /// What `GET /v1/models` lists as `max_model_len` (row R5).
         #[serde(default)]
         max_model_len: Option<u64>,
+        /// The `max_model_len` every target handed out for this model states, which the output
+        /// clamp takes before the model's own window.
+        #[serde(default)]
+        target_max_model_len: Option<u64>,
         /// What `GET /` tells each client as its context window (row R1).
         #[serde(default)]
         context_window: Option<u64>,
@@ -1302,6 +1306,8 @@ mod relay {
         pods: Vec<PodSlot>,
         /// Each model's bearer, set once the gateway is composed.
         bearers: Mutex<BTreeMap<String, Arc<TargetBearer>>>,
+        /// The `max_model_len` each model's targets state.
+        windows: BTreeMap<String, u64>,
         current: Mutex<usize>,
         cold: AtomicUsize,
     }
@@ -1310,6 +1316,7 @@ mod relay {
         authority: String,
         script: Arc<Mutex<VecDeque<AnswerInput>>>,
         bearer: Option<Arc<TargetBearer>>,
+        max_model_len: Option<u64>,
     }
 
     impl RelayTargets for Source {
@@ -1339,6 +1346,7 @@ mod relay {
                 authority: authority.clone(),
                 script: Arc::clone(script),
                 bearer,
+                max_model_len: self.windows.get(alias).copied(),
             }))
         }
 
@@ -1359,6 +1367,10 @@ mod relay {
 
         fn bearer(&self) -> Option<&TargetBearer> {
             self.bearer.as_deref()
+        }
+
+        fn max_model_len(&self) -> Option<u64> {
+            self.max_model_len
         }
 
         fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -1443,6 +1455,10 @@ mod relay {
 
         fn held(&self) -> bool {
             self.inner.held()
+        }
+
+        fn max_model_len(&self) -> Option<u64> {
+            self.inner.max_model_len()
         }
 
         fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -2092,6 +2108,11 @@ mod relay {
                 })
                 .collect(),
             bearers: Mutex::new(BTreeMap::new()),
+            windows: program
+                .models
+                .iter()
+                .filter_map(|model| Some((model.alias.clone(), model.target_max_model_len?)))
+                .collect(),
             current: Mutex::new(0),
             cold: AtomicUsize::new(program.cold_starts),
         });

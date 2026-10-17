@@ -56,6 +56,18 @@ pub struct VllmSettings {
     pub extra_args: Vec<String>,
 }
 
+/// One fallback profile of a model: the GPU types it is tried on and the vLLM settings that fit
+/// them. A model's own [`RunpodModel::gpu_types`] and [`RunpodModel::vllm`] are its first
+/// profile, named [`RunpodModel::profile`]; these follow it, in order.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunpodProfile {
+    /// `1..=32` characters of `A-Za-z0-9-_`, unique within the model.
+    pub name: String,
+    /// Tried one at a time, in this order. A GPU type belongs to at most one profile of a model.
+    pub gpu_types: Vec<String>,
+    pub vllm: VllmSettings,
+}
+
 /// Everything this adapter needs to run one model on Runpod.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RunpodModel {
@@ -82,6 +94,12 @@ pub struct RunpodModel {
     /// The window restarts are counted in. A restart older than this no longer counts, so a
     /// pod that restarted twice over a long life is not a crash loop.
     pub crash_window_ms: u64,
+    /// The name of the first profile, the one `gpu_types` and `vllm` declare. A model declared
+    /// without profiles is the one profile `default`.
+    pub profile: String,
+    /// The profiles tried after the first, in order, when every create of the one before was
+    /// refused for capacity.
+    pub fallbacks: Vec<RunpodProfile>,
 }
 
 /// Why a model declaration was refused. The message never quotes the refused value.
@@ -97,6 +115,8 @@ pub enum ConfigError {
     SecretReference,
     /// A value that reaches the pod's command line or environment is empty or not printable.
     UnsafeText,
+    /// Two profiles of one model share a name or a GPU type.
+    ProfileConflict,
 }
 
 impl ConfigError {
@@ -107,6 +127,7 @@ impl ConfigError {
         Self::ZeroSetting,
         Self::SecretReference,
         Self::UnsafeText,
+        Self::ProfileConflict,
     ];
 
     /// The stable kebab-case code.
@@ -117,6 +138,7 @@ impl ConfigError {
             Self::ZeroSetting => "zero-setting",
             Self::SecretReference => "secret-reference",
             Self::UnsafeText => "unsafe-text",
+            Self::ProfileConflict => "profile-conflict",
         }
     }
 }
@@ -129,6 +151,7 @@ impl std::fmt::Display for ConfigError {
             Self::ZeroSetting => "a Runpod model setting must not be zero",
             Self::SecretReference => "the vLLM key secret name must be [A-Za-z0-9_]+",
             Self::UnsafeText => "a Runpod model value is empty or not printable",
+            Self::ProfileConflict => "two profiles of a Runpod model share a name or a GPU type",
         })
     }
 }
@@ -148,23 +171,77 @@ fn text(value: &str) -> bool {
             .all(|byte| byte == b' ' || byte.is_ascii_graphic())
 }
 
+/// `1..=32` characters of `A-Za-z0-9-_`.
+fn profile_name(value: &str) -> bool {
+    (1..=32).contains(&value.len())
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+/// The checks one profile's GPU types and vLLM settings answer, in [`RunpodModel::validate`]'s
+/// order.
+fn check_profile(gpu_types: &[String], vllm: &VllmSettings) -> Result<(), ConfigError> {
+    if gpu_types.is_empty() {
+        return Err(ConfigError::NoGpu);
+    }
+    let utilization = vllm.gpu_memory_utilization;
+    if !utilization.is_finite() || utilization <= 0.0 || utilization > 1.0 {
+        return Err(ConfigError::GpuUtilization);
+    }
+    if vllm.max_model_len == 0 || vllm.max_num_seqs == 0 {
+        return Err(ConfigError::ZeroSetting);
+    }
+    Ok(())
+}
+
+fn profile_text_ok(gpu_types: &[String], vllm: &VllmSettings) -> bool {
+    gpu_types.iter().all(|gpu| text(gpu))
+        && vllm.extra_args.iter().all(|arg| text(arg))
+        && vllm.sampling.as_deref().is_none_or(text)
+        && vllm.reasoning_effort.as_deref().is_none_or(|effort| {
+            effort.bytes().all(|byte| byte.is_ascii_alphanumeric()) && !effort.is_empty()
+        })
+}
+
 impl RunpodModel {
+    /// This model with the profile at `index` in place of its first: index 0 is the model
+    /// itself, index `n` its `n`th fallback. `None` past the last profile.
+    #[must_use]
+    pub fn with_profile(&self, index: usize) -> Option<(String, Self)> {
+        if index == 0 {
+            return Some((self.profile.clone(), self.clone()));
+        }
+        let fallback = self.fallbacks.get(index - 1)?;
+        let mut model = self.clone();
+        model.gpu_types.clone_from(&fallback.gpu_types);
+        model.vllm = fallback.vllm.clone();
+        Some((fallback.name.clone(), model))
+    }
+
+    /// The name of the profile that declares `gpu_type`, if any does.
+    #[must_use]
+    pub fn profile_of_gpu(&self, gpu_type: &str) -> Option<&str> {
+        if self.gpu_types.iter().any(|gpu| gpu == gpu_type) {
+            return Some(&self.profile);
+        }
+        self.fallbacks
+            .iter()
+            .find(|fallback| fallback.gpu_types.iter().any(|gpu| gpu == gpu_type))
+            .map(|fallback| fallback.name.as_str())
+    }
+
     /// Checks every setting a pod could not be started or bounded without.
     ///
     /// # Errors
     ///
     /// Returns the first [`ConfigError`] that applies.
     pub fn validate(&self) -> Result<(), ConfigError> {
-        if self.gpu_types.is_empty() {
-            return Err(ConfigError::NoGpu);
+        check_profile(&self.gpu_types, &self.vllm)?;
+        for fallback in &self.fallbacks {
+            check_profile(&fallback.gpu_types, &fallback.vllm)?;
         }
-        let utilization = self.vllm.gpu_memory_utilization;
-        if !utilization.is_finite() || utilization <= 0.0 || utilization > 1.0 {
-            return Err(ConfigError::GpuUtilization);
-        }
-        if self.vllm.max_model_len == 0
-            || self.vllm.max_num_seqs == 0
-            || self.container_disk_gb == 0
+        if self.container_disk_gb == 0
             || self.startup_deadline_ms == 0
             || self.idle_timeout_ms == 0
             || self.crash_restart_limit == 0
@@ -180,20 +257,33 @@ impl RunpodModel {
         {
             return Err(ConfigError::SecretReference);
         }
-        let effort_ok = self.vllm.reasoning_effort.as_deref().is_none_or(|effort| {
-            effort.bytes().all(|byte| byte.is_ascii_alphanumeric()) && !effort.is_empty()
-        });
         let tokens_ok = token(&self.hf_model)
-            && self.gpu_types.iter().all(|gpu| text(gpu))
+            && profile_name(&self.profile)
+            && profile_text_ok(&self.gpu_types, &self.vllm)
+            && self.fallbacks.iter().all(|fallback| {
+                profile_name(&fallback.name) && profile_text_ok(&fallback.gpu_types, &fallback.vllm)
+            })
             && self.data_center_ids.iter().all(|dc| token(dc))
-            && self.vllm.extra_args.iter().all(|arg| text(arg))
-            && self.vllm.sampling.as_deref().is_none_or(text)
             && self
                 .cache
                 .as_ref()
                 .is_none_or(|cache| token(&cache.volume_id) && token(&cache.mount_path));
-        if !effort_ok || !tokens_ok {
+        if !tokens_ok {
             return Err(ConfigError::UnsafeText);
+        }
+        let mut names = std::collections::BTreeSet::from([self.profile.as_str()]);
+        let mut gpus: std::collections::BTreeSet<&str> =
+            self.gpu_types.iter().map(String::as_str).collect();
+        for fallback in &self.fallbacks {
+            if !names.insert(fallback.name.as_str()) {
+                return Err(ConfigError::ProfileConflict);
+            }
+            let own: std::collections::BTreeSet<&str> =
+                fallback.gpu_types.iter().map(String::as_str).collect();
+            if !gpus.is_disjoint(&own) {
+                return Err(ConfigError::ProfileConflict);
+            }
+            gpus.extend(own);
         }
         Ok(())
     }

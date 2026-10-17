@@ -306,7 +306,7 @@ through `b10x-llm-providers`, and uses neither: it calls only `descriptions::run
 | namespace | `llmgw-` | `b10x-llm-`; a name starting with `llmgw-` is never listed, adopted, swept or terminated |
 | adoption after restart | any pod with the matching name | only the durable record's exact key, or its request id; a pod labelled for another owner is not adopted, and one taken over at a newer epoch is reported as transferred. After a takeover — the snapshot's previous lease holder gone and its claim expired — the new owner finds its inherited pods still labelled for that holder, because Runpod cannot relabel a pod; the contract parks such a record in `ownership-lost`, and the pool terminates the pod itself, but only when its label still names exactly the holder the snapshot records. A pod labelled for any other controller is never terminated |
 | single-flight start | an atomic phase flip on a watch channel | one mutex across a whole pool step: the first caller declares and submits, every later caller sees the live deployment and is told `starting` |
-| GPU choice | ordered; each refusal tries the next | the same, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false` |
+| GPU choice | ordered; each refusal tries the next | the same within a profile, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false`. A model may declare ordered profiles (below); the next profile is tried only when every create of the one before was refused for capacity |
 | crash recovery | two decreasing uptimes during startup terminate the pod | Runpod reports no uptime, so a restart is the pod's `lastStartedAt` (read by `pods.list` with `id`) moving forward: a value later than the last one seen is one restart, and the first value, an equal or an earlier one, or none, is not. The same count, at any time, but only restarts inside the model's declared `crash_window_ms` count (window end inclusive), so sparse restarts over a long life are not a loop; a pod refusing its vLLM key is terminated too; the next request starts a new deployment |
 | startup deadline | the caller's hold budget; the pod keeps starting | the pod's deadline is separate from a request's hold budget (`request_hold_seconds`, row K28): a pod that has not served within its declared deadline is terminated, because it is a billed resource serving nobody. A pod that served and then answers a definite "not ready" gets the same bound, counted from the last time it was seen ready (`stopped-serving`); unknown readiness neither starts nor ends that clock |
 | idle reaper | idle past the timeout, never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement |
@@ -331,14 +331,32 @@ present and not running. `pod-exited` and `stopped-serving`, like `crash-loop`,
 held on that pod is answered `stopping`, and a cleanup pass that retires a pod refuses nobody
 and reports it as `replaced`; the gateway answers each of them `target-unavailable`.
 
+A model declares one or more profiles: its own `gpu_types` and `vllm` are the first, named
+`profile` (`default` for a deployment document without `profiles`), and `fallbacks` the rest, in
+order (`RunpodProfile`: name, GPU types, vLLM settings). A start tries the GPU types of the first
+profile in order, the spend check immediately before each create. A create refused for capacity
+(`CreateAnswer::NoCapacity`, the connectors failure code `capacity`) or for any other reason
+(`Refused`) moves on to the profile's next GPU type. When every create of a profile was refused
+for capacity, the next profile is tried; a profile with any other refusal ends the start, as do a
+lost create answer and a spend refusal. Every profile is tried inside the one create of the one
+start, so one startup deadline, counted from that submission, covers them all, and binds the
+creates: before each create, of the profile's next GPU type and of the next profile, the provider
+reads the clock, and once more than `startup_deadline_ms` has passed it sends none and the start
+ends as one whose every create was refused (`no-capacity`, the deployment withdrawn). A GPU type belongs
+to at most one profile of a model, so a pod's GPU type names its profile, after an adoption too:
+`StreamLease::profile` reports it, and the gateway's usage record carries it as `profile`.
+
 The pool also answers `stopping` while a model's deployment owes a stop that is not confirmed,
-and `no-capacity` when every declared GPU type refused its create; neither creates anything. It
+and `no-capacity` when every declared GPU type refused its create, or every one tried before the
+start's startup deadline passed; neither creates anything. It
 answers `unknown-model` for an alias nobody declared, without contacting Runpod,
 `invalid-model` when a declaration is refused, and `hosting` when the controller refuses. A
 model declaration is refused with `no-gpu` when it names no GPU type, `gpu-utilization` for a
 `gpu_memory_utilization` outside (0, 1], `zero-setting` for a zero count, limit, deadline or
-window, `secret-reference` for a secret name that is not `[A-Za-z0-9_]+`, and `unsafe-text` for
-an empty or unprintable value bound for the pod's command line or environment.
+window, `secret-reference` for a secret name that is not `[A-Za-z0-9_]+`, `unsafe-text` for
+an empty or unprintable value bound for the pod's command line or environment, or a profile name
+that is not 1 to 32 of `A-Za-z0-9-_`, and `profile-conflict` when two profiles share a name or a
+GPU type. Every fallback profile is checked as the model is.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out.
@@ -354,7 +372,7 @@ control plane and no credential for it. `spec/domains/runpod.yaml` declares ever
 | --- | --- | --- |
 | list | `pods.list` with no filter | `complete` only when the whole answer is one array of pods and every pod parses; a truncated, throttled (`rate_limited`), interrupted or partly unreadable answer is not complete |
 | get | `pods.list` with `id` (v0.37.0 selects no `GetPod`) | the pod's `lastStartedAt`, for crash detection |
-| create | `pod.create`, one per GPU choice | `Created` for `applied` with a readable pod; `Refused` only for `refused`; `unknown` is resolved by one `pods.list` on the pod's `name`, which is per model alias (`Created` only if exactly one pod of that name carries this create's `B10X_LLM_REQUEST` tag, `Lost` otherwise); `not_attempted`, a timeout, a non-zero exit with no classification and unparseable output are `Lost` |
+| create | `pod.create`, one per GPU choice | `Created` for `applied` with a readable pod; `NoCapacity` for `refused` with the failure code `capacity`, `Refused` for any other `refused`; `unknown` is resolved by one `pods.list` on the pod's `name`, which is per model alias (`Created` only if exactly one pod of that name carries this create's `B10X_LLM_REQUEST` tag, `Lost` otherwise); `not_attempted`, a timeout, a non-zero exit with no classification and unparseable output are `Lost` |
 | terminate | `pod.terminate` with `podId` | `Terminated` for `applied`; `Refused` for `refused`, including `404`/`not_found`, which does not prove the pod is gone; anything else `Lost` |
 
 Each write is prepared and issued for its exact input (`approvals prepare`, `approvals issue`

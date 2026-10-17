@@ -1283,3 +1283,85 @@ fn spend_the_pool_is_metered_exactly_when_a_ceiling_is_declared() {
     assert_eq!(policy.total_cap_micro_usd, None);
     assert_eq!(policy.price_per_hour_micro_usd[&small()], 2_000_000);
 }
+
+// ---- story:model-profile-fallback: the usage record names the profile that served ----
+
+/// Everything the test binary's global subscriber writes, kept in memory.
+#[derive(Clone, Default)]
+struct Captured(Arc<Mutex<Vec<u8>>>);
+
+impl Write for Captured {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buffer);
+        Ok(buffer.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+/// The binary's records as its default filter logs them, from every test of this binary: a
+/// test reads only the lines of its own model alias.
+fn usage_log() -> &'static Captured {
+    static LOG: std::sync::OnceLock<Captured> = std::sync::OnceLock::new();
+    LOG.get_or_init(|| {
+        let captured = Captured::default();
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_env_filter(llm_gateway_cli::log_filter(None))
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        tracing::subscriber::set_global_default(subscriber).unwrap();
+        captured
+    })
+}
+
+#[test]
+fn a_relayed_call_names_the_profile_of_the_pod_that_served() {
+    let log = usage_log();
+    let fixture = Fixture::new("profile-record");
+    let deployment = deployment(&fixture, |text| {
+        let text = mutate(&text, "[models.small]", "[models.profiled]");
+        let text = mutate(
+            &text,
+            "gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n",
+            "",
+        );
+        format!(
+            "{text}\n[[models.profiled.profiles]]\nname = \"l40s-1k\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n\n[[models.profiled.profiles]]\nname = \"h100-2k\"\ngpu_types = [\"NVIDIA H100 NVL\"]\nmax_model_len = 2048\n"
+        )
+    });
+    let pod = Pod::start(1, "{\"id\":\"chat-1\",\"object\":\"chat.completion\"}");
+    let runpod = EmulatedRunpod::new();
+    runpod.no_capacity_gpu("NVIDIA L40S");
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let answer = post(
+        running.local_addr(),
+        "/v1/chat/completions",
+        OWNER_SECRET,
+        "{\"model\":\"profiled\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+    );
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    let gpus: Vec<String> = runpod
+        .requests()
+        .iter()
+        .map(|request| request.gpu_type.clone())
+        .collect();
+    assert_eq!(gpus, ["NVIDIA L40S", "NVIDIA H100 NVL"]);
+    let text = String::from_utf8(log.0.lock().unwrap().clone()).unwrap();
+    let records: Vec<&str> = text
+        .lines()
+        .filter(|line| line.contains("usage record") && line.contains("model=\"profiled\""))
+        .collect();
+    assert_eq!(records.len(), 1, "{text}");
+    assert!(records[0].contains("profile=\"h100-2k\""), "{}", records[0]);
+}

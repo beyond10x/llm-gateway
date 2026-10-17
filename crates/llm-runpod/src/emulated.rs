@@ -39,6 +39,7 @@ struct State {
     requests: Vec<PodRequest>,
     terminations: Vec<String>,
     refused_gpus: BTreeSet<String>,
+    no_capacity_gpus: BTreeSet<String>,
     lose_next: Option<bool>,
     ready_after: u32,
     uptimes: Vec<u64>,
@@ -111,9 +112,15 @@ impl EmulatedRunpod {
             .collect()
     }
 
-    /// Refuses every create on this GPU type, as a region without capacity does.
+    /// Refuses every create on this GPU type for a reason other than capacity
+    /// ([`CreateAnswer::Refused`]).
     pub fn refuse_gpu(&self, gpu: &str) {
         self.state().refused_gpus.insert(gpu.to_owned());
+    }
+    /// Refuses every create on this GPU type for capacity ([`CreateAnswer::NoCapacity`]), as a
+    /// region with no such machine free does.
+    pub fn no_capacity_gpu(&self, gpu: &str) {
+        self.state().no_capacity_gpus.insert(gpu.to_owned());
     }
     /// Loses the answer to the next create. `allocates` says whether the pod was made anyway.
     pub fn lose_next_create(&self, allocates: bool) {
@@ -228,6 +235,9 @@ impl RunpodTransport for EmulatedRunpod {
         state.requests.push(request.clone());
         if state.refused_gpus.contains(&request.gpu_type) {
             return CreateAnswer::Refused;
+        }
+        if state.no_capacity_gpus.contains(&request.gpu_type) {
+            return CreateAnswer::NoCapacity;
         }
         let lost = state.lose_next.take();
         if lost == Some(false) {

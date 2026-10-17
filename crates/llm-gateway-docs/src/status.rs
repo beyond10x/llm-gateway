@@ -193,6 +193,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "Model profiles with capacity fallback",
+        "A model may declare ordered profiles, each GPU types with their vLLM settings; when Runpod refuses every create of a profile for capacity the start moves on to the next profile inside the same startup deadline and spend check, and the usage record names the profile that served. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/relaying.rs::a_relayed_call_names_the_profile_of_the_pod_that_served",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
         "Relay to a Runpod pod from the binary over verified TLS",
         "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
         "crates/llm-gateway-cli/tests/pod_tls.rs::tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors",

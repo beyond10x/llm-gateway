@@ -24,8 +24,8 @@ use llm_provision::{
 use llm_runpod::{
     AccountSpend, CloudType, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, ManualClock,
     NetworkVolume, POD_CREATE_BODY_KEYS, PodRequest, PodStatus, PodStream, PodTls, Probe,
-    ProbeTarget, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy, SpendRefusal,
-    TerminateAnswer, Thinking, Unserviceable, VllmSettings, started_at_ms,
+    ProbeTarget, RunpodModel, RunpodProfile, RunpodProvider, RunpodTransport, SpendPolicy,
+    SpendRefusal, TerminateAnswer, Thinking, Unserviceable, VllmSettings, started_at_ms,
 };
 use serde_json::{Value, json};
 
@@ -514,6 +514,8 @@ fn provider_model() -> RunpodModel {
         idle_timeout_ms: 600_000,
         crash_restart_limit: 2,
         crash_window_ms: 600_000,
+        profile: "default".to_owned(),
+        fallbacks: Vec::new(),
     }
 }
 
@@ -576,6 +578,81 @@ fn a_refused_create_through_the_provider_tries_the_next_gpu() {
         .map(|call| input(call)["body"]["gpuTypeIds"].clone())
         .collect();
     assert_eq!(gpus, [json!(["NVIDIA A40"]), json!(["NVIDIA L40S"])]);
+}
+
+/// connectors' code for a provider capacity answer (`capacity`, semantics.md:915-921) is the one
+/// refusal that is `NoCapacity`; every other refused create stays `Refused`.
+#[test]
+fn a_refused_create_whose_failure_code_is_capacity_is_no_capacity() {
+    for (code, expected) in [
+        ("capacity", CreateAnswer::NoCapacity),
+        ("provider_refused", CreateAnswer::Refused),
+        ("invalid_input", CreateAnswer::Refused),
+    ] {
+        let fixture = Fixture::new(&format!("create_refused_{code}"));
+        fixture.script(&json!({"operations invoke pod.create": [failed("refused", code)]}));
+        assert_eq!(
+            fixture.transport().create_pod(&request("NVIDIA A40")),
+            expected,
+            "{code}"
+        );
+    }
+}
+
+/// Through the provider: every GPU of the first profile out of capacity moves the start on to
+/// the next profile, with that profile's vLLM settings, in the same `create`.
+#[test]
+fn a_capacity_refusal_through_the_provider_moves_on_to_the_next_profile() {
+    let fixture = Fixture::new("provider_capacity");
+    fixture.script(&json!({"operations invoke pod.create": [
+        failed("refused", "capacity"),
+        failed("refused", "capacity"),
+        invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
+    ]}));
+    let mut model = provider_model();
+    model.profile = "small".to_owned();
+    model.fallbacks = vec![RunpodProfile {
+        name: "large".to_owned(),
+        gpu_types: vec!["NVIDIA H100 NVL".to_owned()],
+        vllm: VllmSettings {
+            max_model_len: 32_768,
+            ..provider_model().vllm
+        },
+    }];
+    let mut provider = RunpodProvider::new(
+        ConnectorsRunpod::new(fixture.binding(Duration::from_secs(20))),
+        Identifier::new("runpod").expect("provider"),
+        Identifier::new("acct").expect("account"),
+        BTreeMap::from([(Identifier::new("qwen").expect("alias"), model)]),
+        Arc::new(ManualClock::new(0)),
+    );
+    let outcome = provider.create(&create_request());
+    assert_eq!(outcome.dispatch, Dispatch::Accepted);
+    let calls = fixture.calls_of("operations invoke pod.create");
+    let gpus: Vec<Value> = calls
+        .iter()
+        .map(|call| input(call)["body"]["gpuTypeIds"].clone())
+        .collect();
+    assert_eq!(
+        gpus,
+        [
+            json!(["NVIDIA A40"]),
+            json!(["NVIDIA L40S"]),
+            json!(["NVIDIA H100 NVL"])
+        ]
+    );
+    let entrypoint = input(calls.last().expect("a create"))["body"]["dockerEntrypoint"].clone();
+    let args: Vec<&str> = entrypoint
+        .as_array()
+        .expect("entrypoint")
+        .iter()
+        .filter_map(Value::as_str)
+        .collect();
+    let at = args
+        .iter()
+        .position(|arg| *arg == "--max-model-len")
+        .expect("--max-model-len");
+    assert_eq!(args.get(at + 1), Some(&"32768"));
 }
 
 // ---- Acceptance 3: a listing is complete only when it is whole ----

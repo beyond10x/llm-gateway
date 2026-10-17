@@ -405,6 +405,21 @@ pub trait RelayTarget: Send {
         false
     }
 
+    /// The profile of the model the target's pod was started on, which the usage record names.
+    /// `None`, the default, is a target that is not a pod of a profiled model, or one whose
+    /// profile is unknown.
+    fn profile(&self) -> Option<String> {
+        None
+    }
+
+    /// The longest sequence the target's server takes, when the target knows it: a pod of a
+    /// profiled model states its profile's `max_model_len`. The output clamp keeps a messages
+    /// request within it, ahead of the model's own [`RelayModel::window`]. `None`, the default,
+    /// leaves the model's window.
+    fn max_model_len(&self) -> Option<u64> {
+        None
+    }
+
     /// Opens one connection to the target. Its read and write timeouts are the target's.
     ///
     /// # Errors
@@ -562,7 +577,8 @@ impl RelayModel {
 
     /// The window the output clamp keeps a messages request within: the declared
     /// `max_model_len`, else the declared `context_window`, else none, and a model without one
-    /// is never counted.
+    /// is never counted. A target that states its own [`RelayTarget::max_model_len`] replaces
+    /// it for the calls it serves.
     pub fn window(&self) -> Option<u64> {
         self.max_model_len.or(self.context_window)
     }
@@ -1085,6 +1101,8 @@ pub(crate) struct Call {
     pub(crate) target_status: Option<u16>,
     /// Decoded body bytes of the answer written to the client.
     pub(crate) response_bytes: u64,
+    /// The profile the acquired target named, once one was acquired.
+    pub(crate) profile: Option<String>,
 }
 
 /// A model that serves a request, and the translator when the request is translated.
@@ -1123,7 +1141,12 @@ fn served_model<'r>(
 /// Acquires the target for `alias`, counting a request held for a starting target on its route
 /// with the time it waited (rows O1, O2): the target says it held it, or the source gave up past
 /// its hold budget.
-fn acquire(relay: &Relay, alias: &str, wire: Wire) -> Result<Box<dyn RelayTarget>, RefusalCode> {
+fn acquire(
+    relay: &Relay,
+    alias: &str,
+    wire: Wire,
+    call: &mut Call,
+) -> Result<Box<dyn RelayTarget>, RefusalCode> {
     let asked = Instant::now();
     let acquired = relay.targets.acquire(alias);
     let cold_start = match &acquired {
@@ -1135,7 +1158,9 @@ fn acquire(relay: &Relay, alias: &str, wire: Wire) -> Result<Box<dyn RelayTarget
             .metrics
             .count_cold_start_hold(alias, wire, asked.elapsed());
     }
-    acquired.map_err(TargetRefusal::refusal)
+    let target = acquired.map_err(TargetRefusal::refusal)?;
+    call.profile = target.profile();
+    Ok(target)
 }
 
 /// The translated path (story:gateway-translation; relay step 5): the translator prepares the
@@ -1157,7 +1182,7 @@ fn translate(
         body,
     })?;
     let alias = model.alias.as_str();
-    let target = acquire(relay, alias, admitted.wire)?;
+    let target = acquire(relay, alias, admitted.wire, call)?;
     let mut answer = ClientAnswer {
         stream,
         timeout: limits.timeout,
@@ -1351,9 +1376,13 @@ pub(crate) fn serve(
         model.reasoning_effort.filter(|_| messages),
     );
     drop(body);
-    let window = model.window().filter(|_| messages);
     let alias = model.alias.as_str();
-    let target = acquire(relay, alias, admitted.wire)?;
+    let target = acquire(relay, alias, admitted.wire, call)?;
+    // The window of the server that answers: the one the target states, else the model's.
+    let window = target
+        .max_model_len()
+        .or_else(|| model.window())
+        .filter(|_| messages);
     // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
     // never wakes a pod the relay would not have woken. A count that fails decides nothing.
     if let (Some(window), Some(_)) = (window, rewritten.max_tokens()) {

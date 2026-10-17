@@ -58,6 +58,9 @@ pub struct UsageRecord {
     pub response_bytes: u64,
     /// From the end of the request head to the last byte relayed or the refusal written.
     pub duration_ms: u64,
+    /// The profile of the pod that served the call. `None` for a hosted endpoint, a target
+    /// that names no profile, and a call no target served.
+    pub profile: Option<String>,
 }
 
 /// Where the gateway hands each [`UsageRecord`]. The embedding implements it; it is called on
@@ -374,6 +377,7 @@ mod tests {
             reasoning_output_tokens: None,
             response_bytes: 0,
             duration_ms: 1,
+            profile: None,
         });
         let text = metrics.render();
         assert!(text.contains("\nllmgw_inference_requests_total 1\n"));

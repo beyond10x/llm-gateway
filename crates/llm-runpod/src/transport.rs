@@ -73,7 +73,10 @@ pub struct PodRequest {
 pub enum CreateAnswer {
     /// The control plane answered with the pod it created.
     Created(Pod),
-    /// Refused — for Runpod usually "no capacity for this GPU type here". Nothing was created.
+    /// Refused for capacity: the provider has no machine of this GPU type free here (the
+    /// `connectors` failure code `capacity`). Nothing was created.
+    NoCapacity,
+    /// Refused for any other reason. Nothing was created.
     Refused,
     /// The answer never arrived. A pod may or may not exist.
     Lost,

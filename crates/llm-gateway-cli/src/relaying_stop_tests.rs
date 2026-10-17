@@ -74,6 +74,17 @@ fn a_wake_once_the_gateway_stops_starts_nothing() {
     );
     assert_eq!(runpod.create_calls(), 1);
     assert_eq!(targets.status("small").unwrap().phase, ModelPhase::Starting);
-    assert!(targets.wake("absent").is_none());
-    assert!(targets.status("absent").is_none());
+    // A model the pool does not run (one of a provider with no connection) is
+    // `target-unavailable` to a wake and `stopped` to a status, never `path-unknown`.
+    assert_eq!(
+        targets.wake("absent").expect("a pod source answers").err(),
+        Some(TargetRefusal::Unavailable)
+    );
+    assert_eq!(
+        targets
+            .status("absent")
+            .expect("a pod source answers")
+            .phase,
+        ModelPhase::Stopped
+    );
 }

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:release-image
 kind: story
-status: active
+status: implemented
 title: Every release publishes the gateway image to ghcr.io/beyond10x/llm-gateway
 relations:
 - decomposes: epic:gateway
@@ -14,10 +14,11 @@ scope:
   path: CHANGELOG.md
 - confidence: inferred
   path: crates/llm-gateway-cli/tests/release_workflow.rs
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T20:20:59Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-16T20:20:59Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-10-17T01:21:02Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:model-wake-and-status
 kind: story
-status: active
+status: implemented
 title: The owner can wake a model and read its start phase without a model call
 relations:
 - decomposes: epic:hosting
@@ -33,10 +33,11 @@ scope:
   path: docs/hosting.md
 - confidence: inferred
   path: spec/domains/gateway.yaml
-revision: 15
+revision: 16
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T20:21:01Z", actor: "human:timo", revision: 14}
 - {from: "proposed", to: "active", at: "2026-10-16T20:21:01Z", actor: "human:timo", revision: 15}
+- {from: "active", to: "implemented", at: "2026-10-17T01:21:03Z", actor: "human:timo", revision: 16, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:model-profile-fallback
 kind: story
-status: active
+status: implemented
 title: A model starts on its next declared profile when the provider has no capacity for the first
 relations:
 - decomposes: epic:hosting
@@ -37,10 +37,11 @@ scope:
   path: spec/domains/deployment.yaml
 - confidence: inferred
   path: spec/domains/telemetry.yaml
-revision: 19
+revision: 20
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T20:21:00Z", actor: "human:timo", revision: 18}
 - {from: "proposed", to: "active", at: "2026-10-16T20:21:00Z", actor: "human:timo", revision: 19}
+- {from: "active", to: "implemented", at: "2026-10-17T01:21:02Z", actor: "human:timo", revision: 20, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

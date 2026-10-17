@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:relay-read-interrupted
 kind: story
-status: active
+status: implemented
 title: An interrupted read is retried, not answered upstream-failed
 relations:
 - decomposes: epic:gateway
@@ -20,10 +20,11 @@ scope:
   path: crates/llm-gateway/tests/spec_declarations.rs
 - confidence: cited
   path: crates/llm-gateway/tests/wire_relay.rs
-revision: 9
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-16T20:20:52Z", actor: "human:timo", revision: 8}
 - {from: "proposed", to: "active", at: "2026-10-16T20:20:52Z", actor: "human:timo", revision: 9}
+- {from: "active", to: "implemented", at: "2026-10-17T01:21:01Z", actor: "human:timo", revision: 10, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

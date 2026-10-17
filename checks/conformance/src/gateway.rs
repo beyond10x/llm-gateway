@@ -2270,32 +2270,7 @@ mod relay {
             };
             pods.push(pod);
         }
-        let source = Arc::new(Source {
-            pods: pods
-                .iter()
-                .map(|pod| {
-                    (
-                        pod.name.clone(),
-                        pod.authority.clone(),
-                        Arc::clone(&pod.script),
-                    )
-                })
-                .collect(),
-            bearers: Mutex::new(BTreeMap::new()),
-            windows: program
-                .models
-                .iter()
-                .filter_map(|model| Some((model.alias.clone(), model.target_max_model_len?)))
-                .collect(),
-            current: Mutex::new(0),
-            cold: AtomicUsize::new(program.cold_starts),
-            lifecycle: program.lifecycle.as_ref().map(|lifecycle| {
-                Mutex::new((
-                    lifecycle.wake.iter().cloned().collect(),
-                    lifecycle.status.iter().cloned().collect(),
-                ))
-            }),
-        });
+        let source = Arc::new(source(&program, &pods));
         let records = Arc::new(Records::default());
         let root = certificates
             .as_ref()
@@ -2332,6 +2307,42 @@ mod relay {
             }
         }
         stop(&shared, pods);
+        upstream_facts(&shared, &countings, &mut facts);
+        facts
+    }
+
+    /// The pods' source the run's gateway resolves its targets from.
+    fn source(program: &Program, pods: &[Pod]) -> Source {
+        Source {
+            pods: pods
+                .iter()
+                .map(|pod| {
+                    (
+                        pod.name.clone(),
+                        pod.authority.clone(),
+                        Arc::clone(&pod.script),
+                    )
+                })
+                .collect(),
+            bearers: Mutex::new(BTreeMap::new()),
+            windows: program
+                .models
+                .iter()
+                .filter_map(|model| Some((model.alias.clone(), model.target_max_model_len?)))
+                .collect(),
+            current: Mutex::new(0),
+            cold: AtomicUsize::new(program.cold_starts),
+            lifecycle: program.lifecycle.as_ref().map(|lifecycle| {
+                Mutex::new((
+                    lifecycle.wake.iter().cloned().collect(),
+                    lifecycle.status.iter().cloned().collect(),
+                ))
+            }),
+        }
+    }
+
+    /// Writes the facts the pods and every composition's counting saw once the run has stopped.
+    fn upstream_facts(shared: &Shared, countings: &[Arc<Counting>], facts: &mut Value) {
         facts["upstream"] = json!(taken(&shared.upstream));
         facts["authorizations"] = json!(taken(&shared.authorizations));
         facts["received_heads"] = json!(taken(&shared.received_heads));
@@ -2352,7 +2363,6 @@ mod relay {
             facts["released"] = json!(sum(|c| c.released.load(Ordering::SeqCst)));
             facts["lifecycle_asks"] = json!(joined(|c| &c.lifecycle_asks));
         }
-        facts
     }
 
     /// A `GET /metrics`: its result entry, and its `scrapes` entries numbered `index`.
@@ -2469,28 +2479,7 @@ mod relay {
                 *current = Arc::clone(&progress);
             }
             let started = Instant::now();
-            let (close_after, half_close, seal) = match step {
-                Step::Request {
-                    close_after_bytes,
-                    half_close,
-                    sealed_from,
-                    alter_seal,
-                    ..
-                } => {
-                    let seal = sealed_from
-                        .and_then(|from| answered.get(from).cloned().flatten())
-                        .and_then(|body| first_seal(&body).map(str::to_owned))
-                        .map(|seal| {
-                            if alter_seal.unwrap_or(false) {
-                                altered(&seal)
-                            } else {
-                                seal
-                            }
-                        });
-                    (*close_after_bytes, half_close.unwrap_or(true), seal)
-                }
-                _ => (None, true, None),
-            };
+            let (close_after, half_close, seal) = request_options(step, &answered);
             let received = request_bytes(&program.secret, step, seal.as_deref())
                 .and_then(|raw| exchange(addr, &raw, &progress, close_after, half_close));
             // A record is made before the gateway closes the connection, so every record of
@@ -2519,15 +2508,7 @@ mod relay {
                 received.header("allow")
             ));
             retry_after.push(received.header("retry-after").to_owned());
-            let replied = progress
-                .replied
-                .lock()
-                .is_ok_and(|replied| replied.is_some());
-            arrivals.push(match (replied, progress.held.load(Ordering::SeqCst)) {
-                (false, _) => "none",
-                (true, false) => "streamed",
-                (true, true) => "held",
-            });
+            arrivals.push(arrival(&progress));
         }
         facts["results"] = json!(results);
         facts["bodies"] = json!(bodies);
@@ -2537,6 +2518,50 @@ mod relay {
         facts["records"] = json!(recorded);
         facts["scrapes"] = json!(scrapes);
         handle
+    }
+
+    /// A step's connection handling and the seal it carries: the bytes after which it closes,
+    /// whether it half-closes, and the first seal of the answer it names in `sealed_from`,
+    /// altered when it sets `alter_seal`.
+    fn request_options(
+        step: &Step,
+        answered: &[Option<String>],
+    ) -> (Option<usize>, bool, Option<String>) {
+        match step {
+            Step::Request {
+                close_after_bytes,
+                half_close,
+                sealed_from,
+                alter_seal,
+                ..
+            } => {
+                let seal = sealed_from
+                    .and_then(|from| answered.get(from).cloned().flatten())
+                    .and_then(|body| first_seal(&body).map(str::to_owned))
+                    .map(|seal| {
+                        if alter_seal.unwrap_or(false) {
+                            altered(&seal)
+                        } else {
+                            seal
+                        }
+                    });
+                (*close_after_bytes, half_close.unwrap_or(true), seal)
+            }
+            _ => (None, true, None),
+        }
+    }
+
+    /// How a request's answer arrived from its pod: not at all, streamed, or held back.
+    fn arrival(progress: &Progress) -> &'static str {
+        let replied = progress
+            .replied
+            .lock()
+            .is_ok_and(|replied| replied.is_some());
+        match (replied, progress.held.load(Ordering::SeqCst)) {
+            (false, _) => "none",
+            (true, false) => "streamed",
+            (true, true) => "held",
+        }
     }
 
     fn stop(shared: &Shared, pods: Vec<Pod>) {

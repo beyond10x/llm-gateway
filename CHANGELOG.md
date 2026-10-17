@@ -5,7 +5,7 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.10.0 (2026-10-17)
 
 - The owner can wake a model ahead of demand and read its phase without a model call:
   `POST /v1/models/<alias>/wake` starts a Runpod model's pod as a request would, through the same

@@ -5,7 +5,7 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.11.0 (2026-10-17)
 
 - `b10x-llm-gateway credential set --config <file> --model <alias>` (or `--route <name>` for a
   route of the routes document) stores one upstream key in the file the deployment already names

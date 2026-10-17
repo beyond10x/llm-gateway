@@ -43,6 +43,7 @@ fn a_wake_once_the_gateway_stops_starts_nothing() {
             alias: Identifier::new("small").unwrap(),
             bearer: Arc::new(TargetBearer::new(b"key".to_vec()).unwrap()),
             hold: Duration::ZERO,
+            windows: BTreeMap::new(),
         },
     )]);
     let stopping = Arc::new(AtomicBool::new(true));

@@ -445,7 +445,7 @@ the sources and what a live record still has to show. The cases are the `claude_
 A model's declared `wires` are the wires its upstream speaks. A request on one of them takes the
 byte relay above, unchanged. A request on another wire, to a relay composed with a `Translator`
 (`Relay::with_translator`), is translated through llm's neutral turn for the model's **first**
-declared wire. The binary always composes one (`llm_gateway_cli::LlmTranslator`, over llm 0.6.0's
+declared wire. The binary always composes one (`llm_gateway_cli::LlmTranslator`, over llm 0.7.0's
 ingress decoders, protocol clients and ingress encoders); a relay without one refuses the
 request `wire-not-served`, as before. This is translation of a published subset, not a claim of
 vendor API equivalence: a field outside the subset is refused, never dropped. The specification
@@ -464,7 +464,7 @@ The port's order, all of it before any target is asked for, so a refused request
 pod:
 
 1. Steps 1-5 of the relay, `tools-not-served` included.
-2. The body is decoded with llm 0.6.0's decoder for the client's wire. A field or value outside
+2. The body is decoded with llm 0.7.0's decoder for the client's wire. A field or value outside
    the subset, or past its size bound (llm's 16 MiB request bound included), is
    `translation-unsupported`; a value breaking one of its rules (contradictory output limits, a
    tool result answering no call, a value of the wrong kind) is `translation-invalid`.
@@ -473,59 +473,82 @@ pod:
    binding, the upstream speaks another protocol, and the gateway binds no carried state.
 4. The turn is checked against the model's capabilities: tools and tool choice when its
    `ToolCalling` is `Parsed`; `temperature` and `top_p`; the efforts `minimal`, `low`, `medium`,
-   `high` and `xhigh`; a context window and output limit of its `max_model_len`, else its
+   `high` and `xhigh`, and `none` as well when the upstream is chat or responses, each checked as
+   the upstream wire receives it (llm's `wire_effort`: effort `max` reaches a chat or responses
+   upstream as `xhigh` and disabled thinking as `none`, while a messages upstream receives `max`
+   and `none` as they are, and so refuses them); a context window and output limit of its `max_model_len`, else its
    `context_window`, else 200000. Then it is projected for the upstream wire. Either refusal is
    `translation-unsupported` or `translation-invalid` by the same rule.
 
-What each client wire's decoder accepts, from llm 0.6.0:
+What each client wire's decoder accepts, from llm 0.7.0. Every field a decoder reads has one rule
+(llm's `docs/design.md` "Client request fields"): **carried** to every upstream wire that has the
+concept, **translated** under another name, **advisory** (a hint a wire without the concept
+omits), or **refused** by name. Every key a decoder does not name is refused by its path, at
+every level, so a key outside the subset is `translation-unsupported`, never dropped
+(`translation_guard_*` in `crates/llm-gateway-cli/tests/translation_guards.rs`); the gateway
+runs no key check of its own.
 
 - **`chat`** (`llm_chat::SUPPORTED_REQUEST_FIELDS`): `model`, `messages`, `tools`,
   `tool_choice`, `max_completion_tokens`, `max_tokens` (equal when both are given),
-  `temperature`, `top_p`, `reasoning_effort`, `stream` and `stream_options.include_usage`.
-  Messages are `system` or `developer` before the conversation, `user`, `assistant` (text and
-  `tool_calls`) and `tool`; content is a string or `text` parts; tools are `function` tools with
-  a `parameters` schema; `tool_choice` is `auto`, `required` or a named function. Refused by name:
-  `n`, `logprobs`, `top_logprobs`, `response_format`, `seed`, `stop`, `frequency_penalty`,
-  `presence_penalty`, `logit_bias`, `functions`, `function_call`, `parallel_tool_calls`,
+  `temperature`, `top_p`, `reasoning_effort`, `stream`, `stream_options.include_usage`, and
+  `parallel_tool_calls`, `prompt_cache_key` and `verbosity`. Messages are `system` or
+  `developer` before the conversation, `user`, `assistant` (text and `tool_calls`) and `tool`;
+  content is a string or `text` parts; tools are `function` tools with a `parameters` schema,
+  and a `strict` function is refused; `tool_choice` is `auto`, `required` or a named function.
+  Refused by name: `n`, `logprobs`, `top_logprobs`, `response_format`, `seed`, `stop`,
+  `frequency_penalty`, `presence_penalty`, `logit_bias`, `functions`, `function_call`,
   `modalities`, `audio`, `prediction`, `web_search_options`, `store`, `metadata`,
   `service_tier`, `user`.
-- **`responses`** (`llm_responses::ACCEPTED_BODY_FIELDS`): `model`, `input`, `tools`,
-  `tool_choice`, `max_output_tokens`, `temperature`, `top_p`, `reasoning` (`effort` only), and
-  `stream: true`, `store: false` and `include: ["reasoning.encrypted_content"]`, each required
-  with exactly that value. `input` holds one leading `developer` message, `user` and
-  `assistant` messages of one text part each, `function_call` and `function_call_output` items
-  (an output is the envelope `{"ok":…,"output":…}` as a string); tools are `function` tools
-  with `strict: false`. A translated responses request is always streamed.
+- **`responses`** (`llm_responses::ACCEPTED_BODY_FIELDS`): `model`, `input`, `instructions`,
+  `tools`, `tool_choice`, `max_output_tokens`, `temperature`, `top_p`, `reasoning` (`effort`
+  and `summary`), `parallel_tool_calls`, `prompt_cache_key`, `text.verbosity`,
+  `client_metadata`, and `stream: true`, `store: false` and
+  `include: ["reasoning.encrypted_content"]`, each required with exactly that value.
+  `instructions` and the text parts of the `developer` messages that open `input` are the
+  instructions; `input` then holds `user` and `assistant` messages of one text part each (an
+  assistant part may carry an empty `annotations`), `function_call` and
+  `function_call_output` items (an output that is not the envelope `{"ok":…,"output":…}` is a
+  successful result carrying that string), and an item may carry an `id`, which reaches no
+  upstream. Tools are `function` tools with `strict: false`; a tool of another type is refused
+  by its type. A translated responses request is always streamed.
 - **`messages`** (`llm_messages::decode_request`): `model`, `max_tokens` (positive), `system`
-  (a string or one text block), `messages` (`user` and `assistant`, with string content or
-  `text`, `tool_use` and `tool_result` blocks whose content is a string), `tools` (`name`,
-  `description`, `input_schema`), `stream`, `temperature` (at most 1), `top_p`,
-  `output_config.effort` and `tool_choice` (`auto`, `any`, `tool`).
+  (a string or text blocks, joined by a line feed), `messages` (`user` and `assistant`, with
+  string content or `text`, `tool_use` and `tool_result` blocks whose content is a string),
+  `tools` (`name`, `description`, `input_schema`), `stream`, `temperature` (at most 1), `top_p`,
+  `thinking` (`adaptive`, `enabled` with a budget, `disabled`), `output_config.effort` (any
+  name, `max` included), `tool_choice` (`auto`, `any`, `tool`, and
+  `disable_parallel_tool_use`), `metadata`, and `cache_control` (`ephemeral`, an optional
+  `ttl`) on a system block, a content block or a tool.
 
-Every nested level is closed too: a key a level does not list is `translation-unsupported`,
-never dropped. llm 0.6.0's messages decoder closes each level itself; its chat and responses
-decoders pass over unknown keys below the top level, so the gateway checks those levels before
-decoding (`crates/llm-gateway-cli/src/translate.rs` `chat_closed`, `responses_closed`, from
-llm's `crates/llm-chat/src/ingress.rs`, `docs/chat.md` and `crates/llm-responses/src/request.rs`):
+How a carried or advisory field reaches each upstream wire is llm's table:
 
-| Wire | Level | Keys |
-| --- | --- | --- |
-| chat | a `system`, `developer` or `user` message | `role`, `content` |
-| chat | an `assistant` message | `role`, `content`, `tool_calls` |
-| chat | a `tool` message | `role`, `content`, `tool_call_id` |
-| chat | a content part | `type`, `text` |
-| chat | `tool_calls[]` | `id`, `type` (`function`), `function` |
-| chat | `tool_calls[].function` | `name`, `arguments` |
-| chat | `tools[]`, `tools[].function` | `type`, `function`; `name`, `description`, `parameters` |
-| chat | an object `tool_choice`, its `function` | `type` (`function`), `function`; `name` |
-| responses | a `message` item, its content part | `type`, `role`, `content`; `type`, `text` |
-| responses | a `function_call` item | `type`, `call_id`, `name`, `arguments` |
-| responses | a `function_call_output` item | `type`, `call_id`, `output` |
-| responses | an object `tool_choice` | `type`, `name` |
+| Read as | Messages upstream | Chat upstream | Responses upstream |
+| --- | --- | --- | --- |
+| effort `max` | `output_config.effort` `max` (refused: not a capability) | `reasoning_effort` `xhigh` | `reasoning.effort` `xhigh` |
+| thinking `adaptive` | `thinking` | nothing | nothing |
+| thinking `enabled` with a budget | `thinking` | refused | refused |
+| thinking `disabled`, no effort | `thinking` | `reasoning_effort` `none` | `reasoning.effort` `none` |
+| `parallel_tool_calls` `b` | `tool_choice.disable_parallel_tool_use` `!b` | `parallel_tool_calls` | `parallel_tool_calls` |
+| `cache_control` | its lifetime on llm's own breakpoints | omitted | omitted |
+| `prompt_cache_key` | omitted | `prompt_cache_key` | `prompt_cache_key` |
+| verbosity | omitted | `verbosity` | `text.verbosity` |
+| `reasoning.summary` | omitted | omitted | `reasoning.summary` |
+| an item `id`, `client_metadata`, `metadata` | omitted | omitted | omitted |
 
-So a tool's `strict`, a message's `name`, `refusal` or `reasoning_content`, a part's
-`cache_control` or `annotations`, and an item's `id` or `status` are each refused
-(`translation_guard_*` in `crates/llm-gateway-cli/tests/translation_guards.rs`).
+llm's client reports an omitted advisory hint once the turn has succeeded, as an
+`advisory-omitted` warning event; no client wire's encoder writes a warning, so the client is
+sent none.
+
+So Claude Code's first turn (adaptive `thinking`, a `system` of two text blocks, `cache_control`
+and effort `max`) and Codex's first turn (`instructions`, a developer message, item ids,
+`parallel_tool_calls`, `prompt_cache_key`, `text.verbosity`, `reasoning.summary` and
+`client_metadata`) are carried to another wire (scenario
+`translate-a-coding-agents-turn-reaches-another-wire-with-its-controls`). Codex's second turn
+replays a `reasoning` item and is `translation-opaque-state` (step 3). Still refused by name,
+`translation-unsupported`: structured output (`output_config.format`, `text.format`,
+`response_format`), `context_management`, `thinking.display`, hosted and custom tools, and an
+instruction in the middle of the conversation (a `system` message inside Messages `messages`, a
+`developer` message after the first item of Responses `input`).
 
 ### The upstream
 
@@ -807,7 +830,7 @@ in `tests/wire_relay.rs` measures the header, and
 
 ## Bounds of the translated path
 
-The bounds llm 0.6.0 holds a translated answer to, per upstream stream (`llm_http::sse`, and
+The bounds llm 0.7.0 holds a translated answer to, per upstream stream (`llm_http::sse`, and
 llm-core's `MAX_TOOL_ARGUMENT_BYTES`, read by the binary's translator); the gateway crate holds none of them, so they
 are not in [Bounds](#bounds). An answer at a bound is written whole; one past it ends with the
 wire's terminal error carrying `translation-too-large`'s message, or, before any output, is the

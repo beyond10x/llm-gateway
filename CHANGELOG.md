@@ -5,6 +5,21 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- The translator runs on llm 0.7.0 (`b10x-llm-gateway-cli`'s llm crates and `b10x-llm-runpod`'s
+  `b10x-llm-providers` at tag `0.7.0`). On a translated route, Claude Code's first turn
+  (adaptive `thinking`, a `system` of text blocks, `cache_control`, effort `max`) and Codex's
+  first turn (`instructions`, item ids, `parallel_tool_calls`, `prompt_cache_key`,
+  `text.verbosity`, `reasoning.summary`, `client_metadata`) are carried to another wire instead
+  of refused: effort `max` reaches a chat or responses upstream as `xhigh`, disabled thinking as
+  `none`, and a hint the upstream wire has no place for is not sent. A key llm does not name is
+  still refused at every level, now by llm itself. Still refused `translation-unsupported`:
+  structured output, `context_management`, `thinking.display`, hosted tools, a thinking budget
+  to a chat or responses upstream, and a mid-conversation instruction. Codex's and Claude Code's
+  later turns, which replay reasoning another upstream minted, are still
+  `translation-opaque-state`. The refusal codes are unchanged.
+
 ## 0.11.0 (2026-10-17)
 
 - `b10x-llm-gateway credential set --config <file> --model <alias>` (or `--route <name>` for a

@@ -236,8 +236,15 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Translation between wires within llm's subset",
-        "A request on a wire the model's upstream does not speak is decoded with llm 0.6.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Claude Code's and Codex's requests fall outside the subset today. Tested against loopback fixture upstreams, not a vendor API.",
+        "A request on a wire the model's upstream does not speak is decoded with llm 0.7.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Tested against loopback fixture upstreams, not a vendor API.",
         "crates/llm-gateway-cli/tests/translation.rs::translation_the_binary_reaches_an_api_key_endpoint_on_its_base_path_with_its_key_only",
+        Some("/docs/guides/translate-between-wires"),
+    ),
+    shipped(
+        "Relay",
+        "Claude Code's and Codex's first turns on a translated route",
+        "Claude Code's first turn reaches a chat or responses upstream, and Codex's first turn a chat or messages upstream, with their effort, thinking, parallel tool calls and cache and verbosity hints under the upstream wire's names; effort max reaches chat and responses as xhigh. A later turn that replays reasoning another upstream minted is still refused translation-opaque-state. Tested with captured client requests against loopback fixture upstreams, not a vendor API.",
+        "crates/llm-gateway-cli/tests/translation.rs::translation_codexs_first_turn_is_carried_to_chat",
         Some("/docs/guides/translate-between-wires"),
     ),
     shipped(

@@ -129,10 +129,11 @@ refusal_codes! {
     /// tool result answering no call, a value of the wrong kind. Refused before any target.
     TranslationInvalid => "translation-invalid", 400,
         "the request breaks a rule of the subset the gateway translates";
-    /// A translated request carrying reasoning state another serving binding minted, which the
-    /// gateway never binds to the upstream. Refused before any target.
+    /// A translated request carrying reasoning state the gateway did not seal for this route
+    /// since it last started: minted by another serving binding, for another route, altered,
+    /// forged, or sealed before a restart. Refused before any target.
     TranslationOpaqueState => "translation-opaque-state", 400,
-        "the request carries reasoning state the gateway cannot send to the model's upstream";
+        "the request carries reasoning state the gateway did not seal for this route";
     /// A messages-wire request whose input, counted at the target, leaves no room for output
     /// in the model's window (the output clamp). Its message starts `prompt is too long`, the
     /// phrase Claude Code answers by compacting its conversation.

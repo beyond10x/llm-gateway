@@ -16,9 +16,20 @@ Nothing in any release is deployed or qualified against a live client.
   `none`, and a hint the upstream wire has no place for is not sent. A key llm does not name is
   still refused at every level, now by llm itself. Still refused `translation-unsupported`:
   structured output, `context_management`, `thinking.display`, hosted tools, a thinking budget
-  to a chat or responses upstream, and a mid-conversation instruction. Codex's and Claude Code's
-  later turns, which replay reasoning another upstream minted, are still
-  `translation-opaque-state`. The refusal codes are unchanged.
+  to a chat or responses upstream, and a mid-conversation instruction. Claude Code's later
+  turns, which replay reasoning another upstream minted, are still `translation-opaque-state`.
+  The refusal codes are unchanged.
+- Codex's later turns are served on a translated route. A translated answer to a Responses
+  client carries the upstream's reasoning state as a `reasoning` item whose `encrypted_content`
+  is a seal (`llmgw-seal-1.`): the state and an HMAC-SHA256 tag over the route and both wires,
+  under a key the gateway generates when it starts and never writes out. The next turn on the
+  same route binds it: a Messages upstream gets back the signed `thinking` block it minted, and a
+  Chat upstream gets the turn without the item. An item the gateway did not seal for that route
+  since it last started (another route or wire, altered, forged, an upstream's own, or sealed
+  before a restart) is still `translation-opaque-state`, whose message is now "the request
+  carries reasoning state the gateway did not seal for this route". No seal is handed to a
+  Messages client, so Claude Code's later turns stay refused. No log line, event, metric or
+  refusal carries a seal or the state in it.
 
 ## 0.11.0 (2026-10-17)
 

@@ -18,6 +18,7 @@ mod logging;
 mod refusal;
 mod relaying;
 mod routes;
+mod seal;
 mod serve;
 mod tls;
 mod translate;

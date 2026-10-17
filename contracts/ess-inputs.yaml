@@ -238,6 +238,10 @@ scenarios:
 - gateway/scenarios/translate-a-client-that-disconnects-cancels-the-upstream-turn.yaml
 - gateway/scenarios/translate-a-field-outside-the-subset-is-refused-without-asking-for-a-target.yaml
 - gateway/scenarios/translate-carried-reasoning-state-is-refused-without-asking-for-a-target.yaml
+- gateway/scenarios/translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it.yaml
+- gateway/scenarios/translate-sealed-reasoning-state-from-another-route-is-refused.yaml
+- gateway/scenarios/translate-altered-or-forged-sealed-reasoning-state-is-refused.yaml
+- gateway/scenarios/translate-sealed-reasoning-state-from-before-a-restart-is-refused.yaml
 - gateway/scenarios/translate-a-coding-agents-turn-reaches-another-wire-with-its-controls.yaml
 - gateway/scenarios/translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event.yaml
 - gateway/scenarios/translate-the-listing-names-every-wire-and-the-upstream-wires.yaml

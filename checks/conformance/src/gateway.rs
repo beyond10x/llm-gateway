@@ -800,7 +800,17 @@ mod relay {
             /// Whether the client shuts its sending side once the request is written; default true.
             #[serde(default)]
             half_close: Option<bool>,
+            /// The index of an earlier request step: every `<sealed>` in `body` is replaced by
+            /// the first reasoning seal that step's answer carried.
+            #[serde(default)]
+            sealed_from: Option<usize>,
+            /// With `sealed_from`, the first character of the seal's state part is replaced.
+            #[serde(default)]
+            alter_seal: Option<bool>,
         },
+        /// The gateway is stopped and composed again from the same program: a new translator,
+        /// so a new seal key, over the same target source and pods.
+        Restart,
     }
 
     impl AnswerInput {
@@ -1889,7 +1899,8 @@ mod relay {
     }
 
     /// The request a step sends, or `None` for a step the program cannot express.
-    fn request_bytes(secret: &str, step: &Step) -> Option<Vec<u8>> {
+    /// With `seal`, every `<sealed>` in the step's body is replaced by it.
+    fn request_bytes(secret: &str, step: &Step, seal: Option<&str>) -> Option<Vec<u8>> {
         let Step::Request {
             path,
             body,
@@ -1904,7 +1915,10 @@ mod relay {
         else {
             return None;
         };
-        let mut body = body.clone().into_bytes();
+        let mut body = match seal {
+            Some(seal) => body.replace("<sealed>", seal).into_bytes(),
+            None => body.clone().into_bytes(),
+        };
         if let Some(total) = *pad_to_bytes {
             let prefix = body.strip_suffix(b"}")?;
             let opening = [prefix, b",\"pad\":\""].concat();
@@ -2113,17 +2127,70 @@ mod relay {
                 .pods
                 .iter()
                 .all(|pod| pod.len() <= MAX_ANSWERS && pod.iter().all(AnswerInput::valid))
-            && program.steps.iter().all(|step| match step {
-                Step::MarkReady | Step::Scrape { .. } => true,
-                Step::Request {
-                    pad_to_bytes,
-                    headers,
-                    ..
-                } => {
-                    pad_to_bytes.is_none_or(|bytes| bytes <= MAX_PAD_BYTES)
-                        && headers.iter().all(|line| !line.contains(['\r', '\n']))
-                }
-            })
+            && program
+                .steps
+                .iter()
+                .enumerate()
+                .all(|(index, step)| match step {
+                    Step::MarkReady | Step::Scrape { .. } | Step::Restart => true,
+                    Step::Request {
+                        pad_to_bytes,
+                        headers,
+                        sealed_from,
+                        alter_seal,
+                        ..
+                    } => {
+                        pad_to_bytes.is_none_or(|bytes| bytes <= MAX_PAD_BYTES)
+                            && headers.iter().all(|line| !line.contains(['\r', '\n']))
+                            && sealed_from.is_none_or(|from| {
+                                from < index && matches!(program.steps[from], Step::Request { .. })
+                            })
+                            && (alter_seal.is_none() || sealed_from.is_some())
+                    }
+                })
+    }
+
+    /// The prefix of every reasoning seal the translator hands a client (the decision on
+    /// sealed reasoning state in spec/domains/gateway.yaml).
+    const SEAL_PREFIX: &str = "llmgw-seal-1.";
+
+    /// The length of the seal starting at `start` of `text`: the prefix and every base64url or
+    /// `.` character after it.
+    fn seal_length(text: &str, start: usize) -> usize {
+        SEAL_PREFIX.len()
+            + text[start + SEAL_PREFIX.len()..]
+                .bytes()
+                .take_while(|byte| {
+                    byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.')
+                })
+                .count()
+    }
+
+    /// The first reasoning seal in `text`.
+    fn first_seal(text: &str) -> Option<&str> {
+        let start = text.find(SEAL_PREFIX)?;
+        Some(&text[start..start + seal_length(text, start)])
+    }
+
+    /// `text` with every reasoning seal written `<sealed>`: a seal differs on every run.
+    fn redact_seals(text: &str) -> String {
+        let mut out = String::with_capacity(text.len());
+        let mut rest = text;
+        while let Some(start) = rest.find(SEAL_PREFIX) {
+            out.push_str(&rest[..start]);
+            out.push_str("<sealed>");
+            rest = &rest[start + seal_length(rest, start)..];
+        }
+        out.push_str(rest);
+        out
+    }
+
+    /// `seal` with the first character of its state part replaced by another.
+    fn altered(seal: &str) -> String {
+        let (prefix, rest) = seal.split_at(SEAL_PREFIX.len());
+        let replacement = if rest.starts_with('A') { 'B' } else { 'A' };
+        let tail = rest.get(1..).unwrap_or_default();
+        format!("{prefix}{replacement}{tail}")
     }
 
     /// Per pod, the TLS configuration it serves with, when an `https` endpoint names it.
@@ -2203,7 +2270,50 @@ mod relay {
             };
             pods.push(pod);
         }
-        let source = Arc::new(Source {
+        let source = Arc::new(source(&program, &pods));
+        let records = Arc::new(Records::default());
+        let root = certificates
+            .as_ref()
+            .map(|certificates| certificates.root.as_slice());
+        // Every composition of the run, in order: a `restart` step composes another.
+        let mut countings: Vec<Arc<Counting>> = Vec::new();
+        let mut composer = || {
+            let mut counting = None;
+            let composed = compose(
+                &program,
+                Arc::clone(&source),
+                &mut counting,
+                Arc::clone(&records),
+                root,
+            );
+            countings.extend(counting);
+            composed
+        };
+        match composer() {
+            Ok(handle) => {
+                if let Some(handle) = steps(
+                    &program,
+                    handle,
+                    &mut composer,
+                    &shared,
+                    &records,
+                    &mut facts,
+                ) {
+                    handle.shutdown();
+                }
+            }
+            Err(code) => {
+                facts["error_code"] = json!(code);
+            }
+        }
+        stop(&shared, pods);
+        upstream_facts(&shared, &countings, &mut facts);
+        facts
+    }
+
+    /// The pods' source the run's gateway resolves its targets from.
+    fn source(program: &Program, pods: &[Pod]) -> Source {
+        Source {
             pods: pods
                 .iter()
                 .map(|pod| {
@@ -2228,35 +2338,31 @@ mod relay {
                     lifecycle.status.iter().cloned().collect(),
                 ))
             }),
-        });
-        let records = Arc::new(Records::default());
-        let mut counting = None;
-        let root = certificates
-            .as_ref()
-            .map(|certificates| certificates.root.as_slice());
-        match compose(&program, source, &mut counting, Arc::clone(&records), root) {
-            Ok(handle) => {
-                steps(&program, &handle, &shared, &records, &mut facts);
-                handle.shutdown();
-            }
-            Err(code) => {
-                facts["error_code"] = json!(code);
-            }
         }
-        stop(&shared, pods);
+    }
+
+    /// Writes the facts the pods and every composition's counting saw once the run has stopped.
+    fn upstream_facts(shared: &Shared, countings: &[Arc<Counting>], facts: &mut Value) {
         facts["upstream"] = json!(taken(&shared.upstream));
         facts["authorizations"] = json!(taken(&shared.authorizations));
         facts["received_heads"] = json!(taken(&shared.received_heads));
         facts["connections"] = json!(taken(&shared.connections));
         facts["upstream_ends"] = json!(taken(&shared.ends));
         facts["secret_upstream"] = json!(shared.secret_upstream.load(Ordering::SeqCst));
-        if let Some(counting) = counting {
-            facts["acquired"] = json!(counting.acquired.load(Ordering::SeqCst));
-            facts["invalidated"] = json!(taken(&counting.invalidated));
-            facts["released"] = json!(counting.released.load(Ordering::SeqCst));
-            facts["lifecycle_asks"] = json!(taken(&counting.lifecycle_asks));
+        if !countings.is_empty() {
+            let sum =
+                |count: fn(&Counting) -> usize| countings.iter().map(|c| count(c)).sum::<usize>();
+            let joined = |list: fn(&Counting) -> &Mutex<Vec<String>>| {
+                countings
+                    .iter()
+                    .flat_map(|counting| taken(list(counting)))
+                    .collect::<Vec<_>>()
+            };
+            facts["acquired"] = json!(sum(|c| c.acquired.load(Ordering::SeqCst)));
+            facts["invalidated"] = json!(joined(|c| &c.invalidated));
+            facts["released"] = json!(sum(|c| c.released.load(Ordering::SeqCst)));
+            facts["lifecycle_asks"] = json!(joined(|c| &c.lifecycle_asks));
         }
-        facts
     }
 
     /// A `GET /metrics`: its result entry, and its `scrapes` entries numbered `index`.
@@ -2313,21 +2419,45 @@ mod relay {
         }
     }
 
+    /// Runs the program's steps against `handle`, composing the gateway again from `recompose`
+    /// at each `restart`, and returns the gateway that is serving at the end.
     fn steps(
         program: &Program,
-        handle: &GatewayHandle,
+        handle: GatewayHandle,
+        recompose: &mut dyn FnMut() -> Result<GatewayHandle, String>,
         shared: &Shared,
         records: &Records,
         facts: &mut Value,
-    ) {
-        let addr = handle.local_addr();
+    ) -> Option<GatewayHandle> {
+        let mut handle = Some(handle);
         let (mut results, mut bodies, mut headers, mut retry_after, mut arrivals) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let (mut recorded, mut scrapes, mut scrape_number) = (Vec::new(), Vec::new(), 0);
+        // Per step, the body its answer carried, before any seal in it was redacted.
+        let mut answered: Vec<Option<String>> = Vec::new();
         let run_started = Instant::now();
         for step in &program.steps {
+            answered.push(None);
+            if matches!(step, Step::Restart) {
+                if let Some(serving) = handle.take() {
+                    serving.shutdown();
+                }
+                match recompose() {
+                    Ok(composed) => {
+                        handle = Some(composed);
+                        results.push("ok".to_owned());
+                    }
+                    Err(code) => results.push(format!("restart {code}")),
+                }
+                continue;
+            }
+            let Some(serving) = handle.as_ref() else {
+                results.push("no-response".to_owned());
+                continue;
+            };
+            let addr = serving.local_addr();
             if matches!(step, Step::MarkReady) {
-                handle.mark_ready();
+                serving.mark_ready();
                 results.push("ok".to_owned());
                 continue;
             }
@@ -2349,15 +2479,8 @@ mod relay {
                 *current = Arc::clone(&progress);
             }
             let started = Instant::now();
-            let (close_after, half_close) = match step {
-                Step::Request {
-                    close_after_bytes,
-                    half_close,
-                    ..
-                } => (*close_after_bytes, half_close.unwrap_or(true)),
-                _ => (None, true),
-            };
-            let received = request_bytes(&program.secret, step)
+            let (close_after, half_close, seal) = request_options(step, &answered);
+            let received = request_bytes(&program.secret, step, seal.as_deref())
                 .and_then(|raw| exchange(addr, &raw, &progress, close_after, half_close));
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
@@ -2373,7 +2496,11 @@ mod relay {
                 continue;
             };
             results.push(summary(&received, &progress));
-            bodies.push(String::from_utf8_lossy(&received.body).into_owned());
+            let body = String::from_utf8_lossy(&received.body).into_owned();
+            bodies.push(redact_seals(&body));
+            if let Some(slot) = answered.last_mut() {
+                *slot = Some(body);
+            }
             headers.push(format!(
                 "content-type={} cache-control={} allow={}",
                 received.header("content-type"),
@@ -2381,15 +2508,7 @@ mod relay {
                 received.header("allow")
             ));
             retry_after.push(received.header("retry-after").to_owned());
-            let replied = progress
-                .replied
-                .lock()
-                .is_ok_and(|replied| replied.is_some());
-            arrivals.push(match (replied, progress.held.load(Ordering::SeqCst)) {
-                (false, _) => "none",
-                (true, false) => "streamed",
-                (true, true) => "held",
-            });
+            arrivals.push(arrival(&progress));
         }
         facts["results"] = json!(results);
         facts["bodies"] = json!(bodies);
@@ -2398,6 +2517,51 @@ mod relay {
         facts["arrivals"] = json!(arrivals);
         facts["records"] = json!(recorded);
         facts["scrapes"] = json!(scrapes);
+        handle
+    }
+
+    /// A step's connection handling and the seal it carries: the bytes after which it closes,
+    /// whether it half-closes, and the first seal of the answer it names in `sealed_from`,
+    /// altered when it sets `alter_seal`.
+    fn request_options(
+        step: &Step,
+        answered: &[Option<String>],
+    ) -> (Option<usize>, bool, Option<String>) {
+        match step {
+            Step::Request {
+                close_after_bytes,
+                half_close,
+                sealed_from,
+                alter_seal,
+                ..
+            } => {
+                let seal = sealed_from
+                    .and_then(|from| answered.get(from).cloned().flatten())
+                    .and_then(|body| first_seal(&body).map(str::to_owned))
+                    .map(|seal| {
+                        if alter_seal.unwrap_or(false) {
+                            altered(&seal)
+                        } else {
+                            seal
+                        }
+                    });
+                (*close_after_bytes, half_close.unwrap_or(true), seal)
+            }
+            _ => (None, true, None),
+        }
+    }
+
+    /// How a request's answer arrived from its pod: not at all, streamed, or held back.
+    fn arrival(progress: &Progress) -> &'static str {
+        let replied = progress
+            .replied
+            .lock()
+            .is_ok_and(|replied| replied.is_some());
+        match (replied, progress.held.load(Ordering::SeqCst)) {
+            (false, _) => "none",
+            (true, false) => "streamed",
+            (true, true) => "held",
+        }
     }
 
     fn stop(shared: &Shared, pods: Vec<Pod>) {

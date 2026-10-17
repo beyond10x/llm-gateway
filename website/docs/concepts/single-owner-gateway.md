@@ -26,6 +26,8 @@ Every response is `cache-control: no-store` and `connection: close`: one request
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the inventory |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias |
 | `GET`, `HEAD` | `/metrics` | owner | The counters as Prometheus text ([Scrape the counters](../guides/scrape-the-counters.md)) |
+| `POST` | `/v1/models/{alias}/wake` | owner | Starts the model's pod; `202` at once with its phase. A model with no pod of its own is `path-unknown` |
+| `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase (`stopped`, `starting`, `ready`, `stopping`) and profile; starts nothing |
 | `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([The relay](relay.md)) |
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed |
 | `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed |

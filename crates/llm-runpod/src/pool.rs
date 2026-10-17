@@ -733,8 +733,12 @@ impl<T: RunpodTransport> RunpodPool<T> {
     /// # Errors
     ///
     /// [`PoolError::UnknownModel`] for an undeclared alias.
-    pub fn status(&self, _alias: &Identifier) -> Result<ModelStatus, PoolError> {
-        Err(PoolError::UnknownModel)
+    pub fn status(&self, alias: &Identifier) -> Result<ModelStatus, PoolError> {
+        let inner = self.lock();
+        if !inner.models.contains_key(alias) {
+            return Err(PoolError::UnknownModel);
+        }
+        Ok(inner.status_of(alias))
     }
 
     /// The owner's wake: one [`Self::ensure`], a ready lease dropped at once, then
@@ -745,10 +749,18 @@ impl<T: RunpodTransport> RunpodPool<T> {
     /// As [`Self::ensure`], but never [`PoolError::Starting`].
     pub fn wake(
         &self,
-        _alias: &Identifier,
-        _authorization: &ComputeAuthorization,
+        alias: &Identifier,
+        authorization: &ComputeAuthorization,
     ) -> Result<ModelStatus, PoolError> {
-        Err(PoolError::UnknownModel)
+        // The first ask of a held request: it starts a pod when none is live, through the same
+        // spend check and profile fallback, and starts nothing while one starts or serves. A
+        // ready lease is a use of the pod, as a request's is; it is dropped at once.
+        match self.ensure(alias, authorization) {
+            Ok(lease) => drop(lease),
+            Err(PoolError::Starting) => {}
+            Err(error) => return Err(error),
+        }
+        self.status(alias)
     }
 
     /// The controller's view. Contacts nobody.
@@ -790,6 +802,39 @@ impl<T: RunpodTransport> Inner<T> {
             .into_iter()
             .filter(|record| !record.phase.terminal())
             .collect()
+    }
+
+    /// The slot's phase as its current record holds it. Reads the records and the provider's
+    /// remembered GPU types only; calls nothing.
+    fn status_of(&self, alias: &Identifier) -> ModelStatus {
+        let current = self.slots.get(alias).and_then(|slot| slot.current.clone());
+        let Some((deployment, record)) =
+            current.and_then(|deployment| Some((deployment.clone(), self.record(&deployment)?)))
+        else {
+            return ModelStatus::STOPPED;
+        };
+        let observed = record.observed.as_ref();
+        let (phase, sub_phase) = match record.phase {
+            phase if phase.terminal() => return ModelStatus::STOPPED,
+            Phase::StopRequired => (ModelPhase::Stopping, None),
+            Phase::Requested | Phase::Active
+                if observed.is_some_and(llm_provision::ProvisionedDeployment::is_ready) =>
+            {
+                (ModelPhase::Ready, None)
+            }
+            _ => (
+                ModelPhase::Starting,
+                observed
+                    .and_then(|observed| observed.state)
+                    .map(ProviderState::code),
+            ),
+        };
+        ModelStatus {
+            phase,
+            sub_phase,
+            profile: observed.and_then(|observed| self.provider.profile_of(&observed.key)),
+            deployment: Some(deployment),
+        }
     }
 
     /// Clears a slot whose deployment has reached a terminal phase.

@@ -200,6 +200,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "Wake a model and read its phase",
+        "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model has neither and is path-unknown. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/wake_status.rs::wake_starts_the_pod_once_at_once_status_reads_it_without_a_call_and_a_request_reuses_it",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
         "Relay to a Runpod pod from the binary over verified TLS",
         "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
         "crates/llm-gateway-cli/tests/pod_tls.rs::tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors",

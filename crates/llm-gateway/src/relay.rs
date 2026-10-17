@@ -697,6 +697,27 @@ impl Relay {
         &self.metrics
     }
 
+    /// The owner's wake of `alias` (`llm-gateway.gateway.LifecycleRoute`): `model-unknown` for
+    /// an alias no relayed model has, `path-unknown` for a model the source starts nothing for,
+    /// and otherwise what the source answered.
+    pub(crate) fn wake(&self, alias: &str) -> Result<ModelStatus, RefusalCode> {
+        if !self.models.contains_key(alias) {
+            return Err(RefusalCode::ModelUnknown);
+        }
+        self.targets
+            .wake(alias)
+            .ok_or(RefusalCode::PathUnknown)?
+            .map_err(TargetRefusal::refusal)
+    }
+
+    /// The status of `alias`, refused as [`Self::wake`] is.
+    pub(crate) fn status(&self, alias: &str) -> Result<ModelStatus, RefusalCode> {
+        if !self.models.contains_key(alias) {
+            return Err(RefusalCode::ModelUnknown);
+        }
+        self.targets.status(alias).ok_or(RefusalCode::PathUnknown)
+    }
+
     /// Feeds a record to the counters, then hands it to the embedding.
     pub(crate) fn observe(&self, record: &UsageRecord) {
         self.metrics.record(record);

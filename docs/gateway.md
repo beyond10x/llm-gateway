@@ -107,6 +107,8 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `GET`, `HEAD` | `/v1/routes` | owner | Every route in the snapshot. |
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
 | `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
+| `POST` | `/v1/models/{alias}/wake` | owner | Starts the model's pod and answers `202` at once with its status ([the lifecycle routes](#the-lifecycle-routes)). |
+| `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase and profile; starts nothing. |
 | `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([the relay](#the-relay)). |
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed. |
 | `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed. |
@@ -164,6 +166,54 @@ Loom `chat`) and parses tool calls; each profile names the model's alias and the
 request's `host` when it is only letters, digits, `.`, `-`, `_`, `:`, `[` and `]`, and the
 listener's address otherwise. The owner token is named as the setting that carries it, never
 given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_views_total`.
+
+## The lifecycle routes
+
+A gateway composed with a relay serves two owner routes per relayed model, so the owner can start
+a model ahead of demand and read where its start is without sending a model call. `{alias}` is
+the rest of the path between `/v1/models/` and the last segment, compared byte for byte with the
+relayed models' aliases (nothing is percent-decoded; an empty alias is no lifecycle path). They
+are not wire paths, so they take the owner credential under `IngressAuth::None` too, and they
+are decided after the probes, shedding and authentication, in this order, before the target
+source is asked anything:
+
+1. A method the route does not take is `method-not-allowed`, with `allow: POST` for the wake and
+   `allow: GET, HEAD` for the status.
+2. A declared body is `body-not-allowed`, and before `mark_ready` the route is `unavailable`.
+3. An alias no relayed model has is `model-unknown`.
+4. A model whose target source starts nothing for it is `path-unknown`: the route does not
+   exist for it. `RelayTargets::wake` and `RelayTargets::status` answer `None` by default, and
+   the binary answers `None` for a hosted endpoint and a route of the routes document, which are
+   relayed upstreams with no lifecycle.
+
+Then `POST /v1/models/{alias}/wake` asks the source to start the model's target as a request's
+first ask for it would (`RelayTargets::wake`) and answers `202` at once with the status the
+source reports after that ask; it never waits for the target to serve. While a start is in
+progress, or the target is ready, a wake starts nothing more and answers `202` the same way. A
+refusal is the one `acquire` would have earned: `target-unavailable`, `spend-ceiling` (503,
+without `retry-after`) or `model-cold-start` (with `retry-after: 30`).
+`GET /v1/models/{alias}/status` asks the source for the status (`RelayTargets::status`), which
+starts nothing, and answers `200`; `HEAD` answers the same without a body.
+
+Both answers are `application/json`, a `ModelStatus` in this key order, a value the source did
+not report absent, never empty:
+
+```json
+{"model":"small","phase":"starting","sub_phase":"pending","profile":"l40s-32k"}
+```
+
+`phase` is a `ModelPhase`, named by what a request for the model would meet: `stopped` (no pod
+is live; a request starts one), `starting` (a request is held while the pod starts), `ready`
+(the pod was last observed serving) and `stopping` (a previous pod owes a stop not yet
+confirmed; nothing starts meanwhile). `sub_phase` is the provider's own word for the pod while
+it starts, and `profile` the profile it was started on. Neither route makes a usage record or
+counts a series of its own. The specification is `llm-gateway.gateway.LifecycleRoute`; the
+scenarios are `contracts/gateway/scenarios/wake-*`.
+
+In the binary a Runpod model's wake is one `RunpodPool::wake`, so its spend check and its
+profile fallback are a request's, and the pod it starts, a spend refusal or a failed start is
+counted as a request's would be (`docs/hosting.md`, "Waking a model and reading its phase").
+Its status is `RunpodPool::status`, read from the hosting state machine with no provider call.
 
 ## The relay
 
@@ -651,6 +701,11 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `upstream-failed` | 502 | the model target could not be reached or failed; the next request asks for a replacement |
 | `upstream-refused` | 502 | the model target refused the translated request |
 | `wire-not-served` | 400 | the model is not served on this wire |
+
+The lifecycle routes add no code of their own: a model with no lifecycle (a hosted endpoint or a
+route of the routes document) is `path-unknown`, an alias no relayed model has `model-unknown`,
+and a wake the target source refuses `target-unavailable`, `spend-ceiling` or
+`model-cold-start`, as its acquisition would be ([the lifecycle routes](#the-lifecycle-routes)).
 
 This table is the published contract, and it is checked rather than maintained by hand.
 `RefusalCode`, `RefusalCode::ALL`, `wire`, `status` and `reason` are generated from a single

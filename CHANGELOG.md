@@ -6,6 +6,13 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+- The owner can wake a model ahead of demand and read its phase without a model call:
+  `POST /v1/models/<alias>/wake` starts a Runpod model's pod as a request would, through the same
+  spend check and profile fallback, and answers `202` at once with its status; while the pod
+  starts or serves it starts nothing more. `GET /v1/models/<alias>/status` answers `stopped`,
+  `starting` (with the provider's sub-phase), `ready` or `stopping` and the profile, read from
+  the pool's records with no provider call. Both take the owner credential; a hosted model or a
+  route has neither and is answered `path-unknown`.
 - A model may declare ordered `[[models.<alias>.profiles]]`, each a GPU type list with its vLLM
   settings. When Runpod refuses every create of a profile for capacity (the connectors failure
   code `capacity`), the start moves on to the next profile, inside the same startup deadline and

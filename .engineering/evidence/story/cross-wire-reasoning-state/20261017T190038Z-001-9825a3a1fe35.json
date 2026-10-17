@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-17T19:00:38Z",
+  "actor": "human:timo",
+  "artifact": "story:cross-wire-reasoning-state",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "no failing case; the one judgement finding (seal and scope only as comments) fixed by modelling them in the specification (25ca160)",
+    "review": "review-result:adversary-w15-cross-wire-reasoning-state-pass-1",
+    "outcome": "fixed"
+  }
+}

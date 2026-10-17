@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:llm-0-7-0-pin
 kind: story
-status: active
+status: implemented
 title: The gateway translates with llm 0.7.0, and Claude Code's and Codex's turns are no longer known limits
 relations:
 - decomposes: epic:gateway
@@ -22,10 +22,11 @@ scope:
   path: docs/gateway.md
 - confidence: inferred
   path: website/docs/guides/translate-between-wires.md
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T10:09:01Z", actor: "human:timo", revision: 4}
 - {from: "proposed", to: "active", at: "2026-10-17T10:09:01Z", actor: "human:timo", revision: 5}
+- {from: "active", to: "implemented", at: "2026-10-17T19:00:39Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

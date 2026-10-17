@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:cross-wire-reasoning-state
 kind: story
-status: active
+status: implemented
 title: A translated route serves a client's next turn that replays the reasoning state the gateway gave it
 relations:
 - decomposes: epic:gateway-features
@@ -30,10 +30,11 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: website/docs/guides/translate-between-wires.md
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T10:09:02Z", actor: "human:timo", revision: 4}
 - {from: "proposed", to: "active", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 5}
+- {from: "active", to: "implemented", at: "2026-10-17T19:00:39Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

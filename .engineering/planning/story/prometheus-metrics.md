@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:prometheus-metrics
 kind: story
-status: active
+status: implemented
 title: Prometheus scrapes latency and call outcomes per model without the owner credential
 relations:
 - decomposes: epic:gateway-features
@@ -31,10 +31,11 @@ scope:
   path: spec/domains/deployment.yaml
 - confidence: cited
   path: spec/domains/telemetry.yaml
-revision: 10
+revision: 11
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T10:09:01Z", actor: "human:timo", revision: 8}
 - {from: "proposed", to: "active", at: "2026-10-17T10:09:02Z", actor: "human:timo", revision: 9}
+- {from: "active", to: "implemented", at: "2026-10-17T19:00:39Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

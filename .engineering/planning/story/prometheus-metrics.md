@@ -31,7 +31,7 @@ scope:
   path: spec/domains/deployment.yaml
 - confidence: cited
   path: spec/domains/telemetry.yaml
-revision: 9
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T10:09:01Z", actor: "human:timo", revision: 8}
 - {from: "proposed", to: "active", at: "2026-10-17T10:09:02Z", actor: "human:timo", revision: 9}
@@ -62,16 +62,18 @@ three wires (`dependency-blocker:llm-usage-decoders`; llm 0.7.0 does not export 
 - **Outcomes.** `llmgw_requests_total{model,outcome}` counts each usage record of a model call,
   with `outcome` one of `ok` (an answer relayed), `upstream_error` (the target failed, refused
   the call or closed without an answer), `timeout` (the target's read timeout or a start deadline
-  passed) and `refused` (the gateway refused the call before reaching a target: a refusal code
+  passed; a translated request's transport timeout reaches the gateway as an upstream failure and
+  counts `upstream_error`) and `refused` (the gateway refused the call before reaching a target: a refusal code
   such as `spend-ceiling` or `target-unavailable`). The mapping from every refusal code and
   disposition to one outcome is a table in `docs/gateway.md`.
 - **Series.** Every relayed or hosted model is registered at zero when the relay is composed.
   Labels are model aliases from the document and fixed words; no label or value carries a
   credential, a prompt, a completion or a document's content.
-- **Scrape path.** `[gateway] metrics_listen = "<address>:<port>"`, optional and absent by default,
+- **Scrape path.** `metrics_listen = "<address>:<port>"`, a top-level key beside `listen` (the
+  document has no `[gateway]` table), optional and absent by default,
   binds a second listener that answers `GET /metrics` and nothing else (any other method or path
   is `404`, and no model route is reachable). It takes no owner credential. If
-  `metrics_bearer_file` names a trusted file (the endpoint-credential rules), a scrape must send
+  the top-level `metrics_bearer_file` names a trusted file (the endpoint-credential rules), a scrape must send
   that token as `authorization: Bearer`; without it the listener is open, and the guides say to
   bind it only on an address a cluster network policy guards. The listener drains and stops with
   the gateway. The address must differ from `listen`.

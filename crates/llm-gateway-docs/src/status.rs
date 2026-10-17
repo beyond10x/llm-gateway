@@ -305,6 +305,20 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Observability",
+        "Latency and outcomes per model",
+        "llmgw_request_duration_seconds{model}, a histogram with fixed buckets from 0.05 to 300 seconds, and llmgw_requests_total{model,outcome}, outcome one of ok, upstream_error, timeout and refused; every model registered at zero, labelled only by its alias and fixed words.",
+        "crates/llm-gateway/tests/prometheus_metrics.rs::each_outcome_advances_by_one_for_exactly_its_call",
+        Some("/docs/guides/scrape-the-counters"),
+    ),
+    shipped(
+        "Observability",
+        "A scrape listener without the owner secret",
+        "metrics_listen binds a second listener that answers GET /metrics and nothing else, without the owner secret; metrics_bearer_file makes a scrape send its own token.",
+        "crates/llm-gateway-cli/tests/binary.rs::metrics_listen_serves_the_counters_without_the_owner_and_takes_its_scrape_token",
+        Some("/docs/guides/scrape-the-counters"),
+    ),
+    shipped(
+        "Observability",
         "One usage record per authenticated wire request",
         "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
         "crates/llm-gateway/tests/observability.rs::o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record",
@@ -334,7 +348,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Specification",
         "ESS specification and conformance suite",
-        "The system llm-gateway is specified in ESS; the gate answers at least 210 of 210 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+        "The system llm-gateway is specified in ESS; the gate answers at least 278 of 278 scenarios, skips none, and fails on drift between the specification and its generated suite.",
         "checks/conformance/src/gate.rs::every_authored_scenario_is_declared",
         Some("/docs/guides/run-the-checks"),
     ),

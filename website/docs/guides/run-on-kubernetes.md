@@ -1,7 +1,7 @@
 ---
 title: Run on Kubernetes
 sidebar_position: 5
-description: Run the released image on Kubernetes with the gateway's file rules unchanged, and stop it without cutting an answer short.
+description: Run the released image on Kubernetes with the gateway's file rules unchanged, let Prometheus scrape it on its own port, and stop it without cutting an answer short.
 lede: The gateway reads every secret through a trusted-file reader that refuses a file any group or other user can touch; this page mounts the files so it accepts them, copies them when the pod's fsGroup would break that, and stops the pod so it answers what it accepted.
 source: Dockerfile, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/serve.rs, crates/llm-gateway-cli/tests/binary.rs (the refusal pasted below is that test's expected line), docs/gateway.md (the stop); the refusal and the start lines below are pasted from runs of the binary
 ---
@@ -34,6 +34,7 @@ data:
   gateway.toml: |
     listen = "0.0.0.0:8080"
     owner_secret_file = "/run/llm-gateway/owner-secret"
+    metrics_listen = "0.0.0.0:9090"
 
     [providers.runpod]
     kind = "runpod-vllm"
@@ -106,6 +107,8 @@ spec:
           ports:
             - name: http
               containerPort: 8080
+            - name: metrics
+              containerPort: 9090
           securityContext:
             runAsNonRoot: true
             runAsUser: 65532
@@ -228,3 +231,46 @@ The pod's port is named `http` and is `8080`. A client in the cluster reaches a 
 page names no Service type and no ingress: how, and whether, the gateway is exposed beyond the
 cluster is yours to decide. A model call still needs the owner secret as a bearer, whatever
 reaches the port.
+
+## Scrape the counters
+
+The document above sets `metrics_listen`, so the pod also listens on `9090`, the port named
+`metrics`. It serves `GET /metrics` and nothing else, and it takes no owner secret, so the
+Prometheus server never holds the secret that can make paid model calls
+([Scrape the counters](scrape-the-counters.md#scrape-without-the-owner-secret)). It sets no
+`metrics_bearer_file`, so that port is open to whatever reaches it: a NetworkPolicy keeps
+everything but Prometheus off it. The one below lets any pod of the namespace reach `8080`,
+where a model call still needs the owner secret, and only pods of the `monitoring` namespace
+labelled `app.kubernetes.io/name: prometheus` reach `9090`:
+
+```yaml title="network-policy.yaml"
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: llm-gateway
+spec:
+  podSelector:
+    matchLabels:
+      app: llm-gateway
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector: {}
+      ports:
+        - port: 8080
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
+          podSelector:
+            matchLabels:
+              app.kubernetes.io/name: prometheus
+      ports:
+        - port: 9090
+```
+
+A NetworkPolicy is enforced only by a network plugin that implements it; on a cluster whose
+plugin does not, set `metrics_bearer_file` as well, mounted from a Secret as the owner secret
+is, and give Prometheus that token. Prometheus finds the pods on the `metrics` port with
+`kubernetes_sd_configs` of role `pod`, or through a PodMonitor if you run the Prometheus
+Operator.

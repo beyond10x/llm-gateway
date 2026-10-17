@@ -180,7 +180,11 @@ The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model wi
 `max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,
 chosen by `User-Agent`) without a credential; the owner can read
 `GET /v1/routes`, `GET /v1/routes/<alias>` and `GET /metrics`, llmgw's 13 `llmgw_` counters as
-Prometheus text. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
+Prometheus text, with a latency histogram `llmgw_request_duration_seconds{model}` and an outcome
+counter `llmgw_requests_total{model,outcome}` per model. `metrics_listen` binds a second listener
+that serves the same text at `GET /metrics` and nothing else without the owner secret, behind the
+optional scrape token of `metrics_bearer_file`, so a Prometheus server never holds the owner
+secret; without that token it is open, so bind it only where a network policy guards it. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
 The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/responses` and
 `POST /v1/messages` for the wires each model declares. A model whose provider declares
 `connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` over

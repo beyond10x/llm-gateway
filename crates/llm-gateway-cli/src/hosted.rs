@@ -31,7 +31,8 @@ use llm_gateway::{
 use rustls::pki_types::ServerName;
 use std::{
     collections::BTreeMap,
-    fmt, io,
+    fmt,
+    io::{self, Read as _, Write as _},
     net::IpAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -264,7 +265,84 @@ impl HostedEndpoint {
     pub fn scheme(&self) -> Scheme {
         self.scheme
     }
+
+    /// `credential set`'s probe (spec/domains/deployment.yaml `CredentialSetCommand`): one
+    /// `GET <base path>/models` (`/models` without a base path) to the authority, sent `host`,
+    /// the static headers, the credential as a request to the endpoint carries it,
+    /// `accept: application/json` and `connection: close`, over `tls` for `https` and plain TCP
+    /// for `http`, [`PROBE_TIMEOUT`] bounding the connect and each read and write. Returns the
+    /// answer's status; nothing past the status line is read.
+    ///
+    /// # Errors
+    /// The connection's own error, or `InvalidData` for an answer that does not start with an
+    /// HTTP/1 status line.
+    pub(crate) fn probe(&self, tls: &dyn PodConnector) -> io::Result<u16> {
+        let mut stream: Box<dyn RelayStream> = match self.scheme {
+            Scheme::Https => tls.connect_probe(&self.authority, PROBE_TIMEOUT)?,
+            Scheme::Http => {
+                let (host, port) = split(&self.authority, HTTP_PORT).ok_or_else(|| {
+                    io::Error::new(io::ErrorKind::InvalidInput, "not a host[:port] authority")
+                })?;
+                let socket = dial(host, port, Instant::now() + PROBE_TIMEOUT)?;
+                socket.set_read_timeout(Some(PROBE_TIMEOUT))?;
+                socket.set_write_timeout(Some(PROBE_TIMEOUT))?;
+                Box::new(socket)
+            }
+        };
+        let path = self
+            .base_path
+            .as_ref()
+            .map_or_else(|| "/models".to_owned(), |base| base.join("/v1/models"));
+        let mut request =
+            format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority).into_bytes();
+        for header in &self.headers {
+            request
+                .extend_from_slice(format!("{}: {}\r\n", header.name(), header.value()).as_bytes());
+        }
+        let (name, key): (&str, &[u8]) = match &self.credential {
+            EndpointCredential::Anonymous => ("", &[]),
+            EndpointCredential::Bearer(bearer) => ("authorization: Bearer ", bearer.expose()),
+            EndpointCredential::ApiKey { header, key } => (header.as_str(), key.expose()),
+        };
+        if !name.is_empty() {
+            request.extend_from_slice(name.as_bytes());
+            if matches!(self.credential, EndpointCredential::ApiKey { .. }) {
+                request.extend_from_slice(b": ");
+            }
+            request.extend_from_slice(key);
+            request.extend_from_slice(b"\r\n");
+        }
+        request.extend_from_slice(b"accept: application/json\r\nconnection: close\r\n\r\n");
+        let sent = stream.write_all(&request).and_then(|()| stream.flush());
+        request.fill(0);
+        std::hint::black_box(&request);
+        sent?;
+        let mut head = Vec::new();
+        let mut byte = [0_u8; 1];
+        while !head.ends_with(b"\r\n") {
+            if head.len() >= MAX_STATUS_LINE_BYTES || stream.read(&mut byte)? == 0 {
+                break;
+            }
+            head.push(byte[0]);
+        }
+        let malformed = || io::Error::new(io::ErrorKind::InvalidData, "no HTTP/1 status line");
+        let line = std::str::from_utf8(&head).map_err(|_| malformed())?;
+        let rest = line
+            .strip_prefix("HTTP/1.1 ")
+            .or_else(|| line.strip_prefix("HTTP/1.0 "))
+            .ok_or_else(malformed)?;
+        let code = rest.get(..3).ok_or_else(malformed)?;
+        if !code.bytes().all(|byte| byte.is_ascii_digit()) {
+            return Err(malformed());
+        }
+        code.parse().map_err(|_| malformed())
+    }
 }
+
+/// How long `credential set`'s probe may take to connect, and each of its reads and writes.
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// The longest status line the probe reads.
+const MAX_STATUS_LINE_BYTES: usize = 1024;
 
 /// Whether `host`, as [`split`] returns it (an IPv6 literal without its brackets), names this
 /// machine without a lookup: an address in `127.0.0.0/8`, `::1`, or the name `localhost`.

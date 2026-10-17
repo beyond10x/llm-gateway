@@ -11,6 +11,7 @@
 
 pub mod cli;
 mod config;
+mod credential;
 mod hosted;
 mod keys;
 mod logging;
@@ -23,13 +24,16 @@ mod translate;
 mod trusted;
 
 pub use config::{Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
+pub use credential::{
+    CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,
+};
 pub use hosted::{
     BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
     HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, Scheme, check_headers,
 };
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use logging::{TracingRecords, install_logging, log_filter};
-pub use refusal::{Refusal, Source, StartupRefusal};
+pub use refusal::{CredentialRefusal, Refusal, Source, StartupRefusal};
 pub use relaying::{
     ACCOUNT, CLEANUP_INTERVAL, CONTROLLER, CRASH_RESTART_LIMIT, CRASH_WINDOW_MS, LEASE_MS, LEDGER,
     MAX_LIFETIME_MS, METERED_RESERVATION, PROVIDER, PodConnector, RESERVATION, Relaying, WallClock,

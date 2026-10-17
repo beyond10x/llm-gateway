@@ -1,0 +1,27 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-wake-over-the-daily-ceiling-is-refused-before-any-create
+summary: a wake runs the spend check a request's start runs, so a projection past the daily ceiling sends no create and the model stays stopped
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{"price_per_hour_usd":2,"startup_deadline_ms":1800000}},"spend":{"daily_cap_usd":10},"steps":[{"step":"account_spend","daily_usd":9.5,"total_usd":50},{"step":"wake","alias":"qwen"},{"step":"status","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ok
+    - err:spend-ceiling:daily:over_usd=0.500000
+    - status phase=stopped sub_phase=none profile=none
+    create_calls: 0
+    spend_reads: 1
+    requested_gpus: []
+    pods: []
+    phases:
+    - qwen-1:cancelled

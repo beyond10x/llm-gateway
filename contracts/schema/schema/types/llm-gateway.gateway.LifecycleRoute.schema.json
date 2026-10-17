@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.LifecycleRoute",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "06b20f689d26f758057ec1af179d2f9fd84d80b9c9abab656b49e2a1982df869",
+    "contract_digest": "slice-sha256/2:b40573a67794cca1b42230b4493232fedaaafce5dda6a731b581295b34d6cb6c",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.LifecycleRoute": {
+      "title": "LifecycleRoute",
+      "x-ess-name": "llm-gateway.gateway.LifecycleRoute",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Wake",
+        "Status"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "path",
+          "type": "String",
+          "values": {
+            "Status": "/v1/models/{alias}/status",
+            "Wake": "/v1/models/{alias}/wake"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "methods",
+          "type": "String",
+          "values": {
+            "Status": "GET, HEAD",
+            "Wake": "POST"
+          }
+        },
+        {
+          "kind": "integer",
+          "name": "status",
+          "type": "Integer",
+          "values": {
+            "Status": 200,
+            "Wake": 202
+          }
+        }
+      ]
+    }
+  }
+}

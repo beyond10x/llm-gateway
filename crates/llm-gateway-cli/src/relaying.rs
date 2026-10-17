@@ -26,8 +26,9 @@ use llm_gateway::{
 };
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
-    HostingPolicy, Identifier, LeaseRegistry, PodListing, PodStream, PodTls, PoolError,
-    RunpodModel, RunpodPool, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease,
+    HostingPolicy, Identifier, LeaseRegistry, ModelPhase, ModelStatus, PodListing, PodStream,
+    PodTls, PoolError, RunpodModel, RunpodPool, RunpodTransport, SpendPolicy, SpendRefusal,
+    StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -458,9 +459,15 @@ impl<T> PoolTargets<T> {
     /// deployment it creates anew, so a deployment not yet counted for its alias is a create the
     /// pool submitted. A request that binds to a pod another request started counts nothing.
     fn count_start(&self, alias: &str, hold: &Hold) {
-        let Some(deployment) = hold.deployment() else {
-            return;
-        };
+        if let Some(deployment) = hold.deployment() {
+            self.count_started(alias, deployment);
+        }
+    }
+
+    /// Counts `deployment`, found starting for `alias`, as a pod start unless it already was.
+    /// A wake that submitted a create finds its own deployment starting; one that found a pod
+    /// a request or an earlier wake started finds it counted.
+    fn count_started(&self, alias: &str, deployment: &Identifier) {
         let mut started = self.started.lock().unwrap_or_else(PoisonError::into_inner);
         if started.get(alias) != Some(deployment) {
             started.insert(alias.to_owned(), deployment.clone());
@@ -639,6 +646,75 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
             });
         }
     }
+
+    /// The owner's wake (story:model-wake-and-status): one `RunpodPool::wake`, the first ask
+    /// of a held request, so the spend check and the profile fallback are a request's, and
+    /// its pod start, spend refusal or start failure is counted as a request's would be. A
+    /// spend refusal is `spend-ceiling`; every other pool refusal `target-unavailable`. Once
+    /// the gateway starts to stop it starts nothing and steps nothing: a model starting or
+    /// ready is answered its status, any other `target-unavailable`. A model this pool does
+    /// not run (one of a provider with no `connectors` connection) is `target-unavailable`, as
+    /// its requests are.
+    fn wake(&self, alias: &str) -> Option<Result<llm_gateway::ModelStatus, TargetRefusal>> {
+        let Some(relayed) = self.models.get(alias) else {
+            return Some(Err(TargetRefusal::Unavailable));
+        };
+        if self.stopping.load(Ordering::SeqCst) {
+            return Some(match self.pool.status(&relayed.alias) {
+                Ok(status) if matches!(status.phase, ModelPhase::Starting | ModelPhase::Ready) => {
+                    Ok(gateway_status(&status))
+                }
+                _ => Err(TargetRefusal::Unavailable),
+            });
+        }
+        Some(match self.pool.wake(&relayed.alias, &self.authorization) {
+            Ok(status) => {
+                if status.phase == ModelPhase::Starting
+                    && let Some(deployment) = &status.deployment
+                {
+                    self.count_started(alias, deployment);
+                }
+                Ok(gateway_status(&status))
+            }
+            Err(PoolError::SpendCeiling(refusal)) => {
+                self.count_spend_refusal(alias, refusal);
+                Err(TargetRefusal::SpendCeiling)
+            }
+            Err(error) => {
+                self.count_failure(alias, error);
+                Err(TargetRefusal::Unavailable)
+            }
+        })
+    }
+
+    /// `RunpodPool::status`: the phase the pool's records hold, with no provider call. A model
+    /// this pool does not run (one of a provider with no `connectors` connection) is `stopped`,
+    /// as [`Unconnected`] answers it.
+    fn status(&self, alias: &str) -> Option<llm_gateway::ModelStatus> {
+        let stopped = || llm_gateway::ModelStatus::new(llm_gateway::ModelPhase::Stopped);
+        let Some(relayed) = self.models.get(alias) else {
+            return Some(stopped());
+        };
+        Some(
+            self.pool
+                .status(&relayed.alias)
+                .map_or_else(|_| stopped(), |status| gateway_status(&status)),
+        )
+    }
+}
+
+/// The pool's status as the gateway answers it.
+fn gateway_status(status: &ModelStatus) -> llm_gateway::ModelStatus {
+    llm_gateway::ModelStatus {
+        phase: match status.phase {
+            ModelPhase::Stopped => llm_gateway::ModelPhase::Stopped,
+            ModelPhase::Starting => llm_gateway::ModelPhase::Starting,
+            ModelPhase::Ready => llm_gateway::ModelPhase::Ready,
+            ModelPhase::Stopping => llm_gateway::ModelPhase::Stopping,
+        },
+        sub_phase: status.sub_phase.map(str::to_owned),
+        profile: status.profile.clone(),
+    }
 }
 
 /// One pod, held through its [`StreamLease`] until the relayed answer has ended.
@@ -806,7 +882,10 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
 }
 
-/// Targets for models no pool serves: every acquisition is `target-unavailable`.
+/// Targets for models no pool serves: every acquisition and every wake is
+/// `target-unavailable`, and every such model is `stopped`, as [`PoolTargets`] answers a model
+/// of a provider it does not run. Only a Runpod model reaches it: a
+/// hosted model is answered before it ([`HostedTargets`]).
 struct Unconnected;
 
 impl RelayTargets for Unconnected {
@@ -815,6 +894,16 @@ impl RelayTargets for Unconnected {
     }
 
     fn invalidate(&self, _alias: &str, _failed: &str) {}
+
+    fn wake(&self, _alias: &str) -> Option<Result<llm_gateway::ModelStatus, TargetRefusal>> {
+        Some(Err(TargetRefusal::Unavailable))
+    }
+
+    fn status(&self, _alias: &str) -> Option<llm_gateway::ModelStatus> {
+        Some(llm_gateway::ModelStatus::new(
+            llm_gateway::ModelPhase::Stopped,
+        ))
+    }
 }
 
 /// Whether the work directory is an existing directory of the effective user with no group or
@@ -1072,6 +1161,10 @@ fn compose(
         stopping,
     })
 }
+
+#[cfg(test)]
+#[path = "relaying_stop_tests.rs"]
+mod stop_tests;
 
 #[cfg(test)]
 mod tests {

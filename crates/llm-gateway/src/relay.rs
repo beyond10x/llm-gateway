@@ -444,6 +444,74 @@ pub trait RelayTargets: Send + Sync {
     /// A request for `alias` through the target at `authority` failed (row W7): drop that
     /// endpoint if it is still the current one, so the next acquisition starts a replacement.
     fn invalidate(&self, alias: &str, authority: &str);
+
+    /// The owner's wake of `alias` (`POST /v1/models/{alias}/wake`, story:model-wake-and-status):
+    /// start the model's target as the first ask of [`Self::acquire`] would, without holding
+    /// anything, and report the status after it. While a start is in progress or the target is
+    /// ready it starts nothing more. `None`, the default, is a model this source starts nothing
+    /// for (a hosted endpoint): the gateway answers `path-unknown`.
+    ///
+    /// # Errors
+    /// The [`TargetRefusal`] `acquire` would have answered, answered with its refusal.
+    fn wake(&self, _alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+        None
+    }
+
+    /// Where `alias`'s target is (`GET /v1/models/{alias}/status`), read without starting
+    /// anything. `None`, the default, as for [`Self::wake`].
+    fn status(&self, _alias: &str) -> Option<ModelStatus> {
+        None
+    }
+}
+
+/// Where a model's target is, named by what a request for the model would meet
+/// (`llm-gateway.gateway.ModelPhase`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModelPhase {
+    /// No target is live: a request starts one.
+    Stopped,
+    /// A request is held while the target starts.
+    Starting,
+    /// The target was last observed serving: a request is relayed to it.
+    Ready,
+    /// A previous target owes a stop not yet confirmed; nothing starts meanwhile.
+    Stopping,
+}
+
+impl ModelPhase {
+    /// Every phase, in declaration order.
+    pub const ALL: [Self; 4] = [Self::Stopped, Self::Starting, Self::Ready, Self::Stopping];
+
+    /// The code a lifecycle route answers.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Stopped => "stopped",
+            Self::Starting => "starting",
+            Self::Ready => "ready",
+            Self::Stopping => "stopping",
+        }
+    }
+}
+
+/// What a lifecycle route answers for one model (`llm-gateway.gateway.ModelStatus`): its
+/// phase, the provider's own word for the target while it starts, and the profile it was
+/// started on. A value the source does not know is `None`, and the answer leaves its key out.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelStatus {
+    pub phase: ModelPhase,
+    pub sub_phase: Option<String>,
+    pub profile: Option<String>,
+}
+
+impl ModelStatus {
+    /// A status with neither a sub-phase nor a profile.
+    pub const fn new(phase: ModelPhase) -> Self {
+        Self {
+            phase,
+            sub_phase: None,
+            profile: None,
+        }
+    }
 }
 
 /// Whether a model's server parses tool calls (`llm-gateway.clients.ToolCalling`).
@@ -689,6 +757,27 @@ impl Relay {
 
     pub(crate) fn metrics(&self) -> &Arc<Metrics> {
         &self.metrics
+    }
+
+    /// The owner's wake of `alias` (`llm-gateway.gateway.LifecycleRoute`): `model-unknown` for
+    /// an alias no relayed model has, `path-unknown` for a model the source starts nothing for,
+    /// and otherwise what the source answered.
+    pub(crate) fn wake(&self, alias: &str) -> Result<ModelStatus, RefusalCode> {
+        if !self.models.contains_key(alias) {
+            return Err(RefusalCode::ModelUnknown);
+        }
+        self.targets
+            .wake(alias)
+            .ok_or(RefusalCode::PathUnknown)?
+            .map_err(TargetRefusal::refusal)
+    }
+
+    /// The status of `alias`, refused as [`Self::wake`] is.
+    pub(crate) fn status(&self, alias: &str) -> Result<ModelStatus, RefusalCode> {
+        if !self.models.contains_key(alias) {
+            return Err(RefusalCode::ModelUnknown);
+        }
+        self.targets.status(alias).ok_or(RefusalCode::PathUnknown)
     }
 
     /// Feeds a record to the counters, then hands it to the embedding.

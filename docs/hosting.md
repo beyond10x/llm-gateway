@@ -517,6 +517,39 @@ starts a replacement; the next request does. A record whose create answer was lo
 0 asks once, starting the pod if none is live, and answers `model-cold-start` at once. `l6_*`, `w6_*` and `k28_*` in
 `crates/llm-gateway-cli/tests/relaying.rs` prove it.
 
+### Waking a model and reading its phase
+
+The owner's lifecycle routes (`docs/gateway.md`, "The lifecycle routes") drive the pool through
+two calls.
+
+`RunpodPool::status` reads the slot's current deployment from the controller's records and
+contacts nobody: no listing, probe, create or spend read. Its phase is `stopped` for a slot with
+no current deployment or one in a terminal phase, `stopping` for `stop-required`, `ready` for
+`requested` or `active` whose last observation was ready, and `starting` otherwise (`declared`,
+`uncertain`, or last observed not ready or of unknown readiness). While starting it carries the
+provider state the pod was last observed in: `pending` for a pod Runpod reports `CREATED` or
+`EXITED`, `running` for `RUNNING` (the container runs and vLLM does not answer ready yet), and
+none when the record holds no observed state, as after a restart. The profile is the one the
+pod's GPU type names, as a lease reports it. `ready` is the pool's last observation, made by
+the last step (a request, a wake, or the cleanup pass every 60 seconds), not a fresh probe.
+
+`RunpodPool::wake` is one `ensure`, the first ask of a held request, with a ready lease dropped
+at once, then `status`. A wake therefore starts a pod exactly as a request would: through the
+spend check before each create and the profile fallback, answering `starting` once its create is
+submitted. While a start is in progress or the pod is ready it creates nothing. A wake that
+finds the pod ready is a use of it, as a request's ask is, so its idle window starts again; a
+status is not. Every refusal of `ensure` is its own; the binary answers `spend-ceiling` for a
+spend refusal and `target-unavailable` for any other (`no-capacity` once every profile was
+refused, `stopping` while a previous pod's stop is unconfirmed, a retired pod's reason). The pod
+a wake starts counts in `llmgw_pod_starts_total`, a spend refusal in
+`llmgw_pod_start_spend_refusals_total`, a failed start in `llmgw_pod_start_failures_total`.
+Once the gateway starts to stop, a wake starts nothing and steps nothing: it answers the status
+of a model starting or ready and `target-unavailable` otherwise. A model of a provider whose
+`connectors` connection is absent or unreachable is `target-unavailable` to a wake and
+`stopped` to a status. The scenarios are `contracts/runpod/scenarios/a-wake-*` and `status-*`;
+`crates/llm-runpod/tests/wake_status.rs` and `crates/llm-gateway-cli/tests/wake_status.rs`
+prove the rest.
+
 ### Spend ceilings
 
 A `[providers.<name>]` table may declare `daily_cap_usd` and `total_cap_usd`, the account's spend

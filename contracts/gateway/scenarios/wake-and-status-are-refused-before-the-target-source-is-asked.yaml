@@ -1,0 +1,41 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: wake-and-status-are-refused-before-the-target-source-is-asked
+summary: an unready gateway, a missing credential, a method the route does not take, a declared body and an unknown alias are refused before the target source is asked
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[]],"lifecycle":{"wake":[{"phase":"starting","sub_phase":"running","profile":"default"}],"status":[]},"steps":[{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"mark_ready"},{"step":"request","path":"/v1/models/small/wake","body":"","credential":false},{"step":"request","path":"/v1/models/small/wake","body":"","method":"GET"},{"step":"request","path":"/v1/models/small/status","body":""},{"step":"request","path":"/v1/models/small/wake","body":"{}"},{"step":"request","path":"/v1/models/absent/wake","body":""},{"step":"request","path":"/v1/models/absent/status","body":"","method":"GET"},{"step":"request","path":"/v1/models/small/wake","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - 503 unavailable
+    - ok
+    - 401 credential-absent
+    - 405 method-not-allowed
+    - 405 method-not-allowed
+    - 400 body-not-allowed
+    - 404 model-unknown
+    - 404 model-unknown
+    - 202 answered
+    headers:
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=POST
+    - content-type=application/json cache-control=no-store allow=GET, HEAD
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=absent
+    lifecycle_asks:
+    - wake small
+    acquired: 0
+    upstream: []

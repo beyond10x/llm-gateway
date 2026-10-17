@@ -130,6 +130,13 @@
     },
     {
       "area": "Relay",
+      "detail": "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model has neither and is path-unknown. Tested over the emulator.",
+      "href": "/docs/concepts/relay",
+      "label": "Wake a model and read its phase",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
       "href": "/docs/concepts/relay",
       "label": "Relay to a Runpod pod from the binary over verified TLS",

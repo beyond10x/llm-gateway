@@ -176,6 +176,69 @@ types:
     variants:
       - {name: Models, attributes: {path: /v1/models, content_type: application/json}}
       - {name: Instructions, attributes: {path: /, content_type: chosen}}
+  # The owner's two lifecycle routes, one pair per relayed model (story:model-wake-and-status;
+  # architecture-decision-record:on-demand-gpu-lifecycle, decision 3), served only by a gateway
+  # composed with a relay. `{alias}` is the rest of the path between `/v1/models/` and the
+  # route's last segment, compared byte for byte with the relayed models' aliases: nothing is
+  # percent-decoded, and an empty alias is no lifecycle path. They are not wire paths, so they
+  # take the owner credential whatever the IngressAuth, after the head, the probes and shedding
+  # (`Exchange` steps 1-5), and are then decided in this order, none of which asks the target
+  # source anything: a method the route does not take is `method-not-allowed` with `allow`
+  # naming its `methods`; a declared body is `body-not-allowed`; before `mark_ready` it is
+  # `unavailable`; an alias no relayed model has is `model-unknown`; a model whose target source
+  # starts no pod for it (a hosted endpoint, a route of the routes document: a plain relayed
+  # upstream, `RelayTargets::wake` and `RelayTargets::status` answering `None`) is
+  # `path-unknown`, because the route does not exist for that model. Then:
+  #   Wake    `POST`: asks the target source to start the model's pod as a request's first ask
+  #           for it would (`RelayTargets::wake`), and answers `202` at once with the ModelStatus
+  #           the source reports after that ask; it never waits for the pod to serve. While a
+  #           start is in progress, or the pod is ready, it starts nothing more and answers `202`
+  #           the same way. A source that refuses answers what `acquire` would have
+  #           (TargetRefusal): `target-unavailable`, `spend-ceiling` (503, without
+  #           `retry-after`) or `model-cold-start`.
+  #   Status  `GET`, and `HEAD` without a body: asks the target source for the model's
+  #           ModelStatus (`RelayTargets::status`), which starts nothing, and answers `200`.
+  # Both answers are `application/json`, `cache-control: no-store`, the ModelStatus as
+  # `{"model":<alias>,"phase":<code>,"sub_phase"?:<sub-phase>,"profile"?:<profile>}` with its
+  # keys in that order, a value the source did not report absent, never empty. Neither makes a
+  # usage record (llm-gateway.telemetry) nor counts a series of its own; a pod a wake started is
+  # counted by the embedding as any pod start (scenarios wake-*, status-*).
+  # DECIDED 2026-10-17: the routes sit under the model's own `/v1/models/{alias}/` and are not
+  # public routes: `/v1/models` alone is public (PublicRoute). A model with no lifecycle is
+  # answered with the existing `path-unknown`, and no refusal code is added.
+  # The binary's target source (llm-gateway.deployment): a Runpod model's wake is one
+  # `RunpodPool::wake` (llm-gateway.runpod.Pool), so its spend check and its profile fallback
+  # are a request's. A pod it starts counts in `llmgw_pod_starts_total`, a spend refusal in
+  # `llmgw_pod_start_spend_refusals_total`, a failed start in `llmgw_pod_start_failures_total`,
+  # as a request's would. Any pool refusal but `spend-ceiling` (`no-capacity` once every profile
+  # was refused, `stopping` while a previous pod's stop is unconfirmed, a retired pod's reason)
+  # is `target-unavailable`. Once the gateway starts to stop, a wake starts nothing: it answers
+  # `202` with the status of a model starting or ready, and `target-unavailable` otherwise. Its
+  # status is `RunpodPool::status`. A model of a provider whose `connectors` connection is
+  # absent or unreachable is `target-unavailable` to a wake and `stopped` to a status.
+  - name: llm-gateway.gateway.LifecycleRoute
+    kind: enum
+    attributes:
+      - {name: path, type: String}
+      - {name: methods, type: String}
+      - {name: status, type: Integer}
+    variants:
+      - {name: Wake, attributes: {path: "/v1/models/{alias}/wake", methods: POST, status: 202}}
+      - {name: Status, attributes: {path: "/v1/models/{alias}/status", methods: "GET, HEAD", status: 200}}
+  # Where a model's pod is (`llm_gateway::ModelPhase`), named by what a request for the model
+  # would meet: `stopped`, no pod is live and a request starts one; `starting`, a request is held
+  # while the pod starts; `ready`, the pod was last observed serving and a request is relayed
+  # to it; `stopping`, a previous pod owes a stop not yet confirmed and nothing starts meanwhile.
+  # The binary reads it from the hosting state machine (llm-gateway.runpod.Pool `status`).
+  - name: llm-gateway.gateway.ModelPhase
+    kind: enum
+    attributes:
+      - {name: code, type: String}
+    variants:
+      - {name: Stopped, attributes: {code: stopped}}
+      - {name: Starting, attributes: {code: starting}}
+      - {name: Ready, attributes: {code: ready}}
+      - {name: Stopping, attributes: {code: stopping}}
   # The answer `GET /` chooses, from the request's `user-agent` lowercased, by the first rule
   # that holds, in the order declared (llmgw src/lib.rs:231-245 at 048ebd8). No `user-agent` is
   # `Plain`. Each renders, per relayed model, the llm-gateway.clients.ClientProfile of its
@@ -341,6 +404,19 @@ entities:
       - {name: max_model_len, type: 'Optional<Integer>'}
       - {name: wires, type: 'List<llm-gateway.gateway.Wire>'}
       - {name: upstream_wires, type: 'Optional<List<llm-gateway.gateway.Wire>>'}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  # What a lifecycle route (LifecycleRoute) answers for one model (`llm_gateway::ModelStatus`):
+  # its alias, its ModelPhase, the provider's own word for the pod while it starts when the
+  # provider reports one (`sub_phase`; the binary's are llm-gateway.hosting `ProviderState`
+  # codes: `pending`, the pod is not running yet, and `running`, it runs and its server does not
+  # answer ready yet), and the profile the pod was started on
+  # (llm-gateway.runpod.ModelProfile `name`), absent when unknown.
+  - name: llm-gateway.gateway.ModelStatus
+    identity: {name: model, type: String}
+    fields:
+      - {name: phase, type: llm-gateway.gateway.ModelPhase}
+      - {name: sub_phase, type: 'Optional<String>'}
+      - {name: profile, type: 'Optional<String>'}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.gateway.ExchangeObservation
     identity: {name: observation_id, type: String}
@@ -665,7 +741,8 @@ entities:
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
       # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer,
       # `<status> translated` for a 2xx answer a pod replied to that reached the client in
-      # other bytes, and `<status> answered` for an answer to a public route, and for a scrape
+      # other bytes, and `<status> answered` for an answer to a public route or a lifecycle
+      # route (LifecycleRoute), and for a scrape
       # `<status> scraped` when served or `<status> <refusal code>`. A request whose client
       # closed early (`close_after_bytes`) is `<status> closed`.
       - {name: results, type: 'List<String>'}
@@ -724,6 +801,10 @@ entities:
       # chunk of its answer, or `<pod> cut` when its connection closed before it had: a write
       # failed, or the gateway closed the connection while the pod waited to release a chunk.
       - {name: upstream_ends, type: 'List<String>'}
+      # Every lifecycle ask the gateway made of its target source, in order, as `wake <alias>`
+      # or `status <alias>` (LifecycleRoute): a request refused before the source is asked
+      # adds none.
+      - {name: lifecycle_asks, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   # A request outside the relay, in the order the gateway decides (docs/gateway.md, "The HTTP
@@ -773,7 +854,10 @@ commands:
   #      a body; Claude Code's gateway protocol page calls it startup traffic "a gateway can
   #      reject without breaking anything" (https://code.claude.com/docs/en/llm-gateway-protocol,
   #      read 2026-10-15) (scenario claude-code-the-startup-probe-head-api-hello-is-refused).
-  #   6. A wire path of a gateway composed with a relay goes on to the `Relay` order below.
+  #   6. A wire path of a gateway composed with a relay goes on to the `Relay` order below, and a
+  #      lifecycle path of one (`/v1/models/{alias}/wake` and `/v1/models/{alias}/status`) is
+  #      answered as LifecycleRoute says. Without a relay a lifecycle path is a path the gateway
+  #      does not serve (step 8).
   #   7. `/metrics`, R4 (see RelayObservation).
   #   8. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
   #      `allow: GET, HEAD`, the two public routes included; a declared body is
@@ -875,6 +959,15 @@ commands:
       #   cold_starts  optional, default 0: the target source answers its first `cold_starts`
       #           acquisitions with the model still starting past the request's hold budget
       #           (row W6), and hands out the current pod after that
+      #   lifecycle  optional: the target source's answers to the lifecycle routes
+      #           (LifecycleRoute) for the models served by its pods, `{wake, status}`, each a
+      #           list of answers taken in order, one per ask. An answer is
+      #           `{phase, sub_phase, profile}` (a ModelStatus; `phase` one of ModelPhase's
+      #           codes, the other two optional) or, for `wake` only, `{refusal}` naming
+      #           `target-unavailable`, `model-cold-start` or `spend-ceiling`. An ask past its
+      #           list is answered `target-unavailable` (wake) or `stopped` (status). Without
+      #           `lifecycle` the source starts no pod for any model, and a model served by a
+      #           hosted endpoint never has one, both as `None`
       #   steps  in order: `{step: mark_ready}`, `{step: scrape}` (a `GET /metrics`, with
       #           optional `credential`, default true), or `{step: request, path, body}` with
       #           optional `method` (default `POST`), `credential` (default true: the owner's

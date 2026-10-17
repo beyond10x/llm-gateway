@@ -1,0 +1,35 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: wake-the-target-source-refuses-is-answered-what-acquire-would-be
+summary: a wake the target source refuses is answered as a request's acquisition would be, spend-ceiling and target-unavailable without retry-after and model-cold-start with it
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[]],"lifecycle":{"wake":[{"refusal":"spend-ceiling"},{"refusal":"target-unavailable"},{"refusal":"model-cold-start"}],"status":[]},"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"request","path":"/v1/models/small/wake","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 503 spend-ceiling
+    - 503 target-unavailable
+    - 503 model-cold-start
+    - 503 target-unavailable
+    retry_after:
+    - absent
+    - absent
+    - '30'
+    - absent
+    lifecycle_asks:
+    - wake small
+    - wake small
+    - wake small
+    - wake small
+    acquired: 0

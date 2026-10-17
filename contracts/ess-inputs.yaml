@@ -264,3 +264,13 @@ scenarios:
 - runpod/scenarios/two-profiles-sharing-a-gpu-type-are-refused.yaml
 - runpod/scenarios/a-pod-just-started-counts-its-startup-estimate.yaml
 - runpod/scenarios/spend-billed-before-the-utc-days-start-is-not-todays.yaml
+- gateway/scenarios/wake-answers-202-at-once-and-status-200-and-neither-asks-for-a-target.yaml
+- gateway/scenarios/wake-and-status-are-refused-before-the-target-source-is-asked.yaml
+- gateway/scenarios/wake-and-status-take-the-owner-credential-under-ingress-auth-none.yaml
+- gateway/scenarios/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown.yaml
+- gateway/scenarios/wake-the-target-source-refuses-is-answered-what-acquire-would-be.yaml
+- runpod/scenarios/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready.yaml
+- runpod/scenarios/a-wake-over-the-daily-ceiling-is-refused-before-any-create.yaml
+- runpod/scenarios/a-wake-without-capacity-starts-the-model-on-its-next-profile.yaml
+- runpod/scenarios/status-reads-the-phase-and-contacts-nobody.yaml
+- runpod/scenarios/status-names-a-pod-that-owes-an-unconfirmed-stop-stopping.yaml

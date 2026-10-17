@@ -22,7 +22,7 @@ use std::{
 use ess_conformance::target::TargetError;
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 use llm_runpod::{
-    AccountSpend, CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock,
+    AccountSpend, CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock, ModelStatus,
     NetworkVolume, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel,
     RunpodPool, RunpodProfile, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease,
     TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
@@ -156,6 +156,15 @@ enum Step {
     },
     /// Drop every kept lease.
     Release,
+    /// One `wake` (the owner's lifecycle route): an `ensure`, a ready lease dropped, then the
+    /// model's status.
+    Wake {
+        alias: String,
+    },
+    /// One `status`, which contacts nobody.
+    Status {
+        alias: String,
+    },
     /// `ensure` until ready, moving the clock after each `starting`; the lease is dropped.
     UntilReady {
         alias: String,
@@ -469,6 +478,16 @@ fn cleanup(report: &CleanupReport) -> String {
     )
 }
 
+/// A `wake` or `status` answer: `<word> phase=<..> sub_phase=<..|none> profile=<..|none>`.
+fn status_fact(word: &str, status: &ModelStatus) -> String {
+    format!(
+        "{word} phase={} sub_phase={} profile={}",
+        status.phase.code(),
+        status.sub_phase.unwrap_or("none"),
+        status.profile.as_deref().unwrap_or("none")
+    )
+}
+
 fn lease_fact(lease: &StreamLease) -> String {
     format!(
         "{} {}",
@@ -526,6 +545,26 @@ impl Run {
             }
         }
         "never-ready".to_owned()
+    }
+
+    fn wake(&self, alias: &str) -> String {
+        let (Ok(alias), Ok(authorization)) = (ident(alias), Self::authorization()) else {
+            return "err:fixture:invalid-identifier".to_owned();
+        };
+        match self.pool.wake(&alias, &authorization) {
+            Ok(status) => status_fact("woke", &status),
+            Err(error) => format!("err:{}", refusal(error)),
+        }
+    }
+
+    fn status(&self, alias: &str) -> String {
+        let Ok(alias) = ident(alias) else {
+            return "err:fixture:invalid-identifier".to_owned();
+        };
+        match self.pool.status(&alias) {
+            Ok(status) => status_fact("status", &status),
+            Err(error) => format!("err:{}", refusal(error)),
+        }
     }
 
     fn concurrent(&self, alias: &str, callers: usize) -> String {
@@ -620,6 +659,8 @@ impl Run {
                 max_attempts,
             } => return self.ensure(alias, Some(max_attempts.unwrap_or(20)), true),
             Step::Release => self.held.clear(),
+            Step::Wake { alias } => return self.wake(alias),
+            Step::Status { alias } => return self.status(alias),
             Step::Concurrent { alias, callers } => return self.concurrent(alias, *callers),
             Step::Advance { ms } => self.clock.advance(*ms),
             Step::Reap => match self.pool.reap() {

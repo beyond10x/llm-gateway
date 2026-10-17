@@ -1,0 +1,31 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: status-names-a-pod-that-owes-an-unconfirmed-stop-stopping
+summary: a lost create is starting with no sub-phase, the stop its missed deadline owes is stopping, and a wake meanwhile starts nothing
+timeline:
+- at: '2026-10-17T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"steps":[{"step":"insert_pod","name":"b10x-llm-untagged","env":{}},{"step":"lose_next_create","allocates":false},{"step":"ensure","alias":"qwen"},{"step":"status","alias":"qwen"},{"step":"advance","ms":600001},{"step":"ensure","alias":"qwen"},{"step":"status","alias":"qwen"},{"step":"wake","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - inserted:pod1
+    - ok
+    - err:starting
+    - status phase=starting sub_phase=none profile=none
+    - ok
+    - err:startup-deadline
+    - status phase=stopping sub_phase=none profile=none
+    - err:stopping
+    create_calls: 1
+    stop_required:
+    - qwen-1
+    phases:
+    - qwen-1:stop-required

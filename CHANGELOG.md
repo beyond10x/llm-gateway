@@ -5,7 +5,7 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.12.0 (2026-10-17)
 
 - The translator runs on llm 0.7.0 (`b10x-llm-gateway-cli`'s llm crates and `b10x-llm-runpod`'s
   `b10x-llm-providers` at tag `0.7.0`). On a translated route, Claude Code's first turn

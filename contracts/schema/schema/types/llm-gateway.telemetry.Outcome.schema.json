@@ -1,0 +1,25 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.Outcome",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b7ca24728b50fb0de166f1ed57d051504328767e60cafba6160ac0cec7a00896",
+    "contract_digest": "slice-sha256/2:3958b5c0d5e17e2a0fdac9e0a7b3b854580f9b95498068c88982bbb923a36430",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.Outcome": {
+      "title": "Outcome",
+      "x-ess-name": "llm-gateway.telemetry.Outcome",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Ok",
+        "UpstreamError",
+        "Timeout",
+        "Refused"
+      ]
+    }
+  }
+}

@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
-    "contract_digest": "slice-sha256/2:e91576bc0d8c41e1f38188794a797f7df91c8136ab61a0ccb1f03932483a2ddf",
+    "source_digest": "b7ca24728b50fb0de166f1ed57d051504328767e60cafba6160ac0cec7a00896",
+    "contract_digest": "slice-sha256/2:530ffd8e1e829bbd8bf4184cb143037792a1bd4a158f615cb04687e102d8a52a",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -73,6 +73,12 @@
           "$ref": "#/$defs/llm-gateway.deployment.IngressAuth"
         },
         "owner_secret_file": {
+          "type": "string"
+        },
+        "metrics_listen": {
+          "type": "string"
+        },
+        "metrics_bearer_file": {
           "type": "string"
         },
         "providers": {

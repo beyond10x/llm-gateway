@@ -17,6 +17,9 @@
     "disposition": {
       "$ref": "#/$defs/llm-gateway.telemetry.Disposition"
     },
+    "outcome": {
+      "$ref": "#/$defs/llm-gateway.telemetry.Outcome"
+    },
     "refusal": {
       "$ref": "#/$defs/llm-gateway.gateway.Refusal"
     },
@@ -61,6 +64,7 @@
     "record_id",
     "wire",
     "disposition",
+    "outcome",
     "status",
     "response_bytes",
     "duration_ms",
@@ -70,8 +74,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
-    "contract_digest": "slice-sha256/2:38321375813dbef25cbd97d59aebce8dbc6a79768037e2fc82cb98baac68be1b",
+    "source_digest": "b7ca24728b50fb0de166f1ed57d051504328767e60cafba6160ac0cec7a00896",
+    "contract_digest": "slice-sha256/2:77e8d4e7ce9b90868a6260ea278fa378530f0ea4a7a6ad0e84f214a62fc1738e",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -242,6 +246,18 @@
         "Relayed",
         "Refused",
         "UpstreamFailed"
+      ]
+    },
+    "llm-gateway.telemetry.Outcome": {
+      "title": "Outcome",
+      "x-ess-name": "llm-gateway.telemetry.Outcome",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Ok",
+        "UpstreamError",
+        "Timeout",
+        "Refused"
       ]
     },
     "llm-gateway.telemetry.UsageRecord.State": {

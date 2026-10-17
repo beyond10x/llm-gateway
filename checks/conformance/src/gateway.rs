@@ -2289,12 +2289,57 @@ mod relay {
             return summary(&received, &Progress::default());
         }
         let text = String::from_utf8_lossy(&received.body).into_owned();
-        scrapes.extend(
-            text.lines()
-                .filter(|line| !line.starts_with('#'))
-                .map(|line| format!("{index} {}", waited(line, run_started.elapsed()))),
-        );
+        let samples: Vec<&str> = text.lines().filter(|line| !line.starts_with('#')).collect();
+        let run = run_started.elapsed();
+        scrapes.extend(samples.iter().enumerate().map(|(at, line)| {
+            format!("{index} {}", histogram(&samples, at, run).unwrap_or_else(|| waited(line, run)))
+        }));
         format!("{status} scraped")
+    }
+
+    /// A sample of `llmgw_request_duration_seconds` as the `scrapes` fact writes it: a finite
+    /// bucket `cumulative` when it is at least the bucket before it and at most the `+Inf`
+    /// bucket, `_sum` `bounded` when it is at most `_count` times the run, every other sample of
+    /// the family as served. `None` for a sample of any other series.
+    fn histogram(samples: &[&str], at: usize, run: Duration) -> Option<String> {
+        const BUCKET: &str = "llmgw_request_duration_seconds_bucket{";
+        const SUM: &str = "llmgw_request_duration_seconds_sum{";
+        const COUNT: &str = "llmgw_request_duration_seconds_count{";
+        let line = samples[at];
+        let (series, value) = line.rsplit_once(' ')?;
+        let number = |text: &str| text.parse::<f64>().ok();
+        if series.starts_with(SUM) {
+            let labels = &series[SUM.len()..];
+            let count = samples
+                .iter()
+                .find_map(|other| other.strip_prefix(COUNT)?.strip_prefix(labels))
+                .and_then(|rest| number(rest.trim()))?;
+            let bounded = number(value)
+                .is_some_and(|sum| (0.0..=count * run.as_secs_f64()).contains(&sum));
+            return Some(if bounded { format!("{series} bounded") } else { line.to_owned() });
+        }
+        if !series.starts_with(BUCKET) || series.ends_with("le=\"+Inf\"}") {
+            return None;
+        }
+        let model = &series[..series.find(",le=")?];
+        let value = number(value)?;
+        let bucket = |other: &&str| other.starts_with(model) && other.contains(",le=");
+        let before = samples[..at]
+            .iter()
+            .rev()
+            .take_while(bucket)
+            .next()
+            .and_then(|other| number(other.rsplit_once(' ')?.1))
+            .unwrap_or(0.0);
+        let infinite = samples
+            .iter()
+            .find(|other| other.starts_with(&format!("{model},le=\"+Inf\"}} ")))
+            .and_then(|other| number(other.rsplit_once(' ')?.1))?;
+        Some(if (before..=infinite).contains(&value) {
+            format!("{series} cumulative")
+        } else {
+            line.to_owned()
+        })
     }
 
     /// A sample line as the `scrapes` fact writes it: the time requests waited for a starting

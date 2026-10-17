@@ -41,8 +41,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
-    "contract_digest": "slice-sha256/2:17ee742bd8d44e01614ebc5cc780b5fbe339ec4c31a30d34c37ebc187359eba5",
+    "source_digest": "b7ca24728b50fb0de166f1ed57d051504328767e60cafba6160ac0cec7a00896",
+    "contract_digest": "slice-sha256/2:44f36b4fc8b404e975a055679e1b98359dc76824d164823b6f76b0b9cf4c4a94",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -110,6 +110,12 @@
           "$ref": "#/$defs/llm-gateway.deployment.IngressAuth"
         },
         "owner_secret_file": {
+          "type": "string"
+        },
+        "metrics_listen": {
+          "type": "string"
+        },
+        "metrics_bearer_file": {
           "type": "string"
         },
         "providers": {
@@ -576,6 +582,14 @@
         "EndpointCredentialTooLarge",
         "EndpointCredentialNotUtf8",
         "EndpointCredentialNotAToken",
+        "MetricsBearerUnreadable",
+        "MetricsBearerSymlink",
+        "MetricsBearerNotRegular",
+        "MetricsBearerUntrustedOwner",
+        "MetricsBearerUnsafeMode",
+        "MetricsBearerTooLarge",
+        "MetricsBearerNotUtf8",
+        "MetricsBearerNotAToken",
         "ListenBind",
         "SignalInstall"
       ]

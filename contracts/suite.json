@@ -76,6 +76,7 @@
       "llm-gateway.gateway/authored/k11-a-wire-the-model-does-not-declare-is-refused-without-waking-a-target",
       "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition",
       "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready",
+      "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model",
       "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series",
       "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route",
       "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure",
@@ -651,18 +652,23 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready"
       },
+      "gateway/scenarios/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model.yaml": {
+        "digest": "sha256:2e1291d6da479910808b8513e345e26e7f800a25ee566712163986947a423119",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model"
+      },
       "gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml": {
-        "digest": "sha256:8ee419fea01126739515ceef8e3c94db89f877c4fbdd7550371450e62b212780",
+        "digest": "sha256:dce963c659126c8ef725f736334eab69c0bb335edcfd49666558f7f4ad1b4e30",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series"
       },
       "gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml": {
-        "digest": "sha256:ad3548f10f8bfcc863012e5378f2479bd3c562e3c126b0b8a453c53b66ea33c6",
+        "digest": "sha256:c4dea6d6e48ca7f629c684cf30548d0fb61e17619eeca108023ad5424a4f89bd",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route"
       },
       "gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml": {
-        "digest": "sha256:5cd72282a9c5afac31d0b8a2a0e274bd2d8ec321f2bebad0f68ca33fc87b06bf",
+        "digest": "sha256:e04cd7f618c24079d52a591fff40ec2712c70914b1e4cdb4f92d8fbd354594e7",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure"
       },
@@ -682,7 +688,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile"
       },
       "gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml": {
-        "digest": "sha256:e8a34c81d61d4cf24cfd94bab87e58a02d17f0ca586dac6868e83d18d231a97f",
+        "digest": "sha256:c36e1abc9bcfe46356eee42f1473291374f0865c862d197e2497cc865f1b284a",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view"
       },
@@ -702,7 +708,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body"
       },
       "gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml": {
-        "digest": "sha256:06b3b2f57852ad0a42d9c1ee0eddcc0c732f8b32282a49d0a8e726c9d23d0e00",
+        "digest": "sha256:d8f9b5b6b0bd1c4465af35872acb6d2ec8ce431f5ba530025693f32f60caf6f7",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero"
       },
@@ -1643,7 +1649,7 @@
       }
     },
     "counts": {
-      "authored": 273,
+      "authored": 274,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1668,9 +1674,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "d34d1fa677682284ec079d3d51c061b03bcf77613daf34d7af8551e454e854f5",
+    "contract_digest": "52f94310f63ad3ebc326a0a45ae67ef534dd0d5e1d025a360396dab961ed4d34",
     "scenario_initial_state": "empty",
-    "spec_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
+    "spec_digest": "b7ca24728b50fb0de166f1ed57d051504328767e60cafba6160ac0cec7a00896",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -8716,6 +8722,152 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model": {
+      "purpose": "each model call advances its outcome and the duration histogram of its model",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"a\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"a\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"a\\\"}\"]},{\"transport\":\"refused\"}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/responses\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"elsewhere\\\"}\"},{\"step\":\"scrape\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent",
+                  "model=code wire=responses disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent",
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent",
+                  "model=code wire=chat disposition=UpstreamFailed refusal=upstream-failed status=502 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent",
+                  "model=code wire=chat disposition=Refused refusal=target-unavailable status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent",
+                  "model=absent wire=chat disposition=Refused refusal=model-unknown status=404 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "502 upstream-failed",
+                  "503 target-unavailable",
+                  "404 model-unknown",
+                  "200 scraped"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "1 llmgw_inference_requests_total 6",
+                  "1 llmgw_upstream_failures_total 1",
+                  "1 llmgw_instruction_views_total 0",
+                  "1 llmgw_pod_starts_total 0",
+                  "1 llmgw_pod_start_failures_total 0",
+                  "1 llmgw_pod_reaps_total 0",
+                  "1 llmgw_endpoint_invalidations_total 1",
+                  "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 3",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 1",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 1",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 2",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 10",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"messages\"} 10",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"responses\"} 10",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 3",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 1",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 1",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 5",
+                  "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 5"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series": {
       "purpose": "each authenticated relay request makes one usage record, and each record-fed series grows by the records it counts",
       "source": [
@@ -8835,6 +8987,25 @@
                   "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"responses\"} 0",
                   "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"responses\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 0",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 0",
                   "2 200 content-type=text/plain; version=0.0.4; charset=utf-8",
                   "2 llmgw_inference_requests_total 3",
                   "2 llmgw_upstream_failures_total 1",
@@ -8854,7 +9025,26 @@
                   "2 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
                   "2 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"responses\"} 0",
                   "2 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 10",
-                  "2 llmgw_route_response_bytes_total{model=\"code\",wire=\"responses\"} 0"
+                  "2 llmgw_route_response_bytes_total{model=\"code\",wire=\"responses\"} 0",
+                  "2 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 1",
+                  "2 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 1",
+                  "2 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "2 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 1",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 3",
+                  "2 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "2 llmgw_request_duration_seconds_count{model=\"code\"} 3"
                 ]
               },
               "upstream": {
@@ -8980,7 +9170,26 @@
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 1",
-                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 13"
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 13",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 1",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 1",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 0",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 2",
+                  "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 2"
                 ]
               },
               "valid_program": {
@@ -9106,7 +9315,26 @@
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 2",
                   "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
-                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 15"
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 15",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 1",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 2",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 0",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 3",
+                  "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 3"
                 ]
               },
               "upstream": {
@@ -9465,7 +9693,26 @@
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
-                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0"
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 0",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 0"
                 ]
               },
               "valid_program": {
@@ -9894,7 +10141,26 @@
                   "3 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
                   "3 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"messages\"} 0",
                   "3 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
-                  "3 llmgw_route_response_bytes_total{model=\"code\",wire=\"messages\"} 0"
+                  "3 llmgw_route_response_bytes_total{model=\"code\",wire=\"messages\"} 0",
+                  "3 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 0",
+                  "3 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 0",
+                  "3 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "3 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 0",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "3 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "3 llmgw_request_duration_seconds_count{model=\"code\"} 0"
                 ]
               },
               "valid_program": {

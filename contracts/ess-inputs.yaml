@@ -187,6 +187,7 @@ scenarios:
 - gateway/scenarios/w6-a-model-with-no-target-is-target-unavailable-without-retry-after.yaml
 - gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml
 - gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml
+- gateway/scenarios/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model.yaml
 - gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml
 - gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml
 - gateway/scenarios/tools-a-tool-request-to-a-model-without-tool-calling-is-refused-without-asking-for-a-target.yaml

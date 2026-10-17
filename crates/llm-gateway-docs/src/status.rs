@@ -18,7 +18,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.mdx";
 
 /// The date the list below was last checked against the code.
-const AS_OF: &str = "2026-10-16";
+const AS_OF: &str = "2026-10-17";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -267,6 +267,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "The document, the routes document it names, the owner secret, each vLLM key file and each endpoint credential file are opened once, never through a symlink, and checked for owner, mode, size and UTF-8 on that one handle.",
         "crates/llm-gateway-cli/tests/binary.rs::k30_a_symlinked_owner_secret_is_refused",
         DOCUMENT,
+    ),
+    shipped(
+        "Binary",
+        "Store an upstream key with credential set",
+        "b10x-llm-gateway credential set --config <file> --model <alias> (or --route <name>) reads the key from a hidden prompt or --stdin, probes GET <base path>/models with the entry's own credential header and static headers (401 or 403 stores nothing), and writes the file the document names, mode 0600, read back through the server's own reader before it replaces the old one. Tested against loopback endpoints, not against a vendor API.",
+        "crates/llm-gateway-cli/tests/credential_set.rs::credential_set_a_passed_probe_stores_a_0600_file_the_gateway_then_starts_with",
+        Some("/docs/guides/store-an-upstream-key"),
     ),
     shipped(
         "Binary",

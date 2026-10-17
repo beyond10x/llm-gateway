@@ -258,3 +258,26 @@ b10x-llm-gateway: refused owner-secret:unsafe-mode: owner-secret: has mode 644; 
 ```
 
 [Refusals](refusals.md#startup-refusals) lists every startup code.
+
+### Credential files {#credential-files}
+
+A hosted model's `credential_file` and a route endpoint's `file:` secret are read by the same
+rules. Anything that writes one, by hand,
+[`b10x-llm-gateway credential set`](../guides/store-an-upstream-key.md) or another tool, aims at
+this reader:
+
+| Rule | Refused as |
+| --- | --- |
+| The path's last component is not a symbolic link. | `endpoint-credential:symlink` |
+| It is a regular file. | `endpoint-credential:not-regular` |
+| It is owned by the user the gateway runs as, or by root. | `endpoint-credential:untrusted-owner` |
+| No group or world permission bit is set (mode `0600` or `0400`). | `endpoint-credential:unsafe-mode` |
+| It holds at most 4098 bytes: a 4096-byte key and a CRLF. | `endpoint-credential:too-large` |
+| The bytes are UTF-8. | `endpoint-credential:not-utf8` |
+| Once trailing ASCII whitespace (a newline, a CRLF) is trimmed, it is one printable ASCII token: 1 to 4096 bytes of `!` to `~`, no space, tab or control byte. | `endpoint-credential:too-large` over 4096 bytes, `endpoint-credential:not-a-token` otherwise |
+
+The gateway reads each such file once, at start: a key stored while it serves is used from its
+next start. `credential set` writes exactly the key's bytes, with no newline, mode `0600`, and
+reads the result back through this reader before it replaces the old file. It also requires the
+file's directory to exist and to be owned by you or root and not group- or world-writable, so that
+no other user can replace the file.

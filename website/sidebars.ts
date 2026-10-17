@@ -24,6 +24,7 @@ const sidebars: SidebarsConfig = {
         'guides/scrape-the-counters',
         'guides/run-on-kubernetes',
         'guides/run-the-checks',
+        'guides/store-an-upstream-key',
       ],
     },
     {

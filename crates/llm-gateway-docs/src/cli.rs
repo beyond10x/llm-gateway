@@ -1,6 +1,6 @@
-//! The CLI reference page, walked from the clap definition of `b10x-llm-gateway`
-//! (`llm_gateway_cli::cli::Cli`). The binary has no subcommand, so the page lists the root's
-//! arguments.
+//! The CLI reference page, walked from the clap definitions of `b10x-llm-gateway`: the serving
+//! command line (`llm_gateway_cli::cli::Cli`) and the `credential set` command
+//! (`llm_gateway_cli::cli::CredentialCli`).
 
 use std::fmt::Write as _;
 
@@ -79,8 +79,9 @@ pub fn page_for(mut root: clap::Command) -> String {
         let _ = writeln!(out, "| {} |", row.join(" | "));
     }
     out.push_str(
-        "\nThe command line takes nothing else: a subcommand, a positional argument or another \
-         option is a usage error. The document the option names is described in \
+        "\nThe serving command line takes nothing else: a positional argument or another option is \
+         a usage error. The one other command, `credential set` below, is reached only when \
+         `credential` is the first argument. The document the option names is described in \
          [the deployment document](./deployment-document.md).\n\n\
          ## Exit status\n\n| Status | When | Last line on standard error |\n| --- | --- | --- |\n\
          | 0 | stopped by SIGINT or SIGTERM after every accepted request was answered | \
@@ -95,9 +96,50 @@ pub fn page_for(mut root: clap::Command) -> String {
     out
 }
 
+/// The section for one subcommand `leaf` of `command`: its about text, usage line and options.
+fn subcommand_section(mut command: clap::Command, leaf: &str) -> String {
+    command.build();
+    let leaf = command
+        .find_subcommand_mut(leaf)
+        .expect("the command declares the subcommand")
+        .clone();
+    let name = format!(
+        "{} {}",
+        command.get_bin_name().unwrap_or(command.get_name()),
+        leaf.get_name()
+    );
+    let mut leaf = leaf.bin_name(&name);
+    let mut out = format!(
+        "\n## `{name}`\n\n> {}\n\n```text\n{}\n```\n\n\
+         | Option | Required | Default | Meaning |\n| --- | --- | --- | --- |\n",
+        cell(&text(leaf.get_long_about().or(leaf.get_about()))),
+        leaf.render_usage().to_string().trim_end(),
+    );
+    for row in arguments(&leaf) {
+        let _ = writeln!(out, "| {} |", row.join(" | "));
+    }
+    out
+}
+
 /// The CLI reference page for `b10x-llm-gateway`.
 pub fn page() -> String {
-    page_for(llm_gateway_cli::cli::Cli::command())
+    let mut out = page_for(llm_gateway_cli::cli::Cli::command());
+    out.push_str(&subcommand_section(
+        llm_gateway_cli::cli::CredentialCli::command(),
+        "set",
+    ));
+    out.push_str(
+        "\nExactly one of `--model` and `--route` is required. The key is never an argument or \
+         an environment variable: it is read from a hidden prompt on the terminal, or from \
+         standard input with `--stdin`, one line whose newline is not part of it. On success the \
+         command writes one line, `b10x-llm-gateway: credential stored <path> probe \
+         <passed|skipped|not-rejected> http <code|->`, and exits 0; a refusal is \
+         `b10x-llm-gateway: refused <code>: <message>` with exit status 1 and writes nothing \
+         ([the refusal reference](./refusals.md#credential-refusals)); a usage error is clap's, \
+         exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks \
+         through it.\n",
+    );
+    out
 }
 
 #[cfg(test)]
@@ -112,5 +154,8 @@ mod tests {
         assert!(page.contains("Usage: b10x-llm-gateway --config <CONFIG>"));
         assert!(page.contains("| `--config <CONFIG>` | yes | none |"));
         assert!(!page.contains("`--help`"), "help and version are not rows");
+        assert!(page.contains("## `b10x-llm-gateway credential set`"));
+        assert!(page.contains("| `--model <ALIAS>` | no | none |"));
+        assert!(page.contains("| `--no-probe` | no | none |"));
     }
 }

@@ -91,3 +91,24 @@ Before it serves, the binary refuses a start with one line on standard error, `b
 | `endpoint-credential:not-a-token` |
 | `listen:bind` |
 | `signal:install` |
+
+## Credential refusals
+
+`b10x-llm-gateway credential set` refuses with the same line, `b10x-llm-gateway: refused <code>: <message>`, and exit status 1, writing nothing. Besides the startup codes the server's own loader and reader give (a `config:*` code for the document, an `endpoint-credential:*` code for a key file it would not read), its codes are these, generated from `CredentialRefusal::ALL` in the same file; [the deployment document](./deployment-document.md#credential-files) says which rule each one keeps. No message quotes the key.
+
+| Credential code |
+| --- |
+| `credential:unknown-target` |
+| `credential:not-hosted` |
+| `credential:anonymous` |
+| `credential:no-terminal` |
+| `credential:input-cancelled` |
+| `credential:input-unreadable` |
+| `credential:input-empty` |
+| `credential:input-too-large` |
+| `credential:input-not-a-token` |
+| `credential:probe-rejected` |
+| `credential:probe-unreachable` |
+| `credential:directory-missing` |
+| `credential:directory-unsafe` |
+| `credential:write` |

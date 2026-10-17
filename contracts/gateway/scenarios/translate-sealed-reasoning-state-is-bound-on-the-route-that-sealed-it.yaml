@@ -23,5 +23,10 @@ assert:
     - "200 translated"
     - "200 translated"
     - "200 translated"
+    upstream:
+    - "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+    - "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"},{\"content\":[{\"signature\":\"sig-up-1\",\"thinking\":\"Plan.\",\"type\":\"thinking\"},{\"text\":\"Hello\",\"type\":\"text\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Again\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+    - "pod-2 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+    - "pod-2 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"},{\"content\":\"Hello\",\"role\":\"assistant\"},{\"content\":\"Again\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
     acquired: 4
     released: 4

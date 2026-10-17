@@ -2339,7 +2339,8 @@ mod relay {
         facts["upstream_ends"] = json!(taken(&shared.ends));
         facts["secret_upstream"] = json!(shared.secret_upstream.load(Ordering::SeqCst));
         if !countings.is_empty() {
-            let sum = |count: fn(&Counting) -> usize| countings.iter().map(|c| count(c)).sum::<usize>();
+            let sum =
+                |count: fn(&Counting) -> usize| countings.iter().map(|c| count(c)).sum::<usize>();
             let joined = |list: fn(&Counting) -> &Mutex<Vec<String>>| {
                 countings
                     .iter()

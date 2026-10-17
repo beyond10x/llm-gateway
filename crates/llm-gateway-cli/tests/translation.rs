@@ -643,8 +643,10 @@ fn reasoning_item(answer: &str) -> serde_json::Value {
         .find(|event| {
             event["type"] == "response.output_item.done" && event["item"]["type"] == "reasoning"
         })
-        .map(|event| event["item"].clone())
-        .unwrap_or_else(|| panic!("no finished reasoning item reached the client: {answer}"))
+        .map_or_else(
+            || panic!("no finished reasoning item reached the client: {answer}"),
+            |event| event["item"].clone(),
+        )
 }
 
 /// Codex's recorded second turn, its reasoning item replayed as `item` says: Codex replays the
@@ -756,13 +758,22 @@ fn translation_codexs_two_turns_reach_a_chat_upstream_with_the_sealed_item_dropp
     assert_eq!(seen.len(), 2, "{seen:?}");
     let sent = request_body(&seen[1]);
     let text = sent.to_string();
-    for absent in [SEAL_PREFIX, "Read the file.", "reasoning"] {
+    for absent in [SEAL_PREFIX, "Read the file."] {
         assert!(
             !text.contains(absent),
             "{absent} reached a chat upstream: {text}"
         );
     }
     let messages = sent["messages"].as_array().unwrap();
+    // Codex's `reasoning.effort` reaches the upstream as `reasoning_effort`; no message carries
+    // reasoning.
+    for message in messages {
+        let message = message.to_string();
+        assert!(
+            !message.contains("reasoning"),
+            "reasoning reached a chat upstream: {message}"
+        );
+    }
     let call = messages
         .iter()
         .find(|message| message.get("tool_calls").is_some())

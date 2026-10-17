@@ -26,6 +26,8 @@ workspace = true
 test-seam = []
 
 [dependencies]
+# The reasoning seal (src/seal.rs): its state and tag in unpadded base64url.
+base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }
 llm-blocking = { package = "b10x-llm-blocking", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
 llm-chat = { package = "b10x-llm-chat", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
@@ -38,6 +40,9 @@ llm-models = { package = "b10x-llm-models", git = "https://github.com/beyond10x/
 llm-providers = { package = "b10x-llm-providers", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
 llm-responses = { package = "b10x-llm-responses", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
 llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
+# The reasoning seal's HMAC-SHA256 key and tag (src/seal.rs), on the ring the TLS client
+# already links.
+ring = "0.17.14"
 rustix = { version = "1.1", features = ["fs", "process", "termios"] }
 # The pod connection's TLS client (spec/domains/deployment.yaml, the pod endpoint rule): rustls
 # on its ring provider, never aws-lc-rs, trusting the roots webpki-roots compiles in.

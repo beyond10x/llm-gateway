@@ -847,7 +847,7 @@
         "scenario": "llm-gateway.gateway/authored/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams"
       },
       "gateway/scenarios/translate-altered-or-forged-sealed-reasoning-state-is-refused.yaml": {
-        "digest": "sha256:1c78703615dd3bec8454f776da47366139cadff9575008c7cfe9fde0348891ff",
+        "digest": "sha256:6d5c082bd7ee3efe91c0f90b750c6d927fa14cf84baffb98b533e9e98b9e3b7f",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-altered-or-forged-sealed-reasoning-state-is-refused"
       },
@@ -872,17 +872,17 @@
         "scenario": "llm-gateway.gateway/authored/translate-carried-reasoning-state-is-refused-without-asking-for-a-target"
       },
       "gateway/scenarios/translate-sealed-reasoning-state-from-another-route-is-refused.yaml": {
-        "digest": "sha256:792386528564224f2eb222f2cd10a836069314d09f1551f78f12851dba580893",
+        "digest": "sha256:9d6014e69d38ae631629883e4cced2792ee1a8a9606c58aaf35c02639d270c8f",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-sealed-reasoning-state-from-another-route-is-refused"
       },
       "gateway/scenarios/translate-sealed-reasoning-state-from-before-a-restart-is-refused.yaml": {
-        "digest": "sha256:dcc54aad1b9dc6991a194367dcc9a428fdec6062d21fb4bbac9e96413d5cd2d1",
+        "digest": "sha256:8d0f3e5e216c5719bd44fd978d12aa76c15480028486429c2158de7a1c013621",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-sealed-reasoning-state-from-before-a-restart-is-refused"
       },
       "gateway/scenarios/translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it.yaml": {
-        "digest": "sha256:4346cd28d2e86011d2b81e6a26ecf1b9442b108115653c1107018c26bec3f70f",
+        "digest": "sha256:a6b06e81e60ad7633bee73849d4ee1c37460626a26171f36361186fa9cd8daa0",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it"
       },
@@ -1698,9 +1698,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "d34d1fa677682284ec079d3d51c061b03bcf77613daf34d7af8551e454e854f5",
+    "contract_digest": "9947850c5a4c8eabdac3779c99b364aeabe2910dc98e51f370521c0c856c683e",
     "scenario_initial_state": "empty",
-    "spec_digest": "8d00d044957b2c4d386e82eb98582d74c03c75983c3c25375bcc2acffa09c287",
+    "spec_digest": "3a7909898086f3b398f0fbf4efcfb32853348bc29a8c82aae4d6d0e1b40128bf",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -12843,6 +12843,12 @@
                   "400 translation-opaque-state"
                 ]
               },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                ]
+              },
               "valid_program": {
                 "kind": "literal",
                 "value": true
@@ -13406,6 +13412,12 @@
                   "400 translation-opaque-state"
                 ]
               },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                ]
+              },
               "valid_program": {
                 "kind": "literal",
                 "value": true
@@ -13502,6 +13514,13 @@
                   "200 translated"
                 ]
               },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}",
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}"
+                ]
+              },
               "valid_program": {
                 "kind": "literal",
                 "value": true
@@ -13595,6 +13614,15 @@
                   "200 translated",
                   "200 translated",
                   "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}",
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"},{\"content\":[{\"signature\":\"sig-up-1\",\"thinking\":\"Plan.\",\"type\":\"thinking\"},{\"text\":\"Hello\",\"type\":\"text\"}],\"role\":\"assistant\"},{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Again\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}",
+                  "pod-2 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}",
+                  "pod-2 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"},{\"content\":\"Hello\",\"role\":\"assistant\"},{\"content\":\"Again\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
                 ]
               },
               "valid_program": {

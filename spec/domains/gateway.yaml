@@ -187,7 +187,7 @@ types:
       - {name: TargetUnavailable, attributes: {code: target-unavailable, status: 503, message: "no model target is available"}}
       - {name: ToolsNotServed, attributes: {code: tools-not-served, status: 400, message: "the model does not serve tool calls"}}
       - {name: TranslationInvalid, attributes: {code: translation-invalid, status: 400, message: "the request breaks a rule of the subset the gateway translates"}}
-      - {name: TranslationOpaqueState, attributes: {code: translation-opaque-state, status: 400, message: "the request carries reasoning state the gateway cannot send to the model's upstream"}}
+      - {name: TranslationOpaqueState, attributes: {code: translation-opaque-state, status: 400, message: "the request carries reasoning state the gateway did not seal for this route"}}
       - {name: TranslationTooLarge, attributes: {code: translation-too-large, status: 502, message: "the model's answer passed a bound of the translated path, published in the gateway contract"}}
       - {name: TranslationUnrepresentable, attributes: {code: translation-unrepresentable, status: 502, message: "the model's answer cannot be written on this wire"}}
       - {name: TranslationUnsupported, attributes: {code: translation-unsupported, status: 400, message: "the request uses a field or value outside the subset the gateway translates"}}

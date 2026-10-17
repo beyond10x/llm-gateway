@@ -469,8 +469,11 @@ pod:
    `translation-unsupported`; a value breaking one of its rules (contradictory output limits, a
    tool result answering no call, a value of the wrong kind) is `translation-invalid`.
 3. Reasoning state the client replays (a Messages `thinking` or `redacted_thinking` block, a
-   Responses `reasoning` item) is `translation-opaque-state`: it was minted by another serving
-   binding, the upstream speaks another protocol, and the gateway binds no carried state.
+   Responses `reasoning` item) is bound only when it is a seal this gateway made for this route
+   since it last started ("Reasoning state on a translated route" below). Every other carried
+   item is `translation-opaque-state`, and the request with it: it was minted by another serving
+   binding, for another route or before a restart, and the gateway binds no state it cannot
+   attribute.
 4. The turn is checked against the model's capabilities: tools and tool choice when its
    `ToolCalling` is `Parsed`; `temperature` and `top_p`; the efforts `minimal`, `low`, `medium`,
    `high` and `xhigh`, and `none` as well when the upstream is chat or responses, each checked as
@@ -544,7 +547,9 @@ and effort `max`) and Codex's first turn (`instructions`, a developer message, i
 `parallel_tool_calls`, `prompt_cache_key`, `text.verbosity`, `reasoning.summary` and
 `client_metadata`) are carried to another wire (scenario
 `translate-a-coding-agents-turn-reaches-another-wire-with-its-controls`). Codex's second turn
-replays a `reasoning` item and is `translation-opaque-state` (step 3). Still refused by name,
+replays the `reasoning` item its first answer carried: on a chat or messages route, an item this
+gateway sealed for that route is bound (step 3), and the item of a recorded or foreign answer is
+`translation-opaque-state`. Still refused by name,
 `translation-unsupported`: structured output (`output_config.format`, `text.format`,
 `response_format`), `context_management`, `thinking.display`, hosted and custom tools, and an
 instruction in the middle of the conversation (a `system` message inside Messages `messages`, a
@@ -588,8 +593,56 @@ unreported; on a messages client the input total is sent only when the upstream 
 cache counters, which only a messages upstream does. Reasoning text is relayed where the
 client's wire has a place for it (chat `reasoning_content`, a responses reasoning summary) and
 withheld on a messages client, whose `thinking` block needs a signature only a messages
-upstream makes. Continuation state the upstream mints for its own wire (Responses reasoning
-items, Messages signed thinking) is not carried to another wire.
+upstream makes. Continuation state the upstream mints for its own wire (Messages signed
+thinking) reaches a responses client sealed for the route, as the next section says, and no
+other client.
+
+#### Reasoning state on a translated route
+
+Codex replays the reasoning items of its previous answer on every turn. So that a translated
+route serves that turn without binding state it cannot attribute, the gateway hands a responses
+client reasoning state it sealed itself, and binds only that.
+
+- **The key.** The translator generates one HMAC-SHA256 key from the system's random source when
+  it starts. It is never written out, logged or rendered. A gateway that could not generate one
+  seals nothing and answers as if the upstream minted no state.
+- **What a responses client is handed.** Each signed `thinking` or `redacted_thinking` block of
+  a messages upstream's answer reaches it, in its place, as a finished `reasoning` item whose
+  `encrypted_content` is the seal: `llmgw-seal-1.`, the block as JSON in unpadded base64url, `.`,
+  and in unpadded base64url the HMAC of a fixed label, the route (the model's alias and its
+  upstream model), the client's wire, the upstream wire and those JSON bytes, each
+  length-prefixed. The first such item is the one the streamed reasoning opened, under its `id`,
+  with the reasoning shown as its summary. A chat upstream mints no state; when it shows
+  reasoning (`reasoning_content`), that item is finished with a seal over `null`. The seal does
+  not hide the block, whose thinking the summary already shows; it attributes it to this route.
+- **What is bound.** A replayed `reasoning` item from a responses client whose
+  `encrypted_content` verifies, in constant time, as a seal of the running key for the request's
+  route and wires: the block it carries is sent to the messages upstream at the item's place, as
+  the upstream gave it, under the binding of the target the relay acquired; a seal over `null` is
+  dropped before the turn is projected for the chat upstream. The item's `id` and `summary` are
+  not read.
+- **What is refused**, `translation-opaque-state` (400) for the whole request before any target
+  is asked for: an item without a seal (a recorded turn, or state another gateway or the
+  upstream itself minted); a seal any character of which was altered, or one forged; a seal made
+  for another route, or for the same alias on another pair of wires; and a seal made before the
+  gateway last started, whose key is gone. A client that keeps its conversation across a restart
+  of the gateway starts a new one.
+- **What is not sealed.** Nothing toward a chat client (its wire carries no opaque state) or a
+  messages client (llm's messages encoder places a block the stream did not show after every
+  streamed block, so a replayed block would reach the upstream out of its place); their answers
+  carry no upstream state, and a `thinking` block such a client replays is
+  `translation-opaque-state`. A same-wire route is relayed byte for byte, and its reasoning state
+  with it, unchanged.
+- **What is never logged.** No log line, event, metric, usage record or refusal carries a seal,
+  the key or the state a seal holds.
+
+Scenarios `translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it`,
+`translate-sealed-reasoning-state-from-another-route-is-refused`,
+`translate-altered-or-forged-sealed-reasoning-state-is-refused` and
+`translate-sealed-reasoning-state-from-before-a-restart-is-refused` observe each case;
+`crates/llm-gateway-cli/tests/translation.rs` runs Codex's recorded two-turn exchange through a
+responses-to-chat and a responses-to-messages route, and `seal_*` in
+`crates/llm-gateway-cli/src/seal.rs` check every character of a seal and every part of its route.
 
 A failure before any output, by llm's class of it and whatever was dispatched:
 
@@ -627,8 +680,9 @@ Each statement about a refused field is backed by a test that feeds the request 
   profiles.
 - **Codex.** `instructions`, `parallel_tool_calls`, `prompt_cache_key`, `text` and a
   `reasoning.summary` are each refused by the responses subset, and a turn replaying a reasoning
-  item is `translation-opaque-state`. Codex reaches a model through translation only once llm's
-  subset grows; `GET /` profiles only models whose upstream speaks responses.
+  item the gateway did not seal for the route is `translation-opaque-state`. Codex reaches a
+  model through translation only once llm's subset grows; `GET /` profiles only models whose
+  upstream speaks responses.
 - **Encoder refusals** (llm `story:ingress-block-boundaries`): a responses client cannot be sent
   two assistant messages back to back, or a message another item interrupts (text, reasoning,
   text from a chat upstream; text, a call, text); a messages client cannot be sent redacted
@@ -720,7 +774,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `target-unavailable` | 503 | no model target is available |
 | `tools-not-served` | 400 | the model does not serve tool calls |
 | `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |
-| `translation-opaque-state` | 400 | the request carries reasoning state the gateway cannot send to the model's upstream |
+| `translation-opaque-state` | 400 | the request carries reasoning state the gateway did not seal for this route |
 | `translation-too-large` | 502 | the model's answer passed a bound of the translated path, published in the gateway contract |
 | `translation-unrepresentable` | 502 | the model's answer cannot be written on this wire |
 | `translation-unsupported` | 400 | the request uses a field or value outside the subset the gateway translates |

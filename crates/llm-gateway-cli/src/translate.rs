@@ -3,15 +3,18 @@
 //! binary owns.
 //!
 //! [`Translator::prepare`] runs on the gateway's worker thread before any target is asked for:
-//! it decodes the client's body onto llm's neutral turn, refuses carried reasoning state, checks
+//! it decodes the client's body onto llm's neutral turn, binds carried reasoning state only when
+//! it is a seal the gateway made for this route ([`crate::seal`]) and refuses every other, checks
 //! the turn against the model's capabilities and projects it for the upstream wire once against
 //! a placeholder binding, so every refusal llm's projection would make is made before a pod
 //! wakes. [`Translation::run`] builds the binding for the acquired target, sends the turn once
 //! with llm's client for the upstream wire through [`BlockingModel::on_runtime`], and writes each
-//! event to the client on its own wire as it arrives. The specification is step 5 of the
+//! event to the client on its own wire as it arrives; an answer to a responses client hands it
+//! the upstream's reasoning state sealed for this route. The specification is step 5 of the
 //! `Relay` command of `spec/domains/gateway.yaml`, and `docs/gateway.md` "Translation" is the
 //! published contract.
 
+use crate::seal::{Scope, Sealer};
 use llm_blocking::{BlockingModel, BlockingSink};
 use llm_core::{
     AuthKind, BillingKind, BoxFuture, Cancel, Capabilities, Dispatch, Error, ErrorCode, Id, Item,
@@ -75,9 +78,12 @@ pub struct LlmTranslator {
     capabilities: BTreeMap<String, Capabilities>,
 }
 
-/// What every translation shares: the runtime and HTTP client, and the answer identities.
+/// What every translation shares: the runtime and HTTP client, the answer identities and the
+/// seal key.
 struct Engine {
     transport: Mutex<Option<Arc<Transport>>>,
+    /// Generated when the translator starts and never written out (`crate::seal`).
+    sealer: Arc<Sealer>,
     /// A fixed `created`, for a run whose bytes must be exact; the system clock otherwise.
     created: Option<u64>,
     counter: AtomicU64,
@@ -179,6 +185,7 @@ impl LlmTranslator {
     pub fn new() -> Self {
         let engine = Engine {
             transport: Mutex::new(None),
+            sealer: Arc::new(Sealer::generate()),
             created: None,
             counter: AtomicU64::new(0),
         };
@@ -202,6 +209,7 @@ impl LlmTranslator {
     pub fn with_created(self, created: u64) -> Self {
         let engine = Engine {
             transport: Mutex::new(self.engine.transport()),
+            sealer: Arc::clone(&self.engine.sealer),
             created: Some(created),
             counter: AtomicU64::new(0),
         };
@@ -403,6 +411,79 @@ fn project(
     }
 }
 
+/// Binds the reasoning state a request carries, or refuses the request whole
+/// `translation-opaque-state`.
+///
+/// Only a responses client's `reasoning` item whose `encrypted_content` is a seal this process
+/// made for `scope` is carried: the sealed upstream block becomes llm's `Item::Opaque` under
+/// `provenance` (rebound to the request's binding before it is sent) for a messages upstream,
+/// and a seal over `null`, the only one a chat upstream's reasoning is given, is dropped. Every
+/// other carried item, and anything already attributed, is refused. Nothing about the item
+/// reaches a log or the refusal.
+fn bind_sealed(
+    sealer: &Sealer,
+    scope: Scope<'_>,
+    request: &mut TurnRequest,
+    provenance: &Provenance,
+) -> Result<(), RefusalCode> {
+    let refused = RefusalCode::TranslationOpaqueState;
+    let mut items = Vec::with_capacity(request.items.len());
+    for item in std::mem::take(&mut request.items) {
+        match item {
+            Item::UnattributedOpaque { protocol, payload }
+                if scope.ingress == Wire::Responses
+                    && protocol == Protocol::Responses
+                    && payload.get("type").and_then(Value::as_str) == Some("reasoning") =>
+            {
+                let state = payload
+                    .get("encrypted_content")
+                    .and_then(Value::as_str)
+                    .and_then(|seal| sealer.open(scope, seal))
+                    .ok_or(refused)?;
+                match (scope.upstream, state) {
+                    (Wire::Chat, Value::Null) => {}
+                    (Wire::Messages, state @ Value::Object(_)) => items.push(Item::Opaque {
+                        provenance: provenance.clone(),
+                        payload: state,
+                    }),
+                    _ => return Err(refused),
+                }
+            }
+            Item::Opaque { .. } | Item::UnattributedOpaque { .. } => return Err(refused),
+            other => items.push(other),
+        }
+    }
+    request.items = items;
+    Ok(())
+}
+
+/// Attributes every bound reasoning block of `request` to `provenance`: the placeholder binding
+/// it is projected against before a target is acquired, then the acquired target's binding.
+/// Only [`bind_sealed`] puts one there.
+fn rebind(request: &mut TurnRequest, provenance: &Provenance) {
+    for item in &mut request.items {
+        if let Item::Opaque {
+            provenance: bound, ..
+        } = item
+        {
+            bound.clone_from(provenance);
+        }
+    }
+}
+
+/// The provenance a sealed reasoning item is handed to a responses client under: the encoder
+/// carries only state of the binding its outcome names, and the item names this gateway's seal.
+fn sealed_provenance(alias: &str) -> Result<Provenance, Error> {
+    Ok(Provenance {
+        protocol: Protocol::Responses,
+        provider: id("llm-gateway")?,
+        account: id("seal")?,
+        endpoint: id("seal")?,
+        model: id(alias)?,
+        binding_revision: id("seal")?,
+    })
+}
+
 impl Translator for LlmTranslator {
     fn prepare(
         &self,
@@ -412,14 +493,15 @@ impl Translator for LlmTranslator {
         let upstream_model = request.model.upstream_model().as_str();
         let mut decoded =
             decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
-        if decoded
-            .request
-            .items
-            .iter()
-            .any(|item| matches!(item, Item::Opaque { .. } | Item::UnattributedOpaque { .. }))
-        {
-            return Err(RefusalCode::TranslationOpaqueState);
-        }
+        let scope = Scope {
+            alias,
+            upstream_model,
+            ingress: request.ingress,
+            upstream: request.upstream,
+        };
+        let reading =
+            ingress_provenance(request.ingress, alias).map_err(|error| refusal(&error))?;
+        bind_sealed(&self.engine.sealer, scope, &mut decoded.request, &reading)?;
         let capabilities = self.capabilities(request.model, request.upstream);
         // A messages upstream needs an output limit, and the whole window leaves no room for
         // the input: a request naming none is given half the window it is translated under
@@ -446,7 +528,10 @@ impl Translator for LlmTranslator {
             capabilities.clone(),
             &placeholder,
         )
-        .and_then(|binding| project(request.upstream, &decoded.request, &binding, upstream_model))
+        .and_then(|binding| {
+            rebind(&mut decoded.request, binding.provenance());
+            project(request.upstream, &decoded.request, &binding, upstream_model)
+        })
         .map_err(|error| refusal(&error))?;
         Ok(Box::new(Prepared {
             engine: Arc::clone(&self.engine),
@@ -533,7 +618,7 @@ impl Prepared {
 
 impl Translation for Prepared {
     fn run(
-        self: Box<Self>,
+        mut self: Box<Self>,
         target: &dyn RelayTarget,
         answer: &mut dyn TranslatedAnswer,
     ) -> Result<(), TranslationFailure> {
@@ -553,6 +638,8 @@ impl Translation for Prepared {
             &Self::reach(target),
         )
         .map_err(refused)?;
+        // The bound reasoning blocks belong to the binding the turn is sent over.
+        rebind(&mut self.decoded.request, binding.provenance());
         let secret = target
             .bearer()
             .map_or_else(Vec::new, |bearer| bearer.expose().to_vec());
@@ -564,6 +651,18 @@ impl Translation for Prepared {
         let encoder = Encoder::new(self.ingress, &id, created, self.decoded.include_usage)
             .map_err(refused)?;
         let cancel = Cancel::new();
+        // Only a responses client is handed sealed state (the decision on sealed reasoning
+        // state in spec/domains/gateway.yaml).
+        let sealing = (self.ingress == Wire::Responses).then(|| Sealing {
+            sealer: &self.engine.sealer,
+            scope: Scope {
+                alias: &self.alias,
+                upstream_model: &self.upstream_model,
+                ingress: self.ingress,
+                upstream: self.upstream,
+            },
+            answer_id: &id,
+        });
         let mut sink = ClientSink {
             encoder,
             answer,
@@ -571,6 +670,8 @@ impl Translation for Prepared {
             streamed: self.decoded.stream,
             started: false,
             gone: false,
+            sealing,
+            shown_reasoning: String::new(),
         };
         let result = blocking.turn(&self.decoded.request, &mut sink, &cancel);
         sink.finish(result)
@@ -585,7 +686,11 @@ enum Encoder {
         created: u64,
         include_usage: bool,
     },
-    Responses(llm_responses::IngressStream),
+    Responses {
+        stream: llm_responses::IngressStream,
+        /// The `id` of the reasoning item the stream opened for the reasoning it showed.
+        reasoning: Option<String>,
+    },
     Messages {
         stream: llm_messages::IngressStream,
         id: String,
@@ -621,7 +726,10 @@ impl Encoder {
                 created,
                 include_usage,
             },
-            Wire::Responses => Self::Responses(llm_responses::IngressStream::new(id, created)),
+            Wire::Responses => Self::Responses {
+                stream: llm_responses::IngressStream::new(id, created),
+                reasoning: None,
+            },
             // A translated messages answer never comes from a messages upstream, so no
             // reasoning it relays could be signed.
             Wire::Messages => Self::Messages {
@@ -640,8 +748,14 @@ impl Encoder {
                     data(&mut out, &payload);
                 }
             }
-            Self::Responses(stream) => {
+            Self::Responses { stream, reasoning } => {
                 for payload in stream.chunk(delta) {
+                    if reasoning.is_none()
+                        && payload["type"] == "response.output_item.added"
+                        && payload["item"]["type"] == "reasoning"
+                    {
+                        *reasoning = payload["item"]["id"].as_str().map(ToOwned::to_owned);
+                    }
                     event(&mut out, &payload);
                 }
             }
@@ -668,7 +782,7 @@ impl Encoder {
                 }
                 out.extend_from_slice(b"data: [DONE]\n\n");
             }
-            Self::Responses(stream) => {
+            Self::Responses { stream, .. } => {
                 for payload in stream.close(outcome)? {
                     event(&mut out, &payload);
                 }
@@ -698,7 +812,7 @@ impl Encoder {
                 &mut out,
                 &json!({"error": {"code": code.wire(), "message": message}}),
             ),
-            Self::Responses(stream) => {
+            Self::Responses { stream, .. } => {
                 for mut payload in stream.fail(&fixed) {
                     // llm's encoder writes a fixed message per class; a bound is named instead.
                     if code == RefusalCode::TranslationTooLarge
@@ -726,7 +840,7 @@ impl Encoder {
             }
             Self::Messages { id, .. } => llm_messages::encode_ingress_message(outcome, id)?,
             // Every translated responses request streams.
-            Self::Responses(_) => return Err(Error::unsupported("a responses answer streams")),
+            Self::Responses { .. } => return Err(Error::unsupported("a responses answer streams")),
         };
         serde_json::to_vec(&value).map_err(|_| Error::invalid("the answer cannot be encoded"))
     }
@@ -776,9 +890,83 @@ struct ClientSink<'a> {
     started: bool,
     /// A write to the client failed.
     gone: bool,
+    /// How a responses client is handed the upstream's reasoning state; `None` for the others.
+    sealing: Option<Sealing<'a>>,
+    /// The reasoning the stream showed a responses client.
+    shown_reasoning: String,
+}
+
+/// What a responses answer seals its reasoning state with.
+struct Sealing<'a> {
+    sealer: &'a Sealer,
+    scope: Scope<'a>,
+    /// The answer's `id`, which the encoder names its items after.
+    answer_id: &'a str,
 }
 
 impl ClientSink<'_> {
+    /// `outcome` as a responses client is handed it: each reasoning block the upstream minted
+    /// (llm `Item::Opaque`) in its place as a finished `reasoning` item whose
+    /// `encrypted_content` seals the block for this route, the first under the `id` of the item
+    /// the streamed reasoning opened and with that reasoning as its summary; and, when a chat
+    /// upstream showed reasoning it can mint no state for, that item finished over a seal of
+    /// `null`, first. `None` when there is nothing to seal, the client is not a responses
+    /// client, or no seal can be made: the outcome is then carried without its blocks.
+    fn sealed(&self, outcome: &TurnOutcome) -> Option<TurnOutcome> {
+        let (Some(sealing), Encoder::Responses { reasoning, .. }) = (&self.sealing, &self.encoder)
+        else {
+            return None;
+        };
+        let opaque = |item: &Item| matches!(item, Item::Opaque { .. });
+        let unminted = sealing.scope.upstream == Wire::Chat
+            && reasoning.is_some()
+            && !outcome.items.iter().any(opaque);
+        if !unminted && !outcome.items.iter().any(opaque) {
+            return None;
+        }
+        let provenance = sealed_provenance(sealing.scope.alias).ok()?;
+        let mut shown = reasoning.as_deref();
+        let mut count = 0_usize;
+        let mut sealed_item = |state: &Value| -> Option<Item> {
+            let seal = sealing.sealer.seal(sealing.scope, state)?;
+            count += 1;
+            let (id, summary) = match shown.take() {
+                Some(id) if !self.shown_reasoning.is_empty() => (
+                    id.to_owned(),
+                    json!([{"type": "summary_text", "text": self.shown_reasoning}]),
+                ),
+                Some(id) => (id.to_owned(), json!([])),
+                None => (
+                    format!("rs_{}_sealed_{count}", sealing.answer_id),
+                    json!([]),
+                ),
+            };
+            Some(Item::Opaque {
+                provenance: provenance.clone(),
+                payload: json!({
+                    "type": "reasoning",
+                    "id": id,
+                    "summary": summary,
+                    "encrypted_content": seal,
+                }),
+            })
+        };
+        let mut items = Vec::with_capacity(outcome.items.len() + 1);
+        if unminted {
+            items.push(sealed_item(&Value::Null)?);
+        }
+        for item in &outcome.items {
+            items.push(match item {
+                Item::Opaque { payload, .. } => sealed_item(payload)?,
+                other => other.clone(),
+            });
+        }
+        let mut sealed = outcome.clone();
+        sealed.items = items;
+        sealed.observation.binding = provenance;
+        Some(sealed)
+    }
+
     /// Writes `bytes` as the stream's next piece, writing the head first. `false` when the
     /// client did not take them.
     fn write(&mut self, bytes: &[u8]) -> bool {
@@ -805,11 +993,15 @@ impl ClientSink<'_> {
         }
         match result {
             Ok(mut outcome) => {
-                // Continuation state the upstream minted for its own wire cannot be carried to
-                // another; the client never replays it to this upstream's protocol.
-                outcome
-                    .items
-                    .retain(|item| !matches!(item, Item::Opaque { .. }));
+                // Continuation state the upstream minted for its own wire reaches a responses
+                // client sealed for this route, and no other client: their wires carry no state
+                // of another protocol's.
+                match self.sealed(&outcome) {
+                    Some(sealed) => outcome = sealed,
+                    None => outcome
+                        .items
+                        .retain(|item| !matches!(item, Item::Opaque { .. })),
+                }
                 self.answered(&outcome)
             }
             Err(error) if self.started => {
@@ -871,6 +1063,9 @@ impl BlockingSink for ClientSink<'_> {
                 return Err(Error::cancelled());
             }
             return Ok(());
+        }
+        if let (Some(_), StreamEvent::ReasoningDelta { text }) = (&self.sealing, &delta) {
+            self.shown_reasoning.push_str(text);
         }
         let bytes = self.encoder.chunk(&delta);
         if bytes.is_empty() || self.write(&bytes) {

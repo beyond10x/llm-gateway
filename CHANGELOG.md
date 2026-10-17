@@ -12,8 +12,11 @@ Nothing in any release is deployed or qualified against a live client.
   for it, the documented way to store one. The key comes from a hidden prompt on the terminal or
   from standard input with `--stdin`, never from an argument or the environment, and is held to
   the reader's token rule. Unless `--no-probe`, it is checked first with one
-  `GET <base path>/models` carrying the entry's own credential header and static headers over the
-  gateway's TLS client: `401` or `403`, or a probe that cannot connect, stores nothing. The file
+  `GET <base path>/models` (`/v1/models` when the base URL has no path) carrying the entry's own
+  credential header and static headers over the gateway's TLS client, within 30 seconds overall
+  and past any interim `1xx` answer: `401` or `403`, or a probe that cannot connect or does not
+  answer in time, stores nothing. A command-line error prints one fixed usage line and never an
+  argument's value. The file
   is written exactly as the key, mode `0600`, in a directory only you or root can write, read
   back through the server's own reader and only then renamed over the old one. Refusals are
   `credential:<rule>` codes, listed in the refusal reference; no line carries the key.

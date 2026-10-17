@@ -80,17 +80,20 @@ b10x-llm-gateway: key for hosted.local.credential_file (input hidden):
 b10x-llm-gateway: credential stored keys/local probe passed http 200
 ```
 
-Nothing is echoed while you type or paste; Enter ends the key, Ctrl-C cancels. Before writing,
+Nothing is echoed while you type or paste; Enter ends the key; Ctrl-C, Ctrl-D or a hang-up cancels, and a
+partial line is never stored. Before writing,
 the command sends one `GET <base path>/models` with the key, as a request to the endpoint would
 carry it: `authorization: Bearer <key>`, or the `credential_header` an `api-key` entry names, and
-the entry's static headers. `https://api.openai.com/v1` is asked `/v1/models`. No model is
-called.
+the entry's static headers. `https://api.openai.com/v1` is asked `/v1/models`, and a base URL
+without a path is asked `/v1/models` too, the path the gateway itself relays a request for the
+model list to. Interim `1xx` answers are skipped: the status is the first final one. The whole
+probe, connecting, the TLS handshake and the answer, ends within 30 seconds. No model is called.
 
 | Probe answer | What happens |
 | --- | --- |
 | `2xx` | stored, `probe passed` |
 | `401` or `403` | refused `credential:probe-rejected`; nothing is written |
-| no connection, an untrusted certificate, a timeout | refused `credential:probe-unreachable`; nothing is written |
+| no connection, an untrusted certificate, no answer within 30 seconds | refused `credential:probe-unreachable`; nothing is written |
 | any other status | stored, `probe not-rejected`, with the status, since some endpoints have no `/models` |
 
 The file holds exactly the key, with no newline, mode `0600` (the key above was 27 characters):

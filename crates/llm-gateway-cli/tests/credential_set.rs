@@ -446,14 +446,15 @@ fn credential_set_the_probe_carries_the_credential_header_and_static_headers_at_
         Some(endpoint.address.to_string().as_str())
     );
 
-    // A base URL without a path probes `/models`.
+    // A base URL without a path probes `/v1/models`, the path the gateway relays a request for
+    // `/v1/models` to when the endpoint has no base path.
     let setup = Setup::new("probe-root");
     let endpoint = Endpoint::start(200);
     let config = setup.bearer(&endpoint.base(""));
     let finished = run(&setup.fixture, &config, &["--model", "remote"], &line(KEY));
     assert_stored(&finished, &setup.target, "passed", "200");
     assert!(
-        endpoint.requests()[0].starts_with("GET /models HTTP/1.1\r\n"),
+        endpoint.requests()[0].starts_with("GET /v1/models HTTP/1.1\r\n"),
         "{:?}",
         endpoint.requests()
     );
@@ -752,6 +753,51 @@ routes:
     // A route is not a `--model` target.
     let finished = run(&setup.fixture, &config, &["--model", "opus"], &line(KEY));
     assert_refused(&finished, "credential:unknown-target");
+}
+
+/// A refusal quotes the unknown `--model` or `--route` value only if it is at most 64 characters
+/// of `A-Z a-z 0-9 . _ -`; anything else is called "the given name".
+#[test]
+fn credential_set_an_unknown_target_name_is_quoted_only_when_it_is_a_plain_short_name() {
+    let setup = Setup::new("quote-target");
+    let secret = setup.fixture.owner_secret();
+    let remote = hosted_table(
+        "remote",
+        "http://127.0.0.1:9/v1",
+        &bearer_keys(&setup.target),
+    );
+    let config = setup
+        .fixture
+        .config(&format!("{}\n{remote}", document("127.0.0.1:0", &secret)));
+    let long = "a".repeat(65);
+    let longest = "a".repeat(64);
+    for flag in ["--model", "--route"] {
+        for (name, quoted) in [
+            ("plain-name_1.2", true),
+            (longest.as_str(), true),
+            (long.as_str(), false),
+            ("has space", false),
+            ("sk-looks/like:a-key", false),
+            ("quote\"d", false),
+            ("ünï", false),
+        ] {
+            let finished = run(&setup.fixture, &config, &[flag, name], &line(KEY));
+            assert_refused(&finished, "credential:unknown-target");
+            assert_eq!(
+                finished.stderr.contains(name),
+                quoted,
+                "{flag} {name:?}: {:?}",
+                finished.stderr
+            );
+            if !quoted {
+                assert!(
+                    finished.stderr.contains("the given name"),
+                    "{:?}",
+                    finished.stderr
+                );
+            }
+        }
+    }
 }
 
 // --- Criterion 3: a write the reader would refuse is refused and leaves no file ---------------------

@@ -32,7 +32,7 @@ use rustls::pki_types::ServerName;
 use std::{
     collections::BTreeMap,
     fmt,
-    io::{self, Read as _, Write as _},
+    io::{self, Write as _},
     net::IpAddr,
     sync::Arc,
     time::{Duration, Instant},
@@ -267,32 +267,47 @@ impl HostedEndpoint {
     }
 
     /// `credential set`'s probe (spec/domains/deployment.yaml `CredentialSetCommand`): one
-    /// `GET <base path>/models` (`/models` without a base path) to the authority, sent `host`,
-    /// the static headers, the credential as a request to the endpoint carries it,
-    /// `accept: application/json` and `connection: close`, over `tls` for `https` and plain TCP
-    /// for `http`, [`PROBE_TIMEOUT`] bounding the connect and each read and write. Returns the
-    /// answer's status; nothing past the status line is read.
+    /// `GET <base path>/models` (`/v1/models` without a base path, as a request for it is relayed)
+    /// to the authority, sent `host`, the static headers, the credential as a request to the
+    /// endpoint carries it, `accept: application/json` and `connection: close`, over `tls` for
+    /// `https` and plain TCP for `http`. The whole probe ends within [`PROBE_TOTAL`]; each connect,
+    /// read and write is also bounded by [`PROBE_TIMEOUT`]. Interim `1xx` answers and their
+    /// headers are skipped; returns the first final status, nothing past its line is read.
     ///
     /// # Errors
-    /// The connection's own error, or `InvalidData` for an answer that does not start with an
-    /// HTTP/1 status line.
+    /// The connection's own error, `TimedOut` past the total, or `InvalidData` for an answer that
+    /// does not start with an HTTP/1 status line.
     pub(crate) fn probe(&self, tls: &dyn PodConnector) -> io::Result<u16> {
-        let mut stream: Box<dyn RelayStream> = match self.scheme {
-            Scheme::Https => tls.connect_probe(&self.authority, PROBE_TIMEOUT)?,
+        self.probe_within(tls, PROBE_TOTAL)
+    }
+
+    /// [`Self::probe`] with `total` as its overall bound.
+    pub(crate) fn probe_within(&self, tls: &dyn PodConnector, total: Duration) -> io::Result<u16> {
+        let deadline = Instant::now() + total;
+        let step = || -> io::Result<Duration> {
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                Err(probe_timed_out())
+            } else {
+                Ok(left.min(PROBE_TIMEOUT))
+            }
+        };
+        let stream: Box<dyn RelayStream> = match self.scheme {
+            Scheme::Https => tls.connect_probe(&self.authority, step()?)?,
             Scheme::Http => {
                 let (host, port) = split(&self.authority, HTTP_PORT).ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidInput, "not a host[:port] authority")
                 })?;
-                let socket = dial(host, port, Instant::now() + PROBE_TIMEOUT)?;
-                socket.set_read_timeout(Some(PROBE_TIMEOUT))?;
-                socket.set_write_timeout(Some(PROBE_TIMEOUT))?;
+                let socket = dial(host, port, Instant::now() + step()?)?;
+                socket.set_read_timeout(Some(step()?))?;
+                socket.set_write_timeout(Some(step()?))?;
                 Box::new(socket)
             }
         };
-        let path = self
-            .base_path
-            .as_ref()
-            .map_or_else(|| "/models".to_owned(), |base| base.join("/v1/models"));
+        let path = self.base_path.as_ref().map_or_else(
+            || PROBE_WIRE_PATH.to_owned(),
+            |base| base.join(PROBE_WIRE_PATH),
+        );
         let mut request =
             format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority).into_bytes();
         for header in &self.headers {
@@ -313,19 +328,37 @@ impl HostedEndpoint {
             request.extend_from_slice(b"\r\n");
         }
         request.extend_from_slice(b"accept: application/json\r\nconnection: close\r\n\r\n");
-        let sent = stream.write_all(&request).and_then(|()| stream.flush());
-        request.fill(0);
-        std::hint::black_box(&request);
-        sent?;
-        let mut head = Vec::new();
-        let mut byte = [0_u8; 1];
-        while !head.ends_with(b"\r\n") {
-            if head.len() >= MAX_STATUS_LINE_BYTES || stream.read(&mut byte)? == 0 {
-                break;
-            }
-            head.push(byte[0]);
+        // The exchange runs on its own thread so that the total bound holds whatever the
+        // stream's own timeouts are; the thread ends by `deadline` at the latest.
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || drop(sender.send(exchange(stream, request, deadline))));
+        match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(answer) => answer,
+            Err(_) => Err(probe_timed_out()),
         }
-        let malformed = || io::Error::new(io::ErrorKind::InvalidData, "no HTTP/1 status line");
+    }
+}
+
+fn probe_timed_out() -> io::Error {
+    io::Error::new(
+        io::ErrorKind::TimedOut,
+        "the probe took longer than its total bound",
+    )
+}
+
+/// Sends `request` (overwritten once sent) and reads the first final status.
+fn exchange(
+    mut stream: Box<dyn RelayStream>,
+    mut request: Vec<u8>,
+    deadline: Instant,
+) -> io::Result<u16> {
+    let sent = stream.write_all(&request).and_then(|()| stream.flush());
+    request.fill(0);
+    std::hint::black_box(&request);
+    sent?;
+    let malformed = || io::Error::new(io::ErrorKind::InvalidData, "no HTTP/1 status line");
+    for _ in 0..=MAX_INTERIM_ANSWERS {
+        let head = read_line(&mut *stream, MAX_STATUS_LINE_BYTES, deadline)?;
         let line = std::str::from_utf8(&head).map_err(|_| malformed())?;
         let rest = line
             .strip_prefix("HTTP/1.1 ")
@@ -335,12 +368,55 @@ impl HostedEndpoint {
         if !code.bytes().all(|byte| byte.is_ascii_digit()) {
             return Err(malformed());
         }
-        code.parse().map_err(|_| malformed())
+        let code: u16 = code.parse().map_err(|_| malformed())?;
+        if !(100..200).contains(&code) || code == 101 {
+            return Ok(code);
+        }
+        let mut headers = 0;
+        loop {
+            let header = read_line(&mut *stream, MAX_STATUS_LINE_BYTES, deadline)?;
+            if !header.ends_with(b"\r\n") {
+                return Err(malformed());
+            }
+            if header == b"\r\n" {
+                break;
+            }
+            headers += header.len();
+            if headers > MAX_INTERIM_HEADER_BYTES {
+                return Err(malformed());
+            }
+        }
     }
+    Err(malformed())
+}
+
+/// One line of `stream`, a byte at a time, ended by `\r\n`, by `limit` bytes or by the end of
+/// the stream; `TimedOut` once `deadline` has passed.
+fn read_line(stream: &mut dyn RelayStream, limit: usize, deadline: Instant) -> io::Result<Vec<u8>> {
+    let mut line = Vec::new();
+    let mut byte = [0_u8; 1];
+    while !line.ends_with(b"\r\n") {
+        if Instant::now() >= deadline {
+            return Err(probe_timed_out());
+        }
+        if line.len() >= limit || stream.read(&mut byte)? == 0 {
+            break;
+        }
+        line.push(byte[0]);
+    }
+    Ok(line)
 }
 
 /// How long `credential set`'s probe may take to connect, and each of its reads and writes.
 pub const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+/// How long the whole probe may take: connecting, the TLS handshake and the answer.
+pub const PROBE_TOTAL: Duration = Duration::from_secs(30);
+/// The wire path the probe asks for, which a base path replaces the leading `/v1` of.
+const PROBE_WIRE_PATH: &str = "/v1/models";
+/// The most interim `1xx` answers the probe skips.
+const MAX_INTERIM_ANSWERS: usize = 16;
+/// The most header bytes of one interim answer.
+const MAX_INTERIM_HEADER_BYTES: usize = 8192;
 /// The longest status line the probe reads.
 const MAX_STATUS_LINE_BYTES: usize = 1024;
 
@@ -602,9 +678,62 @@ fn targets(
 
 #[cfg(test)]
 mod tests {
-    use super::{BaseUrlError, HostedEndpoint, Scheme};
+    use super::{BaseUrlError, EndpointCredential, HostedEndpoint, Scheme};
+    use crate::relaying::PodConnector;
     use llm_gateway::AuthKind;
     use llm_gateway::BasePath;
+    use llm_gateway::RelayStream;
+    use std::{
+        io::{self, Read, Write},
+        net::TcpListener,
+        thread,
+        time::{Duration, Instant},
+    };
+
+    struct NoTls;
+
+    impl PodConnector for NoTls {
+        fn connect(&self, _authority: &str) -> io::Result<Box<dyn RelayStream>> {
+            Err(io::Error::other("no TLS in this test"))
+        }
+    }
+
+    /// A server that answers, one byte every `pause`, an interim answer that never ends: no
+    /// single read waits long, so only a bound on the whole probe ends it.
+    #[test]
+    fn a_probe_that_is_answered_a_byte_at_a_time_ends_at_its_total_deadline() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            let mut seen = [0_u8; 1024];
+            drop(connection.read(&mut seen));
+            for byte in b"HTTP/1.1 103 Early Hints\r\nlink: </a>; rel=preload\r\n"
+                .iter()
+                .cycle()
+            {
+                if connection.write_all(&[*byte]).is_err() {
+                    return;
+                }
+                thread::sleep(Duration::from_millis(50));
+            }
+        });
+        let endpoint = HostedEndpoint::new(
+            &format!("http://{address}/v1"),
+            EndpointCredential::Anonymous,
+        )
+        .unwrap();
+        let started = Instant::now();
+        let error = endpoint
+            .probe_within(&NoTls, Duration::from_millis(600))
+            .unwrap_err();
+        assert_eq!(error.kind(), io::ErrorKind::TimedOut, "{error}");
+        assert!(
+            started.elapsed() < Duration::from_secs(3),
+            "{:?}",
+            started.elapsed()
+        );
+    }
 
     #[test]
     fn a_base_url_is_a_scheme_an_authority_and_an_optional_base_path() {

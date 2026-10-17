@@ -112,6 +112,20 @@ pub enum TargetKind {
     Route,
 }
 
+/// How a refusal names the value of `flag`: quoted when it is at most 64 characters of
+/// `A-Z a-z 0-9 . _ -`, otherwise "the given name", so that a key given as a name is not echoed.
+fn named(flag: &str, name: &str) -> String {
+    if name.len() <= 64
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
+    {
+        format!("{flag} {name:?}")
+    } else {
+        format!("{flag} (the given name)")
+    }
+}
+
 /// The target `name` of `kind` in `deployment`, read from the document only: no file is opened.
 ///
 /// # Errors
@@ -163,14 +177,20 @@ pub fn target(
             };
             Err(CredentialFailure::new(
                 CredentialRefusal::UnknownTarget,
-                format!("--model {name:?} is no [hosted.*] or [models.*] alias{hint}"),
+                format!(
+                    "{} is no [hosted.*] or [models.*] alias{hint}",
+                    named("--model", name)
+                ),
             ))
         }
         TargetKind::Route => {
             let unknown = || {
                 CredentialFailure::new(
                     CredentialRefusal::UnknownTarget,
-                    format!("--route {name:?} is no route of the routes document"),
+                    format!(
+                        "{} is no route of the routes document",
+                        named("--route", name)
+                    ),
                 )
             };
             let route = deployment
@@ -261,9 +281,55 @@ impl Drop for Restore<'_> {
     }
 }
 
+/// Reads the prompt's line from `reader` a byte at a time: Enter ends it; Ctrl-C, Ctrl-D or the
+/// end of input before Enter (a hang-up) cancels, and a partial line is never taken; Backspace
+/// deletes and Ctrl-U clears.
+fn read_hidden_line(reader: &mut impl Read) -> Result<Key, CredentialFailure> {
+    let cancelled = || {
+        CredentialFailure::new(
+            CredentialRefusal::InputCancelled,
+            "the prompt was cancelled",
+        )
+    };
+    let mut line = Key(Vec::new());
+    let mut byte = [0_u8; 1];
+    loop {
+        match reader.read(&mut byte) {
+            Ok(0) => return Err(cancelled()),
+            Ok(_) => match byte[0] {
+                b'\r' | b'\n' => return Ok(Key(check_key(&line.0)?)),
+                0x03 | 0x04 => return Err(cancelled()),
+                0x7f | 0x08 => {
+                    if let Some(last) = line.0.last_mut() {
+                        *last = 0;
+                        line.0.pop();
+                    }
+                }
+                0x15 => {
+                    line.0.fill(0);
+                    line.0.clear();
+                }
+                other => {
+                    // One byte past the bound is enough to refuse it as too large.
+                    if line.0.len() <= MAX_KEY_BYTES {
+                        line.0.push(other);
+                    }
+                }
+            },
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => {
+                return Err(CredentialFailure::new(
+                    CredentialRefusal::InputUnreadable,
+                    format!("/dev/tty: {error}"),
+                ));
+            }
+        }
+    }
+}
+
 /// Reads the key from a hidden prompt on `/dev/tty`: echo, canonical input and the signal keys
-/// are off while it is read and restored on every path. Enter ends the key; Ctrl-C or Ctrl-D
-/// cancels; Backspace deletes and Ctrl-U clears.
+/// are off while it is read and restored on every path. Enter ends the key; Ctrl-C, Ctrl-D or a
+/// hang-up cancels; Backspace deletes and Ctrl-U clears.
 fn read_terminal(target: &CredentialTarget) -> Result<Key, CredentialFailure> {
     let no_terminal = |detail: &dyn fmt::Display| {
         CredentialFailure::new(
@@ -297,50 +363,10 @@ fn read_terminal(target: &CredentialTarget) -> Result<Key, CredentialFailure> {
     .map_err(|error| no_terminal(&error))?;
     tcsetattr(&tty, OptionalActions::Flush, &hidden).map_err(|errno| no_terminal(&errno))?;
     let restore = Restore { tty: &tty, saved };
-    let mut line = Key(Vec::new());
-    let mut reader = &tty;
-    let mut byte = [0_u8; 1];
-    let outcome = loop {
-        match reader.read(&mut byte) {
-            Ok(0) => break Ok(()),
-            Ok(_) => match byte[0] {
-                b'\r' | b'\n' => break Ok(()),
-                0x03 | 0x04 => {
-                    break Err(CredentialFailure::new(
-                        CredentialRefusal::InputCancelled,
-                        "the prompt was cancelled",
-                    ));
-                }
-                0x7f | 0x08 => {
-                    if let Some(last) = line.0.last_mut() {
-                        *last = 0;
-                        line.0.pop();
-                    }
-                }
-                0x15 => {
-                    line.0.fill(0);
-                    line.0.clear();
-                }
-                other => {
-                    // One byte past the bound is enough to refuse it as too large.
-                    if line.0.len() <= MAX_KEY_BYTES {
-                        line.0.push(other);
-                    }
-                }
-            },
-            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => {
-                break Err(CredentialFailure::new(
-                    CredentialRefusal::InputUnreadable,
-                    format!("/dev/tty: {error}"),
-                ));
-            }
-        }
-    };
+    let outcome = read_hidden_line(&mut &tty);
     drop(restore);
     drop(writeln!(writer));
-    outcome?;
-    Ok(Key(check_key(&line.0)?))
+    outcome
 }
 
 /// How the probe went, as the success line writes it.
@@ -548,7 +574,25 @@ fn report(line: fmt::Arguments<'_>) {
 /// endpoint, as it does for the server.
 pub(crate) fn main(args: Vec<OsString>, tls: &dyn PodConnector) -> ExitCode {
     use clap::Parser as _;
-    let cli = CredentialCli::parse_from(args);
+    let cli = match CredentialCli::try_parse_from(args) {
+        Ok(cli) => cli,
+        Err(error) => {
+            use clap::error::ErrorKind;
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) {
+                error.exit();
+            }
+            // clap quotes the offending argument, which may be a key: name only the kind.
+            drop(writeln!(
+                io::stderr(),
+                "b10x-llm-gateway: usage error ({:?}); see `b10x-llm-gateway credential set --help`",
+                error.kind()
+            ));
+            return ExitCode::from(2);
+        }
+    };
     let CredentialCommand::Set(set_args) = cli.command;
     match set(&set_args, tls) {
         Ok(stored) => {
@@ -564,7 +608,29 @@ pub(crate) fn main(args: Vec<OsString>, tls: &dyn PodConnector) -> ExitCode {
 
 #[cfg(test)]
 mod tests {
-    use super::{MAX_KEY_BYTES, check_key};
+    use super::{MAX_KEY_BYTES, check_key, read_hidden_line};
+
+    #[test]
+    fn a_hang_up_before_the_newline_cancels_and_never_takes_the_partial_line() {
+        let cancelled = |input: &[u8]| read_hidden_line(&mut &*input).map(|key| key.0.clone());
+        assert_eq!(cancelled(b"sk-1\n").unwrap(), b"sk-1");
+        assert_eq!(cancelled(b"sk-1\r").unwrap(), b"sk-1");
+        for input in [&b"sk-1"[..], b"", b"sk-1\x7f"] {
+            assert_eq!(
+                cancelled(input).unwrap_err().code(),
+                "credential:input-cancelled",
+                "{input:?}"
+            );
+        }
+        assert_eq!(
+            cancelled(b"sk-1\x03").unwrap_err().code(),
+            "credential:input-cancelled"
+        );
+        assert_eq!(
+            cancelled(b"sk-1\x04").unwrap_err().code(),
+            "credential:input-cancelled"
+        );
+    }
 
     #[test]
     fn a_key_is_one_printable_token_up_to_one_final_newline() {

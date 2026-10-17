@@ -70,7 +70,15 @@ fn adversary_credential_set_a_key_given_as_an_argument_is_not_echoed_back() {
     let config = config.to_str().unwrap();
     let stdin_eq = format!("--stdin={KEY}");
     for args in [
-        &["credential", "set", "--config", config, "--model", "remote", KEY][..],
+        &[
+            "credential",
+            "set",
+            "--config",
+            config,
+            "--model",
+            "remote",
+            KEY,
+        ][..],
         &[
             "credential",
             "set",

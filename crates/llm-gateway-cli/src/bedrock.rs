@@ -193,9 +193,19 @@ impl BedrockRoute {
 
 /// The container authorization token, read from its file through the trusted-file reader for
 /// every fetch. A file that has become unreadable or untrusted is `unavailable`, which the
-/// Bedrock client answers `unauthorized`, before anything is sent.
+/// Bedrock client answers `unauthorized`, before anything is sent; the refusal's rule code and
+/// the file's path are logged as a warning, the token never.
 struct TokenFile {
     path: PathBuf,
+}
+
+/// Runs `work`, which blocks on the file system, on the runtime's blocking pool when there is a
+/// runtime, so a slow mount holds no worker thread; inline otherwise. `None` when it panicked.
+async fn off_runtime<T: Send + 'static>(work: impl FnOnce() -> T + Send + 'static) -> Option<T> {
+    match tokio::runtime::Handle::try_current() {
+        Ok(runtime) => runtime.spawn_blocking(work).await.ok(),
+        Err(_) => Some(work()),
+    }
 }
 
 impl SecretResolver for TokenFile {
@@ -204,8 +214,18 @@ impl SecretResolver for TokenFile {
         _reference: &'a SecretRef,
     ) -> BoxFuture<'a, Result<ResolvedSecret, SecretError>> {
         Box::pin(async move {
-            let text = trusted::read(&self.path, &trusted::CONTAINER_TOKEN)
-                .map_err(|_| SecretError::Unavailable)?;
+            let path = self.path.clone();
+            let read = off_runtime(move || trusted::read(&path, &trusted::CONTAINER_TOKEN))
+                .await
+                .ok_or(SecretError::Unavailable)?;
+            let text = read.map_err(|refusal| {
+                tracing::warn!(
+                    rule = refusal.code(),
+                    file = refusal.message(),
+                    "bedrock: the container token file was refused; the fetch is unauthorized"
+                );
+                SecretError::Unavailable
+            })?;
             let version = SecretVersion::new(hex_digest(text.as_bytes()))?;
             let secret = Secret::new(text.into_bytes())?;
             Ok(ResolvedSecret { secret, version })
@@ -472,7 +492,21 @@ pub(crate) fn summaries(deployment: &Deployment) -> Result<Vec<RouteSummary>, Re
 
 #[cfg(test)]
 mod tests {
-    use super::{anthropic_model, endpoint_admitted, model_id_admitted, region_admitted};
+    use super::{
+        anthropic_model, endpoint_admitted, model_id_admitted, off_runtime, region_admitted,
+    };
+
+    #[test]
+    fn the_token_file_is_read_off_the_runtimes_threads() {
+        let runtime = tokio::runtime::Builder::new_current_thread()
+            .build()
+            .unwrap();
+        let caller = std::thread::current().id();
+        let reader = runtime
+            .block_on(off_runtime(|| std::thread::current().id()))
+            .unwrap();
+        assert_ne!(reader, caller);
+    }
 
     #[test]
     fn an_anthropic_model_is_named_by_its_first_two_dotted_parts_or_an_arns_last_segment() {

@@ -1216,3 +1216,33 @@ fn bedrock_a_linked_token_is_held_to_the_rules_of_the_file_it_resolves_to() {
     );
     assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
 }
+
+/// A token file that becomes untrusted after the start makes the next fetch `unavailable`; the
+/// gateway warns with the refusal's rule and the file's path, and never with the token.
+#[test]
+fn bedrock_a_token_file_refused_at_a_fetch_is_warned_by_its_rule_and_path_without_the_token() {
+    let deployment = Deployment::new("bedrock-token-refused-at-fetch");
+    let credentials = Recorder::credentials(1);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&bedrock_table("haiku", MODEL_ID, &bedrock, ""));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    std::fs::set_permissions(&deployment.token, std::fs::Permissions::from_mode(0o666)).unwrap();
+    let request =
+        json!({"model":"haiku","messages":[{"role":"user","content":PROMPT_MARKER}]}).to_string();
+    let answer = server.post("/v1/chat/completions", &request);
+    let log = server.log();
+    assert!(!answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
+    assert!(bedrock.seen().is_empty(), "{:?}", bedrock.seen());
+    let path = deployment.token.display().to_string();
+    assert!(
+        log.iter().any(|line| line.contains("WARN")
+            && line.contains("container-token:unsafe-mode")
+            && line.contains(&path)),
+        "{log:?}"
+    );
+    assert_quiet(&log);
+}

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:bedrock-hosted-target
 kind: story
-status: active
+status: implemented
 title: A hosted model on Amazon Bedrock, translated and signed with container credentials
 summary: 'kind = bedrock in [hosted.<alias>]: llm 0.11.0''s Bedrock client behind the translator, credentials from the container credentials endpoint'
 relations:
@@ -51,10 +51,11 @@ scope:
   path: spec/domains/upstream.yaml
 - confidence: inferred
   path: website/docs
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-22T22:09:36Z", actor: "human:timo", revision: 4, executor: "agent:llm-session", correlation: "wave-2026-10-23-w01"}
 - {from: "proposed", to: "active", at: "2026-10-22T22:09:37Z", actor: "human:timo", revision: 5, executor: "agent:llm-session", correlation: "wave-2026-10-23-w01"}
+- {from: "active", to: "implemented", at: "2026-10-22T23:25:48Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1}}, executor: "agent:llm-session"}
 ---
 ## Outcome
 

@@ -67,7 +67,7 @@ Amazon EKS Pod Identity and Amazon ECS task roles set:
 | Variable | Rule |
 | --- | --- |
 | `AWS_CONTAINER_CREDENTIALS_FULL_URI` | `https`, or `http` to a loopback address or to `169.254.170.2`, `169.254.170.23` or `[fd00:ec2::23]`. |
-| `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` | A file the trusted-file reader accepts once its symbolic links are resolved: at most 16386 bytes, owned by you or root, not group- or world-writable (readable is fine), holding one line of printable ASCII. |
+| `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` | A file the trusted-file reader accepts once its symbolic links are resolved, to a file inside the token path's directory: at most 16386 bytes, owned by you or root, not group- or world-writable (readable is fine), holding one line of printable ASCII. |
 
 Either one unset or empty refuses the start as `container-credentials:unset`, a URI outside the
 rule as `container-credentials:uri`, and a token file as `container-token:<rule>`. No message

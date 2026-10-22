@@ -1246,3 +1246,31 @@ fn bedrock_a_token_file_refused_at_a_fetch_is_warned_by_its_rule_and_path_withou
     );
     assert_quiet(&log);
 }
+
+/// A token link that resolves to a file outside the directory the token path names is refused
+/// `container-token:symlink`, naming the file it resolves to; a projected volume's links stay
+/// inside that directory.
+#[test]
+fn bedrock_a_token_link_resolving_outside_its_directory_is_refused() {
+    let deployment = Deployment::new("bedrock-token-outside");
+    let credentials = Recorder::credentials(0);
+    let bedrock = Recorder::start(EVENT_STREAM, Vec::new());
+    let config = deployment.config(&bedrock_table("haiku", MODEL_ID, &bedrock, ""));
+    let mount = deployment.fixture.path("mount");
+    std::fs::create_dir(&mount).unwrap();
+    std::fs::set_permissions(&mount, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let link = mount.join("token");
+    std::os::unix::fs::symlink(&deployment.token, &link).unwrap();
+    let stderr = assert_refused(
+        &config,
+        &Environment::container(&credentials, &link),
+        "container-token:symlink",
+    );
+    let resolved = std::fs::canonicalize(&deployment.token).unwrap();
+    assert!(
+        stderr.contains(&resolved.display().to_string()),
+        "{stderr}"
+    );
+    assert!(!stderr.contains(CONTAINER_TOKEN), "{stderr}");
+    assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
+}

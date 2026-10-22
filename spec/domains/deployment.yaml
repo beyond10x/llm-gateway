@@ -285,8 +285,9 @@ types:
   #                                  to 169.254.170.2, 169.254.170.23 or fd00:ec2::23
   # Container token rules: the trusted-file rules of a file `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`
   # names (at most 16386 bytes; group- or world-writable is `unsafe-mode`, readable is not),
-  # except that its path is resolved through symbolic links first and every rule is checked on
-  # the file it resolves to, read again for each fetch: a Kubernetes projected volume (as EKS
+  # except that its path is resolved through symbolic links first, the file it resolves to must
+  # lie inside the token path's directory (else `symlink`) and every rule is checked on that
+  # file, read again for each fetch: a Kubernetes projected volume (as EKS
   # Pod Identity mounts the token) links `<name>` to `..data/<name>` and `..data` to a
   # timestamped directory the kubelet swaps on rotation (layout from the AWS and Kubernetes
   # documentation, unverified here against a cluster). Then, after one trailing line end is

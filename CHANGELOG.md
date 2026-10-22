@@ -25,6 +25,7 @@ Nothing in any release is deployed or qualified against a live client.
   tool history without `tools`) is refused `translation-unsupported` (400) before anything is
   sent, instead of `upstream-refused` (502).
 - A container token file a credentials fetch refuses is logged at `warn` with its rule code and path, never the token.
+- A container token link resolving outside the token path's directory is refused `container-token:symlink`.
 - The container token file is read on the runtime's blocking pool, so a slow mount holds no worker thread.
 - The llm crates move to tag `0.11.0` under their `llm-*` package names, and `llm-bedrock` is
   added; still no AWS SDK crate and no `aws-lc` in `Cargo.lock`.

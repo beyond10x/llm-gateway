@@ -601,7 +601,8 @@ other trusted file, its path is resolved through symbolic links first and the ru
 on the file it resolves to: a Kubernetes projected volume, as EKS Pod Identity mounts the token,
 links `<name>` to `..data/<name>` and `..data` to a timestamped directory the kubelet swaps on
 rotation (layout from the AWS and Kubernetes documentation, unverified here against a cluster).
-Resolving on every read means a rotated token is used without a restart. The read runs on the
+The resolved file must lie inside the directory the token path names; a link out of it is
+refused `container-token:symlink`, naming the file it resolves to. Resolving on every read means a rotated token is used without a restart. The read runs on the
 runtime's blocking pool, and a file a fetch refuses makes that turn `unauthorized` with a `warn`
 line naming the rule (`rule`, such as `container-token:unsafe-mode`) and the path (`file`), never
 the token. The credentials client gives up connecting after 5 s, reading

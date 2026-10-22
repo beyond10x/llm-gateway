@@ -5,7 +5,8 @@
 //! The file is opened once without following a final symlink, and every check reads that handle:
 //! a path swapped between a check and the read cannot substitute another file. The one exception
 //! is the container token, which an orchestrator mounts behind symbolic links: its path is
-//! resolved first and the file it resolves to is opened and checked the same way.
+//! resolved first, must stay inside the path's directory, and the file it resolves to is opened
+//! and checked the same way.
 
 use crate::refusal::{FileRule, Refusal, Source};
 use rustix::{
@@ -90,7 +91,8 @@ pub(crate) const METRICS_BEARER: Policy = Policy {
 /// Identity mounts the token, presents the file as `<name> -> ..data/<name>` with `..data` a
 /// link to a timestamped directory, which the kubelet replaces on rotation (layout from the
 /// AWS and Kubernetes documentation, unverified here against a cluster). Each read resolves the
-/// links again, so a rotated token is read without a restart.
+/// links again, so a rotated token is read without a restart. The resolved file must stay inside
+/// the token path's directory, as that layout does.
 pub(crate) const CONTAINER_TOKEN: Policy = Policy {
     source: Source::ContainerToken,
     limit: 16 * 1024 + 2,
@@ -119,13 +121,36 @@ fn open_final(path: &Path, target: &Path, policy: &Policy) -> Result<File, Refus
     Ok(File::from(descriptor))
 }
 
-/// Resolves `path` through every symbolic link and opens the file it names. A rotation can
-/// remove the directory a resolution named before the open reaches it, so a resolved file that
-/// has vanished is resolved once more.
+/// Resolves `path` through every symbolic link and opens the file it names. The resolved file
+/// must lie inside the directory `path` names, resolved too, as a projected volume's `..data`
+/// links do; one outside it is refused as a symbolic link, naming the file it resolves to. A
+/// rotation can remove the directory a resolution named before the open reaches it, so a
+/// resolved file that has vanished is resolved once more.
 fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
+    let unreadable = |error: std::io::Error| {
+        refuse(policy, FileRule::Unreadable, path, &error.to_string())
+    };
+    let parent = match path.parent() {
+        Some(parent) if !parent.as_os_str().is_empty() => parent,
+        _ => Path::new("."),
+    };
     let resolve = || {
-        fs::canonicalize(path)
-            .map_err(|error| refuse(policy, FileRule::Unreadable, path, &error.to_string()))
+        let directory = fs::canonicalize(parent).map_err(unreadable)?;
+        let resolved = fs::canonicalize(path).map_err(unreadable)?;
+        if resolved.starts_with(&directory) {
+            Ok(resolved)
+        } else {
+            Err(refuse(
+                policy,
+                FileRule::Symlink,
+                path,
+                &format!(
+                    "resolves to {}, outside {}",
+                    resolved.display(),
+                    directory.display()
+                ),
+            ))
+        }
     };
     match open_final(path, &resolve()?, policy) {
         Err(_) if fs::metadata(path).is_ok() => open_final(path, &resolve()?, policy),

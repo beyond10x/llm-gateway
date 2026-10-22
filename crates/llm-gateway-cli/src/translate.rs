@@ -242,6 +242,8 @@ impl LlmTranslator {
                 .collect(),
             context_window: window,
             max_output_tokens: window,
+            output_streaming: true,
+            input_during_output: false,
         }
     }
 }

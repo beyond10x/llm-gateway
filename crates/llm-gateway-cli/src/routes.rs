@@ -525,14 +525,24 @@ fn endpoint(
                 .map_err(|error| value(&key("auth.header"), &error.to_string()))
         })
         .transpose()?;
+    let wire = match declaration.protocol() {
+        Protocol::Messages => Wire::Messages,
+        Protocol::Responses => Wire::Responses,
+        Protocol::ChatCompletions => Wire::Chat,
+        // llm's routes document refuses this protocol itself; a Bedrock model is a
+        // `[hosted.<alias>]` entry of kind `bedrock`.
+        Protocol::BedrockConverse => {
+            return Err(value(
+                &key("protocol"),
+                "must be messages, responses or chat-completions: a Bedrock model is declared \
+                 as [hosted.<alias>] with kind = \"bedrock\"",
+            ));
+        }
+    };
     Ok(RouteEndpoint {
         name: name.to_owned(),
         base_url,
-        wire: match declaration.protocol() {
-            Protocol::Messages => Wire::Messages,
-            Protocol::Responses => Wire::Responses,
-            Protocol::ChatCompletions => Wire::Chat,
-        },
+        wire,
         billing_kind: if auth_kind == AuthKind::Anonymous {
             BillingKind::SelfHosted
         } else {

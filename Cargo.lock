@@ -113,53 +113,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
-name = "b10x-llm-blocking"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "tokio",
-]
-
-[[package]]
-name = "b10x-llm-chat"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "b10x-llm-credentials",
- "b10x-llm-http",
- "b10x-llm-providers",
- "http",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "b10x-llm-core"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "serde",
- "serde_json",
- "thiserror",
- "tokio-util",
-]
-
-[[package]]
-name = "b10x-llm-credentials"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "serde",
- "thiserror",
- "tokio",
- "zeroize",
-]
-
-[[package]]
 name = "b10x-llm-gateway"
 version = "0.12.0"
 
@@ -167,20 +120,21 @@ version = "0.12.0"
 name = "b10x-llm-gateway-cli"
 version = "0.12.0"
 dependencies = [
- "b10x-llm-blocking",
- "b10x-llm-chat",
- "b10x-llm-core",
- "b10x-llm-credentials",
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
- "b10x-llm-http",
- "b10x-llm-messages",
- "b10x-llm-models",
- "b10x-llm-providers",
- "b10x-llm-responses",
  "b10x-llm-runpod",
  "base64 0.22.1",
  "clap",
+ "llm-bedrock",
+ "llm-blocking",
+ "llm-chat",
+ "llm-core",
+ "llm-credentials",
+ "llm-http",
+ "llm-messages",
+ "llm-models",
+ "llm-providers",
+ "llm-responses",
  "rcgen",
  "ring",
  "rustix",
@@ -216,108 +170,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "b10x-llm-http"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "bytes",
- "httpdate",
- "reqwest",
- "serde_json",
- "tokio",
- "zeroize",
-]
-
-[[package]]
-name = "b10x-llm-messages"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "b10x-llm-credentials",
- "b10x-llm-http",
- "b10x-llm-providers",
- "http",
- "serde",
- "serde_json",
- "tokio",
-]
-
-[[package]]
 name = "b10x-llm-modal"
 version = "0.12.0"
-
-[[package]]
-name = "b10x-llm-models"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-chat",
- "b10x-llm-core",
- "b10x-llm-credentials",
- "b10x-llm-http",
- "b10x-llm-messages",
- "b10x-llm-providers",
- "b10x-llm-responses",
- "b10x-llm-routing",
- "serde",
- "serde_yaml",
-]
-
-[[package]]
-name = "b10x-llm-providers"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "b10x-llm-credentials",
- "http",
- "serde",
- "serde_json",
- "sha2",
- "tokio",
- "toml",
- "url",
- "zeroize",
-]
 
 [[package]]
 name = "b10x-llm-provision"
 version = "0.12.0"
 
 [[package]]
-name = "b10x-llm-responses"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "b10x-llm-credentials",
- "b10x-llm-http",
- "b10x-llm-providers",
- "serde_json",
- "tokio",
-]
-
-[[package]]
-name = "b10x-llm-routing"
-version = "0.7.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.7.0#75455f32a2a2ad728f307daf943b12a42a29e114"
-dependencies = [
- "b10x-llm-core",
- "b10x-llm-providers",
- "serde",
- "serde_json",
- "sha2",
- "toml",
-]
-
-[[package]]
 name = "b10x-llm-runpod"
 version = "0.12.0"
 dependencies = [
- "b10x-llm-providers",
  "b10x-llm-provision",
+ "llm-providers",
  "rustix",
  "serde_json",
 ]
@@ -1018,6 +883,73 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
+name = "llm-bedrock"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "base64 0.22.1",
+ "http",
+ "llm-core",
+ "llm-credentials",
+ "llm-http",
+ "llm-messages",
+ "percent-encoding",
+ "ring",
+ "serde",
+ "serde_json",
+ "tokio",
+ "url",
+ "zeroize",
+]
+
+[[package]]
+name = "llm-blocking"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "llm-core",
+ "tokio",
+]
+
+[[package]]
+name = "llm-chat"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "http",
+ "llm-core",
+ "llm-credentials",
+ "llm-http",
+ "llm-providers",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "llm-core"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror",
+ "tokio-util",
+]
+
+[[package]]
+name = "llm-credentials"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "llm-core",
+ "serde",
+ "thiserror",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
 name = "llm-gateway-docs"
 version = "0.12.0"
 dependencies = [
@@ -1025,6 +957,96 @@ dependencies = [
  "b10x-llm-gateway-cli",
  "clap",
  "serde_json",
+]
+
+[[package]]
+name = "llm-http"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "bytes",
+ "httpdate",
+ "llm-core",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "zeroize",
+]
+
+[[package]]
+name = "llm-messages"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "http",
+ "llm-core",
+ "llm-credentials",
+ "llm-http",
+ "llm-providers",
+ "serde",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "llm-models"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "llm-chat",
+ "llm-core",
+ "llm-credentials",
+ "llm-http",
+ "llm-messages",
+ "llm-providers",
+ "llm-responses",
+ "llm-routing",
+ "serde",
+ "serde_yaml",
+]
+
+[[package]]
+name = "llm-providers"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "http",
+ "llm-core",
+ "llm-credentials",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "toml",
+ "url",
+ "zeroize",
+]
+
+[[package]]
+name = "llm-responses"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "llm-core",
+ "llm-credentials",
+ "llm-http",
+ "llm-providers",
+ "serde_json",
+ "tokio",
+]
+
+[[package]]
+name = "llm-routing"
+version = "0.11.0"
+source = "git+https://github.com/beyond10x/llm?rev=acd2c147f62db9277f0a4914a6358918b49ddd62#acd2c147f62db9277f0a4914a6358918b49ddd62"
+dependencies = [
+ "llm-core",
+ "llm-providers",
+ "serde",
+ "serde_json",
+ "sha2",
+ "toml",
 ]
 
 [[package]]

@@ -5,7 +5,7 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
-## Unreleased
+## 0.13.0 (2026-10-23)
 
 - Amazon Bedrock models: a `[hosted.<alias>]` table with `kind = "bedrock"` declares `region`,
   `model_id` (a model id, inference-profile id or ARN) and `credential_source = "container"`,

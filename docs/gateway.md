@@ -611,7 +611,12 @@ an answer): a reasoning effort on every Bedrock model, parallel tool calls on `c
 thinking on a model id that is not Anthropic's. A request without an output limit is sent
 `min(16384, w / 2)` of its window `w` (200000 by default). And reasoning state a client sends
 back on the messages wire to an `anthropic-invoke` model is passed as that model's own; any other
-carried state is bound or refused as for an endpoint. The answer is written as on any translated
+carried state is bound or refused as for an endpoint. A turn to a `converse` model that llm's
+Converse encoder would refuse is refused `translation-unsupported` before anything is sent: a
+conversation that does not open with a user message or a tool result, tool calls or tool results
+without `tools`, a tool name or call id that is not 1 to 64 of `[A-Za-z0-9_-]`, tool arguments
+or a tool schema that is not an object, and carried state that is not a Converse reasoning
+block. The answer is written as on any translated
 route; a messages client of an `anthropic-invoke` model also receives its thinking blocks, which
 it sends back on the next turn.
 

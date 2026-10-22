@@ -771,6 +771,57 @@ fn bedrock_a_model_that_is_not_anthropics_reaches_converse_without_the_fields_it
     assert_quiet(&log);
 }
 
+/// A turn Converse's own encoder would refuse is refused `translation-unsupported` (400) at
+/// preparation, never sent and never counted as an upstream failure: a conversation that opens
+/// with an assistant message, and a follow-up carrying tool history but no `tools`.
+#[test]
+fn bedrock_a_turn_converse_cannot_carry_is_refused_before_anything_is_sent() {
+    let deployment = Deployment::new("bedrock-converse-refusals");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![converse_text(), converse_text()]);
+    let config = deployment.config(&bedrock_table(
+        "nova",
+        "eu.amazon.nova-fixture-v1:0",
+        &bedrock,
+        "",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let assistant_first = json!({
+        "model": "nova",
+        "messages": [
+            {"role": "assistant", "content": "an earlier answer"},
+            {"role": "user", "content": PROMPT_MARKER},
+        ],
+    });
+    let tool_history_without_tools = json!({
+        "model": "nova",
+        "messages": [
+            {"role": "user", "content": PROMPT_MARKER},
+            {"role": "assistant", "content": null, "tool_calls": [{"id": "call_1", "type": "function",
+                "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "sunny"},
+        ],
+    });
+    for (case, request) in [
+        ("assistant first", assistant_first),
+        ("tool history without tools", tool_history_without_tools),
+    ] {
+        let answer = server.post("/v1/chat/completions", &request.to_string());
+        assert!(
+            answer.starts_with("HTTP/1.1 400 "),
+            "{case}: refused at preparation, not as an upstream refusal: {answer}"
+        );
+        assert!(answer.contains("translation-unsupported"), "{case}: {answer}");
+    }
+    let log = server.log();
+    assert!(bedrock.seen().is_empty(), "{:?}", bedrock.seen());
+    assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
+    assert_quiet(&log);
+}
+
 /// `api = "anthropic-invoke"` chooses `InvokeModel` for an id the default would send to Converse.
 #[test]
 fn bedrock_the_api_key_overrides_the_default_operation() {

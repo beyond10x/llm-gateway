@@ -21,6 +21,9 @@ Nothing in any release is deployed or qualified against a live client.
   as `<alias>.bedrock` with `auth_kind` `aws-sigv4`, never its region or model id. New startup
   refusals: `container-credentials:unset`, `container-credentials:uri` and
   `container-token:<rule>`. Tested against a fixture Bedrock Runtime only.
+- A turn to a Bedrock `converse` model that Converse cannot carry (an assistant message first,
+  tool history without `tools`) is refused `translation-unsupported` (400) before anything is
+  sent, instead of `upstream-refused` (502).
 - The llm crates move to tag `0.11.0` under their `llm-*` package names, and `llm-bedrock` is
   added; still no AWS SDK crate and no `aws-lc` in `Cargo.lock`.
 

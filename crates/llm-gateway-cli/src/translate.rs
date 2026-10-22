@@ -616,11 +616,98 @@ fn drop_for_bedrock(ingress: Wire, alias: &str, route: &BedrockRoute, request: &
     }
 }
 
+/// The longest tool name and tool use id Converse takes; both are `[A-Za-z0-9_-]`.
+const CONVERSE_MAX_WIRE_NAME_BYTES: usize = 64;
+
+/// Whether `name` is a tool name or tool use id Converse takes: 1 to 64 of `[A-Za-z0-9_-]`.
+fn converse_wire_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= CONVERSE_MAX_WIRE_NAME_BYTES
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+/// Whether `payload` is a reasoning block in one of the two shapes Converse carries back:
+/// `{"reasoningContent": {"reasoningText": {"text", "signature"?}}}` or
+/// `{"reasoningContent": {"redactedContent": "<string>"}}`.
+fn converse_reasoning_block(payload: &Value) -> bool {
+    let Some(content) = payload
+        .as_object()
+        .filter(|fields| fields.len() == 1)
+        .and_then(|fields| fields.get("reasoningContent"))
+        .and_then(Value::as_object)
+        .filter(|fields| fields.len() == 1)
+    else {
+        return false;
+    };
+    if let Some(reasoning) = content.get("reasoningText") {
+        return reasoning.as_object().is_some_and(|reasoning| {
+            reasoning.get("text").is_some_and(Value::is_string)
+                && reasoning.get("signature").is_none_or(Value::is_string)
+                && reasoning
+                    .keys()
+                    .all(|key| key == "text" || key == "signature")
+        });
+    }
+    content.get("redactedContent").is_some_and(Value::is_string)
+}
+
+/// Refuses, before anything is sent, a turn llm's Converse encoder would refuse once the target
+/// is reached; llm 0.11.0 has no public check for it, so the rules are copied here.
+// Mirrors llm-bedrock 0.11.0 `converse::encode_body` and the item and tool checks it calls.
+fn converse_refusal(request: &TurnRequest) -> Result<(), Error> {
+    let from_caller = |item: &Item| matches!(item, Item::UserText { .. } | Item::ToolResult { .. });
+    if request.items.first().is_none_or(|item| !from_caller(item)) {
+        return Err(Error::unsupported(
+            "Bedrock Converse requires an initial user message",
+        ));
+    }
+    if request.tools.is_empty()
+        && request
+            .items
+            .iter()
+            .any(|item| matches!(item, Item::ToolCall(_) | Item::ToolResult { .. }))
+    {
+        return Err(Error::unsupported(
+            "Bedrock Converse carries tool calls in a conversation only beside published tools",
+        ));
+    }
+    for item in &request.items {
+        let carried = match item {
+            Item::ToolCall(call) => {
+                converse_wire_name(call.call_id.as_str())
+                    && converse_wire_name(call.name.as_str())
+                    && call.arguments.is_object()
+            }
+            Item::ToolResult { call_id, .. } => converse_wire_name(call_id.as_str()),
+            Item::Opaque { payload, .. } => converse_reasoning_block(payload),
+            Item::UnattributedOpaque { .. } => false,
+            Item::UserText { .. } | Item::AssistantText { .. } => true,
+        };
+        if !carried {
+            return Err(Error::unsupported(
+                "Bedrock Converse cannot carry an item of this conversation",
+            ));
+        }
+    }
+    if request
+        .tools
+        .iter()
+        .any(|tool| !converse_wire_name(tool.name.as_str()) || !tool.input_schema.is_object())
+    {
+        return Err(Error::unsupported(
+            "Bedrock Converse cannot carry a published tool's name or schema",
+        ));
+    }
+    Ok(())
+}
+
 impl LlmTranslator {
     /// Prepares a request for a Bedrock model: decoded, stripped of the fields Bedrock does not
     /// take, given an output limit when it names none, its carried state bound to the target,
-    /// and checked against the target's capabilities (and, for `InvokeModel`, projected) before
-    /// anything is sent. A messages client's signed thinking reaches `InvokeModel` as it was sent;
+    /// and checked against the target's capabilities and projected (for `Converse`, by the rules
+    /// of [`converse_refusal`]) before anything is sent. A messages client's signed thinking reaches `InvokeModel` as it was sent;
     /// a responses client's sealed reasoning is opened as for any other upstream.
     fn prepare_bedrock(
         &self,
@@ -687,7 +774,7 @@ impl LlmTranslator {
                     )
                     .map(drop)
                 } else {
-                    Ok(())
+                    converse_refusal(&decoded.request)
                 }
             })
             .map_err(|error| refusal(&error))?;

@@ -44,6 +44,7 @@ list-inference-profiles` before you use it.
 | `endpoint` | `https://bedrock-runtime.<region>.amazonaws.com` | An `https` origin, or an `http` origin on a loopback address, with no path, query, fragment or user information. |
 | `billing_kind` | `metered` | `metered`, `subscription` or `self-hosted`. |
 | `context_window` | absent | 4096 to 2000000 tokens. Without one, the gateway works with 200000. |
+| `max_output_tokens` | the window | 1 to the window. The most output a turn may ask for; a turn naming none is given half the window, at most 16384 and at most this. The inventory lists it. |
 | `tool_calling` | `parsed` | `parsed` or `absent`. |
 
 The default `api` is `anthropic-invoke` when the model id is Anthropic's: its first dotted part

@@ -110,6 +110,9 @@ struct HostedDocument {
     upstream_model: Option<String>,
     #[serde(default)]
     context_window: Option<u32>,
+    /// A Bedrock model's output limit, refused on an endpoint.
+    #[serde(default)]
+    max_output_tokens: Option<u32>,
     /// `absent` by default for an endpoint, `parsed` for a Bedrock model.
     #[serde(default)]
     tool_calling: Option<ToolCallingDocument>,
@@ -575,6 +578,8 @@ pub struct Bedrock {
     pub endpoint: Option<url::Url>,
     pub billing_kind: BillingKind,
     pub context_window: Option<u32>,
+    /// The most output one turn may ask for, within the window; the window when undeclared.
+    pub max_output_tokens: Option<u32>,
     /// `parsed` unless the document says `absent`.
     pub tool_calling: ToolCalling,
 }
@@ -839,6 +844,7 @@ fn refuse_bedrock_keys(at: &str, declared: &HostedDocument) -> Result<(), Refusa
         ("credential_source", declared.credential_source.is_some()),
         ("api", declared.api.is_some()),
         ("endpoint", declared.endpoint.is_some()),
+        ("max_output_tokens", declared.max_output_tokens.is_some()),
     ] {
         ensure(
             !present,
@@ -1027,6 +1033,12 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
     if let Some(window) = declared.context_window {
         within(at, "context_window", &window, &(4_096..=2_000_000))?;
     }
+    if let Some(output) = declared.max_output_tokens {
+        let window = declared
+            .context_window
+            .unwrap_or(crate::bedrock::DEFAULT_CONTEXT_WINDOW);
+        within(at, "max_output_tokens", &output, &(1..=window))?;
+    }
     Ok(Bedrock {
         region,
         model_id,
@@ -1034,6 +1046,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         endpoint,
         billing_kind: billing_kind(&declared.billing_kind),
         context_window: declared.context_window,
+        max_output_tokens: declared.max_output_tokens,
         tool_calling: tool_calling(declared.tool_calling.unwrap_or(ToolCallingDocument::Parsed)),
     })
 }

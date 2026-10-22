@@ -116,7 +116,8 @@ entities:
   # `kind = "bedrock"` is a HostedEndpoint served by Amazon Bedrock Runtime through llm 0.11.0's
   # `llm-bedrock` client, not by the relay. It declares `region`, `model_id` and
   # `credential_source = "container"`, and optionally `api`, `endpoint`, `billing_kind`,
-  # `context_window` and `tool_calling` (llm-gateway.deployment.HostedDeclaration). Its route
+  # `context_window`, `max_output_tokens` and `tool_calling`
+  # (llm-gateway.deployment.HostedDeclaration). Its route
   # inventory target is `<alias>.bedrock`: protocol `messages` for `AnthropicInvoke` or
   # `bedrock-converse` for `Converse`, provider `bedrock`, account `container`, endpoint and
   # model the alias, `auth_kind` `AwsSigv4`; neither the region nor the model id is rendered.

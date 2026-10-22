@@ -613,7 +613,9 @@ Preparation differs from an endpoint's in three ways. A field Bedrock does not t
 not refused, and its name alone is logged at `info` (`model`, `field`; never a value, a prompt or
 an answer): a reasoning effort on every Bedrock model, parallel tool calls on `converse`, and
 thinking on a model id that is not Anthropic's. A request without an output limit is sent
-`min(16384, w / 2)` of its window `w` (200000 by default). And reasoning state a client sends
+`min(16384, w / 2, m)` of its window `w` (200000 by default) and its `max_output_tokens` `m`
+(1 to `w`, `w` when undeclared, a Bedrock-only key the inventory lists); a request asking for
+more than `m` is refused as for any limit its capabilities set. And reasoning state a client sends
 back on the messages wire to an `anthropic-invoke` model is passed as that model's own; any other
 carried state is bound or refused as for an endpoint. A turn to a `converse` model that llm's
 Converse encoder would refuse is refused `translation-unsupported` before anything is sent: a

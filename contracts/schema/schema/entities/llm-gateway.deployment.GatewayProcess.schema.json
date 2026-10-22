@@ -41,8 +41,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "668f71b79caf8184fa3d53439c7ea534acb2352fd192c81a1cca64f780c49f67",
-    "contract_digest": "slice-sha256/2:af42658242db33939119a68f5beba0e04c38534183b56897b266de28eece879c",
+    "source_digest": "460cad9c897b295fb5c572c79e3c0cf90586d8f2853a5502f4b8f3733204a184",
+    "contract_digest": "slice-sha256/2:b4d1910dadef44ac599c61e29d15f491e3458ce07485b9c63e1c21d74cc7d6e9",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -196,6 +196,9 @@
         },
         "endpoint": {
           "type": "string"
+        },
+        "max_output_tokens": {
+          "type": "integer"
         },
         "credential_file": {
           "type": "string"

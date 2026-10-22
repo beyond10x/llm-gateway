@@ -47,7 +47,7 @@ const CREDENTIALS_READ_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long one fetch may take in all.
 const CREDENTIALS_TOTAL_TIMEOUT: Duration = Duration::from_secs(30);
 /// The context window, and output limit, a Bedrock model that declares none is translated under.
-const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
+pub(crate) const DEFAULT_CONTEXT_WINDOW: u32 = 200_000;
 /// The authority a Bedrock model's relay target names. It is never connected to: the translator
 /// reaches Bedrock with its own client.
 const AUTHORITY: &str = "bedrock";
@@ -113,10 +113,14 @@ fn provenance(alias: &str, model: &Bedrock) -> Result<Provenance, Error> {
 }
 
 /// What a Bedrock model is translated under: tools when it parses tool calls, temperature and
-/// `top_p`, no reasoning effort (it is dropped), its window or [`DEFAULT_CONTEXT_WINDOW`], and
-/// streamed output.
-pub(crate) fn capabilities(window: Option<u32>, tool_calling: ToolCalling) -> Capabilities {
-    let window = window.map_or(DEFAULT_CONTEXT_WINDOW, u64::from);
+/// `top_p`, no reasoning effort (it is dropped), its window or [`DEFAULT_CONTEXT_WINDOW`], its
+/// declared output limit or else the window, and streamed output.
+pub(crate) fn capabilities(
+    window: Option<u32>,
+    max_output: Option<u32>,
+    tool_calling: ToolCalling,
+) -> Capabilities {
+    let window = u64::from(window.unwrap_or(DEFAULT_CONTEXT_WINDOW));
     let tools = tool_calling == ToolCalling::Parsed;
     Capabilities {
         tools,
@@ -125,7 +129,7 @@ pub(crate) fn capabilities(window: Option<u32>, tool_calling: ToolCalling) -> Ca
         top_p: true,
         reasoning_efforts: Vec::new(),
         context_window: window,
-        max_output_tokens: window,
+        max_output_tokens: max_output.map_or(window, u64::from),
         output_streaming: true,
         input_during_output: false,
     }
@@ -148,7 +152,7 @@ fn probe(region: &str, model_id: &str, endpoint: Option<Url>) -> bool {
     };
     BedrockTarget::new(
         provenance,
-        capabilities(None, ToolCalling::Parsed),
+        capabilities(None, None, ToolCalling::Parsed),
         region,
         model_id,
         Api::AnthropicInvoke,
@@ -360,7 +364,11 @@ pub(crate) fn routes(
         };
         let target = BedrockTarget::new(
             provenance(alias, model).map_err(|_| invalid())?,
-            capabilities(model.context_window, model.tool_calling),
+            capabilities(
+                model.context_window,
+                model.max_output_tokens,
+                model.tool_calling,
+            ),
             model.region.clone(),
             model.model_id.clone(),
             model.api,
@@ -480,7 +488,7 @@ pub(crate) fn summaries(deployment: &Deployment) -> Result<Vec<RouteSummary>, Re
                 billing_kind: model.billing_kind,
                 limits: TargetLimits {
                     context_window: model.context_window.map(u64::from),
-                    max_output_tokens: None,
+                    max_output_tokens: model.max_output_tokens.map(u64::from),
                 },
             };
             RouteSummary::new(label(alias)?, label(alias)?, false, vec![target]).map_err(|error| {

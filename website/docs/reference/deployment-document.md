@@ -198,8 +198,9 @@ upstream_model = "vendor-large-2"
 
 `kind` is `endpoint` by default. A table with `kind = "bedrock"` declares a model Amazon Bedrock
 serves instead: it takes `region`, `model_id` and `credential_source = "container"`, and
-optionally `api`, `endpoint`, `billing_kind`, `context_window` and `tool_calling` (default
-`parsed`). Every request to it is translated and signed with the container credentials named by
+optionally `api`, `endpoint`, `billing_kind`, `context_window`, `max_output_tokens` (1 to the
+window, which it is when undeclared; it bounds the output a turn naming none is given) and
+`tool_calling` (default `parsed`). Every request to it is translated and signed with the container credentials named by
 `AWS_CONTAINER_CREDENTIALS_FULL_URI` and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`. An
 endpoint's keys are refused on it, and its keys on an endpoint, each as `config:value` naming the
 key. [Serve a Bedrock model](../guides/serve-a-bedrock-model.md) has every rule.

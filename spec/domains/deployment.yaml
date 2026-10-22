@@ -570,6 +570,10 @@ types:
   #                      fragment
   #   billing_kind       as an endpoint's, default `metered`
   #   context_window     as an endpoint's, optional, 4096..=2000000
+  #   max_output_tokens  optional, 1..=context_window (200000 when undeclared): the most
+  #                      output a turn may ask for and the bound of the output a turn naming
+  #                      none is given (half the window, at most 16384); the window when
+  #                      undeclared; `config:value` on an endpoint
   #   tool_calling       as an endpoint's, default `parsed`
   - name: llm-gateway.deployment.HostedDeclaration
     kind: struct
@@ -585,6 +589,7 @@ types:
       - {name: credential_source, type: 'Optional<String>'}
       - {name: api, type: 'Optional<llm-gateway.upstream.BedrockApi>'}
       - {name: endpoint, type: 'Optional<String>'}
+      - {name: max_output_tokens, type: 'Optional<Integer>'}
       - {name: credential_file, type: 'Optional<String>'}
       - {name: credential_header, type: 'Optional<String>'}
       - {name: headers, type: 'Map<String, String>'}

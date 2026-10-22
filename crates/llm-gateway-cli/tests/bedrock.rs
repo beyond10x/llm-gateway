@@ -855,6 +855,37 @@ fn bedrock_the_api_key_overrides_the_default_operation() {
     );
 }
 
+/// A declared `max_output_tokens` bounds the output a request naming none is given, and the
+/// inventory reports it.
+#[test]
+fn bedrock_a_declared_output_limit_bounds_the_default_output() {
+    let deployment = Deployment::new("bedrock-output-limit");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&bedrock_table(
+        "haiku",
+        MODEL_ID,
+        &bedrock,
+        "max_output_tokens = 2000\n",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let answer = server.post(
+        "/v1/chat/completions",
+        &json!({"model":"haiku","messages":[{"role":"user","content":PROMPT_MARKER}]})
+            .to_string(),
+    );
+    let routes = server.get("/v1/routes");
+    drop(server);
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(body(&seen[0])["max_tokens"], json!(2000), "{}", seen[0]);
+    assert!(routes.contains("\"max_output_tokens\":2000"), "{routes}");
+}
+
 // --- Criterion: the inventory --------------------------------------------------------------------
 
 /// The inventory lists a Bedrock model with provider `bedrock`, and no byte the process writes
@@ -952,6 +983,23 @@ fn bedrock_a_document_mixing_or_misnaming_bedrock_keys_is_refused() {
             "an endpoint off loopback over http",
             bedrock_table("haiku", MODEL_ID, &bedrock, "")
                 .replace(&format!("http://{}", bedrock.address), "http://bedrock.example.test"),
+        ),
+        (
+            "max_output_tokens on an endpoint",
+            "[hosted.local]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nauth_kind = \"anonymous\"\nmax_output_tokens = 4096\n".to_owned(),
+        ),
+        (
+            "a zero output limit",
+            bedrock_table("haiku", MODEL_ID, &bedrock, "max_output_tokens = 0\n"),
+        ),
+        (
+            "an output limit above the window",
+            bedrock_table(
+                "haiku",
+                MODEL_ID,
+                &bedrock,
+                "context_window = 8192\nmax_output_tokens = 8193\n",
+            ),
         ),
         (
             "converse with a reasoning effort",

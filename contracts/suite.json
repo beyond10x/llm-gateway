@@ -39,6 +39,9 @@
       "llm-gateway.gateway/authored/authentication-comes-before-the-path-is-decided",
       "llm-gateway.gateway/authored/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing",
       "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential",
+      "llm-gateway.gateway/authored/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing",
+      "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing",
+      "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id",
       "llm-gateway.gateway/authored/clamp-a-count-that-fails-relays-the-request-unchanged",
       "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted",
       "llm-gateway.gateway/authored/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged",
@@ -451,6 +454,21 @@
         "digest": "sha256:66eed4b84aef8e2d17e6844e6d543fb5cd485574ab23ff9e060e2b266dedf30b",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential"
+      },
+      "gateway/scenarios/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing.yaml": {
+        "digest": "sha256:85f137ef1833582ca5496faaf0c4d24477c19ee3d3493fff5700e1c8ee9150fe",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing"
+      },
+      "gateway/scenarios/bedrock-an-endpoint-naming-a-region-composes-nothing.yaml": {
+        "digest": "sha256:5d271fcfd3bd5a49054b4f71cf44a979dd3b40992df68ce57af57929c71ebbbf",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing"
+      },
+      "gateway/scenarios/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id.yaml": {
+        "digest": "sha256:788beeb53e9cfa1592c2249dc5afc365f4307541b6f3792ec37afd01d8daa5b5",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id"
       },
       "gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml": {
         "digest": "sha256:953c6cd8092373e7d84ca5431f057b84b5dfa07be47e89495719baef007a045d",
@@ -1679,7 +1697,7 @@
       }
     },
     "counts": {
-      "authored": 279,
+      "authored": 282,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1704,9 +1722,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "e813f67410500882a2fe58b5b1e0f4e98def63a4ef0116509908356becbcd935",
+    "contract_digest": "513bb773585f27e2c0aab87a567e958131fdffb74b806d7713beeeedae4cda5c",
     "scenario_initial_state": "empty",
-    "spec_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
+    "spec_digest": "668f71b79caf8184fa3d53439c7ea534acb2352fd192c81a1cca64f780c49f67",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -4945,6 +4963,284 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing": {
+      "purpose": "the binary refuses a Bedrock model that names a credential file as config:value, because a Bedrock model is signed with the container credentials alone, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.haiku]\\nkind = \\\"bedrock\\\"\\nregion = \\\"eu-central-1\\\"\\nmodel_id = \\\"eu.anthropic.claude-fixture-v1:0\\\"\\ncredential_source = \\\"container\\\"\\ncredential_file = \\\"/run/credentials/haiku\\\"\\n\",\"withheld\":[\"eu-central-1\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "secret_on_wire": {
+                "kind": "literal",
+                "value": null
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              },
+              "withheld_on_wire": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing": {
+      "purpose": "the binary refuses a hosted endpoint that names a region, a key of a Bedrock model only, as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.open]\\nwires = [\\\"messages\\\"]\\nbase_url = \\\"http://10.0.0.7:8000/\\\"\\nauth_kind = \\\"anonymous\\\"\\nregion = \\\"eu-central-1\\\"\\n\",\"withheld\":[\"10.0.0.7\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "secret_on_wire": {
+                "kind": "literal",
+                "value": null
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              },
+              "withheld_on_wire": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id": {
+      "purpose": "the binary's inventory of a document lists each Bedrock model as one target signed aws-sigv4, on the protocol its model id defaults to, and no answer carries its region, its model id or a Bedrock host",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.haiku]\\nkind = \\\"bedrock\\\"\\nregion = \\\"eu-central-1\\\"\\nmodel_id = \\\"eu.anthropic.claude-fixture-v1:0\\\"\\ncredential_source = \\\"container\\\"\\ncontext_window = 200000\\n\\n[hosted.nova]\\nkind = \\\"bedrock\\\"\\nregion = \\\"eu-west-1\\\"\\nmodel_id = \\\"eu.amazon.nova-fixture-v1:0\\\"\\ncredential_source = \\\"container\\\"\\nbilling_kind = \\\"subscription\\\"\\n\",\"withheld\":[\"eu-central-1\",\"eu-west-1\",\"eu.anthropic.claude-fixture-v1:0\",\"eu.amazon.nova-fixture-v1:0\",\"amazonaws.com\",\"bedrock-runtime\"],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"send\",\"raw\":\"GET /v1/routes HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"},{\"step\":\"send\",\"raw\":\"GET /v1/routes/nova HTTP/1.1\\r\\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\\r\\n\\r\\n\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"config_digest\":\"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620\",\"route_count\":2,\"routes\":[{\"route_id\":\"haiku\",\"alias\":\"haiku\",\"fallback_enabled\":false,\"target_count\":1,\"targets\":[{\"target_id\":\"haiku.bedrock\",\"position\":0,\"protocol\":\"messages\",\"provider\":\"bedrock\",\"account\":\"container\",\"endpoint\":\"haiku\",\"model\":\"haiku\",\"binding_revision\":\"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620\",\"auth_kind\":\"aws-sigv4\",\"billing_kind\":\"metered\",\"context_window\":200000}]},{\"route_id\":\"nova\",\"alias\":\"nova\",\"fallback_enabled\":false,\"target_count\":1,\"targets\":[{\"target_id\":\"nova.bedrock\",\"position\":0,\"protocol\":\"bedrock-converse\",\"provider\":\"bedrock\",\"account\":\"container\",\"endpoint\":\"nova\",\"model\":\"nova\",\"binding_revision\":\"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620\",\"auth_kind\":\"aws-sigv4\",\"billing_kind\":\"subscription\"}]}]}",
+                  "{\"config_digest\":\"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620\",\"route\":{\"route_id\":\"nova\",\"alias\":\"nova\",\"fallback_enabled\":false,\"target_count\":1,\"targets\":[{\"target_id\":\"nova.bedrock\",\"position\":0,\"protocol\":\"bedrock-converse\",\"provider\":\"bedrock\",\"account\":\"container\",\"endpoint\":\"nova\",\"model\":\"nova\",\"binding_revision\":\"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620\",\"auth_kind\":\"aws-sigv4\",\"billing_kind\":\"subscription\"}]}}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 inspected",
+                  "200 inspected"
+                ]
+              },
+              "secret_on_wire": {
+                "kind": "literal",
+                "value": false
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              },
+              "withheld_on_wire": {
+                "kind": "literal",
+                "value": false
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
         }
       ]
     },

@@ -60,7 +60,7 @@ fn frame(headers: &[(&str, &str)], payload: Vec<u8>) -> Vec<u8> {
     })
 }
 
-/// One InvokeModel `chunk` frame carrying the Messages `event`.
+/// One `InvokeModel` `chunk` frame carrying the Messages `event`.
 fn chunk(event: &Value) -> Vec<u8> {
     frame(
         &[
@@ -101,7 +101,7 @@ fn message_end(stop_reason: &str, output_tokens: u64) -> Vec<Value> {
     ]
 }
 
-/// An InvokeModel stream answering [`ANSWER_MARKER`] as text.
+/// An `InvokeModel` stream answering [`ANSWER_MARKER`] as text.
 fn invoke_text() -> Vec<u8> {
     let mut events = vec![
         message_start(),
@@ -113,14 +113,19 @@ fn invoke_text() -> Vec<u8> {
     events.iter().flat_map(chunk).collect()
 }
 
-/// An InvokeModel stream calling `get_weather` with `{"city":"Berlin"}` in two deltas.
+/// An `InvokeModel` stream calling `get_weather` with `{"city":"Berlin"}` in two deltas.
 fn invoke_tool_call() -> Vec<u8> {
+    invoke_call("get_weather", "city")
+}
+
+/// An `InvokeModel` stream calling `tool` with `{"<argument>":"Berlin"}` in two deltas.
+fn invoke_call(tool: &str, argument: &str) -> Vec<u8> {
     let mut events = vec![
         message_start(),
         json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use",
-            "id":"toolu_fixture_1","name":"get_weather","input":{}}}),
+            "id":"toolu_fixture_1","name":tool,"input":{}}}),
         json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta",
-            "partial_json":"{\"city\":"}}),
+            "partial_json":format!("{{\"{argument}\":")}}),
         json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta",
             "partial_json":"\"Berlin\"}"}}),
         json!({"type":"content_block_stop","index":0}),
@@ -507,7 +512,7 @@ fn dropped(log: &[String], field: &str) -> bool {
 
 // --- Criterion: chat with tools, streamed and whole ---------------------------------------------
 
-/// A streamed chat request with a tool reaches InvokeModel with response stream for the
+/// A streamed chat request with a tool reaches `InvokeModel` with response stream for the
 /// configured model id, signed with the container credentials; the tool call Bedrock streams is
 /// answered as chat tool-call deltas, and the effort Bedrock does not take is dropped by name.
 #[test]
@@ -537,7 +542,10 @@ fn bedrock_a_streamed_chat_tool_turn_reaches_invoke_signed_and_answers_tool_call
     assert!(answer.contains("\"tool_calls\""), "{answer}");
     assert!(answer.contains("\"name\":\"get_weather\""), "{answer}");
     assert!(answer.contains("Berlin"), "{answer}");
-    assert!(answer.contains("\"finish_reason\":\"tool_calls\""), "{answer}");
+    assert!(
+        answer.contains("\"finish_reason\":\"tool_calls\""),
+        "{answer}"
+    );
     assert!(answer.contains("data: [DONE]"), "{answer}");
 
     let seen = bedrock.seen();
@@ -586,8 +594,7 @@ fn bedrock_a_whole_chat_tool_turn_is_answered_with_the_tool_call() {
         answer.contains("content-type: application/json\r\n"),
         "{answer}"
     );
-    let completion: Value =
-        serde_json::from_str(answer.split_once("\r\n\r\n").unwrap().1).unwrap();
+    let completion: Value = serde_json::from_str(answer.split_once("\r\n\r\n").unwrap().1).unwrap();
     let call = &completion["choices"][0]["message"]["tool_calls"][0];
     assert_eq!(call["function"]["name"], "get_weather", "{completion}");
     let arguments: Value =
@@ -655,7 +662,7 @@ const CLAUDE_CODE_TOOL_RESULT: &str =
 fn claude_code(name: &str, fixture: &str) -> (String, Value, Vec<String>) {
     let deployment = Deployment::new(name);
     let credentials = Recorder::credentials(4);
-    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_tool_call()]);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_call("Read", "file_path")]);
     let config = deployment.config(&bedrock_table("code", MODEL_ID, &bedrock, ""));
     let server = Server::start(
         &config,
@@ -664,13 +671,14 @@ fn claude_code(name: &str, fixture: &str) -> (String, Value, Vec<String>) {
     let answer = server.post("/v1/messages?beta=true", &fixture_body(fixture));
     let log = server.log();
     let seen = bedrock.seen();
+    assert!(!answer.contains("event: error"), "{answer}");
     assert_eq!(seen.len(), 1, "{answer} {seen:?}");
     assert_signed(&seen[0]);
     assert_fetched(&credentials);
     (answer, body(&seen[0]), log)
 }
 
-/// Claude Code's first turn reaches InvokeModel with its system blocks, `cache_control`,
+/// Claude Code's first turn reaches `InvokeModel` with its system blocks, `cache_control`,
 /// adaptive thinking and tools; its effort, which the target does not take, is dropped and
 /// logged by name; the tool call is answered as Messages events.
 #[test]
@@ -680,7 +688,7 @@ fn bedrock_claude_codes_first_turn_reaches_invoke_and_is_answered_on_messages() 
     assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
     assert!(answer.contains("event: message_stop"), "{answer}");
     assert!(answer.contains("\"type\":\"tool_use\""), "{answer}");
-    assert!(answer.contains("\"name\":\"get_weather\""), "{answer}");
+    assert!(answer.contains("\"name\":\"Read\""), "{answer}");
     assert_eq!(sent["anthropic_version"], "bedrock-2023-05-31", "{sent}");
     assert_eq!(sent["max_tokens"], fixture["max_tokens"], "{sent}");
     assert_eq!(sent["thinking"], json!({"type": "adaptive"}), "{sent}");
@@ -697,13 +705,16 @@ fn bedrock_claude_codes_first_turn_reaches_invoke_and_is_answered_on_messages() 
 }
 
 /// Claude Code's second turn carries its signed thinking block and tool result back to
-/// InvokeModel unchanged.
+/// `InvokeModel` unchanged.
 #[test]
 fn bedrock_claude_codes_tool_result_turn_carries_its_signed_thinking_back() {
     let (answer, sent, log) = claude_code("bedrock-claude-code-2", CLAUDE_CODE_TOOL_RESULT);
     assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
     let text = sent.to_string();
-    assert!(text.contains("\"signature\":\"3b1f0c9e8a7d4c2b9e6f5a4d3c2b1a09\""), "{text}");
+    assert!(
+        text.contains("\"signature\":\"3b1f0c9e8a7d4c2b9e6f5a4d3c2b1a09\""),
+        "{text}"
+    );
     assert!(text.contains("\"type\":\"tool_result\""), "{text}");
     assert!(text.contains("chatcmpl-tool-a1b2c3d4e5f60718"), "{text}");
     assert_quiet(&log);
@@ -743,7 +754,8 @@ fn bedrock_a_model_that_is_not_anthropics_reaches_converse_without_the_fields_it
     let seen = bedrock.seen();
     assert_eq!(seen.len(), 1, "{seen:?}");
     assert!(
-        seen[0].starts_with("POST /model/eu.amazon.nova-fixture-v1%3A0/converse-stream HTTP/1.1\r\n"),
+        seen[0]
+            .starts_with("POST /model/eu.amazon.nova-fixture-v1%3A0/converse-stream HTTP/1.1\r\n"),
         "{}",
         seen[0]
     );
@@ -758,7 +770,7 @@ fn bedrock_a_model_that_is_not_anthropics_reaches_converse_without_the_fields_it
     assert_quiet(&log);
 }
 
-/// `api = "anthropic-invoke"` chooses InvokeModel for an id the default would send to Converse.
+/// `api = "anthropic-invoke"` chooses `InvokeModel` for an id the default would send to Converse.
 #[test]
 fn bedrock_the_api_key_overrides_the_default_operation() {
     let deployment = Deployment::new("bedrock-api-key");
@@ -777,13 +789,18 @@ fn bedrock_the_api_key_overrides_the_default_operation() {
     );
     let answer = server.post(
         "/v1/chat/completions",
-        &json!({"model":"profile","messages":[{"role":"user","content":PROMPT_MARKER}]}).to_string(),
+        &json!({"model":"profile","messages":[{"role":"user","content":PROMPT_MARKER}]})
+            .to_string(),
     );
     drop(server);
     assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
     let seen = bedrock.seen();
     assert_eq!(seen.len(), 1, "{seen:?}");
-    assert!(seen[0].contains("/invoke-with-response-stream HTTP/1.1\r\n"), "{}", seen[0]);
+    assert!(
+        seen[0].contains("/invoke-with-response-stream HTTP/1.1\r\n"),
+        "{}",
+        seen[0]
+    );
 }
 
 // --- Criterion: the inventory --------------------------------------------------------------------
@@ -809,7 +826,10 @@ fn bedrock_the_inventory_lists_the_target_without_its_region_model_id_or_endpoin
     let models = server.get("/v1/models");
     let log = server.log();
     assert!(routes.starts_with("HTTP/1.1 200 "), "{routes}");
-    assert!(routes.contains("\"target_id\":\"haiku.bedrock\""), "{routes}");
+    assert!(
+        routes.contains("\"target_id\":\"haiku.bedrock\""),
+        "{routes}"
+    );
     assert!(routes.contains("\"provider\":\"bedrock\""), "{routes}");
     assert!(models.contains("\"id\":\"haiku\""), "{models}");
     let mut written = routes;
@@ -824,7 +844,10 @@ fn bedrock_the_inventory_lists_the_target_without_its_region_model_id_or_endpoin
         &credentials.address.to_string(),
         CONTAINER_TOKEN,
     ] {
-        assert!(!written.contains(withheld), "{withheld:?} was written: {written}");
+        assert!(
+            !written.contains(withheld),
+            "{withheld:?} was written: {written}"
+        );
     }
 }
 
@@ -912,7 +935,10 @@ fn bedrock_a_start_without_usable_container_credentials_is_refused() {
     assert_refused(&config, &only_uri, "container-credentials:unset");
     let remote = Environment {
         variables: vec![
-            (URI_VARIABLE, "http://credentials.example.test/v1".to_owned()),
+            (
+                URI_VARIABLE,
+                "http://credentials.example.test/v1".to_owned(),
+            ),
             (TOKEN_VARIABLE, deployment.token.display().to_string()),
         ],
     };

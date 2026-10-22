@@ -639,6 +639,7 @@ pub(crate) fn routes(
             })?;
         routes.push(route);
     }
+    routes.extend(crate::bedrock::summaries(deployment)?);
     routes.extend(deployment.routes.summaries()?);
     routes.sort_by(|left, right| left.alias().as_str().cmp(right.alias().as_str()));
     Ok(routes)

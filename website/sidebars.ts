@@ -21,6 +21,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'guides/set-up-a-client',
         'guides/translate-between-wires',
+        'guides/serve-a-bedrock-model',
         'guides/scrape-the-counters',
         'guides/run-on-kubernetes',
         'guides/run-the-checks',

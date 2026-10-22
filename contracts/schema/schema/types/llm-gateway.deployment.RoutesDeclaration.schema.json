@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
-    "contract_digest": "slice-sha256/2:b747403175cd3b29761ff44bf468a006225fbb2da8dc4703ee281a138e8d860a",
+    "source_digest": "668f71b79caf8184fa3d53439c7ea534acb2352fd192c81a1cca64f780c49f67",
+    "contract_digest": "slice-sha256/2:88a32fbdd6edfad2752aecada6db0b392cc3f8070a75bc68bc017d4c6a6e5b58",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -119,7 +119,8 @@
       "enum": [
         "Anonymous",
         "Bearer",
-        "ApiKey"
+        "ApiKey",
+        "AwsSigv4"
       ]
     }
   }

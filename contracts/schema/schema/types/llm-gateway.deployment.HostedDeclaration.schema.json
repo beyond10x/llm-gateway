@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
-    "contract_digest": "slice-sha256/2:e78dca189e5095a5a85fbae067605390661290c090955e7e2ac84cd461a35371",
+    "source_digest": "668f71b79caf8184fa3d53439c7ea534acb2352fd192c81a1cca64f780c49f67",
+    "contract_digest": "slice-sha256/2:329f335302e8ad50857caac9a112ab66f87d72d01e206ca71d0ee196b92f1da4",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -25,6 +25,9 @@
       "x-ess-kind": "struct",
       "type": "object",
       "properties": {
+        "kind": {
+          "$ref": "#/$defs/llm-gateway.upstream.HostedKind"
+        },
         "wires": {
           "type": "array",
           "items": {
@@ -36,6 +39,21 @@
         },
         "auth_kind": {
           "$ref": "#/$defs/llm-gateway.upstream.AuthKind"
+        },
+        "region": {
+          "type": "string"
+        },
+        "model_id": {
+          "type": "string"
+        },
+        "credential_source": {
+          "type": "string"
+        },
+        "api": {
+          "$ref": "#/$defs/llm-gateway.upstream.BedrockApi"
+        },
+        "endpoint": {
+          "type": "string"
         },
         "credential_file": {
           "type": "string"
@@ -67,9 +85,7 @@
         }
       },
       "required": [
-        "wires",
-        "base_url",
-        "auth_kind",
+        "kind",
         "headers",
         "billing_kind",
         "upstream_model",
@@ -107,7 +123,18 @@
       "enum": [
         "Anonymous",
         "Bearer",
-        "ApiKey"
+        "ApiKey",
+        "AwsSigv4"
+      ]
+    },
+    "llm-gateway.upstream.BedrockApi": {
+      "title": "BedrockApi",
+      "x-ess-name": "llm-gateway.upstream.BedrockApi",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "AnthropicInvoke",
+        "Converse"
       ]
     },
     "llm-gateway.upstream.BillingKind": {
@@ -119,6 +146,16 @@
         "Metered",
         "Subscription",
         "SelfHosted"
+      ]
+    },
+    "llm-gateway.upstream.HostedKind": {
+      "title": "HostedKind",
+      "x-ess-name": "llm-gateway.upstream.HostedKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Endpoint",
+        "Bedrock"
       ]
     }
   }

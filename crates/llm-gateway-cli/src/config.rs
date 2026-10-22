@@ -77,9 +77,29 @@ struct Document {
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HostedDocument {
-    wires: Vec<Wire>,
-    base_url: String,
-    auth_kind: AuthKindDocument,
+    /// `endpoint`, the default, or `bedrock` (story:bedrock-hosted-target).
+    #[serde(default)]
+    kind: HostedKindDocument,
+    /// Required for an endpoint, refused on a Bedrock model; the loader names a missing one as
+    /// serde would.
+    #[serde(default)]
+    wires: Option<Vec<Wire>>,
+    #[serde(default)]
+    base_url: Option<String>,
+    #[serde(default)]
+    auth_kind: Option<AuthKindDocument>,
+    /// A Bedrock model's keys, refused on an endpoint. Each is read as a string and checked as a
+    /// value, so a refusal is `config:value` and quotes nothing.
+    #[serde(default)]
+    region: Option<String>,
+    #[serde(default)]
+    model_id: Option<String>,
+    #[serde(default)]
+    credential_source: Option<String>,
+    #[serde(default)]
+    api: Option<String>,
+    #[serde(default)]
+    endpoint: Option<String>,
     #[serde(default)]
     credential_file: Option<PathBuf>,
     #[serde(default)]
@@ -90,8 +110,9 @@ struct HostedDocument {
     upstream_model: Option<String>,
     #[serde(default)]
     context_window: Option<u32>,
+    /// `absent` by default for an endpoint, `parsed` for a Bedrock model.
     #[serde(default)]
-    tool_calling: ToolCallingDocument,
+    tool_calling: Option<ToolCallingDocument>,
     /// Read as a string and checked as a value, so `high` is `config:value`, not
     /// `config:schema`, as a Runpod model's `reasoning_effort` is.
     #[serde(default)]
@@ -237,6 +258,15 @@ fn header_table<'de, D: serde::Deserializer<'de>>(
     deserializer.deserialize_map(Table)
 }
 
+#[derive(Default, PartialEq, Eq)]
+enum HostedKindDocument {
+    #[default]
+    Endpoint,
+    Bedrock,
+}
+
+from_string_only!(HostedKindDocument { "endpoint" => Endpoint, "bedrock" => Bedrock });
+
 enum AuthKindDocument {
     Anonymous,
     Bearer,
@@ -317,7 +347,7 @@ enum ThinkingDocument {
 
 from_string_only!(ThinkingDocument { "on" => On, "off" => Off });
 
-#[derive(Default)]
+#[derive(Default, Clone, Copy)]
 enum ToolCallingDocument {
     Parsed,
     /// The default: a model that says nothing is served no tool request.
@@ -529,6 +559,26 @@ pub struct Hosted {
     pub headers: Vec<StaticHeader>,
 }
 
+/// `[hosted.<alias>] kind = "bedrock"`, with every default applied and every rule checked: a
+/// model Amazon Bedrock serves (`llm-gateway.upstream.HostedEndpoint`, story:bedrock-hosted-target).
+/// None of its values is rendered by the route inventory or written to the log.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Bedrock {
+    /// The AWS Region the request is signed for, and the default endpoint's.
+    pub region: String,
+    /// The model id, inference profile id or ARN Bedrock is asked for.
+    pub model_id: String,
+    /// The Bedrock Runtime operation: `anthropic-invoke` by default for an Anthropic model id,
+    /// `converse` otherwise.
+    pub api: llm_bedrock::Api,
+    /// Replaces `https://bedrock-runtime.<region>.amazonaws.com` when declared.
+    pub endpoint: Option<url::Url>,
+    pub billing_kind: BillingKind,
+    pub context_window: Option<u32>,
+    /// `parsed` unless the document says `absent`.
+    pub tool_calling: ToolCalling,
+}
+
 /// A loaded and validated deployment document.
 #[derive(Debug, Clone)]
 pub struct Deployment {
@@ -545,6 +595,9 @@ pub struct Deployment {
     pub models: BTreeMap<String, Model>,
     /// The models hosted endpoints serve, by alias. No alias is in both tables.
     pub hosted: BTreeMap<String, Hosted>,
+    /// The models Amazon Bedrock serves, by alias: the `[hosted.*]` entries of
+    /// `kind = "bedrock"`. No alias is in two tables.
+    pub bedrock: BTreeMap<String, Bedrock>,
     /// The routes document `routes` names, as written; only the path is loaded by [`parse`].
     pub routes_file: Option<PathBuf>,
     /// The routes of that document once [`load`] (or [`Deployment::with_routes`]) has read it;
@@ -564,13 +617,18 @@ impl Deployment {
     pub fn with_routes(mut self, routes: Routes) -> Result<Self, Refusal> {
         for route in routes.routes() {
             ensure(
-                !self.models.contains_key(route.name()) && !self.hosted.contains_key(route.name()),
+                !self.models.contains_key(route.name())
+                    && !self.hosted.contains_key(route.name())
+                    && !self.bedrock.contains_key(route.name()),
                 &format!("routes.{}", route.name()),
                 "names an alias [models.*] or [hosted.*] already declares",
             )?;
         }
         ensure(
-            !(self.models.is_empty() && self.hosted.is_empty() && routes.is_empty()),
+            !(self.models.is_empty()
+                && self.hosted.is_empty()
+                && self.bedrock.is_empty()
+                && routes.is_empty()),
             "models",
             "at least one model, of models, hosted or the routes document, is required",
         )?;
@@ -661,6 +719,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         models.insert(alias, model);
     }
     let mut hosted = BTreeMap::new();
+    let mut bedrock = BTreeMap::new();
     for (alias, declared) in document.hosted {
         let at = format!("hosted.{alias}");
         closed_name(&at, &alias)?;
@@ -669,8 +728,13 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
             &at,
             "names an alias models already declares",
         )?;
-        let loaded = validate_hosted(&at, &alias, declared)?;
-        hosted.insert(alias, loaded);
+        if declared.kind == HostedKindDocument::Bedrock {
+            let loaded = validate_bedrock(&at, declared)?;
+            bedrock.insert(alias, loaded);
+        } else {
+            let loaded = validate_hosted(&at, &alias, declared)?;
+            hosted.insert(alias, loaded);
+        }
     }
     let ingress_auth = match document.ingress_auth {
         IngressAuthDocument::Bearer => IngressAuth::Bearer,
@@ -701,6 +765,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         providers,
         models,
         hosted,
+        bedrock,
         routes_file: document.routes,
         routes: Routes::default(),
         digest,
@@ -766,25 +831,50 @@ fn providers(
 }
 
 /// `[hosted.<alias>]`, checked (`llm-gateway.deployment.HostedDeclaration`).
+/// Refuses on an endpoint each key only a Bedrock model has.
+fn refuse_bedrock_keys(at: &str, declared: &HostedDocument) -> Result<(), Refusal> {
+    for (name, present) in [
+        ("region", declared.region.is_some()),
+        ("model_id", declared.model_id.is_some()),
+        ("credential_source", declared.credential_source.is_some()),
+        ("api", declared.api.is_some()),
+        ("endpoint", declared.endpoint.is_some()),
+    ] {
+        ensure(
+            !present,
+            &format!("{at}.{name}"),
+            "is a key of kind = \"bedrock\" only",
+        )?;
+    }
+    Ok(())
+}
+
 fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Hosted, Refusal> {
     let key = |name: &str| format!("{at}.{name}");
+    // A required key left out is outside the closed document, as serde would have said.
+    let missing = |name: &str| {
+        Refusal::new(
+            StartupRefusal::ConfigSchema,
+            format!("{at}: missing field `{name}`"),
+        )
+    };
+    refuse_bedrock_keys(at, &declared)?;
+    let wires = declared.wires.ok_or_else(|| missing("wires"))?;
+    let base_url = declared.base_url.ok_or_else(|| missing("base_url"))?;
+    let auth_kind = declared.auth_kind.ok_or_else(|| missing("auth_kind"))?;
+    ensure(!wires.is_empty(), &key("wires"), "must not be empty")?;
+    let unique: BTreeSet<Wire> = wires.iter().copied().collect();
     ensure(
-        !declared.wires.is_empty(),
-        &key("wires"),
-        "must not be empty",
-    )?;
-    let unique: BTreeSet<Wire> = declared.wires.iter().copied().collect();
-    ensure(
-        unique.len() == declared.wires.len(),
+        unique.len() == wires.len(),
         &key("wires"),
         "must not repeat a wire",
     )?;
-    let auth_kind = match declared.auth_kind {
+    let auth_kind = match auth_kind {
         AuthKindDocument::Anonymous => AuthKind::Anonymous,
         AuthKindDocument::Bearer => AuthKind::Bearer,
         AuthKindDocument::ApiKey => AuthKind::ApiKey,
     };
-    match crate::hosted::HostedEndpoint::check(&declared.base_url, auth_kind) {
+    match crate::hosted::HostedEndpoint::check(&base_url, auth_kind) {
         Ok(_) => {}
         Err(crate::hosted::BaseUrlError::Malformed) => {
             return Err(value(
@@ -843,23 +933,108 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         .map_err(|error| value(&key("headers"), &error.to_string()))?;
     Ok(Hosted {
         headers,
-        wires: declared.wires,
-        base_url: declared.base_url,
+        wires,
+        base_url,
         auth_kind,
         credential_file: declared.credential_file,
         credential_header,
-        billing_kind: match declared.billing_kind {
-            BillingKindDocument::Metered => BillingKind::Metered,
-            BillingKindDocument::Subscription => BillingKind::Subscription,
-            BillingKindDocument::SelfHosted => BillingKind::SelfHosted,
-        },
+        billing_kind: billing_kind(&declared.billing_kind),
         upstream_model,
         context_window: declared.context_window,
-        tool_calling: match declared.tool_calling {
-            ToolCallingDocument::Parsed => ToolCalling::Parsed,
-            ToolCallingDocument::Absent => ToolCalling::Absent,
-        },
+        tool_calling: tool_calling(declared.tool_calling.unwrap_or_default()),
         reasoning_effort,
+    })
+}
+
+const fn tool_calling(declared: ToolCallingDocument) -> ToolCalling {
+    match declared {
+        ToolCallingDocument::Parsed => ToolCalling::Parsed,
+        ToolCallingDocument::Absent => ToolCalling::Absent,
+    }
+}
+
+const fn billing_kind(declared: &BillingKindDocument) -> BillingKind {
+    match declared {
+        BillingKindDocument::Metered => BillingKind::Metered,
+        BillingKindDocument::Subscription => BillingKind::Subscription,
+        BillingKindDocument::SelfHosted => BillingKind::SelfHosted,
+    }
+}
+
+/// `[hosted.<alias>] kind = "bedrock"`, checked (`llm-gateway.deployment.HostedDeclaration`,
+/// story:bedrock-hosted-target). The region, the model id and the endpoint are each checked by
+/// the rule llm's Bedrock client applies, and a refusal names the key and never the value.
+fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refusal> {
+    let key = |name: &str| format!("{at}.{name}");
+    for (name, present) in [
+        ("wires", declared.wires.is_some()),
+        ("base_url", declared.base_url.is_some()),
+        ("auth_kind", declared.auth_kind.is_some()),
+        ("credential_file", declared.credential_file.is_some()),
+        ("credential_header", declared.credential_header.is_some()),
+        ("upstream_model", declared.upstream_model.is_some()),
+        ("reasoning_effort", declared.reasoning_effort.is_some()),
+        ("headers", !declared.headers.is_empty()),
+    ] {
+        ensure(
+            !present,
+            &key(name),
+            "is not a key of kind = \"bedrock\": Bedrock is reached by region and model_id and \
+             signed with the container credentials, and takes no reasoning effort",
+        )?;
+    }
+    let required = |name: &str, given: Option<String>| {
+        given.ok_or_else(|| value(&key(name), "is required for kind = \"bedrock\""))
+    };
+    let region = required("region", declared.region)?;
+    let model_id = required("model_id", declared.model_id)?;
+    let source = required("credential_source", declared.credential_source)?;
+    ensure(
+        source == "container",
+        &key("credential_source"),
+        "must be container: the credentials come from the container credentials endpoint",
+    )?;
+    let api = match declared.api.as_deref() {
+        None => crate::bedrock::default_api(&model_id),
+        Some("anthropic-invoke") => llm_bedrock::Api::AnthropicInvoke,
+        Some("converse") => llm_bedrock::Api::Converse,
+        Some(_) => return Err(value(&key("api"), "must be anthropic-invoke or converse")),
+    };
+    ensure(
+        crate::bedrock::region_admitted(&region),
+        &key("region"),
+        "must be an AWS Region name: two or more parts of a-z and 0-9 joined by -, at most 32 \
+         characters",
+    )?;
+    ensure(
+        crate::bedrock::model_id_admitted(&model_id),
+        &key("model_id"),
+        "must be 1..=2048 printable ASCII characters, not only dots",
+    )?;
+    let endpoint = declared
+        .endpoint
+        .as_deref()
+        .map(|text| {
+            crate::bedrock::endpoint_admitted(text).ok_or_else(|| {
+                value(
+                    &key("endpoint"),
+                    "must be an https origin, or an http origin on a loopback address \
+                     (127.0.0.0/8, [::1]), with no user information, path, query or fragment",
+                )
+            })
+        })
+        .transpose()?;
+    if let Some(window) = declared.context_window {
+        within(at, "context_window", &window, &(4_096..=2_000_000))?;
+    }
+    Ok(Bedrock {
+        region,
+        model_id,
+        api,
+        endpoint,
+        billing_kind: billing_kind(&declared.billing_kind),
+        context_window: declared.context_window,
+        tool_calling: tool_calling(declared.tool_calling.unwrap_or(ToolCallingDocument::Parsed)),
     })
 }
 

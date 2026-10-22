@@ -73,6 +73,17 @@ pub(crate) const METRICS_BEARER: Policy = Policy {
     ..OWNER_SECRET
 };
 
+/// The container authorization token a Bedrock model's credentials are fetched with
+/// (`AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`): a token of at most 16 KiB, llm-bedrock's bound,
+/// plus a trailing CRLF. A token the orchestrator mounts may be readable by others, so only a
+/// group- or world-writable file is refused: a writable token file lets another user choose the
+/// identity the gateway signs as.
+pub(crate) const CONTAINER_TOKEN: Policy = Policy {
+    source: Source::ContainerToken,
+    limit: 16 * 1024 + 2,
+    unsafe_mode: 0o022,
+};
+
 fn refuse(policy: &Policy, rule: FileRule, path: &Path, detail: &str) -> Refusal {
     Refusal::new(
         rule.refusal(policy.source),

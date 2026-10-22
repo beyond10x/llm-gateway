@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
+    "source_digest": "668f71b79caf8184fa3d53439c7ea534acb2352fd192c81a1cca64f780c49f67",
     "contract_digest": "slice-sha256/2:f9f2f1c98278068f86f16c729423aa8ef1c50b80fc46fb52a473c1b4f23b1b24",
     "regenerate": "ess generate"
   },
@@ -14,7 +14,7 @@
       "x-ess-name": "llm-gateway.gateway.Seal",
       "x-ess-kind": "newtype",
       "type": "string",
-      "pattern": "^llmgw-seal-1\\.",
+      "pattern": "^llmgw-seal-1\\.[\\u002D\\u002E0-9A-Z\\u005Fa-z]*$",
       "x-ess-alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_."
     }
   }

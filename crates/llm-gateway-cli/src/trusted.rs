@@ -3,7 +3,9 @@
 //! endpoint credential and the metrics bearer.
 //!
 //! The file is opened once without following a final symlink, and every check reads that handle:
-//! a path swapped between a check and the read cannot substitute another file.
+//! a path swapped between a check and the read cannot substitute another file. The one exception
+//! is the container token, which an orchestrator mounts behind symbolic links: its path is
+//! resolved first and the file it resolves to is opened and checked the same way.
 
 use crate::refusal::{FileRule, Refusal, Source};
 use rustix::{
@@ -12,7 +14,7 @@ use rustix::{
     process::geteuid,
 };
 use std::{
-    fs::File,
+    fs::{self, File},
     io::Read,
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
@@ -25,6 +27,9 @@ pub(crate) struct Policy {
     pub(crate) limit: u64,
     /// Permission bits that refuse the file when any is set.
     pub(crate) unsafe_mode: u32,
+    /// Whether the path is resolved through its symbolic links before the file it names is
+    /// opened. Every other rule holds for the resolved file.
+    pub(crate) resolve_links: bool,
 }
 
 /// The deployment document: 256 KiB, refused when group- or world-writable (as llmgw).
@@ -32,6 +37,7 @@ pub(crate) const CONFIG: Policy = Policy {
     source: Source::Config,
     limit: 256 * 1024,
     unsafe_mode: 0o022,
+    resolve_links: false,
 };
 
 /// The routes document a deployment names (story:routes-document): a `config` file in every rule
@@ -50,6 +56,7 @@ pub(crate) const OWNER_SECRET: Policy = Policy {
     source: Source::OwnerSecret,
     limit: 4 * 1024 + 2,
     unsafe_mode: 0o077,
+    resolve_links: false,
 };
 
 /// A model's vLLM key (row B9): a credential sent to the pod as a bearer, held to the owner
@@ -78,10 +85,17 @@ pub(crate) const METRICS_BEARER: Policy = Policy {
 /// plus a trailing CRLF. A token the orchestrator mounts may be readable by others, so only a
 /// group- or world-writable file is refused: a writable token file lets another user choose the
 /// identity the gateway signs as.
+///
+/// Its path is resolved through symbolic links first. A Kubernetes projected volume, as EKS Pod
+/// Identity mounts the token, presents the file as `<name> -> ..data/<name>` with `..data` a
+/// link to a timestamped directory, which the kubelet replaces on rotation (layout from the
+/// AWS and Kubernetes documentation, unverified here against a cluster). Each read resolves the
+/// links again, so a rotated token is read without a restart.
 pub(crate) const CONTAINER_TOKEN: Policy = Policy {
     source: Source::ContainerToken,
     limit: 16 * 1024 + 2,
     unsafe_mode: 0o022,
+    resolve_links: true,
 };
 
 fn refuse(policy: &Policy, rule: FileRule, path: &Path, detail: &str) -> Refusal {
@@ -91,19 +105,42 @@ fn refuse(policy: &Policy, rule: FileRule, path: &Path, detail: &str) -> Refusal
     )
 }
 
-/// Reads `path` as UTF-8 text after checking the opened handle against `policy`. The text is
-/// exactly the bytes read.
-pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
+/// Opens `target` without following a final symlink; a refusal names `path`.
+fn open_final(path: &Path, target: &Path, policy: &Policy) -> Result<File, Refusal> {
     // Non-blocking, so a FIFO cannot hold the open; it is then refused as not a regular file.
     let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
-    let descriptor = open(path, flags, Mode::empty()).map_err(|errno| {
+    let descriptor = open(target, flags, Mode::empty()).map_err(|errno| {
         if errno == Errno::LOOP {
             refuse(policy, FileRule::Symlink, path, "is a symbolic link")
         } else {
             refuse(policy, FileRule::Unreadable, path, &errno.to_string())
         }
     })?;
-    let mut file = File::from(descriptor);
+    Ok(File::from(descriptor))
+}
+
+/// Resolves `path` through every symbolic link and opens the file it names. A rotation can
+/// remove the directory a resolution named before the open reaches it, so a resolved file that
+/// has vanished is resolved once more.
+fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
+    let resolve = || {
+        fs::canonicalize(path)
+            .map_err(|error| refuse(policy, FileRule::Unreadable, path, &error.to_string()))
+    };
+    match open_final(path, &resolve()?, policy) {
+        Err(_) if fs::metadata(path).is_ok() => open_final(path, &resolve()?, policy),
+        opened => opened,
+    }
+}
+
+/// Reads `path` as UTF-8 text after checking the opened handle against `policy`. The text is
+/// exactly the bytes read.
+pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
+    let mut file = if policy.resolve_links {
+        open_resolved(path, policy)?
+    } else {
+        open_final(path, path, policy)?
+    };
     let metadata = file
         .metadata()
         .map_err(|error| refuse(policy, FileRule::Unreadable, path, &error.to_string()))?;

@@ -16,6 +16,7 @@ use serde_json::{Value, json};
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
+    os::unix::fs::PermissionsExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
     sync::{Arc, Mutex, mpsc},
@@ -982,4 +983,185 @@ fn bedrock_a_document_without_a_bedrock_entry_ignores_the_environment() {
     );
     let server = Server::start(&config, &Environment::none());
     drop(server);
+}
+
+// --- Criterion: the token as a Kubernetes projected volume mounts it ----------------------------
+
+/// `seconds` after the Unix epoch as an RFC 3339 UTC instant.
+fn rfc3339(seconds: u64) -> String {
+    let days = i64::try_from(seconds / 86_400).unwrap();
+    let rest = seconds % 86_400;
+    let shifted = days + 719_468;
+    let era = shifted.div_euclid(146_097);
+    let day_of_era = shifted.rem_euclid(146_097);
+    let year_of_era =
+        (day_of_era - day_of_era / 1460 + day_of_era / 36_524 - day_of_era / 146_096) / 365;
+    let day_of_year = day_of_era - (365 * year_of_era + year_of_era / 4 - year_of_era / 100);
+    let month_index = (5 * day_of_year + 2) / 153;
+    let day = day_of_year - (153 * month_index + 2) / 5 + 1;
+    let month = if month_index < 10 {
+        month_index + 3
+    } else {
+        month_index - 9
+    };
+    let year = year_of_era + era * 400 + i64::from(month <= 2);
+    format!(
+        "{year:04}-{month:02}-{day:02}T{:02}:{:02}:{:02}Z",
+        rest / 3600,
+        rest % 3600 / 60,
+        rest % 60
+    )
+}
+
+/// A container credentials endpoint whose keys expire two minutes from now, inside llm-bedrock's
+/// refresh window, so every request fetches them again and presents the token file's token.
+fn credentials_expiring_soon(count: usize) -> Recorder {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap()
+        .as_secs();
+    let answer = json!({
+        "AccessKeyId": ACCESS_KEY_ID,
+        "SecretAccessKey": SECRET_ACCESS_KEY,
+        "Token": SESSION_TOKEN,
+        "Expiration": rfc3339(now + 120),
+    })
+    .to_string()
+    .into_bytes();
+    Recorder::start("application/json", vec![answer; count])
+}
+
+const PROJECTED_TOKEN: &str = "eks-pod-identity-token";
+const ROTATED_TOKEN: &str = "fake-rotated-container-authorization-token-9876543210";
+
+/// A projected volume as the kubelet writes one: `<volume>/eks-pod-identity-token` links to
+/// `..data/eks-pod-identity-token`, `..data` links to a timestamped directory holding the token
+/// at mode 0644. The layout is from the AWS and Kubernetes documentation, unverified here
+/// against a cluster.
+struct ProjectedVolume {
+    dir: PathBuf,
+}
+
+impl ProjectedVolume {
+    fn new(fixture: &Fixture, token: &str) -> Self {
+        let dir = fixture.path("pod-identity");
+        std::fs::create_dir(&dir).unwrap();
+        std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let volume = Self { dir };
+        volume.generation("..2026_10_23_00_00_00.000000001", token);
+        std::os::unix::fs::symlink("..2026_10_23_00_00_00.000000001", volume.dir.join("..data"))
+            .unwrap();
+        std::os::unix::fs::symlink(
+            format!("..data/{PROJECTED_TOKEN}"),
+            volume.dir.join(PROJECTED_TOKEN),
+        )
+        .unwrap();
+        volume
+    }
+
+    fn generation(&self, name: &str, token: &str) {
+        let generation = self.dir.join(name);
+        std::fs::create_dir(&generation).unwrap();
+        std::fs::set_permissions(&generation, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let file = generation.join(PROJECTED_TOKEN);
+        std::fs::write(&file, token.as_bytes()).unwrap();
+        std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o644)).unwrap();
+    }
+
+    /// Rotates as the kubelet does: a new timestamped directory, `..data` swapped to it by a
+    /// rename, the old directory removed.
+    fn rotate(&self, token: &str) {
+        self.generation("..2026_10_23_01_00_00.000000002", token);
+        let staged = self.dir.join("..data_tmp");
+        std::os::unix::fs::symlink("..2026_10_23_01_00_00.000000002", &staged).unwrap();
+        std::fs::rename(&staged, self.dir.join("..data")).unwrap();
+        std::fs::remove_dir_all(self.dir.join("..2026_10_23_00_00_00.000000001")).unwrap();
+    }
+
+    fn token(&self) -> PathBuf {
+        self.dir.join(PROJECTED_TOKEN)
+    }
+}
+
+/// The authorization each credentials fetch presented, in order.
+fn presented(credentials: &Recorder) -> Vec<String> {
+    credentials
+        .seen()
+        .iter()
+        .map(|request| {
+            header(request, "authorization")
+                .unwrap_or_default()
+                .to_owned()
+        })
+        .collect()
+}
+
+/// A token file mounted as a Kubernetes projected volume, behind the `..data` symlinks at mode
+/// 0644, is accepted at start and presented to the credentials endpoint; once the kubelet
+/// rotates it, the next request presents the new token without a restart.
+#[test]
+fn bedrock_a_projected_token_volume_is_followed_and_its_rotated_token_is_used() {
+    let deployment = Deployment::new("bedrock-projected");
+    let volume = ProjectedVolume::new(&deployment.fixture, CONTAINER_TOKEN);
+    let credentials = credentials_expiring_soon(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text(), invoke_text()]);
+    let config = deployment.config(&bedrock_table("haiku", MODEL_ID, &bedrock, ""));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &volume.token()),
+    );
+    let request =
+        json!({"model":"haiku","messages":[{"role":"user","content":PROMPT_MARKER}]}).to_string();
+    let first = server.post("/v1/chat/completions", &request);
+    assert!(first.starts_with("HTTP/1.1 200 OK\r\n"), "{first}");
+    assert_eq!(presented(&credentials), vec![CONTAINER_TOKEN.to_owned()]);
+    volume.rotate(&format!("{ROTATED_TOKEN}\n"));
+    let second = server.post("/v1/chat/completions", &request);
+    let log = server.log();
+    assert!(second.starts_with("HTTP/1.1 200 OK\r\n"), "{second}");
+    assert_eq!(
+        presented(&credentials),
+        vec![CONTAINER_TOKEN.to_owned(), ROTATED_TOKEN.to_owned()]
+    );
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert_signed(&seen[1]);
+    assert_quiet(&log);
+    for line in &log {
+        assert!(
+            !line.contains(ROTATED_TOKEN),
+            "the token was logged: {line}"
+        );
+    }
+}
+
+/// A linked token file is held to the rules of the file the links resolve to: a link to a
+/// world-writable file is `unsafe-mode` and a link to nothing is `unreadable`. Every other
+/// trusted file still refuses a final symlink.
+#[test]
+fn bedrock_a_linked_token_is_held_to_the_rules_of_the_file_it_resolves_to() {
+    let deployment = Deployment::new("bedrock-linked-token");
+    let credentials = Recorder::credentials(0);
+    let bedrock = Recorder::start(EVENT_STREAM, Vec::new());
+    let config = deployment.config(&bedrock_table("haiku", MODEL_ID, &bedrock, ""));
+    let writable = deployment.fixture.write(
+        "writable-token",
+        format!("{CONTAINER_TOKEN}\n").as_bytes(),
+        0o666,
+    );
+    let to_writable = deployment.fixture.path("linked-writable-token");
+    std::os::unix::fs::symlink(&writable, &to_writable).unwrap();
+    assert_refused(
+        &config,
+        &Environment::container(&credentials, &to_writable),
+        "container-token:unsafe-mode",
+    );
+    let dangling = deployment.fixture.path("linked-absent-token");
+    std::os::unix::fs::symlink(deployment.fixture.path("absent"), &dangling).unwrap();
+    assert_refused(
+        &config,
+        &Environment::container(&credentials, &dangling),
+        "container-token:unreadable",
+    );
+    assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
 }

@@ -14,7 +14,8 @@ Nothing in any release is deployed or qualified against a live client.
   request to it is translated and sent with llm's `llm-bedrock` client, signed with AWS
   Signature Version 4 from the container credentials endpoint
   (`AWS_CONTAINER_CREDENTIALS_FULL_URI`, and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` read
-  through the trusted-file reader at start and on each fetch). A field Bedrock does not take
+  through the trusted-file reader at start and on each fetch, its symbolic links resolved so a
+  projected-volume token and its rotation work). A field Bedrock does not take
   (a reasoning effort; parallel tool calls on `converse`; thinking on a model that is not
   Anthropic's) is dropped and its name logged, never its value. The inventory lists the model
   as `<alias>.bedrock` with `auth_kind` `aws-sigv4`, never its region or model id. New startup

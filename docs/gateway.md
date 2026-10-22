@@ -596,8 +596,12 @@ nothing is acquired or held, and a failure is reported under the authority `bedr
 Every request is signed with AWS Signature Version 4 from llm's `ContainerCredentials`, which
 fetch from `AWS_CONTAINER_CREDENTIALS_FULL_URI` presenting the token in the file
 `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` names. The binary reads that file through the
-trusted-file reader at start (`container-token:<rule>`) and again on every fetch, so a rotated
-token is used without a restart; the credentials client gives up connecting after 5 s, reading
+trusted-file reader at start (`container-token:<rule>`) and again on every fetch. Unlike every
+other trusted file, its path is resolved through symbolic links first and the rules are checked
+on the file it resolves to: a Kubernetes projected volume, as EKS Pod Identity mounts the token,
+links `<name>` to `..data/<name>` and `..data` to a timestamped directory the kubelet swaps on
+rotation (layout from the AWS and Kubernetes documentation, unverified here against a cluster).
+Resolving on every read means a rotated token is used without a restart; the credentials client gives up connecting after 5 s, reading
 after 10 s and in all after 30 s. The variables are read only when the document has a Bedrock
 model (`container-credentials:unset`, `container-credentials:uri`).
 

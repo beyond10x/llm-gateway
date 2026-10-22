@@ -707,8 +707,10 @@ impl LlmTranslator {
     /// Prepares a request for a Bedrock model: decoded, stripped of the fields Bedrock does not
     /// take, given an output limit when it names none, its carried state bound to the target,
     /// and checked against the target's capabilities and projected (for `Converse`, by the rules
-    /// of [`converse_refusal`]) before anything is sent. A messages client's signed thinking reaches `InvokeModel` as it was sent;
-    /// a responses client's sealed reasoning is opened as for any other upstream.
+    /// of [`converse_refusal`]) before anything is sent. A messages client's signed thinking
+    /// reaches `InvokeModel` as it was sent; a responses client's sealed reasoning is opened as
+    /// for any other upstream. An `anthropic-beta` header is logged by name as dropped: llm's
+    /// Bedrock client has no place for `anthropic_beta`, and no client header is sent.
     fn prepare_bedrock(
         &self,
         request: &TranslationRequest<'_>,
@@ -718,6 +720,13 @@ impl LlmTranslator {
         let mut decoded =
             decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
         drop_for_bedrock(request.ingress, alias, route, &mut decoded.request);
+        if request.anthropic_beta {
+            tracing::info!(
+                model = alias,
+                field = "anthropic-beta",
+                "bedrock target: dropped a field it does not take"
+            );
+        }
         let target = &route.target;
         let capabilities = target.capabilities.clone();
         if decoded.request.max_output_tokens.is_none() {

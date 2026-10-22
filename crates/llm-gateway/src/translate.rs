@@ -16,13 +16,16 @@ use crate::{
 };
 
 /// One request the relay hands a translator: the wire the client spoke, the wire the model's
-/// upstream speaks (its first declared wire), the model, and the client's body exactly as read.
+/// upstream speaks (its first declared wire), the model, the client's body exactly as read, and
+/// whether the client sent an `anthropic-beta` header. No header of the client's reaches a
+/// translated upstream; the flag only lets a translator report that one was dropped.
 #[derive(Debug, Clone, Copy)]
 pub struct TranslationRequest<'a> {
     pub ingress: Wire,
     pub upstream: Wire,
     pub model: &'a RelayModel,
     pub body: &'a [u8],
+    pub anthropic_beta: bool,
 }
 
 /// Translates a request from the client's wire to the upstream's, and its answer back.

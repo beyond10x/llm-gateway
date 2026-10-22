@@ -437,7 +437,10 @@ the sources and what a live record still has to show. The cases are the `claude_
   client's request is (step 7). vLLM v0.27.1 reads neither: its messages router and serving code
   read no request header (`vllm/entrypoints/anthropic/api_router.py`,
   `vllm/entrypoints/anthropic/serving.py`). The protocol page's advice to forward them verbatim
-  is written for an Anthropic upstream. The query of `POST /v1/messages?beta=true` is discarded
+  is written for an Anthropic upstream. A Bedrock model does not receive the beta flags as the
+  Invoke body's `anthropic_beta` either: llm 0.11.0's Bedrock client has no place for them, so
+  the header's name alone is logged as dropped (`model`, `field = "anthropic-beta"`), never its
+  value. The query of `POST /v1/messages?beta=true` is discarded
   like any other (step 7 asks the target on the wire's own path).
 - **The answer.** vLLM's event stream, thinking blocks, `signature_delta` and `tool_use` blocks
   included, reaches Claude Code byte for byte (step 9). vLLM writes no `ping` event, and the

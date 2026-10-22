@@ -127,9 +127,8 @@ fn open_final(path: &Path, target: &Path, policy: &Policy) -> Result<File, Refus
 /// rotation can remove the directory a resolution named before the open reaches it, so a
 /// resolved file that has vanished is resolved once more.
 fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
-    let unreadable = |error: std::io::Error| {
-        refuse(policy, FileRule::Unreadable, path, &error.to_string())
-    };
+    let unreadable =
+        |error: std::io::Error| refuse(policy, FileRule::Unreadable, path, &error.to_string());
     let parent = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),

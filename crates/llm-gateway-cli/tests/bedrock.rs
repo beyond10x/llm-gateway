@@ -814,11 +814,51 @@ fn bedrock_a_turn_converse_cannot_carry_is_refused_before_anything_is_sent() {
             answer.starts_with("HTTP/1.1 400 "),
             "{case}: refused at preparation, not as an upstream refusal: {answer}"
         );
-        assert!(answer.contains("translation-unsupported"), "{case}: {answer}");
+        assert!(
+            answer.contains("translation-unsupported"),
+            "{case}: {answer}"
+        );
     }
     let log = server.log();
     assert!(bedrock.seen().is_empty(), "{:?}", bedrock.seen());
     assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
+    assert_quiet(&log);
+}
+
+/// Claude Code's `anthropic-beta` header has no place on Bedrock: it is not carried into the
+/// Invoke body as `anthropic_beta`, and its name alone is logged as dropped, never its value.
+#[test]
+fn bedrock_an_anthropic_beta_header_is_dropped_by_name_and_never_carried() {
+    let deployment = Deployment::new("bedrock-anthropic-beta");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&bedrock_table("haiku", MODEL_ID, &bedrock, ""));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let beta = "fixture-beta-2026-10-23";
+    let request = json!({"model":"haiku","max_tokens":64,
+        "messages":[{"role":"user","content":PROMPT_MARKER}]})
+    .to_string();
+    let answer = server.exchange(&format!(
+        "POST /v1/messages?beta=true HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nanthropic-version: 2023-06-01\r\nanthropic-beta: {beta}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{request}",
+        request.len()
+    ));
+    let log = server.log();
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert!(
+        body(&seen[0]).get("anthropic_beta").is_none(),
+        "{}",
+        seen[0]
+    );
+    assert!(!seen[0].contains(beta), "{}", seen[0]);
+    assert!(dropped(&log, "anthropic-beta"), "{log:?}");
+    for line in &log {
+        assert!(!line.contains(beta), "the beta value was logged: {line}");
+    }
     assert_quiet(&log);
 }
 
@@ -874,8 +914,7 @@ fn bedrock_a_declared_output_limit_bounds_the_default_output() {
     );
     let answer = server.post(
         "/v1/chat/completions",
-        &json!({"model":"haiku","messages":[{"role":"user","content":PROMPT_MARKER}]})
-            .to_string(),
+        &json!({"model":"haiku","messages":[{"role":"user","content":PROMPT_MARKER}]}).to_string(),
     );
     let routes = server.get("/v1/routes");
     drop(server);
@@ -1315,10 +1354,7 @@ fn bedrock_a_token_link_resolving_outside_its_directory_is_refused() {
         "container-token:symlink",
     );
     let resolved = std::fs::canonicalize(&deployment.token).unwrap();
-    assert!(
-        stderr.contains(&resolved.display().to_string()),
-        "{stderr}"
-    );
+    assert!(stderr.contains(&resolved.display().to_string()), "{stderr}");
     assert!(!stderr.contains(CONTAINER_TOKEN), "{stderr}");
     assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
 }

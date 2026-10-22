@@ -828,6 +828,8 @@ pub(crate) struct Admitted {
     /// The client asked in HTTP/1.1 or later, so its answer may be chunked. An HTTP/1.0 client
     /// is sent the answer unframed, ended by closing the connection (RFC 9112 section 6.1).
     pub(crate) chunked_answer: bool,
+    /// The client sent an `anthropic-beta` header, which no translated upstream receives.
+    pub(crate) anthropic_beta: bool,
 }
 
 /// Decides the body framing from the head (row W1).
@@ -1288,6 +1290,7 @@ fn translate(
         upstream: model.wires[0],
         model,
         body,
+        anthropic_beta: admitted.anthropic_beta,
     })?;
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;

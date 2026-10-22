@@ -126,7 +126,8 @@ entities:
   # `AWS_CONTAINER_CREDENTIALS_FULL_URI`, presenting the token in the file
   # `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` names; the binary reads that file through the
   # trusted-file reader at start (`container-token:<rule>`) and again for each credential
-  # fetch, so a rotated token is picked up. A request field Bedrock does not take is dropped
+  # fetch, resolving its symbolic links each time, so a rotated projected-volume token is
+  # picked up. A request field Bedrock does not take is dropped
   # and its name, never its value, logged: a reasoning effort on every Bedrock model, parallel
   # tool calls on `Converse`, and thinking on a model id that is not Anthropic's. Prompt and
   # answer text are never logged. A request without an output token limit is given half the

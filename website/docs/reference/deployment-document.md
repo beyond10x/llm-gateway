@@ -261,7 +261,8 @@ output tokens. The route inventory lists one route per route name: one target
 Every file goes through one trusted-file reader. It opens the file once, without following a
 symlink in its last component, and makes every check on that one open file, so a file that grows
 past its bound after the check is still refused. Each must be a regular file owned by you or root,
-and UTF-8.
+and UTF-8. The container token alone has its path resolved through symbolic links first, as a
+Kubernetes projected volume mounts it, and every rule is checked on the file it resolves to.
 
 | File | Size | Mode | Content |
 | --- | --- | --- | --- |

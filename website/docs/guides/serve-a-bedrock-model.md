@@ -67,12 +67,15 @@ Amazon EKS Pod Identity and Amazon ECS task roles set:
 | Variable | Rule |
 | --- | --- |
 | `AWS_CONTAINER_CREDENTIALS_FULL_URI` | `https`, or `http` to a loopback address or to `169.254.170.2`, `169.254.170.23` or `[fd00:ec2::23]`. |
-| `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` | A file the trusted-file reader accepts: at most 16386 bytes, owned by you or root, not group- or world-writable (readable is fine), holding one line of printable ASCII. |
+| `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` | A file the trusted-file reader accepts once its symbolic links are resolved: at most 16386 bytes, owned by you or root, not group- or world-writable (readable is fine), holding one line of printable ASCII. |
 
 Either one unset or empty refuses the start as `container-credentials:unset`, a URI outside the
 rule as `container-credentials:uri`, and a token file as `container-token:<rule>`. No message
 quotes the URI or the token. The token file is read at start and again on every credential
-fetch, so a rotated token is used without a restart. A document without a Bedrock model reads
+fetch, its links resolved each time, so a rotated token is used without a restart. This is what
+a Kubernetes projected volume needs: the token path links to `..data/<name>`, `..data` links to a
+timestamped directory, and the kubelet swaps that link when it rotates the token. That layout
+is taken from the AWS and Kubernetes documentation and is unverified here against a cluster. A document without a Bedrock model reads
 neither variable.
 
 ## What is sent and what is dropped

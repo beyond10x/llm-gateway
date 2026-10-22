@@ -106,8 +106,11 @@ pub(crate) fn models<'m>(models: impl Iterator<Item = &'m RelayModel>, translate
         if translates {
             writer.key("upstream_wires");
             writer.begin_array();
-            for wire in model.wires() {
-                writer.string(wire.label());
+            // A translated-only model's target speaks no client wire.
+            if !model.translated_only() {
+                for wire in model.wires() {
+                    writer.string(wire.label());
+                }
             }
             writer.end_array();
         }
@@ -119,9 +122,11 @@ pub(crate) fn models<'m>(models: impl Iterator<Item = &'m RelayModel>, translate
 }
 
 /// Whether a client on `wire` gets a profile for `model`: the model declares the wire and
-/// parses tool calls (`llm-gateway.clients.ClientProfile`).
+/// parses tool calls (`llm-gateway.clients.ClientProfile`). A translated-only model serves every
+/// wire through its translator, so it declares none by name.
 fn profiled(model: &RelayModel, wire: Wire) -> bool {
-    model.wires().contains(&wire) && model.tool_calling() == ToolCalling::Parsed
+    (model.translated_only() || model.wires().contains(&wire))
+        && model.tool_calling() == ToolCalling::Parsed
 }
 
 /// The gateway origin: `http://` and the request's `host` when it is a plain authority, the

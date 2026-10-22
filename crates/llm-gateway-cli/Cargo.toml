@@ -29,16 +29,17 @@ test-seam = []
 # The reasoning seal (src/seal.rs): its state and tag in unpadded base64url.
 base64 = "0.22.1"
 clap = { version = "4.5", features = ["derive"] }
-llm-blocking = { package = "b10x-llm-blocking", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
-llm-chat = { package = "b10x-llm-chat", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
-llm-core = { package = "b10x-llm-core", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
-llm-credentials = { package = "b10x-llm-credentials", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
+llm-bedrock = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
+llm-blocking = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
+llm-chat = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
+llm-core = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
+llm-credentials = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
 llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
-llm-http = { package = "b10x-llm-http", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
-llm-messages = { package = "b10x-llm-messages", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
-llm-models = { package = "b10x-llm-models", git = "https://github.com/beyond10x/llm", tag = "0.7.0", default-features = false }
-llm-providers = { package = "b10x-llm-providers", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
-llm-responses = { package = "b10x-llm-responses", git = "https://github.com/beyond10x/llm", tag = "0.7.0" }
+llm-http = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
+llm-messages = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
+llm-models = { git = "https://github.com/beyond10x/llm", tag = "0.11.0", default-features = false }
+llm-providers = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
+llm-responses = { git = "https://github.com/beyond10x/llm", tag = "0.11.0" }
 llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
 # The reasoning seal's HMAC-SHA256 key and tag (src/seal.rs), on the ring the TLS client
 # already links.
@@ -56,6 +57,7 @@ tokio = { version = "1.53", features = ["rt-multi-thread"] }
 toml = "1"
 tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", default-features = false, features = ["env-filter", "fmt", "std"] }
+url = "2.5.8"
 webpki-roots = "1.0.9"
 
 [dev-dependencies]

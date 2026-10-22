@@ -448,7 +448,7 @@ the sources and what a live record still has to show. The cases are the `claude_
 A model's declared `wires` are the wires its upstream speaks. A request on one of them takes the
 byte relay above, unchanged. A request on another wire, to a relay composed with a `Translator`
 (`Relay::with_translator`), is translated through llm's neutral turn for the model's **first**
-declared wire. The binary always composes one (`llm_gateway_cli::LlmTranslator`, over llm 0.7.0's
+declared wire. The binary always composes one (`llm_gateway_cli::LlmTranslator`, over llm 0.11.0's
 ingress decoders, protocol clients and ingress encoders); a relay without one refuses the
 request `wire-not-served`, as before. This is translation of a published subset, not a claim of
 vendor API equivalence: a field outside the subset is refused, never dropped. The specification
@@ -467,7 +467,7 @@ The port's order, all of it before any target is asked for, so a refused request
 pod:
 
 1. Steps 1-5 of the relay, `tools-not-served` included.
-2. The body is decoded with llm 0.7.0's decoder for the client's wire. A field or value outside
+2. The body is decoded with llm 0.11.0's decoder for the client's wire. A field or value outside
    the subset, or past its size bound (llm's 16 MiB request bound included), is
    `translation-unsupported`; a value breaking one of its rules (contradictory output limits, a
    tool result answering no call, a value of the wrong kind) is `translation-invalid`.
@@ -486,7 +486,7 @@ pod:
    `context_window`, else 200000. Then it is projected for the upstream wire. Either refusal is
    `translation-unsupported` or `translation-invalid` by the same rule.
 
-What each client wire's decoder accepts, from llm 0.7.0. Every field a decoder reads has one rule
+What each client wire's decoder accepts, from llm 0.11.0. Every field a decoder reads has one rule
 (llm's `docs/design.md` "Client request fields"): **carried** to every upstream wire that has the
 concept, **translated** under another name, **advisory** (a hint a wire without the concept
 omits), or **refused** by name. Every key a decoder does not name is refused by its path, at
@@ -581,6 +581,35 @@ the messages effort mapping of step 6 nor the output clamp's count of step 7 app
 The exchange is bounded by llm's transport: 10 s to connect, 120 s for the answer's head and
 between two reads, and 3600 s in all. These are timeouts, not size bounds, so they are not in
 [Bounds](#bounds); `crates/llm-gateway-cli/src/translate.rs` holds them.
+
+### A Bedrock upstream
+
+A `[hosted.<alias>] kind = "bedrock"` model is not a target the source hands out. The binary
+serves it as a model whose upstream wire is `messages` and which is translated only, so a request
+on every wire, the messages wire included, takes the translated path; a relay without a
+translator refuses it `wire-not-served`. The turn goes to llm 0.11.0's `llm-bedrock` client
+(`BedrockClient`) for the model's `region` and `model_id`: `InvokeModelWithResponseStream` with
+an Anthropic Messages body for `api = "anthropic-invoke"`, `ConverseStream` for `converse`, at
+`https://bedrock-runtime.<region>.amazonaws.com` or the declared `endpoint`. No pod is woken,
+nothing is acquired or held, and a failure is reported under the authority `bedrock`.
+
+Every request is signed with AWS Signature Version 4 from llm's `ContainerCredentials`, which
+fetch from `AWS_CONTAINER_CREDENTIALS_FULL_URI` presenting the token in the file
+`AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` names. The binary reads that file through the
+trusted-file reader at start (`container-token:<rule>`) and again on every fetch, so a rotated
+token is used without a restart; the credentials client gives up connecting after 5 s, reading
+after 10 s and in all after 30 s. The variables are read only when the document has a Bedrock
+model (`container-credentials:unset`, `container-credentials:uri`).
+
+Preparation differs from an endpoint's in three ways. A field Bedrock does not take is dropped,
+not refused, and its name alone is logged at `info` (`model`, `field`; never a value, a prompt or
+an answer): a reasoning effort on every Bedrock model, parallel tool calls on `converse`, and
+thinking on a model id that is not Anthropic's. A request without an output limit is sent
+`min(16384, w / 2)` of its window `w` (200000 by default). And reasoning state a client sends
+back on the messages wire to an `anthropic-invoke` model is passed as that model's own; any other
+carried state is bound or refused as for an endpoint. The answer is written as on any translated
+route; a messages client of an `anthropic-invoke` model also receives its thinking blocks, which
+it sends back on the next turn.
 
 ### The answer
 
@@ -983,7 +1012,7 @@ in `tests/wire_relay.rs` measures the header, and
 
 ## Bounds of the translated path
 
-The bounds llm 0.7.0 holds a translated answer to, per upstream stream (`llm_http::sse`, and
+The bounds llm 0.11.0 holds a translated answer to, per upstream stream (`llm_http::sse`, and
 llm-core's `MAX_TOOL_ARGUMENT_BYTES`, read by the binary's translator); the gateway crate holds none of them, so they
 are not in [Bounds](#bounds). An answer at a bound is written whole; one past it ends with the
 wire's terminal error carrying `translation-too-large`'s message, or, before any output, is the

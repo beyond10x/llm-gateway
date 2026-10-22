@@ -69,6 +69,7 @@ const GATEWAY: Option<&str> = Some("/docs/concepts/single-owner-gateway");
 const RELAY: Option<&str> = Some("/docs/concepts/relay");
 const HOSTING: Option<&str> = Some("/docs/concepts/hosting");
 const DOCUMENT: Option<&str> = Some("/docs/reference/deployment-document");
+const BEDROCK: Option<&str> = Some("/docs/guides/serve-a-bedrock-model");
 
 /// Every capability the site claims, in the order the status table lists them.
 pub const CAPABILITIES: &[Capability] = &[
@@ -235,8 +236,22 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "Amazon Bedrock models",
+        "A [hosted.<alias>] model of kind = \"bedrock\" is served by llm's Bedrock client: region, model or inference-profile id, InvokeModel for an Anthropic id and Converse otherwise, every request signed with SigV4 from the container credentials endpoint (Amazon EKS Pod Identity). Chat tool turns stream their tool-call deltas or answer whole. A field Bedrock does not take is dropped and its name logged. Tested against a fixture Bedrock Runtime and credentials endpoint, not against AWS.",
+        "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_a_streamed_chat_tool_turn_reaches_invoke_signed_and_answers_tool_call_deltas",
+        BEDROCK,
+    ),
+    shipped(
+        "Clients",
+        "Claude Code on a Bedrock model",
+        "Claude Code's claude -p turn on the Messages wire reaches a Bedrock model through InvokeModel and is answered on the Messages wire, its signed thinking carried back on the tool-result turn. Tested against a fixture Bedrock Runtime with a captured request shape, not a live session.",
+        "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_claude_codes_first_turn_reaches_invoke_and_is_answered_on_messages",
+        BEDROCK,
+    ),
+    shipped(
+        "Relay",
         "Translation between wires within llm's subset",
-        "A request on a wire the model's upstream does not speak is decoded with llm 0.7.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Tested against loopback fixture upstreams, not a vendor API.",
+        "A request on a wire the model's upstream does not speak is decoded with llm 0.11.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Tested against loopback fixture upstreams, not a vendor API.",
         "crates/llm-gateway-cli/tests/translation.rs::translation_the_binary_reaches_an_api_key_endpoint_on_its_base_path_with_its_key_only",
         Some("/docs/guides/translate-between-wires"),
     ),

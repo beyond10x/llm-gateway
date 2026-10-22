@@ -97,6 +97,16 @@ Before it serves, the binary refuses a start with one line on standard error, `b
 | `metrics-bearer:too-large` |
 | `metrics-bearer:not-utf8` |
 | `metrics-bearer:not-a-token` |
+| `container-credentials:unset` |
+| `container-credentials:uri` |
+| `container-token:unreadable` |
+| `container-token:symlink` |
+| `container-token:not-regular` |
+| `container-token:untrusted-owner` |
+| `container-token:unsafe-mode` |
+| `container-token:too-large` |
+| `container-token:not-utf8` |
+| `container-token:not-a-token` |
 | `listen:bind` |
 | `signal:install` |
 

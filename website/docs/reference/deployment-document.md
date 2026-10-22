@@ -194,12 +194,32 @@ credential_header = "x-api-key"
 upstream_model = "vendor-large-2"
 ```
 
+### `kind = "bedrock"` {#bedrock-models}
+
+`kind` is `endpoint` by default. A table with `kind = "bedrock"` declares a model Amazon Bedrock
+serves instead: it takes `region`, `model_id` and `credential_source = "container"`, and
+optionally `api`, `endpoint`, `billing_kind`, `context_window` and `tool_calling` (default
+`parsed`). Every request to it is translated and signed with the container credentials named by
+`AWS_CONTAINER_CREDENTIALS_FULL_URI` and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`. An
+endpoint's keys are refused on it, and its keys on an endpoint, each as `config:value` naming the
+key. [Serve a Bedrock model](../guides/serve-a-bedrock-model.md) has every rule.
+
+```toml
+[hosted.haiku]
+kind = "bedrock"
+region = "eu-central-1"
+model_id = "eu.anthropic.claude-haiku-5-5"
+credential_source = "container"
+```
+
+The model id above is an example and is unverified.
+
 ## `routes` {#routes}
 
 `routes = "<path>"` names a routes document in llm's `llm.routes/1` format: endpoints, each with
 a `base_url`, a `protocol` and an `auth`, and routes, each a name for `<endpoint>/<model-id>`,
 optionally with its `capabilities`. The binary reads it once at start and parses it with llm
-0.7.0's own parser, which reads no secret and no other file. Each route is then served as a model
+0.11.0's own parser, which reads no secret and no other file. Each route is then served as a model
 under its route name, from a hosted endpoint built from its endpoint: on the endpoint's wire
 alone, relayed byte for byte, and translated from the other two
 ([translate between wires](../guides/translate-between-wires.md#serve-the-models-of-a-routes-document)).
@@ -252,9 +272,10 @@ and UTF-8.
 | `credential_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | a route endpoint's `file:` secret | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | `metrics_bearer_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
+| `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` (a Bedrock model only) | at most 16386 bytes | not group- or world-writable | one line of printable ASCII, at most 16384 bytes after one line end |
 
 A broken rule is refused as `<source>:<rule>`, the source being `config`, `owner-secret`,
-`vllm-api-key`, `endpoint-credential` or `metrics-bearer` (a routes document is a `config` file, a route's key file an `endpoint-credential` one):
+`vllm-api-key`, `endpoint-credential`, `metrics-bearer` or `container-token` (a routes document is a `config` file, a route's key file an `endpoint-credential` one):
 
 ```text
 b10x-llm-gateway: refused owner-secret:unsafe-mode: owner-secret: has mode 644; none of 077 may be set

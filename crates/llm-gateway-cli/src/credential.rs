@@ -161,6 +161,15 @@ pub fn target(
                     headers: hosted.headers.clone(),
                 });
             }
+            if deployment.bedrock.contains_key(name) {
+                return Err(CredentialFailure::new(
+                    CredentialRefusal::NotHosted,
+                    format!(
+                        "hosted.{name} is a Bedrock model: it is signed with container \
+                         credentials, not a stored key"
+                    ),
+                ));
+            }
             if deployment.models.contains_key(name) {
                 return Err(CredentialFailure::new(
                     CredentialRefusal::NotHosted,

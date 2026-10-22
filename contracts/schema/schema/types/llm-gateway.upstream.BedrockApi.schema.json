@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.upstream.BedrockApi",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "668f71b79caf8184fa3d53439c7ea534acb2352fd192c81a1cca64f780c49f67",
+    "contract_digest": "slice-sha256/2:5ac5ecb4a0aa933d18f8343a53cd5856963934967036d7488ba1609ccf0e1df9",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.upstream.BedrockApi": {
+      "title": "BedrockApi",
+      "x-ess-name": "llm-gateway.upstream.BedrockApi",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "AnthropicInvoke",
+        "Converse"
+      ]
+    }
+  }
+}

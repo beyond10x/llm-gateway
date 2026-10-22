@@ -14,6 +14,9 @@ pub enum Source {
     EndpointCredential,
     /// The file `metrics_bearer_file` names.
     MetricsBearer,
+    /// The container authorization token file `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` names,
+    /// for a Bedrock model.
+    ContainerToken,
 }
 
 macro_rules! refusals {
@@ -90,6 +93,16 @@ refusals! {
     MetricsBearerTooLarge => "metrics-bearer:too-large",
     MetricsBearerNotUtf8 => "metrics-bearer:not-utf8",
     MetricsBearerNotAToken => "metrics-bearer:not-a-token",
+    ContainerCredentialsUnset => "container-credentials:unset",
+    ContainerCredentialsUri => "container-credentials:uri",
+    ContainerTokenUnreadable => "container-token:unreadable",
+    ContainerTokenSymlink => "container-token:symlink",
+    ContainerTokenNotRegular => "container-token:not-regular",
+    ContainerTokenUntrustedOwner => "container-token:untrusted-owner",
+    ContainerTokenUnsafeMode => "container-token:unsafe-mode",
+    ContainerTokenTooLarge => "container-token:too-large",
+    ContainerTokenNotUtf8 => "container-token:not-utf8",
+    ContainerTokenNotAToken => "container-token:not-a-token",
     ListenBind => "listen:bind",
     SignalInstall => "signal:install",
     }
@@ -185,6 +198,15 @@ impl FileRule {
             (Source::MetricsBearer, Self::UnsafeMode) => StartupRefusal::MetricsBearerUnsafeMode,
             (Source::MetricsBearer, Self::TooLarge) => StartupRefusal::MetricsBearerTooLarge,
             (Source::MetricsBearer, Self::NotUtf8) => StartupRefusal::MetricsBearerNotUtf8,
+            (Source::ContainerToken, Self::Unreadable) => StartupRefusal::ContainerTokenUnreadable,
+            (Source::ContainerToken, Self::Symlink) => StartupRefusal::ContainerTokenSymlink,
+            (Source::ContainerToken, Self::NotRegular) => StartupRefusal::ContainerTokenNotRegular,
+            (Source::ContainerToken, Self::UntrustedOwner) => {
+                StartupRefusal::ContainerTokenUntrustedOwner
+            }
+            (Source::ContainerToken, Self::UnsafeMode) => StartupRefusal::ContainerTokenUnsafeMode,
+            (Source::ContainerToken, Self::TooLarge) => StartupRefusal::ContainerTokenTooLarge,
+            (Source::ContainerToken, Self::NotUtf8) => StartupRefusal::ContainerTokenNotUtf8,
         }
     }
 }
@@ -278,6 +300,8 @@ mod tests {
                     "vllm-api-key",
                     "endpoint-credential",
                     "metrics-bearer",
+                    "container-credentials",
+                    "container-token",
                     "listen",
                     "signal"
                 ]
@@ -305,6 +329,7 @@ mod tests {
             (Source::VllmApiKey, "vllm-api-key:"),
             (Source::EndpointCredential, "endpoint-credential:"),
             (Source::MetricsBearer, "metrics-bearer:"),
+            (Source::ContainerToken, "container-token:"),
         ] {
             let codes: BTreeSet<&str> = rules.iter().map(|r| r.refusal(source).code()).collect();
             assert_eq!(codes.len(), rules.len());

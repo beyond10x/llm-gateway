@@ -61,6 +61,9 @@ pub enum AuthKind {
     Anonymous,
     Bearer,
     ApiKey,
+    /// Each request signed with AWS Signature Version 4 under credentials the gateway fetches
+    /// (an Amazon Bedrock target).
+    AwsSigv4,
 }
 
 impl AuthKind {
@@ -69,6 +72,7 @@ impl AuthKind {
             Self::Anonymous => "anonymous",
             Self::Bearer => "bearer",
             Self::ApiKey => "api-key",
+            Self::AwsSigv4 => "aws-sigv4",
         }
     }
 }

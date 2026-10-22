@@ -568,6 +568,7 @@ pub struct RelayModel {
     max_model_len: Option<u64>,
     context_window: Option<u64>,
     reasoning_effort: Option<ReasoningEffort>,
+    translated_only: bool,
 }
 
 impl RelayModel {
@@ -593,7 +594,22 @@ impl RelayModel {
             max_model_len: None,
             context_window: None,
             reasoning_effort: None,
+            translated_only: false,
         })
+    }
+
+    /// Declares that the model's target takes no client wire verbatim: every request is decoded
+    /// and re-encoded by the translator, on every wire, its declared wires included. A model
+    /// served by a hosted Bedrock target is such a model; without a translator it is refused
+    /// `wire-not-served` on every wire.
+    #[must_use]
+    pub fn with_translated_only(mut self) -> Self {
+        self.translated_only = true;
+        self
+    }
+
+    pub fn translated_only(&self) -> bool {
+        self.translated_only
     }
 
     /// Declares the effort a messages-wire request that names none reaches the target with,
@@ -1214,7 +1230,7 @@ fn served_model<'r>(
         .get(&analysis.model)
         .ok_or(RefusalCode::ModelUnknown)?;
     call.model = Some(model.alias.as_str().to_string());
-    let translator = if model.wires.contains(&wire) {
+    let translator = if model.wires.contains(&wire) && !model.translated_only {
         None
     } else {
         Some(

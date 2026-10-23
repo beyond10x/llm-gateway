@@ -1,6 +1,6 @@
 //! The binary's translator (story:gateway-translation): `llm_gateway`'s [`Translator`] port over
-//! llm 0.7.0's ingress decoders, protocol clients and ingress encoders, and a tokio runtime the
-//! binary owns.
+//! llm 0.11.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
+//! and a tokio runtime the binary owns.
 //!
 //! [`Translator::prepare`] runs on the gateway's worker thread before any target is asked for:
 //! it decodes the client's body onto llm's neutral turn, binds carried reasoning state only when
@@ -14,7 +14,11 @@
 //! `Relay` command of `spec/domains/gateway.yaml`, and `docs/gateway.md` "Translation" is the
 //! published contract.
 
-use crate::seal::{Scope, Sealer};
+use crate::{
+    bedrock::BedrockRoute,
+    seal::{Scope, Sealer},
+};
+use llm_bedrock::{Api, BedrockClient};
 use llm_blocking::{BlockingModel, BlockingSink};
 use llm_core::{
     AuthKind, BillingKind, BoxFuture, Cancel, Capabilities, Dispatch, Error, ErrorCode, Id, Item,
@@ -55,7 +59,7 @@ pub const DEFAULT_CONTEXT_WINDOW: u64 = 200_000;
 /// The most output a request to a messages upstream that names no limit is given; it is given
 /// half the window it is translated under when that is less.
 pub const MESSAGES_DEFAULT_OUTPUT_TOKENS: u64 = 16_384;
-/// The reasoning efforts a model is translated under: llm's vocabulary below `max`. llm 0.7.0
+/// The reasoning efforts a model is translated under: llm's vocabulary below `max`. llm
 /// checks the effort the upstream wire receives, so `max` reaches a chat or responses upstream as
 /// `xhigh`, and a messages upstream as `max`, which this list refuses.
 pub const REASONING_EFFORTS: [&str; 5] = ["minimal", "low", "medium", "high", "xhigh"];
@@ -76,6 +80,9 @@ pub struct LlmTranslator {
     engine: Arc<Engine>,
     /// Per-alias capability overrides (the routes document's declared capabilities).
     capabilities: BTreeMap<String, Capabilities>,
+    /// The models Amazon Bedrock serves, by alias (story:bedrock-hosted-target): each is sent with
+    /// llm's Bedrock client instead of a binding to its relay target.
+    bedrock: BTreeMap<String, Arc<BedrockRoute>>,
 }
 
 /// What every translation shares: the runtime and HTTP client, the answer identities and the
@@ -193,6 +200,7 @@ impl LlmTranslator {
         Self {
             engine: Arc::new(engine),
             capabilities: BTreeMap::new(),
+            bedrock: BTreeMap::new(),
         }
     }
 
@@ -200,6 +208,13 @@ impl LlmTranslator {
     #[must_use]
     pub fn with_capabilities(mut self, alias: &str, capabilities: Capabilities) -> Self {
         self.capabilities.insert(alias.to_owned(), capabilities);
+        self
+    }
+
+    /// Sends `alias` to Amazon Bedrock over `route` instead of a binding to its relay target.
+    #[must_use]
+    pub(crate) fn with_bedrock(mut self, alias: String, route: Arc<BedrockRoute>) -> Self {
+        self.bedrock.insert(alias, route);
         self
     }
 
@@ -216,6 +231,7 @@ impl LlmTranslator {
         Self {
             engine: Arc::new(engine),
             capabilities: self.capabilities,
+            bedrock: self.bedrock,
         }
     }
 
@@ -242,6 +258,8 @@ impl LlmTranslator {
                 .collect(),
             context_window: window,
             max_output_tokens: window,
+            output_streaming: true,
+            input_during_output: false,
         }
     }
 }
@@ -490,6 +508,9 @@ impl Translator for LlmTranslator {
         request: &TranslationRequest<'_>,
     ) -> Result<Box<dyn Translation>, RefusalCode> {
         let alias = request.model.alias().as_str();
+        if let Some(route) = self.bedrock.get(alias) {
+            return self.prepare_bedrock(request, alias, route);
+        }
         let upstream_model = request.model.upstream_model().as_str();
         let mut decoded =
             decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
@@ -541,6 +562,240 @@ impl Translator for LlmTranslator {
             upstream_model: upstream_model.to_owned(),
             capabilities,
             decoded,
+            bedrock: None,
+        }))
+    }
+}
+
+/// The name a client wrote `field` under on `ingress`, for the log line that says it was
+/// dropped.
+const fn field_name(ingress: Wire, field: Dropped) -> &'static str {
+    match (field, ingress) {
+        (Dropped::Effort, Wire::Chat) => "reasoning_effort",
+        (Dropped::Effort, Wire::Responses) => "reasoning.effort",
+        (Dropped::Effort, Wire::Messages) => "output_config.effort",
+        (Dropped::ParallelToolCalls, Wire::Messages) => "tool_choice.disable_parallel_tool_use",
+        (Dropped::ParallelToolCalls, _) => "parallel_tool_calls",
+        (Dropped::Thinking, Wire::Messages) => "thinking",
+        (Dropped::Thinking, _) => "reasoning",
+    }
+}
+
+/// A field a Bedrock target does not take.
+#[derive(Clone, Copy)]
+enum Dropped {
+    /// Bedrock has no effort control on either operation.
+    Effort,
+    /// Converse has no parallel tool call control.
+    ParallelToolCalls,
+    /// Converse carries thinking only to an Anthropic model.
+    Thinking,
+}
+
+/// Removes from `request` each field `route` does not take, logging its name, the alias and
+/// nothing else: no value, no prompt and no answer text.
+fn drop_for_bedrock(ingress: Wire, alias: &str, route: &BedrockRoute, request: &mut TurnRequest) {
+    let mut dropped = Vec::new();
+    if request.sampling.reasoning_effort.take().is_some() {
+        dropped.push(Dropped::Effort);
+    }
+    if route.api() == Api::Converse {
+        if request.controls.parallel_tool_calls.take().is_some() {
+            dropped.push(Dropped::ParallelToolCalls);
+        }
+        if !route.anthropic() && request.controls.thinking.take().is_some() {
+            dropped.push(Dropped::Thinking);
+        }
+    }
+    for field in dropped {
+        tracing::info!(
+            model = alias,
+            field = field_name(ingress, field),
+            "bedrock target: dropped a field it does not take"
+        );
+    }
+}
+
+/// The longest tool name and tool use id Converse takes; both are `[A-Za-z0-9_-]`.
+const CONVERSE_MAX_WIRE_NAME_BYTES: usize = 64;
+
+/// Whether `name` is a tool name or tool use id Converse takes: 1 to 64 of `[A-Za-z0-9_-]`.
+fn converse_wire_name(name: &str) -> bool {
+    !name.is_empty()
+        && name.len() <= CONVERSE_MAX_WIRE_NAME_BYTES
+        && name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+}
+
+/// Whether `payload` is a reasoning block in one of the two shapes Converse carries back:
+/// `{"reasoningContent": {"reasoningText": {"text", "signature"?}}}` or
+/// `{"reasoningContent": {"redactedContent": "<string>"}}`.
+fn converse_reasoning_block(payload: &Value) -> bool {
+    let Some(content) = payload
+        .as_object()
+        .filter(|fields| fields.len() == 1)
+        .and_then(|fields| fields.get("reasoningContent"))
+        .and_then(Value::as_object)
+        .filter(|fields| fields.len() == 1)
+    else {
+        return false;
+    };
+    if let Some(reasoning) = content.get("reasoningText") {
+        return reasoning.as_object().is_some_and(|reasoning| {
+            reasoning.get("text").is_some_and(Value::is_string)
+                && reasoning.get("signature").is_none_or(Value::is_string)
+                && reasoning
+                    .keys()
+                    .all(|key| key == "text" || key == "signature")
+        });
+    }
+    content.get("redactedContent").is_some_and(Value::is_string)
+}
+
+/// Refuses, before anything is sent, a turn llm's Converse encoder would refuse once the target
+/// is reached; llm 0.11.0 has no public check for it, so the rules are copied here.
+// Mirrors llm-bedrock 0.11.0 `converse::encode_body` and the item and tool checks it calls.
+fn converse_refusal(request: &TurnRequest) -> Result<(), Error> {
+    let from_caller = |item: &Item| matches!(item, Item::UserText { .. } | Item::ToolResult { .. });
+    if request.items.first().is_none_or(|item| !from_caller(item)) {
+        return Err(Error::unsupported(
+            "Bedrock Converse requires an initial user message",
+        ));
+    }
+    if request.tools.is_empty()
+        && request
+            .items
+            .iter()
+            .any(|item| matches!(item, Item::ToolCall(_) | Item::ToolResult { .. }))
+    {
+        return Err(Error::unsupported(
+            "Bedrock Converse carries tool calls in a conversation only beside published tools",
+        ));
+    }
+    for item in &request.items {
+        let carried = match item {
+            Item::ToolCall(call) => {
+                converse_wire_name(call.call_id.as_str())
+                    && converse_wire_name(call.name.as_str())
+                    && call.arguments.is_object()
+            }
+            Item::ToolResult { call_id, .. } => converse_wire_name(call_id.as_str()),
+            Item::Opaque { payload, .. } => converse_reasoning_block(payload),
+            Item::UnattributedOpaque { .. } => false,
+            Item::UserText { .. } | Item::AssistantText { .. } => true,
+        };
+        if !carried {
+            return Err(Error::unsupported(
+                "Bedrock Converse cannot carry an item of this conversation",
+            ));
+        }
+    }
+    if request
+        .tools
+        .iter()
+        .any(|tool| !converse_wire_name(tool.name.as_str()) || !tool.input_schema.is_object())
+    {
+        return Err(Error::unsupported(
+            "Bedrock Converse cannot carry a published tool's name or schema",
+        ));
+    }
+    Ok(())
+}
+
+impl LlmTranslator {
+    /// Prepares a request for a Bedrock model: decoded, stripped of the fields Bedrock does not
+    /// take, given an output limit when it names none, its carried state bound to the target,
+    /// and checked against the target's capabilities and projected (for `Converse`, by the rules
+    /// of [`converse_refusal`]) before anything is sent. A messages client's signed thinking
+    /// reaches `InvokeModel` as it was sent; a responses client's sealed reasoning is opened as
+    /// for any other upstream. An `anthropic-beta` header is logged by name as dropped: llm's
+    /// Bedrock client has no place for `anthropic_beta`, and no client header is sent.
+    fn prepare_bedrock(
+        &self,
+        request: &TranslationRequest<'_>,
+        alias: &str,
+        route: &Arc<BedrockRoute>,
+    ) -> Result<Box<dyn Translation>, RefusalCode> {
+        let mut decoded =
+            decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
+        drop_for_bedrock(request.ingress, alias, route, &mut decoded.request);
+        if request.anthropic_beta {
+            tracing::info!(
+                model = alias,
+                field = "anthropic-beta",
+                "bedrock target: dropped a field it does not take"
+            );
+        }
+        let target = &route.target;
+        let capabilities = target.capabilities.clone();
+        if decoded.request.max_output_tokens.is_none() {
+            decoded.request.max_output_tokens = Some(
+                (capabilities.context_window / 2)
+                    .clamp(1, MESSAGES_DEFAULT_OUTPUT_TOKENS)
+                    .min(capabilities.max_output_tokens),
+            );
+        }
+        let invoke = route.api() == Api::AnthropicInvoke;
+        if request.ingress == Wire::Messages && invoke {
+            // The client's own thinking blocks, signed by an Anthropic model, go back to one.
+            let refused = RefusalCode::TranslationOpaqueState;
+            for item in &mut decoded.request.items {
+                match item {
+                    Item::UnattributedOpaque {
+                        protocol: Protocol::Messages,
+                        payload,
+                    } => {
+                        *item = Item::Opaque {
+                            provenance: target.provenance.clone(),
+                            payload: std::mem::take(payload),
+                        };
+                    }
+                    Item::Opaque { .. } | Item::UnattributedOpaque { .. } => return Err(refused),
+                    _ => {}
+                }
+            }
+        } else {
+            let scope = Scope {
+                alias,
+                upstream_model: alias,
+                ingress: request.ingress,
+                upstream: Wire::Messages,
+            };
+            bind_sealed(
+                &self.engine.sealer,
+                scope,
+                &mut decoded.request,
+                &target.provenance,
+            )?;
+        }
+        alias.clone_into(&mut decoded.request.model);
+        decoded
+            .request
+            .validate_for(&target.provenance, &capabilities)
+            .and_then(|()| {
+                if invoke {
+                    llm_messages::encode_body(
+                        &decoded.request,
+                        &target.provenance,
+                        &capabilities,
+                        &target.model_id,
+                    )
+                    .map(drop)
+                } else {
+                    converse_refusal(&decoded.request)
+                }
+            })
+            .map_err(|error| refusal(&error))?;
+        Ok(Box::new(Prepared {
+            engine: Arc::clone(&self.engine),
+            ingress: request.ingress,
+            upstream: Wire::Messages,
+            alias: alias.to_owned(),
+            upstream_model: alias.to_owned(),
+            capabilities,
+            decoded,
+            bedrock: Some(Arc::clone(route)),
         }))
     }
 }
@@ -554,6 +809,21 @@ struct Prepared {
     upstream_model: String,
     capabilities: Capabilities,
     decoded: Decoded,
+    /// The Bedrock model the turn is sent to with llm's Bedrock client; `None` for a binding to
+    /// the acquired target.
+    bedrock: Option<Arc<BedrockRoute>>,
+}
+
+impl Prepared {
+    /// Whether the client is a messages client of an `InvokeModel` target, which takes the
+    /// target's signed thinking as it was made.
+    fn keeps_thinking(&self) -> bool {
+        self.ingress == Wire::Messages
+            && self
+                .bedrock
+                .as_ref()
+                .is_some_and(|route| route.api() == Api::AnthropicInvoke)
+    }
 }
 
 /// Hands llm's client the target's credential, and nothing else. Its copy is overwritten when
@@ -630,26 +900,46 @@ impl Translation for Prepared {
         let handle = transport
             .handle()
             .ok_or(TranslationFailure::Refused(RefusalCode::UpstreamFailed))?;
-        let binding = binding(
-            self.upstream,
-            &self.alias,
-            &self.upstream_model,
-            self.capabilities.clone(),
-            &Self::reach(target),
-        )
-        .map_err(refused)?;
-        // The bound reasoning blocks belong to the binding the turn is sent over.
-        rebind(&mut self.decoded.request, binding.provenance());
-        let secret = target
-            .bearer()
-            .map_or_else(Vec::new, |bearer| bearer.expose().to_vec());
-        let resolver: Arc<dyn SecretResolver> = Arc::new(TargetSecret(secret));
-        let model =
-            client(self.upstream, binding, transport.http.clone(), resolver).map_err(refused)?;
+        let model: Arc<dyn Model> = if let Some(route) = &self.bedrock {
+            // A Bedrock model is reached by its own client and signed with its own credentials:
+            // the relay target names nothing it is sent to.
+            Arc::new(
+                BedrockClient::new(
+                    route.target.clone(),
+                    transport.http.clone(),
+                    Arc::clone(&route.credentials),
+                )
+                .and_then(|client| client.with_turn_limit(TRANSLATION_TURN_TIMEOUT))
+                .map_err(refused)?,
+            )
+        } else {
+            let binding = binding(
+                self.upstream,
+                &self.alias,
+                &self.upstream_model,
+                self.capabilities.clone(),
+                &Self::reach(target),
+            )
+            .map_err(refused)?;
+            // The bound reasoning blocks belong to the binding the turn is sent over.
+            rebind(&mut self.decoded.request, binding.provenance());
+            let secret = target
+                .bearer()
+                .map_or_else(Vec::new, |bearer| bearer.expose().to_vec());
+            let resolver: Arc<dyn SecretResolver> = Arc::new(TargetSecret(secret));
+            client(self.upstream, binding, transport.http.clone(), resolver).map_err(refused)?
+        };
         let blocking = BlockingModel::on_runtime(model, handle).map_err(refused)?;
         let (id, created) = self.engine.identity(self.ingress);
-        let encoder = Encoder::new(self.ingress, &id, created, self.decoded.include_usage)
-            .map_err(refused)?;
+        let keeps_thinking = self.keeps_thinking();
+        let encoder = Encoder::new(
+            self.ingress,
+            &id,
+            created,
+            self.decoded.include_usage,
+            keeps_thinking,
+        )
+        .map_err(refused)?;
         let cancel = Cancel::new();
         // Only a responses client is handed sealed state (the decision on sealed reasoning
         // state in spec/domains/gateway.yaml).
@@ -694,6 +984,9 @@ enum Encoder {
     Messages {
         stream: llm_messages::IngressStream,
         id: String,
+        /// A messages client of a Bedrock `InvokeModel` target is handed the signed thinking
+        /// the target made, streamed and in the outcome.
+        relays_thinking: bool,
     },
 }
 
@@ -718,7 +1011,23 @@ fn data(out: &mut Vec<u8>, payload: &Value) {
 }
 
 impl Encoder {
-    fn new(ingress: Wire, id: &str, created: u64, include_usage: bool) -> Result<Self, Error> {
+    const fn relays_thinking(&self) -> bool {
+        matches!(
+            self,
+            Self::Messages {
+                relays_thinking: true,
+                ..
+            }
+        )
+    }
+
+    fn new(
+        ingress: Wire,
+        id: &str,
+        created: u64,
+        include_usage: bool,
+        relays_thinking: bool,
+    ) -> Result<Self, Error> {
         Ok(match ingress {
             Wire::Chat => Self::Chat {
                 stream: llm_chat::IngressStream::new(id, created),
@@ -730,11 +1039,16 @@ impl Encoder {
                 stream: llm_responses::IngressStream::new(id, created),
                 reasoning: None,
             },
-            // A translated messages answer never comes from a messages upstream, so no
-            // reasoning it relays could be signed.
+            // Only a Bedrock InvokeModel target answers a messages client with thinking it
+            // signed; every other translated answer's reasoning could not be signed.
             Wire::Messages => Self::Messages {
-                stream: llm_messages::IngressStream::new(id, None)?.without_reasoning_relay(),
+                stream: if relays_thinking {
+                    llm_messages::IngressStream::new(id, None)?
+                } else {
+                    llm_messages::IngressStream::new(id, None)?.without_reasoning_relay()
+                },
                 id: id.to_owned(),
+                relays_thinking,
             },
         })
     }
@@ -998,6 +1312,7 @@ impl ClientSink<'_> {
                 // of another protocol's.
                 match self.sealed(&outcome) {
                     Some(sealed) => outcome = sealed,
+                    None if self.encoder.relays_thinking() => {}
                     None => outcome
                         .items
                         .retain(|item| !matches!(item, Item::Opaque { .. })),

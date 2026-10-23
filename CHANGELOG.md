@@ -5,6 +5,33 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## 0.13.0 (2026-10-23)
+
+- Amazon Bedrock models: a `[hosted.<alias>]` table with `kind = "bedrock"` declares `region`,
+  `model_id` (a model id, inference-profile id or ARN) and `credential_source = "container"`,
+  and optionally `api` (`anthropic-invoke`, the default for an Anthropic id, or `converse`),
+  `endpoint`, `billing_kind`, `context_window` and `tool_calling` (default `parsed`). Every
+  request to it is translated and sent with llm's `llm-bedrock` client, signed with AWS
+  Signature Version 4 from the container credentials endpoint
+  (`AWS_CONTAINER_CREDENTIALS_FULL_URI`, and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` read
+  through the trusted-file reader at start and on each fetch, its symbolic links resolved so a
+  projected-volume token and its rotation work). A field Bedrock does not take
+  (a reasoning effort; parallel tool calls on `converse`; thinking on a model that is not
+  Anthropic's) is dropped and its name logged, never its value. The inventory lists the model
+  as `<alias>.bedrock` with `auth_kind` `aws-sigv4`, never its region or model id. New startup
+  refusals: `container-credentials:unset`, `container-credentials:uri` and
+  `container-token:<rule>`. Tested against a fixture Bedrock Runtime only.
+- A turn to a Bedrock `converse` model that Converse cannot carry (an assistant message first,
+  tool history without `tools`) is refused `translation-unsupported` (400) before anything is
+  sent, instead of `upstream-refused` (502).
+- A Bedrock model may declare `max_output_tokens` (1 to its window); it bounds the default output and is listed.
+- An `anthropic-beta` header sent to a Bedrock model is logged by name as dropped; it never reaches Bedrock.
+- A container token file a credentials fetch refuses is logged at `warn` with its rule code and path, never the token.
+- A container token link resolving outside the token path's directory is refused `container-token:symlink`.
+- The container token file is read on the runtime's blocking pool, so a slow mount holds no worker thread.
+- The llm crates move to tag `0.11.0` under their `llm-*` package names, and `llm-bedrock` is
+  added; still no AWS SDK crate and no `aws-lc` in `Cargo.lock`.
+
 ## 0.12.0 (2026-10-17)
 
 - The translator runs on llm 0.7.0 (`b10x-llm-gateway-cli`'s llm crates and `b10x-llm-runpod`'s

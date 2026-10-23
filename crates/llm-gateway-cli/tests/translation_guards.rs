@@ -30,6 +30,7 @@ fn prepare(ingress: Wire, upstream: Wire, body: &Value) -> Option<RefusalCode> {
             upstream,
             model: &model,
             body: body.to_string().as_bytes(),
+            anthropic_beta: false,
         })
         .err()
 }

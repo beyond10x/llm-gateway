@@ -1,0 +1,28 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id
+summary: the binary's inventory of a document lists each Bedrock model as one target signed aws-sigv4, on the protocol its model id defaults to, and no answer carries its region, its model id or a Bedrock host
+timeline:
+- at: '2026-10-23T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/credentials/owner\"\n\n[hosted.haiku]\nkind = \"bedrock\"\nregion = \"eu-central-1\"\nmodel_id = \"eu.anthropic.claude-fixture-v1:0\"\ncredential_source = \"container\"\ncontext_window = 200000\n\n[hosted.nova]\nkind = \"bedrock\"\nregion = \"eu-west-1\"\nmodel_id = \"eu.amazon.nova-fixture-v1:0\"\ncredential_source = \"container\"\nbilling_kind = \"subscription\"\n","withheld":["eu-central-1","eu-west-1","eu.anthropic.claude-fixture-v1:0","eu.amazon.nova-fixture-v1:0","amazonaws.com","bedrock-runtime"],"steps":[{"step":"mark_ready"},{"step":"send","raw":"GET /v1/routes HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"},{"step":"send","raw":"GET /v1/routes/nova HTTP/1.1\r\nauthorization: Bearer owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\r\n\r\n"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 inspected'
+    - '200 inspected'
+    bodies:
+    - '{"config_digest":"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620","route_count":2,"routes":[{"route_id":"haiku","alias":"haiku","fallback_enabled":false,"target_count":1,"targets":[{"target_id":"haiku.bedrock","position":0,"protocol":"messages","provider":"bedrock","account":"container","endpoint":"haiku","model":"haiku","binding_revision":"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620","auth_kind":"aws-sigv4","billing_kind":"metered","context_window":200000}]},{"route_id":"nova","alias":"nova","fallback_enabled":false,"target_count":1,"targets":[{"target_id":"nova.bedrock","position":0,"protocol":"bedrock-converse","provider":"bedrock","account":"container","endpoint":"nova","model":"nova","binding_revision":"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620","auth_kind":"aws-sigv4","billing_kind":"subscription"}]}]}'
+    - '{"config_digest":"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620","route":{"route_id":"nova","alias":"nova","fallback_enabled":false,"target_count":1,"targets":[{"target_id":"nova.bedrock","position":0,"protocol":"bedrock-converse","provider":"bedrock","account":"container","endpoint":"nova","model":"nova","binding_revision":"d9f27969c0180d08d7f948541c23c2430d267f10f08c4cdb42042e7319ace620","auth_kind":"aws-sigv4","billing_kind":"subscription"}]}}'
+    secret_on_wire: false
+    withheld_on_wire: false

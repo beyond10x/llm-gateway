@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "5f621542bdc5f1d0fe911afa9058994a3fa22ffca0653e0c874e5cc04bf0eb57",
-    "contract_digest": "slice-sha256/2:1669e82bffcea37ff97b8dc9c7bcbc417d19308491cd740091b3981ee564e6aa",
+    "source_digest": "460cad9c897b295fb5c572c79e3c0cf90586d8f2853a5502f4b8f3733204a184",
+    "contract_digest": "slice-sha256/2:cdb36d34153df0e36a3ce8f32925556e18634ac2dae8d1a1306af67e809800ad",
     "regenerate": "ess generate"
   },
   "$defs": {

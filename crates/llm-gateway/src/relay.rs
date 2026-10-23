@@ -568,6 +568,7 @@ pub struct RelayModel {
     max_model_len: Option<u64>,
     context_window: Option<u64>,
     reasoning_effort: Option<ReasoningEffort>,
+    translated_only: bool,
 }
 
 impl RelayModel {
@@ -593,7 +594,22 @@ impl RelayModel {
             max_model_len: None,
             context_window: None,
             reasoning_effort: None,
+            translated_only: false,
         })
+    }
+
+    /// Declares that the model's target takes no client wire verbatim: every request is decoded
+    /// and re-encoded by the translator, on every wire, its declared wires included. A model
+    /// served by a hosted Bedrock target is such a model; without a translator it is refused
+    /// `wire-not-served` on every wire.
+    #[must_use]
+    pub fn with_translated_only(mut self) -> Self {
+        self.translated_only = true;
+        self
+    }
+
+    pub fn translated_only(&self) -> bool {
+        self.translated_only
     }
 
     /// Declares the effort a messages-wire request that names none reaches the target with,
@@ -812,6 +828,8 @@ pub(crate) struct Admitted {
     /// The client asked in HTTP/1.1 or later, so its answer may be chunked. An HTTP/1.0 client
     /// is sent the answer unframed, ended by closing the connection (RFC 9112 section 6.1).
     pub(crate) chunked_answer: bool,
+    /// The client sent an `anthropic-beta` header, which no translated upstream receives.
+    pub(crate) anthropic_beta: bool,
 }
 
 /// Decides the body framing from the head (row W1).
@@ -1214,7 +1232,7 @@ fn served_model<'r>(
         .get(&analysis.model)
         .ok_or(RefusalCode::ModelUnknown)?;
     call.model = Some(model.alias.as_str().to_string());
-    let translator = if model.wires.contains(&wire) {
+    let translator = if model.wires.contains(&wire) && !model.translated_only {
         None
     } else {
         Some(
@@ -1272,6 +1290,7 @@ fn translate(
         upstream: model.wires[0],
         model,
         body,
+        anthropic_beta: admitted.anthropic_beta,
     })?;
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;

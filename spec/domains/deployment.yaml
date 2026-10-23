@@ -277,13 +277,30 @@ types:
   # trusted-file rule and after trimming; every message starts `metrics_bearer_file <path>:`:
   #   `metrics-bearer:too-large`    a token over 4096 bytes
   #   `metrics-bearer:not-a-token`  empty, or not one printable ASCII token
+  # Container credential rules (story:bedrock-hosted-target), checked only when the document
+  # declares a `kind = "bedrock"` hosted model; no message quotes the URI or the token:
+  #   `container-credentials:unset`  `AWS_CONTAINER_CREDENTIALS_FULL_URI` or
+  #                                  `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` is unset or empty
+  #   `container-credentials:uri`    the URI is not `https`, nor `http` to a loopback address or
+  #                                  to 169.254.170.2, 169.254.170.23 or fd00:ec2::23
+  # Container token rules: the trusted-file rules of a file `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`
+  # names (at most 16386 bytes; group- or world-writable is `unsafe-mode`, readable is not),
+  # except that its path is resolved through symbolic links first, the file it resolves to must
+  # lie inside the token path's directory (else `symlink`) and every rule is checked on that
+  # file, read again for each fetch: a Kubernetes projected volume (as EKS
+  # Pod Identity mounts the token) links `<name>` to `..data/<name>` and `..data` to a
+  # timestamped directory the kubelet swaps on rotation (layout from the AWS and Kubernetes
+  # documentation, unverified here against a cluster). Then, after one trailing line end is
+  # removed:
+  #   `container-token:too-large`    a token over 16384 bytes
+  #   `container-token:not-a-token`  empty, or a byte that is neither printable ASCII nor a space
   # Process rules:
   #   `listen:bind`     the listen address, or the `metrics_listen` address, cannot be bound; the
   #                     message names which
   #   `signal:install`  SIGINT and SIGTERM handlers cannot be installed
   - name: llm-gateway.deployment.StartupRefusal
     kind: enum
-    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, MetricsBearerUnreadable, MetricsBearerSymlink, MetricsBearerNotRegular, MetricsBearerUntrustedOwner, MetricsBearerUnsafeMode, MetricsBearerTooLarge, MetricsBearerNotUtf8, MetricsBearerNotAToken, ListenBind, SignalInstall]
+    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, MetricsBearerUnreadable, MetricsBearerSymlink, MetricsBearerNotRegular, MetricsBearerUntrustedOwner, MetricsBearerUnsafeMode, MetricsBearerTooLarge, MetricsBearerNotUtf8, MetricsBearerNotAToken, ContainerCredentialsUnset, ContainerCredentialsUri, ContainerTokenUnreadable, ContainerTokenSymlink, ContainerTokenNotRegular, ContainerTokenUntrustedOwner, ContainerTokenUnsafeMode, ContainerTokenTooLarge, ContainerTokenNotUtf8, ContainerTokenNotAToken, ListenBind, SignalInstall]
   # `ingress_auth`: `bearer` (default) or `none`; maps onto llm-gateway.gateway.IngressAuth.
   - name: llm-gateway.deployment.IngressAuth
     kind: enum
@@ -494,7 +511,8 @@ types:
   #                      DECIDED 2026-10-16 (story:hosted-base-path): a path was refused before;
   #                      a vendor whose API lives below a prefix (`https://openrouter.ai/api/v1`)
   #                      is now reached without a proxy in front of it
-  #   auth_kind          `anonymous`, `bearer` or `api-key`
+  #   auth_kind          `anonymous`, `bearer` or `api-key` (`aws-sigv4` is a Bedrock model's
+  #                      alone and is `config:schema` here)
   #   credential_file    absent exactly when `auth_kind` is `anonymous`; read through the
   #                      trusted-file reader (`endpoint-credential:<rule>`). A credential goes
   #                      over `https`, or over `http` to a loopback host only (`base_url`)
@@ -526,12 +544,52 @@ types:
   #                      by default; any other string, `high` and `max` included, is
   #                      `config:value`. A messages-wire request that names no effort reaches
   #                      the endpoint with this one (llm-gateway.gateway `Relay`, step 6)
+  #   kind               `endpoint` (default) or `bedrock` (llm-gateway.upstream.HostedKind);
+  #                      any other string is `config:schema`. Every rule above is an
+  #                      `endpoint`'s; each key below is a `bedrock` model's, and is
+  #                      `config:value` naming `hosted.<alias>.<key>` on an endpoint
+  # A `kind = "bedrock"` model (DECIDED 2026-10-23, story:bedrock-hosted-target): `wires`,
+  # `base_url`, `auth_kind`, `credential_file`, `credential_header`, `upstream_model`,
+  # `reasoning_effort` and `headers` are each `config:value` naming the key. Its rules, each a
+  # `config:value` that names the key and never quotes the value:
+  #   region             required: two or more parts of `a-z` and `0-9` joined by `-`, at most
+  #                      32 bytes (`eu-central-1`), the rule llm's Bedrock client applies
+  #   model_id           required: the model id, inference-profile id or ARN Bedrock is asked
+  #                      for, 1..=2048 printable ASCII bytes and not only dots
+  #   credential_source  required, `container`: the credentials come from the container
+  #                      credentials endpoint (`AWS_CONTAINER_CREDENTIALS_FULL_URI` and
+  #                      `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`, StartupRefusal
+  #                      `container-credentials:<rule>` and `container-token:<rule>`), as
+  #                      Amazon EKS Pod Identity and Amazon ECS task roles provide them
+  #   api                `anthropic-invoke` or `converse` (llm-gateway.upstream.BedrockApi),
+  #                      default by the model id (BedrockApi has the rule); any other string
+  #                      is `config:value`
+  #   endpoint           optional: replaces `https://bedrock-runtime.<region>.amazonaws.com`:
+  #                      an `https` origin, or an `http` origin on a loopback literal
+  #                      (`127.0.0.0/8`, `[::1]`), with no user information, path, query or
+  #                      fragment
+  #   billing_kind       as an endpoint's, default `metered`
+  #   context_window     as an endpoint's, optional, 4096..=2000000
+  #   max_output_tokens  optional, 1..=context_window (200000 when undeclared): the most
+  #                      output a turn may ask for and the bound of the output a turn naming
+  #                      none is given (half the window, at most 16384); the window when
+  #                      undeclared; `config:value` on an endpoint
+  #   tool_calling       as an endpoint's, default `parsed`
   - name: llm-gateway.deployment.HostedDeclaration
     kind: struct
     fields:
-      - {name: wires, type: 'List<llm-gateway.deployment.Wire>'}
-      - {name: base_url, type: String}
-      - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
+      - {name: kind, type: llm-gateway.upstream.HostedKind}
+      # Required for an `endpoint`, absent for a `bedrock` model.
+      - {name: wires, type: 'Optional<List<llm-gateway.deployment.Wire>>'}
+      - {name: base_url, type: 'Optional<String>'}
+      - {name: auth_kind, type: 'Optional<llm-gateway.upstream.AuthKind>'}
+      # Required for a `bedrock` model, absent for an `endpoint`.
+      - {name: region, type: 'Optional<String>'}
+      - {name: model_id, type: 'Optional<String>'}
+      - {name: credential_source, type: 'Optional<String>'}
+      - {name: api, type: 'Optional<llm-gateway.upstream.BedrockApi>'}
+      - {name: endpoint, type: 'Optional<String>'}
+      - {name: max_output_tokens, type: 'Optional<Integer>'}
       - {name: credential_file, type: 'Optional<String>'}
       - {name: credential_header, type: 'Optional<String>'}
       - {name: headers, type: 'Map<String, String>'}
@@ -540,7 +598,7 @@ types:
       - {name: context_window, type: 'Optional<Integer>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
-  # One endpoint of a routes document (RoutesDeclaration), as llm 0.7.0 reads it
+  # One endpoint of a routes document (RoutesDeclaration), as llm 0.11.0 reads it
   # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
   # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,
   # `Chat`), `auth.kind` `anonymous`, `bearer` or `api-key`, `auth.header` for an `api-key`
@@ -570,8 +628,8 @@ types:
   # crate tests named `routes_*` in crates/llm-gateway-cli/tests/routes.rs prove them.
   #   what is read      the file `routes` names, once at start, through the trusted-file reader
   #                     as a `config` file bounded at 2 MiB (StartupRefusal), then
-  #                     `llm_models::routes::Routes::parse` of llm 0.7.0, which parses strictly
-  #                     and performs no I/O; `b10x-llm-models` is linked with no default feature,
+  #                     `llm_models::routes::Routes::parse` of llm 0.11.0, which parses strictly
+  #                     and performs no I/O; `llm-models` is linked with no default feature,
   #                     so llm itself reads no secret. A relative path is resolved from the
   #                     process's working directory, as `owner_secret_file` is. A document llm
   #                     refuses (malformed YAML, an unknown field, a repeated key, an unknown
@@ -614,7 +672,7 @@ types:
   #                     resolves, is not a route and is not served (`model-unknown`). A route's
   #                     endpoint is sent one static header when its protocol is `messages`,
   #                     `anthropic-version: <llm_messages::ANTHROPIC_VERSION>` (`2023-06-01` in
-  #                     llm 0.7.0), on every request relayed to it, the output clamp's count
+  #                     llm 0.11.0), on every request relayed to it, the output clamp's count
   #                     included, and no other static header. DECIDED 2026-10-16 (correction
   #                     round 1 of story:routes-document): Anthropic's Messages API requires
   #                     the header on every request, llm's client already sends it on the

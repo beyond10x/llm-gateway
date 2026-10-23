@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 //! The `b10x-llm-gateway` binary's deployment document, trusted-file reader, serving loop and
-//! translator ([`LlmTranslator`], over llm 0.7.0's client crates and a tokio runtime).
+//! translator ([`LlmTranslator`], over llm 0.11.0's client crates and a tokio runtime).
 //!
 //! The specification is `spec/domains/deployment.yaml` (`llm-gateway.deployment`). The binary
 //! reads one closed TOML document through a same-handle trusted-file reader, composes the
@@ -9,6 +9,7 @@
 //! serves, and stops gracefully on SIGINT or SIGTERM. Every
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
+mod bedrock;
 pub mod cli;
 mod config;
 mod credential;
@@ -24,7 +25,7 @@ mod tls;
 mod translate;
 mod trusted;
 
-pub use config::{Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
+pub use config::{Bedrock, Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,
 };

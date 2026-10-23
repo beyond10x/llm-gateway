@@ -1,8 +1,8 @@
 //! The models of an llm `llm.routes/1` document a deployment names by its `routes` key
 //! (story:routes-document; `spec/domains/deployment.yaml` `RoutesDeclaration`).
 //!
-//! The document is read once at start through the trusted-file reader and parsed with llm 0.7.0's
-//! `Routes::parse`, which validates it strictly and performs no I/O; `b10x-llm-models` is linked
+//! The document is read once at start through the trusted-file reader and parsed with llm 0.11.0's
+//! `Routes::parse`, which validates it strictly and performs no I/O; `llm-models` is linked
 //! without its secret-source features, so llm reads no secret. What llm's API does not expose,
 //! the path of an endpoint's `file:` secret, is read here from the same text with a minimal
 //! reader that ignores everything else. Each route becomes a served model whose endpoint is a
@@ -401,6 +401,12 @@ impl Routes {
                         "is required for an api-key endpoint",
                     ));
                 }
+                (AuthKind::AwsSigv4, _) => {
+                    return Err(value(
+                        &format!("routes.{}.auth", endpoint.name),
+                        "is no auth kind a routes-document endpoint takes",
+                    ));
+                }
             };
             let served = HostedEndpoint::new(&endpoint.base_url, credential)
                 .map_err(|error| {
@@ -525,14 +531,24 @@ fn endpoint(
                 .map_err(|error| value(&key("auth.header"), &error.to_string()))
         })
         .transpose()?;
+    let wire = match declaration.protocol() {
+        Protocol::Messages => Wire::Messages,
+        Protocol::Responses => Wire::Responses,
+        Protocol::ChatCompletions => Wire::Chat,
+        // llm's routes document refuses this protocol itself; a Bedrock model is a
+        // `[hosted.<alias>]` entry of kind `bedrock`.
+        Protocol::BedrockConverse => {
+            return Err(value(
+                &key("protocol"),
+                "must be messages, responses or chat-completions: a Bedrock model is declared \
+                 as [hosted.<alias>] with kind = \"bedrock\"",
+            ));
+        }
+    };
     Ok(RouteEndpoint {
         name: name.to_owned(),
         base_url,
-        wire: match declaration.protocol() {
-            Protocol::Messages => Wire::Messages,
-            Protocol::Responses => Wire::Responses,
-            Protocol::ChatCompletions => Wire::Chat,
-        },
+        wire,
         billing_kind: if auth_kind == AuthKind::Anonymous {
             BillingKind::SelfHosted
         } else {

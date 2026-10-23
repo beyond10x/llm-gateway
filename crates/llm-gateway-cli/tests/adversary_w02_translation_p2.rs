@@ -156,6 +156,7 @@ fn run(model: &RelayModel, request: &str, body: String) -> Ran {
             upstream: Wire::Messages,
             model,
             body: request.as_bytes(),
+            anthropic_beta: false,
         })
         .unwrap_or_else(|code| panic!("prepare refused {code:?}"));
     let (address, thread) = upstream(body);

@@ -135,6 +135,9 @@ scenarios:
 - gateway/scenarios/an-unready-gateway-refuses-inspection-even-to-the-owner.yaml
 - gateway/scenarios/an-unrunnable-program-composes-nothing.yaml
 - gateway/scenarios/authentication-comes-before-the-path-is-decided.yaml
+- gateway/scenarios/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing.yaml
+- gateway/scenarios/bedrock-an-endpoint-naming-a-region-composes-nothing.yaml
+- gateway/scenarios/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id.yaml
 - gateway/scenarios/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing.yaml
 - gateway/scenarios/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential.yaml
 - gateway/scenarios/head-inspection-answers-without-a-body.yaml

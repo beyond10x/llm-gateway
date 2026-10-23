@@ -24,11 +24,29 @@ domain: llm-gateway.upstream
 # tokio into a closure crates/llm-gateway/tests/dependency_boundary.rs keeps empty
 # (docs/gateway.md "What the crate cannot do, structurally").
 types:
-  # How a target authenticates upstream (inventory.rs:58-64, wire names `anonymous`, `bearer`,
-  # `api-key`). The kind is inspectable; the material is never in the inventory.
+  # How a target authenticates upstream (inventory.rs, wire names `anonymous`, `bearer`,
+  # `api-key`, `aws-sigv4`). The kind is inspectable; the material is never in the inventory.
+  # `AwsSigv4`: an Amazon Bedrock model, each request signed with AWS Signature Version 4 by
+  # llm's Bedrock client from the container credentials (HostedEndpoint `kind` below).
   - name: llm-gateway.upstream.AuthKind
     kind: enum
-    variants: [Anonymous, Bearer, ApiKey]
+    variants: [Anonymous, Bearer, ApiKey, AwsSigv4]
+  # What serves a hosted model: `Endpoint`, an endpoint speaking one of the three wires, or
+  # `Bedrock`, Amazon Bedrock Runtime reached through llm's Bedrock client (wire names
+  # `endpoint`, `bedrock`; the deployment document's `kind`, default `endpoint`).
+  - name: llm-gateway.upstream.HostedKind
+    kind: enum
+    variants: [Endpoint, Bedrock]
+  # The Bedrock Runtime operation a Bedrock model is called with (wire names `anthropic-invoke`,
+  # `converse`). `AnthropicInvoke` is `InvokeModelWithResponseStream` with an Anthropic Messages
+  # body, whose opaque state is that of llm's `messages` protocol; `Converse` is
+  # `ConverseStream`, llm's `bedrock-converse` protocol. The default is `AnthropicInvoke` for an
+  # Anthropic model id (its first dotted part `anthropic`, or its second after a geography
+  # prefix such as `eu.`, or the last path segment of an ARN read the same way) and `Converse`
+  # for any other.
+  - name: llm-gateway.upstream.BedrockApi
+    kind: enum
+    variants: [AnthropicInvoke, Converse]
   # How a target is billed (inventory.rs:77-82, wire names `metered`, `subscription`,
   # `self-hosted`). A Runpod pod is `SelfHosted`.
   - name: llm-gateway.upstream.BillingKind
@@ -93,13 +111,35 @@ entities:
   # names its provider `routes` and its endpoint the route's endpoint name. Observed through the
   # `Relay` command's `routes_document` (llm-gateway.gateway) and by `routes_*` in
   # crates/llm-gateway-cli/tests/routes.rs.
+  #
+  # DECIDED 2026-10-23 (story:bedrock-hosted-target): a `[hosted.<alias>]` table with
+  # `kind = "bedrock"` is a HostedEndpoint served by Amazon Bedrock Runtime through llm 0.11.0's
+  # `llm-bedrock` client, not by the relay. It declares `region`, `model_id` and
+  # `credential_source = "container"`, and optionally `api`, `endpoint`, `billing_kind`,
+  # `context_window`, `max_output_tokens` and `tool_calling`
+  # (llm-gateway.deployment.HostedDeclaration). Its route
+  # inventory target is `<alias>.bedrock`: protocol `messages` for `AnthropicInvoke` or
+  # `bedrock-converse` for `Converse`, provider `bedrock`, account `container`, endpoint and
+  # model the alias, `auth_kind` `AwsSigv4`; neither the region nor the model id is rendered.
+  # Every request to it is translated (llm-gateway.gateway `Relay` step 5): it is never
+  # relayed byte for byte, and a client may call it on any wire. Each request is signed with
+  # AWS Signature Version 4 from credentials llm's `ContainerCredentials` fetches from
+  # `AWS_CONTAINER_CREDENTIALS_FULL_URI`, presenting the token in the file
+  # `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` names; the binary reads that file through the
+  # trusted-file reader at start (`container-token:<rule>`) and again for each credential
+  # fetch, resolving its symbolic links each time, so a rotated projected-volume token is
+  # picked up. A request field Bedrock does not take is dropped
+  # and its name, never its value, logged: a reasoning effort on every Bedrock model, parallel
+  # tool calls on `Converse`, and thinking on a model id that is not Anthropic's. Prompt and
+  # answer text are never logged. A request without an output token limit is given half the
+  # context window (200000 when none is declared), at most 16384.
   - name: llm-gateway.upstream.HostedEndpoint
     identity: {name: endpoint_id, type: String}
     fields:
       # The wires the endpoint speaks, each at its path. A request on one of them is relayed byte
       # for byte; a request on another wire is translated (story:gateway-translation;
       # llm-gateway.gateway `Relay` step 5) and sent to the endpoint on the first wire listed
-      # here, with llm 0.7.0's client for that wire: to `<scheme>://<authority>` and the base
+      # here, with llm 0.11.0's client for that wire: to `<scheme>://<authority>` and the base
       # path (`/v1` without one) joined to the wire's path, as the join rule below has it; with
       # the credential as `auth_kind` says (`authorization: Bearer <credential>`,
       # `<credential_header>: <credential>`, or none); and with llm's own protocol headers
@@ -155,11 +195,22 @@ entities:
       # DECIDED 2026-10-16 (story:hosted-static-headers).
       - {name: headers, type: 'Map<String, String>'}
       - {name: billing_kind, type: llm-gateway.upstream.BillingKind}
+      # `Endpoint` unless the declaration says `bedrock`. For a `Bedrock` model `wires` is
+      # empty (every wire is translated), `upstream_model` is the alias, `base_url` is
+      # `https://bedrock-runtime.<region>.amazonaws.com` or the declared `endpoint`,
+      # `auth_kind` is `AwsSigv4`, and it has no `credential_file`, `credential_header` or
+      # `headers`.
+      - {name: kind, type: llm-gateway.upstream.HostedKind}
+      # A Bedrock model's AWS Region, model or inference-profile id, and operation; absent for
+      # an `Endpoint`.
+      - {name: region, type: 'Optional<String>'}
+      - {name: model_id, type: 'Optional<String>'}
+      - {name: api, type: 'Optional<llm-gateway.upstream.BedrockApi>'}
     # DECIDED 2026-10-06: any endpoint that speaks one of the three wires is in scope, with no
     # vendor-specific code: an endpoint is described by its wires, its base URL and how it
     # authenticates. DECIDED 2026-10-16 (story:gateway-translation): a client may call such an
     # endpoint on any wire; one it does not speak is translated through llm's neutral turn,
-    # within llm 0.7.0's supported subset (docs/gateway.md "Translation"), not as a claim of
+    # within llm 0.11.0's supported subset (docs/gateway.md "Translation"), not as a claim of
     # vendor API equivalence.
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   # One position of one route, tried or not, for one request.

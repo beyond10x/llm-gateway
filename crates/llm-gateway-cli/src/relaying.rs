@@ -1022,6 +1022,9 @@ struct Parts {
     /// Each hosted model's and each route's endpoint, its credential read
     /// (story:hosted-endpoints, story:routes-document).
     hosted: BTreeMap<String, HostedEndpoint>,
+    /// Each Bedrock model, with the container credentials it signs with
+    /// (story:bedrock-hosted-target).
+    bedrock: BTreeMap<String, Arc<crate::bedrock::BedrockRoute>>,
     /// The connector an `https` hosted endpoint is reached through: the pod connector.
     tls: Arc<dyn PodConnector>,
     stopping: Arc<AtomicBool>,
@@ -1042,6 +1045,7 @@ impl Parts {
             metrics_bearer: crate::serve::metrics_bearer(deployment)?,
             vllm_keys: crate::keys::vllm_keys(deployment)?,
             hosted: hosted_endpoints(deployment)?,
+            bedrock: crate::bedrock::routes(deployment)?,
             tls: Arc::clone(tls),
             inventory: inventory(deployment)?,
             stopping: Arc::new(AtomicBool::new(false)),
@@ -1082,6 +1086,27 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
             None => relayed,
         };
         models.push(match hosted.context_window {
+            Some(window) => relayed.with_context_window(u64::from(window)),
+            None => relayed,
+        });
+    }
+    // A Bedrock model takes no client wire verbatim: the translator sends every request to it
+    // with llm's Bedrock client, under the alias (story:bedrock-hosted-target).
+    for (alias, model) in &deployment.bedrock {
+        let relayed = RelayModel::new(
+            relay_label(alias)?,
+            relay_label(alias)?,
+            vec![llm_gateway::Wire::Messages],
+        )
+        .map_err(|error| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!("hosted.{alias}: {error}"),
+            )
+        })?
+        .with_translated_only()
+        .with_tool_calling(model.tool_calling);
+        models.push(match model.context_window {
             Some(window) => relayed.with_context_window(u64::from(window)),
             None => relayed,
         });
@@ -1130,6 +1155,7 @@ fn compose(
         inventory,
         vllm_keys,
         hosted,
+        bedrock,
         tls,
         stopping,
         metrics,
@@ -1138,10 +1164,17 @@ fn compose(
     } = parts;
     // Every composition serves its hosted models from their endpoints, whatever serves the rest.
     let targets: Arc<dyn RelayTargets> = Arc::new(HostedTargets::new(hosted, tls, targets));
+    let targets: Arc<dyn RelayTargets> =
+        Arc::new(crate::bedrock::BedrockTargets::new(deployment, targets));
     // Every composition translates a wire a model's upstream does not speak
     // (story:gateway-translation), a route under its declared capabilities
     // (story:routes-document).
-    let translator = deployment.routes.translator(LlmTranslator::new());
+    let translator = bedrock
+        .into_iter()
+        .fold(LlmTranslator::new(), |translator, (alias, route)| {
+            translator.with_bedrock(alias, route)
+        });
+    let translator = deployment.routes.translator(translator);
     let relay = Relay::new(models, targets)
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
         .with_translator(Arc::new(translator))

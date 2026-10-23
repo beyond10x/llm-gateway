@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-23T03:41:46Z",
+  "actor": "human:timo",
+  "artifact": "story:bedrock-llm-0-13",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "RUSTUP_TOOLCHAIN=1.98.0 task check on wave/2026-10-23-w02 b03be26 after the review fixes: 894 tests passed, 0 failed, 1 ignored; conformance 288 of 288 on three runs, 0 skipped"
+  }
+}

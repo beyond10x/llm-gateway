@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:bedrock-llm-0-13
 kind: story
-status: active
+status: implemented
 title: 'Bedrock models on llm 0.13.0: llm''s pre-send check and carried anthropic-beta names'
 summary: llm 0.13.0 pinned; prepare_bedrock uses llm_bedrock::check_request; an InvokeModel model's anthropic_beta allowlist carries the client's beta names
 relations:
@@ -41,10 +41,11 @@ scope:
   path: spec/domains/deployment.yaml
 - confidence: inferred
   path: website/docs
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-23T02:54:04Z", actor: "human:timo", revision: 3, executor: "agent:llm-gateway-session", correlation: "wave-2026-10-23-w02"}
 - {from: "proposed", to: "active", at: "2026-10-23T02:54:04Z", actor: "human:timo", revision: 4, executor: "agent:llm-gateway-session", correlation: "wave-2026-10-23-w02"}
+- {from: "active", to: "implemented", at: "2026-10-23T03:16:05Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

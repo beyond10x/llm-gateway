@@ -49,6 +49,9 @@ const ANSWER_MARKER: &str = "answer-marker-sunny";
 
 const EVENT_STREAM: &str = "application/vnd.amazon.eventstream";
 
+/// The most beta names a turn carries, llm 0.13.0's `llm_core::MAX_ANTHROPIC_BETAS`.
+const MAX_ANTHROPIC_BETAS: usize = 32;
+
 // --- Event-stream frames ------------------------------------------------------------------------
 
 fn frame(headers: &[(&str, &str)], payload: Vec<u8>) -> Vec<u8> {
@@ -825,8 +828,9 @@ fn bedrock_a_turn_converse_cannot_carry_is_refused_before_anything_is_sent() {
     assert_quiet(&log);
 }
 
-/// Claude Code's `anthropic-beta` header has no place on Bedrock: it is not carried into the
-/// Invoke body as `anthropic_beta`, and its name alone is logged as dropped, never its value.
+/// A model that declares no `anthropic_beta` list carries no beta: Claude Code's
+/// `anthropic-beta` header is not carried into the Invoke body as `anthropic_beta`, and the
+/// header's name alone is logged as dropped, never its value.
 #[test]
 fn bedrock_an_anthropic_beta_header_is_dropped_by_name_and_never_carried() {
     let deployment = Deployment::new("bedrock-anthropic-beta");
@@ -859,6 +863,243 @@ fn bedrock_an_anthropic_beta_header_is_dropped_by_name_and_never_carried() {
     for line in &log {
         assert!(!line.contains(beta), "the beta value was logged: {line}");
     }
+    assert_quiet(&log);
+}
+
+/// Posts a messages request for `model` to `server` with `beta` as its one `anthropic-beta` line.
+fn post_with_beta(server: &Server, model: &str, beta: &str) -> String {
+    let request = json!({"model":model,"max_tokens":64,
+        "messages":[{"role":"user","content":PROMPT_MARKER}]})
+    .to_string();
+    server.exchange(&format!(
+        "POST /v1/messages?beta=true HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nanthropic-version: 2023-06-01\r\nanthropic-beta: {beta}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{request}",
+        request.len()
+    ))
+}
+
+/// The log lines that say the beta `name` was dropped.
+fn beta_dropped(log: &[String], name: &str) -> bool {
+    log.iter().any(|line| {
+        line.contains("dropped") && line.contains("anthropic-beta") && line.contains(name)
+    })
+}
+
+/// An `InvokeModel` model's `anthropic_beta` list is what reaches Bedrock: the client's names on
+/// it go into the Invoke body's `anthropic_beta` in the client's order, and each other name is
+/// left out and logged by name as dropped.
+#[test]
+fn bedrock_allowlisted_beta_names_reach_the_invoke_body_in_the_clients_order() {
+    let deployment = Deployment::new("bedrock-beta-allowlist");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&bedrock_table(
+        "haiku",
+        MODEL_ID,
+        &bedrock,
+        "anthropic_beta = [\"fixture-beta-b\", \"fixture-beta-a\", \"fixture-beta-unsent\"]\n",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let answer = post_with_beta(
+        &server,
+        "haiku",
+        "claude-code-fixture-1, fixture-beta-a,oauth-fixture-2 , fixture-beta-b",
+    );
+    let log = server.log();
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_signed(&seen[0]);
+    assert_eq!(
+        body(&seen[0])["anthropic_beta"],
+        json!(["fixture-beta-a", "fixture-beta-b"]),
+        "{}",
+        seen[0]
+    );
+    for name in [
+        "claude-code-fixture-1",
+        "oauth-fixture-2",
+        "fixture-beta-unsent",
+    ] {
+        assert!(!seen[0].contains(name), "{name}: {}", seen[0]);
+    }
+    assert!(beta_dropped(&log, "claude-code-fixture-1"), "{log:?}");
+    assert!(beta_dropped(&log, "oauth-fixture-2"), "{log:?}");
+    assert!(!beta_dropped(&log, "fixture-beta-a"), "{log:?}");
+    assert!(!beta_dropped(&log, "fixture-beta-b"), "{log:?}");
+    assert_quiet(&log);
+}
+
+/// A chat or responses client's `anthropic-beta` header to an `InvokeModel` model with a list is
+/// dropped unread: even a header llm's decoder would refuse is answered, the body carries no
+/// `anthropic_beta`, and the drop is logged by field without the header's value.
+#[test]
+fn bedrock_a_chat_or_responses_clients_beta_header_is_dropped_unread() {
+    let deployment = Deployment::new("bedrock-beta-other-wire");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text(), invoke_text()]);
+    let config = deployment.config(&bedrock_table(
+        "haiku",
+        MODEL_ID,
+        &bedrock,
+        "anthropic_beta = [\"fixture-beta-a\"]\n",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let header = "fixture-beta-a, not a beta name!";
+    for (path, request) in [
+        (
+            "/v1/chat/completions",
+            json!({"model":"haiku","messages":[{"role":"user","content":PROMPT_MARKER}]}),
+        ),
+        (
+            "/v1/responses",
+            json!({"model":"haiku","stream":true,"store":false,
+                "include":["reasoning.encrypted_content"],"input":[{"type":"message",
+                "role":"user","content":[{"type":"input_text","text":PROMPT_MARKER}]}]}),
+        ),
+    ] {
+        let request = request.to_string();
+        let answer = server.exchange(&format!(
+            "POST {path} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nanthropic-beta: {header}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{request}",
+            request.len()
+        ));
+        assert!(
+            answer.starts_with("HTTP/1.1 200 OK\r\n"),
+            "{path}: {answer}"
+        );
+    }
+    let log = server.log();
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    for sent in &seen {
+        assert!(body(sent).get("anthropic_beta").is_none(), "{sent}");
+        assert!(!sent.contains("fixture-beta-a"), "{sent}");
+    }
+    let drops = log
+        .iter()
+        .filter(|line| line.contains("dropped") && line.contains("anthropic-beta"))
+        .count();
+    assert_eq!(drops, 2, "{log:?}");
+    assert!(
+        !log.iter()
+            .any(|line| line.contains("fixture-beta-a") || line.contains("not a beta name")),
+        "{log:?}"
+    );
+    assert_quiet(&log);
+}
+
+/// A client that names no beta on the list sends none: the body has no `anthropic_beta`, and
+/// the name it did send is logged by name as dropped.
+#[test]
+fn bedrock_a_client_naming_no_allowlisted_beta_sends_none() {
+    let deployment = Deployment::new("bedrock-beta-none-listed");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&bedrock_table(
+        "haiku",
+        MODEL_ID,
+        &bedrock,
+        "anthropic_beta = [\"fixture-beta-a\"]\n",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let answer = post_with_beta(&server, "haiku", "claude-code-fixture-1");
+    let log = server.log();
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert!(
+        body(&seen[0]).get("anthropic_beta").is_none(),
+        "{}",
+        seen[0]
+    );
+    assert!(!seen[0].contains("claude-code-fixture-1"), "{}", seen[0]);
+    assert!(beta_dropped(&log, "claude-code-fixture-1"), "{log:?}");
+    assert!(!beta_dropped(&log, "fixture-beta-a"), "{log:?}");
+    assert_quiet(&log);
+}
+
+/// A Converse model carries no beta name, whatever the client sends: the header is logged as
+/// dropped and no name reaches Bedrock.
+#[test]
+fn bedrock_a_converse_model_never_carries_a_beta_name() {
+    let deployment = Deployment::new("bedrock-beta-converse");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![converse_text()]);
+    let config = deployment.config(&bedrock_table(
+        "nova",
+        "eu.amazon.nova-fixture-v1:0",
+        &bedrock,
+        "",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let beta = "fixture-beta-2026-10-23";
+    let answer = post_with_beta(&server, "nova", beta);
+    let log = server.log();
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert!(
+        seen[0].contains("/converse-stream HTTP/1.1\r\n"),
+        "{}",
+        seen[0]
+    );
+    assert!(!seen[0].contains(beta), "{}", seen[0]);
+    assert!(!seen[0].contains("anthropic_beta"), "{}", seen[0]);
+    assert!(dropped(&log, "anthropic-beta"), "{log:?}");
+    assert_quiet(&log);
+}
+
+/// An `anthropic-beta` header llm's decoder refuses (a name outside the rules, more names than a
+/// turn carries) refuses the request as a bad body is refused, before Bedrock or the
+/// credentials endpoint is asked.
+#[test]
+fn bedrock_a_malformed_beta_header_is_refused_before_anything_is_sent() {
+    let deployment = Deployment::new("bedrock-beta-malformed");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&bedrock_table(
+        "haiku",
+        MODEL_ID,
+        &bedrock,
+        "anthropic_beta = [\"fixture-beta-a\"]\n",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let too_many = (0..=MAX_ANTHROPIC_BETAS)
+        .map(|n| format!("fixture-beta-{n}"))
+        .collect::<Vec<_>>()
+        .join(",");
+    for (case, beta) in [
+        (
+            "a name with a slash",
+            "fixture-beta-a,fixture/beta".to_owned(),
+        ),
+        (
+            "a name with a quote",
+            "fixture-beta-a,\"fixture\"".to_owned(),
+        ),
+        ("more names than a turn carries", too_many),
+    ] {
+        let answer = post_with_beta(&server, "haiku", &beta);
+        assert!(answer.starts_with("HTTP/1.1 400 "), "{case}: {answer}");
+        assert!(answer.contains("translation-invalid"), "{case}: {answer}");
+    }
+    let log = server.log();
+    assert!(bedrock.seen().is_empty(), "{:?}", bedrock.seen());
+    assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
     assert_quiet(&log);
 }
 
@@ -1053,6 +1294,87 @@ fn bedrock_a_document_mixing_or_misnaming_bedrock_keys_is_refused() {
         let config = deployment.config(&table);
         let stderr = assert_refused(&config, &environment, "config:value");
         assert!(!stderr.contains(CONTAINER_TOKEN), "{case}: {stderr}");
+    }
+}
+
+/// An `anthropic_beta` list on an endpoint or on a `converse` model (an empty one too), or one
+/// naming a beta outside llm's name rule, twice, or more of them than a turn carries, refuses the
+/// start naming the key.
+#[test]
+fn bedrock_a_misdeclared_beta_list_is_refused_by_its_key() {
+    let deployment = Deployment::new("bedrock-beta-document");
+    let credentials = Recorder::credentials(0);
+    let bedrock = Recorder::start(EVENT_STREAM, Vec::new());
+    let environment = Environment::container(&credentials, &deployment.token);
+    for (case, table) in [
+        (
+            "anthropic_beta on an endpoint",
+            "[hosted.local]\nwires = [\"messages\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nauth_kind = \"anonymous\"\nanthropic_beta = [\"fixture-beta-a\"]\n".to_owned(),
+        ),
+        (
+            "anthropic_beta on a converse model",
+            bedrock_table(
+                "nova",
+                "eu.amazon.nova-fixture-v1:0",
+                &bedrock,
+                "anthropic_beta = [\"fixture-beta-a\"]\n",
+            ),
+        ),
+        (
+            "an empty anthropic_beta on a converse model",
+            bedrock_table(
+                "nova",
+                "eu.amazon.nova-fixture-v1:0",
+                &bedrock,
+                "anthropic_beta = []\n",
+            ),
+        ),
+        (
+            "anthropic_beta on a model api names converse",
+            bedrock_table(
+                "haiku",
+                MODEL_ID,
+                &bedrock,
+                "api = \"converse\"\nanthropic_beta = [\"fixture-beta-a\"]\n",
+            ),
+        ),
+        (
+            "a beta name outside the name rules",
+            bedrock_table("haiku", MODEL_ID, &bedrock, "anthropic_beta = [\"fixture beta\"]\n"),
+        ),
+        (
+            "an empty beta name",
+            bedrock_table("haiku", MODEL_ID, &bedrock, "anthropic_beta = [\"\"]\n"),
+        ),
+        (
+            "a beta name given twice",
+            bedrock_table(
+                "haiku",
+                MODEL_ID,
+                &bedrock,
+                "anthropic_beta = [\"fixture-beta-a\", \"fixture-beta-a\"]\n",
+            ),
+        ),
+        (
+            "more beta names than a turn carries",
+            bedrock_table(
+                "haiku",
+                MODEL_ID,
+                &bedrock,
+                &format!(
+                    "anthropic_beta = [{}]\n",
+                    (0..=MAX_ANTHROPIC_BETAS)
+                        .map(|n| format!("\"fixture-beta-{n}\""))
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ),
+            ),
+        ),
+    ] {
+        let config = deployment.config(&table);
+        let stderr = assert_refused(&config, &environment, "config:value");
+        assert!(!stderr.contains(CONTAINER_TOKEN), "{case}: {stderr}");
+        assert!(stderr.contains(".anthropic_beta"), "{case}: {stderr}");
     }
 }
 

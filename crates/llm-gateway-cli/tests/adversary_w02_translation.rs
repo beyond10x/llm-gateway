@@ -151,7 +151,7 @@ fn translate_with(
             upstream: Wire::Messages,
             model,
             body: body.as_bytes(),
-            anthropic_beta: false,
+            anthropic_beta: None,
         })
         .unwrap_or_else(|code| panic!("prepare refused {code:?}"));
     let (address, thread) = upstream(raw, delay);
@@ -297,7 +297,7 @@ fn adv_translation_chat_fields_below_the_top_level_are_refused_not_dropped() {
                 upstream: Wire::Messages,
                 model: &model,
                 body: body.as_bytes(),
-                anthropic_beta: false,
+                anthropic_beta: None,
             })
             .err();
         if refused != Some(RefusalCode::TranslationUnsupported) {

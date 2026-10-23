@@ -45,6 +45,7 @@ list-inference-profiles` before you use it.
 | `billing_kind` | `metered` | `metered`, `subscription` or `self-hosted`. |
 | `context_window` | absent | 4096 to 2000000 tokens. Without one, the gateway works with 200000. |
 | `max_output_tokens` | the window | 1 to the window. The most output a turn may ask for; a turn naming none is given half the window, at most 16384 and at most this. The inventory lists it. |
+| `anthropic_beta` | empty | The `anthropic-beta` names a Messages client may send to this model, at most 32 distinct names of `A-Z a-z 0-9 - _ .`, each at most 128 bytes. `anthropic-invoke` only: refused on `converse`, an empty list too. See [Beta names](#beta-names). |
 | `tool_calling` | `parsed` | `parsed` or `absent`. |
 
 The default `api` is `anthropic-invoke` when the model id is Anthropic's: its first dotted part
@@ -98,7 +99,34 @@ name at `info`, never its value, and never prompt or answer text:
 
 A request without an output limit is sent half the context window, at most 16384 tokens. A
 `temperature` above 1 on `anthropic-invoke` and `output_config.format` are still refused, not
-dropped.
+dropped. Before anything is sent, the turn is checked with llm's own Bedrock check
+(`llm_bedrock::check_request`), so a turn the Bedrock client would refuse is refused with no
+request to AWS.
+
+### Beta names {#beta-names}
+
+No client header reaches Bedrock. Bedrock refuses a beta name it does not support, and Claude
+Code sends several, so a beta reaches Bedrock only when the model's `anthropic_beta` list names
+it:
+
+```toml
+[hosted.haiku]
+kind = "bedrock"
+region = "eu-central-1"
+model_id = "eu.anthropic.claude-haiku-5-5"
+credential_source = "container"
+anthropic_beta = ["context-1m-2025-08-07"]
+```
+
+The beta name above is an example and is unverified against Bedrock.
+
+Only for a Messages client of an `anthropic-invoke` model whose list is not empty does llm's
+decoder read the `anthropic-beta` header, one line, since a repeated header is refused. A header that is not visible ASCII, names a beta outside the name rule,
+or names more than 32 is refused `translation-invalid` (400) before anything is sent. The names
+on the list go into the InvokeModel body's `anthropic_beta`, in the client's order; every other
+name is dropped and logged at `info` with `field = "anthropic-beta"` and the name as `beta`. A
+model without a list, a `converse` model, and a client on another wire send no beta: the header
+is not read, so a malformed one is not refused, and its name alone is logged as dropped.
 
 ## Amazon EKS Pod Identity
 

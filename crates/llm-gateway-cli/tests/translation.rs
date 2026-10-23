@@ -1,7 +1,7 @@
 //! story:gateway-translation, what the conformance program cannot reach: the shipped binary
 //! always composes its translator; a translated request reaches a hosted endpoint on its base
 //! path with its credential as its kind says and nothing else of the gateway's; a hosted target
-//! reports its scheme; and what llm 0.11.0 does with Claude Code's and Codex's turns: carried and
+//! reports its scheme; and what llm 0.13.0 does with Claude Code's and Codex's turns: carried and
 //! relayed where it carries them, refused by name where it does not; and Codex's two-turn
 //! exchange (story:cross-wire-reasoning-state): the reasoning state the gateway sealed for a
 //! route is bound on that route's next turn, and every other replayed item is refused.
@@ -381,7 +381,7 @@ fn prepared(ingress: Wire, upstream: Wire, body: &[u8]) -> Option<RefusalCode> {
             upstream,
             model: &model,
             body,
-            anthropic_beta: false,
+            anthropic_beta: None,
         })
         .err()
 }
@@ -437,7 +437,7 @@ fn through_the_binary(
     (answer, upstream_body(&upstream.seen()))
 }
 
-/// llm 0.11.0's messages decoder's refusal of `body`, read as a client's.
+/// llm 0.13.0's messages decoder's refusal of `body`, read as a client's.
 fn messages_refusal(body: &serde_json::Value) -> (llm_core::ErrorCode, String) {
     let origin = llm_core::Provenance {
         protocol: llm_core::Protocol::Messages,
@@ -895,7 +895,7 @@ fn translation_no_log_line_carries_a_seal_or_the_upstream_state() {
     assert_eq!(upstream.seen().len(), 2);
 }
 
-/// What llm 0.11.0 still refuses, it refuses by name, and the gateway answers each
+/// What llm 0.13.0 still refuses, it refuses by name, and the gateway answers each
 /// `translation-unsupported` before asking for a target: Claude Code's structured-output turn
 /// (`output_config.format`), `thinking.display`, `context_management` and `safeguards`, and a
 /// `system` message inside `messages` by its role; on Responses, `text.format` and a hosted
@@ -957,7 +957,7 @@ fn translation_fields_llm_still_refuses_are_refused_by_name() {
     }
 }
 
-/// llm 0.11.0 checks the effort the upstream wire receives: effort `max` reaches a chat or
+/// llm 0.13.0 checks the effort the upstream wire receives: effort `max` reaches a chat or
 /// responses upstream as `xhigh`, and disabled thinking as `none`, both of which the gateway
 /// admits there; a messages upstream receives `max` and `none` as they are, and is not
 /// translated either. A thinking budget has no name on chat or responses.
@@ -1034,7 +1034,7 @@ fn translation_a_model_is_translated_under_its_declared_capabilities() {
                 upstream: Wire::Messages,
                 model,
                 body: body.as_bytes(),
-                anthropic_beta: false,
+                anthropic_beta: None,
             })
             .err()
     };

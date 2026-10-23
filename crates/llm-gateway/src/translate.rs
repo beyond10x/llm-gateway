@@ -17,15 +17,17 @@ use crate::{
 
 /// One request the relay hands a translator: the wire the client spoke, the wire the model's
 /// upstream speaks (its first declared wire), the model, the client's body exactly as read, and
-/// whether the client sent an `anthropic-beta` header. No header of the client's reaches a
-/// translated upstream; the flag only lets a translator report that one was dropped.
+/// the value of the client's `anthropic-beta` header line as the head carried it, unchecked. The
+/// head refuses a repeated header (`request-malformed`), so there is at most one line, which may
+/// name several betas separated by commas. No header of the client's is forwarded verbatim: the
+/// value reaches the translator, which decides what, if anything, of it the upstream is sent.
 #[derive(Debug, Clone, Copy)]
 pub struct TranslationRequest<'a> {
     pub ingress: Wire,
     pub upstream: Wire,
     pub model: &'a RelayModel,
     pub body: &'a [u8],
-    pub anthropic_beta: bool,
+    pub anthropic_beta: Option<&'a str>,
 }
 
 /// Translates a request from the client's wire to the upstream's, and its answer back.

@@ -89,7 +89,9 @@ Qwen3.8 chat template ([the relay](../concepts/relay.md)):
 - `thinking: {"type": "adaptive"}` reaches vLLM unchanged, and vLLM ignores it; the effort is
   what turns the model's thinking on. `output_config.format` reaches vLLM unchanged, and vLLM
   serves it as structured output.
-- `anthropic-version` and `anthropic-beta` are not forwarded; vLLM reads neither.
+- `anthropic-version` and `anthropic-beta` are not forwarded; vLLM reads neither. A Bedrock
+  model is sent the beta names its `anthropic_beta` list allows, in the InvokeModel body
+  ([beta names](serve-a-bedrock-model.md#beta-names)).
 
 These are read from Claude Code's documentation and vLLM's source; no Claude Code session has
 been recorded against a pod yet.

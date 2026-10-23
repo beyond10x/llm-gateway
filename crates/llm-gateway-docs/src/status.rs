@@ -249,9 +249,16 @@ pub const CAPABILITIES: &[Capability] = &[
         BEDROCK,
     ),
     shipped(
+        "Clients",
+        "Anthropic beta names on a Bedrock model",
+        "A Messages client's anthropic-beta names reach an InvokeModel model's body as anthropic_beta, in the client's order, only when the model's anthropic_beta list names them; every other name is dropped and logged by name, and a malformed header to such a model is refused translation-invalid before anything is sent. A Converse model, a model without a list and a chat or responses client are sent none, the header unread. Tested against a fixture Bedrock Runtime, not against AWS.",
+        "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_allowlisted_beta_names_reach_the_invoke_body_in_the_clients_order",
+        BEDROCK,
+    ),
+    shipped(
         "Relay",
         "Translation between wires within llm's subset",
-        "A request on a wire the model's upstream does not speak is decoded with llm 0.11.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Tested against loopback fixture upstreams, not a vendor API.",
+        "A request on a wire the model's upstream does not speak is decoded with llm 0.13.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Tested against loopback fixture upstreams, not a vendor API.",
         "crates/llm-gateway-cli/tests/translation.rs::translation_the_binary_reaches_an_api_key_endpoint_on_its_base_path_with_its_key_only",
         Some("/docs/guides/translate-between-wires"),
     ),

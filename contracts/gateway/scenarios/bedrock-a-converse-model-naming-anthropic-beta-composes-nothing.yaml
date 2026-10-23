@@ -1,0 +1,22 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: bedrock-a-converse-model-naming-anthropic-beta-composes-nothing
+summary: the binary refuses a Bedrock model on api converse that names anthropic_beta as config:value, because Converse carries no beta name, and nothing is composed
+timeline:
+- at: '2026-10-23T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/credentials/owner\"\n\n[hosted.haiku]\nkind = \"bedrock\"\nregion = \"eu-central-1\"\nmodel_id = \"eu.anthropic.claude-fixture-v1:0\"\ncredential_source = \"container\"\napi = \"converse\"\nanthropic_beta = [\"fixture-beta-a\"]\n","withheld":["eu-central-1"],"steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    valid_program: true
+    error_code: 'config:value'
+    results: []
+    secret_on_wire: null
+    withheld_on_wire: null

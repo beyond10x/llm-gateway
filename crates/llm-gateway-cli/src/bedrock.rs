@@ -178,11 +178,12 @@ pub(crate) fn endpoint_admitted(endpoint: &str) -> Option<Url> {
     probe("eu-central-1", "probe", Some(url.clone())).then_some(url)
 }
 
-/// One Bedrock model as the translator sends to it: the validated target and the credentials it
-/// signs with.
+/// One Bedrock model as the translator sends to it: the validated target, the credentials it
+/// signs with, and the `anthropic-beta` names the deployment allows it to carry, empty for none.
 pub(crate) struct BedrockRoute {
     pub(crate) target: BedrockTarget,
     pub(crate) credentials: Arc<dyn CredentialSource>,
+    pub(crate) anthropic_beta: Vec<String>,
 }
 
 impl BedrockRoute {
@@ -381,6 +382,7 @@ pub(crate) fn routes(
             Arc::new(BedrockRoute {
                 target,
                 credentials: Arc::clone(&credentials),
+                anthropic_beta: model.anthropic_beta.clone(),
             }),
         );
     }

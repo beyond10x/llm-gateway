@@ -199,8 +199,10 @@ upstream_model = "vendor-large-2"
 `kind` is `endpoint` by default. A table with `kind = "bedrock"` declares a model Amazon Bedrock
 serves instead: it takes `region`, `model_id` and `credential_source = "container"`, and
 optionally `api`, `endpoint`, `billing_kind`, `context_window`, `max_output_tokens` (1 to the
-window, which it is when undeclared; it bounds the output a turn naming none is given) and
-`tool_calling` (default `parsed`). Every request to it is translated and signed with the container credentials named by
+window, which it is when undeclared; it bounds the output a turn naming none is given),
+`anthropic_beta` (default empty: the `anthropic-beta` names a Messages client's header may carry
+into an `anthropic-invoke` model's InvokeModel body, at most 32 distinct names by llm's beta name
+rule; refused on a `converse` model, an empty list too) and `tool_calling` (default `parsed`). Every request to it is translated and signed with the container credentials named by
 `AWS_CONTAINER_CREDENTIALS_FULL_URI` and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`. An
 endpoint's keys are refused on it, and its keys on an endpoint, each as `config:value` naming the
 key. [Serve a Bedrock model](../guides/serve-a-bedrock-model.md) has every rule.
@@ -220,7 +222,7 @@ The model id above is an example and is unverified.
 `routes = "<path>"` names a routes document in llm's `llm.routes/1` format: endpoints, each with
 a `base_url`, a `protocol` and an `auth`, and routes, each a name for `<endpoint>/<model-id>`,
 optionally with its `capabilities`. The binary reads it once at start and parses it with llm
-0.11.0's own parser, which reads no secret and no other file. Each route is then served as a model
+0.13.0's own parser, which reads no secret and no other file. Each route is then served as a model
 under its route name, from a hosted endpoint built from its endpoint: on the endpoint's wire
 alone, relayed byte for byte, and translated from the other two
 ([translate between wires](../guides/translate-between-wires.md#serve-the-models-of-a-routes-document)).
@@ -230,6 +232,7 @@ A changed routes document takes a restart.
 | --- | --- |
 | The file is read through the trusted-file reader (below): at most 2 MiB, llm's own bound, and not group- or world-writable. | `config:<rule>`, its message starting `routes <path>:` |
 | A document llm refuses: malformed YAML, an unknown field, a repeated key, an unknown format, protocol, auth kind or secret source, a literal secret, a relative `file:` path, a route to an undeclared endpoint. | `config:value`, its message `routes <llm's message>`, which names a field, endpoint or route and never a value |
+| A Bedrock endpoint (`bedrock: {region: ..}`), a route's `aliases` and a route's `price`, which llm admits and the gateway does not serve, are refused, never ignored: a Bedrock model is a [`kind = "bedrock"`](#bedrock-models) hosted model, and the gateway prices no routed call. | `config:value` naming `routes.<endpoint>`, `routes.<route>.aliases` or `routes.<route>.price` |
 | A credentialed endpoint's `auth.secret` is a `file:` reference: an absolute path, or `~/<path>` resolved against `HOME`. An `env:` or `keychain:` secret is refused: the gateway reads credentials only from trusted files. | `config:value` naming `routes.<endpoint>.auth.secret` |
 | The key file is read once at start, as a hosted model's `credential_file` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret <path>:` |
 | `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |

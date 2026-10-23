@@ -977,17 +977,17 @@ const fn billing_kind(declared: &BillingKindDocument) -> BillingKind {
 }
 
 /// `[hosted.<alias>] anthropic_beta`, checked (story:bedrock-llm-0-13): empty when undeclared;
-/// otherwise an `anthropic-invoke` model's, at most `llm_core::MAX_ANTHROPIC_BETAS` distinct
-/// names, each by `llm_core::anthropic_beta_name`. A refusal names the key, never a name.
+/// otherwise an `anthropic-invoke` model's, whatever its length, with at most
+/// `llm_core::MAX_ANTHROPIC_BETAS` distinct names, each by `llm_core::anthropic_beta_name`. A
+/// refusal names the key, never a name.
 fn validate_betas(
     at: &str,
     api: llm_bedrock::Api,
     declared: Option<Vec<String>>,
 ) -> Result<Vec<String>, Refusal> {
-    let betas = declared.unwrap_or_default();
-    if betas.is_empty() {
-        return Ok(betas);
-    }
+    let Some(betas) = declared else {
+        return Ok(Vec::new());
+    };
     let at = format!("{at}.anthropic_beta");
     ensure(
         api == llm_bedrock::Api::AnthropicInvoke,

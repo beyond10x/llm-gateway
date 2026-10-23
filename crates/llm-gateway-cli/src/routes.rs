@@ -232,6 +232,12 @@ impl Routes {
                 "is not served: the gateway serves a route under its own name only",
             ));
         }
+        if let Some(route) = parsed.routes().find(|route| route.price().is_some()) {
+            return Err(value(
+                &format!("routes.{}.price", route.name().as_str()),
+                "is not read: the gateway prices no routed call",
+            ));
+        }
         let mut endpoints = BTreeMap::new();
         for declaration in parsed.endpoints() {
             let name = declaration.name().as_str();
@@ -641,9 +647,9 @@ mod tests {
     const DOCUMENT: &str = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: lab/small\n";
 
     /// What llm 0.12.0 added to `llm.routes/1` and the gateway does not serve is refused by key,
-    /// never ignored: a Bedrock endpoint, and a route's `aliases`.
+    /// never ignored: a Bedrock endpoint, a route's `aliases` and a route's `price`.
     #[test]
-    fn a_bedrock_endpoint_or_a_route_alias_is_refused_by_its_key() {
+    fn a_bedrock_endpoint_or_a_route_alias_or_price_is_refused_by_its_key() {
         let bedrock = "format: llm.routes/1\nendpoints:\n  eu: {protocol: messages, bedrock: {region: eu-central-1}, auth: {kind: aws-container}}\nroutes:\n  opus: eu/eu.anthropic.claude-fixture-v1\n";
         let refused = Routes::parse(bedrock).unwrap_err();
         assert_eq!(refused.code(), "config:value");
@@ -653,6 +659,13 @@ mod tests {
         assert_eq!(refused.code(), "config:value");
         assert!(
             refused.message().starts_with("routes.small.aliases "),
+            "{refused}"
+        );
+        let priced = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: {model: lab/small, price: {currency: USD, input: '1', output: '5'}}\n";
+        let refused = Routes::parse(priced).unwrap_err();
+        assert_eq!(refused.code(), "config:value");
+        assert!(
+            refused.message().starts_with("routes.small.price "),
             "{refused}"
         );
     }

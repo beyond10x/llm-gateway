@@ -5,6 +5,20 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Added
+
+- A Bedrock `anthropic-invoke` model may declare `anthropic_beta = [..]`; only those client beta names reach its body.
+- A beta name a Bedrock model's list does not hold is dropped and logged by name; a malformed header is `translation-invalid`.
+
+### Changed
+
+- The llm crates move to tag `0.13.0`; `http` 1.5 is added to hand llm the client's `anthropic-beta` lines.
+- A Bedrock turn is checked with llm's `llm_bedrock::check_request`; the gateway's copy of the Converse rules is removed.
+- **Breaking:** `TranslationRequest::anthropic_beta` carries the client's `anthropic-beta` header values instead of a flag.
+- A routes document naming a Bedrock endpoint or a route `aliases` (llm 0.12.0 keys) is refused `config:value`.
+
 ## 0.13.0 (2026-10-23)
 
 - Amazon Bedrock models: a `[hosted.<alias>]` table with `kind = "bedrock"` declares `region`,

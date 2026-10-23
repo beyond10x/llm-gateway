@@ -113,6 +113,10 @@ struct HostedDocument {
     /// A Bedrock model's output limit, refused on an endpoint.
     #[serde(default)]
     max_output_tokens: Option<u32>,
+    /// The Anthropic beta names an `InvokeModel` model takes from a client, refused on an
+    /// endpoint and on a Converse model.
+    #[serde(default)]
+    anthropic_beta: Option<Vec<String>>,
     /// `absent` by default for an endpoint, `parsed` for a Bedrock model.
     #[serde(default)]
     tool_calling: Option<ToolCallingDocument>,
@@ -582,6 +586,10 @@ pub struct Bedrock {
     pub max_output_tokens: Option<u32>,
     /// `parsed` unless the document says `absent`.
     pub tool_calling: ToolCalling,
+    /// The Anthropic beta names a client's `anthropic-beta` header may carry to this model, in
+    /// the document's order: each `llm_core::anthropic_beta_name`, distinct, at most
+    /// `llm_core::MAX_ANTHROPIC_BETAS`. Empty unless declared, and always empty for `converse`.
+    pub anthropic_beta: Vec<String>,
 }
 
 /// A loaded and validated deployment document.
@@ -845,6 +853,7 @@ fn refuse_bedrock_keys(at: &str, declared: &HostedDocument) -> Result<(), Refusa
         ("api", declared.api.is_some()),
         ("endpoint", declared.endpoint.is_some()),
         ("max_output_tokens", declared.max_output_tokens.is_some()),
+        ("anthropic_beta", declared.anthropic_beta.is_some()),
     ] {
         ensure(
             !present,
@@ -967,6 +976,42 @@ const fn billing_kind(declared: &BillingKindDocument) -> BillingKind {
     }
 }
 
+/// `[hosted.<alias>] anthropic_beta`, checked (story:bedrock-llm-0-13): empty when undeclared;
+/// otherwise an `anthropic-invoke` model's, at most `llm_core::MAX_ANTHROPIC_BETAS` distinct
+/// names, each by `llm_core::anthropic_beta_name`. A refusal names the key, never a name.
+fn validate_betas(
+    at: &str,
+    api: llm_bedrock::Api,
+    declared: Option<Vec<String>>,
+) -> Result<Vec<String>, Refusal> {
+    let betas = declared.unwrap_or_default();
+    if betas.is_empty() {
+        return Ok(betas);
+    }
+    let at = format!("{at}.anthropic_beta");
+    ensure(
+        api == llm_bedrock::Api::AnthropicInvoke,
+        &at,
+        "is a key of api = \"anthropic-invoke\" only: Converse carries no beta",
+    )?;
+    ensure(
+        betas.len() <= llm_core::MAX_ANTHROPIC_BETAS,
+        &at,
+        &format!("names at most {} betas", llm_core::MAX_ANTHROPIC_BETAS),
+    )?;
+    ensure(
+        betas.iter().all(|name| llm_core::anthropic_beta_name(name)),
+        &at,
+        &format!(
+            "names each beta with 1..={} ASCII letters, digits, '-', '_' or '.'",
+            llm_core::MAX_ANTHROPIC_BETA_BYTES
+        ),
+    )?;
+    let distinct: std::collections::BTreeSet<&String> = betas.iter().collect();
+    ensure(distinct.len() == betas.len(), &at, "names each beta once")?;
+    Ok(betas)
+}
+
 /// `[hosted.<alias>] kind = "bedrock"`, checked (`llm-gateway.deployment.HostedDeclaration`,
 /// story:bedrock-hosted-target). The region, the model id and the endpoint are each checked by
 /// the rule llm's Bedrock client applies, and a refusal names the key and never the value.
@@ -1039,6 +1084,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
             .unwrap_or(crate::bedrock::DEFAULT_CONTEXT_WINDOW);
         within(at, "max_output_tokens", &output, &(1..=window))?;
     }
+    let anthropic_beta = validate_betas(at, api, declared.anthropic_beta)?;
     Ok(Bedrock {
         region,
         model_id,
@@ -1048,6 +1094,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         context_window: declared.context_window,
         max_output_tokens: declared.max_output_tokens,
         tool_calling: tool_calling(declared.tool_calling.unwrap_or(ToolCallingDocument::Parsed)),
+        anthropic_beta,
     })
 }
 

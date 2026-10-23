@@ -1,7 +1,7 @@
 //! The models of an llm `llm.routes/1` document a deployment names by its `routes` key
 //! (story:routes-document; `spec/domains/deployment.yaml` `RoutesDeclaration`).
 //!
-//! The document is read once at start through the trusted-file reader and parsed with llm 0.11.0's
+//! The document is read once at start through the trusted-file reader and parsed with llm 0.13.0's
 //! `Routes::parse`, which validates it strictly and performs no I/O; `llm-models` is linked
 //! without its secret-source features, so llm reads no secret. What llm's API does not expose,
 //! the path of an endpoint's `file:` secret, is read here from the same text with a minimal
@@ -219,6 +219,19 @@ impl Routes {
             .map_err(|error| value("routes", &error.message))?;
         let secrets: SecretsDocument = serde_yaml::from_str(text)
             .map_err(|_| value("routes", "cannot be read for its secret references"))?;
+        if let Some(bedrock) = parsed.bedrock_endpoints().next() {
+            return Err(value(
+                &format!("routes.{}", bedrock.name().as_str()),
+                "cannot be served from a routes document: a Bedrock model is declared as \
+                 [hosted.<alias>] with kind = \"bedrock\"",
+            ));
+        }
+        if let Some(route) = parsed.routes().find(|route| !route.aliases().is_empty()) {
+            return Err(value(
+                &format!("routes.{}.aliases", route.name().as_str()),
+                "is not served: the gateway serves a route under its own name only",
+            ));
+        }
         let mut endpoints = BTreeMap::new();
         for declaration in parsed.endpoints() {
             let name = declaration.name().as_str();
@@ -535,8 +548,8 @@ fn endpoint(
         Protocol::Messages => Wire::Messages,
         Protocol::Responses => Wire::Responses,
         Protocol::ChatCompletions => Wire::Chat,
-        // llm's routes document refuses this protocol itself; a Bedrock model is a
-        // `[hosted.<alias>]` entry of kind `bedrock`.
+        // llm admits this protocol only on a Bedrock endpoint, refused above; a Bedrock model
+        // is a `[hosted.<alias>]` entry of kind `bedrock`.
         Protocol::BedrockConverse => {
             return Err(value(
                 &key("protocol"),
@@ -626,6 +639,23 @@ mod tests {
     use std::path::{Path, PathBuf};
 
     const DOCUMENT: &str = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: lab/small\n";
+
+    /// What llm 0.12.0 added to `llm.routes/1` and the gateway does not serve is refused by key,
+    /// never ignored: a Bedrock endpoint, and a route's `aliases`.
+    #[test]
+    fn a_bedrock_endpoint_or_a_route_alias_is_refused_by_its_key() {
+        let bedrock = "format: llm.routes/1\nendpoints:\n  eu: {protocol: messages, bedrock: {region: eu-central-1}, auth: {kind: aws-container}}\nroutes:\n  opus: eu/eu.anthropic.claude-fixture-v1\n";
+        let refused = Routes::parse(bedrock).unwrap_err();
+        assert_eq!(refused.code(), "config:value");
+        assert!(refused.message().starts_with("routes.eu "), "{refused}");
+        let aliased = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: {model: lab/small, aliases: [tiny]}\n";
+        let refused = Routes::parse(aliased).unwrap_err();
+        assert_eq!(refused.code(), "config:value");
+        assert!(
+            refused.message().starts_with("routes.small.aliases "),
+            "{refused}"
+        );
+    }
 
     /// The routes document's bound is llm's own: a document of exactly the bound parses, and
     /// one byte more is refused by `Routes::parse` itself.

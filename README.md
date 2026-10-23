@@ -31,7 +31,7 @@ are llm's. The gateway library relays the owner's chat, responses and messages r
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
 it translates no protocol itself, but holds the port through which the binary translates a
-request on a wire the model's upstream does not speak, within llm 0.11.0's published subset
+request on a wire the model's upstream does not speak, within llm 0.13.0's published subset
 ([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, never
 dropped. Claude Code's first turn and Codex's first turn are carried to another wire with their
 controls (effort, thinking, parallel tool calls, cache and verbosity hints). Codex's later turns
@@ -43,7 +43,7 @@ never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never
 against a vendor API. A `[hosted.<alias>] kind = "bedrock"` model is translated and sent to
 Amazon Bedrock with llm's Bedrock client, signed from the container credentials endpoint (Amazon EKS Pod
-Identity); that path has run only against a fixture Bedrock Runtime, never against AWS. The hosting contract opens no socket and allocates nothing. The Runpod
+Identity), carrying a messages client's `anthropic-beta` names to InvokeModel only when the model's `anthropic_beta` list allows them; that path has run only against a fixture Bedrock Runtime, never against AWS. The hosting contract opens no socket and allocates nothing. The Runpod
 adapter's production transport reaches Runpod only through the `connectors` CLI; its tests run
 against `EmulatedRunpod` or a fixture of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
 provisions a resource.

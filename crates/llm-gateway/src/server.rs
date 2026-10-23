@@ -505,7 +505,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
                 timeout,
                 count_timeout: shared.config.count_timeout,
             };
-            match relay::serve(&mut stream, leftover, admitted, relay, &limits, &mut call) {
+            match relay::serve(&mut stream, leftover, &admitted, relay, &limits, &mut call) {
                 Ok(()) => {
                     record(shared, decision.recorded, call, None, begun);
                     drop(stream.shutdown(Shutdown::Both));
@@ -961,7 +961,11 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
                     .header("expect")
                     .is_some_and(|value| value.eq_ignore_ascii_case("100-continue")),
             chunked_answer: !request.http_1_0,
-            anthropic_beta: request.header("anthropic-beta").is_some(),
+            anthropic_beta: request
+                .header("anthropic-beta")
+                .map(str::to_owned)
+                .into_iter()
+                .collect(),
         }),
         Err(code) => Outcome::Refused(code),
     }

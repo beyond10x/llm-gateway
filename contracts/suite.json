@@ -40,7 +40,9 @@
       "llm-gateway.gateway/authored/b8-a-target-bearer-that-is-not-one-printable-token-composes-nothing",
       "llm-gateway.gateway/authored/b8-each-target-receives-its-models-key-as-the-bearer-and-never-the-owners-credential",
       "llm-gateway.gateway/authored/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing",
+      "llm-gateway.gateway/authored/bedrock-a-converse-model-naming-anthropic-beta-composes-nothing",
       "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing",
+      "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-anthropic-beta-composes-nothing",
       "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id",
       "llm-gateway.gateway/authored/clamp-a-count-that-fails-relays-the-request-unchanged",
       "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted",
@@ -460,10 +462,20 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing"
       },
+      "gateway/scenarios/bedrock-a-converse-model-naming-anthropic-beta-composes-nothing.yaml": {
+        "digest": "sha256:2b01aceec5a941bbd31d89bc68af73a4754d54df377b29495a8b52ea91f99f21",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/bedrock-a-converse-model-naming-anthropic-beta-composes-nothing"
+      },
       "gateway/scenarios/bedrock-an-endpoint-naming-a-region-composes-nothing.yaml": {
         "digest": "sha256:5d271fcfd3bd5a49054b4f71cf44a979dd3b40992df68ce57af57929c71ebbbf",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing"
+      },
+      "gateway/scenarios/bedrock-an-endpoint-naming-anthropic-beta-composes-nothing.yaml": {
+        "digest": "sha256:b2ca40c24f7eb89058a73e2f9ac39bdd3184fda4dc439cfefc9e4d21f011e9f0",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-anthropic-beta-composes-nothing"
       },
       "gateway/scenarios/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id.yaml": {
         "digest": "sha256:788beeb53e9cfa1592c2249dc5afc365f4307541b6f3792ec37afd01d8daa5b5",
@@ -1697,7 +1709,7 @@
       }
     },
     "counts": {
-      "authored": 282,
+      "authored": 284,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -1722,9 +1734,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "6e5334094a4e56bb0a70d6dbe29afeaaf23836ef65e702ac83fe0f41c4bd3b8c",
+    "contract_digest": "45e793ffff250656fe0ef38387f7597d6cdcf5c294d05768648a712dc5f84f40",
     "scenario_initial_state": "empty",
-    "spec_digest": "460cad9c897b295fb5c572c79e3c0cf90586d8f2853a5502f4b8f3733204a184",
+    "spec_digest": "8f967aba724761aaced53b8f52ccc17bac94ff7c6c04c101eb933b937bf78531",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -5055,6 +5067,95 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/bedrock-a-converse-model-naming-anthropic-beta-composes-nothing": {
+      "purpose": "the binary refuses a Bedrock model on api converse that names anthropic_beta as config:value, because Converse carries no beta name, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.haiku]\\nkind = \\\"bedrock\\\"\\nregion = \\\"eu-central-1\\\"\\nmodel_id = \\\"eu.anthropic.claude-fixture-v1:0\\\"\\ncredential_source = \\\"container\\\"\\napi = \\\"converse\\\"\\nanthropic_beta = [\\\"fixture-beta-a\\\"]\\n\",\"withheld\":[\"eu-central-1\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "secret_on_wire": {
+                "kind": "literal",
+                "value": null
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              },
+              "withheld_on_wire": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing": {
       "purpose": "the binary refuses a hosted endpoint that names a region, a key of a Bedrock model only, as config:value, and nothing is composed",
       "source": [
@@ -5085,6 +5186,95 @@
             "program_json": {
               "kind": "literal",
               "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.open]\\nwires = [\\\"messages\\\"]\\nbase_url = \\\"http://10.0.0.7:8000/\\\"\\nauth_kind = \\\"anonymous\\\"\\nregion = \\\"eu-central-1\\\"\\n\",\"withheld\":[\"10.0.0.7\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "secret_on_wire": {
+                "kind": "literal",
+                "value": null
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              },
+              "withheld_on_wire": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-anthropic-beta-composes-nothing": {
+      "purpose": "the binary refuses a hosted endpoint that names anthropic_beta, a key of a Bedrock model only, as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.open]\\nwires = [\\\"messages\\\"]\\nbase_url = \\\"http://10.0.0.7:8000/\\\"\\nauth_kind = \\\"anonymous\\\"\\nanthropic_beta = [\\\"fixture-beta-a\\\"]\\n\",\"withheld\":[\"10.0.0.7\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
             }
           },
           "step": "execute_command"

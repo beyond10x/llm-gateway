@@ -616,21 +616,24 @@ fn drop_for_bedrock(ingress: Wire, alias: &str, route: &BedrockRoute, request: &
     }
 }
 
-/// Decodes a messages client's request to an `InvokeModel` model that allows `anthropic-beta`
-/// names, the client's header lines read by llm's decoder, which refuses a malformed one. The
-/// names the model allows stay in the turn in the client's order; each other name is logged by
-/// name as dropped. A header value the head carried that is not a header value llm takes is
-/// `translation-invalid`, as a malformed body is.
+/// Decodes a messages client's request to an `InvokeModel` model whose `anthropic_beta` list is
+/// not empty, the client's one header line read by llm's decoder, which refuses a malformed one.
+/// The names the model allows stay in the turn in the client's order; each other name is logged
+/// by name as dropped. A value that is not a header value at all is refused through
+/// [`refusal`] as llm's own `invalid` error, as a malformed body is: `translation-invalid`.
 fn decode_with_betas(
     request: &TranslationRequest<'_>,
     alias: &str,
     allowed: &[String],
 ) -> Result<Decoded, RefusalCode> {
     let mut headers = http::HeaderMap::new();
-    for value in request.anthropic_beta {
-        let value =
-            http::HeaderValue::from_str(value).map_err(|_| RefusalCode::TranslationInvalid)?;
-        headers.append(llm_messages::BETA_HEADER, value);
+    if let Some(value) = request.anthropic_beta {
+        let value = http::HeaderValue::from_str(value).map_err(|_| {
+            refusal(&Error::invalid(
+                "the anthropic-beta header is not a header value",
+            ))
+        })?;
+        headers.insert(llm_messages::BETA_HEADER, value);
     }
     let origin = ingress_provenance(request.ingress, alias).map_err(|error| refusal(&error))?;
     let mut decoded = llm_messages::decode_request_with_headers(request.body, &headers, &origin)
@@ -678,7 +681,7 @@ impl LlmTranslator {
         } else {
             let decoded =
                 decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
-            if !request.anthropic_beta.is_empty() {
+            if request.anthropic_beta.is_some() {
                 tracing::info!(
                     model = alias,
                     field = "anthropic-beta",

@@ -961,11 +961,7 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
                     .header("expect")
                     .is_some_and(|value| value.eq_ignore_ascii_case("100-continue")),
             chunked_answer: !request.http_1_0,
-            anthropic_beta: request
-                .header("anthropic-beta")
-                .map(str::to_owned)
-                .into_iter()
-                .collect(),
+            anthropic_beta: request.header("anthropic-beta").map(str::to_owned),
         }),
         Err(code) => Outcome::Refused(code),
     }

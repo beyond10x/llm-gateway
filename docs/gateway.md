@@ -439,13 +439,15 @@ the sources and what a live record still has to show. The cases are the `claude_
   `vllm/entrypoints/anthropic/serving.py`). The protocol page's advice to forward them verbatim
   is written for an Anthropic upstream. A Bedrock model is sent no client header either. An
   `api = "anthropic-invoke"` model that declares `anthropic_beta = [..]` receives, as the Invoke
-  body's `anthropic_beta`, the beta names of the client's header that its list holds, in the
-  client's order; llm 0.13.0's decoder reads the header first, and a malformed one (not visible
-  ASCII, a name outside `[A-Za-z0-9._-]` or over 128 bytes, more than 32 names) is refused
-  `translation-invalid` (400) before anything is sent. Each other name is logged as dropped by
-  name (`model`, `field = "anthropic-beta"`, `beta`), because Bedrock refuses a beta it does not
-  support and Claude Code sends several. A model with no list, and every `converse` model, is
-  sent none: the header is not read and its name alone is logged as dropped (`model`,
+  body's `anthropic_beta`, the beta names of a messages client's header that its list holds, in
+  the client's order. Only there, for a messages client, an `anthropic-invoke` model and a list
+  that is not empty, llm 0.13.0's decoder reads the header (one line: the head refuses a repeated
+  one), and a malformed one (not visible ASCII, a name outside `[A-Za-z0-9._-]` or over 128
+  bytes, more than 32 names) is refused `translation-invalid` (400) before anything is sent.
+  Each other name is logged as dropped by name (`model`, `field = "anthropic-beta"`, `beta`),
+  because Bedrock refuses a beta it does not support and Claude Code sends several. A model with
+  no list, every `converse` model, and a chat or responses client are sent none: the header is
+  not read, so not refused, and its name alone is logged as dropped (`model`,
   `field = "anthropic-beta"`), never its value. The query of `POST /v1/messages?beta=true` is discarded
   like any other (step 7 asks the target on the wire's own path).
 - **The answer.** vLLM's event stream, thinking blocks, `signature_delta` and `tool_use` blocks

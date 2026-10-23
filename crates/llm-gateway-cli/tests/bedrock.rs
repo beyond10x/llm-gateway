@@ -932,7 +932,69 @@ fn bedrock_allowlisted_beta_names_reach_the_invoke_body_in_the_clients_order() {
     assert_quiet(&log);
 }
 
-/// A client that names no beta on the list sends none: the body has no `anthropic_beta`.
+/// A chat or responses client's `anthropic-beta` header to an `InvokeModel` model with a list is
+/// dropped unread: even a header llm's decoder would refuse is answered, the body carries no
+/// `anthropic_beta`, and the drop is logged by field without the header's value.
+#[test]
+fn bedrock_a_chat_or_responses_clients_beta_header_is_dropped_unread() {
+    let deployment = Deployment::new("bedrock-beta-other-wire");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text(), invoke_text()]);
+    let config = deployment.config(&bedrock_table(
+        "haiku",
+        MODEL_ID,
+        &bedrock,
+        "anthropic_beta = [\"fixture-beta-a\"]\n",
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let header = "fixture-beta-a, not a beta name!";
+    for (path, request) in [
+        (
+            "/v1/chat/completions",
+            json!({"model":"haiku","messages":[{"role":"user","content":PROMPT_MARKER}]}),
+        ),
+        (
+            "/v1/responses",
+            json!({"model":"haiku","stream":true,"store":false,
+                "include":["reasoning.encrypted_content"],"input":[{"type":"message",
+                "role":"user","content":[{"type":"input_text","text":PROMPT_MARKER}]}]}),
+        ),
+    ] {
+        let request = request.to_string();
+        let answer = server.exchange(&format!(
+            "POST {path} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nanthropic-beta: {header}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{request}",
+            request.len()
+        ));
+        assert!(
+            answer.starts_with("HTTP/1.1 200 OK\r\n"),
+            "{path}: {answer}"
+        );
+    }
+    let log = server.log();
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    for sent in &seen {
+        assert!(body(sent).get("anthropic_beta").is_none(), "{sent}");
+        assert!(!sent.contains("fixture-beta-a"), "{sent}");
+    }
+    let drops = log
+        .iter()
+        .filter(|line| line.contains("dropped") && line.contains("anthropic-beta"))
+        .count();
+    assert_eq!(drops, 2, "{log:?}");
+    assert!(
+        !log.iter()
+            .any(|line| line.contains("fixture-beta-a") || line.contains("not a beta name")),
+        "{log:?}"
+    );
+    assert_quiet(&log);
+}
+
+/// A client that names no beta on the list sends none: the body has no `anthropic_beta`, and
+/// the name it did send is logged by name as dropped.
 #[test]
 fn bedrock_a_client_naming_no_allowlisted_beta_sends_none() {
     let deployment = Deployment::new("bedrock-beta-none-listed");
@@ -958,7 +1020,10 @@ fn bedrock_a_client_naming_no_allowlisted_beta_sends_none() {
         "{}",
         seen[0]
     );
+    assert!(!seen[0].contains("claude-code-fixture-1"), "{}", seen[0]);
     assert!(beta_dropped(&log, "claude-code-fixture-1"), "{log:?}");
+    assert!(!beta_dropped(&log, "fixture-beta-a"), "{log:?}");
+    assert_quiet(&log);
 }
 
 /// A Converse model carries no beta name, whatever the client sends: the header is logged as
@@ -1232,8 +1297,9 @@ fn bedrock_a_document_mixing_or_misnaming_bedrock_keys_is_refused() {
     }
 }
 
-/// An `anthropic_beta` list on an endpoint or on a `converse` model, or one naming a beta outside
-/// llm's name rule, twice, or more of them than a turn carries, refuses the start naming the key.
+/// An `anthropic_beta` list on an endpoint or on a `converse` model (an empty one too), or one
+/// naming a beta outside llm's name rule, twice, or more of them than a turn carries, refuses the
+/// start naming the key.
 #[test]
 fn bedrock_a_misdeclared_beta_list_is_refused_by_its_key() {
     let deployment = Deployment::new("bedrock-beta-document");
@@ -1252,6 +1318,15 @@ fn bedrock_a_misdeclared_beta_list_is_refused_by_its_key() {
                 "eu.amazon.nova-fixture-v1:0",
                 &bedrock,
                 "anthropic_beta = [\"fixture-beta-a\"]\n",
+            ),
+        ),
+        (
+            "an empty anthropic_beta on a converse model",
+            bedrock_table(
+                "nova",
+                "eu.amazon.nova-fixture-v1:0",
+                &bedrock,
+                "anthropic_beta = []\n",
             ),
         ),
         (

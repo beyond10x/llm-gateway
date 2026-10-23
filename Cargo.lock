@@ -114,11 +114,11 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "b10x-llm-gateway"
-version = "0.13.0"
+version = "0.14.0"
 
 [[package]]
 name = "b10x-llm-gateway-cli"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-gateway-conformance"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -173,15 +173,15 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-modal"
-version = "0.13.0"
+version = "0.14.0"
 
 [[package]]
 name = "b10x-llm-provision"
-version = "0.13.0"
+version = "0.14.0"
 
 [[package]]
 name = "b10x-llm-runpod"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "b10x-llm-provision",
  "llm-providers",
@@ -966,7 +966,7 @@ dependencies = [
 
 [[package]]
 name = "llm-gateway-docs"
-version = "0.13.0"
+version = "0.14.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",

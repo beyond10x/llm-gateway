@@ -45,7 +45,7 @@ list-inference-profiles` before you use it.
 | `billing_kind` | `metered` | `metered`, `subscription` or `self-hosted`. |
 | `context_window` | absent | 4096 to 2000000 tokens. Without one, the gateway works with 200000. |
 | `max_output_tokens` | the window | 1 to the window. The most output a turn may ask for; a turn naming none is given half the window, at most 16384 and at most this. The inventory lists it. |
-| `anthropic_beta` | empty | The `anthropic-beta` names a Messages client may send to this model, at most 32 distinct names of `A-Z a-z 0-9 - _ .`, each at most 128 bytes. `anthropic-invoke` only: refused on `converse`. See [Beta names](#beta-names). |
+| `anthropic_beta` | empty | The `anthropic-beta` names a Messages client may send to this model, at most 32 distinct names of `A-Z a-z 0-9 - _ .`, each at most 128 bytes. `anthropic-invoke` only: refused on `converse`, an empty list too. See [Beta names](#beta-names). |
 | `tool_calling` | `parsed` | `parsed` or `absent`. |
 
 The default `api` is `anthropic-invoke` when the model id is Anthropic's: its first dotted part
@@ -120,13 +120,13 @@ anthropic_beta = ["context-1m-2025-08-07"]
 
 The beta name above is an example and is unverified against Bedrock.
 
-For a Messages client of an `anthropic-invoke` model with a list, llm's decoder reads the
-`anthropic-beta` header. A header that is not visible ASCII, names a beta outside the name rule,
+Only for a Messages client of an `anthropic-invoke` model whose list is not empty does llm's
+decoder read the `anthropic-beta` header, one line, since a repeated header is refused. A header that is not visible ASCII, names a beta outside the name rule,
 or names more than 32 is refused `translation-invalid` (400) before anything is sent. The names
 on the list go into the InvokeModel body's `anthropic_beta`, in the client's order; every other
 name is dropped and logged at `info` with `field = "anthropic-beta"` and the name as `beta`. A
 model without a list, a `converse` model, and a client on another wire send no beta: the header
-is not read, and its name alone is logged as dropped.
+is not read, so a malformed one is not refused, and its name alone is logged as dropped.
 
 ## Amazon EKS Pod Identity
 

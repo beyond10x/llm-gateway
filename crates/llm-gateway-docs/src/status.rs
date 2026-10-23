@@ -251,7 +251,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Clients",
         "Anthropic beta names on a Bedrock model",
-        "A Messages client's anthropic-beta names reach an InvokeModel model's body as anthropic_beta, in the client's order, only when the model's anthropic_beta list names them; every other name is dropped and logged by name, and a malformed header is refused translation-invalid before anything is sent. A Converse model and a model without a list are sent none. Tested against a fixture Bedrock Runtime, not against AWS.",
+        "A Messages client's anthropic-beta names reach an InvokeModel model's body as anthropic_beta, in the client's order, only when the model's anthropic_beta list names them; every other name is dropped and logged by name, and a malformed header to such a model is refused translation-invalid before anything is sent. A Converse model, a model without a list and a chat or responses client are sent none, the header unread. Tested against a fixture Bedrock Runtime, not against AWS.",
         "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_allowlisted_beta_names_reach_the_invoke_body_in_the_clients_order",
         BEDROCK,
     ),

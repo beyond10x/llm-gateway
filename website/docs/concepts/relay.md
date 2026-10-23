@@ -91,7 +91,9 @@ of step 7 asks only the target step 6 handed out.
   hosted endpoint is sent its credential in the header its table names instead, and no
   `authorization`. No header of the client's request is forwarded, so the owner's credential
   never reaches a target. Claude Code's `anthropic-version` and `anthropic-beta` are dropped
-  with the rest; the pinned vLLM reads neither.
+  with the rest; the pinned vLLM reads neither. A Bedrock model, which is translated and not
+  relayed, receives only the beta names its `anthropic_beta` list allows
+  ([beta names](../guides/serve-a-bedrock-model.md#beta-names)).
 - The target's status, `content-type` and body are relayed as they arrive, chunked, so a stream
   reaches the client event by event. The body is not rewritten: whatever a target puts in its
   answer body reaches the client. An answer cut short reaches the client cut.

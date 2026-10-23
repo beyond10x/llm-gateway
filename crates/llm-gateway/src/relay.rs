@@ -820,7 +820,7 @@ pub(crate) enum Framing {
 }
 
 /// A relay the head has admitted.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub(crate) struct Admitted {
     pub(crate) wire: Wire,
     pub(crate) framing: Framing,
@@ -828,8 +828,9 @@ pub(crate) struct Admitted {
     /// The client asked in HTTP/1.1 or later, so its answer may be chunked. An HTTP/1.0 client
     /// is sent the answer unframed, ended by closing the connection (RFC 9112 section 6.1).
     pub(crate) chunked_answer: bool,
-    /// The client sent an `anthropic-beta` header, which no translated upstream receives.
-    pub(crate) anthropic_beta: bool,
+    /// The values of the client's `anthropic-beta` header lines, handed to a translator and
+    /// never forwarded verbatim.
+    pub(crate) anthropic_beta: Vec<String>,
 }
 
 /// Decides the body framing from the head (row W1).
@@ -1280,7 +1281,7 @@ fn translate(
     stream: &mut TcpStream,
     body: &[u8],
     (model, translator): (&RelayModel, &dyn Translator),
-    admitted: Admitted,
+    admitted: &Admitted,
     relay: &Relay,
     limits: &Limits,
     call: &mut Call,
@@ -1290,7 +1291,7 @@ fn translate(
         upstream: model.wires[0],
         model,
         body,
-        anthropic_beta: admitted.anthropic_beta,
+        anthropic_beta: &admitted.anthropic_beta,
     })?;
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;
@@ -1447,7 +1448,7 @@ impl TranslatedAnswer for ClientAnswer<'_> {
 pub(crate) fn serve(
     stream: &mut TcpStream,
     leftover: Vec<u8>,
-    admitted: Admitted,
+    admitted: &Admitted,
     relay: &Relay,
     limits: &Limits,
     call: &mut Call,

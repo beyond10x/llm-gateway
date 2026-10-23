@@ -1225,6 +1225,22 @@ fn bedrock_a_document_mixing_or_misnaming_bedrock_keys_is_refused() {
                 "reasoning_effort = \"high\"\n",
             ),
         ),
+    ] {
+        let config = deployment.config(&table);
+        let stderr = assert_refused(&config, &environment, "config:value");
+        assert!(!stderr.contains(CONTAINER_TOKEN), "{case}: {stderr}");
+    }
+}
+
+/// An `anthropic_beta` list on an endpoint or on a `converse` model, or one naming a beta outside
+/// llm's name rule, twice, or more of them than a turn carries, refuses the start naming the key.
+#[test]
+fn bedrock_a_misdeclared_beta_list_is_refused_by_its_key() {
+    let deployment = Deployment::new("bedrock-beta-document");
+    let credentials = Recorder::credentials(0);
+    let bedrock = Recorder::start(EVENT_STREAM, Vec::new());
+    let environment = Environment::container(&credentials, &deployment.token);
+    for (case, table) in [
         (
             "anthropic_beta on an endpoint",
             "[hosted.local]\nwires = [\"messages\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nauth_kind = \"anonymous\"\nanthropic_beta = [\"fixture-beta-a\"]\n".to_owned(),
@@ -1283,9 +1299,7 @@ fn bedrock_a_document_mixing_or_misnaming_bedrock_keys_is_refused() {
         let config = deployment.config(&table);
         let stderr = assert_refused(&config, &environment, "config:value");
         assert!(!stderr.contains(CONTAINER_TOKEN), "{case}: {stderr}");
-        if case.contains("beta") {
-            assert!(stderr.contains(".anthropic_beta"), "{case}: {stderr}");
-        }
+        assert!(stderr.contains(".anthropic_beta"), "{case}: {stderr}");
     }
 }
 

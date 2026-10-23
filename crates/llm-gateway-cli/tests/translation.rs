@@ -381,7 +381,7 @@ fn prepared(ingress: Wire, upstream: Wire, body: &[u8]) -> Option<RefusalCode> {
             upstream,
             model: &model,
             body,
-            anthropic_beta: &[],
+            anthropic_beta: None,
         })
         .err()
 }
@@ -1034,7 +1034,7 @@ fn translation_a_model_is_translated_under_its_declared_capabilities() {
                 upstream: Wire::Messages,
                 model,
                 body: body.as_bytes(),
-                anthropic_beta: &[],
+                anthropic_beta: None,
             })
             .err()
     };

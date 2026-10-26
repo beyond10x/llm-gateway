@@ -41,7 +41,7 @@
       "x-ess-name": "llm-gateway.gateway.Seal",
       "x-ess-kind": "newtype",
       "type": "string",
-      "pattern": "^llmgw-seal-1\\.",
+      "pattern": "^llmgw-seal-1\\.[\\u002D\\u002E0-9A-Z\\u005Fa-z]*$",
       "x-ess-alphabet": "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_."
     },
     "llm-gateway.gateway.SealScope": {

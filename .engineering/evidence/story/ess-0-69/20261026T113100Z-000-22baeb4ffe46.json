@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-26T11:31:00Z",
+  "actor": "human:timo",
+  "artifact": "story:ess-0-69",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "RUSTUP_TOOLCHAIN=1.98.0 task check with ess 0.69.2: exit 0, 895 tests passed, 0 failed, 1 ignored; conformance 288 of 288 on three runs, 0 skipped",
+    "reference": "worktree ess-pin-2026-10-26 on a0d9cb4 plus the story diff"
+  }
+}

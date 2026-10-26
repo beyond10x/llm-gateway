@@ -114,11 +114,11 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "b10x-llm-gateway"
-version = "0.14.0"
+version = "0.15.0"
 
 [[package]]
 name = "b10x-llm-gateway-cli"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -155,7 +155,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-gateway-conformance"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -173,15 +173,15 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-modal"
-version = "0.14.0"
+version = "0.15.0"
 
 [[package]]
 name = "b10x-llm-provision"
-version = "0.14.0"
+version = "0.15.0"
 
 [[package]]
 name = "b10x-llm-runpod"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "b10x-llm-provision",
  "llm-providers",
@@ -412,8 +412,8 @@ dependencies = [
 
 [[package]]
 name = "ess-compiler"
-version = "0.56.0"
-source = "git+https://github.com/beyond10x/ess.git?tag=0.56.0#84ee8d38eb69e3a4507de801fdcb248232ed6e6e"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
 dependencies = [
  "ess-domain",
  "ess-primitives",
@@ -424,70 +424,94 @@ dependencies = [
 
 [[package]]
 name = "ess-conformance"
-version = "0.56.0"
-source = "git+https://github.com/beyond10x/ess.git?tag=0.56.0#84ee8d38eb69e3a4507de801fdcb248232ed6e6e"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
 dependencies = [
  "ess-compiler",
  "ess-domain",
  "ess-gen",
  "ess-primitives",
+ "ess-yaml",
  "serde",
  "serde_json",
- "serde_yaml",
  "sha2",
 ]
 
 [[package]]
 name = "ess-domain"
-version = "0.56.0"
-source = "git+https://github.com/beyond10x/ess.git?tag=0.56.0#84ee8d38eb69e3a4507de801fdcb248232ed6e6e"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
 dependencies = [
  "ess-primitives",
+ "ess-yaml",
  "schemars",
  "serde",
  "serde_json",
- "serde_yaml",
  "thiserror",
 ]
 
 [[package]]
 name = "ess-gen"
-version = "0.56.0"
-source = "git+https://github.com/beyond10x/ess.git?tag=0.56.0#84ee8d38eb69e3a4507de801fdcb248232ed6e6e"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
+dependencies = [
+ "ess-compiler",
+ "ess-domain",
+ "ess-http",
+ "ess-primitives",
+ "ess-transport",
+ "ess-yaml",
+ "pulldown-cmark",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "ess-http"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
 dependencies = [
  "ess-compiler",
  "ess-domain",
  "ess-primitives",
- "ess-transport",
- "pulldown-cmark",
+ "ess-yaml",
  "serde",
  "serde_json",
- "serde_yaml",
  "sha2",
 ]
 
 [[package]]
 name = "ess-primitives"
-version = "0.56.0"
-source = "git+https://github.com/beyond10x/ess.git?tag=0.56.0#84ee8d38eb69e3a4507de801fdcb248232ed6e6e"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
 dependencies = [
+ "ess-yaml",
  "schemars",
  "serde",
  "serde_json",
- "serde_yaml",
  "thiserror",
 ]
 
 [[package]]
 name = "ess-transport"
-version = "0.56.0"
-source = "git+https://github.com/beyond10x/ess.git?tag=0.56.0#84ee8d38eb69e3a4507de801fdcb248232ed6e6e"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
 dependencies = [
  "ess-compiler",
  "ess-domain",
+ "ess-yaml",
  "serde",
  "serde_json",
- "serde_yaml",
+]
+
+[[package]]
+name = "ess-yaml"
+version = "0.69.2"
+source = "git+https://github.com/beyond10x/ess.git?tag=0.69.2#a3bc2df3df986e8d340553145e8615a00f982331"
+dependencies = [
+ "serde",
+ "serde_norway",
 ]
 
 [[package]]
@@ -886,8 +910,8 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
 name = "llm-bedrock"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "base64 0.22.1",
  "http",
@@ -906,8 +930,8 @@ dependencies = [
 
 [[package]]
 name = "llm-blocking"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "llm-core",
  "tokio",
@@ -915,8 +939,8 @@ dependencies = [
 
 [[package]]
 name = "llm-chat"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "http",
  "llm-core",
@@ -930,8 +954,8 @@ dependencies = [
 
 [[package]]
 name = "llm-core"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "serde",
  "serde_json",
@@ -941,8 +965,8 @@ dependencies = [
 
 [[package]]
 name = "llm-cost"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "llm-core",
  "serde",
@@ -954,8 +978,8 @@ dependencies = [
 
 [[package]]
 name = "llm-credentials"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "llm-core",
  "serde",
@@ -966,7 +990,7 @@ dependencies = [
 
 [[package]]
 name = "llm-gateway-docs"
-version = "0.14.0"
+version = "0.15.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -976,8 +1000,8 @@ dependencies = [
 
 [[package]]
 name = "llm-http"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "bytes",
  "httpdate",
@@ -991,8 +1015,8 @@ dependencies = [
 
 [[package]]
 name = "llm-messages"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "http",
  "llm-core",
@@ -1006,8 +1030,8 @@ dependencies = [
 
 [[package]]
 name = "llm-models"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "llm-bedrock",
  "llm-chat",
@@ -1029,8 +1053,8 @@ dependencies = [
 
 [[package]]
 name = "llm-providers"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "http",
  "llm-core",
@@ -1046,8 +1070,8 @@ dependencies = [
 
 [[package]]
 name = "llm-responses"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "llm-core",
  "llm-credentials",
@@ -1059,8 +1083,8 @@ dependencies = [
 
 [[package]]
 name = "llm-routing"
-version = "0.13.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.13.0#3efdd75d8a2a175429339953fd5dfb296b0ee14d"
+version = "0.15.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.15.0#84ded0f20ec99b01f6742d73c4e8eaf9c89ce63d"
 dependencies = [
  "llm-core",
  "llm-providers",
@@ -1569,6 +1593,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_norway"
+version = "0.9.42"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e408f29489b5fd500fab51ff1484fc859bb655f32c671f307dcd733b72e8168c"
+dependencies = [
+ "indexmap",
+ "itoa",
+ "ryu",
+ "serde",
+ "unsafe-libyaml-norway",
+]
+
+[[package]]
 name = "serde_spanned"
 version = "1.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2025,6 +2062,12 @@ name = "unsafe-libyaml"
 version = "0.2.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "673aac59facbab8a9007c7f6108d11f63b603f7cabff99fabf650fea5c32b861"
+
+[[package]]
+name = "unsafe-libyaml-norway"
+version = "0.2.15"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b39abd59bf32521c7f2301b52d05a6a2c975b6003521cbd0c6dc1582f0a22104"
 
 [[package]]
 name = "untrusted"

@@ -605,7 +605,7 @@ types:
       - {name: context_window, type: 'Optional<Integer>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
-  # One endpoint of a routes document (RoutesDeclaration), as llm 0.13.0 reads it
+  # One endpoint of a routes document (RoutesDeclaration), as llm 0.15.0 reads it
   # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
   # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,
   # `Chat`), `auth.kind` `anonymous`, `bearer` or `api-key`, `auth.header` for an `api-key`
@@ -635,7 +635,7 @@ types:
   # crate tests named `routes_*` in crates/llm-gateway-cli/tests/routes.rs prove them.
   #   what is read      the file `routes` names, once at start, through the trusted-file reader
   #                     as a `config` file bounded at 2 MiB (StartupRefusal), then
-  #                     `llm_models::routes::Routes::parse` of llm 0.13.0, which parses strictly
+  #                     `llm_models::routes::Routes::parse` of llm 0.15.0, which parses strictly
   #                     and performs no I/O; `llm-models` is linked with no default feature,
   #                     so llm itself reads no secret. A relative path is resolved from the
   #                     process's working directory, as `owner_secret_file` is. A document llm
@@ -679,7 +679,7 @@ types:
   #                     resolves, is not a route and is not served (`model-unknown`). A route's
   #                     endpoint is sent one static header when its protocol is `messages`,
   #                     `anthropic-version: <llm_messages::ANTHROPIC_VERSION>` (`2023-06-01` in
-  #                     llm 0.13.0), on every request relayed to it, the output clamp's count
+  #                     llm 0.15.0), on every request relayed to it, the output clamp's count
   #                     included, and no other static header. DECIDED 2026-10-16 (correction
   #                     round 1 of story:routes-document): Anthropic's Messages API requires
   #                     the header on every request, llm's client already sends it on the

@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-26T11:26:57Z",
+  "actor": "human:timo",
+  "artifact": "story:ess-0-69",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:ess-0-69-adversary-1",
+    "review": "review-result:ess-0-69-adversary-1",
+    "outcome": "fixed"
+  }
+}

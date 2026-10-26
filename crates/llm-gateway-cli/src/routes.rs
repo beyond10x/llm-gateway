@@ -1,7 +1,7 @@
 //! The models of an llm `llm.routes/1` document a deployment names by its `routes` key
 //! (story:routes-document; `spec/domains/deployment.yaml` `RoutesDeclaration`).
 //!
-//! The document is read once at start through the trusted-file reader and parsed with llm 0.13.0's
+//! The document is read once at start through the trusted-file reader and parsed with llm 0.15.0's
 //! `Routes::parse`, which validates it strictly and performs no I/O; `llm-models` is linked
 //! without its secret-source features, so llm reads no secret. What llm's API does not expose,
 //! the path of an endpoint's `file:` secret, is read here from the same text with a minimal
@@ -582,6 +582,8 @@ fn endpoint(
 /// The static headers a route's endpoint is sent on every request it is relayed, the output
 /// clamp's count included: a Messages endpoint gets llm's `anthropic-version`, which Anthropic's
 /// API requires and llm's own client sends on the translated path; any other endpoint none.
+/// The `x-opencode-session` llm 0.15.0 sends to an `OpenCode` Go base URL on the translated path
+/// is not one of them: a relayed request carries none (`docs/gateway.md`, "The upstream").
 fn endpoint_headers(wire: Wire) -> Result<Vec<StaticHeader>, Refusal> {
     if wire != Wire::Messages {
         return Ok(Vec::new());
@@ -646,14 +648,19 @@ mod tests {
 
     const DOCUMENT: &str = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: lab/small\n";
 
-    /// What llm 0.12.0 added to `llm.routes/1` and the gateway does not serve is refused by key,
-    /// never ignored: a Bedrock endpoint, a route's `aliases` and a route's `price`.
+    /// What llm 0.12.0 and 0.14.0 added to `llm.routes/1` and the gateway does not serve is
+    /// refused by key, never ignored: a Bedrock endpoint (an `aws-process` one too), a route's
+    /// `aliases` and a route's `price`.
     #[test]
     fn a_bedrock_endpoint_or_a_route_alias_or_price_is_refused_by_its_key() {
         let bedrock = "format: llm.routes/1\nendpoints:\n  eu: {protocol: messages, bedrock: {region: eu-central-1}, auth: {kind: aws-container}}\nroutes:\n  opus: eu/eu.anthropic.claude-fixture-v1\n";
         let refused = Routes::parse(bedrock).unwrap_err();
         assert_eq!(refused.code(), "config:value");
         assert!(refused.message().starts_with("routes.eu "), "{refused}");
+        let process = "format: llm.routes/1\nendpoints:\n  dev: {protocol: messages, bedrock: {region: eu-central-1}, auth: {kind: aws-process, command: [aws, configure, export-credentials]}}\nroutes:\n  opus: dev/eu.anthropic.claude-fixture-v1\n";
+        let refused = Routes::parse(process).unwrap_err();
+        assert_eq!(refused.code(), "config:value");
+        assert!(refused.message().starts_with("routes.dev "), "{refused}");
         let aliased = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: {model: lab/small, aliases: [tiny]}\n";
         let refused = Routes::parse(aliased).unwrap_err();
         assert_eq!(refused.code(), "config:value");

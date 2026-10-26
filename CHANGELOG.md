@@ -5,6 +5,15 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## 0.15.0 (2026-10-26)
+
+### Changed
+
+- ESS 0.69.2: CI installs it, the conformance runner builds on `ess-conformance` and `ess-primitives` 0.69.2, and the suite and schemas are regenerated with it.
+- The generated JSON Schema of `Seal` anchors its pattern and admits only the seal alphabet after the prefix.
+- The llm crates move to tag `0.15.0`; a routes document naming an `aws-process` Bedrock endpoint (llm 0.14.0) is refused `config:value`.
+- A translated request to an OpenCode Go messages endpoint carries the `x-opencode-session` llm 0.15.0 mints, new per request; a relayed one carries none.
+
 ## 0.14.0 (2026-10-23)
 
 ### Added

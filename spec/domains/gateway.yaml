@@ -16,7 +16,7 @@ domain: llm-gateway.gateway
 # and is refused `wire-not-served` otherwise.
 # DECIDED 2026-10-16 (story:gateway-translation): the translation contract.
 #   - Where: the gateway crate holds only a std-only port (crates/llm-gateway/src/translate.rs,
-#     `Translator` and `Translation`); the binary implements it with llm 0.13.0's ingress decoders,
+#     `Translator` and `Translation`); the binary implements it with llm 0.15.0's ingress decoders,
 #     protocol clients and ingress encoders (crates/llm-gateway-cli/src/translate.rs) over a tokio
 #     runtime the binary owns. The upstream wire is the model's first declared wire.
 #   - Decode before any target: the client's body is decoded onto llm's neutral turn, checked
@@ -642,7 +642,7 @@ entities:
   #      Translation (story:gateway-translation): a request on a wire the model does not
   #      declare, to a relay with a translator, leaves the byte relay here. The translator
   #      prepares it for the model's first declared wire before any target is asked for: it
-  #      decodes the body with llm 0.13.0's ingress decoder for the client's wire (chat
+  #      decodes the body with llm 0.15.0's ingress decoder for the client's wire (chat
   #      `decode_ingress_request`, responses `ingest_request` with the body's model the
   #      model's alias, messages `decode_request`), each of which refuses a key outside its
   #      subset at every level by its path, `translation-unsupported` (scenario

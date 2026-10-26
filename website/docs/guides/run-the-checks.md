@@ -13,7 +13,7 @@ task check
 ```
 
 It needs [Task](https://taskfile.dev) and the `ess` command of
-[ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) 0.56.0 on
+[ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) 0.69.2 on
 `PATH`. CI's `Gate` workflow runs the same four stages on Rust 1.98.0; run it on that toolchain
 (`RUSTUP_TOOLCHAIN=1.98.0 task check`), because a newer Clippy can add lints CI does not have.
 

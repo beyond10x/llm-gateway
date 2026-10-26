@@ -31,7 +31,7 @@ are llm's. The gateway library relays the owner's chat, responses and messages r
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
 it translates no protocol itself, but holds the port through which the binary translates a
-request on a wire the model's upstream does not speak, within llm 0.13.0's published subset
+request on a wire the model's upstream does not speak, within llm 0.15.0's published subset
 ([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, never
 dropped. Claude Code's first turn and Codex's first turn are carried to another wire with their
 controls (effort, thinking, parallel tool calls, cache and verbosity hints). Codex's later turns

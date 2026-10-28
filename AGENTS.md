@@ -101,9 +101,9 @@ The CLI reference comes from `llm_gateway_cli::cli::Cli` and `CredentialCli`, th
 `crates/llm-gateway-docs/src/status.rs`, where each `shipped` item names its test as
 `path::function`. A capability that ships, or a story that lands, changes that list.
 
-`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.72.0 release asset, checked
+`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.74.0 release asset, checked
 against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
-`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.72.0`. Move
+`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.74.0`. Move
 all three together, to the newest ESS release (workspace rule), and regenerate both files in the
 same commit.
 

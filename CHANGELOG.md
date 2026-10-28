@@ -5,6 +5,12 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Changed
+
+- ESS 0.72.0: CI installs it and the conformance runner builds on `ess-conformance` and `ess-primitives` 0.72.0; the suite and schemas it generates are unchanged.
+
 ## 0.15.0 (2026-10-26)
 
 ### Changed

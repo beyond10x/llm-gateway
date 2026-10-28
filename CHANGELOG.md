@@ -9,7 +9,7 @@ Nothing in any release is deployed or qualified against a live client.
 
 ### Changed
 
-- ESS 0.74.0: CI installs it and the conformance runner builds on `ess-conformance` and `ess-primitives` 0.74.0; the suite and schemas it generates are unchanged.
+- ESS 0.75.0: CI installs it and the conformance runner builds on `ess-conformance` and `ess-primitives` 0.75.0; the suite and schemas it generates are unchanged.
 
 ## 0.15.0 (2026-10-26)
 

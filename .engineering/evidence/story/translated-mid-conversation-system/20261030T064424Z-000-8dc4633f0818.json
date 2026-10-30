@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-30T06:44:24Z",
+  "actor": "human:timo",
+  "artifact": "story:translated-mid-conversation-system",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on wave/2026-10-30-w04 at 5117569: 108 test binaries ok, conformance 291/291 x3, exit 0"
+  }
+}

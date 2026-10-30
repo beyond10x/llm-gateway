@@ -29,7 +29,7 @@ scope:
   path: spec/domains/clients.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 6}
@@ -59,3 +59,17 @@ native and one translated model.
 ## Depends on
 
 llm widening its Responses and Messages ingress subsets (llm's own stories); not this repository's.
+
+## Review finding, 2026-10-30
+
+The adversarial review of 2026-10-30 (claim M3) found that `GET /` hands a translated-only model
+(a Bedrock model declaring only the messages wire) a Codex profile and a chat/Loom profile:
+`profiled()` returns true for any wire when `translated_only()`
+(`crates/llm-gateway/src/listing.rs:127-130`). `docs/gateway.md:166-168` and
+`website/docs/guides/translate-between-wires.md:200-201` say a profile is given only on a wire the
+model declares. `review_m3_a_translated_only_messages_model_gets_no_codex_or_loom_profile` in
+`crates/llm-gateway/tests/public_listing.rs` (verification tree `llm-gateway-verify-2026-10-30`)
+fails on main 70841f2a.
+
+This story decides which translated models get a profile, so it owns the fix; the test's assertion
+follows that decision and is not landed on its own.

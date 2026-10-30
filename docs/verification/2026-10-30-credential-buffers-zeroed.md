@@ -103,7 +103,7 @@ These still hold a credential's bytes, and this story leaves them as they are:
   start of the body and, from a pipelining client, can be the next request's head with its
   credential. The relay is outside this story's files.
 - The copy llm makes when it prepares a provider's credential: llm-providers `src/auth.rs:95`
-  (llm 0.19.0, which this workspace pins) builds the header with `HeaderValue::from_bytes`, which
+  (llm 0.20.0, which this workspace pins; unchanged from 0.19.0) builds the header with `HeaderValue::from_bytes`, which
   copies the credential into memory llm does not overwrite. That code is in another repository,
   so this story cannot fix it here.
 - The SHA-256 message schedule that owner-token hashing keeps on the stack

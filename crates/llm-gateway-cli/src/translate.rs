@@ -1,5 +1,5 @@
 //! The binary's translator (story:gateway-translation): `llm_gateway`'s [`Translator`] port over
-//! llm 0.19.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
+//! llm 0.20.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
 //! and a tokio runtime the binary owns.
 //!
 //! [`Translator::prepare`] runs on the gateway's worker thread before any target is asked for:
@@ -375,7 +375,7 @@ const fn refusal(error: &Error) -> RefusalCode {
     }
 }
 
-/// The diagnostics of llm 0.19.0 that end in a path whose last segment is a key the client
+/// The diagnostics of llm 0.20.0 that end in a path whose last segment is a key the client
 /// chose: chat's `closed_object` (`llm-chat/src/ingress.rs`), responses' `outside`
 /// (`llm-responses/src/request.rs`), both through `llm_core::field_path`, and messages'
 /// `fields` (`llm-messages/src/lib.rs`, through its `path`). Every other diagnostic a refused
@@ -1706,7 +1706,7 @@ mod tests {
     }
 }
 
-/// story:refusal-log-masks-client-keys: each diagnostic is the one llm 0.19.0's decoder makes
+/// story:refusal-log-masks-client-keys: each diagnostic is the one llm 0.20.0's decoder makes
 /// for the body, so a change of llm's wording on an upgrade fails here before a key is logged.
 #[cfg(test)]
 mod mask_tests {

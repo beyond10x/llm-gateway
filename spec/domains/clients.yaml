@@ -134,7 +134,7 @@ entities:
   #     and Claude Code's authored one. No Loom turn is recorded, so a Loom run is profiled for
   #     no translated model.
   # So `GET /` names only models a client's requests reach without a `translation-*` refusal.
-  # Before llm 0.7.0 carried those turns, translated models got no profile at all; llm 0.19.0
+  # Before llm 0.7.0 carried those turns, translated models got no profile at all; llm 0.20.0
   # carries both. Observed by the `Relay` scenarios
   # r1-codex-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to and
   # r1-claude-code-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to.

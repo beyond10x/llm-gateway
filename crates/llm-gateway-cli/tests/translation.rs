@@ -1148,7 +1148,7 @@ fn translation_no_log_line_carries_a_seal_or_the_upstream_state() {
 /// What llm 0.13.0 still refuses, it refuses by name, and the gateway answers each
 /// `translation-unsupported` before asking for a target: Claude Code's structured-output turn
 /// (`output_config.format`), `thinking.display`, `context_management` and `safeguards`, and a
-/// message of a role outside the subset (`tool`; llm 0.19.0 reads `system`); on Responses,
+/// message of a role outside the subset (`tool`; llm 0.20.0 reads `system`); on Responses,
 /// `text.format` and a hosted tool.
 #[test]
 fn translation_fields_llm_still_refuses_are_refused_by_name() {

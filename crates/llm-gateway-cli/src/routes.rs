@@ -1,7 +1,7 @@
 //! The models of an llm `llm.routes/1` document a deployment names by its `routes` key
 //! (story:routes-document; `spec/domains/deployment.yaml` `RoutesDeclaration`).
 //!
-//! The document is read once at start through the trusted-file reader and parsed with llm 0.19.0's
+//! The document is read once at start through the trusted-file reader and parsed with llm 0.20.0's
 //! `Routes::parse`, which validates it strictly and performs no I/O; `llm-models` is linked
 //! without its secret-source features, so llm reads no secret. What llm's API does not expose,
 //! the path of an endpoint's `file:` secret, is read here from the same text with a minimal

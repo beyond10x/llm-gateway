@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-30T07:45:30Z",
+  "actor": "human:timo",
+  "artifact": "story:refusal-log-masks-client-keys",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on wave/2026-10-30-w05 at e6d7769d: exit 0, conformance 292/292 three times"
+  }
+}

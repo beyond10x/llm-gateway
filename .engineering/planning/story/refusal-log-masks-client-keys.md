@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: story:refusal-log-masks-client-keys
 kind: story
-status: active
+status: implemented
 title: The translation refused line writes a client's key as ?
 relations:
 - serves: vision:portable-model-inference
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T07:21:28Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-30T07:21:28Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-30T07:45:30Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

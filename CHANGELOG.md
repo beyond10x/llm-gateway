@@ -5,6 +5,12 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Added
+
+- Conformance scenarios for the metrics-only listener (`metrics_listen`: `GET` and `HEAD` on exactly `/metrics`, `path-unknown` for every other path or method, its scrape token) and for the first sealed reasoning item's `id` and summary; the conformance runner can bind that listener and send it a scrape.
+
 ## 0.16.0 (2026-10-30)
 
 ### Added

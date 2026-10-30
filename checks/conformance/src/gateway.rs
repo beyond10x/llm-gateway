@@ -600,6 +600,18 @@ mod relay {
         /// it the source starts no pod for any model.
         #[serde(default)]
         lifecycle: Option<LifecycleInput>,
+        /// The gateway also serves a metrics-only listener on a loopback port, as the binary
+        /// does for a deployment's `metrics_listen` (llm-gateway.telemetry).
+        #[serde(default)]
+        metrics_listen: Option<MetricsListenInput>,
+    }
+
+    /// The metrics-only listener: open, or taking `bearer` as its scrape token.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct MetricsListenInput {
+        #[serde(default)]
+        bearer: Option<String>,
     }
 
     /// The source's scripted lifecycle answers, one per ask, in order.
@@ -775,6 +787,19 @@ mod relay {
         Scrape {
             #[serde(default)]
             credential: Option<bool>,
+            /// Sent to the metrics-only listener `metrics_listen` bound instead of the serving
+            /// listener.
+            #[serde(default)]
+            listener: Option<bool>,
+            /// The request's path in place of `/metrics`.
+            #[serde(default)]
+            path: Option<String>,
+            /// The request's method in place of `GET`.
+            #[serde(default)]
+            method: Option<String>,
+            /// Sent as the `authorization` value in place of the owner's bearer token.
+            #[serde(default)]
+            authorization: Option<String>,
         },
         Request {
             path: String,
@@ -1785,13 +1810,43 @@ mod relay {
         Ok(routes)
     }
 
+    /// The relayed model a program's model declares.
+    fn relay_model(model: &ModelInput) -> Result<RelayModel, String> {
+        let wires = model
+            .wires
+            .iter()
+            .map(|name| wire(name))
+            .collect::<Result<Vec<_>, _>>()?;
+        let tool_calling = match model.tool_calling.as_deref() {
+            None | Some("absent") => ToolCalling::Absent,
+            Some("parsed") => ToolCalling::Parsed,
+            Some(_) => return Err("fixture:unknown-tool-calling".to_owned()),
+        };
+        let mut relayed =
+            RelayModel::new(label(&model.alias)?, label(&model.upstream_model)?, wires)
+                .map_err(|error| format!("relay:{}", relay_code(error)))?
+                .with_tool_calling(tool_calling);
+        if let Some(length) = model.max_model_len {
+            relayed = relayed.with_max_model_len(length);
+        }
+        if let Some(window) = model.context_window {
+            relayed = relayed.with_context_window(window);
+        }
+        if let Some(effort) = model.reasoning_effort.as_deref() {
+            let effort = ReasoningEffort::from_name(effort)
+                .ok_or_else(|| "fixture:unknown-reasoning-effort".to_owned())?;
+            relayed = relayed.with_reasoning_effort(effort);
+        }
+        Ok(relayed)
+    }
+
     fn compose(
         program: &Program,
         source: Arc<Source>,
         counting: &mut Option<Arc<Counting>>,
         records: Arc<Records>,
         tls_root: Option<&[u8]>,
-    ) -> Result<GatewayHandle, String> {
+    ) -> Result<Serving, String> {
         let ingress_auth = match program.ingress_auth.as_deref() {
             None | Some("bearer") => IngressAuth::Bearer,
             Some("none") => IngressAuth::None,
@@ -1810,35 +1865,11 @@ mod relay {
                 )
             };
         let relay_error = |error| format!("relay:{}", relay_code(error));
-        let mut models = Vec::new();
-        for model in &program.models {
-            let wires = model
-                .wires
-                .iter()
-                .map(|name| wire(name))
-                .collect::<Result<Vec<_>, _>>()?;
-            let tool_calling = match model.tool_calling.as_deref() {
-                None | Some("absent") => ToolCalling::Absent,
-                Some("parsed") => ToolCalling::Parsed,
-                Some(_) => return Err("fixture:unknown-tool-calling".to_owned()),
-            };
-            let mut relayed =
-                RelayModel::new(label(&model.alias)?, label(&model.upstream_model)?, wires)
-                    .map_err(relay_error)?
-                    .with_tool_calling(tool_calling);
-            if let Some(length) = model.max_model_len {
-                relayed = relayed.with_max_model_len(length);
-            }
-            if let Some(window) = model.context_window {
-                relayed = relayed.with_context_window(window);
-            }
-            if let Some(effort) = model.reasoning_effort.as_deref() {
-                let effort = ReasoningEffort::from_name(effort)
-                    .ok_or_else(|| "fixture:unknown-reasoning-effort".to_owned())?;
-                relayed = relayed.with_reasoning_effort(effort);
-            }
-            models.push(relayed);
-        }
+        let mut models = program
+            .models
+            .iter()
+            .map(relay_model)
+            .collect::<Result<Vec<_>, _>>()?;
         let mut bearers = BTreeMap::new();
         for model in &program.models {
             if let Some(bearer) = &model.bearer {
@@ -1894,8 +1925,38 @@ mod relay {
         let mut config = GatewayConfig::new(bind);
         config.read_timeout = WAIT;
         config.ingress_auth = ingress_auth;
-        Gateway::bind_with_relay(config, verifier, inventory, relay)
-            .map_err(|_| "bind:refused".to_owned())
+        let mut handle = Gateway::bind_with_relay(config, verifier, inventory, relay)
+            .map_err(|_| "bind:refused".to_owned())?;
+        let metrics = program
+            .metrics_listen
+            .as_ref()
+            .map(|listen| serve_metrics(&mut handle, bind, listen))
+            .transpose()?;
+        Ok(Serving { handle, metrics })
+    }
+
+    /// Binds the metrics-only listener `metrics_listen` asks for, as the binary does for a
+    /// deployment's `metrics_listen`, and returns its address.
+    fn serve_metrics(
+        handle: &mut GatewayHandle,
+        bind: SocketAddr,
+        listen: &MetricsListenInput,
+    ) -> Result<SocketAddr, String> {
+        let bearer = listen
+            .bearer
+            .as_ref()
+            .map(|token| OwnerToken::new(token.as_bytes().to_vec()))
+            .transpose()
+            .map_err(|error| format!("token:{}", token_code(error)))?;
+        handle
+            .serve_metrics(bind, bearer)
+            .map_err(|_| "bind:metrics-listen".to_owned())
+    }
+
+    /// A composed gateway, and the address of its metrics-only listener when it serves one.
+    struct Serving {
+        handle: GatewayHandle,
+        metrics: Option<SocketAddr>,
     }
 
     /// The request a step sends, or `None` for a step the program cannot express.
@@ -2132,7 +2193,22 @@ mod relay {
                 .iter()
                 .enumerate()
                 .all(|(index, step)| match step {
-                    Step::MarkReady | Step::Scrape { .. } | Step::Restart => true,
+                    Step::MarkReady | Step::Restart => true,
+                    Step::Scrape {
+                        listener,
+                        path,
+                        method,
+                        authorization,
+                        ..
+                    } => {
+                        (!listener.unwrap_or(false) || program.metrics_listen.is_some())
+                            && [path, method, authorization]
+                                .into_iter()
+                                .flatten()
+                                .all(|line| !line.contains(['\r', '\n']))
+                            && path.as_ref().is_none_or(|path| !path.contains(' '))
+                            && method.as_ref().is_none_or(|method| !method.contains(' '))
+                    }
                     Step::Request {
                         pad_to_bytes,
                         headers,
@@ -2299,7 +2375,7 @@ mod relay {
                     &records,
                     &mut facts,
                 ) {
-                    handle.shutdown();
+                    handle.handle.shutdown();
                 }
             }
             Err(code) => {
@@ -2365,21 +2441,39 @@ mod relay {
         }
     }
 
-    /// A `GET /metrics`: its result entry, and its `scrapes` entries numbered `index`.
+    /// The head a `scrape` step sends: `GET /metrics` unless it names another method or path,
+    /// with its `authorization`, else the owner's bearer token unless `credential` is false.
+    fn scrape_request(secret: &str, step: &Step) -> String {
+        let Step::Scrape {
+            credential,
+            path,
+            method,
+            authorization,
+            ..
+        } = step
+        else {
+            return String::new();
+        };
+        let auth = match authorization {
+            Some(value) => format!("authorization: {value}\r\n"),
+            None if credential.unwrap_or(true) => format!("authorization: Bearer {secret}\r\n"),
+            None => String::new(),
+        };
+        format!(
+            "{} {} HTTP/1.1\r\nhost: gateway\r\n{auth}\r\n",
+            method.as_deref().unwrap_or("GET"),
+            path.as_deref().unwrap_or("/metrics")
+        )
+    }
+
+    /// A scrape: its result entry, and its `scrapes` entries numbered `index`.
     fn scrape(
         addr: SocketAddr,
-        secret: &str,
-        credential: bool,
+        raw: &str,
         index: usize,
         run_started: Instant,
         scrapes: &mut Vec<String>,
     ) -> String {
-        let auth = if credential {
-            format!("authorization: Bearer {secret}\r\n")
-        } else {
-            String::new()
-        };
-        let raw = format!("GET /metrics HTTP/1.1\r\nhost: gateway\r\n{auth}\r\n");
         let Some(received) = exchange(addr, raw.as_bytes(), &Progress::default(), None, true)
         else {
             return "no-response".to_owned();
@@ -2472,12 +2566,12 @@ mod relay {
     /// at each `restart`, and returns the gateway that is serving at the end.
     fn steps(
         program: &Program,
-        handle: GatewayHandle,
-        recompose: &mut dyn FnMut() -> Result<GatewayHandle, String>,
+        handle: Serving,
+        recompose: &mut dyn FnMut() -> Result<Serving, String>,
         shared: &Shared,
         records: &Records,
         facts: &mut Value,
-    ) -> Option<GatewayHandle> {
+    ) -> Option<Serving> {
         let mut handle = Some(handle);
         let (mut results, mut bodies, mut headers, mut retry_after, mut arrivals) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
@@ -2489,7 +2583,7 @@ mod relay {
             answered.push(None);
             if matches!(step, Step::Restart) {
                 if let Some(serving) = handle.take() {
-                    serving.shutdown();
+                    serving.handle.shutdown();
                 }
                 match recompose() {
                     Ok(composed) => {
@@ -2504,22 +2598,30 @@ mod relay {
                 results.push("no-response".to_owned());
                 continue;
             };
-            let addr = serving.local_addr();
+            let addr = serving.handle.local_addr();
             if matches!(step, Step::MarkReady) {
-                serving.mark_ready();
+                serving.handle.mark_ready();
                 results.push("ok".to_owned());
                 continue;
             }
-            if let Step::Scrape { credential } = step {
+            if let Step::Scrape { listener, .. } = step {
                 scrape_number += 1;
-                let credential = credential.unwrap_or(true);
-                results.push(scrape(
-                    addr,
-                    &program.secret,
-                    credential,
-                    scrape_number,
-                    run_started,
-                    &mut scrapes,
+                let addr = if listener.unwrap_or(false) {
+                    serving.metrics
+                } else {
+                    Some(addr)
+                };
+                results.push(addr.map_or_else(
+                    || "no-response".to_owned(),
+                    |addr| {
+                        scrape(
+                            addr,
+                            &scrape_request(&program.secret, step),
+                            scrape_number,
+                            run_started,
+                            &mut scrapes,
+                        )
+                    },
                 ));
                 continue;
             }

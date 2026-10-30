@@ -7,6 +7,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+## 0.22.0 (2026-10-30)
+
 ### Added
 
 - `task check` and CI compare `spec/` with the specification at the merge base (`b10x-llm-gateway-conformance diff`, `task spec-diff`) using `ess verify diff --fail-on breaking-or-unknown`; a breaking or unclassified change fails the gate unless `contracts/diff-acknowledgements.json`, bound to both endpoint digests, acknowledges it. CI checks out the whole history and installs `ess` before the Rust tests.

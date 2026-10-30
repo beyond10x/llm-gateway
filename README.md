@@ -20,7 +20,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.21.0, released 2026-10-30 as a source release with the gateway image; tested
+**Status: 0.22.0, released 2026-10-30 as a source release with the gateway image; tested
 against in-process fakes and loopback; nothing is deployed or qualified.**
 [CHANGELOG.md](CHANGELOG.md) lists every release and what is unreleased.
 

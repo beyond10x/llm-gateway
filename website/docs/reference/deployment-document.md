@@ -118,7 +118,7 @@ of its targets with its `auth_kind` and `billing_kind`, never its URL or credent
 | `auth_kind` | required | `anonymous`, `bearer` or `api-key`. |
 | `credential_file` | absent | The file holding the credential: required unless `auth_kind` is `anonymous`, and refused when it is. |
 | `credential_header` | absent | The header an `api-key` endpoint receives the credential in, 1 to 64 token characters: required for `api-key`, refused otherwise, and never `authorization`, `host` or a header that frames a message. |
-| `[hosted.<alias>.headers]` | absent | Static, non-secret request headers, name to string value, sent with every request (below). |
+| `[hosted.<alias>.headers]` | absent | Static, non-secret request headers, name to string value, sent with every request (below). On an OpenCode Go endpoint a static `x-opencode-session` is only a fallback. |
 | `billing_kind` | `metered` | `metered`, `subscription` or `self-hosted`. |
 | `upstream_model` | the alias | The model name the endpoint expects, 1 to 256 printable ASCII characters. |
 | `context_window` | absent | 4096 to 2000000 tokens, what the public routes publish. |
@@ -148,10 +148,19 @@ is refused at start as `config:value`, naming the endpoint and quoting no creden
 compiled into the binary; a certificate that does not verify is `upstream-failed` before any byte
 of the request is sent. A failed endpoint is kept: the next request asks it again.
 
-No header of the client's request reaches an endpoint. A vendor API that needs a header of its
-own gets it from `[hosted.<alias>.headers]`: Anthropic's `anthropic-version`, OpenRouter's
-`HTTP-Referer` and `X-Title`. Each is sent lowercase, right after `host`, in name order, on
-every request to that endpoint. At most 32; a name is 1 to 64 token characters, and two names
+No header of the client's request reaches an endpoint, with one exception below. A vendor API
+that needs a header of its own gets it from `[hosted.<alias>.headers]`: Anthropic's
+`anthropic-version`, OpenRouter's `HTTP-Referer` and `X-Title`. Each is sent lowercase, right
+after `host`, in name order, on every request to that endpoint.
+
+An endpoint whose `base_url` starts with `https://opencode.ai/inference/go/` is sent one
+`x-opencode-session` on every request: the client's own `x-opencode-session` when it is one
+printable ASCII token of at most 256 bytes; else `llmgw-` and 32 hex characters derived from
+the client's address with a key the process draws at start; else, with no client address, the
+static `x-opencode-session` declared in `[hosted.<alias>.headers]`. A malformed client value is
+ignored and never sent. On a translated request, which carries no static headers, the last
+step is the session llm's client mints instead. Any other endpoint gets only its declared
+headers. At most 32; a name is 1 to 64 token characters, and two names
 that differ only in case are refused; a value is 1 to 1024 printable ASCII characters with no
 leading or trailing space, so no line break. A name the gateway writes itself or that frames a
 message (`host`, `authorization`, `content-type`, `content-length`, `connection`,

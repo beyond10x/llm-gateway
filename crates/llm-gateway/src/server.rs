@@ -999,6 +999,9 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
                     .is_some_and(|value| value.eq_ignore_ascii_case("100-continue")),
             chunked_answer: !request.http_1_0,
             anthropic_beta: request.header("anthropic-beta").map(str::to_owned),
+            session: request
+                .header(relay::CALLER_SESSION_HEADER)
+                .map(str::to_owned),
         }),
         Err(code) => Outcome::Refused(code),
     }

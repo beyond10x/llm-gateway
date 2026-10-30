@@ -11,8 +11,9 @@
 mod support;
 
 use std::{
+    ffi::OsString,
     io::{BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::{IpAddr, SocketAddr, TcpListener, TcpStream},
     os::unix::fs::symlink,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -63,15 +64,19 @@ struct Server {
 
 impl Server {
     fn start(program: &Path, config: &Path, root: Option<&Path>) -> Self {
+        let root = root.map(|root| ("GATEWAY_TLS_SEAM_ROOT", root.as_os_str().to_owned()));
+        Self::start_env(program, config, root.as_slice())
+    }
+
+    /// [`Self::start`] with `env` set in the process's environment.
+    fn start_env(program: &Path, config: &Path, env: &[(&str, OsString)]) -> Self {
         let mut command = Command::new(program);
         command
             .args(["--config", config.to_str().unwrap()])
+            .envs(env.iter().map(|(name, value)| (name, value)))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped());
-        if let Some(root) = root {
-            command.env("GATEWAY_TLS_SEAM_ROOT", root);
-        }
         let mut child = command.spawn().unwrap();
         let stderr = child.stderr.take().unwrap();
         let (sender, lines) = mpsc::channel();
@@ -1185,5 +1190,345 @@ fn hosted_an_endpoint_without_its_credential_file_or_header_refuses_startup_as_c
         ));
         let stderr = assert_refused(&shipped(), &config, "config:value");
         assert!(stderr.contains("hosted.remote."), "{case}: {stderr:?}");
+    }
+}
+
+// --- story:relayed-session-header: an OpenCode Go endpoint's `x-opencode-session` ---------------
+
+/// A base URL llm 0.18.0 treats as `OpenCode` Go (`llm_messages::is_opencode_go`).
+const GO_BASE_URL: &str = "https://opencode.ai/inference/go/v1";
+/// The header `OpenCode` Go routes a conversation by, and refuses a request without.
+const SESSION_HEADER: &str = "x-opencode-session";
+/// The static session a deployment declares in the endpoint's `headers`.
+const STATIC_SESSION: &str = "static-fallback-session";
+
+/// One raw HTTP/1.1 exchange with the gateway from the loopback address `source`, which the
+/// gateway sees as the request's peer. Linux routes all of `127.0.0.0/8` to the loopback
+/// interface, so a socket bound to `127.0.0.2` reaches a gateway listening on `127.0.0.1`.
+fn exchange_from(source: IpAddr, address: SocketAddr, request: &str) -> Vec<u8> {
+    use rustix::net::{AddressFamily, SocketType, bind, connect, socket};
+    let socket = socket(AddressFamily::INET, SocketType::STREAM, None).unwrap();
+    bind(&socket, &SocketAddr::new(source, 0)).unwrap();
+    connect(&socket, &address).unwrap();
+    let mut stream = TcpStream::from(socket);
+    stream
+        .set_read_timeout(Some(Duration::from_secs(60)))
+        .unwrap();
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut answer = Vec::new();
+    drop(stream.read_to_end(&mut answer));
+    answer
+}
+
+/// The peer every ordinary test client is.
+const LOCAL: IpAddr = IpAddr::V4(std::net::Ipv4Addr::LOCALHOST);
+
+/// [`exchange_from`], then a wait until `pod` has recorded one more connection, so the pod's
+/// record holds the requests in the order they were sent.
+fn call(pod: &TlsPod, source: IpAddr, address: SocketAddr, request: &str) -> Vec<u8> {
+    let before = pod.seen().len();
+    let answer = exchange_from(source, address, request);
+    served(pod, before + 1);
+    answer
+}
+
+/// A model call for `model` on `path` with the owner's credential and `extra` header lines.
+fn model_call(path: &str, model: &str, extra: &str) -> String {
+    let body = format!(r#"{{"model":"{model}","messages":[]}}"#);
+    format!(
+        "POST {path} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\n{extra}content-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+/// The values of every `x-opencode-session` line of one request the pod decrypted.
+fn sessions(request: &str) -> Vec<String> {
+    let head = request.split("\r\n\r\n").next().unwrap_or_default();
+    head.split("\r\n")
+        .skip(1)
+        .filter_map(|line| line.split_once(':'))
+        .filter(|(name, _)| name.trim().eq_ignore_ascii_case(SESSION_HEADER))
+        .map(|(_, value)| value.trim().to_owned())
+        .collect()
+}
+
+/// Whether `value` is a derived session: `llmgw-` and 32 lowercase hex characters.
+fn derived(value: &str) -> bool {
+    value.strip_prefix("llmgw-").is_some_and(|hex| {
+        hex.len() == 32
+            && hex
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+    })
+}
+
+/// Waits until the pod has served `count` connections and returns them.
+fn served(pod: &TlsPod, count: usize) -> Vec<String> {
+    let deadline = Instant::now() + WAIT;
+    loop {
+        let seen = pod.seen();
+        if seen.len() >= count || Instant::now() > deadline {
+            return seen.iter().map(support::tls_pod::Seen::text).collect();
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
+}
+
+/// The document of one `bearer` hosted model `go` at [`GO_BASE_URL`] with the static
+/// [`STATIC_SESSION`] declared, the workaround deployments carry today.
+fn go_config(fixture: &Fixture) -> PathBuf {
+    let credential = fixture.endpoint_credential();
+    fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &format!(
+            "{}[hosted.go.headers]\n{SESSION_HEADER} = \"{STATIC_SESSION}\"\n",
+            hosted_table("go", GO_BASE_URL, &bearer_keys(&credential))
+        ),
+    ))
+}
+
+/// The seam with `root` as its only trust root and every https host connected at `pod`.
+fn start_at_pod(config: &Path, root: &Path, pod: SocketAddr) -> Server {
+    Server::start_env(
+        &seam(),
+        config,
+        &[
+            ("GATEWAY_TLS_SEAM_ROOT", root.as_os_str().to_owned()),
+            ("GATEWAY_TLS_SEAM_POD", pod.to_string().into()),
+        ],
+    )
+}
+
+/// story:relayed-session-header, order 1: a relayed request to an `OpenCode` Go endpoint
+/// carries the caller's own `x-opencode-session` when it is one printable ASCII token of at most
+/// 256 bytes, once and in place of the static one. A malformed value (a space, a control byte,
+/// DEL, 257 bytes) is ignored: the endpoint gets a derived session instead, and the value is in
+/// no byte the endpoint, the client or the log sees.
+#[test]
+fn session_a_callers_own_session_reaches_an_opencode_go_endpoint_and_a_malformed_one_never_does() {
+    let fixture = Fixture::new("session-caller");
+    let root = TestRoot::new("session test root");
+    let root_file = fixture.write("test-root.der", &root.der, 0o600);
+    let pod = TlsPod::start(root.server("opencode.ai"), None);
+    let server = start_at_pod(&go_config(&fixture), &root_file, pod.address);
+    let longest = "s".repeat(256);
+    let passed = [
+        ("/v1/messages", "caller-session-0123".to_owned()),
+        ("/v1/chat/completions", longest.clone()),
+        ("/v1/messages", "!#$%&'*+-.^_`|~:/@=\"(){}[]".to_owned()),
+    ];
+    let malformed = [
+        "has a space".to_owned(),
+        "control\u{1}byte".to_owned(),
+        "delete\u{7f}byte".to_owned(),
+        "t".repeat(257),
+    ];
+    let mut answers = Vec::new();
+    for (path, value) in &passed {
+        answers.push(call(
+            &pod,
+            LOCAL,
+            server.address,
+            &model_call(path, "go", &format!("{SESSION_HEADER}: {value}\r\n")),
+        ));
+    }
+    for value in &malformed {
+        answers.push(call(
+            &pod,
+            LOCAL,
+            server.address,
+            &model_call(
+                "/v1/messages",
+                "go",
+                &format!("X-OpenCode-Session: {value}\r\n"),
+            ),
+        ));
+    }
+    let requests = served(&pod, passed.len() + malformed.len());
+    let stderr = server.stop();
+    for answer in &answers {
+        let answer = String::from_utf8_lossy(answer);
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    assert_eq!(
+        requests.len(),
+        passed.len() + malformed.len(),
+        "{requests:?}"
+    );
+    for (request, (_, value)) in requests.iter().zip(&passed) {
+        assert_eq!(sessions(request), std::slice::from_ref(value), "{request}");
+    }
+    for (index, request) in requests[passed.len()..].iter().enumerate() {
+        let sent = sessions(request);
+        assert_eq!(sent.len(), 1, "{request}");
+        assert!(derived(&sent[0]), "not a derived session: {request}");
+        for value in &malformed {
+            assert!(
+                !request.contains(value.as_str()),
+                "{value:?} reached the endpoint"
+            );
+            let answer = String::from_utf8_lossy(&answers[passed.len() + index]);
+            assert!(
+                !answer.contains(value.as_str()),
+                "{value:?} was echoed: {answer}"
+            );
+            for line in &stderr {
+                assert!(
+                    !line.contains(value.as_str()),
+                    "{value:?} was logged: {line}"
+                );
+            }
+        }
+    }
+    for request in &requests {
+        assert!(!request.contains(STATIC_SESSION), "{request}");
+    }
+}
+
+/// story:relayed-session-header, order 2: without a caller session, a relayed request to an
+/// `OpenCode` Go endpoint carries `llmgw-` and 32 hex characters derived from the peer address.
+/// One peer keeps its value across requests and wires, two peers get two, neither shows the
+/// address, the static session is never sent beside it, and a new process derives another value
+/// for the same peer (the key is the process's own).
+#[test]
+fn session_two_peers_get_two_derived_sessions_and_one_peer_keeps_its_own() {
+    let fixture = Fixture::new("session-peers");
+    let root = TestRoot::new("session test root");
+    let root_file = fixture.write("test-root.der", &root.der, 0o600);
+    let pod = TlsPod::start(root.server("opencode.ai"), None);
+    let config = go_config(&fixture);
+    let one: IpAddr = "127.0.0.1".parse().unwrap();
+    let two: IpAddr = "127.0.0.2".parse().unwrap();
+    let server = start_at_pod(&config, &root_file, pod.address);
+    let mut answers = vec![
+        call(
+            &pod,
+            one,
+            server.address,
+            &model_call("/v1/messages", "go", ""),
+        ),
+        call(
+            &pod,
+            one,
+            server.address,
+            &model_call("/v1/chat/completions", "go", ""),
+        ),
+        call(
+            &pod,
+            two,
+            server.address,
+            &model_call("/v1/messages", "go", ""),
+        ),
+    ];
+    served(&pod, 3);
+    server.stop();
+    let again = start_at_pod(&config, &root_file, pod.address);
+    answers.push(call(
+        &pod,
+        one,
+        again.address,
+        &model_call("/v1/messages", "go", ""),
+    ));
+    let requests = served(&pod, 4);
+    again.stop();
+    for answer in &answers {
+        let answer = String::from_utf8_lossy(answer);
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    assert_eq!(requests.len(), 4, "{requests:?}");
+    let values: Vec<String> = requests
+        .iter()
+        .map(|request| {
+            let sent = sessions(request);
+            assert_eq!(sent.len(), 1, "{request}");
+            assert!(derived(&sent[0]), "not a derived session: {request}");
+            assert!(!request.contains(STATIC_SESSION), "{request}");
+            sent[0].clone()
+        })
+        .collect();
+    assert_eq!(values[0], values[1], "one peer, two sessions: {values:?}");
+    assert_ne!(values[0], values[2], "two peers, one session: {values:?}");
+    assert_ne!(values[0], values[3], "a restart kept the key: {values:?}");
+    for value in &values {
+        for address in ["127.0.0.1", "127.0.0.2", "7f000001", "7f000002"] {
+            assert!(!value.contains(address), "{value} shows the address");
+        }
+    }
+}
+
+/// story:relayed-session-header: an endpoint that is not `OpenCode` Go is sent no
+/// `x-opencode-session` but the one it declares, as before. The caller's own value reaches neither
+/// another path of the same host (`/inference/zen/v1`) nor an endpoint whose static session
+/// stays exactly what it declares.
+#[test]
+fn session_an_endpoint_that_is_not_opencode_go_gets_no_session_but_its_own_static_one() {
+    let fixture = Fixture::new("session-not-go");
+    let root = TestRoot::new("session test root");
+    let root_file = fixture.write("test-root.der", &root.der, 0o600);
+    let pod = TlsPod::start(root.server("opencode.ai"), None);
+    let credential = fixture.endpoint_credential();
+    let config = fixture.config(&hosted_document(
+        "127.0.0.1:0",
+        &fixture.owner_secret(),
+        &format!(
+            "{}{}[hosted.declared.headers]\n{SESSION_HEADER} = \"{STATIC_SESSION}\"\n",
+            hosted_table(
+                "zen",
+                "https://opencode.ai/inference/zen/v1",
+                &bearer_keys(&credential)
+            ),
+            hosted_table(
+                "declared",
+                "https://opencode.ai/v1",
+                &bearer_keys(&credential)
+            ),
+        ),
+    ));
+    let server = start_at_pod(&config, &root_file, pod.address);
+    let caller = format!("{SESSION_HEADER}: caller-session-0123\r\n");
+    let answers = [
+        call(
+            &pod,
+            LOCAL,
+            server.address,
+            &model_call("/v1/messages", "zen", &caller),
+        ),
+        call(
+            &pod,
+            LOCAL,
+            server.address,
+            &model_call("/v1/chat/completions", "zen", ""),
+        ),
+        call(
+            &pod,
+            LOCAL,
+            server.address,
+            &model_call("/v1/messages", "declared", &caller),
+        ),
+        call(
+            &pod,
+            LOCAL,
+            server.address,
+            &model_call("/v1/messages", "declared", ""),
+        ),
+    ];
+    let requests = served(&pod, 4);
+    server.stop();
+    for answer in &answers {
+        let answer = String::from_utf8_lossy(answer);
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    }
+    assert_eq!(requests.len(), 4, "{requests:?}");
+    for request in &requests[..2] {
+        assert!(request.starts_with("POST /inference/zen/v1/"), "{request}");
+        assert_eq!(sessions(request), Vec::<String>::new(), "{request}");
+    }
+    for request in &requests[2..] {
+        assert!(request.starts_with("POST /v1/messages "), "{request}");
+        assert_eq!(sessions(request), [STATIC_SESSION.to_owned()], "{request}");
+    }
+    for request in &requests {
+        assert!(!request.contains("caller-session-0123"), "{request}");
     }
 }

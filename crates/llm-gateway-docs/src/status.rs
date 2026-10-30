@@ -236,6 +236,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "One OpenCode Go session per client",
+        "An OpenCode Go endpoint is sent the client's own valid x-opencode-session, else llmgw- and a hash of the client's address under a per-process key, else the declared static one; a malformed client value is never sent, and no other endpoint gets one. Tested against a TLS fixture endpoint, not against OpenCode Go.",
+        "crates/llm-gateway-cli/tests/hosted.rs::session_two_peers_get_two_derived_sessions_and_one_peer_keeps_its_own",
+        DOCUMENT,
+    ),
+    shipped(
+        "Relay",
         "Amazon Bedrock models",
         "A [hosted.<alias>] model of kind = \"bedrock\" is served by llm's Bedrock client: region, model or inference-profile id, InvokeModel for an Anthropic id and Converse otherwise, every request signed with SigV4 from the container credentials endpoint (Amazon EKS Pod Identity). Chat tool turns stream their tool-call deltas or answer whole. A field Bedrock does not take is dropped and its name logged. Tested against a fixture Bedrock Runtime and credentials endpoint, not against AWS.",
         "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_a_streamed_chat_tool_turn_reaches_invoke_signed_and_answers_tool_call_deltas",

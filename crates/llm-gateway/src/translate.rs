@@ -12,7 +12,7 @@
 
 use crate::{
     error::RefusalCode,
-    relay::{RelayModel, RelayTarget, Wire},
+    relay::{Caller, RelayModel, RelayTarget, Wire},
 };
 
 /// One request the relay hands a translator: the wire the client spoke, the wire the model's
@@ -28,6 +28,9 @@ pub struct TranslationRequest<'a> {
     pub model: &'a RelayModel,
     pub body: &'a [u8],
     pub anthropic_beta: Option<&'a str>,
+    /// Who sent the request ([`Caller`]): a translator asks the target it runs against for the
+    /// caller's header with it ([`RelayTarget::caller_header`]), as the byte relay does.
+    pub caller: Caller<'a>,
 }
 
 /// Translates a request from the client's wire to the upstream's, and its answer back.

@@ -152,6 +152,7 @@ fn translate_with(
             model,
             body: body.as_bytes(),
             anthropic_beta: None,
+            caller: llm_gateway::Caller::default(),
         })
         .unwrap_or_else(|code| panic!("prepare refused {code:?}"));
     let (address, thread) = upstream(raw, delay);
@@ -298,6 +299,7 @@ fn adv_translation_chat_fields_below_the_top_level_are_refused_not_dropped() {
                 model: &model,
                 body: body.as_bytes(),
                 anthropic_beta: None,
+                caller: llm_gateway::Caller::default(),
             })
             .err();
         if refused != Some(RefusalCode::TranslationUnsupported) {

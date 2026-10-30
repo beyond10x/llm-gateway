@@ -4,10 +4,10 @@
 //! upstream credential appearing on the wire and without any secret source being consulted.
 
 use llm_gateway::{
-    AuthKind, BasePath, BillingKind, CredentialHeader, Gateway, GatewayConfig, GatewayHandle,
-    Label, OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
-    RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, StaticHeader, TargetLimits,
-    TargetProvenance, TargetRefusal, TargetSummary, TranslatedAnswer, Translation,
+    AuthKind, BasePath, BillingKind, Caller, CredentialHeader, Gateway, GatewayConfig,
+    GatewayHandle, Label, OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget,
+    RelayTargets, RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, StaticHeader,
+    TargetLimits, TargetProvenance, TargetRefusal, TargetSummary, TranslatedAnswer, Translation,
     TranslationFailure, TranslationRequest, Translator, Verdict, Wire,
 };
 use std::{
@@ -1176,6 +1176,16 @@ fn hosted_endpoint_bounds() -> Vec<Bound> {
             direction: Direction::Maximum,
             admits: Box::new(|n| {
                 StaticHeader::new("x-title", &"v".repeat(usize::try_from(n).unwrap())).is_ok()
+            }),
+        },
+        // A longer session is not refused but dropped: the target is never told it.
+        Bound {
+            name: "caller-session-bytes",
+            value: 256,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| {
+                let session = "s".repeat(usize::try_from(n).unwrap());
+                Caller::new(Some(&session), None).session().is_some()
             }),
         },
     ]

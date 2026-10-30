@@ -5,6 +5,10 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+- An OpenCode Go endpoint is sent the caller's own valid `x-opencode-session`, else `llmgw-` and a hash of the caller's address under a per-process key, else the declared static one, so each client keeps its own upstream session.
+
 ## 0.17.0 (2026-10-30)
 
 ### Added

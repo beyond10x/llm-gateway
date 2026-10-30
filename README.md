@@ -230,8 +230,8 @@ cargo test --workspace --locked
 task check
 ```
 
-`task check` adds formatting, Clippy, the documentation drift check, specification validation and
-the conformance suite. It needs [Task](https://taskfile.dev) and the `ess` command from
+`task check` adds formatting, Clippy, the documentation drift check, specification validation,
+the specification diff against the merge base with `origin/main` and the conformance suite. It needs [Task](https://taskfile.dev) and the `ess` command from
 [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) on `PATH`.
 [AGENTS.md](AGENTS.md) explains each step.
 

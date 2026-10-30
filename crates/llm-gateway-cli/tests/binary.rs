@@ -323,10 +323,14 @@ fn c1_a_subcommand_is_refused() {
     let finished = run(&["serve", "--config", config.to_str().unwrap()]);
     assert_eq!(finished.status.code(), Some(2), "{:?}", finished.stderr);
     assert!(
-        finished.stderr.contains("unexpected argument 'serve'"),
+        finished.stderr.starts_with(
+            "b10x-llm-gateway: usage error (UnknownArgument); \
+             Usage: b10x-llm-gateway --config <CONFIG>; see `b10x-llm-gateway --help`"
+        ),
         "{:?}",
         finished.stderr
     );
+    assert!(!finished.stderr.contains("serve"), "{:?}", finished.stderr);
 }
 
 #[test]
@@ -1146,7 +1150,11 @@ fn metrics_settings_that_break_a_rule_are_refused() {
         &format!("metrics_listen = \"{listen}\"\n"),
     );
     assert_refused(&run_config(&same), "config:value");
-    let token = fixture.write("scrape-token", b"scrape-token\n", 0o600);
+    let token = fixture.write(
+        "scrape-token",
+        format!("{SCRAPE_TOKEN}\n").as_bytes(),
+        0o600,
+    );
     let alone = with_top_level(
         &fixture,
         "127.0.0.1:0",
@@ -1170,24 +1178,24 @@ fn metrics_settings_that_break_a_rule_are_refused() {
     for (name, bytes, mode, code) in [
         (
             "open-token",
-            &b"scrape-token\n"[..],
+            format!("{SCRAPE_TOKEN}\n").into_bytes(),
             0o644,
             "metrics-bearer:unsafe-mode",
         ),
         (
             "blank-token",
-            &b" \n"[..],
+            b" \n".to_vec(),
             0o600,
             "metrics-bearer:not-a-token",
         ),
         (
             "spaced-token",
-            &b"two words\n"[..],
+            b"two words in a scrape token file, not one\n".to_vec(),
             0o600,
             "metrics-bearer:not-a-token",
         ),
     ] {
-        let token = fixture.write(name, bytes, mode);
+        let token = fixture.write(name, &bytes, mode);
         let config = with_top_level(
             &fixture,
             "127.0.0.1:0",
@@ -1217,4 +1225,122 @@ fn metrics_settings_that_break_a_rule_are_refused() {
         ),
     );
     Server::start(&config).stop();
+}
+
+#[test]
+fn an_unexpected_argument_is_refused_without_echoing_it() {
+    let fixture = Fixture::new("unexpected-argument");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let finished = run(&["--config", config.to_str().unwrap(), "PASTED-KEY-VALUE"]);
+    assert_eq!(finished.status.code(), Some(2), "{:?}", finished.stderr);
+    assert!(
+        !finished.stderr.contains("PASTED-KEY-VALUE"),
+        "{:?}",
+        finished.stderr
+    );
+}
+
+/// A scrape token is held to the owner secret's floor: under 32 bytes it is refused at startup,
+/// naming `metrics_bearer_file`, and at exactly 32 bytes it is served.
+#[test]
+fn a_scrape_token_under_32_bytes_is_refused_at_startup() {
+    let fixture = Fixture::new("short-scrape-token");
+    let scrape = |name: &str, bytes: &[u8]| {
+        let token = fixture.write(name, bytes, 0o600);
+        with_top_level(
+            &fixture,
+            "127.0.0.1:0",
+            &format!(
+                "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
+                free_address(),
+                token.display()
+            ),
+        )
+    };
+    for (name, token) in [("one-byte", "a".to_owned()), ("31-bytes", "b".repeat(31))] {
+        let finished = run_config(&scrape(name, format!("{token}\n").as_bytes()));
+        assert_refused(&finished, "metrics-bearer:not-a-token");
+        assert!(
+            finished.stderr.contains("metrics_bearer_file ")
+                && finished.stderr.contains("32 bytes"),
+            "{name}: {}",
+            finished.stderr
+        );
+    }
+    Server::start(&scrape(
+        "32-bytes",
+        format!("{}\n", "c".repeat(32)).as_bytes(),
+    ))
+    .stop();
+}
+
+/// The `ingress_auth = "none"` warning is written before the listener serves. Standard error is
+/// a pipe held full, so the process blocks in the first line it writes: the listener must not
+/// answer `/ready` until the warning has been read out, and once it is, the warning comes first
+/// and the gateway serves.
+#[test]
+fn the_ingress_auth_off_warning_is_written_before_the_listener_serves() {
+    use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
+    let fixture = Fixture::new("ingress-off-first");
+    let listen = free_address();
+    let config = with_top_level(&fixture, &listen.to_string(), "ingress_auth = \"none\"\n");
+
+    let (reader, mut writer) = std::io::pipe().unwrap();
+    let flags = fcntl_getfl(&writer).unwrap();
+    fcntl_setfl(&writer, flags | OFlags::NONBLOCK).unwrap();
+    // Newlines, so the filler reads back as empty lines; one byte at a time at the end, so not
+    // one byte of room is left.
+    for chunk in [4096, 1] {
+        loop {
+            match writer.write(&vec![b'\n'; chunk]) {
+                Ok(_) => {}
+                Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(error) => panic!("filling the pipe: {error}"),
+            }
+        }
+    }
+    fcntl_setfl(&writer, flags).unwrap();
+
+    let mut command = Command::new(binary());
+    command
+        .args(["--config", config.to_str().unwrap()])
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(writer);
+    let mut child = command.spawn().unwrap();
+    drop(command);
+
+    let held = Instant::now() + Duration::from_secs(5);
+    let mut served = None;
+    while Instant::now() < held {
+        if TcpStream::connect(listen).is_ok() {
+            served = Some(get(listen, "/ready", None));
+            break;
+        }
+        thread::sleep(Duration::from_millis(20));
+    }
+    if let Some(ready) = served {
+        drop(child.kill());
+        drop(child.wait());
+        panic!("the listener served before the warning was written: {ready:?}");
+    }
+
+    let mut lines = BufReader::new(reader).lines();
+    let mut written = Vec::new();
+    while written.len() < 2 {
+        let line = lines.next().expect("standard error ended").unwrap();
+        if !line.is_empty() {
+            written.push(line);
+        }
+    }
+    let ready = get(listen, "/ready", None);
+    drop(child.kill());
+    drop(child.wait());
+    assert_eq!(
+        written[0],
+        format!("{PREFIX}{}", llm_gateway_cli::INGRESS_AUTH_OFF),
+        "{written:?}"
+    );
+    assert!(written[1].starts_with(LISTENING), "{written:?}");
+    assert_eq!(status(&ready), "200", "{ready:?}");
 }

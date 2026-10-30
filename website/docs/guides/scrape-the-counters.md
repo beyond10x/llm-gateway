@@ -142,7 +142,8 @@ curl -s -H "Authorization: Bearer $(cat scrape-token)" http://127.0.0.1:9090/met
   is reachable there.
 - With `metrics_bearer_file`, a scrape must send that token. None is `401 credential-absent`, and
   another token, the owner secret included, `401 credential-rejected`. The file follows the
-  rules of a [credential file](../reference/deployment-document.md#credential-files).
+  rules of a [credential file](../reference/deployment-document.md#credential-files) and holds
+  at least 32 bytes.
 - Without `metrics_bearer_file` the listener is open. Bind it only on an address a network policy
   guards, as [Run on Kubernetes](run-on-kubernetes.md#scrape-the-counters) does.
 - It answers before the gateway is ready and while it drains, and it stops with the gateway.

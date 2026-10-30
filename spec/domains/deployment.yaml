@@ -276,7 +276,8 @@ types:
   # Metrics bearer rules (story:prometheus-metrics), the endpoint credential's rules in every
   # trusted-file rule and after trimming; every message starts `metrics_bearer_file <path>:`:
   #   `metrics-bearer:too-large`    a token over 4096 bytes
-  #   `metrics-bearer:not-a-token`  empty, or not one printable ASCII token
+  #   `metrics-bearer:not-a-token`  empty, not one printable ASCII token, or under 32 bytes
+  #                                 (the owner secret's floor)
   # Container credential rules (story:bedrock-hosted-target), checked only when the document
   # declares a `kind = "bedrock"` hosted model; no message quotes the URI or the token:
   #   `container-credentials:unset`  `AWS_CONTAINER_CREDENTIALS_FULL_URI` or

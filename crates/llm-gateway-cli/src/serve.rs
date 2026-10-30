@@ -90,12 +90,12 @@ pub fn metrics_bearer(deployment: &Deployment) -> Result<Option<OwnerToken>, Ref
             StartupRefusal::MetricsBearerNotAToken,
         ),
     )?;
-    OwnerToken::new(material).map(Some).map_err(|error| {
-        Refusal::new(
-            StartupRefusal::MetricsBearerNotAToken,
-            format!("metrics_bearer_file {}: {error}", path.display()),
-        )
-    })
+    // Held to the owner secret's floor: on a cluster that enforces no network policy this token
+    // is the metrics listener's only guard. `scrape_token` holds the check and sits at the end
+    // of this file, so that every line below keeps its number:
+    // docs/llmgw-capability-matrix.md and spec/domains/upstream.yaml cite them by line
+    // (`adv_b9_citations_into_serve_rs_still_land`).
+    scrape_token(path, material).map(Some)
 }
 
 fn label(value: &str) -> Result<Label, Refusal> {
@@ -230,7 +230,7 @@ fn report(line: fmt::Arguments<'_>) {
 /// the lines `spec/domains/deployment.yaml` names. The shipped binary's `main` passes
 /// [`crate::ProxyConnector::shipped`]; only the `gateway-tls-seam` test program passes another.
 pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
-    use clap::Parser as _;
+    use clap::{CommandFactory as _, Parser as _};
     // `credential …` first is the one other command; anything else is the serving line, parsed
     // exactly as before.
     if let crate::cli::Invocation::Credential(args) =
@@ -238,18 +238,39 @@ pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
     {
         return crate::credential::main(args, &pods);
     }
-    let args = crate::cli::Cli::parse();
+    let args = match crate::cli::Cli::try_parse() {
+        Ok(args) => args,
+        Err(error) => {
+            use clap::error::ErrorKind;
+            if matches!(
+                error.kind(),
+                ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+            ) {
+                error.exit();
+            }
+            // clap quotes the offending argument, which may be a key: name only the kind and
+            // the usage line.
+            report(format_args!(
+                "usage error ({:?}); {}; see `b10x-llm-gateway --help`",
+                error.kind(),
+                crate::cli::Cli::command().render_usage()
+            ));
+            return std::process::ExitCode::from(2);
+        }
+    };
     // Events (row O3) go to standard error beside the lines `report` writes, which they leave
     // unchanged; at the default level they are one `usage` event per authenticated model call.
     crate::install_logging();
-    let mut ingress_auth = IngressAuth::Bearer;
     let running = match crate::load(&args.config).and_then(|deployment| {
         tracing::debug!(
             models = deployment.models.len(),
             digest = %deployment.digest,
             "deployment loaded"
         );
-        ingress_auth = deployment.gateway.ingress_auth;
+        // Before the listener is bound, so no model call is served before the warning is out.
+        if deployment.gateway.ingress_auth == IngressAuth::None {
+            report(format_args!("{INGRESS_AUTH_OFF}"));
+        }
         start_with(&deployment, pods)
     }) {
         Ok(running) => running,
@@ -258,9 +279,6 @@ pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
             return std::process::ExitCode::FAILURE;
         }
     };
-    if ingress_auth == IngressAuth::None {
-        report(format_args!("{INGRESS_AUTH_OFF}"));
-    }
     report(format_args!("listening on {}", running.local_addr()));
     let stopped = running.wait_for_stop();
     report(format_args!(
@@ -308,4 +326,27 @@ impl Running {
         Signals::new([SIGINT, SIGTERM])
             .map_err(|error| Refusal::new(StartupRefusal::SignalInstall, error.to_string()))
     }
+}
+
+/// The shortest scrape token `metrics_bearer_file` may hold, the owner secret's floor.
+const MIN_METRICS_BEARER_BYTES: usize = 32;
+
+/// `material`, read from `path`, as the metrics listener's scrape token: refused
+/// `metrics-bearer:not-a-token` under [`MIN_METRICS_BEARER_BYTES`] or when it is not a token.
+fn scrape_token(path: &std::path::Path, mut material: Vec<u8>) -> Result<OwnerToken, Refusal> {
+    let refuse = |reason: &dyn fmt::Display| {
+        Refusal::new(
+            StartupRefusal::MetricsBearerNotAToken,
+            format!("metrics_bearer_file {}: {reason}", path.display()),
+        )
+    };
+    if material.len() < MIN_METRICS_BEARER_BYTES {
+        // As the reader does with what it read: the refused bytes are overwritten.
+        material.fill(0);
+        std::hint::black_box(&material);
+        return Err(refuse(&format_args!(
+            "the token must be at least {MIN_METRICS_BEARER_BYTES} bytes"
+        )));
+    }
+    OwnerToken::new(material).map_err(|error| refuse(&error))
 }

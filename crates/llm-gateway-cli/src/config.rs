@@ -31,7 +31,9 @@ const HEX: &[u8; 16] = b"0123456789abcdef";
 /// Reads a closed enumerated value from a TOML string and nothing else. serde's derived
 /// `Deserialize` for an externally tagged enum also takes a one-key table naming a unit
 /// variant, so `thinking = { on = {} }` loaded as `on`; every enum of the document is read
-/// through this instead, and anything but one of its strings is `config:schema`.
+/// through this instead, and anything but one of its strings is `config:schema`. The refusal
+/// names the strings allowed and never the one written: a key typed into the wrong field would
+/// otherwise reach the log.
 macro_rules! from_string_only {
     ($name:ident { $( $text:literal => $variant:ident ),+ $(,)? }) => {
         impl<'de> Deserialize<'de> for $name {
@@ -39,7 +41,10 @@ macro_rules! from_string_only {
                 let text = String::deserialize(deserializer)?;
                 match text.as_str() {
                     $( $text => Ok(Self::$variant), )+
-                    other => Err(serde::de::Error::unknown_variant(other, &[$( $text ),+])),
+                    _ => Err(serde::de::Error::custom(format_args!(
+                        "unknown variant, expected one of {}",
+                        [$( concat!("`", $text, "`") ),+].join(", ")
+                    ))),
                 }
             }
         }
@@ -679,8 +684,31 @@ pub fn load(path: &Path) -> Result<Deployment, Refusal> {
     }
 }
 
+/// `message` with every string serde quotes as the value it refused (`string "<value>"`, the
+/// value in Rust's escaped form) replaced by `a string`: a key typed where a number or a list
+/// belongs would otherwise reach the log.
+fn unquoted(message: &str) -> String {
+    const QUOTED: &str = "string \"";
+    let mut out = String::with_capacity(message.len());
+    let mut rest = message;
+    while let Some(start) = rest.find(QUOTED) {
+        out.push_str(&rest[..start]);
+        let value = &rest[start + QUOTED.len()..];
+        let mut escaped = false;
+        let end = value.char_indices().find_map(|(index, character)| {
+            let closes = character == '"' && !escaped;
+            escaped = character == '\\' && !escaped;
+            closes.then_some(index)
+        });
+        out.push_str("a string");
+        rest = end.map_or("", |end| &value[end + 1..]);
+    }
+    out.push_str(rest);
+    out
+}
+
 fn schema_refusal(text: &str, error: &toml::de::Error) -> Refusal {
-    let message = error.message();
+    let message = unquoted(error.message());
     match error.span() {
         Some(span) => {
             // Counted over bytes: the span is a byte offset, which need not fall on a character

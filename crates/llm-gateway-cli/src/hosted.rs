@@ -26,7 +26,7 @@ use crate::{
     refusal::{Refusal, StartupRefusal},
     relaying::PodConnector,
     tls::{HTTPS_PORT, dial, split},
-    trusted,
+    trusted::{self, Wiped},
 };
 use llm_gateway::{
     AuthKind, BasePath, Caller, CredentialHeader, Label, ModelStatus, RelayStream, RelayTarget,
@@ -315,30 +315,7 @@ impl HostedEndpoint {
                 Box::new(socket)
             }
         };
-        let path = self.base_path.as_ref().map_or_else(
-            || PROBE_WIRE_PATH.to_owned(),
-            |base| base.join(PROBE_WIRE_PATH),
-        );
-        let mut request =
-            format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority).into_bytes();
-        for header in &self.headers {
-            request
-                .extend_from_slice(format!("{}: {}\r\n", header.name(), header.value()).as_bytes());
-        }
-        let (name, key): (&str, &[u8]) = match &self.credential {
-            EndpointCredential::Anonymous => ("", &[]),
-            EndpointCredential::Bearer(bearer) => ("authorization: Bearer ", bearer.expose()),
-            EndpointCredential::ApiKey { header, key } => (header.as_str(), key.expose()),
-        };
-        if !name.is_empty() {
-            request.extend_from_slice(name.as_bytes());
-            if matches!(self.credential, EndpointCredential::ApiKey { .. }) {
-                request.extend_from_slice(b": ");
-            }
-            request.extend_from_slice(key);
-            request.extend_from_slice(b"\r\n");
-        }
-        request.extend_from_slice(b"accept: application/json\r\nconnection: close\r\n\r\n");
+        let request = self.probe_request();
         // The exchange runs on its own thread so that the total bound holds whatever the
         // stream's own timeouts are; the thread ends by `deadline` at the latest.
         let (sender, receiver) = std::sync::mpsc::channel();
@@ -347,6 +324,46 @@ impl HostedEndpoint {
             Ok(answer) => answer,
             Err(_) => Err(probe_timed_out()),
         }
+    }
+
+    /// The probe's request, which carries the endpoint's credential. It is written into one
+    /// allocation of exactly its length, taken before the credential is written into it, so it
+    /// never reallocates and leaves no copy of the key in freed memory, and it is overwritten
+    /// when dropped, as the relay's own request head is.
+    fn probe_request(&self) -> Wiped {
+        let path = self.base_path.as_ref().map_or_else(
+            || PROBE_WIRE_PATH.to_owned(),
+            |base| base.join(PROBE_WIRE_PATH),
+        );
+        let mut start = format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority);
+        for header in &self.headers {
+            let _written = write!(start, "{}: {}\r\n", header.name(), header.value());
+        }
+        let credential: [&[u8]; 4] = match &self.credential {
+            EndpointCredential::Anonymous => [b""; 4],
+            EndpointCredential::Bearer(bearer) => {
+                [b"authorization: Bearer ", b"", bearer.expose(), b"\r\n"]
+            }
+            EndpointCredential::ApiKey { header, key } => {
+                [header.as_str().as_bytes(), b": ", key.expose(), b"\r\n"]
+            }
+        };
+        let end = b"accept: application/json\r\nconnection: close\r\n\r\n";
+        let length =
+            start.len() + credential.iter().map(|piece| piece.len()).sum::<usize>() + end.len();
+        let mut request = Wiped::with_capacity(length);
+        let sized = request.capacity();
+        request.extend(start.as_bytes());
+        for piece in credential {
+            request.extend(piece);
+        }
+        request.extend(end);
+        debug_assert_eq!(
+            request.capacity(),
+            sized,
+            "a probe request holding a credential reallocated, leaving a copy of it in freed memory"
+        );
+        request
     }
 }
 
@@ -357,15 +374,16 @@ fn probe_timed_out() -> io::Error {
     )
 }
 
-/// Sends `request` (overwritten once sent) and reads the first final status.
+/// Sends `request`, overwritten once sent, and reads the first final status.
 fn exchange(
     mut stream: Box<dyn RelayStream>,
-    mut request: Vec<u8>,
+    request: Wiped,
     deadline: Instant,
 ) -> io::Result<u16> {
-    let sent = stream.write_all(&request).and_then(|()| stream.flush());
-    request.fill(0);
-    std::hint::black_box(&request);
+    let sent = stream
+        .write_all(request.as_slice())
+        .and_then(|()| stream.flush());
+    drop(request);
     sent?;
     let malformed = || io::Error::new(io::ErrorKind::InvalidData, "no HTTP/1 status line");
     for _ in 0..=MAX_INTERIM_ANSWERS {
@@ -766,9 +784,12 @@ mod tests {
         BaseUrlError, EndpointCredential, HostedEndpoint, HostedTarget, Scheme, derived_session,
     };
     use crate::relaying::PodConnector;
+    use crate::trusted::ledger::{self, Entry};
     use llm_gateway::AuthKind;
     use llm_gateway::BasePath;
-    use llm_gateway::{Caller, RelayStream, RelayTarget as _, StaticHeader};
+    use llm_gateway::{
+        Caller, CredentialHeader, RelayStream, RelayTarget as _, StaticHeader, TargetBearer,
+    };
     use std::{
         io::{self, Read, Write},
         net::{IpAddr, TcpListener},
@@ -1000,6 +1021,56 @@ mod tests {
                 "{other}"
             );
             assert_eq!(answer(&target, None, Some("10.0.0.1")), None, "{other}");
+        }
+    }
+
+    /// What this proves: the probe's request, key included, is written into the one allocation
+    /// taken for it before its first byte, of exactly the request's length, so no smaller one
+    /// held the key and was freed by a reallocation, and that allocation reads zero in full as
+    /// it is let go. That freed memory stays zero is not observable from safe Rust.
+    #[test]
+    fn a_probe_request_is_sized_before_its_key_is_written_and_overwritten_when_dropped() {
+        const KEY: &str = "sk-probe-0123456789abcdef0123456789abcdef";
+        let key = || TargetBearer::new(KEY.as_bytes().to_vec()).unwrap();
+        for (credential, line) in [
+            (
+                EndpointCredential::Bearer(key()),
+                format!("authorization: Bearer {KEY}\r\n"),
+            ),
+            (
+                EndpointCredential::ApiKey {
+                    header: CredentialHeader::new("x-api-key").unwrap(),
+                    key: key(),
+                },
+                format!("x-api-key: {KEY}\r\n"),
+            ),
+            (EndpointCredential::Anonymous, String::new()),
+        ] {
+            let endpoint = HostedEndpoint::new("https://models.example.test/v1", credential)
+                .unwrap()
+                .with_headers(vec![
+                    StaticHeader::new("anthropic-version", "2023-06-01").unwrap(),
+                ])
+                .unwrap();
+            ledger::drain();
+            let request = endpoint.probe_request();
+            assert_eq!(
+                String::from_utf8_lossy(request.as_slice()),
+                format!(
+                    "GET /v1/models HTTP/1.1\r\nhost: models.example.test\r\n\
+                     anthropic-version: 2023-06-01\r\n{line}accept: application/json\r\n\
+                     connection: close\r\n\r\n"
+                )
+            );
+            let (address, size) = (request.as_slice().as_ptr().addr(), request.capacity());
+            assert_eq!(size, request.as_slice().len(), "{line:?}");
+            assert_eq!(ledger::drain(), [Entry::Taken(address, size)], "{line:?}");
+            drop(request);
+            assert_eq!(
+                ledger::drain(),
+                [Entry::Released(address, size, true)],
+                "{line:?}"
+            );
         }
     }
 }

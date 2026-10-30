@@ -50,9 +50,9 @@ pub fn owner_verifier(deployment: &Deployment) -> Result<Arc<dyn OwnerVerifier>,
         return Ok(Arc::new(NoOwnerVerifier));
     };
     let text = trusted::read_named(path, OWNER_SECRET_FILE, &trusted::OWNER_SECRET)?;
+    let text = trusted::Wiped::adopt(text.into_bytes());
     // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
-    let material = text.trim_end_matches(|character: char| character.is_ascii_whitespace());
-    let token = OwnerToken::new(material.as_bytes().to_vec()).map_err(|error| {
+    let token = OwnerToken::new(text.as_slice().trim_ascii_end().to_vec()).map_err(|error| {
         Refusal::new(
             // The token bound is applied here, after trimming; the file bound is the reader's.
             if error == TokenError::TooLarge {
@@ -352,4 +352,56 @@ fn scrape_token(mut material: Vec<u8>) -> Result<OwnerToken, Refusal> {
         )));
     }
     OwnerToken::new(material).map_err(|error| refuse(&error))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::owner_verifier;
+    use crate::{config, trusted::ledger};
+    use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+
+    /// What this proves: the owner secret file's text was held only in the allocation the
+    /// trusted-file reader took for it, which read zero in full, spare capacity included, as it
+    /// was let go, whether the secret was taken or refused, and none was freed by a reallocation
+    /// behind its back. That freed memory stays zero is not observable from safe Rust.
+    #[test]
+    fn the_owner_secret_files_text_is_overwritten_whichever_way_the_rules_go() {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/tmp")
+            .join(format!(
+                "gateway-cli-unit-serve-owner-{}",
+                std::process::id()
+            ));
+        drop(fs::remove_dir_all(&dir));
+        fs::create_dir_all(&dir).unwrap();
+        let secret = dir.join("owner");
+        let deployment = config::parse(&format!(
+            "listen = \"127.0.0.1:0\"\nowner_secret_file = \"{}\"\n\n[providers.runpod]\n\
+             kind = \"runpod-vllm\"\n\n[models.small]\nprovider = \"runpod\"\n\
+             wires = [\"chat\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\n\
+             image = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\n\
+             max_model_len = 1024\n",
+            secret.display()
+        ))
+        .unwrap();
+        for (name, bytes, taken) in [
+            (
+                "taken",
+                &b"owner-secret-0123456789abcdef-0123456789\r\n"[..],
+                true,
+            ),
+            ("short", b"owner-secret\n", false),
+            (
+                "spaced",
+                b"owner secret 0123456789abcdef 0123456789\n",
+                false,
+            ),
+        ] {
+            fs::write(&secret, bytes).unwrap();
+            fs::set_permissions(&secret, fs::Permissions::from_mode(0o600)).unwrap();
+            ledger::drain();
+            assert_eq!(owner_verifier(&deployment).is_ok(), taken, "{name}");
+            ledger::assert_every_allocation_overwritten(name);
+        }
+    }
 }

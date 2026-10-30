@@ -15,6 +15,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 - `GET /` profiles a client for a model whose upstream speaks another wire when the relay's translator admits the client's requests to it: the binary prepares Codex's and Claude Code's recorded first turns for each such model once, at start, and profiles the client where llm carries the turn, so a client is handed only models its requests reach without a `translation-*` refusal. A translated-only Bedrock model, which relays no client wire, is profiled only for a client whose first turn passes llm's Bedrock check, no longer for every client. No Loom turn is recorded, so a Loom run is still profiled only for models that declare `chat`. The translator port gains `Translator::admits`, default `false`. Two conformance scenarios hold it; the suite's floor is 294 scenarios. `docs/gateway.md` "The public routes".
 
+### Fixed
+
+- A credential is no longer left in memory freed unzeroed by a buffer that grew around it: the client's request head, the trusted-file reader, a key read from a file, the hosted probe's request `credential set`'s standard input and prompt, the owner-token hash and the owner secret file's text are each sized before the credential enters or moved by an overwrite, and overwritten, spare capacity included, on every path that lets them go, refusals included. Best effort, as before: no `zeroize` dependency. `docs/verification/2026-10-30-credential-buffers-zeroed.md`.
+
 ## 0.21.0 (2026-10-30)
 
 ### Added

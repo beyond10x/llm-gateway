@@ -612,41 +612,356 @@ fn linger(stream: &mut TcpStream, deadline: Instant) {
 
 /// Reads exactly the request head, bounded in size and in time, and returns it with whatever
 /// arrived after it. Only a relay reads further; every other path ignores those bytes.
+///
+/// The head carries the owner's credential when the client presents one, so its bytes are only
+/// ever held in a [`HeadBuffer`], which each read writes into directly: an allocation it leaves
+/// for a larger one is overwritten before it is freed, and the last one when the buffer, or the
+/// [`Head`] it becomes, is dropped, on every path out of here, refusals included.
 fn read_head(
-    stream: &mut TcpStream,
+    stream: &mut impl HeadStream,
     limit: usize,
     deadline: Instant,
-) -> Result<(String, Vec<u8>), RefusalCode> {
-    let mut buffer: Vec<u8> = Vec::new();
-    let mut chunk = [0_u8; READ_CHUNK];
+) -> Result<(Head, Vec<u8>), RefusalCode> {
+    let mut buffer = HeadBuffer(Vec::new());
+    let mut filled = 0;
     loop {
-        if let Some(end) = find_terminator(&buffer) {
-            let leftover = buffer[end + 4..].to_vec();
-            return String::from_utf8(buffer[..end].to_vec())
-                .map(|head| (head, leftover))
-                .map_err(|_| RefusalCode::RequestMalformed);
+        if let Some(end) = find_terminator(&buffer.0[..filled]) {
+            if std::str::from_utf8(&buffer.0[..end]).is_err() {
+                return Err(RefusalCode::RequestMalformed);
+            }
+            let leftover = buffer.0[end + 4..filled].to_vec();
+            return Ok((Head { buffer, end }, leftover));
         }
         // A byte `Request::parse` refuses wherever it stands is refused as soon as it arrives:
         // a head holding one may never send CRLFCRLF, and is malformed at any length.
-        if holds_stray_line_byte(&buffer) {
+        if holds_stray_line_byte(&buffer.0[..filled]) {
             return Err(RefusalCode::RequestMalformed);
         }
         // Never read past the bound, so an oversized head is refused rather than buffered.
-        let room = limit.saturating_sub(buffer.len()).min(READ_CHUNK);
+        let room = limit.saturating_sub(filled).min(READ_CHUNK);
         if room == 0 {
             return Err(RefusalCode::RequestTooLarge);
         }
         // Each read waits only for what is left of the deadline, so the head as a whole is bounded.
         let left = deadline.saturating_duration_since(Instant::now());
-        if left.is_zero() || stream.set_read_timeout(Some(left)).is_err() {
+        if left.is_zero() || stream.wait_at_most(left).is_err() {
             return Err(RefusalCode::RequestMalformed);
         }
-        match stream.read(&mut chunk[..room]) {
+        match stream.read(buffer.room(filled, room, limit)) {
             // An interrupted read is retried: a signal is not the peer stopping.
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
             // A peer that stops early, times out or resets never delivered a head.
             Ok(0) | Err(_) => return Err(RefusalCode::RequestMalformed),
-            Ok(read) => buffer.extend_from_slice(&chunk[..read]),
+            Ok(read) => filled += read,
+        }
+    }
+}
+
+/// Where a head is read from: a client's connection, or a scripted one in a test.
+trait HeadStream: Read {
+    /// Lets the next read wait at most `left`.
+    fn wait_at_most(&mut self, left: Duration) -> io::Result<()>;
+}
+
+impl HeadStream for TcpStream {
+    fn wait_at_most(&mut self, left: Duration) -> io::Result<()> {
+        self.set_read_timeout(Some(left))
+    }
+}
+
+/// A client's request head as it is read. Its bytes are in one allocation at a time, which a
+/// read writes into directly, so no copy of them is left on the stack. When a read needs more
+/// room they move to an allocation twice the size, at most the head bound, and the one they
+/// leave is overwritten first; the last is overwritten when the buffer is dropped.
+struct HeadBuffer(Vec<u8>);
+
+impl HeadBuffer {
+    /// The `wanted` bytes after the first `filled`, which the next read writes into. Without
+    /// room for them the bytes move first, to no more than `limit` unless `filled + wanted` is.
+    fn room(&mut self, filled: usize, wanted: usize, limit: usize) -> &mut [u8] {
+        let needed = filled + wanted;
+        if self.0.len() < needed {
+            let mut grown = vec![0_u8; self.0.len().saturating_mul(2).min(limit).max(needed)];
+            #[cfg(test)]
+            head_ledger::taken(&grown);
+            grown[..filled].copy_from_slice(&self.0[..filled]);
+            wipe(&mut std::mem::replace(&mut self.0, grown));
+        }
+        &mut self.0[filled..needed]
+    }
+}
+
+impl Drop for HeadBuffer {
+    fn drop(&mut self) {
+        wipe(&mut self.0);
+    }
+}
+
+/// A head [`read_head`] returned: its bytes up to the CRLFCRLF, which are UTF-8, in the buffer
+/// they were read into, and overwritten with it when the head is dropped.
+struct Head {
+    buffer: HeadBuffer,
+    end: usize,
+}
+
+impl std::ops::Deref for Head {
+    type Target = str;
+
+    fn deref(&self) -> &str {
+        // `read_head` returns no head that is not UTF-8, so this never answers the empty text.
+        std::str::from_utf8(&self.buffer.0[..self.end]).unwrap_or_default()
+    }
+}
+
+/// Overwrites every byte of `bytes`' allocation, its spare capacity included, so it is freed
+/// holding nothing. Best effort without a `zeroize` dependency, as `OwnerToken` does: the black
+/// box keeps the writes observable.
+fn wipe(bytes: &mut Vec<u8>) {
+    bytes.fill(0);
+    bytes.resize(bytes.capacity(), 0);
+    std::hint::black_box(&*bytes);
+    #[cfg(test)]
+    head_ledger::released(bytes);
+}
+
+/// Each head allocation this thread took and let go, so that a test can check every one was
+/// overwritten before it was freed and none was freed behind the buffer's back.
+#[cfg(test)]
+mod head_ledger {
+    use std::cell::RefCell;
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(super) enum Entry {
+        /// An allocation's address and size, as the buffer took it.
+        Taken(usize, usize),
+        /// An allocation's address and size as it was let go, and whether every byte read zero.
+        Released(usize, usize, bool),
+    }
+
+    thread_local! {
+        static ENTRIES: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub(super) fn taken(bytes: &Vec<u8>) {
+        if bytes.capacity() > 0 {
+            let entry = Entry::Taken(bytes.as_ptr().addr(), bytes.capacity());
+            ENTRIES.with_borrow_mut(|entries| entries.push(entry));
+        }
+    }
+
+    pub(super) fn released(bytes: &Vec<u8>) {
+        if bytes.capacity() > 0 {
+            let zeroed = bytes.len() == bytes.capacity() && bytes.iter().all(|byte| *byte == 0);
+            let entry = Entry::Released(bytes.as_ptr().addr(), bytes.capacity(), zeroed);
+            ENTRIES.with_borrow_mut(|entries| entries.push(entry));
+        }
+    }
+
+    /// This thread's entries since the last call, oldest first.
+    pub(super) fn drain() -> Vec<Entry> {
+        ENTRIES.with_borrow_mut(std::mem::take)
+    }
+}
+
+/// The head reader over every way a read can end, each with the owner's credential already in
+/// the buffer. What these prove is the most safe Rust can observe: every allocation that held
+/// the head's bytes was taken by the buffer itself, at most the head bound, and read zero in
+/// full, spare capacity included, as it was let go, on every path. That the freed memory stays
+/// zero is not observable here; the writes are best effort, as `OwnerToken`'s are.
+#[cfg(test)]
+mod head_tests {
+    use super::{HeadStream, READ_CHUNK, head_ledger, head_ledger::Entry, read_head};
+    use crate::error::RefusalCode;
+    use std::{
+        collections::{BTreeSet, VecDeque},
+        io::{self, Read},
+        time::{Duration, Instant},
+    };
+
+    const CREDENTIAL: &str = "authorization: Bearer sk-head-credential-0123456789abcdef\r\n";
+
+    /// What a scripted connection answers its reads with, in order.
+    type Reads = Vec<io::Result<Vec<u8>>>;
+
+    /// A connection that answers each read with the next of `reads`, cut to the room offered,
+    /// and refuses a wait once `waits` are spent.
+    struct Scripted {
+        reads: VecDeque<io::Result<Vec<u8>>>,
+        waits: Option<usize>,
+    }
+
+    impl Scripted {
+        fn new(reads: Reads) -> Self {
+            Self {
+                reads: reads.into(),
+                waits: None,
+            }
+        }
+    }
+
+    impl Read for Scripted {
+        fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+            match self.reads.pop_front() {
+                None => Ok(0),
+                Some(Err(error)) => Err(error),
+                Some(Ok(mut bytes)) => {
+                    let given = bytes.len().min(buffer.len());
+                    buffer[..given].copy_from_slice(&bytes[..given]);
+                    if given < bytes.len() {
+                        self.reads.push_front(Ok(bytes.split_off(given)));
+                    }
+                    Ok(given)
+                }
+            }
+        }
+    }
+
+    impl HeadStream for Scripted {
+        fn wait_at_most(&mut self, _left: Duration) -> io::Result<()> {
+            match &mut self.waits {
+                Some(0) => Err(io::Error::from(io::ErrorKind::TimedOut)),
+                Some(left) => {
+                    *left -= 1;
+                    Ok(())
+                }
+                None => Ok(()),
+            }
+        }
+    }
+
+    /// A head with the credential on its second line and one padding header, `length` bytes in
+    /// all with its CRLFCRLF.
+    fn head(length: usize) -> Vec<u8> {
+        let start = format!("POST /v1/messages HTTP/1.1\r\n{CREDENTIAL}x-pad: ");
+        let mut head = start.into_bytes();
+        head.resize(length - 4, b'a');
+        head.extend_from_slice(b"\r\n\r\n");
+        head
+    }
+
+    /// `bytes` in reads of at most `size` bytes.
+    fn chunks(bytes: &[u8], size: usize) -> Reads {
+        bytes.chunks(size).map(|chunk| Ok(chunk.to_vec())).collect()
+    }
+
+    /// Every allocation taken was let go once, read zero in full, and nothing was let go that
+    /// was not taken; returns how many were taken.
+    fn every_allocation_was_overwritten(case: &str, limit: usize) -> usize {
+        let mut live = BTreeSet::new();
+        let mut taken = 0;
+        for entry in head_ledger::drain() {
+            match entry {
+                Entry::Taken(address, size) => {
+                    assert!(
+                        size <= limit,
+                        "{case}: an allocation of {size} past the bound"
+                    );
+                    assert!(live.insert((address, size)), "{case}: taken twice");
+                    taken += 1;
+                }
+                Entry::Released(address, size, zeroed) => {
+                    assert!(
+                        live.remove(&(address, size)),
+                        "{case}: let go an allocation the buffer never took, so the one it did \
+                         take was freed by a reallocation without being overwritten"
+                    );
+                    assert!(
+                        zeroed,
+                        "{case}: an allocation was let go holding head bytes"
+                    );
+                }
+            }
+        }
+        assert!(
+            live.is_empty(),
+            "{case}: {} allocation(s) holding head bytes were freed without being overwritten",
+            live.len()
+        );
+        assert!(
+            taken > 0,
+            "{case}: the head's bytes were held in no buffer the ledger saw"
+        );
+        taken
+    }
+
+    #[test]
+    fn a_head_is_overwritten_in_every_allocation_it_used_when_it_is_answered() {
+        let limit = 8192;
+        let sent = head(3000);
+        let mut reads = vec![Err(io::Error::from(io::ErrorKind::Interrupted))];
+        reads.extend(chunks(&sent, 700));
+        reads.push(Ok(b"{}".to_vec()));
+        let mut stream = Scripted::new(reads);
+        let (head, leftover) =
+            read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
+                .expect("a whole head is read");
+        assert_eq!(head.as_bytes(), &sent[..sent.len() - 4]);
+        assert!(leftover.is_empty() || leftover == b"{}", "{leftover:?}");
+        drop(head);
+        let taken = every_allocation_was_overwritten("answered", limit);
+        assert!(
+            taken >= 2,
+            "a head of 3000 bytes read {READ_CHUNK} at a time moves at least once"
+        );
+    }
+
+    #[test]
+    fn a_refused_head_is_overwritten_in_every_allocation_it_used_on_every_path() {
+        let limit = 2048;
+        let start = format!("POST /v1/messages HTTP/1.1\r\n{CREDENTIAL}").into_bytes();
+        let with = |rest: &[u8]| [&start[..], rest].concat();
+        let stray = with(b"x-note: a\nb");
+        let oversized = with(&vec![b'a'; limit]);
+        let not_utf8 = with(b"x-note: \xff\r\n\r\n");
+        let cases: Vec<(&str, Reads, Option<usize>, RefusalCode)> = vec![
+            (
+                "a stray line byte",
+                chunks(&stray, 1000),
+                None,
+                RefusalCode::RequestMalformed,
+            ),
+            (
+                "past the bound",
+                chunks(&oversized, READ_CHUNK),
+                None,
+                RefusalCode::RequestTooLarge,
+            ),
+            (
+                "not UTF-8",
+                chunks(&not_utf8, 1000),
+                None,
+                RefusalCode::RequestMalformed,
+            ),
+            (
+                "the peer stops",
+                chunks(&start, 1000),
+                None,
+                RefusalCode::RequestMalformed,
+            ),
+            (
+                "the peer resets",
+                vec![
+                    Ok(start.clone()),
+                    Err(io::Error::from(io::ErrorKind::ConnectionReset)),
+                ],
+                None,
+                RefusalCode::RequestMalformed,
+            ),
+            (
+                "the deadline passes",
+                vec![Ok(start.clone()), Ok(b"x-more: a".to_vec())],
+                Some(1),
+                RefusalCode::RequestMalformed,
+            ),
+        ];
+        for (case, reads, waits, code) in cases {
+            let mut stream = Scripted::new(reads);
+            stream.waits = waits;
+            let refused = read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
+                .map(|_| ())
+                .expect_err(case);
+            assert_eq!(refused, code, "{case}");
+            every_allocation_was_overwritten(case, limit);
         }
     }
 }

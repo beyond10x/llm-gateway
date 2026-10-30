@@ -112,18 +112,11 @@ pub enum TargetKind {
     Route,
 }
 
-/// How a refusal names the value of `flag`: quoted when it is at most 64 characters of
-/// `A-Z a-z 0-9 . _ -`, otherwise "the given name", so that a key given as a name is not echoed.
-fn named(flag: &str, name: &str) -> String {
-    if name.len() <= 64
-        && name
-            .bytes()
-            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
-    {
-        format!("{flag} {name:?}")
-    } else {
-        format!("{flag} (the given name)")
-    }
+/// How a refusal names the value of `flag`: never quoted, "the given name". A name the
+/// document does not declare may be a key given where the alias belongs, and a generated key
+/// (48 hex characters, say) has the shape of a plain name, so no shape rule tells them apart.
+fn named(flag: &str) -> String {
+    format!("{flag} (the given name)")
 }
 
 /// The target `name` of `kind` in `deployment`, read from the document only: no file is opened.
@@ -188,7 +181,7 @@ pub fn target(
                 CredentialRefusal::UnknownTarget,
                 format!(
                     "{} is no [hosted.*] or [models.*] alias{hint}",
-                    named("--model", name)
+                    named("--model")
                 ),
             ))
         }
@@ -196,10 +189,7 @@ pub fn target(
             let unknown = || {
                 CredentialFailure::new(
                     CredentialRefusal::UnknownTarget,
-                    format!(
-                        "{} is no route of the routes document",
-                        named("--route", name)
-                    ),
+                    format!("{} is no route of the routes document", named("--route")),
                 )
             };
             let route = deployment

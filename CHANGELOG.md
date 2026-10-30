@@ -29,6 +29,7 @@ Nothing in any release is deployed or qualified against a live client.
 - A translated call refused after its target answered records that status in its usage record, and on a route its model declares counts one `llmgw_route_upstream_status_failures_total`; `TranslatedAnswer::target_status` is the port's new method, and the binary reads the status from llm's response tap.
 - A target answer with a non-UTF-8 byte in a header or trailer field the gateway does not read is relayed and the target kept; the status line and the `content-type`, `content-length` and `transfer-encoding` values must still be UTF-8.
 - With a translator, route series are registered only for the (model, wire) pairs a model declares; a translated request on another wire feeds the process-wide series only, as `docs/gateway.md` states.
+- `credential set` no longer quotes an unknown `--model` or `--route` name in `credential:unknown-target`: a generated key has the shape of a plain name, so the refusal calls it "the given name" whatever it is.
 
 ## 0.16.0 (2026-10-30)
 

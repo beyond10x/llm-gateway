@@ -31,6 +31,8 @@ scenarios:
 - hosting/scenarios/a-stop-whose-outcome-is-unknown-keeps-the-obligation-open.yaml
 - hosting/scenarios/a-zero-requested-lifetime-is-refused.yaml
 - hosting/scenarios/absence-from-a-complete-inventory-discharges-the-obligation.yaml
+- hosting/scenarios/adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input.yaml
+- hosting/scenarios/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select.yaml
 - hosting/scenarios/adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag.yaml
 - hosting/scenarios/adversary-a-retag-that-is-not-a-newer-epoch-is-ignored.yaml
 - hosting/scenarios/an-accepted-create-records-the-provider-assigned-identity.yaml

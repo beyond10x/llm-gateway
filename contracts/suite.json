@@ -187,6 +187,8 @@
       "llm-gateway.hosting/authored/a-zero-requested-lifetime-is-refused",
       "llm-gateway.hosting/authored/absence-from-a-complete-inventory-discharges-the-obligation",
       "llm-gateway.hosting/authored/acquiring-an-undeclared-deployment-is-refused",
+      "llm-gateway.hosting/authored/adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input",
+      "llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select",
       "llm-gateway.hosting/authored/adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag",
       "llm-gateway.hosting/authored/adversary-a-retag-that-is-not-a-newer-epoch-is-ignored",
       "llm-gateway.hosting/authored/an-accepted-create-records-the-provider-assigned-identity",
@@ -1226,6 +1228,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.hosting/authored/acquiring-an-undeclared-deployment-is-refused"
       },
+      "hosting/scenarios/adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input.yaml": {
+        "digest": "sha256:464b1546c5ba2b79cab97b844ae0e4b56180a1075dfdc38189fe15f38ca3c801",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.hosting/authored/adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input"
+      },
+      "hosting/scenarios/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select.yaml": {
+        "digest": "sha256:adcebda76dd93398d48114db6cb0fa4788dd965e93db1b91df76fa2073e782d3",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select"
+      },
       "hosting/scenarios/adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag.yaml": {
         "digest": "sha256:b3f08427e162b50fbd178866aabeec7ca1ea894107c45acf8a723de1a725c91a",
         "disposition": "accepted",
@@ -1763,7 +1775,7 @@
       }
     },
     "counts": {
-      "authored": 293,
+      "authored": 295,
       "generated": 92,
       "outside": 0,
       "refused": 0
@@ -41408,6 +41420,188 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.hosting.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.hosting/authored/adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input": {
+      "purpose": "ess admits an id holding a space as Declare input, and Declare declares only declared for a fresh id, so it must be declared, not an error",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.hosting"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.DeploymentId"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.Identifier"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Declare"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d 1"
+            },
+            "request_id": {
+              "kind": "literal",
+              "value": "request-d1"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation-a"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          },
+          "step": "expect_outcome"
+        }
+      ]
+    },
+    "llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select": {
+      "purpose": "invalid-identifier is guarded on a space, ess admits empty evidence, and no guard holds for it, so ConfirmStopped must answer confirmed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.hosting"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.CreateAnswer"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.DeploymentId"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.Identifier"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.PrintableText"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.ConfirmStopped"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Declare"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Provision"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.ConfirmStopped",
+            "outcome": "confirmed"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "accepted"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            },
+            "request_id": {
+              "kind": "literal",
+              "value": "request-d1"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation-a"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.Provision",
+          "input": {
+            "answer": {
+              "kind": "literal",
+              "value": "Accepted"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "accepted"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.ConfirmStopped",
+          "input": {
+            "evidence": {
+              "kind": "literal",
+              "value": ""
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.ConfirmStopped",
+            "outcome": "confirmed"
+          },
+          "step": "expect_outcome"
         }
       ]
     },

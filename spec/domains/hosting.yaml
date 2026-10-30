@@ -11,6 +11,28 @@ domain: llm-gateway.hosting
 # crates/llm-provision/tests/hosting.rs holds it. The Runpod adapter's own boundary is
 # llm-gateway.runpod's.
 types:
+  # A hosting identifier (`Identifier::new` in crates/llm-provision/src/identity.rs): 1..=256
+  # printable ASCII bytes with no space. The controller takes nothing else, so a value outside
+  # this type cannot reach it; the lifecycle commands type their deployment, request and
+  # reservation identifiers with it.
+  - name: llm-gateway.hosting.Identifier
+    kind: newtype
+    of: String
+    alphabet: '!"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
+    invariants: ["value.count >= 1", "value.count <= 256"]
+  # The identifier an `OwnedResource` is known by: the deployment the controller records it
+  # under, a hosting identifier like the others.
+  - name: llm-gateway.hosting.DeploymentId
+    kind: newtype
+    of: llm-gateway.hosting.Identifier
+  # Printable ASCII text of 1..=256 bytes, the space included: what a caller may write as stop
+  # evidence. Stop evidence is an `Identifier` to the controller, so `ConfirmStopped` refuses
+  # one holding a space (`invalid-identifier`) rather than the type excluding it.
+  - name: llm-gateway.hosting.PrintableText
+    kind: newtype
+    of: String
+    alphabet: ' !"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
+    invariants: ["value.count >= 1", "value.count <= 256"]
   # The resolved hosting lifecycle. `Uncertain`, `StopRequired`, `Stopped` and `Cancelled` are
   # llm.budget.Phase's words with llm.budget.Phase's meaning; the hosting-specific states are a
   # submitted create (`Requested`), an observed live resource (`Active`) and a resource a
@@ -344,7 +366,7 @@ entities:
     # `submits`, `stops` and `lists` are counted apart (`validating-and-listing-allocate-nothing`).
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.hosting.OwnedResource
-    identity: {name: id, type: String}
+    identity: {name: id, type: llm-gateway.hosting.DeploymentId}
     fields:
       - {name: controller_id, type: String}
       - {name: deployment_spec_id, type: String}
@@ -353,12 +375,12 @@ entities:
       # The controller does not re-derive admission: a Runpod pool admits each create through
       # its spend check (llm-gateway.runpod.SpendLedger) and the binary names that reservation
       # `spend-ceiling`, or `unmetered` when no ceiling is declared (llm-gateway.deployment).
-      - {name: reservation_id, type: String}
+      - {name: reservation_id, type: llm-gateway.hosting.Identifier}
       # The idempotency key, recorded before the create mutation was submitted.
-      - {name: request_id, type: String}
+      - {name: request_id, type: llm-gateway.hosting.Identifier}
       - {name: stop_reason, type: 'Optional<llm-gateway.hosting.StopReason>'}
       # Absent while an obligation is open; the evidence of one `EvidenceKind` once it closed.
-      - {name: stop_evidence, type: 'Optional<String>'}
+      - {name: stop_evidence, type: 'Optional<llm-gateway.hosting.PrintableText>'}
       # The observed identity. Absent while no provider answer exists. A name alone is not an
       # identity: a provider may hand `resource_name` to a later resource once this one is
       # gone, so `resource_incarnation` is what distinguishes them. A resource with the same name
@@ -472,14 +494,16 @@ commands:
   # (`Controller::apply`), one controller, fake provider and lease registry per record, so a
   # command on one record cannot move another. A refusal is the controller's own
   # (`HostingError`): `WrongPhase` where the record's phase has no edge for the change,
-  # `Missing` for an identity no record carries, `Duplicate` for a second declaration.
+  # `Missing` for an identity no record carries, `Duplicate` for a second declaration, and
+  # `StaleEpoch` where `Provision` or `Retry` meets a lease a successor took over.
   # `Declare` records the deployment and takes its ownership lease; every later command runs
-  # under that live lease, so `Controller::fence` passes and the phase decides.
+  # under that live lease, so `Controller::fence` passes and the phase decides, until
+  # `ObserveTakenOver` hands the lease to a successor at a newer epoch.
   - name: llm-gateway.hosting.Declare
     input:
-      - {name: id, type: String}
-      - {name: request_id, type: String}
-      - {name: reservation_id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
+      - {name: request_id, type: llm-gateway.hosting.Identifier}
+      - {name: reservation_id, type: llm-gateway.hosting.Identifier}
     outcomes:
       - name: declared
         creates: llm-gateway.hosting.OwnedResource
@@ -487,15 +511,23 @@ commands:
         emits: [llm-gateway.hosting.ResourceDeclared]
         payload:
           llm-gateway.hosting.ResourceDeclared: {id: input.id}
-        sets: {deployment_spec_id: input.id, request_id: input.request_id, reservation_id: input.reservation_id}
+        sets: {request_id: input.request_id, reservation_id: input.reservation_id}
       - {name: duplicate, existing_instance: true, error: llm-gateway.hosting.Duplicate}
   - name: llm-gateway.hosting.Provision
     input:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
       - {name: answer, type: llm-gateway.hosting.CreateAnswer}
     outcomes:
+      # A `Disowned` record was taken over at a strictly newer epoch, and `Controller::fence`
+      # refuses a mutation under the superseded epoch before it reads the phase: `stale-epoch`,
+      # where every other phase without a `Provision` edge answers `wrong-phase`. ESS 0.77.0
+      # refuses `when_subject_state:` beside `wrong_state:` below `format: ess/27`, so every
+      # branch names the held states it answers in, and `wrong-phase` lists the states
+      # `wrong_state:` would have computed, less `Disowned`.
+      - {name: stale-epoch, when_subject_state: [Disowned], error: llm-gateway.hosting.StaleEpoch}
       - name: accepted
         when: answer == Accepted
+        when_subject_state: [Declared]
         moves: llm-gateway.hosting.OwnedResource.submit
         instance: id
         emits: [llm-gateway.hosting.PhaseMoved]
@@ -503,6 +535,7 @@ commands:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - name: lost
         when: answer == Unknown
+        when_subject_state: [Declared]
         moves: llm-gateway.hosting.OwnedResource.lose
         instance: id
         emits: [llm-gateway.hosting.PhaseMoved]
@@ -510,6 +543,7 @@ commands:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - name: misanswered
         when: answer == AcceptedOutsideScope
+        when_subject_state: [Declared]
         moves: llm-gateway.hosting.OwnedResource.misanswer
         instance: id
         emits: [llm-gateway.hosting.PhaseMoved]
@@ -517,20 +551,23 @@ commands:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - name: refused
         when: {answer: {in: [NotSent, Rejected]}}
+        when_subject_state: [Declared]
         moves: llm-gateway.hosting.OwnedResource.withdraw
         instance: id
         emits: [llm-gateway.hosting.PhaseMoved]
         payload:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - {name: missing, unknown_instance: true, error: llm-gateway.hosting.Missing}
-      - {name: wrong-phase, wrong_state: true, error: llm-gateway.hosting.WrongPhase}
+      - {name: wrong-phase, when_subject_state: [Requested, Active, Uncertain, StopRequired, Stopped, Cancelled], error: llm-gateway.hosting.WrongPhase}
   - name: llm-gateway.hosting.Retry
     input:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
       - {name: answer, type: llm-gateway.hosting.RetryAnswer}
     outcomes:
+      - {name: stale-epoch, when_subject_state: [Disowned], error: llm-gateway.hosting.StaleEpoch}
       - name: accepted
         when: answer == Accepted
+        when_subject_state: [Uncertain]
         moves: llm-gateway.hosting.OwnedResource.confirm
         instance: id
         emits: [llm-gateway.hosting.PhaseMoved]
@@ -538,13 +575,14 @@ commands:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - name: lost
         when: answer == Unknown
+        when_subject_state: [Uncertain]
         moves: llm-gateway.hosting.OwnedResource.relose
         instance: id
         emits: [llm-gateway.hosting.PhaseMoved]
         payload:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - {name: missing, unknown_instance: true, error: llm-gateway.hosting.Missing}
-      - {name: wrong-phase, wrong_state: true, error: llm-gateway.hosting.WrongPhase}
+      - {name: wrong-phase, when_subject_state: [Declared, Requested, Active, StopRequired, Stopped, Cancelled], error: llm-gateway.hosting.WrongPhase}
   # The three `Observe*` commands are `HostingCommand::Observe` against three listings, each
   # naming the record it asks about. Reconciliation never refuses: a record the listing says
   # nothing new about keeps its phase (`unchanged`), including a `Declared` or terminal one,
@@ -555,9 +593,11 @@ commands:
   # dropping such a state from `adopt` or `disown` goes unnoticed (seven surviving from-drop
   # mutants). One command per move makes each move's wrong states its own.
   # `ObserveListed`: a complete listing carries the resource under this controller's own tag.
+  # A submitted create has a resource behind it whichever answer it got, so this holds on every
+  # route into `Uncertain`, a create answered about another account's resource included.
   - name: llm-gateway.hosting.ObserveListed
     input:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
       - name: adopted
         moves: llm-gateway.hosting.OwnedResource.adopt
@@ -566,11 +606,13 @@ commands:
         payload:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - {name: unchanged, wrong_state: true, refuses: false}
-  # `ObserveTakenOver`: the listing carries the resource retagged by another controller at a
-  # strictly newer epoch.
+  # `ObserveTakenOver`: another controller took the deployment's lease over at a strictly newer
+  # epoch once this one's claim ran out, and the listing carries the resource retagged with it.
+  # The lease registry moves too, so `Provision` and `Retry` on the `Disowned` record answer
+  # `stale-epoch`.
   - name: llm-gateway.hosting.ObserveTakenOver
     input:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
       - name: taken-over
         moves: llm-gateway.hosting.OwnedResource.disown
@@ -583,7 +625,7 @@ commands:
   # evidence of anything.
   - name: llm-gateway.hosting.ObserveUnlisted
     input:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
       - name: unconfirmed
         moves: llm-gateway.hosting.OwnedResource.hold
@@ -594,7 +636,7 @@ commands:
       - {name: unchanged, wrong_state: true, refuses: false}
   - name: llm-gateway.hosting.RequestStop
     input:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
       - name: obliged
         moves: llm-gateway.hosting.OwnedResource.oblige
@@ -604,12 +646,15 @@ commands:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - {name: missing, unknown_instance: true, error: llm-gateway.hosting.Missing}
       - {name: wrong-phase, wrong_state: true, error: llm-gateway.hosting.WrongPhase}
-  # The caller's evidence is attached as given (`EvidenceKind.CallerReference`).
+  # The caller's evidence is attached as given (`EvidenceKind.CallerReference`). It is a
+  # hosting identifier to the controller, so evidence holding a space never reaches it: the
+  # caller's own `Identifier::new` refuses it first, whatever the record.
   - name: llm-gateway.hosting.ConfirmStopped
     input:
-      - {name: id, type: String}
-      - {name: evidence, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
+      - {name: evidence, type: llm-gateway.hosting.PrintableText}
     outcomes:
+      - {name: invalid-identifier, when: {evidence: {contains: " "}}, error: llm-gateway.hosting.InvalidIdentifier}
       - name: confirmed
         moves: llm-gateway.hosting.OwnedResource.discharge
         instance: id
@@ -621,7 +666,7 @@ commands:
       - {name: wrong-phase, wrong_state: true, error: llm-gateway.hosting.WrongPhase}
   - name: llm-gateway.hosting.Cancel
     input:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
       - name: cancelled
         moves: llm-gateway.hosting.OwnedResource.cancel
@@ -631,7 +676,8 @@ commands:
           llm-gateway.hosting.PhaseMoved: {id: input.id}
       - {name: missing, unknown_instance: true, error: llm-gateway.hosting.Missing}
       - {name: wrong-phase, wrong_state: true, error: llm-gateway.hosting.WrongPhase}
-# The three `HostingError` refusals the lifecycle commands answer, by the code a caller reads.
+# The four `HostingError` refusals the lifecycle commands answer, by the code a caller reads,
+# and the refusal of a value that is not a hosting identifier (`InvalidIdentifier`).
 errors:
   - name: llm-gateway.hosting.WrongPhase
     summary: "`wrong-phase`: the record's phase has no edge to the phase the command would write."
@@ -639,6 +685,10 @@ errors:
     summary: "`missing`: no record carries this deployment identifier."
   - name: llm-gateway.hosting.Duplicate
     summary: "`duplicate`: a record already carries this deployment identifier."
+  - name: llm-gateway.hosting.StaleEpoch
+    summary: "`stale-epoch`: a strictly newer epoch owns this deployment's lease."
+  - name: llm-gateway.hosting.InvalidIdentifier
+    summary: "a hosting identifier must be 1..=256 printable ASCII bytes, and a space is not one."
 events:
   # Test-adapter notification only; there is no production notification transport.
   - name: llm-gateway.hosting.Exercised
@@ -648,23 +698,29 @@ events:
   # `OwnedResources` view.
   - name: llm-gateway.hosting.ResourceDeclared
     fields:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
   - name: llm-gateway.hosting.PhaseMoved
     fields:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
 views:
   - name: llm-gateway.hosting.LastExecution
     source: llm-gateway.hosting.ExecutionObservation
     consistency: read_your_writes
     fields: *execution_facts
   # Every record the lifecycle commands declared in this scenario, with its phase as the
-  # lifecycle state.
+  # lifecycle state. It publishes every `OwnedResource` field: a refusal in an explicitly named
+  # held state is checked to leave the whole record unchanged, and ESS reads that record here.
   - name: llm-gateway.hosting.OwnedResources
     source: llm-gateway.hosting.OwnedResource
     consistency: read_your_writes
     fields:
-      - {name: id, type: String}
+      - {name: id, type: llm-gateway.hosting.DeploymentId}
       - {name: state, type: llm-gateway.hosting.OwnedResource.State}
-      - {name: request_id, type: String}
-      - {name: reservation_id, type: String}
-      - {name: stop_evidence, type: 'Optional<String>'}
+      - {name: request_id, type: llm-gateway.hosting.Identifier}
+      - {name: reservation_id, type: llm-gateway.hosting.Identifier}
+      - {name: stop_evidence, type: 'Optional<llm-gateway.hosting.PrintableText>'}
+      - {name: controller_id, type: String}
+      - {name: deployment_spec_id, type: String}
+      - {name: stop_reason, type: 'Optional<llm-gateway.hosting.StopReason>'}
+      - {name: resource_name, type: 'Optional<String>'}
+      - {name: resource_incarnation, type: 'Optional<String>'}

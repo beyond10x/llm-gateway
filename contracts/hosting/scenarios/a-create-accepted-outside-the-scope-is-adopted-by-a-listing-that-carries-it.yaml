@@ -1,0 +1,29 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it
+summary: adopt is declared from Uncertain, so a misanswered create listed under our tag must become Active, not Stopped
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.Declare
+  input: {id: d1, request_id: request-d1, reservation_id: reservation-a}
+  outcome: declared
+- at: '2026-10-30T12:00:01Z'
+  command: llm-gateway.hosting.Provision
+  input: {id: d1, answer: AcceptedOutsideScope}
+  outcome: misanswered
+- at: '2026-10-30T12:00:02Z'
+  command: llm-gateway.hosting.ObserveListed
+  input: {id: d1}
+  outcome: adopted
+assert:
+- view: llm-gateway.hosting.OwnedResources
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.OwnedResources
+  contains:
+    id: d1
+    state: Active
+    request_id: request-d1
+    reservation_id: reservation-a
+    stop_evidence: null

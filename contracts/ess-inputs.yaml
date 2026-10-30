@@ -2,6 +2,8 @@ format: ess-inputs/1
 specification: []
 scenarios:
 - hosting/scenarios/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create.yaml
+- hosting/scenarios/a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it.yaml
+- hosting/scenarios/a-create-accepted-outside-the-scope-is-disowned-by-a-listing-retagged-at-a-newer-epoch.yaml
 - hosting/scenarios/a-create-taken-over-before-any-listing-confirmed-it-is-disowned.yaml
 - hosting/scenarios/a-create-that-never-left-the-process-allocates-nothing.yaml
 - hosting/scenarios/a-create-the-provider-refused-allocates-nothing.yaml
@@ -25,6 +27,7 @@ scenarios:
 - hosting/scenarios/a-reused-name-with-a-new-incarnation-is-not-the-resource-we-owned.yaml
 - hosting/scenarios/a-specification-for-another-account-is-refused.yaml
 - hosting/scenarios/a-stale-epoch-is-refused-before-the-provider-is-called.yaml
+- hosting/scenarios/a-stop-confirmed-with-evidence-holding-a-space-is-discharged.yaml
 - hosting/scenarios/a-stop-whose-outcome-is-unknown-keeps-the-obligation-open.yaml
 - hosting/scenarios/a-zero-requested-lifetime-is-refused.yaml
 - hosting/scenarios/absence-from-a-complete-inventory-discharges-the-obligation.yaml

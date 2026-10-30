@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "InvalidIdentifier payload",
+  "description": "a hosting identifier must be 1..=256 printable ASCII bytes, and a space is not one.",
+  "x-ess-name": "llm-gateway.hosting.InvalidIdentifier",
+  "x-ess-kind": "error-payload",
+  "type": "object",
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "65cbfedfd831fe04697705440f16542a28fc4bfbf5f539974db79f90ad4efdc7",
+    "contract_digest": "slice-sha256/2:fed807cc76e60c7d4df4476f0199f221bcede33a4a4a1e40266fd2f2df32100e",
+    "regenerate": "ess generate"
+  }
+}

@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "id": {
-      "type": "string"
+      "$ref": "#/$defs/llm-gateway.hosting.DeploymentId"
     },
     "answer": {
       "$ref": "#/$defs/llm-gateway.hosting.CreateAnswer"
@@ -20,8 +20,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
-    "contract_digest": "slice-sha256/2:a060d8fc5ed6fa1015cf7066393cac074bf3cf5c8a08d2eec919fe61fceb5355",
+    "source_digest": "65cbfedfd831fe04697705440f16542a28fc4bfbf5f539974db79f90ad4efdc7",
+    "contract_digest": "slice-sha256/2:5ab76da405edec5e9ad87f987299c7bfec78063f3f811765178e780af038655a",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -37,6 +37,26 @@
         "Rejected",
         "NotSent"
       ]
+    },
+    "llm-gateway.hosting.DeploymentId": {
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier",
+      "title": "DeploymentId",
+      "x-ess-name": "llm-gateway.hosting.DeploymentId",
+      "x-ess-kind": "newtype"
+    },
+    "llm-gateway.hosting.Identifier": {
+      "title": "Identifier",
+      "x-ess-name": "llm-gateway.hosting.Identifier",
+      "x-ess-kind": "newtype",
+      "type": "string",
+      "pattern": "^[\\u0021-\\u007E]*$",
+      "minLength": 1,
+      "maxLength": 256,
+      "x-ess-invariants": [
+        "value.count >= 1",
+        "value.count <= 256"
+      ],
+      "x-ess-alphabet": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
     }
   }
 }

@@ -28,6 +28,8 @@ use support::{
 /// The key every case stores. Never written anywhere but the target and the probe.
 const KEY: &str = "sk-test-0123456789-upstream-key-not-a-secret";
 const STORED: &str = "b10x-llm-gateway: credential stored ";
+/// The setting the `--model remote` target is read from: what its messages name, never the path.
+const REMOTE: &str = "hosted.remote.credential_file";
 const STARTUP: Duration = Duration::from_secs(20);
 
 fn shipped() -> PathBuf {
@@ -193,11 +195,26 @@ fn assert_refused(finished: &Finished, code: &str) {
     );
 }
 
-fn assert_stored(finished: &Finished, path: &Path, probe: &str, http: &str) {
+/// The success line names `setting`, the setting the target was read from, and never `path`,
+/// the file it holds: a key written into the setting by mistake is not printed.
+/// The refusal `code` names `setting` and the rule's `detail`, and no path: not the target, not
+/// its directory, nothing with a `/` in it.
+fn assert_refused_naming(finished: &Finished, code: &str, setting: &str, detail: &str) {
+    assert_refused(finished, code);
+    let message = finished.stderr.trim_end();
+    assert!(
+        message.starts_with(&format!("b10x-llm-gateway: refused {code}: {setting}: ")),
+        "{code} does not name {setting}: {message:?}"
+    );
+    assert!(message.contains(detail), "{detail:?}: {message:?}");
+    assert!(!message.contains('/'), "a path is printed: {message:?}");
+}
+
+fn assert_stored(finished: &Finished, setting: &str, path: &Path, probe: &str, http: &str) {
     assert_eq!(finished.code, Some(0), "{:?}", finished.stderr);
     assert_eq!(
         finished.stderr,
-        format!("{STORED}{} probe {probe} http {http}\n", path.display())
+        format!("{STORED}{setting} probe {probe} http {http}\n")
     );
     assert_eq!(fs::read(path).unwrap(), KEY.as_bytes(), "exactly the key");
     let mode = fs::symlink_metadata(path).unwrap().permissions().mode();
@@ -261,7 +278,7 @@ fn credential_set_a_passed_probe_stores_a_0600_file_the_gateway_then_starts_with
     let endpoint = Endpoint::start(200);
     let config = setup.bearer(&endpoint.base("/v1"));
     let finished = run(&setup.fixture, &config, &["--model", "remote"], &line(KEY));
-    assert_stored(&finished, &setup.target, "passed", "200");
+    assert_stored(&finished, REMOTE, &setup.target, "passed", "200");
     assert_eq!(finished.stdout, "");
     assert_eq!(names(&setup.keys), ["remote"], "no temporary file is left");
     let requests = endpoint.requests();
@@ -321,7 +338,7 @@ fn credential_set_a_key_without_a_terminator_and_a_key_of_4096_bytes_are_stored(
         &["--model", "remote", "--no-probe"],
         KEY.as_bytes(),
     );
-    assert_stored(&finished, &setup.target, "skipped", "-");
+    assert_stored(&finished, REMOTE, &setup.target, "skipped", "-");
 
     let longest = "k".repeat(4096);
     let finished = run(
@@ -368,7 +385,7 @@ fn credential_set_any_other_status_stores_and_names_its_code() {
     let endpoint = Endpoint::start(404);
     let config = setup.bearer(&endpoint.base("/v1"));
     let finished = run(&setup.fixture, &config, &["--model", "remote"], &line(KEY));
-    assert_stored(&finished, &setup.target, "not-rejected", "404");
+    assert_stored(&finished, REMOTE, &setup.target, "not-rejected", "404");
 }
 
 // --- Criterion 2: a transport failure refuses -------------------------------------------------
@@ -388,7 +405,7 @@ fn credential_set_a_transport_failure_refuses_and_writes_nothing() {
         &["--model", "remote", "--no-probe"],
         &line(KEY),
     );
-    assert_stored(&finished, &setup.target, "skipped", "-");
+    assert_stored(&finished, REMOTE, &setup.target, "skipped", "-");
 }
 
 // --- Criterion 2: --no-probe sends no request ---------------------------------------------------
@@ -405,7 +422,7 @@ fn credential_set_no_probe_sends_no_request() {
         &["--model", "remote", "--no-probe"],
         &line(KEY),
     );
-    assert_stored(&finished, &setup.target, "skipped", "-");
+    assert_stored(&finished, REMOTE, &setup.target, "skipped", "-");
     // A connection the process opened would wait in the backlog after it exited.
     assert_eq!(
         listener.accept().map(|_| ()).unwrap_err().kind(),
@@ -429,7 +446,7 @@ fn credential_set_the_probe_carries_the_credential_header_and_static_headers_at_
         )
     ));
     let finished = run(&setup.fixture, &config, &["--model", "remote"], &line(KEY));
-    assert_stored(&finished, &setup.target, "passed", "200");
+    assert_stored(&finished, REMOTE, &setup.target, "passed", "200");
     let requests = endpoint.requests();
     assert_eq!(requests.len(), 1, "{requests:?}");
     let request = &requests[0];
@@ -452,7 +469,7 @@ fn credential_set_the_probe_carries_the_credential_header_and_static_headers_at_
     let endpoint = Endpoint::start(200);
     let config = setup.bearer(&endpoint.base(""));
     let finished = run(&setup.fixture, &config, &["--model", "remote"], &line(KEY));
-    assert_stored(&finished, &setup.target, "passed", "200");
+    assert_stored(&finished, REMOTE, &setup.target, "passed", "200");
     assert!(
         endpoint.requests()[0].starts_with("GET /v1/models HTTP/1.1\r\n"),
         "{:?}",
@@ -491,7 +508,7 @@ fn credential_set_an_https_probe_goes_over_the_gateways_tls_client() {
         &setup.fixture.dir,
         &[("GATEWAY_TLS_SEAM_ROOT", &root_file)],
     );
-    assert_stored(&finished, &setup.target, "passed", "200");
+    assert_stored(&finished, REMOTE, &setup.target, "passed", "200");
     let probed: Vec<String> = pod
         .seen()
         .iter()
@@ -698,7 +715,7 @@ fn credential_set_loading_the_target_reads_no_credential_or_owner_secret_file() 
         &["--model", "remote", "--no-probe"],
         &line(KEY),
     );
-    assert_stored(&finished, &setup.target, "skipped", "-");
+    assert_stored(&finished, REMOTE, &setup.target, "skipped", "-");
     // A document the server would not load is refused with the server's code.
     let broken = setup
         .fixture
@@ -738,7 +755,13 @@ routes:
     ));
     let finished = run(&setup.fixture, &config, &["--route", "opus"], &line(KEY));
     // `HOME` is the fixture directory, so `~/keys/remote` is the setup's target.
-    assert_stored(&finished, &setup.target, "passed", "200");
+    assert_stored(
+        &finished,
+        "routes.claude.auth.secret",
+        &setup.target,
+        "passed",
+        "200",
+    );
     let requests = endpoint.requests();
     assert_eq!(requests.len(), 1, "{requests:?}");
     assert!(
@@ -819,26 +842,38 @@ fn credential_set_a_directory_another_user_could_write_is_refused_and_left_witho
         &["--model", "remote", "--no-probe"],
         &line(KEY),
     );
-    assert_refused(&finished, "credential:directory-unsafe");
+    assert_refused_naming(
+        &finished,
+        "credential:directory-unsafe",
+        REMOTE,
+        "its directory has mode 1777",
+    );
     assert!(!target.exists());
     assert!(
         names(tmp).iter().all(|entry| !entry.contains(&name)),
         "a temporary file is left in /tmp"
     );
 
-    // A directory that does not exist.
-    let config = setup.config(&hosted_table(
-        "remote",
-        "http://127.0.0.1:9/v1",
-        &bearer_keys(&setup.keys.join("absent").join("remote")),
-    ));
-    let finished = run(
-        &setup.fixture,
-        &config,
-        &["--model", "remote", "--no-probe"],
-        &line(KEY),
-    );
-    assert_refused(&finished, "credential:directory-missing");
+    // A directory that does not exist, and one that is a file: each names the setting, never
+    // the path.
+    let plain = setup.fixture.write("plain", b"", 0o600);
+    for (dir, detail) in [
+        (setup.keys.join("absent"), "No such file or directory"),
+        (plain, "is not a directory"),
+    ] {
+        let config = setup.config(&hosted_table(
+            "remote",
+            "http://127.0.0.1:9/v1",
+            &bearer_keys(&dir.join("remote")),
+        ));
+        let finished = run(
+            &setup.fixture,
+            &config,
+            &["--model", "remote", "--no-probe"],
+            &line(KEY),
+        );
+        assert_refused_naming(&finished, "credential:directory-missing", REMOTE, detail);
+    }
 }
 
 #[test]
@@ -853,7 +888,7 @@ fn credential_set_replaces_a_symlink_without_writing_through_it_and_refuses_a_di
         &["--model", "remote", "--no-probe"],
         &line(KEY),
     );
-    assert_stored(&finished, &setup.target, "skipped", "-");
+    assert_stored(&finished, REMOTE, &setup.target, "skipped", "-");
     assert_eq!(fs::read(&elsewhere).unwrap(), b"untouched\n");
 
     // A target that is a directory cannot be replaced: refused, and no temporary file is left.
@@ -865,7 +900,12 @@ fn credential_set_replaces_a_symlink_without_writing_through_it_and_refuses_a_di
         &["--model", "remote", "--no-probe"],
         &line(KEY),
     );
-    assert_refused(&finished, "credential:write");
+    assert_refused_naming(
+        &finished,
+        "credential:write",
+        REMOTE,
+        "renaming over it: Is a directory",
+    );
     assert_eq!(names(&setup.keys), ["remote"]);
     assert!(fs::metadata(&setup.target).unwrap().is_dir());
 }

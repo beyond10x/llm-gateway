@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-30T06:59:25Z",
+  "actor": "human:timo",
+  "artifact": "story:translation-refusal-names-path",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on wave/2026-10-30-w03 at 89cb3610: 110 test binaries ok, conformance 291/291 x3, exit 0"
+  }
+}

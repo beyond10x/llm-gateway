@@ -2,11 +2,16 @@
 format: aep.planning-md/3
 id: story:translation-refusal-names-path
 kind: story
-status: draft
+status: implemented
 title: A translation refusal names the refused path in a log line
 relations:
 - decomposes: epic:gateway
-revision: 2
+- serves: vision:portable-model-inference
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-30T06:14:07Z", actor: "human:timo", revision: 3}
+- {from: "proposed", to: "active", at: "2026-10-30T06:14:07Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-10-30T06:59:25Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

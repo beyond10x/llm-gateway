@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T06:52:05Z",
+  "actor": "human:timo",
+  "artifact": "story:config-refusal-quotes-no-value",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "finding 2 (trusted.rs refuse quotes the path) fixed in f431abc and b26893e under story:trusted-refusal-names-no-path: no trusted-file or credential set message quotes the path",
+    "review": "review-result:security-w01-cli-server-pass-1",
+    "outcome": "fixed"
+  }
+}

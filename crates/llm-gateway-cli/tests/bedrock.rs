@@ -1751,9 +1751,10 @@ fn bedrock_a_linked_token_is_held_to_the_rules_of_the_file_it_resolves_to() {
 }
 
 /// A token file that becomes untrusted after the start makes the next fetch `unavailable`; the
-/// gateway warns with the refusal's rule and the file's path, and never with the token.
+/// gateway warns with the refusal's rule and its detail, and never with the file's path or the
+/// token.
 #[test]
-fn bedrock_a_token_file_refused_at_a_fetch_is_warned_by_its_rule_and_path_without_the_token() {
+fn bedrock_a_token_file_refused_at_a_fetch_is_warned_by_its_rule_without_its_path_or_the_token() {
     let deployment = Deployment::new("bedrock-token-refused-at-fetch");
     let credentials = Recorder::credentials(1);
     let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
@@ -1774,15 +1775,18 @@ fn bedrock_a_token_file_refused_at_a_fetch_is_warned_by_its_rule_and_path_withou
     assert!(
         log.iter().any(|line| line.contains("WARN")
             && line.contains("container-token:unsafe-mode")
-            && line.contains(&path)),
+            && line.contains("has mode 666")),
         "{log:?}"
     );
+    for line in &log {
+        assert!(!line.contains(&path), "the token's path was logged: {line}");
+    }
     assert_quiet(&log);
 }
 
 /// A token link that resolves to a file outside the directory the token path names is refused
-/// `container-token:symlink`, naming the file it resolves to; a projected volume's links stay
-/// inside that directory.
+/// `container-token:symlink`, naming neither the link nor the file it resolves to; a projected
+/// volume's links stay inside that directory.
 #[test]
 fn bedrock_a_token_link_resolving_outside_its_directory_is_refused() {
     let deployment = Deployment::new("bedrock-token-outside");
@@ -1800,7 +1804,12 @@ fn bedrock_a_token_link_resolving_outside_its_directory_is_refused() {
         "container-token:symlink",
     );
     let resolved = std::fs::canonicalize(&deployment.token).unwrap();
-    assert!(stderr.contains(&resolved.display().to_string()), "{stderr}");
+    assert!(stderr.contains("outside"), "{stderr}");
+    assert!(
+        !stderr.contains(&resolved.display().to_string()),
+        "{stderr}"
+    );
+    assert!(!stderr.contains(&link.display().to_string()), "{stderr}");
     assert!(!stderr.contains(CONTAINER_TOKEN), "{stderr}");
     assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
 }

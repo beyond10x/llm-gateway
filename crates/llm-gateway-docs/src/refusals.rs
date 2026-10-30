@@ -66,7 +66,10 @@ pub fn page() -> String {
          document, an `endpoint-credential:*` code for a key file it would not read), its codes are \
          these, generated from `CredentialRefusal::ALL` in the same file; \
          [the deployment document](./deployment-document.md#credential-files) says which rule each \
-         one keeps. No message quotes the key.\n\n| Credential code |\n| --- |\n"
+         one keeps. No message quotes the key, and none quotes the key file's path or its \
+         directory: a refusal about the file is `<setting>: <detail>`, naming the setting the \
+         path was read from (`hosted.<alias>.credential_file` or \
+         `routes.<endpoint>.auth.secret`) and the rule's detail.\n\n| Credential code |\n| --- |\n"
     );
     for refusal in CredentialRefusal::ALL {
         let _ = writeln!(out, "| `{}` |", refusal.code());

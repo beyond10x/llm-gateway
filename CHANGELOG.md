@@ -7,6 +7,17 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+## 0.20.0 (2026-10-30)
+
+### Added
+
+- Each `translation-unsupported` or `translation-invalid` refusal writes one `info` line, `translation refused`, naming the model, the client's wire, the code and llm's diagnostic, which names the refused path or field and never a value the client sent; the answer is unchanged. `docs/gateway.md` "The request".
+
+### Changed
+
+- **Breaking:** a trusted-file refusal no longer quotes the path it was given or the file a link resolves to, so a secret written into `--config` or a `*_file` setting by mistake is not printed or logged. The message is `<setting>: <detail>` (`owner_secret_file`, `routes`, `models.<alias>.vllm_api_key_file`, `hosted.<alias>.credential_file`, `routes.<endpoint>.auth.secret`, `metrics_bearer_file`, `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`; the document's own is `<detail>`), and the Bedrock container token's fetch warning carries `detail` in place of `file`. `credential set`, which writes the same `*_file` settings, does the same in its `credential:directory-missing`, `credential:directory-unsafe` and `credential:write` refusals (`<setting>: <detail>`), and its success line is now `credential stored <setting> probe <passed|skipped|not-rejected> http <code|->` in place of `credential stored <path> …`. Refusal codes are unchanged.
+- **Breaking:** `ConnectorsRunpod` runs the command lines connectors 0.60.0 keeps: `invoke runpod/<adapter> <operation>` with `--connection`, the `--schema` and `--revision` pins and `--input-json`, and `--connector runpod --instance <adapter>` on every other command; it needs connectors 0.60.0 or newer. The `[providers.<name>.connectors]` key `adapter` is unchanged and names the `runpod` instance.
+
 ## 0.19.0 (2026-10-30)
 
 ### Changed

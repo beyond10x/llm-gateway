@@ -20,7 +20,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.19.0, released 2026-10-30 as a source release with the gateway image; tested
+**Status: 0.20.0, released 2026-10-30 as a source release with the gateway image; tested
 against in-process fakes and loopback; nothing is deployed or qualified.**
 [CHANGELOG.md](CHANGELOG.md) lists every release and what is unreleased.
 
@@ -138,7 +138,9 @@ listens. `bearer`, the default, requires
 Every file the binary reads goes through a trusted-file reader. It opens the file once, without
 following a symlink in its last component, and makes every check on that one open file; a file
 that grows past its bound after the check is still refused. Each must be a regular file, not a
-symlink, owned by you or root, and UTF-8 (`<source>:not-utf8`). The document must be at most
+symlink, owned by you or root, and UTF-8 (`<source>:not-utf8`). A refusal names the setting and
+the rule, never the path, so a secret written into a path setting by mistake is not printed. The
+document must be at most
 256 KiB and not group- or world-writable. The owner secret must be one printable token of 32 to
 4096 bytes (trailing ASCII whitespace is trimmed), with no group or world permission at all
 (mode & 0o077 is 0). Clients send it as `Authorization: Bearer <secret>`.

@@ -29,7 +29,7 @@ fn adversary_w05_a_document_the_pool_refuses_is_refused_before_any_connectors_ca
     let fixture = Fixture::new("adversary-w05-unrunnable-up");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([]))],
+        "invoke pods.list": [listed(&serde_json::json!([]))],
     }));
     let deployment = load(&fixture.config(&unrunnable(&fixture, &connectors))).unwrap();
     match start_connected(

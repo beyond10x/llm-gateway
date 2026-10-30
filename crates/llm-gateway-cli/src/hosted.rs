@@ -639,8 +639,8 @@ impl RelayTarget for HostedTarget {
 ///
 /// # Errors
 /// An `endpoint-credential:*` [`Refusal`] for the first file, in alias order, that breaks a
-/// rule: every message starts `hosted.<alias>.credential_file <path>:` and never quotes the
-/// bytes. `config:value` for a declaration the loader would not have admitted.
+/// rule: every message starts `hosted.<alias>.credential_file:` and quotes neither the path nor
+/// the bytes. `config:value` for a declaration the loader would not have admitted.
 pub(crate) fn hosted_endpoints(
     deployment: &Deployment,
 ) -> Result<BTreeMap<String, HostedEndpoint>, Refusal> {

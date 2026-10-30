@@ -68,6 +68,14 @@ curl -s http://127.0.0.1:8080/v1/responses -H "$token" \
 {"error":{"code":"translation-unsupported","message":"the request uses a field or value outside the subset the gateway translates"}}
 ```
 
+The answer names only the code. The gateway's standard error names what was refused, one `info`
+line per refusal, by path or field name and never by a value the client sent:
+
+```text
+2026-10-30T06:21:22.887008Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=chat refusal=translation-unsupported refused="chat request field `n` is outside the published subset"
+2026-10-30T06:21:22.891160Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=responses refusal=translation-unsupported refused="request body carries a field outside the pinned subset: text.format"
+```
+
 A responses request carrying Codex's `instructions`, and a chat request, are inside the subset:
 each is translated and sent to the endpoint as a messages request; nothing listens there, so each
 fails before any output:

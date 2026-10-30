@@ -15,8 +15,9 @@ domain: llm-gateway.runpod
 #
 # DECIDED 2026-10-08 (D1 = A, docs/design/runpod-clients.md § 4): the production transport,
 # `ConnectorsRunpod` (crates/llm-runpod/src/transport/connectors.rs), reaches Runpod's control
-# plane only through the `connectors` CLI of beyond10x/connectors v0.37.0 and its Runpod catalog
-# bundle (connectors docs/catalog-runpod.md). This crate holds no HTTP client and no credential
+# plane only through the `connectors` CLI of beyond10x/connectors (v0.37.0 when it was built; the
+# command lines are 0.60.0's since story:connectors-invoke-form) and its Runpod catalog bundle
+# (connectors docs/catalog-runpod.md). This crate holds no HTTP client and no credential
 # for the control plane; the Runpod API key stays in the connectors keyring. The invocations it
 # makes, its inputs and the answers it maps are the `Connectors*`, `PodCreateBody`, `CreateAnswer`,
 # `TerminateAnswer` and `ProbeAnswer` types below. No scenario observes them: the crate's
@@ -189,10 +190,13 @@ types:
       - {name: gpu_memory_utilization, type: Decimal}
       - {name: extra_args, type: 'List<String>'}
   # What the production transport is built from. `executable` is the `connectors` binary,
-  # `adapter` the alias its configuration binds the Runpod catalog provider to (connectors
-  # docs/catalog-runpod.md "Authentication", e.g. `gpu`), `connection` the saved connection id.
-  # `work_directory` is an existing private directory: each write's input document and its
-  # approval proof are new files there (`approvals issue --proof-output` must name "a new
+  # `adapter` the instance of connectors' `runpod` connector (connectors 0.60.0
+  # docs/catalog-runpod.md "Authentication", e.g. `gpu`): the alias of a legacy
+  # `[adapters.<alias>]` Runpod catalog entry, which connectors 0.60.0 names `runpod/<alias>`
+  # before and after `setup migrate` (CHANGELOG `## 0.60.0`), or the name of a
+  # `[connectors.runpod.instances.<name>]` table. `connection` is the saved connection id.
+  # `work_directory` is an existing private directory: each write's approval proof is a new
+  # file there (`approvals issue --proof-output` must name "a new
   # absolute output path inside an existing private directory", connectors
   # docs/local-approvals.md). DECIDED: a relative `work_directory` is resolved against the
   # current directory once, when the transport is built, so every path it passes is absolute.
@@ -209,11 +213,16 @@ types:
       - {name: timeout_ms, type: Integer}
   # The three operations of connectors' shipped Runpod selection set, `pod.create` (Runpod
   # `CreatePod`), `pods.list` (`ListPods`) and `pod.terminate` (`DeletePod`). connectors
-  # v0.37.0 selects no `GetPod`: a get is `pods.list` with the `id` filter. Every invocation is
-  # `connectors --output json operations invoke --adapter <adapter> --connection <connection>
-  # --operation <id> --schema <schema> --revision <revision> --input-file <document>`, where
-  # `schema` and `revision` are read per operation from `connectors --output json operations
-  # describe --adapter <adapter> --operation <id>` and kept until a refusal below drops them.
+  # v0.37.0 selects no `GetPod`: a get is `pods.list` with the `id` filter. DECIDED
+  # (story:connectors-invoke-form): every invocation is `connectors --output json invoke
+  # runpod/<adapter> <id> --connection <connection> --schema <schema> --revision <revision>
+  # --input-json <document>` (connectors 0.60.0 contracts/cli/v1alpha1/semantics.md, "Invoking
+  # an operation"), where `schema` and `revision` are pins read per operation from `connectors
+  # --output json operations describe --connector runpod --instance <adapter> --operation <id>`
+  # and kept until a refusal below drops them. Every command other than `invoke` selects the
+  # instance with `--connector runpod --instance <adapter>`, never the deprecated `--adapter`.
+  # An invoke's `result` names `connector` and `instance` and carries no `adapter`; the
+  # transport reads neither.
   # DECIDED: the answers are read in connectors' published framing (connectors v0.37.0
   # contracts/cli/v1alpha1/semantics.md:178-181). A success is exit 0 with one
   # `{"ok":true,"result":…}` envelope on stdout; every value the transport reads (`schema`,
@@ -231,15 +240,16 @@ types:
   # (tests/transport.rs) hold them.
   # DECIDED: each write (`pod.create`, `pod.terminate`) is first `approvals prepare`d and
   # `approvals issue`d for its exact input document, then invoked with `--approval-file
-  # <proof> --idempotency-key <key>`. The transport never sends a write twice.
+  # <proof> --idempotency-key <key>`; all three carry the same `--input-json` document, byte for
+  # byte. The transport never sends a write twice.
   # DECIDED: an invoke refused before anything was dispatched (no classification, or
   # `not_attempted`) is repeated once, after one recovery step, when its `error.data` is one of:
   # - `code: not_granted`, `stage: admission`: the connection's evidence expired
   #   (`evidence_lifetime_ms`, 60 s when omitted, at most 300 000 ms; connectors v0.37.0
   #   docs/local-catalog-provider.md:479-486, "The invoke does not revalidate on its own";
   #   semantics.md:748-753). Recovery: read the connection's revision (`connections describe`)
-  #   and run `connections revalidate --adapter <adapter> --connection <connection>
-  #   --expected-revision <revision>` once.
+  #   and run `connections revalidate --connector runpod --instance <adapter> --connection
+  #   <connection> --expected-revision <revision>` once.
   # - `code: stale_description`: "schema/descriptor changed", answered "before provider
   #   dispatch" (semantics.md:579-581, :606). Recovery: drop that operation's cached `schema`
   #   and `revision` and run `operations describe` once.

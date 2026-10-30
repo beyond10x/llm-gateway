@@ -271,6 +271,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "A translation refusal names the refused field in a log line",
+        "Each translation-unsupported or translation-invalid refusal writes one info line naming the model, the client's wire, the code and llm's diagnostic, which names the refused path or field and never a value the client sent. The answer still carries only the code. Tested on each client wire with a marker in the request's values that no log line and no answer carries.",
+        "crates/llm-gateway-cli/tests/translation.rs::translation_a_messages_refusal_names_the_refused_path_in_one_log_line",
+        Some("/docs/guides/translate-between-wires"),
+    ),
+    shipped(
+        "Relay",
         "Claude Code's and Codex's first turns on a translated route",
         "Claude Code's first turn reaches a chat or responses upstream, and Codex's first turn a chat or messages upstream, with their effort, thinking, parallel tool calls and cache and verbosity hints under the upstream wire's names; effort max reaches chat and responses as xhigh. Claude Code's later turn, which replays reasoning another upstream minted, is still refused translation-opaque-state. Tested with captured client requests against loopback fixture upstreams, not a vendor API.",
         "crates/llm-gateway-cli/tests/translation.rs::translation_codexs_first_turn_is_carried_to_chat",

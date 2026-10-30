@@ -595,13 +595,10 @@ fn k30_an_owner_secret_readable_by_others_is_refused() {
 /// the run.
 const KUBERNETES_GUIDE: &str = include_str!("../../../website/docs/guides/run-on-kubernetes.md");
 
-/// Where the guide mounts the owner secret. The test runs the binary on a file under its own
-/// directory and puts this path where the binary printed that one.
-const GUIDE_SECRET_PATH: &str = "/run/llm-gateway/owner-secret";
-
 /// The line a pod's `fsGroup` makes the gateway print: Kubernetes sets the group read bit on every
 /// file of a Secret volume, and the trusted-file reader refuses a mode with any group or other bit.
-const GUIDE_REFUSAL: &str = "b10x-llm-gateway: refused owner-secret:unsafe-mode: /run/llm-gateway/owner-secret: has mode 440; none of 077 may be set";
+/// It names the setting, never the path, so the line the test's own file prints is the guide's.
+const GUIDE_REFUSAL: &str = "b10x-llm-gateway: refused owner-secret:unsafe-mode: owner_secret_file: has mode 440; none of 077 may be set";
 
 #[test]
 fn k8s_a_group_readable_owner_secret_is_refused_as_the_guide_pastes() {
@@ -618,8 +615,7 @@ fn k8s_a_group_readable_owner_secret_is_refused_as_the_guide_pastes() {
         .stderr
         .lines()
         .find(|line| line.starts_with(&format!("{PREFIX}refused owner-secret:unsafe-mode: ")))
-        .unwrap()
-        .replace(secret.to_str().unwrap(), GUIDE_SECRET_PATH);
+        .unwrap();
     assert_eq!(printed, GUIDE_REFUSAL, "the refusal the guide pastes");
     assert!(
         KUBERNETES_GUIDE.lines().any(|line| line == GUIDE_REFUSAL),
@@ -1208,7 +1204,7 @@ fn metrics_settings_that_break_a_rule_are_refused() {
         let finished = run_config(&config);
         assert_refused(&finished, code);
         assert!(
-            finished.stderr.contains("metrics_bearer_file "),
+            finished.stderr.contains("metrics_bearer_file: "),
             "{}",
             finished.stderr
         );
@@ -1261,7 +1257,7 @@ fn a_scrape_token_under_32_bytes_is_refused_at_startup() {
         let finished = run_config(&scrape(name, format!("{token}\n").as_bytes()));
         assert_refused(&finished, "metrics-bearer:not-a-token");
         assert!(
-            finished.stderr.contains("metrics_bearer_file ")
+            finished.stderr.contains("metrics_bearer_file: ")
                 && finished.stderr.contains("32 bytes"),
             "{name}: {}",
             finished.stderr

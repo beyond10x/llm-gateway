@@ -169,8 +169,8 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
     let fixture = Fixture::new("live-relay");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
-        "operations invoke pod.create": [created(&running_small_pod())],
+        "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pod.create": [created(&running_small_pod())],
     }));
     let deployment = load(&fixture.config(&connected_document(
         &fixture,
@@ -200,9 +200,7 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
         "a request was relayed before any was made"
     );
     assert!(
-        connectors
-            .calls_of("operations invoke pod.create")
-            .is_empty(),
+        connectors.calls_of("invoke pod.create").is_empty(),
         "a pod was created before any request"
     );
 
@@ -212,7 +210,7 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
     assert!(answer.contains(POD_ANSWER), "{answer:?}");
     assert!(!answer.contains(VLLM_KEY), "{answer:?}");
 
-    let creates = connectors.calls_of("operations invoke pod.create");
+    let creates = connectors.calls_of("invoke pod.create");
     assert_eq!(creates.len(), 1, "{creates:?}");
     let input: serde_json::Value =
         serde_json::from_str(creates[0]["input"].as_str().unwrap()).unwrap();
@@ -263,7 +261,7 @@ fn start_shipped(text: &str, fixture: &Fixture) -> Result<llm_gateway_cli::Relay
 fn live_an_unreachable_connection_starts_and_answers_target_unavailable() {
     let fixture = Fixture::new("live-unreachable");
     let connectors = Connectors::new(&fixture);
-    // No script: every `operations invoke` fails without an answer.
+    // No script: every `invoke` fails without an answer.
     let relaying = start_shipped(
         &connected_document(&fixture, "127.0.0.1:0", &connectors, 5),
         &fixture,
@@ -271,7 +269,7 @@ fn live_an_unreachable_connection_starts_and_answers_target_unavailable() {
     .unwrap();
     let at_start = connectors.calls().len();
     assert_eq!(
-        connectors.calls_of("operations invoke pods.list").len(),
+        connectors.calls_of("invoke pods.list").len(),
         1,
         "the reachability check is one pods.list: {:?}",
         connectors.calls()
@@ -287,11 +285,7 @@ fn live_an_unreachable_connection_starts_and_answers_target_unavailable() {
         "the fixture received calls after the start: {:?}",
         connectors.calls()
     );
-    assert!(
-        connectors
-            .calls_of("operations invoke pod.create")
-            .is_empty()
-    );
+    assert!(connectors.calls_of("invoke pod.create").is_empty());
     assert!(!answer.contains(VLLM_KEY) && !answer.contains(OWNER_SECRET));
 }
 
@@ -303,7 +297,7 @@ fn live_a_missing_executable_or_a_shared_work_directory_is_unreachable() {
         let fixture = Fixture::new(&format!("live-{}", case.replace(' ', "-")));
         let connectors = Connectors::new(&fixture);
         connectors.script(&serde_json::json!({
-            "operations invoke pods.list": [listed(&serde_json::json!([]))],
+            "invoke pods.list": [listed(&serde_json::json!([]))],
         }));
         let mut text = connected_document(&fixture, "127.0.0.1:0", &connectors, 5);
         if case == "missing executable" {

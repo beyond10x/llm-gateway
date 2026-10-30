@@ -1,10 +1,12 @@
 //! The production transport, `ConnectorsRunpod`, against a fixture of the `connectors` CLI
 //! (`tests/fixture/connectors.rs`) and a loopback HTTP fixture of a pod's vLLM server.
 //!
-//! The interface is connectors v0.37.0's: `docs/catalog-runpod.md` (operations, classification,
-//! body keys, invoke lines), `docs/local-approvals.md` (prepare → issue → invoke with the proof)
-//! and `ess/domains/cli.yaml` (the JSON each command prints). No test runs the real `connectors`,
-//! opens a socket beyond loopback, or reads a key.
+//! The interface is connectors 0.60.0's: `docs/catalog-runpod.md` (operations, classification,
+//! body keys, invoke lines), `docs/local-approvals.md` (prepare → issue → invoke with the proof),
+//! `contracts/cli/v1alpha1/semantics.md` ("Invoking an operation", "Selecting an instance") and
+//! `ess/domains/cli.yaml` (the JSON each command prints). A citation of v0.37.0 names what was
+//! read at that tag. No test runs the real `connectors`, opens a socket beyond loopback, or reads
+//! a key.
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -97,7 +99,7 @@ fn input(call: &Value) -> Value {
 
 fn invoked(classification: &str, result: &Value) -> Value {
     json!({"stdout": {
-        "adapter": "gpu", "operation": "pod.create", "revision": "revision-7",
+        "connector": "runpod", "instance": "gpu", "operation": "pod.create", "revision": "revision-7",
         "result": result,
         "mutation": {"classification": classification, "replayed": false},
     }})
@@ -112,7 +114,7 @@ fn failed(classification: &str, code: &str) -> Value {
 
 fn listed(pods: &Value) -> Value {
     json!({"stdout": {
-        "adapter": "gpu", "operation": "pods.list", "revision": "revision-7",
+        "connector": "runpod", "instance": "gpu", "operation": "pods.list", "revision": "revision-7",
         "result": {"status": 200, "body": pods},
     }})
 }
@@ -153,7 +155,7 @@ fn request(gpu: &str) -> PodRequest {
 #[test]
 fn create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_input() {
     let fixture = Fixture::new("create_flow");
-    fixture.script(&json!({"operations invoke pod.create": [invoked(
+    fixture.script(&json!({"invoke pod.create": [invoked(
         "applied",
         &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")}),
     )]}));
@@ -180,17 +182,23 @@ fn create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_inpu
             "operations describe pod.create",
             "approvals prepare pod.create",
             "approvals issue pod.create",
-            "operations invoke pod.create",
+            "invoke pod.create",
         ],
         "describe, then prepare, issue and invoke the one write"
     );
     let prepare = &fixture.calls_of("approvals prepare pod.create")[0];
     let issue = &fixture.calls_of("approvals issue pod.create")[0];
-    let invoke = &fixture.calls_of("operations invoke pod.create")[0];
-    for call in [prepare, issue, invoke] {
-        assert_eq!(arg(call, "--adapter"), Some("gpu"));
-        assert_eq!(arg(call, "--connection"), Some("conn-1"));
+    let invoke = &fixture.calls_of("invoke pod.create")[0];
+    for call in [prepare, issue] {
+        assert_eq!(arg(call, "--connector"), Some("runpod"));
+        assert_eq!(arg(call, "--instance"), Some("gpu"));
         assert_eq!(arg(call, "--operation"), Some("pod.create"));
+    }
+    assert_eq!(invoke["target"], "runpod/gpu", "{invoke}");
+    assert_eq!(invoke["operation"], "pod.create", "{invoke}");
+    for call in [prepare, issue, invoke] {
+        assert!(arg(call, "--adapter").is_none(), "{call}");
+        assert_eq!(arg(call, "--connection"), Some("conn-1"));
         assert_eq!(arg(call, "--schema"), Some("schema-pod.create"));
         assert_eq!(arg(call, "--revision"), Some("revision-7"));
         assert_eq!(arg(call, "--output"), Some("json"));
@@ -215,11 +223,11 @@ fn create_prepares_issues_and_invokes_pod_create_with_a_proof_for_its_exact_inpu
 #[test]
 fn the_create_body_maps_every_request_field_to_a_declared_key() {
     let fixture = Fixture::new("create_body");
-    fixture.script(&json!({"operations invoke pod.create": [failed("refused", "invalid_input")]}));
+    fixture.script(&json!({"invoke pod.create": [failed("refused", "invalid_input")]}));
     let mut transport = fixture.transport();
     let _ = transport.create_pod(&request("NVIDIA A40"));
 
-    let invoke = &fixture.calls_of("operations invoke pod.create")[0];
+    let invoke = &fixture.calls_of("invoke pod.create")[0];
     assert!(
         invoke.get("body_keys_refused").is_none(),
         "connectors v0.37.0 admits every key sent: {invoke}"
@@ -260,14 +268,14 @@ fn the_create_body_maps_every_request_field_to_a_declared_key() {
 
     // An optional value that is absent is left out, never sent empty; `dockerStartCmd: []` stays.
     let fixture = Fixture::new("create_body_minimal");
-    fixture.script(&json!({"operations invoke pod.create": [failed("refused", "invalid_input")]}));
+    fixture.script(&json!({"invoke pod.create": [failed("refused", "invalid_input")]}));
     let mut minimal = request("NVIDIA A40");
     minimal.docker_entrypoint.clear();
     minimal.network_volume_id = None;
     minimal.volume_mount_path = None;
     minimal.data_center_ids.clear();
     let _ = fixture.transport().create_pod(&minimal);
-    let body = input(&fixture.calls_of("operations invoke pod.create")[0])["body"].clone();
+    let body = input(&fixture.calls_of("invoke pod.create")[0])["body"].clone();
     assert_eq!(body["dockerStartCmd"], json!([]), "{body}");
     for absent in [
         "dockerEntrypoint",
@@ -329,7 +337,7 @@ fn the_body_key_constant_is_connectors_v0_37_0_body_keys() {
 #[test]
 fn list_invokes_pods_list_and_reads_every_pod() {
     let fixture = Fixture::new("list");
-    fixture.script(&json!({"operations invoke pods.list": [listed(&json!([
+    fixture.script(&json!({"invoke pods.list": [listed(&json!([
         runpod_pod("abc123", "b10x-llm-qwen", "RUNNING"),
         runpod_pod("def456", "other", "EXITED"),
         runpod_pod("ghi789", "b10x-llm-old", "TERMINATED"),
@@ -357,7 +365,7 @@ fn list_invokes_pods_list_and_reads_every_pod() {
             .map(String::as_str),
         Some("owner-a")
     );
-    let invoke = &fixture.calls_of("operations invoke pods.list")[0];
+    let invoke = &fixture.calls_of("invoke pods.list")[0];
     assert_eq!(input(invoke), json!({}));
     assert!(
         arg(invoke, "--approval-file").is_none(),
@@ -369,21 +377,21 @@ fn list_invokes_pods_list_and_reads_every_pod() {
 #[test]
 fn get_is_pods_list_with_the_id_filter_and_reads_last_started_at() {
     let fixture = Fixture::new("get");
-    fixture.script(&json!({"operations invoke pods.list": [listed(&json!([
+    fixture.script(&json!({"invoke pods.list": [listed(&json!([
         runpod_pod("abc123", "b10x-llm-qwen", "RUNNING"),
     ]))]}));
     let started = fixture.transport().container_started_at("abc123");
 
     assert_eq!(started, started_at_ms("2026-10-08T10:00:00.000Z"));
     assert!(started.is_some());
-    let invoke = &fixture.calls_of("operations invoke pods.list")[0];
+    let invoke = &fixture.calls_of("invoke pods.list")[0];
     assert_eq!(input(invoke), json!({"id": "abc123"}));
 }
 
 #[test]
 fn terminate_invokes_pod_terminate_with_a_proof_for_the_pod_id() {
     let fixture = Fixture::new("terminate");
-    fixture.script(&json!({"operations invoke pod.terminate": [invoked(
+    fixture.script(&json!({"invoke pod.terminate": [invoked(
         "applied",
         &json!({"status": 204, "body": null}),
     )]}));
@@ -391,7 +399,7 @@ fn terminate_invokes_pod_terminate_with_a_proof_for_the_pod_id() {
         fixture.transport().terminate_pod("abc123"),
         TerminateAnswer::Terminated
     );
-    let invoke = &fixture.calls_of("operations invoke pod.terminate")[0];
+    let invoke = &fixture.calls_of("invoke pod.terminate")[0];
     assert_eq!(input(invoke), json!({"podId": "abc123"}));
     assert!(invoke.get("proof_mismatch").is_none(), "{invoke}");
     assert_eq!(fixture.calls_of("approvals issue pod.terminate").len(), 1);
@@ -402,13 +410,13 @@ fn terminate_invokes_pod_terminate_with_a_proof_for_the_pod_id() {
 #[test]
 fn a_refused_create_is_refused() {
     let fixture = Fixture::new("create_refused");
-    fixture.script(&json!({"operations invoke pod.create": [failed("refused", "invalid_input")]}));
+    fixture.script(&json!({"invoke pod.create": [failed("refused", "invalid_input")]}));
     assert_eq!(
         fixture.transport().create_pod(&request("NVIDIA A40")),
         CreateAnswer::Refused
     );
     assert!(
-        fixture.calls_of("operations invoke pods.list").is_empty(),
+        fixture.calls_of("invoke pods.list").is_empty(),
         "a definite refusal needs no read"
     );
 }
@@ -417,19 +425,19 @@ fn a_refused_create_is_refused() {
 fn an_unknown_create_is_lost_after_one_listing_by_name_and_never_retried() {
     let fixture = Fixture::new("create_unknown");
     fixture.script(&json!({
-        "operations invoke pod.create": [failed("unknown", "outcome_unknown")],
-        "operations invoke pods.list": [listed(&json!([]))],
+        "invoke pod.create": [failed("unknown", "outcome_unknown")],
+        "invoke pods.list": [listed(&json!([]))],
     }));
     assert_eq!(
         fixture.transport().create_pod(&request("NVIDIA A40")),
         CreateAnswer::Lost
     );
     assert_eq!(
-        fixture.calls_of("operations invoke pod.create").len(),
+        fixture.calls_of("invoke pod.create").len(),
         1,
         "never sent again"
     );
-    let lists = fixture.calls_of("operations invoke pods.list");
+    let lists = fixture.calls_of("invoke pods.list");
     assert_eq!(lists.len(), 1, "one read resolves it");
     assert_eq!(input(&lists[0]), json!({"name": "b10x-llm-qwen"}));
 }
@@ -438,15 +446,15 @@ fn an_unknown_create_is_lost_after_one_listing_by_name_and_never_retried() {
 fn an_unknown_create_that_the_listing_finds_is_created() {
     let fixture = Fixture::new("create_unknown_found");
     fixture.script(&json!({
-        "operations invoke pod.create": [failed("unknown", "outcome_unknown")],
-        "operations invoke pods.list": [listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")]))],
+        "invoke pod.create": [failed("unknown", "outcome_unknown")],
+        "invoke pods.list": [listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")]))],
     }));
     let answer = fixture.transport().create_pod(&request("NVIDIA A40"));
     assert!(
         matches!(&answer, CreateAnswer::Created(pod) if pod.id == "abc123"),
         "{answer:?}"
     );
-    assert_eq!(fixture.calls_of("operations invoke pod.create").len(), 1);
+    assert_eq!(fixture.calls_of("invoke pod.create").len(), 1);
 }
 
 #[test]
@@ -474,8 +482,8 @@ fn every_create_answer_that_is_not_a_definite_refusal_is_lost() {
     for (name, answer) in cases {
         let fixture = Fixture::new(&format!("create_lost_{name}"));
         fixture.script(&json!({
-            "operations invoke pod.create": [answer],
-            "operations invoke pods.list": [listed(&json!([]))],
+            "invoke pod.create": [answer],
+            "invoke pods.list": [listed(&json!([]))],
         }));
         let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1500)));
         assert_eq!(
@@ -484,7 +492,7 @@ fn every_create_answer_that_is_not_a_definite_refusal_is_lost() {
             "{name}"
         );
         assert_eq!(
-            fixture.calls_of("operations invoke pod.create").len(),
+            fixture.calls_of("invoke pod.create").len(),
             1,
             "{name}: never retried"
         );
@@ -552,13 +560,13 @@ fn create_request() -> CreateRequest {
 fn an_unknown_create_through_the_provider_submits_no_second_create() {
     let fixture = Fixture::new("provider_unknown");
     fixture.script(&json!({
-        "operations invoke pod.create": [failed("unknown", "outcome_unknown")],
-        "operations invoke pods.list": [listed(&json!([]))],
+        "invoke pod.create": [failed("unknown", "outcome_unknown")],
+        "invoke pods.list": [listed(&json!([]))],
     }));
     let outcome: CreateOutcome = provider(&fixture).create(&create_request());
     assert_eq!(outcome.dispatch, Dispatch::Unknown);
     assert_eq!(
-        fixture.calls_of("operations invoke pod.create").len(),
+        fixture.calls_of("invoke pod.create").len(),
         1,
         "a lost create ends the attempt: no second GPU"
     );
@@ -568,12 +576,11 @@ fn an_unknown_create_through_the_provider_submits_no_second_create() {
 #[test]
 fn a_refused_create_through_the_provider_tries_the_next_gpu() {
     let fixture = Fixture::new("provider_refused");
-    fixture
-        .script(&json!({"operations invoke pod.create": [failed("refused", "provider_refused")]}));
+    fixture.script(&json!({"invoke pod.create": [failed("refused", "provider_refused")]}));
     let outcome = provider(&fixture).create(&create_request());
     assert_eq!(outcome.dispatch, Dispatch::Rejected);
     let gpus: Vec<Value> = fixture
-        .calls_of("operations invoke pod.create")
+        .calls_of("invoke pod.create")
         .iter()
         .map(|call| input(call)["body"]["gpuTypeIds"].clone())
         .collect();
@@ -590,7 +597,7 @@ fn a_refused_create_whose_failure_code_is_capacity_is_no_capacity() {
         ("invalid_input", CreateAnswer::Refused),
     ] {
         let fixture = Fixture::new(&format!("create_refused_{code}"));
-        fixture.script(&json!({"operations invoke pod.create": [failed("refused", code)]}));
+        fixture.script(&json!({"invoke pod.create": [failed("refused", code)]}));
         assert_eq!(
             fixture.transport().create_pod(&request("NVIDIA A40")),
             expected,
@@ -604,7 +611,7 @@ fn a_refused_create_whose_failure_code_is_capacity_is_no_capacity() {
 #[test]
 fn a_capacity_refusal_through_the_provider_moves_on_to_the_next_profile() {
     let fixture = Fixture::new("provider_capacity");
-    fixture.script(&json!({"operations invoke pod.create": [
+    fixture.script(&json!({"invoke pod.create": [
         failed("refused", "capacity"),
         failed("refused", "capacity"),
         invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
@@ -628,7 +635,7 @@ fn a_capacity_refusal_through_the_provider_moves_on_to_the_next_profile() {
     );
     let outcome = provider.create(&create_request());
     assert_eq!(outcome.dispatch, Dispatch::Accepted);
-    let calls = fixture.calls_of("operations invoke pod.create");
+    let calls = fixture.calls_of("invoke pod.create");
     let gpus: Vec<Value> = calls
         .iter()
         .map(|call| input(call)["body"]["gpuTypeIds"].clone())
@@ -682,7 +689,7 @@ fn a_listing_that_is_not_whole_is_never_complete() {
     ];
     for (name, answer) in cases {
         let fixture = Fixture::new(&format!("list_partial_{name}"));
-        fixture.script(&json!({"operations invoke pods.list": [answer]}));
+        fixture.script(&json!({"invoke pods.list": [answer]}));
         let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1500)));
         let complete = transport.list_pods().is_ok_and(|listing| listing.complete);
         assert!(
@@ -946,7 +953,7 @@ fn a_last_started_at_moving_forward_counts_as_a_restart() {
     };
     let fixture = Fixture::new("crash_loop");
     // Each inventory is one full listing and one get by id; the get carries the start time.
-    fixture.script(&json!({"operations invoke pods.list": [
+    fixture.script(&json!({"invoke pods.list": [
         at("2026-10-08T10:00:00.000Z"), at("2026-10-08T10:00:00.000Z"),
         at("2026-10-08T10:00:00.000Z"), at("2026-10-08T10:00:00.000Z"),
         at("2026-10-08T10:00:00.000Z"), at("2026-10-08T10:01:00.000Z"),
@@ -1001,7 +1008,7 @@ fn refused_at_admission(classification: Option<&str>) -> Value {
 #[test]
 fn a_read_refused_at_admission_revalidates_the_connection_once_and_is_repeated_once() {
     let fixture = Fixture::new("revalidate_read");
-    fixture.script(&json!({"operations invoke pods.list": [
+    fixture.script(&json!({"invoke pods.list": [
         refused_at_admission(None),
         listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")])),
     ]}));
@@ -1009,10 +1016,11 @@ fn a_read_refused_at_admission_revalidates_the_connection_once_and_is_repeated_o
 
     assert!(listing.complete, "the repeated read is whole");
     assert_eq!(listing.pods.len(), 1);
-    assert_eq!(fixture.calls_of("operations invoke pods.list").len(), 2);
+    assert_eq!(fixture.calls_of("invoke pods.list").len(), 2);
     let revalidations = fixture.calls_of("connections revalidate ");
     assert_eq!(revalidations.len(), 1, "revalidated once");
-    assert_eq!(arg(&revalidations[0], "--adapter"), Some("gpu"));
+    assert_eq!(arg(&revalidations[0], "--connector"), Some("runpod"));
+    assert_eq!(arg(&revalidations[0], "--instance"), Some("gpu"));
     assert_eq!(arg(&revalidations[0], "--connection"), Some("conn-1"));
     assert_eq!(
         arg(&revalidations[0], "--expected-revision"),
@@ -1024,21 +1032,21 @@ fn a_read_refused_at_admission_revalidates_the_connection_once_and_is_repeated_o
 #[test]
 fn a_second_refusal_at_admission_is_not_repeated_again() {
     let fixture = Fixture::new("revalidate_read_twice");
-    fixture.script(&json!({"operations invoke pods.list": [refused_at_admission(None)]}));
+    fixture.script(&json!({"invoke pods.list": [refused_at_admission(None)]}));
     let complete = fixture
         .transport()
         .list_pods()
         .is_ok_and(|listing| listing.complete);
 
     assert!(!complete);
-    assert_eq!(fixture.calls_of("operations invoke pods.list").len(), 2);
+    assert_eq!(fixture.calls_of("invoke pods.list").len(), 2);
     assert_eq!(fixture.calls_of("connections revalidate ").len(), 1);
 }
 
 #[test]
 fn a_create_refused_at_admission_before_dispatch_is_repeated_once_with_a_fresh_proof() {
     let fixture = Fixture::new("revalidate_create");
-    fixture.script(&json!({"operations invoke pod.create": [
+    fixture.script(&json!({"invoke pod.create": [
         refused_at_admission(Some("not_attempted")),
         invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
     ]}));
@@ -1048,7 +1056,7 @@ fn a_create_refused_at_admission_before_dispatch_is_repeated_once_with_a_fresh_p
         matches!(&answer, CreateAnswer::Created(pod) if pod.id == "abc123"),
         "{answer:?}"
     );
-    let invokes = fixture.calls_of("operations invoke pod.create");
+    let invokes = fixture.calls_of("invoke pod.create");
     assert_eq!(invokes.len(), 2);
     assert_eq!(fixture.calls_of("connections revalidate ").len(), 1);
     assert_eq!(
@@ -1076,19 +1084,15 @@ fn a_write_refused_after_admission_or_classified_otherwise_is_never_repeated() {
     for (name, answer) in [("dispatched", dispatched), ("later_stage", later)] {
         let fixture = Fixture::new(&format!("revalidate_never_{name}"));
         fixture.script(&json!({
-            "operations invoke pod.create": [answer],
-            "operations invoke pods.list": [listed(&json!([]))],
+            "invoke pod.create": [answer],
+            "invoke pods.list": [listed(&json!([]))],
         }));
         assert_eq!(
             fixture.transport().create_pod(&request("NVIDIA A40")),
             CreateAnswer::Lost,
             "{name}"
         );
-        assert_eq!(
-            fixture.calls_of("operations invoke pod.create").len(),
-            1,
-            "{name}"
-        );
+        assert_eq!(fixture.calls_of("invoke pod.create").len(), 1, "{name}");
         assert!(
             fixture.calls_of("connections revalidate ").is_empty(),
             "{name}"
@@ -1108,11 +1112,11 @@ fn an_answer_outside_connectors_framing_is_not_read() {
     // The `applied` create answer, unframed on stdout: not connectors' success framing.
     let fixture = Fixture::new("unframed_success");
     fixture.script(&json!({
-        "operations invoke pod.create": [{"raw": json!({
+        "invoke pod.create": [{"raw": json!({
             "result": {"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")},
             "mutation": {"classification": "applied", "replayed": false},
         }).to_string()}],
-        "operations invoke pods.list": [listed(&json!([]))],
+        "invoke pods.list": [listed(&json!([]))],
     }));
     assert_eq!(
         fixture.transport().create_pod(&request("NVIDIA A40")),
@@ -1121,13 +1125,11 @@ fn an_answer_outside_connectors_framing_is_not_read() {
 
     // A `refused` failure framed correctly but printed on stdout, not stderr.
     let fixture = Fixture::new("failure_on_stdout");
-    fixture.script(
-        &json!({"operations invoke pod.create": [{"exit": 1, "raw": json!({
+    fixture.script(&json!({"invoke pod.create": [{"exit": 1, "raw": json!({
         "ok": false, "error": {"code": "failure", "data": {
             "code": "invalid_input", "stage": "dispatch",
             "mutation": {"classification": "refused", "replayed": false}}},
-    }).to_string()}]}),
-    );
+    }).to_string()}]}));
     assert_eq!(
         fixture.transport().create_pod(&request("NVIDIA A40")),
         CreateAnswer::Lost,
@@ -1138,12 +1140,10 @@ fn an_answer_outside_connectors_framing_is_not_read() {
 #[test]
 fn a_failure_on_stderr_reaches_no_debug_output() {
     let fixture = Fixture::new("stderr_debug");
-    fixture.script(
-        &json!({"operations invoke pods.list": [{"exit": 1, "stderr": {
-            "ok": false, "error": {"code": "failure", "data": {
-                "code": "forbidden", "stage": "dispatch", "service_reason": KEY}},
-        }}]}),
-    );
+    fixture.script(&json!({"invoke pods.list": [{"exit": 1, "stderr": {
+        "ok": false, "error": {"code": "failure", "data": {
+            "code": "forbidden", "stage": "dispatch", "service_reason": KEY}},
+    }}]}));
     let mut transport = fixture.transport();
     transport.set_vllm_key("qwen", KEY.as_bytes().to_vec());
     let complete = transport.list_pods().is_ok_and(|listing| listing.complete);
@@ -1154,7 +1154,7 @@ fn a_failure_on_stderr_reaches_no_debug_output() {
 
 fn described(operation: &str, revision: &str) -> Value {
     json!({"stdout": {
-        "adapter": "gpu", "revision": revision, "schema": format!("schema-{operation}-{revision}"),
+        "adapter": "gpu", "connector": "runpod", "instance": "gpu", "revision": revision, "schema": format!("schema-{operation}-{revision}"),
         "operation": {"id": operation}, "source": "owner", "stale": false,
     }})
 }
@@ -1170,7 +1170,7 @@ fn a_stale_description_refreshes_the_descriptor_once_and_repeats_the_read_once()
     let fixture = Fixture::new("stale_description_read");
     fixture.script(&json!({
         "operations describe pods.list": [described("pods.list", "revision-7"), described("pods.list", "revision-8")],
-        "operations invoke pods.list": [
+        "invoke pods.list": [
             refused_before_dispatch("stale_description", "admission", "refresh_description"),
             listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")])),
         ],
@@ -1179,7 +1179,7 @@ fn a_stale_description_refreshes_the_descriptor_once_and_repeats_the_read_once()
 
     assert!(listing.complete);
     assert_eq!(fixture.calls_of("operations describe pods.list").len(), 2);
-    let invokes = fixture.calls_of("operations invoke pods.list");
+    let invokes = fixture.calls_of("invoke pods.list");
     assert_eq!(invokes.len(), 2);
     assert_eq!(arg(&invokes[0], "--revision"), Some("revision-7"));
     assert_eq!(
@@ -1199,7 +1199,7 @@ fn a_lifecycle_conflict_at_admission_refreshes_revalidates_and_repeats_a_create_
     let fixture = Fixture::new("lifecycle_conflict_create");
     fixture.script(&json!({
         "operations describe pod.create": [described("pod.create", "revision-7"), described("pod.create", "revision-8")],
-        "operations invoke pod.create": [
+        "invoke pod.create": [
             refused_before_dispatch("lifecycle_conflict", "admission", "revalidate_connection"),
             invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
         ],
@@ -1210,7 +1210,7 @@ fn a_lifecycle_conflict_at_admission_refreshes_revalidates_and_repeats_a_create_
         matches!(&answer, CreateAnswer::Created(pod) if pod.id == "abc123"),
         "{answer:?}"
     );
-    let invokes = fixture.calls_of("operations invoke pod.create");
+    let invokes = fixture.calls_of("invoke pod.create");
     assert_eq!(invokes.len(), 2);
     assert_eq!(arg(&invokes[1], "--revision"), Some("revision-8"));
     assert_eq!(fixture.calls_of("connections revalidate ").len(), 1);
@@ -1234,7 +1234,7 @@ fn a_lifecycle_conflict_at_admission_refreshes_revalidates_and_repeats_a_create_
 fn a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again() {
     // Refused again after the refresh: an incomplete listing, one refresh, two invokes.
     let fixture = Fixture::new("stale_twice");
-    fixture.script(&json!({"operations invoke pods.list": [
+    fixture.script(&json!({"invoke pods.list": [
         refused_before_dispatch("stale_description", "admission", "refresh_description"),
     ]}));
     let complete = fixture
@@ -1243,7 +1243,7 @@ fn a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again() {
         .is_ok_and(|listing| listing.complete);
     assert!(!complete);
     assert_eq!(fixture.calls_of("operations describe pods.list").len(), 2);
-    assert_eq!(fixture.calls_of("operations invoke pods.list").len(), 2);
+    assert_eq!(fixture.calls_of("invoke pods.list").len(), 2);
 
     // A lifecycle_conflict outside admission, and a stale_description that carries a dispatched
     // classification: a write is never repeated.
@@ -1260,19 +1260,15 @@ fn a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again() {
     for (name, answer) in cases {
         let fixture = Fixture::new(&format!("stale_never_{name}"));
         fixture.script(&json!({
-            "operations invoke pod.create": [answer],
-            "operations invoke pods.list": [listed(&json!([]))],
+            "invoke pod.create": [answer],
+            "invoke pods.list": [listed(&json!([]))],
         }));
         assert_eq!(
             fixture.transport().create_pod(&request("NVIDIA A40")),
             CreateAnswer::Lost,
             "{name}"
         );
-        assert_eq!(
-            fixture.calls_of("operations invoke pod.create").len(),
-            1,
-            "{name}"
-        );
+        assert_eq!(fixture.calls_of("invoke pod.create").len(), 1, "{name}");
         assert_eq!(
             fixture.calls_of("operations describe pod.create").len(),
             1,
@@ -1287,7 +1283,7 @@ fn a_stale_descriptor_refused_twice_or_after_dispatch_is_not_repeated_again() {
 
 fn billed(body: &Value) -> Value {
     json!({"stdout": {
-        "adapter": "gpu", "operation": "billing.pods", "revision": "revision-7",
+        "connector": "runpod", "instance": "gpu", "operation": "billing.pods", "revision": "revision-7",
         "result": {"status": 200, "body": body},
     }})
 }
@@ -1301,7 +1297,7 @@ fn day_start() -> u64 {
 #[test]
 fn billing_reads_billing_pods_once_as_a_read_and_sums_today_and_the_total() {
     let fixture = Fixture::new("billing_sums");
-    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([
+    fixture.script(&json!({"invoke billing.pods": [billed(&json!([
         {"amount": 2.5, "time": "2026-10-15T00:00:00.000Z", "timeBilledMs": 1},
         {"amount": 1.25, "time": DAY_START},
         {"amount": 0.000_000_4, "time": "2026-10-16T13:00:00Z"},
@@ -1315,7 +1311,7 @@ fn billing_reads_billing_pods_once_as_a_read_and_sums_today_and_the_total() {
         }),
         "each amount is rounded to the nearest micro-USD"
     );
-    let invokes = fixture.calls_of("operations invoke billing.pods");
+    let invokes = fixture.calls_of("invoke billing.pods");
     assert_eq!(invokes.len(), 1);
     assert_eq!(input(&invokes[0]), json!({"bucketSize": "day"}));
     assert_eq!(
@@ -1333,7 +1329,7 @@ fn billing_reads_billing_pods_once_as_a_read_and_sums_today_and_the_total() {
 #[test]
 fn billing_an_empty_answer_is_no_spend() {
     let fixture = Fixture::new("billing_empty");
-    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([]))]}));
+    fixture.script(&json!({"invoke billing.pods": [billed(&json!([]))]}));
     assert_eq!(
         fixture.transport().account_spend(day_start()),
         Some(AccountSpend {
@@ -1364,7 +1360,7 @@ fn billing_an_answer_that_is_not_wholly_readable_is_unanswered() {
         ("garbage", json!({"raw": "not json"})),
     ] {
         let fixture = Fixture::new(&format!("billing_unreadable_{}", case.replace(' ', "_")));
-        fixture.script(&json!({"operations invoke billing.pods": [answer]}));
+        fixture.script(&json!({"invoke billing.pods": [answer]}));
         assert_eq!(
             fixture.transport().account_spend(day_start()),
             None,
@@ -1380,11 +1376,7 @@ fn billing_without_the_operation_in_the_catalog_is_unanswered_and_invokes_nothin
         {"exit": 2, "stdout": {"error": {"code": "not_found"}}}
     ]}));
     assert_eq!(fixture.transport().account_spend(day_start()), None);
-    assert!(
-        fixture
-            .calls_of("operations invoke billing.pods")
-            .is_empty()
-    );
+    assert!(fixture.calls_of("invoke billing.pods").is_empty());
 }
 
 #[test]
@@ -1405,7 +1397,7 @@ fn billing_with_a_ceiling_and_no_billing_operation_the_provider_sends_no_create(
     let outcome: CreateOutcome = provider.create(&create_request());
     assert_eq!(outcome.dispatch, Dispatch::NotSent);
     assert_eq!(provider.take_spend_refusal(), Some(SpendRefusal::Unknown));
-    assert!(fixture.calls_of("operations invoke pod.create").is_empty());
+    assert!(fixture.calls_of("invoke pod.create").is_empty());
     assert!(fixture.calls_of("approvals prepare pod.create").is_empty());
 }
 
@@ -1417,7 +1409,7 @@ fn billing_with_a_ceiling_and_no_billing_operation_the_provider_sends_no_create(
 #[test]
 fn adversary_w12_a_billed_amount_in_cents_is_read_exactly() {
     let fixture = Fixture::new("adversary_w12_billing_cents");
-    fixture.script(&json!({"operations invoke billing.pods": [billed(&json!([
+    fixture.script(&json!({"invoke billing.pods": [billed(&json!([
         {"amount": 4.03, "time": DAY_START},
         {"amount": 8.05, "time": "2026-10-15T00:00:00.000Z"},
     ]))]}));
@@ -1427,5 +1419,225 @@ fn adversary_w12_a_billed_amount_in_cents_is_read_exactly() {
             daily_micro_usd: 4_030_000,
             total_micro_usd: 12_080_000,
         })
+    );
+}
+
+// ---- story:connectors-invoke-form: the command lines connectors 0.60.0 keeps ----
+
+/// connectors 0.60.0's parse refusal under `--output json` (its
+/// `apps/connectors/tests/removed_forms.rs`, `JSON_PARSE`).
+const PARSE_REFUSAL: &str = "{\"error\":{\"code\":\"cli_parse\",\"data\":{}},\"ok\":false}\n";
+
+/// Runs the fixture once with `args`: exit status, stdout, stderr.
+fn run_fixture(fixture: &Fixture, args: &[&str]) -> (Option<i32>, String, String) {
+    let output = std::process::Command::new(fixture.dir.join("connectors"))
+        .args(args)
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("fixture runs");
+    (
+        output.status.code(),
+        String::from_utf8_lossy(&output.stdout).into_owned(),
+        String::from_utf8_lossy(&output.stderr).into_owned(),
+    )
+}
+
+/// The fixture answers as connectors 0.60.0 does: each removed command line, and an `invoke`
+/// that selects with an option, is the fixed `cli_parse` envelope, exit 2, stdout empty; the
+/// kept `invoke <connector>/<instance> <operation>` is answered, naming `connector` and
+/// `instance` and no `adapter`.
+#[test]
+fn the_fixture_refuses_every_removed_command_line_with_exit_2() {
+    let fixture = Fixture::new("removed_forms");
+    fixture.script(&json!({"invoke pods.list": [listed(&json!([]))]}));
+    let removed: [&[&str]; 7] = [
+        &[
+            "operations",
+            "invoke",
+            "--adapter",
+            "gpu",
+            "--connection",
+            "conn-1",
+            "--operation",
+            "pods.list",
+            "--schema",
+            "schema-pods.list",
+            "--revision",
+            "revision-7",
+            "--input-json",
+            "{}",
+        ],
+        &[
+            "invoke",
+            "--adapter",
+            "gpu",
+            "--connection",
+            "conn-1",
+            "--operation",
+            "pods.list",
+            "--input-json",
+            "{}",
+        ],
+        &[
+            "invoke",
+            "runpod/gpu",
+            "pods.list",
+            "--adapter",
+            "gpu",
+            "--input-json",
+            "{}",
+        ],
+        &[
+            "invoke",
+            "--endpoint",
+            "https://127.0.0.1:9/",
+            "--token-file",
+            "/nonexistent",
+            "--operation",
+            "pods.list",
+            "--input",
+            "{}",
+        ],
+        &["describe", "--endpoint", "https://127.0.0.1:9/"],
+        &["serve", "--config", "/nonexistent"],
+        &["invoke", "runpod/gpu", "--input-json", "{}"],
+    ];
+    for line in removed {
+        assert_eq!(
+            run_fixture(&fixture, &[&["--output", "json"][..], line].concat()),
+            (Some(2), String::new(), PARSE_REFUSAL.to_owned()),
+            "`connectors {}` is refused as connectors 0.60.0 refuses it",
+            line.join(" ")
+        );
+    }
+    assert!(
+        fixture.calls_of("invoke pods.list").is_empty(),
+        "no refused line counts as an invoke"
+    );
+
+    let (code, stdout, stderr) = run_fixture(
+        &fixture,
+        &[
+            "--output",
+            "json",
+            "invoke",
+            "runpod/gpu",
+            "pods.list",
+            "--connection",
+            "conn-1",
+            "--input-json",
+            "{}",
+        ],
+    );
+    assert_eq!((code, stderr.as_str()), (Some(0), ""), "{stdout}");
+    let envelope: Value = serde_json::from_str(&stdout).expect("one envelope");
+    assert_eq!(envelope["ok"], true);
+    assert_eq!(envelope["result"]["connector"], "runpod");
+    assert_eq!(envelope["result"]["instance"], "gpu");
+    assert!(envelope["result"].get("adapter").is_none(), "{envelope}");
+}
+
+/// Every call the transport makes, through a list, a get, a create, a terminate, a spend read
+/// and a revalidation, is a command line connectors 0.60.0 keeps: no removed line, no `invoke`
+/// refused as it is parsed, and no `--adapter` anywhere. Each `invoke` names `runpod/gpu` and
+/// its operation as its two positional arguments.
+#[test]
+fn every_call_the_transport_makes_is_a_command_line_connectors_0_60_0_keeps() {
+    let fixture = Fixture::new("kept_forms");
+    fixture.script(&json!({
+        "invoke pods.list": [
+            refused_at_admission(None),
+            listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")])),
+        ],
+        "invoke pod.create": [invoked(
+            "applied",
+            &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")}),
+        )],
+        "invoke pod.terminate": [invoked("applied", &json!({"status": 204, "body": null}))],
+        "invoke billing.pods": [billed(&json!([]))],
+    }));
+    let mut transport = fixture.transport();
+    assert!(transport.list_pods().expect("listing").complete);
+    assert!(transport.container_started_at("abc123").is_some());
+    assert!(matches!(
+        transport.create_pod(&request("NVIDIA A40")),
+        CreateAnswer::Created(_)
+    ));
+    assert_eq!(
+        transport.terminate_pod("abc123"),
+        TerminateAnswer::Terminated
+    );
+    assert!(transport.account_spend(day_start()).is_some());
+
+    let calls = fixture.calls();
+    assert_eq!(fixture.calls_of("connections revalidate ").len(), 1);
+    for call in &calls {
+        let key = call["key"].as_str().unwrap_or_default();
+        assert!(!key.starts_with("refused"), "refused as parsed: {call}");
+        for flag in ["removed", "deprecated_selector"] {
+            assert!(call.get(flag).is_none(), "{flag}: {call}");
+        }
+        assert!(arg(call, "--adapter").is_none(), "{call}");
+        assert!(
+            !call["argv"]
+                .as_array()
+                .is_some_and(|argv| argv.iter().any(|arg| arg == "--adapter")),
+            "{call}"
+        );
+        if let Some(operation) = key.strip_prefix("invoke ") {
+            assert_eq!(call["target"], "runpod/gpu", "{call}");
+            assert_eq!(call["operation"], operation, "{call}");
+            assert!(arg(call, "--operation").is_none(), "{call}");
+        }
+    }
+    let invoked: BTreeSet<&str> = calls
+        .iter()
+        .filter_map(|call| call["key"].as_str()?.strip_prefix("invoke "))
+        .collect();
+    assert_eq!(
+        invoked,
+        BTreeSet::from(["billing.pods", "pod.create", "pod.terminate", "pods.list"])
+    );
+}
+
+/// An answer printed exactly as connectors 0.60.0 prints an invoke's (`InvokeResult`: the
+/// envelope's `result` names `connector` and `instance` and carries no `adapter`) is read: the
+/// listing is whole, and an applied create is `Created`.
+#[test]
+fn an_invoke_answer_in_the_0_60_0_shape_is_read() {
+    let listing = json!({"ok": true, "result": {
+        "connector": "runpod", "instance": "gpu", "operation": "pods.list",
+        "revision": "revision-7", "request_id": "req-0",
+        "result": {"status": 200, "body": [runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")]},
+    }});
+    let created = json!({"ok": true, "result": {
+        "connector": "runpod", "instance": "gpu", "operation": "pod.create",
+        "revision": "revision-7", "request_id": "req-1",
+        "result": {"status": 201, "body": runpod_pod("def456", "b10x-llm-qwen", "RUNNING")},
+        "mutation": {"classification": "applied", "replayed": false},
+    }});
+    for answer in [&listing, &created] {
+        assert!(answer["result"].get("adapter").is_none());
+    }
+    let fixture = Fixture::new("shape_0_60_0");
+    fixture.script(&json!({
+        "invoke pods.list": [{"raw": format!("{listing}\n")}],
+        "invoke pod.create": [{"raw": format!("{created}\n")}],
+    }));
+    let mut transport = fixture.transport();
+
+    let pods = transport.list_pods().expect("listing");
+    assert!(pods.complete, "{pods:?}");
+    assert_eq!(
+        pods.pods
+            .iter()
+            .map(|pod| pod.id.as_str())
+            .collect::<Vec<_>>(),
+        ["abc123"]
+    );
+    let answer = transport.create_pod(&request("NVIDIA A40"));
+    assert!(
+        matches!(&answer, CreateAnswer::Created(pod) if pod.id == "def456"),
+        "{answer:?}"
     );
 }

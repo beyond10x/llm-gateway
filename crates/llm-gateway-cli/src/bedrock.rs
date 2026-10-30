@@ -199,7 +199,7 @@ impl BedrockRoute {
 /// The container authorization token, read from its file through the trusted-file reader for
 /// every fetch. A file that has become unreadable or untrusted is `unavailable`, which the
 /// Bedrock client answers `unauthorized`, before anything is sent; the refusal's rule code and
-/// the file's path are logged as a warning, the token never.
+/// the rule's detail are logged as a warning, never the file's path or the token.
 struct TokenFile {
     path: PathBuf,
 }
@@ -226,7 +226,7 @@ impl SecretResolver for TokenFile {
             let text = read.map_err(|refusal| {
                 tracing::warn!(
                     rule = refusal.code(),
-                    file = refusal.message(),
+                    detail = refusal.message(),
                     "bedrock: the container token file was refused; the fetch is unauthorized"
                 );
                 SecretError::Unavailable
@@ -249,21 +249,10 @@ fn without_line_end(bytes: &[u8]) -> &[u8] {
 /// Reads the token file once through the trusted-file reader, so a start with a file llm's
 /// client would refuse is refused before anything is served. The bytes are overwritten after.
 fn check_token(path: &Path) -> Result<(), Refusal> {
-    let mut read = trusted::read(path, &trusted::CONTAINER_TOKEN)
-        .map_err(|refusal| {
-            Refusal::new(
-                refusal.kind(),
-                format!("{TOKEN_FILE_VARIABLE} {}", refusal.message()),
-            )
-        })?
-        .into_bytes();
+    let mut read =
+        trusted::read_named(path, TOKEN_FILE_VARIABLE, &trusted::CONTAINER_TOKEN)?.into_bytes();
     let token = without_line_end(&read);
-    let refuse = |kind, rule: &str| {
-        Refusal::new(
-            kind,
-            format!("{TOKEN_FILE_VARIABLE} {}: {rule}", path.display()),
-        )
-    };
+    let refuse = |kind, rule: &str| Refusal::new(kind, format!("{TOKEN_FILE_VARIABLE}: {rule}"));
     let held = if token.len() > MAX_CONTAINER_TOKEN_BYTES {
         Err(refuse(
             StartupRefusal::ContainerTokenTooLarge,

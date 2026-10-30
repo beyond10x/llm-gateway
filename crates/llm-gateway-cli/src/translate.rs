@@ -369,6 +369,22 @@ const fn refusal(error: &Error) -> RefusalCode {
     }
 }
 
+/// [`refusal`]'s code for `error`, after one `info` line naming it: the code, the client's wire,
+/// the alias and llm's message, which names the refused path or field and quotes no value the
+/// client sent (llm 0.19.0 copies a client's key into a path only as at most 64 bytes of
+/// `[A-Za-z0-9_-]`, else `?`). The message is written escaped.
+fn refused(ingress: Wire, alias: &str, error: &Error) -> RefusalCode {
+    let code = refusal(error);
+    tracing::info!(
+        model = alias,
+        ingress = %ingress.label(),
+        refusal = %code.wire(),
+        refused = ?error.message,
+        "translation refused"
+    );
+    code
+}
+
 /// A decoded client request: the turn, and how the client wants its answer.
 struct Decoded {
     request: TurnRequest,
@@ -513,17 +529,28 @@ impl Translator for LlmTranslator {
         if let Some(route) = self.bedrock.get(alias) {
             return self.prepare_bedrock(request, alias, route);
         }
+        Ok(Box::new(self.prepare_relayed(request, alias)?))
+    }
+}
+
+impl LlmTranslator {
+    /// The request for `alias`, a model reached at the target the relay acquires.
+    fn prepare_relayed(
+        &self,
+        request: &TranslationRequest<'_>,
+        alias: &str,
+    ) -> Result<Prepared, RefusalCode> {
         let upstream_model = request.model.upstream_model().as_str();
-        let mut decoded =
-            decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
+        let mut decoded = decode(request.ingress, alias, request.body)
+            .map_err(|error| refused(request.ingress, alias, &error))?;
         let scope = Scope {
             alias,
             upstream_model,
             ingress: request.ingress,
             upstream: request.upstream,
         };
-        let reading =
-            ingress_provenance(request.ingress, alias).map_err(|error| refusal(&error))?;
+        let reading = ingress_provenance(request.ingress, alias)
+            .map_err(|error| refused(request.ingress, alias, &error))?;
         bind_sealed(&self.engine.sealer, scope, &mut decoded.request, &reading)?;
         let capabilities = self.capabilities(request.model, request.upstream);
         // A messages upstream needs an output limit, and the whole window leaves no room for
@@ -555,8 +582,8 @@ impl Translator for LlmTranslator {
             rebind(&mut decoded.request, binding.provenance());
             project(request.upstream, &decoded.request, &binding, upstream_model)
         })
-        .map_err(|error| refusal(&error))?;
-        Ok(Box::new(Prepared {
+        .map_err(|error| refused(request.ingress, alias, &error))?;
+        Ok(Prepared {
             engine: Arc::clone(&self.engine),
             ingress: request.ingress,
             upstream: request.upstream,
@@ -567,7 +594,7 @@ impl Translator for LlmTranslator {
             bedrock: None,
             session: request.caller.session().map(str::to_owned),
             peer: request.caller.peer(),
-        }))
+        })
     }
 }
 
@@ -624,7 +651,7 @@ fn drop_for_bedrock(ingress: Wire, alias: &str, route: &BedrockRoute, request: &
 /// not empty, the client's one header line read by llm's decoder, which refuses a malformed one.
 /// The names the model allows stay in the turn in the client's order; each other name is logged
 /// by name as dropped. A value that is not a header value at all is refused through
-/// [`refusal`] as llm's own `invalid` error, as a malformed body is: `translation-invalid`.
+/// [`refused`] as llm's own `invalid` error, as a malformed body is: `translation-invalid`.
 fn decode_with_betas(
     request: &TranslationRequest<'_>,
     alias: &str,
@@ -633,15 +660,18 @@ fn decode_with_betas(
     let mut headers = http::HeaderMap::new();
     if let Some(value) = request.anthropic_beta {
         let value = http::HeaderValue::from_str(value).map_err(|_| {
-            refusal(&Error::invalid(
-                "the anthropic-beta header is not a header value",
-            ))
+            refused(
+                request.ingress,
+                alias,
+                &Error::invalid("the anthropic-beta header is not a header value"),
+            )
         })?;
         headers.insert(llm_messages::BETA_HEADER, value);
     }
-    let origin = ingress_provenance(request.ingress, alias).map_err(|error| refusal(&error))?;
+    let origin = ingress_provenance(request.ingress, alias)
+        .map_err(|error| refused(request.ingress, alias, &error))?;
     let mut decoded = llm_messages::decode_request_with_headers(request.body, &headers, &origin)
-        .map_err(|error| refusal(&error))?;
+        .map_err(|error| refused(request.ingress, alias, &error))?;
     let betas = &mut decoded.request.controls.hints.anthropic_beta;
     betas.retain(|name| {
         let kept = allowed.contains(name);
@@ -683,8 +713,8 @@ impl LlmTranslator {
         let mut decoded = if carries_betas {
             decode_with_betas(request, alias, &route.anthropic_beta)?
         } else {
-            let decoded =
-                decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
+            let decoded = decode(request.ingress, alias, request.body)
+                .map_err(|error| refused(request.ingress, alias, &error))?;
             if request.anthropic_beta.is_some() {
                 tracing::info!(
                     model = alias,
@@ -741,7 +771,7 @@ impl LlmTranslator {
             .request
             .validate_for(&target.provenance, &capabilities)
             .and_then(|()| llm_bedrock::check_request(&decoded.request, target))
-            .map_err(|error| refusal(&error))?;
+            .map_err(|error| refused(request.ingress, alias, &error))?;
         Ok(Box::new(Prepared {
             engine: Arc::clone(&self.engine),
             ingress: request.ingress,
@@ -751,8 +781,9 @@ impl LlmTranslator {
             capabilities,
             decoded,
             bedrock: Some(Arc::clone(route)),
-            session: request.caller.session().map(str::to_owned),
-            peer: request.caller.peer(),
+            // A Bedrock turn is signed for Bedrock and sends no OpenCode Go session.
+            session: None,
+            peer: None,
         }))
     }
 }
@@ -861,6 +892,12 @@ fn caller_session(
 }
 
 impl Prepared {
+    /// The session llm's messages client sends the acquired `target`: the one the target
+    /// answers for this request's caller ([`caller_session`]).
+    fn upstream_session(&self, target: &dyn RelayTarget) -> Option<Id> {
+        caller_session(target, self.session.as_deref(), self.peer)
+    }
+
     /// How the acquired target is reached.
     fn reach(target: &dyn RelayTarget) -> Reach<'_> {
         let scheme = match target.scheme() {
@@ -927,7 +964,7 @@ impl Translation for Prepared {
                 .bearer()
                 .map_or_else(Vec::new, |bearer| bearer.expose().to_vec());
             let resolver: Arc<dyn SecretResolver> = Arc::new(TargetSecret(secret));
-            let session = caller_session(target, self.session.as_deref(), self.peer);
+            let session = self.upstream_session(target);
             client(self.upstream, binding, http.clone(), resolver, session).map_err(refused)?
         };
         let blocking = BlockingModel::on_runtime(model, handle).map_err(refused)?;
@@ -1425,12 +1462,14 @@ impl BlockingSink for ClientSink<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Credential, HttpClient, Id, Limits, REASONING_EFFORTS, Reach, TRANSLATION_CONNECT_TIMEOUT,
-        TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT, TargetSecret, binding, caller_session,
-        messages_client,
+        Credential, HttpClient, Id, Limits, LlmTranslator, REASONING_EFFORTS, Reach,
+        TRANSLATION_CONNECT_TIMEOUT, TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT,
+        TargetSecret, binding, caller_session, messages_client,
     };
     use llm_core::Capabilities;
-    use llm_gateway::{Caller, RelayStream, RelayTarget, StaticHeader, Wire};
+    use llm_gateway::{
+        Caller, Label, RelayModel, RelayStream, RelayTarget, StaticHeader, TranslationRequest, Wire,
+    };
     use std::{io, net::IpAddr, sync::Arc};
 
     /// A messages client for `base_url`, sent `session`.
@@ -1511,5 +1550,44 @@ mod tests {
             caller_session(&Answering, Some("mine"), Some(peer)),
         );
         assert_eq!(other.session_header(), None);
+    }
+
+    /// A prepared translation keeps the caller the relay handed it, and the session its client
+    /// is sent is the one the acquired target answers for that caller.
+    #[test]
+    fn a_prepared_translation_asks_the_target_for_the_callers_session() {
+        let translator = LlmTranslator::new();
+        let model = RelayModel::new(
+            Label::new("go").unwrap(),
+            Label::new("glm-5").unwrap(),
+            vec![Wire::Messages],
+        )
+        .unwrap();
+        let body = br#"{"model":"go","messages":[{"role":"user","content":"hello"}]}"#;
+        let peer: IpAddr = "10.0.0.1".parse().unwrap();
+        for (caller, expected) in [
+            (
+                Caller::new(Some("mine"), Some(peer)),
+                Some("mine".to_owned()),
+            ),
+            (Caller::new(None, Some(peer)), Some(format!("peer-{peer}"))),
+            (Caller::default(), None),
+        ] {
+            let request = TranslationRequest {
+                ingress: Wire::Chat,
+                upstream: Wire::Messages,
+                model: &model,
+                body,
+                anthropic_beta: None,
+                caller,
+            };
+            let Ok(prepared) = translator.prepare_relayed(&request, "go") else {
+                panic!("the request was refused");
+            };
+            assert_eq!(
+                prepared.upstream_session(&Answering),
+                expected.map(|value| Id::new(&value).unwrap())
+            );
+        }
     }
 }

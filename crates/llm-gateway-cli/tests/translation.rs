@@ -1221,3 +1221,290 @@ fn translation_a_call_the_target_answered_429_records_the_target_status() {
     };
     assert!(record.contains("target_status=429"), "{record}");
 }
+
+// --- A refusal names the refused path in a log line -------------------------------------------
+
+/// A value no log line may carry. It is written into the request's values: message text, a
+/// tool's name and description, a call's name, arguments and result, and the refused value
+/// itself where llm refuses a value.
+const LOG_MARKER: &str = "zqRefusalMarker7x";
+
+/// One request llm's decoder refuses: the code it is answered with and the path or field name
+/// the log line names.
+struct Refused {
+    body: serde_json::Value,
+    code: RefusalCode,
+    names: &'static str,
+}
+
+/// `base` with the JSON `value` written at `pointer`'s `key`.
+fn refused_with(
+    base: &serde_json::Value,
+    pointer: &str,
+    key: &str,
+    value: serde_json::Value,
+    code: RefusalCode,
+    names: &'static str,
+) -> Refused {
+    let mut body = base.clone();
+    body.pointer_mut(pointer).unwrap()[key] = value;
+    Refused { body, code, names }
+}
+
+/// The lines of `log` that are a translation refusal's.
+fn refusal_lines(log: &[String]) -> Vec<&String> {
+    log.iter()
+        .filter(|line| line.contains("translation refused"))
+        .collect()
+}
+
+/// Posts each of `cases` on `ingress`'s path to the shipped binary serving `code` from an
+/// endpoint speaking only `upstream`, and asserts: each answer is the gateway's refusal body for
+/// its code, which names nothing llm said; the binary logs one `info` line per refusal, in order,
+/// naming its code, the client's wire and the path or field name llm refused; and the marker is
+/// in no log line and no answer. No request reaches the endpoint.
+fn assert_each_refusal_names_its_path(
+    name: &str,
+    ingress: Wire,
+    upstream: &str,
+    cases: &[Refused],
+) {
+    let fixture = Fixture::new(name);
+    let endpoint = Upstream::script(Vec::new());
+    let server = Server::start(&document(
+        &fixture,
+        &hosted_model("code", upstream, &endpoint),
+    ));
+    for case in cases {
+        let answer = server.post(ingress.path(), &case.body.to_string());
+        assert!(
+            answer.starts_with("HTTP/1.1 400 "),
+            "{}: {answer}",
+            case.names
+        );
+        let (_, body) = answer.split_once("\r\n\r\n").unwrap();
+        assert_eq!(
+            serde_json::from_str::<serde_json::Value>(body).unwrap(),
+            serde_json::json!({"error": {"code": case.code.wire(), "message": case.code.reason()}}),
+            "{}",
+            case.names
+        );
+        assert!(!answer.contains(LOG_MARKER), "{}: {answer}", case.names);
+    }
+    let log = server.log();
+    for line in &log {
+        assert!(!line.contains(LOG_MARKER), "the marker was logged: {line}");
+    }
+    let refusals = refusal_lines(&log);
+    assert_eq!(refusals.len(), cases.len(), "{log:#?}");
+    for (line, case) in refusals.iter().zip(cases) {
+        assert!(line.contains(" INFO "), "{line}");
+        assert!(
+            line.contains(&format!("refusal={}", case.code.wire())),
+            "{line}"
+        );
+        assert!(
+            line.contains(&format!("ingress={}", ingress.label())),
+            "{line}"
+        );
+        assert!(line.contains("model=\"code\""), "{line}");
+        assert!(line.contains(case.names), "{}: {line}", case.names);
+    }
+    assert!(endpoint.seen().is_empty());
+}
+
+/// A chat client's request with the marker in its values.
+fn marked_chat() -> serde_json::Value {
+    let arguments = serde_json::json!({ "city": LOG_MARKER }).to_string();
+    serde_json::json!({
+        "model": "code",
+        "messages": [
+            {"role": "system", "content": "Be brief."},
+            {"role": "user", "content": [{"type": "text", "text": LOG_MARKER}]},
+            {"role": "assistant", "content": "Checking.", "tool_calls": [
+                {"id": "call_1", "type": "function", "function": {"name": LOG_MARKER, "arguments": arguments}}
+            ]},
+            {"role": "tool", "tool_call_id": "call_1", "content": LOG_MARKER}
+        ],
+        "tools": [{"type": "function", "function": {"name": LOG_MARKER, "description": LOG_MARKER, "parameters": {"type": "object"}}}],
+        "stream": true
+    })
+}
+
+/// story:translation-refusal-names-path, chat: a key outside the subset at a nested level and at
+/// the top, a key whose name is not of the wire's shape (written `?`), a role and a value of the
+/// wrong kind are each refused as before and logged once by path or field, never by value.
+#[test]
+fn translation_a_chat_refusal_names_the_refused_path_in_one_log_line() {
+    let base = marked_chat();
+    let unsupported = RefusalCode::TranslationUnsupported;
+    let cases = [
+        refused_with(
+            &base,
+            "/messages/1/content/0",
+            "cache_control",
+            serde_json::json!({"type": "ephemeral"}),
+            unsupported,
+            "messages[].content[].cache_control",
+        ),
+        refused_with(
+            &base,
+            "",
+            "safeguards",
+            serde_json::json!({"note": LOG_MARKER}),
+            unsupported,
+            "outside the published subset: safeguards",
+        ),
+        refused_with(
+            &base,
+            "",
+            &format!("{LOG_MARKER} key"),
+            serde_json::json!(true),
+            unsupported,
+            "outside the published subset: ?",
+        ),
+        refused_with(
+            &base,
+            "/messages/1",
+            "role",
+            serde_json::json!(LOG_MARKER),
+            unsupported,
+            "chat message role",
+        ),
+        refused_with(
+            &base,
+            "",
+            "temperature",
+            serde_json::json!(LOG_MARKER),
+            RefusalCode::TranslationInvalid,
+            "`temperature` is not a number",
+        ),
+    ];
+    assert_each_refusal_names_its_path("refusal-log-chat", Wire::Chat, "messages", &cases);
+}
+
+/// A responses client's request with the marker in its values.
+fn marked_responses() -> serde_json::Value {
+    let arguments = serde_json::json!({ "city": LOG_MARKER }).to_string();
+    let message = |role: &str, part: &str, text: &str| serde_json::json!({"type": "message", "role": role, "content": [{"type": part, "text": text}]});
+    serde_json::json!({
+        "model": "code",
+        "input": [
+            message("developer", "input_text", "Be brief."),
+            message("user", "input_text", LOG_MARKER),
+            {"type": "function_call", "call_id": "call_1", "name": LOG_MARKER, "arguments": arguments},
+            {"type": "function_call_output", "call_id": "call_1", "output": LOG_MARKER},
+            message("user", "input_text", "Thanks")
+        ],
+        "tools": [{"type": "function", "name": LOG_MARKER, "description": LOG_MARKER, "parameters": {"type": "object"}, "strict": false}],
+        "stream": true,
+        "store": false,
+        "include": ["reasoning.encrypted_content"]
+    })
+}
+
+/// story:translation-refusal-names-path, responses: `text.format`, a role and a value of the
+/// wrong kind are each refused as before and logged once by path or field, never by value.
+#[test]
+fn translation_a_responses_refusal_names_the_refused_path_in_one_log_line() {
+    let base = marked_responses();
+    let unsupported = RefusalCode::TranslationUnsupported;
+    let cases = [
+        refused_with(
+            &base,
+            "",
+            "text",
+            serde_json::json!({"format": {"type": "json_schema", "name": LOG_MARKER, "schema": {"type": "object"}}}),
+            unsupported,
+            "text.format",
+        ),
+        refused_with(
+            &base,
+            "/input/1",
+            "role",
+            serde_json::json!(LOG_MARKER),
+            unsupported,
+            "message role outside the pinned subset",
+        ),
+        refused_with(
+            &base,
+            "",
+            "temperature",
+            serde_json::json!(LOG_MARKER),
+            RefusalCode::TranslationInvalid,
+            "`temperature` is not a number",
+        ),
+    ];
+    assert_each_refusal_names_its_path("refusal-log-responses", Wire::Responses, "chat", &cases);
+}
+
+/// A messages client's request with the marker in its values.
+fn marked_messages() -> serde_json::Value {
+    serde_json::json!({
+        "model": "code",
+        "max_tokens": 64,
+        "system": [{"type": "text", "text": "Be brief."}],
+        "messages": [
+            {"role": "user", "content": [{"type": "text", "text": LOG_MARKER}]},
+            {"role": "assistant", "content": [
+                {"type": "text", "text": "Checking."},
+                {"type": "tool_use", "id": "toolu_1", "name": LOG_MARKER, "input": {"city": LOG_MARKER}}
+            ]},
+            {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "toolu_1", "content": LOG_MARKER, "is_error": false}]}
+        ],
+        "tools": [{"name": LOG_MARKER, "description": LOG_MARKER, "input_schema": {"type": "object"}}],
+        "stream": true
+    })
+}
+
+/// story:translation-refusal-names-path, messages: Claude Code's `context_management` and
+/// `thinking.display`, a `cache_control` key outside its subset, a role and a value of the wrong
+/// kind are each refused as before and logged once by path or field, never by value.
+#[test]
+fn translation_a_messages_refusal_names_the_refused_path_in_one_log_line() {
+    let base = marked_messages();
+    let unsupported = RefusalCode::TranslationUnsupported;
+    let cases = [
+        refused_with(
+            &base,
+            "",
+            "context_management",
+            serde_json::json!({"edits": [{"type": LOG_MARKER}]}),
+            unsupported,
+            "context_management",
+        ),
+        refused_with(
+            &base,
+            "",
+            "thinking",
+            serde_json::json!({"type": "adaptive", "display": LOG_MARKER}),
+            unsupported,
+            "thinking.display",
+        ),
+        refused_with(
+            &base,
+            "/system/0",
+            "cache_control",
+            serde_json::json!({"type": "ephemeral", "scope": LOG_MARKER}),
+            unsupported,
+            "system[].cache_control.scope",
+        ),
+        refused_with(
+            &base,
+            "/messages/0",
+            "role",
+            serde_json::json!(LOG_MARKER),
+            unsupported,
+            "Messages role is outside the declared subset",
+        ),
+        refused_with(
+            &base,
+            "",
+            "stream",
+            serde_json::json!(LOG_MARKER),
+            RefusalCode::TranslationInvalid,
+            "Messages stream must be boolean",
+        ),
+    ];
+    assert_each_refusal_names_its_path("refusal-log-messages", Wire::Messages, "chat", &cases);
+}

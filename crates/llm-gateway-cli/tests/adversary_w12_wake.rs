@@ -53,7 +53,7 @@ fn adversary_w12_a_model_of_a_provider_with_no_connection_is_unavailable_to_a_wa
     let fixture = Fixture::new("adversary-w12-wake-unconnected-provider");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([]))],
+        "invoke pods.list": [listed(&serde_json::json!([]))],
     }));
     let text = connected_document(&fixture, "127.0.0.1:0", &connectors, 1);
     let text = format!(
@@ -85,11 +85,7 @@ fn adversary_w12_a_model_of_a_provider_with_no_connection_is_unavailable_to_a_wa
         request.contains("\"code\":\"target-unavailable\""),
         "{request}"
     );
-    assert!(
-        connectors
-            .calls_of("operations invoke pod.create")
-            .is_empty()
-    );
+    assert!(connectors.calls_of("invoke pod.create").is_empty());
     // The contract for a model whose provider has no connection.
     assert!(
         wake.starts_with("HTTP/1.1 503 ") && wake.contains("\"code\":\"target-unavailable\""),

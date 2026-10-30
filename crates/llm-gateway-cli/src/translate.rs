@@ -1,5 +1,5 @@
 //! The binary's translator (story:gateway-translation): `llm_gateway`'s [`Translator`] port over
-//! llm 0.18.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
+//! llm 0.19.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
 //! and a tokio runtime the binary owns.
 //!
 //! [`Translator::prepare`] runs on the gateway's worker thread before any target is asked for:
@@ -371,7 +371,7 @@ const fn refusal(error: &Error) -> RefusalCode {
 
 /// [`refusal`]'s code for `error`, after one `info` line naming it: the code, the client's wire,
 /// the alias and llm's message, which names the refused path or field and quotes no value the
-/// client sent (llm 0.18.0 copies a client's key into a path only as at most 64 bytes of
+/// client sent (llm 0.19.0 copies a client's key into a path only as at most 64 bytes of
 /// `[A-Za-z0-9_-]`, else `?`). The message is written escaped.
 fn refused(ingress: Wire, alias: &str, error: &Error) -> RefusalCode {
     let code = refusal(error);

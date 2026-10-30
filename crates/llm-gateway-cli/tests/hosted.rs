@@ -1196,7 +1196,7 @@ fn hosted_an_endpoint_without_its_credential_file_or_header_refuses_startup_as_c
 
 // --- story:relayed-session-header: an OpenCode Go endpoint's `x-opencode-session` ---------------
 
-/// A base URL llm 0.18.0 treats as `OpenCode` Go (`llm_messages::is_opencode_go`).
+/// A base URL llm 0.19.0 treats as `OpenCode` Go (`llm_messages::is_opencode_go`).
 const GO_BASE_URL: &str = "https://opencode.ai/inference/go/v1";
 /// The header `OpenCode` Go routes a conversation by, and refuses a request without.
 const SESSION_HEADER: &str = "x-opencode-session";

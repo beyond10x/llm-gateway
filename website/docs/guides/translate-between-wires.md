@@ -10,7 +10,7 @@ source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crat
 
 The binary answers all three wires for every model. When the client's wire is one the model
 declares, the request goes to the upstream byte for byte, as [the relay](../concepts/relay.md)
-describes. When it is not, the gateway decodes the request with llm 0.18.0's decoder for the
+describes. When it is not, the gateway decodes the request with llm 0.19.0's decoder for the
 client's wire, sends the turn to the upstream with llm's client for the model's **first** declared
 wire, and writes the answer back on the client's wire with llm's encoder.
 
@@ -293,11 +293,14 @@ that names no output limit gets half the model's window (200000 when it declares
   show after every streamed one), so a translated route still refuses those turns
   `translation-opaque-state`. Point Claude Code at a model whose upstream speaks Messages;
   `GET /` profiles only those.
+- **A `system` message inside Messages `messages`**, which headless Claude Code sends after
+  the user prompt, is carried to every upstream wire and to Bedrock. Leading ones join the
+  system prompt in order. A later one stays at its place as user text in the mark
+  `<system-message>\n<text>\n</system-message>`; after a tool call it follows the tool results.
 - **Still refused by name**: structured output (`output_config.format`, `text.format`,
   `response_format`), `context_management`, `thinking.display`, hosted and custom tools, a
-  thinking budget to a chat or responses upstream, and an instruction in the middle of the
-  conversation (a `system` message inside Messages `messages`, a `developer` message after the
-  first item of Responses `input`).
+  thinking budget to a chat or responses upstream, and a `developer` message after the first
+  item of Responses `input`.
 
 ## Refusals
 

@@ -12,6 +12,7 @@ mod support;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use llm_bedrock::eventstream::{HeaderValue, Message, encode_message};
+use llm_messages::{SYSTEM_MESSAGE_CLOSE, SYSTEM_MESSAGE_OPEN};
 use serde_json::{Value, json};
 use std::{
     io::{BufRead, BufReader, Read, Write},
@@ -722,6 +723,123 @@ fn bedrock_claude_codes_tool_result_turn_carries_its_signed_thinking_back() {
     assert!(text.contains("\"type\":\"tool_result\""), "{text}");
     assert!(text.contains("chatcmpl-tool-a1b2c3d4e5f60718"), "{text}");
     assert_quiet(&log);
+}
+
+// --- Criterion: a system entry inside Messages `messages` ---------------------------------------
+
+/// The environment block of Claude Code 2.1.300's headless request, whose `messages` are
+/// `[user, system]`, the system entry a string.
+const HEADLESS_ENVIRONMENT: &str =
+    "<env>\nWorking directory: /workspace\nIs directory a git repo: Yes\nPlatform: linux\n</env>";
+
+/// Posts a Messages request whose `messages` are `messages` to a Bedrock alias for `model_id`
+/// answering `answer`, and returns the answer and the body Bedrock received.
+fn messages_to_bedrock(
+    name: &str,
+    model_id: &str,
+    answer: Vec<u8>,
+    messages: &Value,
+) -> (String, Value) {
+    let deployment = Deployment::new(name);
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![answer]);
+    let config = deployment.config(&bedrock_table("code", model_id, &bedrock, ""));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let request = json!({"model": "code", "max_tokens": 64, "stream": true, "messages": messages});
+    let answer = server.post("/v1/messages?beta=true", &request.to_string());
+    let log = server.log();
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert!(answer.contains(ANSWER_MARKER), "{answer}");
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{answer} {seen:?}");
+    assert_signed(&seen[0]);
+    assert_quiet(&log);
+    (answer, body(&seen[0]))
+}
+
+/// The text of each block of a Bedrock message, in order.
+fn block_texts(message: &Value) -> Vec<&str> {
+    message["content"]
+        .as_array()
+        .map(|blocks| {
+            blocks
+                .iter()
+                .filter_map(|block| block["text"].as_str())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// Claude Code 2.1.300's headless request, `[user, system]`, reaches `InvokeModel` and Converse
+/// with 200: one user message whose text is the prompt, then the system entry in llm's mark;
+/// Bedrock's `system` does not carry it.
+#[test]
+fn bedrock_a_later_system_entry_reaches_invoke_and_converse_as_marked_user_text() {
+    let messages = json!([
+        {"role": "user", "content": PROMPT_MARKER},
+        {"role": "system", "content": HEADLESS_ENVIRONMENT},
+    ]);
+    let marked = format!("{SYSTEM_MESSAGE_OPEN}{HEADLESS_ENVIRONMENT}{SYSTEM_MESSAGE_CLOSE}");
+    for (name, model_id, answer) in [
+        ("bedrock-later-system-invoke", MODEL_ID, invoke_text()),
+        (
+            "bedrock-later-system-converse",
+            "eu.amazon.nova-fixture-v1:0",
+            converse_text(),
+        ),
+    ] {
+        let (_, sent) = messages_to_bedrock(name, model_id, answer, &messages);
+        let sent_messages = sent["messages"].as_array().unwrap();
+        assert_eq!(sent_messages.len(), 1, "{name}: {sent}");
+        assert_eq!(sent_messages[0]["role"], "user", "{name}: {sent}");
+        assert_eq!(
+            block_texts(&sent_messages[0]),
+            [PROMPT_MARKER, marked.as_str()],
+            "{name}: {sent}"
+        );
+        assert!(
+            !sent["system"].to_string().contains("Working directory"),
+            "{name}: {sent}"
+        );
+    }
+}
+
+/// A leading system entry inside `messages` joins the system prompt: `InvokeModel` and Converse
+/// are sent it as Bedrock's `system`, and the user message carries no mark.
+#[test]
+fn bedrock_a_leading_system_entry_reaches_invoke_and_converse_as_system() {
+    let messages = json!([
+        {"role": "system", "content": HEADLESS_ENVIRONMENT},
+        {"role": "user", "content": PROMPT_MARKER},
+    ]);
+    for (name, model_id, answer) in [
+        ("bedrock-leading-system-invoke", MODEL_ID, invoke_text()),
+        (
+            "bedrock-leading-system-converse",
+            "eu.amazon.nova-fixture-v1:0",
+            converse_text(),
+        ),
+    ] {
+        let (_, sent) = messages_to_bedrock(name, model_id, answer, &messages);
+        assert_eq!(
+            sent["system"][0]["text"], HEADLESS_ENVIRONMENT,
+            "{name}: {sent}"
+        );
+        let sent_messages = sent["messages"].as_array().unwrap();
+        assert_eq!(sent_messages.len(), 1, "{name}: {sent}");
+        assert_eq!(
+            block_texts(&sent_messages[0]),
+            [PROMPT_MARKER],
+            "{name}: {sent}"
+        );
+        assert!(
+            !sent.to_string().contains("<system-message>"),
+            "{name}: {sent}"
+        );
+    }
 }
 
 // --- Criterion: Converse for a model that is not Anthropic's ------------------------------------

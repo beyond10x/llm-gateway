@@ -443,7 +443,8 @@ mod tests {
         })
     }
 
-    /// FIPS 180-4 examples, plus the padding edges: 55 bytes fits one block, 56 needs two.
+    /// FIPS 180-4 examples, plus the padding edges: 55 bytes fits one block, 56 needs two; and
+    /// every length from 0 to 130 bytes is hashed in the one allocation taken for it.
     #[test]
     fn the_digest_is_sha_256() {
         let cases: [(&[u8], &str); 5] = [
@@ -476,13 +477,13 @@ mod tests {
             hex(sha256(&million)),
             "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
         );
+        a_message_is_hashed_in_one_allocation_whatever_its_length();
     }
 
-    /// What this proves, through the debug assertion in `sha256`: a message of every length
-    /// up to past two blocks, every padding shape included, is hashed in the one allocation
-    /// taken for it before its first byte, so a reallocation leaves no copy of a credential in
-    /// freed memory. The digests themselves are `the_digest_is_sha_256`'s.
-    #[test]
+    /// Part of `the_digest_is_sha_256`, not a case of its own. What it proves, through the debug
+    /// assertion in `sha256`: a message of every length up to past two blocks, every padding
+    /// shape included, is hashed in the one allocation taken for it before its first byte, so a
+    /// reallocation leaves no copy of a credential in freed memory.
     fn a_message_is_hashed_in_one_allocation_whatever_its_length() {
         let message = [b'k'; 130];
         for length in 0..=message.len() {

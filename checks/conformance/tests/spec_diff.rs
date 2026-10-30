@@ -125,8 +125,10 @@ fn digest(run: &Run, endpoint: &str) -> String {
     run.output
         .lines()
         .find_map(|line| line.trim().strip_prefix(endpoint))
-        .map(|rest| rest.trim().to_owned())
-        .unwrap_or_else(|| panic!("no `{endpoint}` digest in:\n{}", run.output))
+        .map_or_else(
+            || panic!("no `{endpoint}` digest in:\n{}", run.output),
+            |rest| rest.trim().to_owned(),
+        )
 }
 
 fn acknowledge(repo: &Path, before: &str, after: &str, ids: &[&str]) {

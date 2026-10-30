@@ -1,3 +1,4 @@
+mod diff;
 mod gate;
 mod gateway;
 mod hosting;
@@ -13,6 +14,7 @@ use std::{
     error::Error,
     fs,
     path::Path,
+    process::ExitCode,
     time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -58,17 +60,27 @@ enum Cmd {
         output_dir: std::path::PathBuf,
         source_identity: String,
     },
+    /// Compare `spec/` with `spec/` at the merge base of `--base` and HEAD with
+    /// `ess verify diff --fail-on breaking-or-unknown`, applying
+    /// `contracts/diff-acknowledgements.json` when this change ships it. Exits with ESS's status:
+    /// 0 passed, 4 an unacknowledged breaking or unknown change, 1 a refused input.
+    Diff {
+        /// The revision whose merge base with HEAD is the compared specification.
+        #[arg(long, default_value = "origin/main")]
+        base: String,
+    },
 }
 
-fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<ExitCode, Box<dyn Error>> {
     match <Cli as clap::Parser>::parse().command {
-        Cmd::Check => gate::check(),
+        Cmd::Check => gate::check().map(|()| ExitCode::SUCCESS),
         Cmd::Run {
             suite,
             baseline,
             output_dir,
             source_identity,
-        } => execute(&suite, &baseline, &output_dir, &source_identity),
+        } => execute(&suite, &baseline, &output_dir, &source_identity).map(|()| ExitCode::SUCCESS),
+        Cmd::Diff { base } => diff::run(&base),
     }
 }
 

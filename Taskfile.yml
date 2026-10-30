@@ -6,6 +6,7 @@ tasks:
       - task: rust
       - task: docs
       - ess specify validate --path spec
+      - task: spec-diff
       - task: conformance
   conformance:
     desc: Check ESS projection drift and run behavioral conformance three times
@@ -20,3 +21,7 @@ tasks:
       - cargo test --workspace --locked
       - cargo fmt --all --check
       - cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+  spec-diff:
+    desc: Fail on a breaking or unclassified specification change since the merge base with origin/main that contracts/diff-acknowledgements.json does not acknowledge
+    cmds:
+      - cargo run --locked -p b10x-llm-gateway-conformance -- diff

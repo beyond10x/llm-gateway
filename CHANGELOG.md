@@ -7,6 +7,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Added
+
+- Conformance scenarios for the metrics-only listener (`metrics_listen`: `GET` and `HEAD` on exactly `/metrics`, `path-unknown` for every other path or method, its scrape token) and for the first sealed reasoning item's `id` and summary; the conformance runner can bind that listener and send it a scrape.
+
 ### Fixed
 
 - A probe (`/health`, `/ready`) or a public route (`GET /v1/models`, `GET /`) is answered when its head repeats a header it never reads, such as `authorization` or `x-probe`, instead of being refused `request-malformed` or `credential-malformed`.

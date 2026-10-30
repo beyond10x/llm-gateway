@@ -1129,8 +1129,18 @@ commands:
       #           list is answered `target-unavailable` (wake) or `stopped` (status). Without
       #           `lifecycle` the source starts no pod for any model, and a model served by a
       #           hosted endpoint never has one, both as `None`
+      #   metrics_listen  optional, `{bearer}`: the gateway also serves the metrics-only
+      #           listener (llm-gateway.telemetry, the deployment's `metrics_listen`) on a
+      #           loopback port, as `GatewayHandle::serve_metrics`, taking `bearer` as its scrape
+      #           token when given and open without it; one it cannot bind composes nothing,
+      #           `error_code` `bind:metrics-listen`
       #   steps  in order: `{step: mark_ready}`, `{step: scrape}` (a `GET /metrics`, with
-      #           optional `credential`, default true), or `{step: request, path, body}` with
+      #           optional `credential`, default true: the owner's bearer token; `authorization`,
+      #           sent as that header's value in place of it; `method` and `path` in place of
+      #           `GET` and `/metrics`; and `listener`, default false: sent to the metrics-only
+      #           listener, which a program without `metrics_listen` makes invalid; a CR or LF
+      #           in any of them, or a space in `method` or `path`, makes the program invalid),
+      #           or `{step: request, path, body}` with
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
       #           `}` to exactly that many bytes), `declare_bytes` (only a head declaring

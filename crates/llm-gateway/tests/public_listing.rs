@@ -777,6 +777,76 @@ fn r1_with_no_model_for_a_client_the_answer_says_so() {
     }
 }
 
+/// The no-profile answer names what is missing without denying a wire a model declares: no
+/// model with tool calling parsed takes the client's requests, relayed or translated. It holds
+/// for a gateway with no model, and for one whose translated-only model declares the client's
+/// wire but whose translator does not admit the client (story:client-profiles-translated).
+#[test]
+fn r1_the_no_profile_answer_holds_with_and_without_a_model_declaring_the_wire() {
+    let mut bedrock = declared("bedrock", vec![Wire::Messages], 65_536);
+    bedrock.translated_only = true;
+    let declaring = Fixture::translating(vec![bedrock], Arc::new(Admitting::new(Vec::new())));
+    let empty = Fixture::composed(None, true);
+    for (case, fixture) in [
+        ("a translated-only bedrock", &declaring),
+        ("no model", &empty),
+    ] {
+        let codex = fixture.get("/", Some(CODEX)).body;
+        let claude = fixture.get("/", Some(CLAUDE)).body;
+        assert!(
+            codex.ends_with(
+                "\n# No model of this gateway serves Codex: none with tool calling parsed\n\
+                 # takes its requests on the responses wire, relayed or translated.\n"
+            ),
+            "story:client-profiles-translated, {case}: {codex}"
+        );
+        assert!(
+            claude.ends_with(
+                "\n# No model of this gateway serves Claude Code: none with tool calling parsed\n\
+                 # takes its requests on the messages wire, relayed or translated.\n"
+            ),
+            "story:client-profiles-translated, {case}: {claude}"
+        );
+    }
+}
+
+/// DECIDED 2026-10-30 (story:client-profiles-translated): llm refuses Claude Code's structured
+/// output (`output_config.format`) on every translated path, and Claude Code sends it unless
+/// `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`. So a Claude Code block for a model its requests
+/// reach only translated exports that variable, and a block for a model they reach relayed does
+/// not.
+#[test]
+fn r1_claude_code_disables_structured_outputs_only_for_a_model_reached_by_translation() {
+    let fixture = Fixture::translating(
+        vec![
+            declared("chatonly", vec![Wire::Chat], 32_768),
+            declared("native", vec![Wire::Messages], 16_384),
+        ],
+        Arc::new(Admitting::new(vec![("chatonly", Wire::Messages)])),
+    );
+    let claude = fixture.get("/", Some(CLAUDE)).body;
+    let (native, translated) = claude
+        .split_once("\n# model native\n")
+        .map(|(translated, native)| (native, translated))
+        .expect("Claude Code is profiled for `native`");
+    assert!(
+        translated.contains("ANTHROPIC_MODEL='chatonly'"),
+        "precondition, Claude Code is profiled for `chatonly`: {claude}"
+    );
+    assert!(
+        translated.ends_with(
+            "export CLAUDE_CODE_MAX_CONTEXT_TOKENS='32768'\n\
+             # Reached by translation, which refuses Claude Code's structured outputs.\n\
+             export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n"
+        ),
+        "story:client-profiles-translated: the translated model's block disables structured outputs: {claude}"
+    );
+    assert!(
+        !native.contains("CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS"),
+        "story:client-profiles-translated: a relayed model's block keeps structured outputs: {claude}"
+    );
+}
+
 #[test]
 fn r1_the_origin_is_the_host_header_when_it_is_a_plain_authority_and_the_listener_otherwise() {
     let fixture = Fixture::start(two_models());

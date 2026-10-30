@@ -179,14 +179,25 @@ per model and wire it does not relay, in `Relay::with_translator`, never per req
 binary's translator prepares the client's recorded first turn for the model exactly as it
 prepares a request ("Translation", "The request", steps 2 to 4), and admits the client when llm
 carries it: Codex 0.160.0's captured turn
-(`crates/llm-gateway-cli/tests/fixtures/codex/first-turn.json`, effort `high`, no output limit)
+(`crates/llm-gateway-cli/src/admission/codex/first-turn.json`, effort `high`, no output limit)
 and Claude Code's authored one
-(`crates/llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt`, effort `max`, which
+(`crates/llm-gateway-cli/src/admission/claude-code/1-tool-turn.request.txt`, effort `max`, which
 reaches a chat or responses upstream as `xhigh`, and `max_tokens` 32000). So a routes-document
 route with the default capabilities, whose efforts stop at `high` and whose output limit is
 16384, is profiled for Codex and not for Claude Code. No Loom turn is recorded, so a Loom run is
 profiled only for models that declare `chat`. `GET /` thus names only models a client's requests
-reach without a `translation-*` refusal. The base URLs use `http://` and the request's `host`
+reach without a `translation-*` refusal. Admission covers the first turn only, and every
+translated path refuses Claude Code's structured output (`output_config.format`,
+`translation-unsupported`), which Claude Code sends in side requests unless
+`CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`
+(`crates/llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt`). So a Claude
+Code block for a model its requests reach only translated ends with
+`# Reached by translation, which refuses Claude Code's structured outputs.` and
+`export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`; a block for a model they reach relayed
+keeps structured output. When no model gets a client's profile, the answer ends with two
+comment lines, `# No model of this gateway serves <client>: none with tool calling parsed` and
+`# takes its requests on the <wire> wire, relayed or translated.`, true also when a
+translated-only model declaring the wire was left out. The base URLs use `http://` and the request's `host`
 when it is only letters, digits, `.`, `-`, `_`, `:`, `[` and `]`, and the
 listener's address otherwise. The owner token is named as the setting that carries it, never
 given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_views_total`.
@@ -865,7 +876,10 @@ Each statement about a carried or refused field is backed by a test in
   (`translation_an_effort_is_checked_as_the_upstream_wire_receives_it`). `GET /` profiles Claude
   Code for a translated model only when its recorded first turn passes
   (`translation_codex_and_claude_code_are_admitted_where_llm_carries_their_first_turns`,
-  `translation_a_client_is_not_admitted_where_llm_refuses_its_first_turn`).
+  `translation_a_client_is_not_admitted_where_llm_refuses_its_first_turn`), and that profile
+  exports `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`, so Claude Code does not send the
+  structured output a translated path refuses; what the Claude Code feature that sends it does
+  without it is not published.
 - **Codex.** llm 0.19.0 carries its first turn to a chat and a messages upstream
   (`translation_codexs_first_turn_is_carried_to_chat`,
   `translation_codexs_first_turn_is_carried_to_messages`), and a later turn replaying the

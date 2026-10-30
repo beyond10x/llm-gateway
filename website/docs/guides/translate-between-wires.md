@@ -327,6 +327,12 @@ that names no output limit gets half the model's window (200000 when it declares
   `response_format`), `context_management`, `thinking.display`, hosted and custom tools, a
   thinking budget to a chat or responses upstream, and a `developer` message after the first
   item of Responses `input`.
+- **Claude Code's structured output**: Claude Code sends `output_config.format` in side
+  requests unless `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` is set, and every translated
+  route, Bedrock's included, refuses it `translation-unsupported`. So the `GET /` block of a
+  model Claude Code reaches only translated ends with
+  `export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`, and Claude Code does not send it there.
+  A block for a model it reaches natively keeps structured output.
 
 ## Refusals
 

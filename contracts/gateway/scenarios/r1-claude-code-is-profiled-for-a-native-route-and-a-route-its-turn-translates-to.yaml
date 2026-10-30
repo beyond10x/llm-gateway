@@ -46,6 +46,8 @@ assert:
       export ANTHROPIC_DEFAULT_HAIKU_MODEL='translated-up'
       export CLAUDE_CODE_SUBAGENT_MODEL='translated-up'
       export CLAUDE_CODE_MAX_CONTEXT_TOKENS='200000'
+      # Reached by translation, which refuses Claude Code's structured outputs.
+      export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'
     - "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_1\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
     - "{\"error\":{\"code\":\"translation-unsupported\",\"message\":\"the request uses a field or value outside the subset the gateway translates\"}}"
     upstream:

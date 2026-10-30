@@ -22,7 +22,7 @@ const LISTENING: &str = "b10x-llm-gateway: listening on ";
 const STARTUP: Duration = Duration::from_secs(20);
 const WAIT: Duration = Duration::from_secs(10);
 const SEAL_PREFIX: &str = "llmgw-seal-1.";
-const CODEX_FIRST_TURN: &str = include_str!("fixtures/codex/first-turn.json");
+const CODEX_FIRST_TURN: &str = include_str!("../src/admission/codex/first-turn.json");
 const CODEX_SECOND_TURN: &str = include_str!("fixtures/codex/second-turn.json");
 
 const MESSAGES_ANSWER: &str = concat!(

@@ -568,13 +568,12 @@ fn sealed_provenance(alias: &str) -> Result<Provenance, Error> {
 }
 
 /// Codex 0.160.0's first turn, captured and sanitized in llm 0.7.0, naming the alias `code`
-/// (`tests/fixtures/codex/README.md`).
-const CODEX_FIRST_TURN: &str = include_str!("../tests/fixtures/codex/first-turn.json");
+/// (`src/admission/README.md`).
+const CODEX_FIRST_TURN: &str = include_str!("admission/codex/first-turn.json");
 /// Claude Code's first turn, authored from its published gateway protocol, naming the alias
-/// `code` (`crates/llm-gateway/tests/fixtures/claude-code/README.md`): `#` lines of provenance,
-/// the HTTP head, an empty line and the body.
-const CLAUDE_CODE_FIRST_TURN: &str =
-    include_str!("../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt");
+/// `code` (`src/admission/README.md`): `#` lines of provenance, the HTTP head, an empty line and
+/// the body.
+const CLAUDE_CODE_FIRST_TURN: &str = include_str!("admission/claude-code/1-tool-turn.request.txt");
 
 /// The recorded first turn of a client `GET /` profiles, as a request for one model: its body,
 /// naming the model's alias, and the `anthropic-beta` line its head carries.

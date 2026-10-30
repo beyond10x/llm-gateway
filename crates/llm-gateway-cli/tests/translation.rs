@@ -423,10 +423,10 @@ fn fixture_body(text: &str) -> String {
 
 /// Claude Code's first turn (the authored fixture of `crates/llm-gateway`).
 const CLAUDE_CODE_FIRST_TURN: &str =
-    include_str!("../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt");
+    include_str!("../src/admission/claude-code/1-tool-turn.request.txt");
 /// Codex 0.160.0's first and second turns, captured and sanitized in llm 0.7.0
 /// (`tests/fixtures/codex/README.md`).
-const CODEX_FIRST_TURN: &str = include_str!("fixtures/codex/first-turn.json");
+const CODEX_FIRST_TURN: &str = include_str!("../src/admission/codex/first-turn.json");
 const CODEX_SECOND_TURN: &str = include_str!("fixtures/codex/second-turn.json");
 
 /// The JSON body of the one request `seen` holds.
@@ -741,6 +741,15 @@ fn translation_get_root_profiles_codex_and_claude_code_where_their_turns_transla
     assert!(
         claude.contains("export ANTHROPIC_MODEL='msg-up'\n"),
         "{claude}"
+    );
+    let (translated, native) = claude.split_once("\n# model msg-up\n").unwrap();
+    assert!(
+        translated.ends_with("export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n"),
+        "story:client-profiles-translated: the translated model's block turns structured output off: {claude}"
+    );
+    assert!(
+        !native.contains("CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS"),
+        "story:client-profiles-translated: the native model's block keeps structured output: {claude}"
     );
     assert!(loom.contains("upstream_name = \"chat-up\"\n"), "{loom}");
     assert!(!loom.contains("msg-up"), "{loom}");

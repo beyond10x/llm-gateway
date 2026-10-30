@@ -100,7 +100,13 @@ entities:
   #     `apiKeyHelper`; model settings `ANTHROPIC_MODEL`, `ANTHROPIC_DEFAULT_OPUS_MODEL`,
   #     `ANTHROPIC_DEFAULT_SONNET_MODEL`, `ANTHROPIC_DEFAULT_HAIKU_MODEL`,
   #     `CLAUDE_CODE_SUBAGENT_MODEL`, each the alias, so no request names a model the gateway
-  #     refuses as `model-unknown`; context setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS`.
+  #     refuses as `model-unknown`; context setting `CLAUDE_CODE_MAX_CONTEXT_TOKENS`. For a model
+  #     its requests reach only translated, also `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`
+  #     (DECIDED 2026-10-30, story:client-profiles-translated): llm refuses
+  #     `output_config.format` on every translated path, Bedrock's included, as
+  #     `translation-unsupported`, and Claude Code 2.1.293 sends it in a side request unless that
+  #     variable is set (crates/llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt).
+  #     A model whose requests are relayed takes the field verbatim and keeps structured outputs.
   #   Codex: wire Responses, base path "/v1", credential the provider's `env_key`; model setting
   #     `model`; context setting `model_context_window`.
   #   Loom: wire Chat, Responses or Messages, base path "/v1", credential a `bearer` account's

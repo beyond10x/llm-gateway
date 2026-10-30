@@ -384,7 +384,9 @@ types:
   #               `base_url` the origin plus `/v1`, `env_key = "B10X_GATEWAY_TOKEN"`,
   #               `wire_api = "responses"`, `model` the alias and `model_context_window`.
   #   ClaudeCode  one block of `export NAME='value'` lines per model: `ANTHROPIC_BASE_URL` the
-  #               origin, each model setting the alias, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`.
+  #               origin, each model setting the alias, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`; for a
+  #               model the requests reach only translated, a comment line and
+  #               `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS` `1` (llm-gateway.clients.ClientProfile).
   #   Html        the `Plain` text, HTML-escaped, inside one `<pre>` of a fixed page.
   #   Plain       where the other answers and the listing are found, then the Loom profile per
   #               model on the `chat` wire: the llm catalog (`llm.catalog/1`) lines of an
@@ -392,6 +394,10 @@ types:
   #               `auth_kind = "bearer"`, an endpoint `base_url` the origin plus `/v1`, and a
   #               serving model with `protocol = "chat-completions"`, `upstream_name` the
   #               alias, `capabilities.tools = true` and `capabilities.context_window`.
+  # With no model for its client, each answer ends saying no model with tool calling parsed takes
+  # the client's requests on its wire, relayed or translated (story:client-profiles-translated),
+  # never that no model declares the wire: a translated-only model that declares it and does not
+  # admit the client is left out too.
   # DECIDED: docs/design/runpod-clients.md § 5 step 7 writes `protocol = "chat"`; llm's
   # catalog spells the chat wire `chat-completions` (beyond10x/llm
   # `crates/llm-core/src/vocabulary.rs:4-10`), and the instructions render what llm reads.

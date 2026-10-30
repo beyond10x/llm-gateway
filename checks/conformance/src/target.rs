@@ -4,9 +4,10 @@ use std::{
 };
 
 use ess_conformance::target::{
-    ConformanceTarget, EventObservationRequest, ExternalOutcomeControl, ImplementationIdentity,
-    ObservedEvent, RedeliveryRequest, ScenarioContext, SemanticCommandRequest,
-    SemanticCommandResult, SemanticViewRequest, SemanticViewResult, TargetError,
+    ConformanceTarget, DeclaredErrorValue, EventObservationRequest, ExternalOutcomeControl,
+    ImplementationIdentity, ObservedEvent, RedeliveryRequest, ScenarioContext,
+    SemanticCommandRequest, SemanticCommandResult, SemanticViewRequest, SemanticViewResult,
+    TargetError,
 };
 use ess_primitives::{consistency::ConsistencyToken, node::Node};
 use serde_json::Value;
@@ -19,6 +20,8 @@ pub struct ServingTarget {
     token: RefCell<Option<ConsistencyToken>>,
     sequence: Cell<u64>,
     observed_view: RefCell<Option<String>>,
+    /// The hosting records the `OwnedResource` lifecycle commands declared in this scenario.
+    lifecycle: RefCell<crate::hosting::Lifecycle>,
 }
 impl ServingTarget {
     pub const fn new(version: String) -> Self {
@@ -28,7 +31,68 @@ impl ServingTarget {
             token: RefCell::new(None),
             sequence: Cell::new(0),
             observed_view: RefCell::new(None),
+            lifecycle: RefCell::new(crate::hosting::Lifecycle::new()),
         }
+    }
+
+    /// The consistency token of one more command in this scenario.
+    fn next_token(
+        &self,
+        request: &SemanticCommandRequest,
+    ) -> Result<ConsistencyToken, TargetError> {
+        let sequence = self
+            .sequence
+            .get()
+            .checked_add(1)
+            .ok_or_else(|| unavailable("sequence exhausted"))?;
+        self.sequence.set(sequence);
+        let token = ConsistencyToken::new(format!("{}:{sequence}", request.correlation))
+            .map_err(unavailable)?;
+        self.token.replace(Some(token.clone()));
+        Ok(token)
+    }
+
+    /// A lifecycle command's answer as the declared outcome, error and notification it names.
+    fn answered(
+        &self,
+        request: &SemanticCommandRequest,
+        answer: crate::hosting::Answer,
+    ) -> Result<SemanticCommandResult, TargetError> {
+        let mut result = match answer.outcome {
+            Some(outcome) => {
+                SemanticCommandResult::took(ess_conformance::scenario::OutcomeRef::new(
+                    request.command.clone(),
+                    outcome.parse().map_err(unavailable)?,
+                ))
+            }
+            None => SemanticCommandResult::undeclared(),
+        };
+        if let Some(error) = answer.error {
+            result =
+                result.with_error(DeclaredErrorValue::new(error.parse().map_err(unavailable)?));
+        }
+        if let Some(event) = answer.event {
+            result.direct_events.push(
+                ObservedEvent::new(event.parse().map_err(unavailable)?)
+                    .with("id", Node::Text(answer.id)),
+            );
+        }
+        result.consistency = Some(self.next_token(request)?);
+        Ok(result)
+    }
+
+    /// Reads the consistency a view request demands against the latest command's token.
+    fn retained(&self, request: &SemanticViewRequest) -> Result<(), TargetError> {
+        if request
+            .consistency
+            .token()
+            .is_some_and(|token| Some(token) != self.token.borrow().as_ref())
+        {
+            return Err(unavailable(
+                "requested observation is not retained in this scenario",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -65,20 +129,28 @@ impl ConformanceTarget for ServingTarget {
         self.observation.replace(None);
         self.token.replace(None);
         self.observed_view.replace(None);
+        self.lifecycle.replace(crate::hosting::Lifecycle::new());
         Ok(())
     }
     fn end_scenario(&self, _: &ScenarioContext) -> Result<(), TargetError> {
         self.observation.replace(None);
         self.token.replace(None);
         self.observed_view.replace(None);
+        self.lifecycle.replace(crate::hosting::Lifecycle::new());
         Ok(())
     }
     fn execute_command(
         &self,
         request: SemanticCommandRequest,
     ) -> Result<SemanticCommandResult, TargetError> {
-        let input = serde_json::to_value(request.input).map_err(unavailable)?;
+        let input = serde_json::to_value(&request.input).map_err(unavailable)?;
         let command = request.command.to_string();
+        // The `OwnedResource` lifecycle commands answer with a declared outcome of their own;
+        // every other command is an observation program answered `observed`.
+        let answer = crate::hosting::lifecycle(&mut self.lifecycle.borrow_mut(), &command, &input);
+        if let Some(answer) = answer {
+            return self.answered(&request, answer?);
+        }
         // Each domain module answers only its own commands and returns `None` otherwise,
         // so a new domain is a new file rather than an edit to this shared one.
         let observed = crate::hosting::observe(&command, &input)
@@ -100,19 +172,10 @@ impl ConformanceTarget for ServingTarget {
         // This local adapter notification says observation finished. The actual
         // result is asserted independently through the domain's view.
         let mut result = SemanticCommandResult::took(ess_conformance::scenario::OutcomeRef::new(
-            request.command,
+            request.command.clone(),
             "observed".parse().map_err(unavailable)?,
         ));
-        let sequence = self
-            .sequence
-            .get()
-            .checked_add(1)
-            .ok_or_else(|| unavailable("sequence exhausted"))?;
-        self.sequence.set(sequence);
-        let token = ConsistencyToken::new(format!("{}:{sequence}", request.correlation))
-            .map_err(unavailable)?;
-        self.token.replace(Some(token.clone()));
-        result.consistency = Some(token);
+        result.consistency = Some(self.next_token(&request)?);
         result.direct_events.push(
             ObservedEvent::new(event.parse().map_err(unavailable)?)
                 .with(field, Node::Bool(notification)),
@@ -121,6 +184,21 @@ impl ConformanceTarget for ServingTarget {
     }
     fn query_view(&self, request: SemanticViewRequest) -> Result<SemanticViewResult, TargetError> {
         let view = request.view.to_string();
+        if view == crate::hosting::LIFECYCLE_VIEW {
+            if !request.params.is_empty() {
+                return Err(unsupported(&view));
+            }
+            self.retained(&request)?;
+            let rows = self
+                .lifecycle
+                .borrow()
+                .rows()
+                .into_iter()
+                .map(serde_json::from_value)
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(unavailable)?;
+            return Ok(SemanticViewResult::of(rows));
+        }
         let known = [
             crate::hosting::VIEWS,
             crate::runpod::VIEWS,
@@ -134,15 +212,7 @@ impl ConformanceTarget for ServingTarget {
         if self.observed_view.borrow().as_ref() != Some(&view) {
             return Ok(SemanticViewResult::of(std::iter::empty()));
         }
-        if request
-            .consistency
-            .token()
-            .is_some_and(|token| Some(token) != self.token.borrow().as_ref())
-        {
-            return Err(unavailable(
-                "requested observation is not retained in this scenario",
-            ));
-        }
+        self.retained(&request)?;
         Ok(SemanticViewResult::of(
             self.observation.borrow().iter().cloned(),
         ))

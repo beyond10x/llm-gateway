@@ -9,6 +9,7 @@ scenarios:
 - hosting/scenarios/a-deployment-identifier-one-byte-too-long-is-refused.yaml
 - hosting/scenarios/a-duplicate-declaration-is-not-new-authority.yaml
 - hosting/scenarios/a-foreign-owner-tag-without-a-newer-epoch-obliges-a-stop.yaml
+- hosting/scenarios/a-later-healthy-observation-does-not-withdraw-a-stop-obligation.yaml
 - hosting/scenarios/a-lifetime-above-the-ceiling-is-refused-without-a-provider-call.yaml
 - hosting/scenarios/a-newer-epoch-disowns-the-record-and-we-stop-mutating-it.yaml
 - hosting/scenarios/a-policy-at-the-published-resource-ceiling-is-admitted.yaml
@@ -44,6 +45,7 @@ scenarios:
 - hosting/scenarios/an-observed-deployment-never-echoes-the-requested-specification.yaml
 - hosting/scenarios/an-observed-ready-resource-reports-its-address.yaml
 - hosting/scenarios/an-unanswerable-listing-leaves-the-obligation-exactly-where-it-was.yaml
+- hosting/scenarios/an-uncertain-create-is-confirmed-adopted-and-discharged-on-the-callers-evidence.yaml
 - hosting/scenarios/an-unrunnable-program-reports-absent-counts-not-zero-counts.yaml
 - hosting/scenarios/an-unsupported-retry-is-refused-rather-than-simulated.yaml
 - hosting/scenarios/cancellation-cannot-discharge-a-submitted-create.yaml

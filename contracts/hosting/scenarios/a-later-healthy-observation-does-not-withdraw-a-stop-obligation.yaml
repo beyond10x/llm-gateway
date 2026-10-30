@@ -1,0 +1,33 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-later-healthy-observation-does-not-withdraw-a-stop-obligation
+summary: a resource listed under this controller's own tag after a stop was required keeps the obligation, because StopRequired has no edge to Active
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.Declare
+  input: {id: d1, request_id: request-d1, reservation_id: reservation-a}
+  outcome: declared
+- at: '2026-10-30T12:00:01Z'
+  command: llm-gateway.hosting.Provision
+  input: {id: d1, answer: Accepted}
+  outcome: accepted
+- at: '2026-10-30T12:00:02Z'
+  command: llm-gateway.hosting.RequestStop
+  input: {id: d1}
+  outcome: obliged
+- at: '2026-10-30T12:00:03Z'
+  command: llm-gateway.hosting.ObserveListed
+  input: {id: d1}
+  outcome: unchanged
+assert:
+- view: llm-gateway.hosting.OwnedResources
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.OwnedResources
+  contains:
+    id: d1
+    state: StopRequired
+    request_id: request-d1
+    reservation_id: reservation-a
+    stop_evidence: null

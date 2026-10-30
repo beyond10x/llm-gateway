@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8f967aba724761aaced53b8f52ccc17bac94ff7c6c04c101eb933b937bf78531",
-    "contract_digest": "slice-sha256/2:6bd79a4a4ff85d10785fcb69bc1c0ce9018d0c26b4264b16cf0de57edfef1494",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:ed90fba54071efd1ce5a5466e4cd0744580d1d602936f1e54209babd21146d74",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -15,7 +15,14 @@
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Observed"
+        "Active",
+        "Cancelled",
+        "Declared",
+        "Disowned",
+        "Requested",
+        "StopRequired",
+        "Stopped",
+        "Uncertain"
       ]
     }
   }

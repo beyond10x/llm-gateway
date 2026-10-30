@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Retry input",
+  "x-ess-name": "llm-gateway.hosting.Retry",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "answer": {
+      "$ref": "#/$defs/llm-gateway.hosting.RetryAnswer"
+    }
+  },
+  "required": [
+    "id",
+    "answer"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:88ae4c3df79ef12ed372ee8ca38e8e0e6d0cd3627817dcd75ebb21862319a36d",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.RetryAnswer": {
+      "title": "RetryAnswer",
+      "x-ess-name": "llm-gateway.hosting.RetryAnswer",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Accepted",
+        "Unknown"
+      ]
+    }
+  }
+}

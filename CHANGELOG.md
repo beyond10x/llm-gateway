@@ -10,6 +10,7 @@ Nothing in any release is deployed or qualified against a live client.
 ### Added
 
 - `task check` and CI compare `spec/` with the specification at the merge base (`b10x-llm-gateway-conformance diff`, `task spec-diff`) using `ess verify diff --fail-on breaking-or-unknown`; a breaking or unclassified change fails the gate unless `contracts/diff-acknowledgements.json`, bound to both endpoint digests, acknowledges it. CI checks out the whole history and installs `ess` before the Rust tests.
+- The hosting ownership state machine is the ESS lifecycle of `llm-gateway.hosting.OwnedResource`: `Phase`'s states and the 21 pairs of `TRANSITIONS` as twelve named transitions, each moved by a command outcome (`Declare`, `Provision`, `Retry`, `ObserveListed`, `ObserveTakenOver`, `ObserveUnlisted`, `RequestStop`, `ConfirmStopped`, `Cancel`) that the conformance target answers through `Controller::apply`, and read through the view `llm-gateway.hosting.OwnedResources`. The record's `phase` field is gone, because its lifecycle state is the phase; `ess verify diff` classes the change breaking and `contracts/diff-acknowledgements.json` acknowledges its 27 changes. A test holds the lifecycle equal to `TRANSITIONS`, and `ess verify conform mutate --class from-drop --class transition-to` scores a mutant for every transition with none surviving (`docs/verification/2026-10-30-hosting-lifecycle-mutation.md`). The suite's floor is 373 scenarios. `docs/hosting.md` "The table as a declared lifecycle".
 
 ## 0.21.0 (2026-10-30)
 

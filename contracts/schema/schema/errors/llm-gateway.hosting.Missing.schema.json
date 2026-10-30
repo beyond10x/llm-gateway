@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Missing payload",
+  "description": "`missing`: no record carries this deployment identifier.",
+  "x-ess-name": "llm-gateway.hosting.Missing",
+  "x-ess-kind": "error-payload",
+  "type": "object",
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:31d5767cf025a2373e102970ae718cd5432ac42d83d140b62b4ddb9576b0d303",
+    "regenerate": "ess generate"
+  }
+}

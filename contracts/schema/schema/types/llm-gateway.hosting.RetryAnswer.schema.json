@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.RetryAnswer",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:e8b845be4a4e829660eb610bc736816dfdc053b5978048462bdef1a8f2a0f3d4",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.RetryAnswer": {
+      "title": "RetryAnswer",
+      "x-ess-name": "llm-gateway.hosting.RetryAnswer",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Accepted",
+        "Unknown"
+      ]
+    }
+  }
+}

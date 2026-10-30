@@ -1152,11 +1152,11 @@ commands:
       #           adds `anthropic-version`; a line holding a CR or LF makes the program
       #           invalid), `close_after_bytes` (the client stops reading and closes the
       #           connection once it has received at least that many body bytes; the step's
-      #           result is then `<status> closed`) and `half_close` (default true: the client
-      #           shuts its sending side once the request is written; false keeps it open, as
-      #           a client waiting for a non-streamed answer, translated or relayed, must when
-      #           the answer may be slow to begin, since the gateway reads a closed sending
-      #           side as a client gone), `sealed_from` (the index,
+      #           result is then `<status> closed`) and `half_close` (default false: the client
+      #           keeps its sending side open while it waits, as a client waiting for any
+      #           answer must, since the gateway reads a closed sending side as a client gone;
+      #           true shuts it once the request is written, a client that is gone before the
+      #           answer begins), `sealed_from` (the index,
       #           from 0, of an earlier request step: every `<sealed>` in this body is replaced
       #           by the first reasoning seal, `llmgw-seal-1.…`, the client received in that
       #           step's answer; a program naming a step that is not an earlier request makes

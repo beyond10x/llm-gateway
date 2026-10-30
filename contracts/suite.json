@@ -966,7 +966,7 @@
         "scenario": "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed"
       },
       "gateway/scenarios/w1-a-body-shorter-than-its-declared-length-is-incomplete.yaml": {
-        "digest": "sha256:7f83911cb3637b59130511184b6dc1c1ea52abde0f08282086923f49ed7514e9",
+        "digest": "sha256:a080efe77dc843db3d09d017cabaef805f39af06f35a9bef2a4c7e2a83686048",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete"
       },
@@ -15365,7 +15365,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"\",\"declare_bytes\":64},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"\",\"declare_bytes\":1}]}"
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"\",\"declare_bytes\":64,\"half_close\":true},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"\",\"declare_bytes\":1,\"half_close\":true}]}"
             }
           },
           "step": "execute_command"

@@ -119,12 +119,7 @@ impl ProxyConnector {
     /// before this returns. `connect` is one deadline over the whole opening, the TCP connection
     /// and every handshake read and write together, so a peer that answers slowly or not at all
     /// cannot stretch it; `io` bounds each read and write after the opening.
-    fn open(
-        &self,
-        authority: &str,
-        connect: Duration,
-        io: Duration,
-    ) -> io::Result<StreamOwned<ClientConnection, BoundedSocket>> {
+    fn open(&self, authority: &str, connect: Duration, io: Duration) -> io::Result<PodStream> {
         let deadline = Instant::now() + connect;
         let (host, port) =
             split(authority, HTTPS_PORT).ok_or_else(|| invalid("not a host[:port] authority"))?;
@@ -148,7 +143,37 @@ impl ProxyConnector {
         }
         socket.set_read_timeout(Some(io))?;
         socket.set_write_timeout(Some(io))?;
-        Ok(StreamOwned::new(connection, BoundedSocket(socket)))
+        Ok(PodStream(StreamOwned::new(
+            connection,
+            BoundedSocket(socket),
+        )))
+    }
+}
+
+/// An open pod connection: TLS over a [`BoundedSocket`]. It names that socket to the relay
+/// ([`RelayStream::shutdown_handle`]), so a client that leaves before the answer head shuts
+/// the pod's connection down and releases the pod at once, as a plain connection is.
+struct PodStream(StreamOwned<ClientConnection, BoundedSocket>);
+
+impl Read for PodStream {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buffer)
+    }
+}
+
+impl Write for PodStream {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.0.write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl RelayStream for PodStream {
+    fn shutdown_handle(&self) -> Option<TcpStream> {
+        self.0.sock.0.try_clone().ok()
     }
 }
 

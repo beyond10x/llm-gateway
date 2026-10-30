@@ -672,3 +672,6 @@ fn translate_a_refusal_after_the_target_answered_counts_a_route_status_failure()
         }
     }
 }
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for Canned {}

@@ -394,10 +394,13 @@ types:
   #               `auth_kind = "bearer"`, an endpoint `base_url` the origin plus `/v1`, and a
   #               serving model with `protocol = "chat-completions"`, `upstream_name` the
   #               alias, `capabilities.tools = true` and `capabilities.context_window`.
-  # With no model for its client, each answer ends saying no model with tool calling parsed takes
-  # the client's requests on its wire, relayed or translated (story:client-profiles-translated),
-  # never that no model declares the wire: a translated-only model that declares it and does not
-  # admit the client is left out too.
+  # With no model for its client, each answer ends naming only what was checked and found for no
+  # model (story:client-profiles-translated): for Codex and Claude Code, that none with tool
+  # calling parsed relays the client's wire or admits the client's recorded first turn
+  # translated; for Loom, that none relays the chat wire and no Loom turn is recorded to try a
+  # translated one, although the gateway translates a Loom chat request. It never says that no
+  # model declares the wire: a translated-only model that declares it and does not admit the
+  # client is left out too.
   # DECIDED: docs/design/runpod-clients.md § 5 step 7 writes `protocol = "chat"`; llm's
   # catalog spells the chat wire `chat-completions` (beyond10x/llm
   # `crates/llm-core/src/vocabulary.rs:4-10`), and the instructions render what llm reads.

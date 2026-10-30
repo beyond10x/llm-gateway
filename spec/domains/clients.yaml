@@ -106,7 +106,11 @@ entities:
   #     `output_config.format` on every translated path, Bedrock's included, as
   #     `translation-unsupported`, and Claude Code 2.1.293 sends it in a side request unless that
   #     variable is set (crates/llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt).
+  #     That the variable stops it is Claude Code's published gateway protocol
+  #     (docs/verification/2026-10-15-claude-code-wire.md), not observed against a live client.
   #     A model whose requests are relayed takes the field verbatim and keeps structured outputs.
+  #     The block's comment line holds no quote character, so a block pasted into an interactive
+  #     shell that reads `#` as a command opens no quote that swallows the export after it.
   #   Codex: wire Responses, base path "/v1", credential the provider's `env_key`; model setting
   #     `model`; context setting `model_context_window`.
   #   Loom: wire Chat, Responses or Messages, base path "/v1", credential a `bearer` account's

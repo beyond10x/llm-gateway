@@ -190,14 +190,23 @@ reach without a `translation-*` refusal. Admission covers the first turn only, a
 translated path refuses Claude Code's structured output (`output_config.format`,
 `translation-unsupported`), which Claude Code sends in side requests unless
 `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`
-(`crates/llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt`). So a Claude
-Code block for a model its requests reach only translated ends with
-`# Reached by translation, which refuses Claude Code's structured outputs.` and
+(`crates/llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt`). That the
+variable stops it is what Claude Code's published gateway protocol says
+(`docs/verification/2026-10-15-claude-code-wire.md`); it has not been observed against a live
+Claude Code client. So a Claude Code block for a model its requests reach only translated ends
+with `# Reached by translation, which refuses structured outputs from Claude Code.` and
 `export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`; a block for a model they reach relayed
-keeps structured output. When no model gets a client's profile, the answer ends with two
-comment lines, `# No model of this gateway serves <client>: none with tool calling parsed` and
-`# takes its requests on the <wire> wire, relayed or translated.`, true also when a
-translated-only model declaring the wire was left out. The base URLs use `http://` and the request's `host`
+keeps structured output. No comment line of a block holds a quote character, so a block pasted
+into an interactive shell that reads `#` as a command opens no quote that swallows the export
+after it. When no model gets a client's profile, the answer ends with two comment lines naming
+only what was checked. For Codex and Claude Code:
+`# No model of this gateway serves <client>: none with tool calling parsed relays the` and
+`# <wire> wire, or admits the recorded first turn of <client> translated.` For a Loom run,
+whose turn is not recorded although the gateway translates its chat requests:
+`# No model of this gateway serves Loom: none with tool calling parsed relays the` and
+`# chat wire, and no Loom turn is recorded to try a translated one.` Neither says that no model
+declares the wire, which a translated-only model declaring it and left out would contradict.
+The base URLs use `http://` and the request's `host`
 when it is only letters, digits, `.`, `-`, `_`, `:`, `[` and `]`, and the
 listener's address otherwise. The owner token is named as the setting that carries it, never
 given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_views_total`.
@@ -483,7 +492,8 @@ the sources and what a live record still has to show. The cases are the `claude_
   `{"type":"json_schema","schema":…}` as structured output, its `response_format`
   (`vllm/entrypoints/anthropic/serving.py:505-512`), and ignores the deprecated top-level
   `output_format`, which it does not declare; the gateway relays that unchanged too. Claude Code
-  stops sending the format under `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`.
+  stops sending the format under `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`, as its published
+  gateway protocol says; this has not been observed against a live Claude Code client.
 - **`POST /v1/messages/count_tokens`.** Not relayed, although vLLM v0.27.1 serves it
   (`vllm/entrypoints/anthropic/api_router.py:95-96`): with the owner credential, a `POST` to a
   path that is not a wire path is `method-not-allowed` (405), and no target is asked for. The
@@ -877,9 +887,10 @@ Each statement about a carried or refused field is backed by a test in
   Code for a translated model only when its recorded first turn passes
   (`translation_codex_and_claude_code_are_admitted_where_llm_carries_their_first_turns`,
   `translation_a_client_is_not_admitted_where_llm_refuses_its_first_turn`), and that profile
-  exports `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`, so Claude Code does not send the
-  structured output a translated path refuses; what the Claude Code feature that sends it does
-  without it is not published.
+  exports `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`, which Claude Code's published gateway
+  protocol says stops the structured output a translated path refuses. That has not been
+  observed against a live Claude Code client, and what the Claude Code feature that sends it
+  does without it is not published.
 - **Codex.** llm 0.19.0 carries its first turn to a chat and a messages upstream
   (`translation_codexs_first_turn_is_carried_to_chat`,
   `translation_codexs_first_turn_is_carried_to_messages`), and a later turn replaying the

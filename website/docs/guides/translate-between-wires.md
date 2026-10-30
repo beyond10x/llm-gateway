@@ -331,8 +331,11 @@ that names no output limit gets half the model's window (200000 when it declares
   requests unless `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` is set, and every translated
   route, Bedrock's included, refuses it `translation-unsupported`. So the `GET /` block of a
   model Claude Code reaches only translated ends with
-  `export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`, and Claude Code does not send it there.
-  A block for a model it reaches natively keeps structured output.
+  `export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`. That the variable stops the request is
+  what Claude Code's published
+  [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol) says; it has not been
+  observed against a live Claude Code client. A block for a model it reaches natively keeps
+  structured output.
 
 ## Refusals
 

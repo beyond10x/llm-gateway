@@ -997,11 +997,15 @@ impl<T: RunpodTransport> Inner<T> {
     }
 
     /// Submits the stop mutation for every record that owes one and can be addressed.
+    ///
+    /// A stop owed only for a lease expiry waits while the pod has a request in flight: the
+    /// expiry ends a claim, not the stream relayed through it, and the first step after the
+    /// last stream ends submits it. The lifetime ceiling is not waived by a stream.
     fn submit_owed_stops(&mut self, now: u64) {
         for record in self.live_records() {
             let addressable =
                 record.observed.is_some() && record.stop_reason != Some(StopReason::OwnershipLost);
-            if record.phase.owes_a_stop() && addressable {
+            if record.phase.owes_a_stop() && addressable && !self.spares_open_stream(&record, now) {
                 // A refused or unconfirmed stop leaves the obligation open and visible in
                 // `view().totals.stop_required`; the next pass submits it again.
                 let _outcome = self.apply(
@@ -1012,6 +1016,20 @@ impl<T: RunpodTransport> Inner<T> {
                 );
             }
         }
+    }
+
+    /// Whether `record` owes its stop only for a lease expiry, is inside its lifetime ceiling,
+    /// and is the current deployment of a slot with a request in flight.
+    fn spares_open_stream(&self, record: &DeploymentRecord, now: u64) -> bool {
+        let within_lifetime = record.started_at_ms.is_none_or(|started| {
+            now <= started.saturating_add(record.requested.effective_lifetime_ms(&self.policy))
+        });
+        record.stop_reason == Some(StopReason::LeaseExpired)
+            && within_lifetime
+            && self.slots.values().any(|slot| {
+                slot.current.as_ref() == Some(&record.deployment)
+                    && slot.usage.in_flight.load(Ordering::SeqCst) > 0
+            })
     }
 
     fn reap_idle(&mut self, now: u64) -> Vec<Identifier> {

@@ -5,6 +5,13 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Fixed
+
+- A Runpod pool step that comes later than `lease_ms` no longer terminates a pod with a request in flight: the stop the lease expiry owes waits until the last stream ends, and the first step after that submits it. A pod past its lifetime ceiling is still stopped with a stream open.
+- `docs/hosting.md` describes the compute authorization the gateway passes: ledger `b10x-llm-gateway` with reservation `unmetered` or `spend-ceiling`, checked by ledger name only, with the Runpod spend check as the only spend cap. It no longer says a create needs an `llm-cost` reservation reserved and begun first.
+
 ## 0.16.0 (2026-10-30)
 
 ### Added

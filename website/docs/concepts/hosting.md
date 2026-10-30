@@ -51,6 +51,8 @@ The pool it composes:
   replaces it on the next request;
 - **reaps** a pod idle past `idle_timeout_minutes`, never below its measured cold start and never
   with a request in flight;
+- does not stop a pod with a request in flight when its ownership lease expires: the stop waits
+  until the last stream ends, unless the pod is past its lifetime ceiling;
 - **sweeps** pods carrying this controller's owner tag that no record holds. A pod whose name
   starts with `llmgw-` is never listed, adopted, swept or terminated.
 

@@ -19,7 +19,7 @@ Nothing in any release is deployed or qualified against a live client.
 
 ### Fixed
 
-- A credential is no longer left in memory freed unzeroed by a buffer that grew around it: the client's request head, the trusted-file reader, a key read from a file, the hosted probe's request `credential set`'s standard input and prompt, the owner-token hash and the owner secret file's text are each sized before the credential enters or moved by an overwrite, and overwritten, spare capacity included, on every path that lets them go, refusals included. Best effort, as before: no `zeroize` dependency. `docs/verification/2026-10-30-credential-buffers-zeroed.md`.
+- A credential is no longer left in memory freed unzeroed by a buffer that grew around it: the client's request head, the trusted-file reader, a key read from a file, the hosted probe's request, `credential set`'s standard input and prompt, the owner-token hash, the owner secret file's text and a Bedrock token that fails its version check are each sized before the credential enters or moved by an overwrite, and overwritten, spare capacity included, on every path that lets them go, refusals included. Best effort, as before: no `zeroize` dependency. `docs/verification/2026-10-30-credential-buffers-zeroed.md`.
 
 ## 0.21.0 (2026-10-30)
 

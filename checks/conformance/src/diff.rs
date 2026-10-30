@@ -9,7 +9,7 @@
 use std::{
     error::Error,
     fs,
-    io::Write,
+    io::{ErrorKind, Write},
     path::{Path, PathBuf},
     process::{Command, ExitCode, Output},
 };
@@ -20,10 +20,55 @@ const FAIL_ON: &str = "breaking-or-unknown";
 
 /// Runs an external program, naming it when it cannot be started. Every program this module
 /// starts goes through here, so a missing `git` or `ess` is never reported as a bare OS error.
+/// Only a program that was not found is pointed at `PATH`; any other start error (one that cannot
+/// be executed, say) is the OS's own words.
 fn spawn(program: &str, command: &mut Command) -> Result<Output, Box<dyn Error>> {
-    command
-        .output()
-        .map_err(|error| format!("cannot run `{program}`: {error}; is it on PATH?").into())
+    command.output().map_err(|error| {
+        if error.kind() == ErrorKind::NotFound {
+            format!("cannot run `{program}`: {error}; is it on PATH?").into()
+        } else {
+            format!("cannot run `{program}`: {error}").into()
+        }
+    })
+}
+
+/// The reason a program that refused printed, or, when it printed nothing, its exit status, so a
+/// refusal never ends without one.
+fn reason(output: &Output) -> String {
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let stderr = stderr.trim();
+    if stderr.is_empty() {
+        format!("{} and printed nothing", output.status)
+    } else {
+        stderr.to_owned()
+    }
+}
+
+/// Removes the base copies of runs that are no longer alive: a run killed while `ess` compared
+/// never reached its `BaseCopy` drop. A copy whose pid is alive belongs to a concurrent run and is
+/// kept. Liveness is read from `/proc`, so where there is none nothing is removed.
+fn remove_dead_copies(dir: &Path) {
+    if !Path::new("/proc/self").exists() {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        let Some(pid) = path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .and_then(|name| name.strip_prefix("base-"))
+            .and_then(|pid| pid.parse::<u32>().ok())
+        else {
+            continue;
+        };
+        if !Path::new("/proc").join(pid.to_string()).exists()
+            && let Err(error) = fs::remove_dir_all(&path)
+        {
+            eprintln!("could not remove {}: {error}", path.display());
+        }
+    }
 }
 
 /// The base copy under `target/spec-diff/`, removed on every exit from `run`: a pass, a failure,
@@ -43,14 +88,31 @@ impl Drop for BaseCopy {
 fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
     let output = spawn("git", Command::new("git").args(args).current_dir(root))?;
     if !output.status.success() {
-        return Err(format!(
-            "git {} refused: {}",
-            args.join(" "),
-            String::from_utf8_lossy(&output.stderr).trim()
-        )
-        .into());
+        return Err(format!("git {} refused: {}", args.join(" "), reason(&output)).into());
     }
     Ok(output.stdout)
+}
+
+/// The merge base of `target` (resolved from `base`) and `HEAD`. `git merge-base` exits 1 and
+/// prints nothing when the two share no history; that is said in words.
+fn merge_base(root: &Path, base: &str, target: &str) -> Result<String, Box<dyn Error>> {
+    let output = spawn(
+        "git",
+        Command::new("git")
+            .args(["merge-base", target, "HEAD"])
+            .current_dir(root),
+    )?;
+    if !output.status.success() {
+        let why = if output.status.code() == Some(1) && output.stderr.trim_ascii().is_empty() {
+            format!(
+                "{base} and HEAD share no history (an unrelated branch, or a shallow clone without their common ancestor)"
+            )
+        } else {
+            reason(&output)
+        };
+        return Err(format!("git merge-base {target} HEAD refused: {why}").into());
+    }
+    text(output.stdout)
 }
 
 fn text(bytes: Vec<u8>) -> Result<String, Box<dyn Error>> {
@@ -133,10 +195,10 @@ pub fn run(base: &str) -> Result<ExitCode, Box<dyn Error>> {
         )
         .map_err(|_| format!("base revision {base} does not resolve to a commit"))?,
     )?;
-    let commit = text(git(&root, &["merge-base", &target, "HEAD"])?)?;
-    let out = root
-        .join("target/spec-diff")
-        .join(format!("base-{}", std::process::id()));
+    let commit = merge_base(&root, base, &target)?;
+    let copies = root.join("target/spec-diff");
+    remove_dead_copies(&copies);
+    let out = copies.join(format!("base-{}", std::process::id()));
     if out.exists() {
         fs::remove_dir_all(&out)?;
     }

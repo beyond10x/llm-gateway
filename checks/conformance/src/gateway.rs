@@ -557,6 +557,8 @@ mod relay {
     const RECORDED_BODY_BYTES: usize = 4096;
     /// How long a pod waits for the client to receive one chunk before it releases the next.
     const CHUNK_HOLD: Duration = Duration::from_secs(2);
+    /// The longest an answer's head may be held back, in milliseconds: the same two seconds.
+    const MAX_DELAY_MS: u64 = 2_000;
     /// How long either side waits for the other. Far above any relay this program makes.
     const WAIT: Duration = Duration::from_secs(10);
     /// How long a pod whose client closed early waits to see the gateway close the upstream
@@ -777,6 +779,10 @@ mod relay {
         /// `received`, the default, or `progress`: when each chunk after the first is released.
         #[serde(default)]
         release: Option<String>,
+        /// Milliseconds the pod waits after reading the request before it writes the answer's
+        /// head, at most [`MAX_DELAY_MS`].
+        #[serde(default)]
+        delay_ms: Option<u64>,
     }
 
     #[derive(Deserialize)]
@@ -846,6 +852,7 @@ mod relay {
                         && self.chunks.is_empty()
                         && self.content_type.is_none()
                         && self.framing.is_none()
+                        && self.delay_ms.is_none()
                 }
                 (None, Some(status)) => {
                     (200..=599).contains(&status)
@@ -854,6 +861,7 @@ mod relay {
                             self.release.as_deref(),
                             None | Some("received" | "progress")
                         )
+                        && self.delay_ms.is_none_or(|delay| delay <= MAX_DELAY_MS)
                 }
                 _ => false,
             }
@@ -1173,6 +1181,9 @@ mod relay {
             connection.close();
             return;
         };
+        if let Some(delay) = answer.delay_ms {
+            thread::sleep(Duration::from_millis(delay));
+        }
         let progress = shared
             .progress
             .lock()

@@ -1115,7 +1115,9 @@ commands:
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a
       #           connection past its script. An answer is
-      #           `{status, content_type, chunks, framing, release}` (`framing` is `length`, the
+      #           `{status, content_type, chunks, framing, release, delay_ms}` (`delay_ms`,
+      #           at most 2000, holds the answer's head back that many milliseconds after the
+      #           request is read; `framing` is `length`, the
       #           default, or `chunked`; with `release` `received`, the default, each chunk is
       #           released only after the client received the bytes of the ones before it, or
       #           after two seconds; with `release` `progress`, for an answer the gateway

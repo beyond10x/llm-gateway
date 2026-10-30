@@ -7,8 +7,8 @@ checkpoint makes no model, provider or hosting call, resolves no secret and crea
 ## Counted coverage
 
 `cargo test -p b10x-llm-gateway --locked` runs **47** cases across the six sources this lane
-table covers, and 52 in the whole crate once `src/server.rs` and `tests/adversary_pass_2.rs` are
-included. **All 52 pass**, and the whole-crate command exits 0. story:gateway-binary added two of
+table covers, and 61 in the whole crate once `src/server.rs` and `tests/adversary_pass_2.rs` are
+included. **All 61 pass**, and the whole-crate command exits 0. story:gateway-binary added two of
 them to `tests/gateway.rs`: a request head is read, and a response written, under one deadline
 each. The review of 2026-10-30 added three more: a probe or public route still answers a head that
 repeats a header it never reads, and a bare-LF head past the head bound is `request-malformed`.

@@ -48,7 +48,8 @@ The overwrite stays best effort. No crate gains a `zeroize` dependency, and
   - a head that is not UTF-8;
   - a peer that stops;
   - a peer that resets;
-  - a deadline that passes.
+  - a deadline that passes;
+  - the bytes read past an answered head, a pipelined request's among them, overwritten when let go.
 
   The trusted-reader and key cases cover:
   - an accepted key;

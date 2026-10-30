@@ -7,6 +7,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+## 0.20.0 (2026-10-30)
+
 ### Added
 
 - Each `translation-unsupported` or `translation-invalid` refusal writes one `info` line, `translation refused`, naming the model, the client's wire, the code and llm's diagnostic, which names the refused path or field and never a value the client sent; the answer is unchanged. `docs/gateway.md` "The request".

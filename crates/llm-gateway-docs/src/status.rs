@@ -405,7 +405,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Specification",
         "ESS specification and conformance suite",
-        "The system llm-gateway is specified in ESS; the gate answers at least 278 of 278 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+        "The system llm-gateway is specified in ESS; the gate answers at least 387 of 387 scenarios, skips none, and fails on drift between the specification and its generated suite.",
         "checks/conformance/src/gate.rs::every_authored_scenario_is_declared",
         Some("/docs/guides/run-the-checks"),
     ),

@@ -332,7 +332,7 @@
     },
     {
       "area": "Specification",
-      "detail": "The system llm-gateway is specified in ESS; the gate answers at least 278 of 278 scenarios, skips none, and fails on drift between the specification and its generated suite.",
+      "detail": "The system llm-gateway is specified in ESS; the gate answers at least 387 of 387 scenarios, skips none, and fails on drift between the specification and its generated suite.",
       "href": "/docs/guides/run-the-checks",
       "label": "ESS specification and conformance suite",
       "status": "shipped"

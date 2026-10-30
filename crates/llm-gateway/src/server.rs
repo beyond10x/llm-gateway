@@ -905,6 +905,28 @@ mod head_tests {
         );
     }
 
+    /// What this proves: under a bound that doubling from `READ_CHUNK` does not reach exactly,
+    /// the last move takes the bound itself, so no allocation that holds the head is larger
+    /// than the bound (`every_allocation_was_overwritten` refuses any past `limit`), and each
+    /// is still overwritten as it is let go.
+    #[test]
+    fn a_head_never_moves_into_an_allocation_past_its_bound() {
+        let limit = 3000;
+        let sent = head(2900);
+        let mut stream = Scripted::new(chunks(&sent, 700));
+        let (head, leftover) =
+            read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
+                .expect("a whole head is read");
+        assert_eq!(head.as_bytes(), &sent[..sent.len() - 4]);
+        assert!(leftover.is_empty(), "{leftover:?}");
+        drop(head);
+        assert_eq!(
+            every_allocation_was_overwritten("doubling past the bound", limit),
+            3,
+            "1024 bytes, then 2048, then the bound of 3000 rather than 4096"
+        );
+    }
+
     #[test]
     fn a_refused_head_is_overwritten_in_every_allocation_it_used_on_every_path() {
         let limit = 2048;

@@ -16,7 +16,10 @@ The overwrite stays best effort. Neither crate gains a `zeroize` dependency, and
 
 | Buffer | Where | How it holds | Test or assertion | Level |
 | --- | --- | --- | --- | --- |
-| The client's request head | `crates/llm-gateway/src/server.rs`: `read_head`, `HeadBuffer`, `Head` | Each read writes into the buffer in place. To grow, it takes a new zeroed allocation (twice the size, at most the head bound), copies the bytes read and overwrites the old one before freeing it. Its `Drop` overwrites the last allocation. `read_head` returns the head inside its buffer as a `Head`, which derefs to `str`. | `head_tests::a_head_is_overwritten_in_every_allocation_it_used_when_it_is_answered`; `head_tests::a_refused_head_is_overwritten_in_every_allocation_it_used_on_every_path` | ledger |
+| The client's request head | `crates/llm-gateway/src/server.rs`: `read_head`, `HeadBuffer`, `Head` | Each read writes into the buffer in place. To grow, it takes a new zeroed allocation (twice the size, at most the head bound), copies the bytes read and overwrites the old one before freeing it. Its `Drop` overwrites the last allocation. `read_head` returns the head inside its buffer as a `Head`, which derefs to `str`. | `head_tests::a_head_is_overwritten_in_every_allocation_it_used_when_it_is_answered`; `head_tests::a_refused_head_is_overwritten_in_every_allocation_it_used_on_every_path`; `head_tests::a_head_never_moves_into_an_allocation_past_its_bound` | ledger |
+| Owner-token hashing: the owner token and every presented bearer | `crates/llm-gateway/src/auth.rs`: `sha256`, which `OwnerToken::digest` calls | The padded message is allocated at its padded length before the token enters it, so the padding never moves it. A `debug_assert` checks its length and capacity are as sized. It is overwritten once hashed, as before. | `auth::tests::the_digest_is_sha_256`, through its part `a_message_is_hashed_in_one_allocation_whatever_its_length`, which hashes every length from 0 to 130 bytes | debug assertion |
+| The owner secret file's text | `crates/llm-gateway-cli/src/serve.rs`: `owner_verifier` | Takes the reader's text as a `Wiped`, so it is overwritten whichever way the rules go. The token is an exact-length copy, which `OwnerToken` overwrites. | `serve::tests::the_owner_secret_files_text_is_overwritten_whichever_way_the_rules_go` | ledger |
+| The Bedrock container token, read again for each fetch | `crates/llm-gateway-cli/src/bedrock.rs`: `TokenFile::resolve` | Reads through the trusted reader. The text moves into llm's `Secret`, a `Zeroizing` vector, before its version is computed, so a refused version drops it overwritten. | None. No test reaches a refused version, because a 64-character hex digest is never refused, and the overwrite is llm's `zeroize`. | none |
 | The trusted-file reader, which reads every credential file | `crates/llm-gateway-cli/src/trusted.rs`: `read`, `Wiped` | Reads in place into one allocation of the policy's bound plus one byte, taken before the first read. It never reallocates. A refusal after the read (too large, not UTF-8, unreadable) drops it as a `Wiped`, which overwrites it. Text it returns uses that same allocation, and what no read wrote stays zero. | `trusted::tests::a_credential_file_is_read_into_one_allocation_taken_at_the_bound_before_its_first_byte`; `trusted::tests::a_credential_file_refused_after_it_was_read_is_overwritten_first` | ledger |
 | A key read from a file (vLLM keys, hosted endpoint credentials, route secrets, the metrics bearer) | `crates/llm-gateway-cli/src/keys.rs`: `read_token` | Takes the reader's text as a `Wiped`, so it is overwritten whichever way the rules go. Returns a copy of exactly the key's length, which the caller wraps. | `keys::tests::a_key_file_read_is_overwritten_whichever_way_the_rules_go` | ledger |
 | The hosted probe's request | `crates/llm-gateway-cli/src/hosted.rs`: `probe_request`, `exchange` | Its exact length is computed before the key is written. A `debug_assert` checks the capacity did not move. As a `Wiped`, it is dropped right after the write, before the answer is read. | `hosted::tests::a_probe_request_is_sized_before_its_key_is_written_and_overwritten_when_dropped` | ledger and debug assertion |
@@ -36,6 +39,8 @@ The overwrite stays best effort. Neither crate gains a `zeroize` dependency, and
 
   The head cases cover:
   - an answered head that grows at least once, with an interrupted read first;
+  - an answered head under a bound of 3000 bytes, which doubling from 1024 does not reach
+    exactly, so its last move must take the bound itself;
   - a stray line byte;
   - a head past the bound;
   - a head that is not UTF-8;
@@ -49,10 +54,14 @@ The overwrite stays best effort. Neither crate gains a `zeroize` dependency, and
   - a blank key;
   - a key past 4096 bytes;
   - a file that is not UTF-8.
+
+  The owner secret cases cover a secret that is taken, one under the owner secret's floor, and
+  one that is not a token.
 - **Debug assertion.** The assertion holds in debug builds, which are the builds the tests and the
   integration tests' binary use. Release builds compile it out; the sizing that makes it hold is in
   both. Before the fix, it failed two prompt tests in `credential::tests`, the hosted probe test
-  and 13 of the 17 `credential_set` cases.
+  and 13 of the 17 `credential_set` cases. The hashing assertion came with its fix, so it has no
+  run against the code before.
 - **Neither level proves:**
   - that freed memory stays zero, which safe Rust cannot observe;
   - that the compiler keeps the writes, because `black_box` is a hint and not a guarantee;
@@ -74,23 +83,15 @@ The overwrite stays best effort. Neither crate gains a `zeroize` dependency, and
 
 ## Not changed by this story
 
-At the commit that adds this record these are unchanged. Each lies outside the files this story
-owned:
-
-- `crates/llm-gateway/src/auth.rs` `sha256`, which `OwnerToken::digest` calls: copies the token
-  into a vector that grows when its padding is pushed. The allocation it leaves is freed holding
-  the token, unzeroed; the vector it grows into is overwritten once hashed.
-- `crates/llm-gateway-cli/src/serve.rs` `owner_verifier`: drops the owner secret file's text
-  unzeroed.
-- `crates/llm-gateway-cli/src/bedrock.rs` `TokenFile::resolve`: a refusal of the version string
-  drops the token's text unzeroed before llm's `Secret` takes it.
-
-## Residuals
+These still hold a credential's bytes, and this story leaves them as they are:
 
 - The standard-input buffer that `std` keeps for the whole process. It is never freed.
 - rustls's plaintext and record buffers on the probe's and the relay's TLS connections.
 - The SHA-256 state inside `hex_digest` when the Bedrock token's version is computed.
 - The bytes `read_head` read past the head, which it returns as a separate vector. They hold no
   head bytes, but can hold the start of a request body.
-- The reader's allocation is now as large as its bound for every read: 2 MiB plus one byte for
-  the routes document and 256 KiB plus one for the deployment document, once at start.
+
+## Cost
+
+The reader's allocation is now as large as its bound for every read: 2 MiB plus one byte for the
+routes document and 256 KiB plus one for the deployment document, once at start.

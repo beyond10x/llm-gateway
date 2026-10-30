@@ -75,7 +75,7 @@ fn failed(classification: &str, code: &str) -> Value {
 
 fn listed(pods: &Value) -> Value {
     json!({"stdout": {
-        "adapter": "gpu", "operation": "pods.list", "revision": "revision-7",
+        "connector": "runpod", "instance": "gpu", "operation": "pods.list", "revision": "revision-7",
         "result": {"status": 200, "body": pods},
     }})
 }
@@ -150,7 +150,7 @@ fn a_cli_whose_stdout_outlives_it_does_not_outlive_the_timeout() {
     let fixture = Fixture::new("stdout_held");
     let mut answer = listed(&json!([qwen_pod("abc123", "RUNNING", "req-1")]));
     answer["hold_stdout_ms"] = json!(8_000);
-    fixture.script(&json!({"operations invoke pods.list": [answer]}));
+    fixture.script(&json!({"invoke pods.list": [answer]}));
     let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1_500)));
 
     let started = Instant::now();
@@ -172,8 +172,8 @@ fn a_cli_whose_stdout_outlives_it_does_not_outlive_the_timeout() {
 fn an_unknown_create_is_not_resolved_to_a_pod_of_another_request() {
     let fixture = Fixture::new("unknown_other_request");
     fixture.script(&json!({
-        "operations invoke pod.create": [failed("unknown", "outcome_unknown")],
-        "operations invoke pods.list": [listed(&json!([qwen_pod("old999", "EXITED", "req-0")]))],
+        "invoke pod.create": [failed("unknown", "outcome_unknown")],
+        "invoke pods.list": [listed(&json!([qwen_pod("old999", "EXITED", "req-0")]))],
     }));
     let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_secs(20)));
 
@@ -193,8 +193,8 @@ fn an_unknown_create_is_not_resolved_to_a_pod_of_another_request() {
 fn an_unknown_create_through_the_provider_does_not_accept_an_earlier_requests_pod() {
     let fixture = Fixture::new("provider_unknown_other_request");
     fixture.script(&json!({
-        "operations invoke pod.create": [failed("unknown", "outcome_unknown")],
-        "operations invoke pods.list": [listed(&json!([qwen_pod("old999", "RUNNING", "req-0")]))],
+        "invoke pod.create": [failed("unknown", "outcome_unknown")],
+        "invoke pods.list": [listed(&json!([qwen_pod("old999", "RUNNING", "req-0")]))],
     }));
     let mut provider = RunpodProvider::new(
         ConnectorsRunpod::new(fixture.binding(Duration::from_secs(20))),
@@ -234,11 +234,11 @@ fn an_unknown_create_through_the_provider_does_not_accept_an_earlier_requests_po
 #[test]
 fn the_create_body_asks_for_no_pod_volume_as_llmgw_does() {
     let fixture = Fixture::new("volume_in_gb");
-    fixture.script(&json!({"operations invoke pod.create": [failed("refused", "invalid_input")]}));
+    fixture.script(&json!({"invoke pod.create": [failed("refused", "invalid_input")]}));
     let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_secs(20)));
     let _ = transport.create_pod(&request(false));
 
-    let body = input(&fixture.calls_of("operations invoke pod.create")[0])["body"].clone();
+    let body = input(&fixture.calls_of("invoke pod.create")[0])["body"].clone();
     assert_eq!(body["volumeInGb"], json!(0), "{body}");
 }
 
@@ -277,11 +277,11 @@ fn terminate_maps_404_to_refused_and_every_uncertain_answer_to_lost() {
     ];
     for (name, answer, expected) in cases {
         let fixture = Fixture::new(&format!("terminate_{name}"));
-        fixture.script(&json!({"operations invoke pod.terminate": [answer]}));
+        fixture.script(&json!({"invoke pod.terminate": [answer]}));
         let mut transport = ConnectorsRunpod::new(fixture.binding(Duration::from_millis(1_500)));
         assert_eq!(transport.terminate_pod("abc123"), expected, "{name}");
         assert_eq!(
-            fixture.calls_of("operations invoke pod.terminate").len(),
+            fixture.calls_of("invoke pod.terminate").len(),
             1,
             "{name}: sent once"
         );
@@ -294,7 +294,7 @@ fn terminate_maps_404_to_refused_and_every_uncertain_answer_to_lost() {
 #[test]
 fn the_proof_output_is_absolute_for_a_relative_work_directory() {
     let fixture = Fixture::new("relative_work");
-    fixture.script(&json!({"operations invoke pod.terminate": [failed("refused", "not_found")]}));
+    fixture.script(&json!({"invoke pod.terminate": [failed("refused", "not_found")]}));
     let cwd = std::env::current_dir().expect("cwd");
     let workspace = Path::new(env!("CARGO_MANIFEST_DIR"))
         .ancestors()

@@ -212,18 +212,18 @@ impl Connectors {
     }
 }
 
-/// A successful `operations invoke pods.list` answer listing `pods`.
+/// A successful `invoke pods.list` answer listing `pods`.
 pub fn listed(pods: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({"stdout": {
-        "adapter": "gpu", "operation": "pods.list", "revision": "revision-7",
+        "connector": "runpod", "instance": "gpu", "operation": "pods.list", "revision": "revision-7",
         "result": {"status": 200, "body": pods},
     }})
 }
 
-/// An applied `operations invoke pod.create` answer with the created `pod`.
+/// An applied `invoke pod.create` answer with the created `pod`.
 pub fn created(pod: &serde_json::Value) -> serde_json::Value {
     serde_json::json!({"stdout": {
-        "adapter": "gpu", "operation": "pod.create", "revision": "revision-7",
+        "connector": "runpod", "instance": "gpu", "operation": "pod.create", "revision": "revision-7",
         "result": {"status": 200, "body": pod},
         "mutation": {"classification": "applied", "replayed": false},
     }})

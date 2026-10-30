@@ -374,8 +374,10 @@ types:
   #   executable       an absolute path, 1..=1024 bytes, no control character: the `connectors`
   #                    CLI. It is not looked up on PATH
   #   adapter          1..=128 printable ASCII without a space, not starting with `-` (it is one
-  #                    argument of the CLI, never read as an option): the adapter alias the
-  #                    connectors configuration binds the Runpod catalog provider to
+  #                    argument of the CLI, never read as an option): the instance of the
+  #                    connectors `runpod` connector, invoked as `runpod/<adapter>` (the
+  #                    alias of a legacy Runpod catalog entry names that instance in
+  #                    connectors 0.60.0)
   #   connection       the same rule: the saved connectors connection id
   #   work_directory   an absolute path, 1..=1024 bytes, no control character: an existing
   #                    private directory for each write's input document and approval proof

@@ -1,19 +1,22 @@
 //! The production Runpod transport: the control plane through the `connectors` CLI.
 //!
-//! `beyond10x/connectors` v0.37.0 serves Runpod's REST API from a pinned `OpenAPI` document through
-//! its catalog provider and keeps the Runpod API key in its keyring (connectors
+//! `beyond10x/connectors` 0.60.0 serves Runpod's REST API from a pinned `OpenAPI` document through
+//! its `runpod` connector and keeps the Runpod API key in its keyring (connectors
 //! `docs/catalog-runpod.md`). This transport runs that CLI as a child process, one call at a
 //! time, and maps what it prints; it holds no HTTP client for the control plane and never sees the
 //! Runpod key. The invocations, their inputs and the answer mapping are declared in
 //! `spec/domains/runpod.yaml` (`ConnectorsBinding`, `ConnectorsOperation`, `CreateAnswer`,
 //! `TerminateAnswer`, `PodCreateBody`).
 //!
-//! * Every call is `connectors --output json operations invoke --adapter <a> --connection <c>
-//!   --operation <id> --schema <s> --revision <r> --input-file <document>`; `schema` and
-//!   `revision` come from `operations describe` for that operation, kept until a refusal says
-//!   they are stale.
+//! * Every operation is `connectors --output json invoke runpod/<instance> <id> --connection <c>
+//!   --schema <s> --revision <r> --input-json <document>` (connectors 0.60.0
+//!   `contracts/cli/v1alpha1/semantics.md`, "Invoking an operation"); `schema` and `revision`
+//!   come from `operations describe` for that operation and are pins, kept until a refusal says
+//!   they are stale. Every other command selects the instance with `--connector runpod
+//!   --instance <instance>` ("Selecting an instance").
 //! * Answers are read only in connectors' framing: `{"ok":true,"result":…}` on stdout for a
-//!   success, `{"ok":false,"error":…}` on stderr for a failure ([`Answer`]).
+//!   success, `{"ok":false,"error":…}` on stderr for a failure ([`Answer`]). An invoke's
+//!   `result` names `connector` and `instance`; the transport reads neither.
 //! * A write (`pod.create`, `pod.terminate`) is first `approvals prepare`d and `approvals
 //!   issue`d for its exact input document, then invoked with `--approval-file <proof>
 //!   --idempotency-key <key>` (connectors `docs/local-approvals.md`). It is never sent twice; a
@@ -29,10 +32,8 @@
 
 use std::{
     collections::BTreeMap,
-    fmt,
-    fs::{self, OpenOptions},
-    io::{Read, Write},
-    os::unix::fs::OpenOptionsExt,
+    fmt, fs,
+    io::Read,
     os::unix::process::CommandExt,
     path::{Path, PathBuf},
     process::{Child, Command, Stdio},
@@ -81,6 +82,12 @@ pub const POD_CREATE_BODY_KEYS: &[&str] = &[
     "networkVolumeId",
 ];
 
+/// The connector that serves Runpod (connectors 0.60.0
+/// `adapters/catalog/providers/runpod/connector.json`, `connector_id`). connectors names a legacy
+/// `[adapters.<alias>]` Runpod catalog entry by it too, and `setup migrate` keeps the alias as
+/// the instance (`CHANGELOG.md`, `## 0.60.0`), so the binding's `adapter` is the instance.
+const CONNECTOR: &str = "runpod";
+
 /// The connectors operation ids of the shipped Runpod selection set.
 const POD_CREATE: &str = "pod.create";
 const PODS_LIST: &str = "pods.list";
@@ -100,11 +107,13 @@ const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 pub struct ConnectorsBinding {
     /// The `connectors` executable.
     pub executable: PathBuf,
-    /// The adapter alias the connectors configuration binds the Runpod catalog provider to.
+    /// The instance of the connectors `runpod` connector: every operation is invoked on
+    /// `runpod/<adapter>`. It is the alias of a legacy `[adapters.<alias>]` entry, which
+    /// connectors 0.60.0 names `runpod/<alias>` before and after `setup migrate`.
     pub adapter: String,
     /// The saved connectors connection id.
     pub connection: String,
-    /// An existing private directory for each write's input document and approval proof.
+    /// An existing private directory for each write's approval proof.
     pub work_directory: PathBuf,
     /// The bound on one CLI call. A call still running then is killed, and its answer is lost.
     pub timeout: Duration,
@@ -401,15 +410,31 @@ impl ConnectorsRunpod {
         !recovery.revalidate || self.revalidate()
     }
 
+    /// `--connector runpod --instance <instance>`: how every command but `invoke` selects the
+    /// binding's instance (connectors 0.60.0 `contracts/cli/v1alpha1/semantics.md`, "Selecting an
+    /// instance"; the deprecated `--adapter` is not used).
+    fn selector(&self) -> [&str; 4] {
+        [
+            "--connector",
+            CONNECTOR,
+            "--instance",
+            self.binding.adapter.as_str(),
+        ]
+    }
+
+    /// `runpod/<instance>`, the target `invoke` names.
+    fn target(&self) -> String {
+        format!("{CONNECTOR}/{}", self.binding.adapter)
+    }
+
     /// `connections revalidate` for the binding's connection, at the revision `connections
     /// describe` reports. `true` when connectors renewed it.
     fn revalidate(&self) -> bool {
         let connection = [
-            "--adapter",
-            self.binding.adapter.as_str(),
-            "--connection",
-            self.binding.connection.as_str(),
-        ];
+            &self.selector()[..],
+            &["--connection", self.binding.connection.as_str()][..],
+        ]
+        .concat();
         let described = self.run(&[&["connections", "describe"][..], &connection[..]].concat());
         let Some(revision) = described
             .read("/connection/summary/revision")
@@ -434,14 +459,14 @@ impl ConnectorsRunpod {
         if let Some(found) = self.described.get(operation) {
             return Some(found.clone());
         }
-        let answer = self.run(&[
-            "operations",
-            "describe",
-            "--adapter",
-            &self.binding.adapter,
-            "--operation",
-            operation,
-        ]);
+        let answer = self.run(
+            &[
+                &["operations", "describe"][..],
+                &self.selector()[..],
+                &["--operation", operation][..],
+            ]
+            .concat(),
+        );
         let schema = answer.read("/schema")?.to_owned();
         let revision = answer.read("/revision")?.to_owned();
         self.described
@@ -449,70 +474,61 @@ impl ConnectorsRunpod {
         Some((schema, revision))
     }
 
-    /// Writes a new owner-only file in the work directory. `None` if it cannot.
-    fn new_file(&self, name: &str, contents: &[u8]) -> Option<PathBuf> {
-        let path = self.binding.work_directory.join(name);
-        let mut file = OpenOptions::new()
-            .write(true)
-            .create_new(true)
-            .mode(0o600)
-            .open(&path)
-            .ok()?;
-        if file
-            .write_all(contents)
-            .and_then(|()| file.sync_all())
-            .is_err()
-        {
-            let _ = fs::remove_file(&path);
-            return None;
-        }
-        Some(path)
+    /// `invoke runpod/<instance> <operation>` on the binding's connection, with the described
+    /// `schema` and `revision` as pins and `input` as the document, then `extra`.
+    fn invoke(
+        &self,
+        operation: &str,
+        schema: &str,
+        revision: &str,
+        input: &str,
+        extra: &[&str],
+    ) -> Answer {
+        let target = self.target();
+        self.run(
+            &[
+                &[
+                    "invoke",
+                    target.as_str(),
+                    operation,
+                    "--connection",
+                    self.binding.connection.as_str(),
+                    "--schema",
+                    schema,
+                    "--revision",
+                    revision,
+                    "--input-json",
+                    input,
+                ][..],
+                extra,
+            ]
+            .concat(),
+        )
     }
 
-    /// One read: `operations invoke` of `pods.list` with these filters.
+    /// One read: `invoke` of `pods.list` with these filters.
     fn read(&mut self, filters: &Value) -> Answer {
         self.read_operation(PODS_LIST, filters)
     }
 
     /// One read of `operation` (no approval, never a write) with this input.
     fn read_operation(&mut self, operation: &'static str, input: &Value) -> Answer {
-        let Some(path) = self.new_file(
-            &format!("{}.json", file_stem(operation)),
-            input.to_string().as_bytes(),
-        ) else {
-            return Answer::lost();
-        };
-        let mut answer = self.read_once(operation, &path);
+        let input = input.to_string();
+        let mut answer = self.read_once(operation, &input);
         // Refused before dispatch for a reason one step can mend: mend it, repeat once.
         if let Some(recovery) = Self::recovery(&answer)
             && self.recover(operation, recovery)
         {
-            answer = self.read_once(operation, &path);
+            answer = self.read_once(operation, &input);
         }
-        let _ = fs::remove_file(&path);
         answer
     }
 
-    fn read_once(&mut self, operation: &'static str, input: &Path) -> Answer {
+    fn read_once(&mut self, operation: &'static str, input: &str) -> Answer {
         let Some((schema, revision)) = self.describe(operation) else {
             return Answer::lost();
         };
-        self.run(&[
-            "operations",
-            "invoke",
-            "--adapter",
-            &self.binding.adapter,
-            "--connection",
-            &self.binding.connection,
-            "--operation",
-            operation,
-            "--schema",
-            &schema,
-            "--revision",
-            &revision,
-            "--input-file",
-            &path_arg(input),
-        ])
+        self.invoke(operation, &schema, &revision, input, &[])
     }
 
     /// One write: prepare and issue an approval for its exact input, then invoke it once with
@@ -542,73 +558,73 @@ impl ConnectorsRunpod {
         idempotency_key: &str,
     ) -> Option<Answer> {
         let (schema, revision) = self.describe(operation)?;
-        let stem = file_stem(operation);
-        let input_path = self.new_file(&format!("{stem}.json"), input.to_string().as_bytes())?;
-        let proof_path = self.binding.work_directory.join(format!("{stem}.proof"));
+        let proof_path = self
+            .binding
+            .work_directory
+            .join(format!("{}.proof", file_stem(operation)));
         let answer = self.approve_and_invoke(
             operation,
             &schema,
             &revision,
-            &input_path,
+            &input.to_string(),
             &proof_path,
             idempotency_key,
         );
-        let _ = fs::remove_file(&input_path);
         let _ = fs::remove_file(&proof_path);
         answer
     }
 
+    /// `approvals prepare` and `approvals issue` for exactly `input`, then the invoke with that
+    /// proof. All three carry the same document, byte for byte.
     fn approve_and_invoke(
         &self,
         operation: &str,
         schema: &str,
         revision: &str,
-        input: &Path,
+        input: &str,
         proof: &Path,
         idempotency_key: &str,
     ) -> Option<Answer> {
-        let input = path_arg(input);
         let proof = path_arg(proof);
-        let target = [
-            "--adapter",
-            &self.binding.adapter,
-            "--connection",
-            &self.binding.connection,
-            "--operation",
-            operation,
-            "--schema",
-            schema,
-            "--revision",
-            revision,
-            "--input-file",
-            &input,
-        ];
-        let prepared = self.run(&[&["approvals", "prepare"][..], &target[..]].concat());
+        let approved = [
+            &self.selector()[..],
+            &[
+                "--connection",
+                self.binding.connection.as_str(),
+                "--operation",
+                operation,
+                "--schema",
+                schema,
+                "--revision",
+                revision,
+                "--input-json",
+                input,
+            ][..],
+        ]
+        .concat();
+        let prepared = self.run(&[&["approvals", "prepare"][..], &approved[..]].concat());
         let subject = prepared.read("/preparation/subject_sha256")?.to_owned();
         let issued = self.run(
             &[
                 &["approvals", "issue"][..],
-                &target[..],
+                &approved[..],
                 &["--approve-subject", &subject, "--proof-output", &proof][..],
             ]
             .concat(),
         );
         issued.result.as_ref()?;
-        Some(
-            self.run(
-                &[
-                    &["operations", "invoke"][..],
-                    &target[..],
-                    &[
-                        "--approval-file",
-                        &proof,
-                        "--idempotency-key",
-                        idempotency_key,
-                    ][..],
-                ]
-                .concat(),
-            ),
-        )
+        Some(self.invoke(
+            operation,
+            schema,
+            revision,
+            input,
+            &[
+                "--approval-file",
+                &proof,
+                "--idempotency-key",
+                idempotency_key,
+            ],
+        ))
     }
 
     /// One whole `pods.list` answer, or `None` when any part of it is not readable.

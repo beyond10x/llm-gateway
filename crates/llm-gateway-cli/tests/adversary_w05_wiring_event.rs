@@ -41,7 +41,7 @@ fn adversary_w05_the_unreachable_event_is_written_and_carries_no_secret() {
         let connectors = Connectors::new(&fixture);
         if reachable {
             connectors.script(&serde_json::json!({
-                "operations invoke pods.list": [listed(&serde_json::json!([]))],
+                "invoke pods.list": [listed(&serde_json::json!([]))],
             }));
         }
         let deployment =

@@ -56,9 +56,9 @@ fn adversary_w12p2_another_providers_ceiling_does_not_bind_the_connected_account
     let fixture = Fixture::new("adversary-w12p2-foreign-ceiling");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([]))],
-        "operations invoke billing.pods": [{"stdout": {
-            "adapter": "gpu", "operation": "billing.pods", "revision": "revision-7",
+        "invoke pods.list": [listed(&serde_json::json!([]))],
+        "invoke billing.pods": [{"stdout": {
+            "connector": "runpod", "instance": "gpu", "operation": "billing.pods", "revision": "revision-7",
             "result": {"status": 200, "body": [
                 {"amount": 5.25, "time": "2999-01-01T00:00:00.000Z"},
             ]},
@@ -85,7 +85,7 @@ fn adversary_w12p2_another_providers_ceiling_does_not_bind_the_connected_account
     let relaying = start_connected(&deployment, |transport| transport, Arc::new(NoPod)).unwrap();
     let answer = post_chat(relaying.local_addr());
     relaying.shutdown();
-    let reads = connectors.calls_of("operations invoke billing.pods");
+    let reads = connectors.calls_of("invoke billing.pods");
     assert!(
         reads.is_empty() && !answer.contains("spend-ceiling"),
         "the connected provider declares no ceiling, yet its account's spend was read {} \

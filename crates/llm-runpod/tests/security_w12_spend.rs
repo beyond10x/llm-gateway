@@ -212,8 +212,8 @@ impl Fixture {
 #[test]
 fn sec_a_billing_result_without_a_status_is_never_zero_spend() {
     let fixture = Fixture::new("billing_no_status");
-    fixture.script(&json!({"operations invoke billing.pods": [{"stdout": {
-        "adapter": "gpu", "operation": "billing.pods", "revision": "revision-7",
+    fixture.script(&json!({"invoke billing.pods": [{"stdout": {
+        "connector": "runpod", "instance": "gpu", "operation": "billing.pods", "revision": "revision-7",
         "result": {"body": []},
     }}]}));
     let day_start = started_at_ms("2026-10-16T00:00:00.000Z").expect("day start");

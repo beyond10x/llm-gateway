@@ -7,6 +7,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+## 0.19.0 (2026-10-30)
+
 ### Changed
 
 - llm 0.19.0 (was 0.18.0) for every llm client crate.

@@ -14,6 +14,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ### Changed
 
+- llm 0.20.0 (was 0.19.0) for every llm client crate. A Chat Completions upstream's `refusal` text now reaches the translator as llm's `StreamEvent::RefusalDelta`; the gateway hands every event to llm's own encoder for the client's wire, so it needs no arm of its own: a chat client receives it as `refusal`, and a Responses or Messages client receives no delta for it.
+
 - `GET /` profiles a client for a model whose upstream speaks another wire when the relay's translator admits the client's requests to it: the binary prepares Codex's and Claude Code's recorded first turns for each such model once, at start, and profiles the client where llm carries the turn, so a client is handed only models its requests reach without a `translation-*` refusal. A translated-only Bedrock model, which relays no client wire, is profiled only for a client whose first turn passes llm's Bedrock check, no longer for every client. No Loom turn is recorded, so a Loom run is still profiled only for models that declare `chat`. The translator port gains `Translator::admits`, default `false`. Two conformance scenarios hold it. `docs/gateway.md` "The public routes".
 
 ### Fixed

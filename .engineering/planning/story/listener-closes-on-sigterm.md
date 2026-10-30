@@ -6,7 +6,20 @@ status: draft
 title: The listener closes when the drain starts
 relations:
 - decomposes: epic:gateway
-revision: 1
+scope:
+- confidence: cited
+  path: crates/llm-gateway-cli/src/serve.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/tests/adversary_k8s_guide.rs
+- confidence: cited
+  path: crates/llm-gateway/src/server.rs
+- confidence: cited
+  path: docs/gateway.md
+- confidence: cited
+  path: spec/domains/gateway.yaml
+- confidence: cited
+  path: website/docs/guides/run-on-kubernetes.md
+revision: 7
 ---
 ## Outcome
 

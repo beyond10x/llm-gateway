@@ -21,7 +21,7 @@ scope:
   path: crates/llm-gateway/src/server.rs
 - confidence: inferred
   path: crates/llm-gateway/src/translate.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/tests/public_listing.rs
 - confidence: cited
   path: docs/gateway.md
@@ -29,7 +29,11 @@ scope:
   path: spec/domains/clients.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
-revision: 7
+- confidence: inferred
+  path: website/docs/guides/set-up-a-client.md
+- confidence: cited
+  path: website/docs/guides/translate-between-wires.md
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 6}

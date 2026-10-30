@@ -2,12 +2,26 @@
 format: aep.planning-md/3
 id: story:credential-buffers-zeroed
 kind: story
-status: draft
+status: active
 title: No buffer holding a credential is freed unzeroed
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-revision: 1
+scope:
+- confidence: cited
+  path: crates/llm-gateway-cli/src/hosted.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/keys.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/trusted.rs
+- confidence: cited
+  path: crates/llm-gateway/src/server.rs
+- confidence: inferred
+  path: docs/verification/gateway.md
+revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-30T18:08:40Z", actor: "human:timo", revision: 7}
+- {from: "proposed", to: "active", at: "2026-10-30T18:08:40Z", actor: "human:timo", revision: 8}
 ---
 ## Outcome
 

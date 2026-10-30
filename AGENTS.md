@@ -64,7 +64,19 @@ at all.
    `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`.
 2. `task docs`: `cargo run --locked -p llm-gateway-docs -- generate --check`.
 3. `ess specify validate --path spec`.
-4. `task conformance`: `cargo run --locked -p b10x-llm-gateway-conformance -- check`. It refuses to
+4. `task spec-diff`: `cargo run --locked -p b10x-llm-gateway-conformance -- diff`. It writes
+   `spec/` at the merge base of `--base` (default `origin/main`) and `HEAD` under `target/spec-diff/`
+   and runs `ess verify diff --fail-on breaking-or-unknown` against the working tree's `spec/`,
+   with `--acknowledgements contracts/diff-acknowledgements.json` when this change ships that file
+   (it is absent from the base or differs from it; a copy inherited unchanged from the base belongs
+   to an earlier comparison and is not applied). It exits with ESS's status: 0 passed, 4 an
+   unacknowledged breaking or unknown change, named on a `spec diff failed on:` line, 1 a refused
+   input. To ship such a change, review the delta and write
+   `{"format": "ess-diff-acknowledgements/1", "before": "<digest>", "after": "<digest>",
+   "acknowledged": ["<change id>"]}` with the two digests the run printed; ESS refuses a file
+   bound to any other pair, an id the delta does not hold, or an id twice.
+   `checks/conformance/tests/spec_diff.rs` holds the cases.
+5. `task conformance`: `cargo run --locked -p b10x-llm-gateway-conformance -- check`. It refuses to
    run anywhere but the repository root, and writes its reports to `target/conformance/` under the
    root regardless of `CARGO_TARGET_DIR`.
 
@@ -73,7 +85,10 @@ build` (Node 20 or newer; `website/node_modules` and `website/build` are ignored
 `onBrokenLinks: 'throw'` fails on a link to a page that does not exist.
 
 Each step runs alone with the command shown. CI (`.github/workflows/gate.yml`) runs the same steps
-on Rust 1.98.0 and uploads `target/conformance` as `serving-conformance`; the repository has no
+on Rust 1.98.0, with `ess` installed before the Rust step because `spec_diff.rs` runs it, and
+uploads `target/conformance` as `serving-conformance`. It checks out the whole history and runs
+`diff --base origin/<base branch>` on a pull request and `diff --base <previous head of main>` on a
+push to `main`. The repository has no
 `rust-toolchain.toml`. Run the gate on that toolchain (`RUSTUP_TOOLCHAIN=1.98.0 task check`): a
 newer Clippy can add lints CI does not have. The tree also lints clean on 1.99.0 (stable on
 2026-10-05). `.github/workflows/shared-gates.yml` runs the common
@@ -174,9 +189,13 @@ A wave opens with a `plan: open wave <date>-w<NN> (<story>)` commit, implements 
 A story's typed scope (`aep plan artifact scope`, read by `aep plan artifact waves`) lists the
 authored files it changes. It leaves out the integration files almost every story touches:
 `contracts/suite.json`, `contracts/schema/`, `contracts/baseline.json`,
-`contracts/ess-inputs.yaml`, `Cargo.lock`, `docs/llmgw-capability-matrix.md`, `README.md` and
-this file. Whoever merges a wave owns those: it regenerates the generated ones from the merged
-`spec/` and scenarios, and merges the rest by hand. A story whose purpose is one of those files
+`contracts/ess-inputs.yaml`, `contracts/diff-acknowledgements.json`, `Cargo.lock`,
+`docs/llmgw-capability-matrix.md`, `README.md` and this file. Whoever merges a wave owns those: it
+regenerates the generated ones from the merged `spec/` and scenarios, and merges the rest by hand.
+`contracts/diff-acknowledgements.json` holds only the acknowledgements of the change it ships with,
+bound to that comparison's two digests, so it goes stale when another change merges first: the
+merger runs `task spec-diff` on the merged wave and rewrites the file for that comparison, or
+deletes it when nothing needs acknowledging. A story whose purpose is one of those files
 (`story:ess-0-53`) lists it. Its wave holds no other story that edits the specification, adds a
 scenario or a dependency, or changes the gate.
 

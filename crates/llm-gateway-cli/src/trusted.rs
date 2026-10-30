@@ -16,7 +16,7 @@ use rustix::{
 };
 use std::{
     fs::{self, File},
-    io::Read,
+    io::{self, Read},
     os::unix::fs::{MetadataExt, PermissionsExt},
     path::Path,
 };
@@ -201,16 +201,28 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
         return Err(too_large());
     }
     // The bound holds for the bytes actually read, so a file that grows after the check is
-    // refused rather than read past the bound.
-    let mut bytes = Vec::new();
-    (&mut file)
-        .take(policy.limit + 1)
-        .read_to_end(&mut bytes)
-        .map_err(|error| refuse(policy, FileRule::Unreadable, &error.to_string()))?;
-    if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > policy.limit {
+    // refused rather than read past the bound. They are read in place into one allocation taken
+    // at the bound, plus one byte to see a file past it, before the first read: it never
+    // reallocates, so a credential leaves no copy in freed memory, and a refusal drops it, which
+    // overwrites it. What no read wrote stays zero, so a caller that overwrites the text it is
+    // handed overwrites all the allocation ever held.
+    let size = usize::try_from(policy.limit.saturating_add(1)).unwrap_or(usize::MAX);
+    let mut bytes = Wiped::zeroed(size);
+    let mut filled = 0;
+    while filled < size {
+        match file.read(&mut bytes.0[filled..]) {
+            Ok(0) => break,
+            Ok(read) => filled += read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => return Err(refuse(policy, FileRule::Unreadable, &error.to_string())),
+        }
+    }
+    if u64::try_from(filled).unwrap_or(u64::MAX) > policy.limit {
         return Err(too_large());
     }
-    String::from_utf8(bytes).map_err(|_| refuse(policy, FileRule::NotUtf8, "is not UTF-8"))
+    bytes
+        .into_text(filled)
+        .map_err(|_| refuse(policy, FileRule::NotUtf8, "is not UTF-8"))
 }
 
 /// [`read`] for a file a setting names: a refusal's message is `<setting>: <detail>`, naming
@@ -349,7 +361,10 @@ pub(crate) mod ledger {
             "{case}: {} allocation(s) were freed without being overwritten",
             live.len()
         );
-        assert!(taken > 0, "{case}: the bytes were held in no allocation the ledger saw");
+        assert!(
+            taken > 0,
+            "{case}: the bytes were held in no allocation the ledger saw"
+        );
     }
 }
 

@@ -4,7 +4,7 @@
 use crate::{
     config::Deployment,
     refusal::{Refusal, StartupRefusal},
-    trusted,
+    trusted::{self, Wiped},
 };
 use std::{collections::BTreeMap, fmt, path::Path};
 
@@ -90,22 +90,19 @@ pub fn vllm_keys(deployment: &Deployment) -> Result<VllmKeys, Refusal> {
 /// its one printable ASCII token of at most 4096 bytes once trailing ASCII whitespace is
 /// trimmed: refused as the `rules`' `(too_large, not_a_token)` otherwise. Every message starts
 /// `<key>:` and quotes neither the path nor the bytes, and the bytes read are overwritten
-/// whichever way the rules went. A vLLM key (row B9) and a hosted endpoint's credential are
-/// read so.
+/// whichever way the rules went: they stay in the reader's one allocation, taken at its bound,
+/// until it is dropped. The token returned is a copy of exactly its length, which the caller
+/// wraps. A vLLM key (row B9) and a hosted endpoint's credential are read so.
 pub(crate) fn read_token(
     path: &Path,
     key: &str,
     policy: &trusted::Policy,
     (too_large, not_a_token): (StartupRefusal, StartupRefusal),
 ) -> Result<Vec<u8>, Refusal> {
-    let mut read = trusted::read_named(path, key, policy)?.into_bytes();
+    let read = Wiped::adopt(trusted::read_named(path, key, policy)?.into_bytes());
     let refuse = |kind, rule: &str| Refusal::new(kind, format!("{key}: {rule}"));
     // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
-    let end = read
-        .iter()
-        .rposition(|byte| !byte.is_ascii_whitespace())
-        .map_or(0, |last| last + 1);
-    let material = &read[..end];
+    let material = read.as_slice().trim_ascii_end();
     let held = if material.len() > MAX_VLLM_KEY_BYTES {
         Err(refuse(
             too_large,
@@ -119,8 +116,7 @@ pub(crate) fn read_token(
     } else {
         Ok(material.to_vec())
     };
-    read.fill(0);
-    std::hint::black_box(&read);
+    drop(read);
     held
 }
 
@@ -141,7 +137,10 @@ mod tests {
     fn file(name: &str, bytes: &[u8]) -> PathBuf {
         let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../target/tmp")
-            .join(format!("gateway-cli-unit-key-{name}-{}", std::process::id()));
+            .join(format!(
+                "gateway-cli-unit-key-{name}-{}",
+                std::process::id()
+            ));
         drop(fs::remove_dir_all(&dir));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("key");
@@ -160,7 +159,11 @@ mod tests {
         let mut long = vec![b'k'; 4097];
         long.push(b'\n');
         for (name, bytes, outcome) in [
-            ("token", &b"sk-key-0123456789\r\n"[..], Ok(&b"sk-key-0123456789"[..])),
+            (
+                "token",
+                &b"sk-key-0123456789\r\n"[..],
+                Ok(&b"sk-key-0123456789"[..]),
+            ),
             ("spaced", b"sk key\n", Err("vllm-api-key:not-a-token")),
             ("blank", b" \n", Err("vllm-api-key:not-a-token")),
             ("long", &long, Err("vllm-api-key:too-large")),

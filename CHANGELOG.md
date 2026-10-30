@@ -7,6 +7,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Fixed
+
+- A credential is no longer left in memory freed unzeroed by a buffer that grew around it: the client's request head, the trusted-file reader, a key read from a file, the hosted probe's request and `credential set`'s standard input and prompt are each sized before the credential enters or moved by an overwrite, and overwritten, spare capacity included, on every path that lets them go, refusals included. Best effort, as before: no `zeroize` dependency. `docs/verification/2026-10-30-credential-buffers-zeroed.md`.
+
 ## 0.21.0 (2026-10-30)
 
 ### Added

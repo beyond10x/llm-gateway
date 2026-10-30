@@ -254,24 +254,32 @@ pub fn check_key(bytes: &[u8]) -> Result<Vec<u8>, CredentialFailure> {
 
 /// Reads the key from standard input: at most one terminator past the bound is read.
 fn read_stdin() -> Result<Key, CredentialFailure> {
-    let mut bytes = Key(Vec::new());
+    // Read in place into one allocation taken before the first byte, so it never reallocates
+    // and leaves no copy of the key in freed memory. Its length stays its capacity, so the
+    // `Key` overwrites every byte of it when dropped, whatever a read wrote past what it read.
+    let mut bytes = Key(vec![0; MAX_KEY_BYTES + 2]);
     let sized = bytes.0.capacity();
-    io::stdin()
-        .lock()
-        .take(u64::try_from(MAX_KEY_BYTES).unwrap_or(u64::MAX) + 2)
-        .read_to_end(&mut bytes.0)
-        .map_err(|error| {
-            CredentialFailure::new(
-                CredentialRefusal::InputUnreadable,
-                format!("standard input: {error}"),
-            )
-        })?;
+    let mut input = io::stdin().lock();
+    let mut filled = 0;
+    while filled < bytes.0.len() {
+        match input.read(&mut bytes.0[filled..]) {
+            Ok(0) => break,
+            Ok(read) => filled += read,
+            Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
+            Err(error) => {
+                return Err(CredentialFailure::new(
+                    CredentialRefusal::InputUnreadable,
+                    format!("standard input: {error}"),
+                ));
+            }
+        }
+    }
     debug_assert_eq!(
-        bytes.0.capacity(),
-        sized,
+        (bytes.0.len(), bytes.0.capacity()),
+        (sized, sized),
         "a key read from standard input reallocated, leaving a copy of it in freed memory"
     );
-    Ok(Key(check_key(&bytes.0)?))
+    Ok(Key(check_key(&bytes.0[..filled])?))
 }
 
 /// Puts the terminal's saved modes back when dropped, on every path out of the prompt.
@@ -296,7 +304,9 @@ fn read_hidden_line(reader: &mut impl Read) -> Result<Key, CredentialFailure> {
             "the prompt was cancelled",
         )
     };
-    let mut line = Key(Vec::new());
+    // One byte past the bound is all a line ever holds, so it never reallocates and leaves no
+    // copy of the key in freed memory; the `Key` overwrites it when dropped.
+    let mut line = Key(Vec::with_capacity(MAX_KEY_BYTES + 1));
     let sized = line.0.capacity();
     let mut byte = [0_u8; 1];
     loop {
@@ -688,6 +698,9 @@ mod tests {
         assert_eq!(typed(&cleared).unwrap(), MAX_KEY_BYTES);
         let mut over = vec![b'k'; MAX_KEY_BYTES + 3];
         over.push(b'\n');
-        assert_eq!(typed(&over).unwrap_err().code(), "credential:input-too-large");
+        assert_eq!(
+            typed(&over).unwrap_err().code(),
+            "credential:input-too-large"
+        );
     }
 }

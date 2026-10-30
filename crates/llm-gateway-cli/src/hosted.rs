@@ -326,33 +326,44 @@ impl HostedEndpoint {
         }
     }
 
-    /// The probe's request, which carries the endpoint's credential: overwritten when dropped.
+    /// The probe's request, which carries the endpoint's credential. It is written into one
+    /// allocation of exactly its length, taken before the credential is written into it, so it
+    /// never reallocates and leaves no copy of the key in freed memory, and it is overwritten
+    /// when dropped, as the relay's own request head is.
     fn probe_request(&self) -> Wiped {
         let path = self.base_path.as_ref().map_or_else(
             || PROBE_WIRE_PATH.to_owned(),
             |base| base.join(PROBE_WIRE_PATH),
         );
-        let mut request =
-            format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority).into_bytes();
+        let mut start = format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority);
         for header in &self.headers {
-            request
-                .extend_from_slice(format!("{}: {}\r\n", header.name(), header.value()).as_bytes());
+            let _written = write!(start, "{}: {}\r\n", header.name(), header.value());
         }
-        let (name, key): (&str, &[u8]) = match &self.credential {
-            EndpointCredential::Anonymous => ("", &[]),
-            EndpointCredential::Bearer(bearer) => ("authorization: Bearer ", bearer.expose()),
-            EndpointCredential::ApiKey { header, key } => (header.as_str(), key.expose()),
-        };
-        if !name.is_empty() {
-            request.extend_from_slice(name.as_bytes());
-            if matches!(self.credential, EndpointCredential::ApiKey { .. }) {
-                request.extend_from_slice(b": ");
+        let credential: [&[u8]; 4] = match &self.credential {
+            EndpointCredential::Anonymous => [b""; 4],
+            EndpointCredential::Bearer(bearer) => {
+                [b"authorization: Bearer ", b"", bearer.expose(), b"\r\n"]
             }
-            request.extend_from_slice(key);
-            request.extend_from_slice(b"\r\n");
+            EndpointCredential::ApiKey { header, key } => {
+                [header.as_str().as_bytes(), b": ", key.expose(), b"\r\n"]
+            }
+        };
+        let end = b"accept: application/json\r\nconnection: close\r\n\r\n";
+        let length =
+            start.len() + credential.iter().map(|piece| piece.len()).sum::<usize>() + end.len();
+        let mut request = Wiped::with_capacity(length);
+        let sized = request.capacity();
+        request.extend(start.as_bytes());
+        for piece in credential {
+            request.extend(piece);
         }
-        request.extend_from_slice(b"accept: application/json\r\nconnection: close\r\n\r\n");
-        Wiped::adopt(request)
+        request.extend(end);
+        debug_assert_eq!(
+            request.capacity(),
+            sized,
+            "a probe request holding a credential reallocated, leaving a copy of it in freed memory"
+        );
+        request
     }
 }
 

@@ -681,10 +681,11 @@ impl HeadBuffer {
     fn room(&mut self, filled: usize, wanted: usize, limit: usize) -> &mut [u8] {
         let needed = filled + wanted;
         if self.0.len() < needed {
-            let size = self.0.len().saturating_mul(2).min(limit).max(needed);
-            self.0.resize(size, 0);
+            let mut grown = vec![0_u8; self.0.len().saturating_mul(2).min(limit).max(needed)];
             #[cfg(test)]
-            head_ledger::taken(&self.0);
+            head_ledger::taken(&grown);
+            grown[..filled].copy_from_slice(&self.0[..filled]);
+            wipe(&mut std::mem::replace(&mut self.0, grown));
         }
         &mut self.0[filled..needed]
     }
@@ -716,6 +717,9 @@ impl std::ops::Deref for Head {
 /// holding nothing. Best effort without a `zeroize` dependency, as `OwnerToken` does: the black
 /// box keeps the writes observable.
 fn wipe(bytes: &mut Vec<u8>) {
+    bytes.fill(0);
+    bytes.resize(bytes.capacity(), 0);
+    std::hint::black_box(&*bytes);
     #[cfg(test)]
     head_ledger::released(bytes);
 }
@@ -776,6 +780,9 @@ mod head_tests {
 
     const CREDENTIAL: &str = "authorization: Bearer sk-head-credential-0123456789abcdef\r\n";
 
+    /// What a scripted connection answers its reads with, in order.
+    type Reads = Vec<io::Result<Vec<u8>>>;
+
     /// A connection that answers each read with the next of `reads`, cut to the room offered,
     /// and refuses a wait once `waits` are spent.
     struct Scripted {
@@ -784,7 +791,7 @@ mod head_tests {
     }
 
     impl Scripted {
-        fn new(reads: Vec<io::Result<Vec<u8>>>) -> Self {
+        fn new(reads: Reads) -> Self {
             Self {
                 reads: reads.into(),
                 waits: None,
@@ -833,7 +840,7 @@ mod head_tests {
     }
 
     /// `bytes` in reads of at most `size` bytes.
-    fn chunks(bytes: &[u8], size: usize) -> Vec<io::Result<Vec<u8>>> {
+    fn chunks(bytes: &[u8], size: usize) -> Reads {
         bytes.chunks(size).map(|chunk| Ok(chunk.to_vec())).collect()
     }
 
@@ -845,7 +852,10 @@ mod head_tests {
         for entry in head_ledger::drain() {
             match entry {
                 Entry::Taken(address, size) => {
-                    assert!(size <= limit, "{case}: an allocation of {size} past the bound");
+                    assert!(
+                        size <= limit,
+                        "{case}: an allocation of {size} past the bound"
+                    );
                     assert!(live.insert((address, size)), "{case}: taken twice");
                     taken += 1;
                 }
@@ -855,7 +865,10 @@ mod head_tests {
                         "{case}: let go an allocation the buffer never took, so the one it did \
                          take was freed by a reallocation without being overwritten"
                     );
-                    assert!(zeroed, "{case}: an allocation was let go holding head bytes");
+                    assert!(
+                        zeroed,
+                        "{case}: an allocation was let go holding head bytes"
+                    );
                 }
             }
         }
@@ -864,7 +877,10 @@ mod head_tests {
             "{case}: {} allocation(s) holding head bytes were freed without being overwritten",
             live.len()
         );
-        assert!(taken > 0, "{case}: the head's bytes were held in no buffer the ledger saw");
+        assert!(
+            taken > 0,
+            "{case}: the head's bytes were held in no buffer the ledger saw"
+        );
         taken
     }
 
@@ -876,8 +892,9 @@ mod head_tests {
         reads.extend(chunks(&sent, 700));
         reads.push(Ok(b"{}".to_vec()));
         let mut stream = Scripted::new(reads);
-        let (head, leftover) = read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
-            .expect("a whole head is read");
+        let (head, leftover) =
+            read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
+                .expect("a whole head is read");
         assert_eq!(head.as_bytes(), &sent[..sent.len() - 4]);
         assert!(leftover.is_empty() || leftover == b"{}", "{leftover:?}");
         drop(head);
@@ -896,7 +913,7 @@ mod head_tests {
         let stray = with(b"x-note: a\nb");
         let oversized = with(&vec![b'a'; limit]);
         let not_utf8 = with(b"x-note: \xff\r\n\r\n");
-        let cases: Vec<(&str, Vec<io::Result<Vec<u8>>>, Option<usize>, RefusalCode)> = vec![
+        let cases: Vec<(&str, Reads, Option<usize>, RefusalCode)> = vec![
             (
                 "a stray line byte",
                 chunks(&stray, 1000),

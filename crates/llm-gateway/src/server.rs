@@ -696,6 +696,7 @@ struct Request<'a> {
     path: &'a str,
     /// `HTTP/1.0`, which takes neither a chunked answer nor an interim `100 Continue`.
     http_1_0: bool,
+    /// Each field's value without its optional whitespace (SP and HTAB, RFC 9110 section 5.6.3).
     headers: Vec<(String, &'a str)>,
 }
 
@@ -757,7 +758,7 @@ impl<'a> Request<'a> {
                     RefusalCode::RequestMalformed
                 });
             }
-            headers.push((name, value.trim()));
+            headers.push((name, value.trim_matches([' ', '\t'])));
         }
         Ok(Self {
             method,
@@ -767,7 +768,14 @@ impl<'a> Request<'a> {
         })
     }
 
+    /// The value of `name` with every Unicode whitespace at its edges trimmed.
     fn header(&self, name: &str) -> Option<&'a str> {
+        self.field(name).map(str::trim)
+    }
+
+    /// The value of `name` as the client sent it, without its optional whitespace only: a
+    /// value checked byte for byte, such as the caller's session.
+    fn field(&self, name: &str) -> Option<&'a str> {
         self.headers
             .iter()
             .find(|(key, _)| key == name)
@@ -1000,7 +1008,7 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
             chunked_answer: !request.http_1_0,
             anthropic_beta: request.header("anthropic-beta").map(str::to_owned),
             session: request
-                .header(relay::CALLER_SESSION_HEADER)
+                .field(relay::CALLER_SESSION_HEADER)
                 .map(str::to_owned),
         }),
         Err(code) => Outcome::Refused(code),

@@ -308,3 +308,134 @@ fn session_a_caller_keeps_only_a_valid_session_and_its_canonical_peer() {
     );
     assert_eq!(Caller::default(), Caller::new(None, None));
 }
+
+// --- Adversary, wave 2026-10-30-w02 -------------------------------------------------------------
+
+/// Adversary: a session is "1 to 256 bytes of printable ASCII without a space; any other value is
+/// ignored, never sent" (`docs/gateway.md` "The `OpenCode` Go session", step 1). The head keeps a
+/// field value after `str::trim`, which strips every Unicode `White_Space` character, not only the
+/// SP and HTAB that RFC 9110 allows around a field value. So a value with a vertical tab, a form
+/// feed, a NEL or a no-break space at either end, all of them bytes the rule refuses, reaches the
+/// target as the printable remainder, and a 257-byte value whose last byte is a form feed is told
+/// to the target as 256 bytes. Each such value must be dropped, as a control byte or a non-ASCII
+/// byte inside the value is.
+#[test]
+fn adv_session_a_value_with_a_whitespace_control_or_non_ascii_byte_at_its_edge_is_dropped() {
+    let longest = "s".repeat(256);
+    let values = [
+        "caller-session-0123\u{b}".to_owned(),
+        "\u{c}caller-session-0123".to_owned(),
+        "caller-session-0123\u{85}".to_owned(),
+        "\u{a0}caller-session-0123".to_owned(),
+        "caller-session-0123\u{3000}".to_owned(),
+        format!("{longest}\u{c}"),
+    ];
+    let extras: Vec<String> = values
+        .iter()
+        .map(|value| format!("x-opencode-session: {value}\r\n"))
+        .collect();
+    let extras: Vec<&str> = extras.iter().map(String::as_str).collect();
+    let seen = relay(Answer::Nothing, None, &extras);
+    let callers = seen.callers.lock().unwrap().clone();
+    let sessions: Vec<(String, Option<String>)> = values
+        .iter()
+        .map(|value| format!("{value:?}"))
+        .zip(callers.into_iter().map(|(session, _)| session))
+        .collect();
+    let expected: Vec<(String, Option<String>)> = values
+        .iter()
+        .map(|value| (format!("{value:?}"), None))
+        .collect();
+    assert_eq!(
+        sessions, expected,
+        "a malformed client session was trimmed into one the target is told"
+    );
+}
+
+/// Every caller a translator was handed, as `(session, peer)`.
+type Handed = Arc<Mutex<Vec<(Option<String>, Option<IpAddr>)>>>;
+
+/// A translator that records the caller of every request it is handed and refuses it.
+struct RecordingTranslator {
+    callers: Handed,
+}
+
+impl llm_gateway::Translator for RecordingTranslator {
+    fn prepare(
+        &self,
+        request: &llm_gateway::TranslationRequest<'_>,
+    ) -> Result<Box<dyn llm_gateway::Translation>, llm_gateway::RefusalCode> {
+        self.callers.lock().unwrap().push((
+            request.caller.session().map(str::to_owned),
+            request.caller.peer(),
+        ));
+        Err(llm_gateway::RefusalCode::TranslationInvalid)
+    }
+}
+
+/// Adversary: the translated path is "the same order" as the relayed one only if the relay hands
+/// the translator the caller it hands a target (`TranslationRequest::caller`). No test drives a
+/// request through the relay into a translator and reads that caller back, so a relay that hands
+/// every translator `Caller::default()` stays green while every translated `OpenCode` Go turn
+/// falls back to llm's per-request session. This case reads it back: the client's valid session
+/// and its peer, and the peer alone when it sends none.
+#[test]
+fn adv_session_a_translated_request_hands_the_translator_the_callers_session_and_peer() {
+    let callers: Handed = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::new(Seen::default());
+    let targets: Arc<dyn RelayTargets> = Arc::new(Source {
+        answer: Answer::Nothing,
+        window: None,
+        seen: Arc::clone(&seen),
+    });
+    let model = RelayModel::new(
+        Label::new("go").unwrap(),
+        Label::new("served").unwrap(),
+        vec![Wire::Messages],
+    )
+    .unwrap();
+    let relay = Relay::new(vec![model], targets)
+        .unwrap()
+        .with_translator(Arc::new(RecordingTranslator {
+            callers: Arc::clone(&callers),
+        }));
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let handle = Gateway::bind_with_relay(
+        GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+        relay,
+    )
+    .unwrap();
+    handle.mark_ready();
+    let body = r#"{"model":"go","messages":[{"role":"user","content":"hi"}]}"#;
+    for extra in ["x-opencode-session: caller-session-0123\r\n", ""] {
+        let mut stream = TcpStream::connect(handle.local_addr()).unwrap();
+        stream
+            .set_read_timeout(Some(Duration::from_secs(20)))
+            .unwrap();
+        stream
+            .write_all(
+                format!(
+                    "POST /v1/chat/completions HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER}\r\n{extra}content-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                    body.len()
+                )
+                .as_bytes(),
+            )
+            .unwrap();
+        let mut answered = Vec::new();
+        drop(stream.read_to_end(&mut answered));
+    }
+    handle.shutdown();
+    let local = Some(IpAddr::V4(Ipv4Addr::LOCALHOST));
+    assert_eq!(
+        callers.lock().unwrap().clone(),
+        [
+            (Some("caller-session-0123".to_owned()), local),
+            (None, local)
+        ]
+    );
+    assert!(seen.written.lock().unwrap().is_empty());
+}

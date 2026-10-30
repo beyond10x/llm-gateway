@@ -7,6 +7,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+## 0.21.0 (2026-10-30)
+
 ### Added
 
 - A conformance scenario relays an answer whose target holds its head back 400 ms, four times the gateway's 100 ms client watch, to a request step with default options, so it fails if the runner's request step half-closes by default again. The runner's pod answer takes `delay_ms`, at most 2000. The suite's floor is 292 scenarios.

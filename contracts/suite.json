@@ -943,7 +943,7 @@
         "scenario": "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread"
       },
       "gateway/scenarios/w1-a-body-of-exactly-32-mib-is-relayed.yaml": {
-        "digest": "sha256:5ac8e1b6f81a90f931f0d863a571865da33a47cdd67a2807d5741720e7135a7c",
+        "digest": "sha256:328bd4de85ca45fe3c0340897987f250c49d3ec20c4d26d80524fbc1d86f0cb9",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed"
       },
@@ -14840,7 +14840,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"big\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"pad_to_bytes\":33554432}]}"
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"big\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"pad_to_bytes\":33554432,\"half_close\":false}]}"
             }
           },
           "step": "execute_command"

@@ -870,8 +870,10 @@ entities:
   #      connection is closed. The record feeds the counters llm-gateway.telemetry lists and
   #      leaves the gateway through the embedding's `UsageRecords`. A translated answer's
   #      record carries the status of the answer the gateway wrote as its `target_status` (llm's
-  #      client reads only a 2xx answer), and its `response_bytes` are the translated bytes;
-  #      a model's route series are registered on every wire when the relay has a translator.
+  #      client reads only a 2xx answer), and its `response_bytes` are the translated bytes; a
+  #      translated call refused after its target answered carries the status the target
+  #      answered with. A model's route series are those of the wires it declares, translator
+  #      or not: a translated request on another wire feeds the process-wide series only.
   # A refused relay is closed gracefully: the refusal is written, the write side closed, and
   # what the client still sends is read and discarded, up to 33554432 bytes and within one
   # `read_timeout_ms`, so a reset cannot destroy the refusal before the client reads it
@@ -1142,8 +1144,9 @@ commands:
       #           connection once it has received at least that many body bytes; the step's
       #           result is then `<status> closed`) and `half_close` (default true: the client
       #           shuts its sending side once the request is written; false keeps it open, as
-      #           a client waiting for a non-streamed translated answer must, since the gateway
-      #           reads a closed sending side as a client gone), `sealed_from` (the index,
+      #           a client waiting for a non-streamed answer, translated or relayed, must when
+      #           the answer may be slow to begin, since the gateway reads a closed sending
+      #           side as a client gone), `sealed_from` (the index,
       #           from 0, of an earlier request step: every `<sealed>` in this body is replaced
       #           by the first reasoning seal, `llmgw-seal-1.…`, the client received in that
       #           step's answer; a program naming a step that is not an earlier request makes

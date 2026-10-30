@@ -5,6 +5,19 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Changed
+
+- **Breaking:** on the byte relay, a non-streamed client that shuts its sending side while the gateway waits for the answer head counts as gone, as it already did on the translated path; a client that half-closes must keep its sending side open until the answer begins.
+
+### Fixed
+
+- A byte-relayed call whose client closes its connection while the gateway waits for the answer head releases the target within about 100 ms and shuts its `http` connection to the target down; a TLS connection, such as a Runpod pod's, is still held until the target answers or times out.
+- A translated call refused after its target answered records that status in its usage record, and on a route its model declares counts one `llmgw_route_upstream_status_failures_total`; `TranslatedAnswer::target_status` is the port's new method, and the binary reads the status from llm's response tap.
+- A target answer with a non-UTF-8 byte in a header or trailer field the gateway does not read is relayed and the target kept; the status line and the `content-type`, `content-length` and `transfer-encoding` values must still be UTF-8.
+- With a translator, route series are registered only for the (model, wire) pairs a model declares; a translated request on another wire feeds the process-wide series only, as `docs/gateway.md` states.
+
 ## 0.16.0 (2026-10-30)
 
 ### Added

@@ -357,3 +357,59 @@ fn no_rendered_series_carries_a_key_the_owner_token_or_request_or_answer_text() 
         }
     }
 }
+
+/// A translator that refuses every request before a target is asked for.
+struct Refuses;
+
+impl llm_gateway::Translator for Refuses {
+    fn prepare(
+        &self,
+        _request: &llm_gateway::TranslationRequest<'_>,
+    ) -> Result<Box<dyn llm_gateway::Translation>, llm_gateway::RefusalCode> {
+        Err(llm_gateway::RefusalCode::TranslationUnsupported)
+    }
+}
+
+/// story:metrics-declared-wire-pairs: with a translator composed, a model's route series are
+/// those of the wires it declares, and a translated request on another wire feeds the
+/// process-wide series only (docs/gateway.md "Counters and usage records").
+#[test]
+fn a_translating_relay_registers_only_the_declared_wire_pairs() {
+    let models =
+        vec![RelayModel::new(label("chatonly"), label("served"), vec![Wire::Chat]).unwrap()];
+    let relay = Relay::new(models, Arc::new(Source::default()))
+        .unwrap()
+        .with_translator(Arc::new(Refuses));
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let handle = Gateway::bind_with_relay(
+        GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+        relay,
+    )
+    .unwrap();
+    handle.mark_ready();
+    let text = scrape(handle.local_addr());
+    assert!(
+        text.contains("llmgw_route_requests_total{model=\"chatonly\",wire=\"chat\"} 0\n"),
+        "{text}"
+    );
+    assert!(
+        !text.contains("model=\"chatonly\",wire=\"responses\""),
+        "{text}"
+    );
+    assert!(
+        !text.contains("model=\"chatonly\",wire=\"messages\""),
+        "{text}"
+    );
+    let body = "{\"model\":\"chatonly\",\"input\":\"hi\"}";
+    assert_eq!(call(handle.local_addr(), "/v1/responses", body), 400);
+    let text = scrape(handle.local_addr());
+    assert_eq!(sample(&text, "llmgw_inference_requests_total"), 1);
+    assert!(
+        !text.contains("model=\"chatonly\",wire=\"responses\""),
+        "{text}"
+    );
+}

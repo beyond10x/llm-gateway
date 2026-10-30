@@ -693,8 +693,8 @@ pub struct Relay {
 }
 
 impl Relay {
-    /// Every (model, wire) pair is registered at zero in the relay's own [`Metrics`]; records
-    /// go nowhere until [`Self::with_records`].
+    /// Every (model, wire) pair a model declares is registered at zero in the relay's own
+    /// [`Metrics`]; records go nowhere until [`Self::with_records`].
     ///
     /// # Errors
     /// [`RelayError::DuplicateModel`] for two models with one alias.
@@ -724,11 +724,11 @@ impl Relay {
 
     /// Hands every request on a wire its model does not declare to `translator`, which
     /// translates it for the model's first declared wire (story:gateway-translation). A model's
-    /// series are then registered on every wire, since it is served on every wire.
+    /// route series stay those of the wires it declares: a translated request on another wire
+    /// feeds the process-wide series only.
     #[must_use]
     pub fn with_translator(mut self, translator: Arc<dyn Translator>) -> Self {
         self.translator = Some(translator);
-        self.register();
         self
     }
 
@@ -737,8 +737,9 @@ impl Relay {
         self.translator.is_some()
     }
 
-    /// Counts into `metrics` instead, registering every (model, wire) pair in it at zero. An
-    /// embedding that counts pod events itself shares one [`Metrics`] with the relay this way.
+    /// Counts into `metrics` instead, registering every declared (model, wire) pair in it at
+    /// zero. An embedding that counts pod events itself shares one [`Metrics`] with the relay
+    /// this way.
     #[must_use]
     pub fn with_metrics(mut self, metrics: Arc<Metrics>) -> Self {
         self.metrics = metrics;
@@ -755,12 +756,7 @@ impl Relay {
 
     fn register(&self) {
         for model in self.models.values() {
-            let wires: &[Wire] = if self.translates() {
-                &Wire::ALL
-            } else {
-                &model.wires
-            };
-            for wire in wires {
+            for wire in &model.wires {
                 self.metrics.register(model.alias.as_str(), *wire);
             }
         }
@@ -935,10 +931,15 @@ impl Buffered<'_> {
     /// One line without its CRLF, of at most `limit` bytes. A longer line is `FileTooLarge`, one
     /// that is not UTF-8 is `InvalidData`, and a stream that ends first is `UnexpectedEof`.
     fn line(&mut self, limit: usize) -> io::Result<String> {
+        String::from_utf8(self.bytes_line(limit)?)
+            .map_err(|_| io::Error::from(io::ErrorKind::InvalidData))
+    }
+
+    /// [`Self::line`] without the UTF-8 rule: for a line whose bytes are read only in part.
+    fn bytes_line(&mut self, limit: usize) -> io::Result<Vec<u8>> {
         loop {
             if let Some(end) = self.available().windows(2).position(|pair| pair == b"\r\n") {
-                let line = String::from_utf8(self.available()[..end].to_vec())
-                    .map_err(|_| io::Error::from(io::ErrorKind::InvalidData))?;
+                let line = self.available()[..end].to_vec();
                 self.start += end + 2;
                 return Ok(line);
             }
@@ -996,15 +997,21 @@ fn body_refusal(error: &io::Error) -> RefusalCode {
 
 /// Reads trailer lines up to the empty line, all of them within `budget` bytes, CRLFs included.
 /// They are discarded; the budget is what keeps a trailer section from being unbounded.
-/// `Ok(false)` is a section past the budget.
-fn skip_trailers(input: &mut Buffered<'_>, budget: usize) -> io::Result<bool> {
+/// `Ok(false)` is a section past the budget. A client's trailer lines must be UTF-8, as its head
+/// must; a target's (`from_target`) may carry any byte, since none is read.
+fn skip_trailers(input: &mut Buffered<'_>, budget: usize, from_target: bool) -> io::Result<bool> {
     let mut used = 0_usize;
     loop {
         let left = budget.saturating_sub(used);
         if left < 2 {
             return Ok(false);
         }
-        let line = match input.line(left - 2) {
+        let read = if from_target {
+            input.bytes_line(left - 2)
+        } else {
+            input.line(left - 2).map(String::into_bytes)
+        };
+        let line = match read {
             Err(error) if error.kind() == io::ErrorKind::FileTooLarge => return Ok(false),
             other => other?,
         };
@@ -1039,7 +1046,7 @@ fn read_body(
             let size =
                 chunk_size(&input.line(line_limit).map_err(malformed)?).map_err(malformed)?;
             if size == 0 {
-                if !skip_trailers(input, line_limit).map_err(malformed)? {
+                if !skip_trailers(input, line_limit, false).map_err(malformed)? {
                     return Err(RefusalCode::RequestTooLarge);
                 }
                 break;
@@ -1081,6 +1088,11 @@ struct Head {
 
 /// Reads the target's answer head. Every head it sends, interim `1xx` heads included, comes out
 /// of one `limit`-byte budget, so a target cannot grow memory by sending heads without end.
+///
+/// The status line, a field name, and the value of a field the relay reads (`content-type`,
+/// `content-length`, `transfer-encoding`) must be UTF-8. The value of any other field is not
+/// read, so it may carry obs-text (RFC 9110 section 5.5), as a proxy in front of a target may
+/// send.
 fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> {
     let invalid = || io::Error::from(io::ErrorKind::InvalidData);
     let mut used = 0_usize;
@@ -1089,12 +1101,17 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
         if left < 2 {
             return Err(invalid());
         }
-        let line = input.line(left - 2)?;
+        let line = input.bytes_line(left - 2)?;
         used += line.len() + 2;
         Ok(line)
     };
+    let text = |bytes: &[u8]| {
+        std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|_| invalid())
+    };
     loop {
-        let start = next_line(input)?;
+        let start = text(&next_line(input)?)?;
         let mut parts = start.splitn(3, ' ');
         let version = parts.next().unwrap_or_default();
         let status = parts.next().unwrap_or_default();
@@ -1113,14 +1130,21 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
             if line.is_empty() {
                 break;
             }
-            let (name, value) = line.split_once(':').ok_or_else(invalid)?;
-            let value = value.trim();
-            match name.trim().to_ascii_lowercase().as_str() {
-                "content-type" if value.bytes().all(|byte| (0x20..0x7f).contains(&byte)) => {
-                    content_type = Some(value.to_string());
+            let colon = line
+                .iter()
+                .position(|&byte| byte == b':')
+                .ok_or_else(invalid)?;
+            let name = text(&line[..colon])?.trim().to_ascii_lowercase();
+            let read = || text(&line[colon + 1..]).map(|value| value.trim().to_owned());
+            match name.as_str() {
+                "content-type" => {
+                    let value = read()?;
+                    if value.bytes().all(|byte| (0x20..0x7f).contains(&byte)) {
+                        content_type = Some(value);
+                    }
                 }
-                "content-length" => length = Some(value.parse::<u64>().map_err(|_| invalid())?),
-                "transfer-encoding" => chunked = value.to_ascii_lowercase().ends_with("chunked"),
+                "content-length" => length = Some(read()?.parse::<u64>().map_err(|_| invalid())?),
+                "transfer-encoding" => chunked = read()?.to_ascii_lowercase().ends_with("chunked"),
                 _ => {}
             }
         }
@@ -1170,7 +1194,7 @@ fn next_piece(
                 *left = chunk_size(&input.line(line_limit)?)?;
                 if *left == 0 {
                     // The target's trailers are bounded like a head, and discarded.
-                    if !skip_trailers(input, line_limit)? {
+                    if !skip_trailers(input, line_limit, true)? {
                         return Err(io::ErrorKind::FileTooLarge.into());
                     }
                     *framing = Answer::Length(0);
@@ -1302,12 +1326,17 @@ fn translate(
         framing: None,
         gone: false,
         written: 0,
+        target: None,
     };
     let ran = prepared.run(target.as_ref(), &mut answer);
     let Some(framing) = answer.framing else {
+        // The client went away before anything was written: there is no one to answer.
+        if ran.is_ok() && answer.gone {
+            return Ok(());
+        }
+        // A target that answered is recorded with its status, as on the byte relay.
+        call.target_status = answer.target;
         return match ran {
-            // The client went away before anything was written: there is no one to answer.
-            Ok(()) if answer.gone => Ok(()),
             Ok(()) => Err(RefusalCode::UpstreamRefused),
             Err(TranslationFailure::UpstreamFailed) => {
                 relay.targets.invalidate(alias, target.authority());
@@ -1336,6 +1365,8 @@ struct ClientAnswer<'s> {
     gone: bool,
     /// Body bytes written to the client.
     written: u64,
+    /// The status of the target's answer head, as the translation told it.
+    target: Option<u16>,
 }
 
 impl ClientAnswer<'_> {
@@ -1388,29 +1419,18 @@ impl TranslatedAnswer for ClientAnswer<'_> {
         self.write(head.as_bytes())
     }
 
-    /// A peek that does not wait: the end of the stream (the client closed it, or its sending
-    /// side) or an error is a client gone; bytes waiting, or none yet, a client still there.
+    /// [`client_closed`].
     fn gone(&mut self) -> bool {
         if self.gone {
             return true;
         }
-        if self.stream.set_nonblocking(true).is_err() {
-            return false;
-        }
-        let mut byte = [0_u8; 1];
-        let closed = match self.stream.peek(&mut byte) {
-            Ok(0) => true,
-            Ok(_) => false,
-            Err(error) => !matches!(
-                error.kind(),
-                io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-            ),
-        };
-        if self.stream.set_nonblocking(false).is_err() {
-            return true;
-        }
+        let closed = client_closed(self.stream);
         self.gone |= closed;
         closed
+    }
+
+    fn target_status(&mut self, status: u16) {
+        self.target = Some(status);
     }
 
     fn body(&mut self, bytes: &[u8]) -> bool {
@@ -1441,6 +1461,87 @@ impl TranslatedAnswer for ClientAnswer<'_> {
         }
         there
     }
+}
+
+/// A peek that does not wait: the end of the stream (the client closed it, or its sending side)
+/// or an error is a client gone; bytes waiting, or none yet, a client still there. A socket
+/// whose blocking mode cannot be restored is taken for gone.
+fn client_closed(stream: &TcpStream) -> bool {
+    if stream.set_nonblocking(true).is_err() {
+        return false;
+    }
+    let mut byte = [0_u8; 1];
+    let closed = match stream.peek(&mut byte) {
+        Ok(0) => true,
+        Ok(_) => false,
+        Err(error) => !matches!(
+            error.kind(),
+            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+        ),
+    };
+    stream.set_nonblocking(false).is_err() || closed
+}
+
+/// How often the byte relay asks whether its client is gone while it waits for the target's
+/// answer head.
+const CLIENT_WATCH: Duration = Duration::from_millis(100);
+
+/// The byte relay's watch on its client while nothing has been written to it: a client that
+/// closed its connection, or its sending side, shuts the target's connection down, which ends
+/// the wait for the answer head at once (story:byte-relay-client-gone). Only a target reached
+/// over a plain `TcpStream` can be shut down from outside its read; any other is waited for.
+struct ClientWatch {
+    stop: mpsc::Sender<()>,
+    thread: thread::JoinHandle<bool>,
+}
+
+impl ClientWatch {
+    /// Starts watching `client` for `target`'s connection, or `None` when that connection is
+    /// not a `TcpStream` or a handle on either cannot be had.
+    fn start(client: &TcpStream, target: &dyn RelayStream) -> Option<Self> {
+        let any: &dyn Any = target;
+        let target = any.downcast_ref::<TcpStream>()?.try_clone().ok()?;
+        let client = client.try_clone().ok()?;
+        let (stop, stopped) = mpsc::channel::<()>();
+        let thread = thread::Builder::new()
+            .name("llm-gateway-client-watch".to_owned())
+            .spawn(move || {
+                while let Err(mpsc::RecvTimeoutError::Timeout) = stopped.recv_timeout(CLIENT_WATCH)
+                {
+                    if client_closed(&client) {
+                        drop(target.shutdown(std::net::Shutdown::Both));
+                        return true;
+                    }
+                }
+                false
+            })
+            .ok()?;
+        Some(Self { stop, thread })
+    }
+
+    /// Stops watching, before the client is written to: whether the client was gone.
+    fn end(self) -> bool {
+        drop(self.stop);
+        self.thread.join().unwrap_or(false)
+    }
+}
+
+/// Reads the target's answer head while a [`ClientWatch`] watches `client`: `None` when the
+/// client was gone first.
+fn watched_head(
+    client: &TcpStream,
+    input: &mut Buffered<'_>,
+    limit: usize,
+) -> Option<io::Result<Head>> {
+    let watch = match &input.source {
+        Source::Target(target) => ClientWatch::start(client, &**target),
+        Source::Client(..) => None,
+    };
+    let read = read_answer_head(input, limit);
+    if watch.is_some_and(ClientWatch::end) {
+        return None;
+    }
+    Some(read)
 }
 
 /// Relays one admitted request, filling `call` as it learns. A refusal is returned for the
@@ -1530,7 +1631,12 @@ pub(crate) fn serve(
         buffer: Vec::new(),
         start: 0,
     };
-    let mut head = match read_answer_head(&mut input, limits.line_bytes) {
+    // A client gone before anything was written to it: there is no one to answer, and the
+    // target, whose connection the watch shut down, is released untouched.
+    let Some(read) = watched_head(stream, &mut input, limits.line_bytes) else {
+        return Ok(());
+    };
+    let mut head = match read {
         Ok(head) => head,
         Err(error) => {
             call.timed_out = matches!(

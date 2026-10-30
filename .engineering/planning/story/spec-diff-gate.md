@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:spec-diff-gate
 kind: story
-status: active
+status: implemented
 title: A breaking or unclassified spec change fails the gate until acknowledged
 relations:
 - decomposes: epic:spec-hardening
@@ -13,18 +13,25 @@ relations:
 scope:
 - confidence: cited
   path: .github/workflows/gate.yml
-- confidence: inferred
+- confidence: cited
+  path: AGENTS.md
+- confidence: cited
+  path: README.md
+- confidence: cited
   path: Taskfile.yml
-- confidence: inferred
+- confidence: cited
   path: checks/conformance/src/diff.rs
-- confidence: inferred
+- confidence: cited
   path: checks/conformance/src/main.rs
 - confidence: cited
-  path: contracts/diff-acknowledgements.json
-revision: 14
+  path: checks/conformance/tests/spec_diff.rs
+- confidence: cited
+  path: website/docs/guides/run-the-checks.md
+revision: 17
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T18:08:39Z", actor: "human:timo", revision: 12, decided_on: {"recorded":{"review_outcome":4}}}
 - {from: "proposed", to: "active", at: "2026-10-30T18:08:39Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"review_outcome":4}}}
+- {from: "active", to: "implemented", at: "2026-10-30T20:49:00Z", actor: "human:timo", revision: 17, decided_on: {"recorded":{"test_result":1,"review_outcome":6,"verification":1}}}
 ---
 ## Outcome
 

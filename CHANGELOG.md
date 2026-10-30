@@ -5,6 +5,15 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+## 0.19.0 (2026-10-30)
+
+### Changed
+
+- llm 0.19.0 (was 0.18.0) for every llm client crate.
+- A translated Messages request with a `system` entry inside `messages`, as headless Claude Code sends after the user prompt, reaches every translated route and Bedrock instead of `translation-unsupported`. Leading entries join the system prompt in order; a later one is user text in the mark `<system-message>\n<text>\n</system-message>` at its place, after the tool results when it follows a tool call. `docs/gateway.md` "Translation".
+
 ## 0.18.0 (2026-10-30)
 
 ### Added

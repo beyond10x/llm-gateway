@@ -1,5 +1,5 @@
 //! The binary's translator (story:gateway-translation): `llm_gateway`'s [`Translator`] port over
-//! llm 0.18.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
+//! llm 0.19.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
 //! and a tokio runtime the binary owns.
 //!
 //! [`Translator::prepare`] runs on the gateway's worker thread before any target is asked for:

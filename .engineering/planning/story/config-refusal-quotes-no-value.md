@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:config-refusal-quotes-no-value
 kind: story
-status: active
+status: implemented
 title: A deployment-document refusal never quotes the refused value
 relations:
 - decomposes: epic:gateway
@@ -12,10 +12,11 @@ scope:
   path: crates/llm-gateway-cli/src/config.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/config.rs
-revision: 6
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:20Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:20Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-10-30T04:36:59Z", actor: "human:timo", revision: 7, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:scenarios-metrics-listener-sealed-summary
 kind: story
-status: active
+status: implemented
 title: Scenarios reach the metrics-only listener and the sealed reasoning summary
 relations:
 - decomposes: epic:spec-hardening
@@ -16,10 +16,11 @@ scope:
   path: spec/domains/gateway.yaml
 - confidence: cited
   path: spec/domains/telemetry.yaml
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:25Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:25Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-10-30T04:37:01Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

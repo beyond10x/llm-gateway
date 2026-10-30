@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-30T04:36:42Z",
+  "actor": "human:timo",
+  "artifact": "story:target-header-obs-text",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on wave/2026-10-30-w01 at ea64ec82: 107 test binaries ok, conformance 291/291 on three runs, exit 0"
+  }
+}

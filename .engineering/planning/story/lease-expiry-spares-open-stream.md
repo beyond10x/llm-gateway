@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:lease-expiry-spares-open-stream
 kind: story
-status: active
+status: implemented
 title: A lease expiry does not stop a pod with a request in flight
 relations:
 - decomposes: epic:hosting
@@ -16,10 +16,11 @@ scope:
   path: crates/llm-runpod/tests/runpod.rs
 - confidence: cited
   path: docs/hosting.md
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:23Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:23Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-10-30T04:37:00Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

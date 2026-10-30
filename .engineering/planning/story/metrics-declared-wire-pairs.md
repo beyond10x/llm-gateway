@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:metrics-declared-wire-pairs
 kind: story
-status: active
+status: implemented
 title: Route series register only the wire pairs a model declares
 relations:
 - decomposes: epic:gateway
@@ -12,10 +12,11 @@ scope:
   path: crates/llm-gateway/src/relay.rs
 - confidence: cited
   path: crates/llm-gateway/tests/prometheus_metrics.rs
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:19Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:20Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-10-30T04:36:59Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

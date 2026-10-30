@@ -156,6 +156,8 @@
       "llm-gateway.gateway/authored/wake-answers-202-at-once-and-status-200-and-neither-asks-for-a-target",
       "llm-gateway.gateway/authored/wake-the-target-source-refuses-is-answered-what-acquire-would-be",
       "llm-gateway.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create",
+      "llm-gateway.hosting/authored/a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it",
+      "llm-gateway.hosting/authored/a-create-accepted-outside-the-scope-is-disowned-by-a-listing-retagged-at-a-newer-epoch",
       "llm-gateway.hosting/authored/a-create-taken-over-before-any-listing-confirmed-it-is-disowned",
       "llm-gateway.hosting/authored/a-create-that-never-left-the-process-allocates-nothing",
       "llm-gateway.hosting/authored/a-create-the-provider-refused-allocates-nothing",
@@ -180,6 +182,7 @@
       "llm-gateway.hosting/authored/a-second-provision-is-refused",
       "llm-gateway.hosting/authored/a-specification-for-another-account-is-refused",
       "llm-gateway.hosting/authored/a-stale-epoch-is-refused-before-the-provider-is-called",
+      "llm-gateway.hosting/authored/a-stop-confirmed-with-evidence-holding-a-space-is-discharged",
       "llm-gateway.hosting/authored/a-stop-whose-outcome-is-unknown-keeps-the-obligation-open",
       "llm-gateway.hosting/authored/a-zero-requested-lifetime-is-refused",
       "llm-gateway.hosting/authored/absence-from-a-complete-inventory-discharges-the-obligation",
@@ -1068,6 +1071,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.hosting/authored/a-complete-listing-with-no-request-identifier-cannot-settle-an-ambiguous-create"
       },
+      "hosting/scenarios/a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it.yaml": {
+        "digest": "sha256:3bb8dc39ba3ce2e0aa4f31612f11c91d7933ac634847cbaec61757ff9d4ebcd4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.hosting/authored/a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it"
+      },
+      "hosting/scenarios/a-create-accepted-outside-the-scope-is-disowned-by-a-listing-retagged-at-a-newer-epoch.yaml": {
+        "digest": "sha256:41c0261f849bd862ba8e5684745ffb1a51be89fc41bdb747bab84240dfd6533d",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.hosting/authored/a-create-accepted-outside-the-scope-is-disowned-by-a-listing-retagged-at-a-newer-epoch"
+      },
       "hosting/scenarios/a-create-taken-over-before-any-listing-confirmed-it-is-disowned.yaml": {
         "digest": "sha256:ca59c4224c0e2694a6aee9bf855382fd1395197f8c7867d567a68882806dfa1f",
         "disposition": "accepted",
@@ -1187,6 +1200,11 @@
         "digest": "sha256:006f772271958fc4171d5919eb59bdee0cd72da923674d52cd62cf94a54021d2",
         "disposition": "accepted",
         "scenario": "llm-gateway.hosting/authored/a-stale-epoch-is-refused-before-the-provider-is-called"
+      },
+      "hosting/scenarios/a-stop-confirmed-with-evidence-holding-a-space-is-discharged.yaml": {
+        "digest": "sha256:6ccef9c44868eb68f6e105d6d805a3eb95581acdbf735cd8d92a25cdcd17d9f2",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.hosting/authored/a-stop-confirmed-with-evidence-holding-a-space-is-discharged"
       },
       "hosting/scenarios/a-stop-whose-outcome-is-unknown-keeps-the-obligation-open.yaml": {
         "digest": "sha256:821358771c2bb2d1426cddaca31556f33fa6be5ea7f0d90e35e60f8bef6efb63",
@@ -1745,7 +1763,7 @@
       }
     },
     "counts": {
-      "authored": 290,
+      "authored": 293,
       "generated": 83,
       "outside": 0,
       "refused": 0
@@ -35468,6 +35486,336 @@
         }
       ]
     },
+    "llm-gateway.hosting/authored/a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it": {
+      "purpose": "adopt is declared from Uncertain, so a misanswered create listed under our tag must become Active, not Stopped",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.hosting"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.CreateAnswer"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.OwnedResource.State"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Declare"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.ObserveListed"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Provision"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.ObserveListed",
+            "outcome": "adopted"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "misanswered"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.hosting.OwnedResources"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            },
+            "request_id": {
+              "kind": "literal",
+              "value": "request-d1"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation-a"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.Provision",
+          "input": {
+            "answer": {
+              "kind": "literal",
+              "value": "AcceptedOutsideScope"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "misanswered"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.ObserveListed",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.ObserveListed",
+            "outcome": "adopted"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "id": {
+                "kind": "literal",
+                "value": "d1"
+              },
+              "request_id": {
+                "kind": "literal",
+                "value": "request-d1"
+              },
+              "reservation_id": {
+                "kind": "literal",
+                "value": "reservation-a"
+              },
+              "state": {
+                "kind": "literal",
+                "value": "Active"
+              },
+              "stop_evidence": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        }
+      ]
+    },
+    "llm-gateway.hosting/authored/a-create-accepted-outside-the-scope-is-disowned-by-a-listing-retagged-at-a-newer-epoch": {
+      "purpose": "disown is declared from Uncertain, so a misanswered create retagged at a newer epoch must become Disowned",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.hosting"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.CreateAnswer"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.OwnedResource.State"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Declare"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.ObserveTakenOver"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Provision"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.ObserveTakenOver",
+            "outcome": "taken-over"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "misanswered"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.hosting.OwnedResources"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            },
+            "request_id": {
+              "kind": "literal",
+              "value": "request-d1"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation-a"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.Provision",
+          "input": {
+            "answer": {
+              "kind": "literal",
+              "value": "AcceptedOutsideScope"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "misanswered"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.ObserveTakenOver",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.ObserveTakenOver",
+            "outcome": "taken-over"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "id": {
+                "kind": "literal",
+                "value": "d1"
+              },
+              "request_id": {
+                "kind": "literal",
+                "value": "request-d1"
+              },
+              "reservation_id": {
+                "kind": "literal",
+                "value": "reservation-a"
+              },
+              "state": {
+                "kind": "literal",
+                "value": "Disowned"
+              },
+              "stop_evidence": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        }
+      ]
+    },
     "llm-gateway.hosting/authored/a-create-taken-over-before-any-listing-confirmed-it-is-disowned": {
       "purpose": "a create the provider accepted, retagged at a strictly newer epoch before any listing confirmed it, goes from requested to disowned, attaches no evidence and is never stopped",
       "source": [
@@ -38055,6 +38403,175 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.hosting.LastExecution"
+        }
+      ]
+    },
+    "llm-gateway.hosting/authored/a-stop-confirmed-with-evidence-holding-a-space-is-discharged": {
+      "purpose": "evidence is a declared String with no refusal, so evidence holding a space must discharge, not error",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.hosting"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.CreateAnswer"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.OwnedResource.State"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.ConfirmStopped"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Declare"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Provision"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.ConfirmStopped",
+            "outcome": "confirmed"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "accepted"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.hosting.OwnedResources"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            },
+            "request_id": {
+              "kind": "literal",
+              "value": "request-d1"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation-a"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.Provision",
+          "input": {
+            "answer": {
+              "kind": "literal",
+              "value": "Accepted"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "accepted"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.ConfirmStopped",
+          "input": {
+            "evidence": {
+              "kind": "literal",
+              "value": "operator ticket 1"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.ConfirmStopped",
+            "outcome": "confirmed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.hosting.OwnedResources"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "id": {
+                "kind": "literal",
+                "value": "d1"
+              },
+              "request_id": {
+                "kind": "literal",
+                "value": "request-d1"
+              },
+              "reservation_id": {
+                "kind": "literal",
+                "value": "reservation-a"
+              },
+              "state": {
+                "kind": "literal",
+                "value": "Stopped"
+              },
+              "stop_evidence": {
+                "kind": "literal",
+                "value": "operator ticket 1"
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.hosting.OwnedResources"
         }
       ]
     },

@@ -62,6 +62,8 @@ loopback pod, never against Runpod. No client has run a live session against it.
 - **Scrape llmgw's 13 counters** from `GET /metrics`. [Scrape the counters](guides/scrape-the-counters.md)
 - **Run the released image on Kubernetes** with Secrets the file rules accept and a stop that
   drains. [Run on Kubernetes](guides/run-on-kubernetes.md)
+- **Keep a provider key in a namespace of its own**: model calls take no credential and a
+  NetworkPolicy admits only the agents' namespace. [Run in a credential namespace](guides/run-in-a-credential-namespace.md)
 - **Embed the gateway library** in your own binary with your own target pool: the relay, the
   bounds and every refusal are the library's. [The relay](concepts/relay.md)
 - **Run the gate**: Rust, the specification, conformance and these pages.

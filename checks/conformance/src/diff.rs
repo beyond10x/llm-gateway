@@ -11,15 +11,37 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
-    process::{Command, ExitCode},
+    process::{Command, ExitCode, Output},
 };
 
 const SPEC: &str = "spec";
 const ACKNOWLEDGEMENTS: &str = "contracts/diff-acknowledgements.json";
 const FAIL_ON: &str = "breaking-or-unknown";
 
+/// Runs an external program, naming it when it cannot be started. Every program this module
+/// starts goes through here, so a missing `git` or `ess` is never reported as a bare OS error.
+fn spawn(program: &str, command: &mut Command) -> Result<Output, Box<dyn Error>> {
+    command
+        .output()
+        .map_err(|error| format!("cannot run `{program}`: {error}; is it on PATH?").into())
+}
+
+/// The base copy under `target/spec-diff/`, removed on every exit from `run`: a pass, a failure,
+/// an error returned by `?` or a panic.
+struct BaseCopy(PathBuf);
+
+impl Drop for BaseCopy {
+    fn drop(&mut self) {
+        if self.0.exists()
+            && let Err(error) = fs::remove_dir_all(&self.0)
+        {
+            eprintln!("could not remove {}: {error}", self.0.display());
+        }
+    }
+}
+
 fn git(root: &Path, args: &[&str]) -> Result<Vec<u8>, Box<dyn Error>> {
-    let output = Command::new("git").args(args).current_dir(root).output()?;
+    let output = spawn("git", Command::new("git").args(args).current_dir(root))?;
     if !output.status.success() {
         return Err(format!(
             "git {} refused: {}",
@@ -69,10 +91,12 @@ fn acknowledgements(root: &Path, commit: &str) -> Result<Option<PathBuf>, Box<dy
     if !path.exists() {
         return Ok(None);
     }
-    let inherited = Command::new("git")
-        .args(["cat-file", "blob", &format!("{commit}:{ACKNOWLEDGEMENTS}")])
-        .current_dir(root)
-        .output()?;
+    let inherited = spawn(
+        "git",
+        Command::new("git")
+            .args(["cat-file", "blob", &format!("{commit}:{ACKNOWLEDGEMENTS}")])
+            .current_dir(root),
+    )?;
     if inherited.status.success() && inherited.stdout == fs::read(&path)? {
         println!(
             "{ACKNOWLEDGEMENTS} is unchanged since {commit}: it acknowledges an earlier comparison and is not applied"
@@ -116,6 +140,7 @@ pub fn run(base: &str) -> Result<ExitCode, Box<dyn Error>> {
     if out.exists() {
         fs::remove_dir_all(&out)?;
     }
+    let base_copy = BaseCopy(out.clone());
     materialise(&root, &commit, &out)?;
     println!("comparing {SPEC}/ with {SPEC}/ at {commit} (merge base of {base} and HEAD)");
     let from = out.join(SPEC);
@@ -129,10 +154,10 @@ pub fn run(base: &str) -> Result<ExitCode, Box<dyn Error>> {
     if let Some(path) = acknowledgements(&root, &commit)? {
         command.arg("--acknowledgements").arg(path);
     }
-    let output = command.current_dir(&root).output()?;
+    let output = spawn("ess", command.current_dir(&root))?;
+    drop(base_copy);
     std::io::stdout().write_all(&output.stdout)?;
     std::io::stderr().write_all(&output.stderr)?;
-    fs::remove_dir_all(&out)?;
     let code = output
         .status
         .code()

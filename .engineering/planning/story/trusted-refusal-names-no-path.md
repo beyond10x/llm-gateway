@@ -2,15 +2,16 @@
 format: aep.planning-md/3
 id: story:trusted-refusal-names-no-path
 kind: story
-status: active
+status: implemented
 title: A trusted-file refusal names its setting, never the path
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T06:14:07Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-30T06:14:07Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-30T06:59:25Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

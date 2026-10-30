@@ -2,14 +2,15 @@
 format: aep.planning-md/3
 id: story:connectors-invoke-form
 kind: story
-status: active
+status: implemented
 title: The Runpod transport calls connectors 0.60.0's invoke form
 relations:
 - serves: vision:portable-model-inference
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T06:19:47Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-30T06:19:48Z", actor: "human:timo", revision: 3}
+- {from: "active", to: "implemented", at: "2026-10-30T06:59:26Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

@@ -179,6 +179,7 @@ scenarios:
 - gateway/scenarios/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path.yaml
 - gateway/scenarios/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread.yaml
 - gateway/scenarios/w1-a-body-of-exactly-32-mib-is-relayed.yaml
+- gateway/scenarios/relay-a-target-answering-after-the-client-watch-is-relayed-to-a-default-client.yaml
 - gateway/scenarios/w2-the-model-is-rewritten-on-every-wire-and-no-other-byte-changes.yaml
 - gateway/scenarios/w3-a-malformed-body-a-missing-model-and-an-unknown-model-are-refused.yaml
 - gateway/scenarios/w4-on-the-chat-and-responses-wires-effort-high-passes-unchanged.yaml

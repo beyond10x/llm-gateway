@@ -100,6 +100,7 @@
       "llm-gateway.gateway/authored/r6-a-relay-is-refused-before-readiness-without-the-owner-and-for-another-method",
       "llm-gateway.gateway/authored/r7-a-responses-request-and-stream-are-relayed-to-the-responses-path",
       "llm-gateway.gateway/authored/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path",
+      "llm-gateway.gateway/authored/relay-a-target-answering-after-the-client-watch-is-relayed-to-a-default-client",
       "llm-gateway.gateway/authored/routes-a-base-url-without-its-api-path-composes-nothing",
       "llm-gateway.gateway/authored/routes-a-route-named-like-a-model-composes-nothing",
       "llm-gateway.gateway/authored/routes-an-env-secret-composes-nothing",
@@ -784,6 +785,11 @@
         "digest": "sha256:860fe577569cb005b46d195a08108bad3d5f95a02bfb3d616e995f91fece81a4",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r8-a-messages-request-and-stream-are-relayed-to-the-messages-path"
+      },
+      "gateway/scenarios/relay-a-target-answering-after-the-client-watch-is-relayed-to-a-default-client.yaml": {
+        "digest": "sha256:ebb8913d9522fa7fe46396b430808728231d3e817ea22fbf19ec2b3ad09ecdba",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/relay-a-target-answering-after-the-client-watch-is-relayed-to-a-default-client"
       },
       "gateway/scenarios/routes-a-base-url-without-its-api-path-composes-nothing.yaml": {
         "digest": "sha256:54231ffdb38a67a2c9be7fcca0fbc197d968ac47d9db8e924f0eb64654103922",
@@ -1727,7 +1733,7 @@
       }
     },
     "counts": {
-      "authored": 287,
+      "authored": 288,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -11533,6 +11539,102 @@
                 "value": [
                   "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
                   "pod-1 POST /v1/messages {\"model\":\"served-code\",\"max_tokens\":16,\"stream\":true,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/relay-a-target-answering-after-the-client-watch-is-relayed-to-a-default-client": {
+      "purpose": "a target that answers 400 ms after the request, four times the relay's 100 ms client watch, is relayed to a client sending with the default request options, which keep its sending side open",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"late\\\"}\"],\"delay_ms\":400}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"late\"}"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\"}"
                 ]
               },
               "valid_program": {

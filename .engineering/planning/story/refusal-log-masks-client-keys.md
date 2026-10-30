@@ -6,7 +6,7 @@ status: active
 title: The translation refused line writes a client's key as ?
 relations:
 - serves: vision:portable-model-inference
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T07:21:28Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-30T07:21:28Z", actor: "human:timo", revision: 3}
@@ -16,8 +16,9 @@ transitions:
 The `translation refused` log line names where the refused field sits (`messages[].content[]`,
 `text`, the root) and never a key the client chose. llm's diagnostics that copy a client's key
 through `field_path` or `path` (a key of at most 64 bytes of `[A-Za-z0-9_-]`) are logged with
-that key written `?`. Field names from llm's own fixed lists (`` field `n` ``, `text.format`,
-`thinking.display`) stay named.
+that key written `?`. Field names from llm's own fixed lists (`` field `n` ``) and the paths
+`docs/gateway.md` lists as refused by name (`text.format`, `output_config.format`,
+`thinking.display`, `context_management`; `NAMED_PATHS` in translate.rs) stay named.
 
 ## Why
 

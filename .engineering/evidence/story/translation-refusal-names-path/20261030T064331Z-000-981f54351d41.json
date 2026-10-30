@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T06:43:31Z",
+  "actor": "human:timo",
+  "artifact": "story:translation-refusal-names-path",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "finding 4 kept: llm 0.18.0 field_path copies a key of at most 64 bytes of [A-Za-z0-9_-] by design (llm-core controls.rs:355-358); a key is not a value the story bars, and no client sends a secret as a JSON key",
+    "review": "review-result:adversary-w03-refusal-pass-1",
+    "outcome": "no-op"
+  }
+}

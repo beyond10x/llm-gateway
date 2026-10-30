@@ -7,7 +7,7 @@ title: A trusted-file refusal names its setting, never the path
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T06:14:07Z", actor: "human:timo", revision: 2}
 - {from: "proposed", to: "active", at: "2026-10-30T06:14:07Z", actor: "human:timo", revision: 3}
@@ -35,3 +35,6 @@ does for a name (w01).
   unsafe mode, over the size bound) and finds the marker in no refusal and no log line; each
   refusal still names its code and the rule.
 - `docs/gateway.md` no longer says the symlink refusal names the file it resolves to.
+- `credential set`, which writes the same `*_file` settings, names the setting and never the
+  path or its directory, in its `credential:directory-*` and `credential:write` refusals and in
+  its success line (`review-result:adversary-w03-refusal-pass-1`).

@@ -199,3 +199,6 @@ fn adversary_pass2_the_head_with_a_skipped_header_is_exactly_the_documented_byte
     );
     assert_eq!(written, expected);
 }
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for Recording {}

@@ -15,6 +15,7 @@ Nothing in any release is deployed or qualified against a live client.
 
 - **Breaking:** a `metrics_bearer_file` token under 32 bytes, the owner secret's floor, is refused at start as `metrics-bearer:not-a-token`, naming `metrics_bearer_file`.
 - **Breaking:** on the byte relay, a non-streamed client that shuts its sending side while the gateway waits for the answer head counts as gone, as it already did on the translated path; a client that half-closes must keep its sending side open until the answer begins.
+- **Breaking:** `RelayStream` is no longer implemented for every `Read + Write + Send` type: an embedding implements it for each stream type it opens (`TcpStream`'s is provided), and `RelayStream::shutdown_handle` names the socket the relay shuts down when the client leaves before the answer head (`None` by default).
 
 ### Fixed
 
@@ -25,7 +26,9 @@ Nothing in any release is deployed or qualified against a live client.
 - A deployment-document refusal no longer quotes the refused value: a string outside a closed set (`auth_kind`, `ingress_auth`, …) or where a number or a list belongs is refused `config:schema` naming its line and the values allowed, never the string written.
 - The serving command line no longer echoes an unexpected argument: a usage error is `b10x-llm-gateway: usage error (<kind>)` with the usage line, exit status 2.
 - With `ingress_auth = "none"`, the warning that ingress authentication is off is written before the listener is bound, not after it already serves.
-- A byte-relayed call whose client closes its connection while the gateway waits for the answer head releases the target within about 100 ms and shuts its `http` connection to the target down; a TLS connection, such as a Runpod pod's, is still held until the target answers or times out.
+- A byte-relayed call whose client closes its connection while the gateway waits for the answer head releases the target within about 100 ms and shuts its connection to the target down, a plain `http` one and a TLS one such as a Runpod pod's alike. A client that pipelined a next request before it closed counts as gone too: the bytes after its request are read and discarded, at most 64 KiB a look, since the answer carries `connection: close`.
+- A target's chunked answer whose chunk extension carries a non-UTF-8 byte (obs-text in a quoted value, RFC 9112 section 7.1.1) is relayed and the target kept; only the chunk size is read, and one that is not `1*HEXDIG` is still refused.
+- The conformance runner's request step keeps the client's sending side open unless it sets `half_close: true`, so relay scenarios no longer pass only by answering inside the gateway's 100 ms client watch.
 - A translated call refused after its target answered records that status in its usage record, and on a route its model declares counts one `llmgw_route_upstream_status_failures_total`; `TranslatedAnswer::target_status` is the port's new method, and the binary reads the status from llm's response tap.
 - A target answer with a non-UTF-8 byte in a header or trailer field the gateway does not read is relayed and the target kept; the status line and the `content-type`, `content-length` and `transfer-encoding` values must still be UTF-8.
 - With a translator, route series are registered only for the (model, wire) pairs a model declares; a translated request on another wire feeds the process-wide series only, as `docs/gateway.md` states.

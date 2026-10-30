@@ -413,3 +413,6 @@ fn a_translating_relay_registers_only_the_declared_wire_pairs() {
         "{text}"
     );
 }
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for Canned {}

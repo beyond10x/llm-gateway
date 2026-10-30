@@ -3594,3 +3594,190 @@ fn a_non_utf8_byte_in_a_target_trailer_is_relayed() {
         source.invalidated()
     );
 }
+
+// --- Adversary pass on wave 2026-10-30-w01 -------------------------------------------------------
+
+/// A pipelining client (RFC 9112 section 9.3.2) that sent its next request after the first one's
+/// body and then closed is a client gone, as one that sent nothing more is
+/// (`docs/gateway.md`, relay step 8: "a client that has closed its connection ... ends the
+/// wait"). The watch peeks, sees the unread bytes of the next request and takes the client for
+/// alive, so the target is held until its answer arrives.
+#[test]
+fn adversary_a_pipelining_client_that_left_releases_the_target_before_the_answer() {
+    let (keep, hold) = std::sync::mpsc::channel::<()>();
+    let pod = Pod::start(vec![Answer::Reply {
+        status: 200,
+        content_type: "application/json",
+        chunks: vec![b"{\"id\":\"a\"}".to_vec()],
+        framing: Framing::Length,
+        hold_head: Some(hold),
+        hold_chunks: None,
+    }]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let mut client = TcpStream::connect(gateway.addr).unwrap();
+    client
+        .write_all(&request(
+            "POST",
+            "/v1/chat/completions",
+            Some(OWNER),
+            b"{\"model\":\"code\",\"stream\":false,\"messages\":[]}",
+        ))
+        .unwrap();
+    // The first request's body has been read; the next request is pipelined behind it.
+    thread::sleep(Duration::from_millis(300));
+    client
+        .write_all(b"GET /healthz HTTP/1.1\r\nhost: gateway\r\n\r\n")
+        .unwrap();
+    thread::sleep(Duration::from_millis(200));
+    drop(client);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && source.released() == 0 {
+        thread::sleep(Duration::from_millis(10));
+    }
+    let released = source.released();
+    drop(keep);
+    assert_eq!(
+        released, 1,
+        "the target was still held 3 s after a pipelining client left"
+    );
+}
+
+/// A chunk extension's value may be a quoted-string, and a quoted-string may carry obs-text
+/// (RFC 9112 section 7.1.1, RFC 9110 section 5.6.4). The relay discards extensions unread, as
+/// it discards trailer fields, so the answer is relayed whole.
+#[test]
+fn adversary_a_non_utf8_byte_in_a_target_chunk_extension_is_relayed() {
+    let (source, pod) = raw_target(with_byte(
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\r\na;note=\"caf@\"\r\n{\"id\":\"a\"}\r\n0\r\n\r\n",
+        0xe9,
+    ));
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let answer = gateway.post_text("/v1/chat/completions", HI);
+    pod.join().unwrap();
+    assert_eq!(answer.status, 200, "{answer:?}");
+    assert_eq!(answer.body, b"{\"id\":\"a\"}", "{answer:?}");
+}
+
+/// A target stream that is not a plain `TcpStream`, as a TLS stream is not, but runs over a
+/// socket it names in `RelayStream::shutdown_handle`.
+struct OverSocket(TcpStream);
+
+impl Read for OverSocket {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        self.0.read(buffer)
+    }
+}
+
+impl Write for OverSocket {
+    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
+        self.0.write(buffer)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.0.flush()
+    }
+}
+
+impl RelayStream for OverSocket {
+    fn shutdown_handle(&self) -> Option<TcpStream> {
+        self.0.try_clone().ok()
+    }
+}
+
+/// Hands out targets whose connection is an [`OverSocket`] to one pod.
+struct OverSocketSource {
+    authority: String,
+    released: Arc<AtomicUsize>,
+}
+
+struct OverSocketTarget {
+    authority: String,
+    released: Arc<AtomicUsize>,
+}
+
+impl RelayTargets for OverSocketSource {
+    fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        Ok(Box::new(OverSocketTarget {
+            authority: self.authority.clone(),
+            released: Arc::clone(&self.released),
+        }))
+    }
+
+    fn invalidate(&self, _alias: &str, _authority: &str) {}
+}
+
+impl RelayTarget for OverSocketTarget {
+    fn authority(&self) -> &str {
+        &self.authority
+    }
+
+    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
+        let stream = TcpStream::connect(&self.authority)?;
+        stream.set_read_timeout(Some(WAIT))?;
+        stream.set_write_timeout(Some(WAIT))?;
+        Ok(Box::new(OverSocket(stream)))
+    }
+}
+
+impl Drop for OverSocketTarget {
+    fn drop(&mut self) {
+        self.released.fetch_add(1, Ordering::SeqCst);
+    }
+}
+
+/// The client watch shuts down the socket a target's stream names, whatever the stream's type:
+/// a client that left releases a target reached over a wrapped socket, as a TLS one is, long
+/// before the target's read timeout (`docs/gateway.md`, relay step 8).
+#[test]
+fn adversary_a_client_that_left_releases_a_target_whose_stream_names_its_socket() {
+    let (keep, hold) = mpsc::channel::<()>();
+    let pod = Pod::start(vec![Answer::Reply {
+        status: 200,
+        content_type: "application/json",
+        chunks: vec![b"{\"id\":\"a\"}".to_vec()],
+        framing: Framing::Length,
+        hold_head: Some(hold),
+        hold_chunks: None,
+    }]);
+    let released = Arc::new(AtomicUsize::new(0));
+    let targets: Arc<dyn RelayTargets> = Arc::new(OverSocketSource {
+        authority: pod.authority.clone(),
+        released: Arc::clone(&released),
+    });
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
+    config.read_timeout = WAIT;
+    let handle = Gateway::bind_with_relay(
+        config,
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+        Relay::new(vec![code_model()], targets).unwrap(),
+    )
+    .unwrap();
+    handle.mark_ready();
+    let mut client = TcpStream::connect(handle.local_addr()).unwrap();
+    client
+        .write_all(&request(
+            "POST",
+            "/v1/chat/completions",
+            Some(OWNER),
+            b"{\"model\":\"code\",\"stream\":false,\"messages\":[]}",
+        ))
+        .unwrap();
+    thread::sleep(Duration::from_millis(500));
+    drop(client);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && released.load(Ordering::SeqCst) == 0 {
+        thread::sleep(Duration::from_millis(10));
+    }
+    let released = released.load(Ordering::SeqCst);
+    drop(keep);
+    handle.shutdown();
+    assert_eq!(
+        released, 1,
+        "a target over a named socket was still held 3 s after the client left"
+    );
+}

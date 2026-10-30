@@ -822,7 +822,7 @@ mod relay {
             /// The client closes the connection once it has received this many body bytes.
             #[serde(default)]
             close_after_bytes: Option<usize>,
-            /// Whether the client shuts its sending side once the request is written; default true.
+            /// Whether the client shuts its sending side once the request is written; default false.
             #[serde(default)]
             half_close: Option<bool>,
             /// The index of an earlier request step: every `<sealed>` in `body` is replaced by
@@ -2696,9 +2696,9 @@ mod relay {
                             seal
                         }
                     });
-                (*close_after_bytes, half_close.unwrap_or(true), seal)
+                (*close_after_bytes, half_close.unwrap_or(false), seal)
             }
-            _ => (None, true, None),
+            _ => (None, false, None),
         }
     }
 

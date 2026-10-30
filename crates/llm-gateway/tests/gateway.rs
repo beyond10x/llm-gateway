@@ -979,6 +979,12 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
         "the size of one internal read while relaying, not a limit on any request or answer",
     ),
     (
+        "CLIENT_DISCARD",
+        "the most one look at a waiting client discards before the next look, not a limit on \
+         any request: a client that sends more is still watched; measured by \
+         adversary_a_pipelining_client_that_left_releases_the_target_before_the_answer",
+    ),
+    (
         "DEFAULT_READ_TIMEOUT_SECONDS",
         "a timeout rather than a size bound; enforcement is measured by \
          a_stalled_head_is_refused_when_the_read_timeout_expires",
@@ -1552,3 +1558,6 @@ fn a_bare_lf_head_past_the_head_bound_is_request_malformed() {
     assert_eq!(answer.status, 400, "{}", answer.raw);
     assert_eq!(answer.code().as_deref(), Some("request-malformed"));
 }
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for CountAnswer {}

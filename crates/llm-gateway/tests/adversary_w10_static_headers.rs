@@ -154,3 +154,6 @@ fn adversary_a_static_header_cannot_repeat_the_credential_header_the_gateway_wri
         .count();
     assert_eq!(keyed, 1, "the head repeats the credential header:\n{head}");
 }
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for Recording {}

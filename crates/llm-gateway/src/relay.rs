@@ -81,10 +81,23 @@ impl Wire {
 /// One connection to a target: whatever the embedding opened, read and written as bytes.
 ///
 /// It is `Any` so the relay can tell a plain `TcpStream` from any other stream (see
-/// [`read_within_timeout`]).
-pub trait RelayStream: Read + Write + Send + Any {}
+/// [`read_within_timeout`]). An embedding implements it for each stream type it opens; a stream
+/// carried over a socket, such as a TLS stream, names that socket in [`Self::shutdown_handle`].
+pub trait RelayStream: Read + Write + Send + Any {
+    /// A handle on the socket this connection runs over, which the relay shuts down in both
+    /// directions when its client leaves while it waits for the answer head: the read of the
+    /// head ends at once and the target is released. `None`, the default, is a stream with no
+    /// such socket; the relay then waits for the target's answer or its read timeout.
+    fn shutdown_handle(&self) -> Option<TcpStream> {
+        None
+    }
+}
 
-impl<T: Read + Write + Send + 'static> RelayStream for T {}
+impl RelayStream for TcpStream {
+    fn shutdown_handle(&self) -> Option<TcpStream> {
+        self.try_clone().ok()
+    }
+}
 
 /// Runs one read of `socket` under the socket's read timeout measured from the first attempt.
 ///
@@ -963,26 +976,35 @@ impl Buffered<'_> {
 
 /// A chunk-size line (RFC 9112 section 7.1): `1*HEXDIG`, then nothing or an ignored chunk
 /// extension after optional whitespace and `;`. A size past `u64` reads as `u64::MAX`, which
-/// every bound refuses.
-fn chunk_size(line: &str) -> io::Result<u64> {
+/// every bound refuses. Only the size is read: an extension may carry any byte, since a quoted
+/// value may hold obs-text (RFC 9112 section 7.1.1).
+fn chunk_size(line: &[u8]) -> io::Result<u64> {
     let invalid = || io::Error::from(io::ErrorKind::InvalidData);
     let end = line
-        .bytes()
+        .iter()
         .position(|byte| !byte.is_ascii_hexdigit())
         .unwrap_or(line.len());
     let (digits, rest) = line.split_at(end);
     // Whitespace is allowed only before the `;` of an extension (BWS), never alone.
-    let extension = rest.trim_start_matches([' ', '\t']);
-    if digits.is_empty() || !(rest.is_empty() || extension.starts_with(';')) {
+    let blank = rest
+        .iter()
+        .position(|byte| !matches!(byte, b' ' | b'\t'))
+        .unwrap_or(rest.len());
+    if digits.is_empty() || !(rest.is_empty() || rest.get(blank) == Some(&b';')) {
         return Err(invalid());
     }
-    let significant = digits.trim_start_matches('0');
+    let zeros = digits
+        .iter()
+        .position(|byte| *byte != b'0')
+        .unwrap_or(digits.len());
+    let significant = &digits[zeros..];
     if significant.len() > 16 {
         return Ok(u64::MAX);
     }
     if significant.is_empty() {
         return Ok(0);
     }
+    let significant = std::str::from_utf8(significant).map_err(|_| invalid())?;
     u64::from_str_radix(significant, 16).map_err(|_| invalid())
 }
 
@@ -1043,8 +1065,8 @@ fn read_body(
             }
         }
         Framing::Chunked => loop {
-            let size =
-                chunk_size(&input.line(line_limit).map_err(malformed)?).map_err(malformed)?;
+            let size = chunk_size(input.line(line_limit).map_err(malformed)?.as_bytes())
+                .map_err(malformed)?;
             if size == 0 {
                 if !skip_trailers(input, line_limit, false).map_err(malformed)? {
                     return Err(RefusalCode::RequestTooLarge);
@@ -1191,7 +1213,9 @@ fn next_piece(
                     input.expect_crlf()?;
                 }
                 *started = true;
-                *left = chunk_size(&input.line(line_limit)?)?;
+                // A target's chunk-size line is read as bytes, as its trailers are: only the
+                // size before any extension is read.
+                *left = chunk_size(&input.bytes_line(line_limit)?)?;
                 if *left == 0 {
                     // The target's trailers are bounded like a head, and discarded.
                     if !skip_trailers(input, line_limit, true)? {
@@ -1463,21 +1487,37 @@ impl TranslatedAnswer for ClientAnswer<'_> {
     }
 }
 
-/// A peek that does not wait: the end of the stream (the client closed it, or its sending side)
-/// or an error is a client gone; bytes waiting, or none yet, a client still there. A socket
-/// whose blocking mode cannot be restored is taken for gone.
+/// How many bytes one look at a waiting client reads and discards at most.
+const CLIENT_DISCARD: usize = 65_536;
+
+/// A read that does not wait: the end of the stream (the client closed it, or its sending side)
+/// or an error is a client gone; nothing to read yet is a client still there. The request has
+/// been read whole by then, so whatever the client sent after it (a pipelined next request, RFC
+/// 9112 section 9.3.2) is read and discarded, at most [`CLIENT_DISCARD`] bytes a look, and an
+/// end behind it is seen: the answer carries `connection: close`, so those bytes are never
+/// served. A client still sending past that bound is there. A socket whose blocking mode
+/// cannot be restored is taken for gone.
 fn client_closed(stream: &TcpStream) -> bool {
     if stream.set_nonblocking(true).is_err() {
         return false;
     }
-    let mut byte = [0_u8; 1];
-    let closed = match stream.peek(&mut byte) {
-        Ok(0) => true,
-        Ok(_) => false,
-        Err(error) => !matches!(
-            error.kind(),
-            io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
-        ),
+    let mut reader = stream;
+    let mut chunk = [0_u8; 4096];
+    let mut discarded = 0_usize;
+    let closed = loop {
+        if discarded >= CLIENT_DISCARD {
+            break false;
+        }
+        match reader.read(&mut chunk) {
+            Ok(0) => break true,
+            Ok(read) => discarded += read,
+            Err(error) => {
+                break !matches!(
+                    error.kind(),
+                    io::ErrorKind::WouldBlock | io::ErrorKind::Interrupted
+                );
+            }
+        }
     };
     stream.set_nonblocking(false).is_err() || closed
 }
@@ -1488,19 +1528,19 @@ const CLIENT_WATCH: Duration = Duration::from_millis(100);
 
 /// The byte relay's watch on its client while nothing has been written to it: a client that
 /// closed its connection, or its sending side, shuts the target's connection down, which ends
-/// the wait for the answer head at once (story:byte-relay-client-gone). Only a target reached
-/// over a plain `TcpStream` can be shut down from outside its read; any other is waited for.
+/// the wait for the answer head at once (story:byte-relay-client-gone). The socket shut down is
+/// the one the target's stream names in [`RelayStream::shutdown_handle`], a plain `TcpStream`
+/// or the socket under a TLS stream; a stream that names none is waited for.
 struct ClientWatch {
     stop: mpsc::Sender<()>,
     thread: thread::JoinHandle<bool>,
 }
 
 impl ClientWatch {
-    /// Starts watching `client` for `target`'s connection, or `None` when that connection is
-    /// not a `TcpStream` or a handle on either cannot be had.
+    /// Starts watching `client` for `target`'s connection, or `None` when that connection names
+    /// no socket or a handle on the client cannot be had.
     fn start(client: &TcpStream, target: &dyn RelayStream) -> Option<Self> {
-        let any: &dyn Any = target;
-        let target = any.downcast_ref::<TcpStream>()?.try_clone().ok()?;
+        let target = target.shutdown_handle()?;
         let client = client.try_clone().ok()?;
         let (stop, stopped) = mpsc::channel::<()>();
         let thread = thread::Builder::new()
@@ -2072,6 +2112,8 @@ mod tests {
         }
     }
 
+    impl super::RelayStream for Misaligned {}
+
     /// Serves `answer` a few bytes at a time, each read preceded by one that is interrupted, as a
     /// socket with a read timeout is when its thread takes a signal or its process is stopped
     /// and continued (`man 7 signal`): `EINTR` whatever `SA_RESTART` says.
@@ -2103,6 +2145,8 @@ mod tests {
             Ok(())
         }
     }
+
+    impl super::RelayStream for Interrupting {}
 
     /// An interrupted read of the target's answer is retried, not taken for a target that
     /// failed: under a signal or a stop and continue it answered `upstream-failed` (502).
@@ -2162,11 +2206,20 @@ mod tests {
             ("ffffffffffffffff", u64::MAX),
             ("10000000000000000", u64::MAX),
         ] {
-            assert_eq!(super::chunk_size(line).ok(), Some(size), "{line:?}");
+            assert_eq!(
+                super::chunk_size(line.as_bytes()).ok(),
+                Some(size),
+                "{line:?}"
+            );
         }
+        // An extension may carry obs-text in a quoted value (RFC 9112 section 7.1.1).
+        assert_eq!(super::chunk_size(b"a;note=\"caf\xe9\"").ok(), Some(10));
         for line in [
             "", "+10", " 10", "-1", "0x10", "10 ", "1 2", "g", "10x", ";ext",
         ] {
+            assert!(super::chunk_size(line.as_bytes()).is_err(), "{line:?}");
+        }
+        for line in [&b"\xe9"[..], b"1\xe9", b"\xe91", b"1 \xe9;ext"] {
             assert!(super::chunk_size(line).is_err(), "{line:?}");
         }
     }

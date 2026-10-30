@@ -692,3 +692,6 @@ fn row_24_dropping_the_handle_without_a_shutdown_stops_the_listener() {
         "the listener still accepts after its handle was dropped"
     );
 }
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for Unwritable {}

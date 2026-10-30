@@ -93,13 +93,12 @@ impl DeploymentSpec {
     }
 }
 
-/// The caller's proof that this compute operation is already admitted by a budget ledger.
+/// The ledger and reservation a compute operation is declared against.
 ///
-/// The two fields name `llm-cost`'s own objects: `ledger` is that crate's `BudgetPolicy::id` and
-/// `reservation` is its `ReservationRequest::id` for a `Operation::Compute` reservation. The
-/// hosting controller cannot see the ledger and does not re-derive admission; it refuses to
-/// create a billed resource that is not attached to one, and it reports stop obligations in
-/// terms the ledger already understands (`RequireStop` / `ConfirmStopped`).
+/// The controller compares `ledger` with the policy's ledger and refuses another one; it does not
+/// look up `reservation`, re-derive admission or see a ledger, so this names an admission rather
+/// than proving one. The gateway passes a fixed authorization (`docs/hosting.md` § Declare). Stop
+/// obligations are reported as `RequireStop` / `ConfirmStopped`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ComputeAuthorization {
     pub ledger: Identifier,

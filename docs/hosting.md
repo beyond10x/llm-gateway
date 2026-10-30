@@ -219,11 +219,16 @@ A resource past its effective deadline becomes `StopRequired` with reason `lifet
 the ceiling obliges a stop, it does not perform one, because performing one silently is how a
 controller destroys a resource an operator was still using.
 
-`Declare` requires a `ComputeAuthorization` naming the `llm-cost` ledger and the compute
-reservation the resource is admitted against, and refuses an authorization from a different
-ledger. Provisioning an unauthorized resource is unrepresentable rather than merely discouraged.
-The controller does not re-derive admission and cannot see the ledger; the caller must `Reserve`
-and `Begin` there first and must consume the obligations this contract reports.
+`Declare` requires a `ComputeAuthorization` naming the policy's ledger and a reservation, and
+refuses an authorization from a different ledger (`unauthorized`). That is the whole check: the
+controller compares the ledger name only, does not re-derive admission and cannot see a ledger,
+and the reservation is recorded, not looked up. The gateway passes a fixed authorization, ledger
+`b10x-llm-gateway` with reservation `spend-ceiling` when a provider declares a spend ceiling and
+`unmetered` otherwise ([the pool the binary composes](#the-pool-the-binary-composes)), and no
+ledger is consulted before a create. The only spend cap is the Runpod pool's spend check before
+each create, and only when a provider declares a ceiling ([spend ceilings](#spend-ceilings));
+the resource and time ceilings above bound how many pods run and for how long. The caller must
+consume the obligations this contract reports.
 
 ## Listing and validation allocate nothing
 
@@ -309,7 +314,7 @@ through `b10x-llm-providers`, and uses neither: it calls only `descriptions::run
 | GPU choice | ordered; each refusal tries the next | the same within a profile, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false`. A model may declare ordered profiles (below); the next profile is tried only when every create of the one before was refused for capacity |
 | crash recovery | two decreasing uptimes during startup terminate the pod | Runpod reports no uptime, so a restart is the pod's `lastStartedAt` (read by `pods.list` with `id`) moving forward: a value later than the last one seen is one restart, and the first value, an equal or an earlier one, or none, is not. The same count, at any time, but only restarts inside the model's declared `crash_window_ms` count (window end inclusive), so sparse restarts over a long life are not a loop; a pod refusing its vLLM key is terminated too; the next request starts a new deployment |
 | startup deadline | the caller's hold budget; the pod keeps starting | the pod's deadline is separate from a request's hold budget (`request_hold_seconds`, row K28): a pod that has not served within its declared deadline is terminated, because it is a billed resource serving nobody. A pod that served and then answers a definite "not ready" gets the same bound, counted from the last time it was seen ready (`stopped-serving`); unknown readiness neither starts nor ends that clock |
-| idle reaper | idle past the timeout, never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement |
+| idle reaper | idle past the timeout, never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement. A lease expiry does not stop a pod with a request in flight either (see below) |
 | orphan sweep | `llmgw-*` pods whose alias left the registry | pods in `b10x-llm-` carrying **this controller's** owner tag that no live record holds, by exact key, or by request id for a record that holds no key yet; records whose model left the registry are stopped through the controller |
 | request id | none | a readable prefix of at most 64 bytes (`request-<controller>-<alias>-<generation>-`, cut short when long) followed by a 128-bit digest of a length-prefixed encoding of controller, alias, generation, instant and a per-process nonce: at most 96 bytes, so it always fits the identifier limit. Two different tuples never share an encoding — `c-qwen`/`x` and `c`/`qwen-x` do not — so two request ids agree only if the digest collides. The digest is the standard library's hasher run twice, not a cryptographic hash; it has to avoid accidents, not an adversary |
 | pod status | — | only `TERMINATED` ends a resource. `EXITED` is a stopped pod that still exists and is billed: it is reported present-but-not-running, terminated, and replaced (`pod-exited`). An endpoint is reported only for a `RUNNING` pod; otherwise it is `None` |
@@ -359,7 +364,12 @@ that is not 1 to 32 of `A-Za-z0-9-_`, and `profile-conflict` when two profiles s
 GPU type. Every fallback profile is checked as the model is.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
-lease is a stop obligation under this contract, and the pool carries it out.
+lease is a stop obligation under this contract, and the pool carries it out. It does not carry it
+out while the pod has a request in flight: a step that comes after the lease expired while a
+`StreamLease` is open submits no stop for that pod, and the first step after the last stream ends
+submits it. Until then the record stays `StopRequired` and a new request is answered `stopping`.
+A stream does not hold a pod past its lifetime ceiling: once the pod is past
+`max_lifetime_ms`, its stop is submitted with the stream still open.
 
 ### The production transport
 

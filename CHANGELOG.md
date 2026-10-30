@@ -11,6 +11,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 - A probe (`/health`, `/ready`) or a public route (`GET /v1/models`, `GET /`) is answered when its head repeats a header it never reads, such as `authorization` or `x-probe`, instead of being refused `request-malformed` or `credential-malformed`.
 - A request head holding a bare LF, a stray CR or a NUL is refused `request-malformed` as soon as that byte arrives, so one past `request-head-bytes` is no longer `request-too-large` and one under it no longer waits for `read_timeout`.
+- A Runpod pool step that comes later than `lease_ms` no longer terminates a pod with a request in flight: the stop the lease expiry owes waits until the last stream ends, and the first step after that submits it. A pod past its lifetime ceiling is still stopped with a stream open.
+- `docs/hosting.md` describes the compute authorization the gateway passes: ledger `b10x-llm-gateway` with reservation `unmetered` or `spend-ceiling`, checked by ledger name only, with the Runpod spend check as the only spend cap. It no longer says a create needs an `llm-cost` reservation reserved and begun first.
 
 ## 0.16.0 (2026-10-30)
 

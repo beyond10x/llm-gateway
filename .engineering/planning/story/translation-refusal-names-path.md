@@ -6,7 +6,7 @@ status: draft
 title: A translation refusal names the refused path in a log line
 relations:
 - decomposes: epic:gateway
-revision: 1
+revision: 2
 ---
 ## Outcome
 
@@ -27,3 +27,8 @@ message) and the gateway named none of them, even at `RUST_LOG=debug`. `refusal(
   naming the refused path, proved by a test per ingress wire.
 - llm's message texts are audited first: a text that embeds a client value is not logged, and a
   test sends a value with a marker and finds it in no log line.
+
+## Decision
+
+`b10x-chef-orchestrator`, 2026-10-30, D262: this story goes in the next llm-gateway wave after
+0.18.0.

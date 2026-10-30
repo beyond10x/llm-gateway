@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:relayed-session-header
 kind: story
-status: active
+status: implemented
 title: A relayed OpenCode Go request carries its own session header
 relations:
 - decomposes: epic:gateway
@@ -16,10 +16,11 @@ scope:
   path: docs/gateway.md
 - confidence: cited
   path: website/docs/reference/deployment-document.md
-revision: 7
+revision: 8
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T04:55:18Z", actor: "human:timo", revision: 6}
 - {from: "proposed", to: "active", at: "2026-10-30T04:55:18Z", actor: "human:timo", revision: 7}
+- {from: "active", to: "implemented", at: "2026-10-30T05:46:29Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 

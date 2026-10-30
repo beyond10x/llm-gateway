@@ -1,0 +1,12 @@
+{
+  "at": "2026-10-30T05:58:00Z",
+  "actor": "human:timo",
+  "artifact": "story:relayed-session-header",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "task check on wave/2026-10-30-w02 at d689da3: 108 test binaries ok, conformance 291/291, exit 0"
+  }
+}

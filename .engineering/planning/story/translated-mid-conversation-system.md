@@ -6,7 +6,7 @@ status: draft
 title: A translated Messages request carries a mid-conversation system entry
 relations:
 - decomposes: epic:gateway
-revision: 1
+revision: 2
 ---
 ## Outcome
 
@@ -33,3 +33,10 @@ CHANGELOG 0.12.0 lists "a mid-conversation instruction" as still refused.
 ## Depends on
 
 llm widening its Messages ingress subset to a mid-conversation system entry (llm's own story).
+
+## Decision
+
+`b10x-chef-orchestrator`, 2026-10-30, D262: the llm fix goes alone, since the consumer is
+blocked. Leading system entries join the system prompt; a later one stays in place as a marked
+user text block. The llm agent sends this repository the verified tag; this story rides with the
+pin move to it, and the consumer session is told the release.

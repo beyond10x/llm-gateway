@@ -137,7 +137,12 @@ only after the owner is authenticated and the head has admitted it.
 A head that is not HTTP/1.x, a head that is not UTF-8 (obs-text included), a header whose name
 is followed by whitespace before its colon (RFC 9112 section 5.1), a CR, LF or NUL inside a line
 (RFC 9110 section 5.5), and a head that has not arrived whole when `read_timeout` passes are each
-`request-malformed`. The owner presents
+`request-malformed`. A CR, LF or NUL inside a line is refused as soon as it arrives, so a head
+holding one is `request-malformed` at any length, never `request-too-large` or left to
+`read_timeout`. A repeated header is `request-malformed`, and a repeated `authorization` is
+`credential-malformed`, except where the request never reads it: a probe ignores every repeat,
+and a public route every repeat but `content-length`, `transfer-encoding`, `host` and
+`user-agent`. The owner presents
 `authorization: Bearer <token>`, the scheme matched without regard to case. Every `401` carries
 `www-authenticate: Bearer`, and every `405` an `allow` header naming the methods the path takes.
 

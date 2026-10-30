@@ -192,6 +192,7 @@
       "llm-gateway.hosting/authored/absence-from-a-complete-inventory-discharges-the-obligation",
       "llm-gateway.hosting/authored/acquiring-an-undeclared-deployment-is-refused",
       "llm-gateway.hosting/authored/adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input",
+      "llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select",
       "llm-gateway.hosting/authored/adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag",
       "llm-gateway.hosting/authored/adversary-a-retag-that-is-not-a-newer-epoch-is-ignored",
       "llm-gateway.hosting/authored/an-accepted-create-records-the-provider-assigned-identity",
@@ -1257,8 +1258,8 @@
         "scenario": "llm-gateway.hosting/authored/adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input"
       },
       "hosting/scenarios/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select.yaml": {
-        "digest": "sha256:adcebda76dd93398d48114db6cb0fa4788dd965e93db1b91df76fa2073e782d3",
-        "disposition": "refused",
+        "digest": "sha256:586f05bf8b87e628727612d38cbcb52ccf736560d3ae3127541b1a7c30eaba03",
+        "disposition": "accepted",
         "scenario": "llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select"
       },
       "hosting/scenarios/adversary-a-requested-stop-must-not-hide-a-foreign-owner-tag.yaml": {
@@ -1798,10 +1799,10 @@
       }
     },
     "counts": {
-      "authored": 298,
+      "authored": 299,
       "generated": 94,
       "outside": 0,
-      "refused": 1
+      "refused": 0
     },
     "generated": [
       "llm-gateway.gateway.Exchange/outcome/observed",
@@ -1901,20 +1902,7 @@
     ],
     "knowledge": "complete_inventory",
     "outside": [],
-    "refused": [
-      {
-        "code": "ESS-AUTHOR-041",
-        "effect": "candidate_not_emitted",
-        "message": "refusal[ESS-AUTHOR-041]: `llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select` in hosting/scenarios/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select.yaml\n  `llm-gateway.hosting.ConfirmStopped` is expected to answer `confirmed` for {evidence: \"\", id: \"d1\"}, which its guards decide otherwise: `invalid-identifier` (({utf8_bytes: id} == 0 or id contains \" \" or {utf8_bytes: id} > 256 or {utf8_bytes: evidence} == 0 or evidence contains \" \" or {utf8_bytes: evidence} > 256)) answers it first, so `confirmed` is not taken\n  help: send an input the expected branch's `when:` admits and no branch answered before it claims, or expect the branch that input takes: input-guarded refusals answer first, the first declared of them, then accepting `when:` and external branches in declaration order, and the default only where no `when:` holds",
-        "needs": [],
-        "origin": "authored",
-        "retained": null,
-        "scenario": "llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select",
-        "scope": "in_scope",
-        "source": "hosting/scenarios/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select.yaml",
-        "subject": null
-      }
-    ],
+    "refused": [],
     "selection": {
       "filter": {
         "kind": "all"
@@ -43319,6 +43307,129 @@
         {
           "outcome": {
             "command": "llm-gateway.hosting.Declare",
+            "outcome": "invalid-identifier"
+          },
+          "step": "expect_outcome"
+        }
+      ]
+    },
+    "llm-gateway.hosting/authored/adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select": {
+      "purpose": "ess admits empty evidence; changed for story:hosting-lifecycle-declared: invalid-identifier is guarded on empty evidence, so ConfirmStopped must answer it, not confirmed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.hosting"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.CreateAnswer"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.DeploymentId"
+        },
+        {
+          "kind": "type",
+          "name": "llm-gateway.hosting.Identifier"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.ConfirmStopped"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Declare"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.hosting.Provision"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.ConfirmStopped",
+            "outcome": "invalid-identifier"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          }
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "accepted"
+          }
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            },
+            "request_id": {
+              "kind": "literal",
+              "value": "request-d1"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation-a"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "declared"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.Provision",
+          "input": {
+            "answer": {
+              "kind": "literal",
+              "value": "Accepted"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Provision",
+            "outcome": "accepted"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "command": "llm-gateway.hosting.ConfirmStopped",
+          "input": {
+            "evidence": {
+              "kind": "literal",
+              "value": ""
+            },
+            "id": {
+              "kind": "literal",
+              "value": "d1"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.ConfirmStopped",
             "outcome": "invalid-identifier"
           },
           "step": "expect_outcome"

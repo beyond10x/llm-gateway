@@ -39,9 +39,9 @@ fn adversary_w12_the_shipped_composition_refuses_a_start_past_the_ceiling() {
     let fixture = Fixture::new("adversary-w12-shipped-ceiling");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([]))],
-        "operations invoke billing.pods": [{"stdout": {
-            "adapter": "gpu", "operation": "billing.pods", "revision": "revision-7",
+        "invoke pods.list": [listed(&serde_json::json!([]))],
+        "invoke billing.pods": [{"stdout": {
+            "connector": "runpod", "instance": "gpu", "operation": "billing.pods", "revision": "revision-7",
             "result": {"status": 200, "body": [
                 {"amount": 100.0, "time": "2026-01-01T00:00:00.000Z"},
             ]},
@@ -67,8 +67,8 @@ fn adversary_w12_the_shipped_composition_refuses_a_start_past_the_ceiling() {
     .unwrap();
     let answer = post_chat(relaying.local_addr());
     relaying.shutdown();
-    let creates = connectors.calls_of("operations invoke pod.create");
-    let reads = connectors.calls_of("operations invoke billing.pods");
+    let creates = connectors.calls_of("invoke pod.create");
+    let reads = connectors.calls_of("invoke billing.pods");
     assert!(
         creates.is_empty(),
         "a create was sent past a 10 USD ceiling on 100 USD billed ({} spend reads): {answer}",

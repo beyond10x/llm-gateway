@@ -5,6 +5,12 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Changed
+
+- **Breaking:** `ConnectorsRunpod` runs the command lines connectors 0.60.0 keeps: `invoke runpod/<adapter> <operation>` with `--connection`, the `--schema` and `--revision` pins and `--input-json`, and `--connector runpod --instance <adapter>` on every other command; it needs connectors 0.60.0 or newer. The `[providers.<name>.connectors]` key `adapter` is unchanged and names the `runpod` instance.
+
 ## 0.18.0 (2026-10-30)
 
 ### Added

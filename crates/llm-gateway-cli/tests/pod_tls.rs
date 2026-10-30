@@ -237,8 +237,8 @@ fn tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors() {
     let fixture = Fixture::new("tls-relay");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
-        "operations invoke pod.create": [created(&running_small_pod())],
+        "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pod.create": [created(&running_small_pod())],
     }));
     let config = fixture.config(&connected_document(
         &fixture,
@@ -256,7 +256,7 @@ fn tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors() {
     assert!(answer.starts_with("HTTP/1.1 200 "), "{answer:?}");
     assert!(answer.contains(POD_CHAT_ANSWER), "{answer:?}");
     assert!(!answer.contains(VLLM_KEY), "{answer:?}");
-    let creates = connectors.calls_of("operations invoke pod.create");
+    let creates = connectors.calls_of("invoke pod.create");
     assert_eq!(creates.len(), 1, "{creates:?}");
 
     let seen = pod.seen();
@@ -302,8 +302,8 @@ fn tls_an_untrusted_pod_certificate_is_upstream_failed_and_the_pod_reads_nothing
     let fixture = Fixture::new("tls-untrusted");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
-        "operations invoke pod.create": [created(&running_small_pod())],
+        "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pod.create": [created(&running_small_pod())],
     }));
     let config = fixture.config(&connected_document(
         &fixture,
@@ -321,7 +321,7 @@ fn tls_an_untrusted_pod_certificate_is_upstream_failed_and_the_pod_reads_nothing
             to: stranger.server(POD_HOST),
             armed: Box::new(move || {
                 std::fs::read_to_string(&calls)
-                    .is_ok_and(|calls| calls.contains("\"operations invoke pod.create\""))
+                    .is_ok_and(|calls| calls.contains("\"invoke pod.create\""))
             }),
         }),
     );

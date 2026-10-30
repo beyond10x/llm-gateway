@@ -58,9 +58,9 @@ fn sec_the_shipped_composition_checks_the_ceiling_before_any_create() {
     let fixture = Fixture::new("sec-w12-spend-shipped");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([]))],
-        "operations invoke billing.pods": [{"stdout": {
-            "adapter": "gpu", "operation": "billing.pods", "revision": "revision-7",
+        "invoke pods.list": [listed(&serde_json::json!([]))],
+        "invoke billing.pods": [{"stdout": {
+            "connector": "runpod", "instance": "gpu", "operation": "billing.pods", "revision": "revision-7",
             "result": {"status": 200, "body": [
                 {"amount": 5.25, "time": "2999-01-01T00:00:00.000Z"},
             ]},
@@ -82,7 +82,7 @@ fn sec_the_shipped_composition_checks_the_ceiling_before_any_create() {
     let answer = post_chat(relaying.local_addr());
     relaying.shutdown();
 
-    let creates = connectors.calls_of("operations invoke pod.create");
+    let creates = connectors.calls_of("invoke pod.create");
     let approvals = connectors.calls_of("approvals prepare pod.create");
     assert!(
         creates.is_empty() && approvals.is_empty(),
@@ -91,12 +91,10 @@ fn sec_the_shipped_composition_checks_the_ceiling_before_any_create() {
          answer: {answer:?}",
         creates.len(),
         approvals.len(),
-        connectors.calls_of("operations invoke billing.pods").len()
+        connectors.calls_of("invoke billing.pods").len()
     );
     assert!(
-        !connectors
-            .calls_of("operations invoke billing.pods")
-            .is_empty(),
+        !connectors.calls_of("invoke billing.pods").is_empty(),
         "the spend was never read"
     );
     assert!(answer.starts_with("HTTP/1.1 503 "), "{answer:?}");

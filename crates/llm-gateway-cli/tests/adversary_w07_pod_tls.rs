@@ -364,8 +364,8 @@ fn adversary_w07_an_untrusted_pod_is_probed_without_a_byte_or_a_key() {
     let fixture = Fixture::new("adversary-w07-probe-untrusted");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
-        "operations invoke pod.create": [created(&running_small_pod())],
+        "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pod.create": [created(&running_small_pod())],
     }));
     let deployment =
         load(&fixture.config(&connected_document(&fixture, "127.0.0.1:0", &connectors, 3)))
@@ -405,7 +405,7 @@ fn adversary_w07_the_shipped_start_refuses_a_bad_connectors_document_before_any_
     let fixture = Fixture::new("adversary-w07-start-refusals");
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
-        "operations invoke pods.list": [listed(&serde_json::json!([]))],
+        "invoke pods.list": [listed(&serde_json::json!([]))],
     }));
     let base = connected_document(&fixture, "127.0.0.1:0", &connectors, 1);
     let key_path = fixture.vllm_key().display().to_string();

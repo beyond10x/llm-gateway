@@ -374,9 +374,14 @@ A stream does not hold a pod past its lifetime ceiling: once the pod is past
 ### The production transport
 
 `ConnectorsRunpod` reaches Runpod's control plane only through the `connectors` CLI of
-beyond10x/connectors v0.37.0 and its Runpod catalog bundle (connectors `docs/catalog-runpod.md`).
-The Runpod API key stays in the connectors keyring; this crate holds no HTTP client for the
-control plane and no credential for it. `spec/domains/runpod.yaml` declares every invocation.
+beyond10x/connectors and its Runpod catalog bundle (connectors `docs/catalog-runpod.md`). It was
+built against v0.37.0 and runs the command lines connectors 0.60.0 keeps (its `CHANGELOG.md`,
+`## 0.60.0`): every operation is `connectors --output json invoke runpod/<adapter>
+<operation> --connection <connection> --schema <schema> --revision <revision> --input-json
+<document>`, and every other command selects the instance with `--connector runpod --instance
+<adapter>`. The Runpod API key stays in the connectors keyring; this crate holds no HTTP client
+for the control plane and no credential for it. `spec/domains/runpod.yaml` declares every
+invocation.
 
 | Call | connectors operation | Answer |
 | --- | --- | --- |
@@ -452,7 +457,7 @@ before its first `connectors` call:
 ```toml
 [providers.runpod.connectors]
 executable = "/usr/local/bin/connectors"   # absolute; not looked up on PATH
-adapter = "gpu"                            # the alias bound to the Runpod catalog provider
+adapter = "gpu"                            # the instance of the connectors `runpod` connector
 connection = "conn-1"                      # the saved connection id
 work_directory = "/var/lib/gateway/connectors"  # existing, owned by the gateway's user, mode 0700
 timeout_seconds = 60                       # 1..=600, default 60: one CLI call

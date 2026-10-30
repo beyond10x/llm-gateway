@@ -79,7 +79,7 @@ fn failure(data: &Value) -> Value {
 
 fn described(operation: &str) -> Value {
     ok(&json!({
-        "adapter": "gpu", "revision": "revision-7", "schema": format!("schema-{operation}"),
+        "adapter": "gpu", "connector": "runpod", "instance": "gpu", "revision": "revision-7", "schema": format!("schema-{operation}"),
         "operation": {"id": operation, "description": "", "contract": "operations/v1alpha1",
                       "profile": "resource", "input_schema": {}, "output_schema": {}},
         "source": "owner", "stale": false,
@@ -120,15 +120,15 @@ fn a_listing_in_connectors_success_envelope_is_read() {
     let fixture = Fixture::new("enveloped_list");
     fixture.script(&json!({
         "operations describe pods.list": [described("pods.list")],
-        "operations invoke pods.list": [ok(&json!({
-            "adapter": "gpu", "operation": "pods.list", "revision": "revision-7",
+        "invoke pods.list": [ok(&json!({
+            "connector": "runpod", "instance": "gpu", "operation": "pods.list", "revision": "revision-7",
             "result": {"status": 200, "body": [qwen_pod("abc123")]},
         }))],
     }));
     let listing = fixture.transport().list_pods().expect("listing");
 
     assert_eq!(
-        fixture.calls_of("operations invoke pods.list").len(),
+        fixture.calls_of("invoke pods.list").len(),
         1,
         "the schema and revision were read from the enveloped describe, so the list was invoked"
     );
@@ -150,14 +150,14 @@ fn a_listing_in_connectors_success_envelope_is_read() {
 #[test]
 fn an_applied_create_in_connectors_success_envelope_is_created() {
     let fixture = Fixture::new("enveloped_create");
-    fixture.script(&json!({"operations invoke pod.create": [ok(&json!({
-        "adapter": "gpu", "operation": "pod.create", "revision": "revision-7",
+    fixture.script(&json!({"invoke pod.create": [ok(&json!({
+        "connector": "runpod", "instance": "gpu", "operation": "pod.create", "revision": "revision-7",
         "result": {"status": 201, "body": qwen_pod("abc123")},
         "mutation": {"classification": "applied", "replayed": false},
     }))]}));
     let answer = fixture.transport().create_pod(&request());
 
-    assert_eq!(fixture.calls_of("operations invoke pod.create").len(), 1);
+    assert_eq!(fixture.calls_of("invoke pod.create").len(), 1);
     assert!(
         matches!(&answer, CreateAnswer::Created(pod) if pod.id == "abc123"),
         "a pod Runpod created and connectors classified `applied` is {answer:?}"
@@ -170,14 +170,14 @@ fn an_applied_create_in_connectors_success_envelope_is_created() {
 #[test]
 fn a_refused_create_reported_on_stderr_is_refused() {
     let fixture = Fixture::new("stderr_refused_create");
-    fixture.script(&json!({"operations invoke pod.create": [failure(&json!({
+    fixture.script(&json!({"invoke pod.create": [failure(&json!({
         "kind": "operational", "code": "invalid_input", "stage": "dispatch",
         "next_action": "retry_explicitly", "service_code": "invalid_request",
         "mutation": {"classification": "refused", "replayed": false},
     }))]}));
     let answer = fixture.transport().create_pod(&request());
 
-    assert_eq!(fixture.calls_of("operations invoke pod.create").len(), 1);
+    assert_eq!(fixture.calls_of("invoke pod.create").len(), 1);
     assert_eq!(answer, CreateAnswer::Refused);
 }
 
@@ -188,13 +188,13 @@ fn a_refused_create_reported_on_stderr_is_refused() {
 fn a_read_refused_at_admission_on_stderr_revalidates_once() {
     let fixture = Fixture::new("stderr_not_granted_read");
     fixture.script(&json!({
-        "operations invoke pods.list": [
+        "invoke pods.list": [
             failure(&json!({
                 "kind": "operational", "code": "not_granted", "stage": "admission",
                 "next_action": "revalidate_connection",
             })),
             ok(&json!({
-                "adapter": "gpu", "operation": "pods.list", "revision": "revision-7",
+                "connector": "runpod", "instance": "gpu", "operation": "pods.list", "revision": "revision-7",
                 "result": {"status": 200, "body": [qwen_pod("abc123")]},
             })),
         ],
@@ -211,5 +211,5 @@ fn a_read_refused_at_admission_on_stderr_revalidates_once() {
         1,
         "an expired connection is revalidated once"
     );
-    assert_eq!(fixture.calls_of("operations invoke pods.list").len(), 2);
+    assert_eq!(fixture.calls_of("invoke pods.list").len(), 2);
 }

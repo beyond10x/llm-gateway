@@ -30,7 +30,7 @@ const STARTUP: Duration = Duration::from_secs(20);
 const WAIT: Duration = Duration::from_secs(10);
 
 const CLAUDE_CODE_FIRST_TURN: &str =
-    include_str!("../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt");
+    include_str!("../src/admission/claude-code/1-tool-turn.request.txt");
 const CLAUDE_CODE_SECOND_TURN: &str =
     include_str!("../../llm-gateway/tests/fixtures/claude-code/2-tool-result.request.txt");
 const CLAUDE_CODE_STRUCTURED_OUTPUT: &str =
@@ -367,11 +367,15 @@ fn adversary_w06_claude_codes_second_turn_reaches_the_translated_model_get_root_
 /// `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` is set) names the profile's alias, since the profile
 /// sets every model setting, `ANTHROPIC_DEFAULT_HAIKU_MODEL` included, to it. On a translated
 /// model `GET /` profiles Claude Code for, it is refused `translation-unsupported`
-/// (`translation_fields_llm_still_refuses_are_refused_by_name`), and the profile does not set the
-/// variable that turns it off.
+/// (`translation_fields_llm_still_refuses_are_refused_by_name`). Pass 1 asserted the request
+/// reaches the model. DECIDED 2026-10-30 (story:client-profiles-translated, correction round 1):
+/// the profile that names a model reached only by translation exports
+/// `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS`, so Claude Code does not send the request; a profile
+/// naming only a model that declares `messages` does not, and keeps structured outputs.
 #[test]
 fn adversary_w06_claude_codes_structured_output_request_reaches_the_translated_model_get_root_names()
  {
+    const DISABLE: &str = "export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n";
     let fixture = Fixture::new("adv-w06-structured-output");
     let upstream = Upstream::script(vec![("application/json", CHAT_TITLE)]);
     let server = Server::start(&translated_chat_model(
@@ -384,13 +388,30 @@ fn adversary_w06_claude_codes_structured_output_request_reaches_the_translated_m
         root.contains("export ANTHROPIC_DEFAULT_HAIKU_MODEL='chat-up'\n"),
         "precondition, GET / profiles Claude Code for the translated model: {root}"
     );
+    assert!(
+        root.contains(DISABLE),
+        "story:client-profiles-translated, DECIDED 2026-10-30: the profile naming the translated `chat-up` exports CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1:\n{root}"
+    );
     let answer = server.claude_code(
         CLAUDE_CODE_STRUCTURED_OUTPUT,
         &body_naming(CLAUDE_CODE_STRUCTURED_OUTPUT, "chat-up").to_string(),
     );
     assert!(
-        !refused_translation(&answer),
-        "GET / named `chat-up` for Claude Code (profile: {root}), and its structured-output request was refused:\n{answer}"
+        refused_translation(&answer),
+        "story:client-profiles-translated, DECIDED 2026-10-30: the request the variable stops is still refused on a translated path, so the variable is needed:\n{answer}"
+    );
+    let native = Fixture::new("adv-w06-structured-output-native");
+    let secret = native.owner_secret();
+    let table = "[hosted.msg-up]\nwires = [\"messages\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nupstream_model = \"served\"\nauth_kind = \"anonymous\"\ntool_calling = \"parsed\"\n";
+    let server = Server::start(&native.config(&hosted_document("127.0.0.1:0", &secret, table)));
+    let root = server.root("gateway", CLAUDE_CODE_AGENT);
+    assert!(
+        root.contains("export ANTHROPIC_MODEL='msg-up'\n"),
+        "precondition, GET / profiles Claude Code for the native messages model: {root}"
+    );
+    assert!(
+        !root.contains("CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS"),
+        "story:client-profiles-translated, DECIDED 2026-10-30: a profile naming only a native messages model keeps structured outputs:\n{root}"
     );
 }
 

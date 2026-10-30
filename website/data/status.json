@@ -214,7 +214,7 @@
     },
     {
       "area": "Gateway",
-      "detail": "GET / hands Codex and Claude Code a profile for a model whose upstream speaks another wire when the client's recorded first turn translates to it under the model's capabilities, and none when it is refused; the gateway asks once, at start, and logs nothing for it. A Loom run is profiled only for models that declare chat. Tested through the binary against loopback fixture upstreams, not a vendor API.",
+      "detail": "GET / hands Codex and Claude Code a profile for a model whose upstream speaks another wire when the client's recorded first turn translates to it under the model's capabilities, and none when it is refused; the gateway asks once, at start, and logs nothing for it. Claude Code's profile for such a model turns its structured output off, which every translated path refuses. A Loom run is profiled only for models that declare chat. Tested through the binary against loopback fixture upstreams, not a vendor API.",
       "href": "/docs/guides/set-up-a-client",
       "label": "Client setup for translated routes",
       "status": "shipped"

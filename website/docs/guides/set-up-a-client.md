@@ -79,6 +79,17 @@ export CLAUDE_CODE_SUBAGENT_MODEL='small'
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'
 ```
 
+A block for a model Claude Code's requests reach only translated ends with two more lines:
+
+```bash
+# Reached by translation, which refuses Claude Code's structured outputs.
+export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'
+```
+
+The translation refuses `output_config.format` with `translation-unsupported`, and Claude Code
+sends it in side requests unless that variable is set
+([Translate between wires](translate-between-wires.md#claude-code-and-codex)).
+
 What the gateway does with what Claude Code sends, for a model served by vLLM v0.27.1 with the
 Qwen3.8 chat template ([the relay](../concepts/relay.md)):
 

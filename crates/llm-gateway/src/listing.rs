@@ -56,11 +56,12 @@ impl InstructionAnswer {
     /// The answer for the models of `relay` (none without one), every base URL under `origin`
     /// (`http://<authority>`).
     pub(crate) fn render(self, relay: Option<&Relay>, origin: &str) -> String {
+        let models = |wire| profiled(relay, wire).map(|(model, _)| model);
         match self {
-            Self::Codex => codex(profiled(relay, Wire::Responses), origin),
+            Self::Codex => codex(models(Wire::Responses), origin),
             Self::ClaudeCode => claude_code(profiled(relay, Wire::Messages), origin),
-            Self::Html => html(&plain(profiled(relay, Wire::Chat), origin)),
-            Self::Plain => plain(profiled(relay, Wire::Chat), origin),
+            Self::Html => html(&plain(models(Wire::Chat), origin)),
+            Self::Plain => plain(models(Wire::Chat), origin),
         }
     }
 }
@@ -122,11 +123,15 @@ pub(crate) fn models<'m>(models: impl Iterator<Item = &'m RelayModel>, translate
 /// (`llm-gateway.clients.ClientProfile`): its requests reach the model, relayed on a wire the
 /// model takes verbatim or translated where the composed translator admitted them
 /// ([`Relay::reaches`]; story:client-profiles-translated), and the model parses tool calls.
-fn profiled(relay: Option<&Relay>, wire: Wire) -> impl Iterator<Item = &RelayModel> {
+/// Each comes with whether those requests reach it only translated.
+fn profiled(relay: Option<&Relay>, wire: Wire) -> impl Iterator<Item = (&RelayModel, bool)> {
     relay.into_iter().flat_map(move |relay| {
-        relay.models().filter(move |model| {
-            relay.reaches(model, wire) && model.tool_calling() == ToolCalling::Parsed
-        })
+        relay
+            .models()
+            .filter(move |model| {
+                relay.reaches(model, wire) && model.tool_calling() == ToolCalling::Parsed
+            })
+            .map(move |model| (model, !model.relays(wire)))
     })
 }
 
@@ -190,11 +195,13 @@ carries the gateway's owner token as Authorization: Bearer.
 # account a secret_reference_id that resolves to the owner token.
 ";
 
-/// What an answer says when no model has a profile for its client.
+/// What an answer says when no model has a profile for its client. It names no declared wire:
+/// a translated-only model that declares the client's wire is left out when the translator does
+/// not admit the client (story:client-profiles-translated).
 fn none_for(client: &str, wire: Wire) -> String {
     format!(
-        "\n# No model of this gateway serves {client}: none declares the {} wire with tool\n\
-         # calling parsed.\n",
+        "\n# No model of this gateway serves {client}: none with tool calling parsed\n\
+         # takes its requests on the {} wire, relayed or translated.\n",
         wire.label()
     )
 }
@@ -223,8 +230,12 @@ fn codex<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> Stri
 }
 
 /// Claude Code's environment variables per model profiled on the messages wire. Every setting
-/// names the alias, so no background request names a model the gateway refuses.
-fn claude_code<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> String {
+/// names the alias, so no background request names a model the gateway refuses. A model the
+/// requests reach only translated also turns structured output off: every translated path
+/// refuses `output_config.format` as `translation-unsupported`, and Claude Code sends it unless
+/// `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` (DECIDED 2026-10-30,
+/// story:client-profiles-translated).
+fn claude_code<'m>(models: impl Iterator<Item = (&'m RelayModel, bool)>, origin: &str) -> String {
     const MODEL_SETTINGS: [&str; 5] = [
         "ANTHROPIC_MODEL",
         "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -234,7 +245,7 @@ fn claude_code<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -
     ];
     let mut text = CLAUDE_CODE_HEADER.to_owned();
     let mut any = false;
-    for model in models {
+    for (model, translated) in models {
         any = true;
         let alias = model.alias().as_str();
         let _ = writeln!(text, "\n# model {alias}");
@@ -247,6 +258,12 @@ fn claude_code<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -
                 text,
                 "export CLAUDE_CODE_MAX_CONTEXT_TOKENS={}",
                 shell(&window.to_string())
+            );
+        }
+        if translated {
+            text.push_str(
+                "# Reached by translation, which refuses Claude Code's structured outputs.\n\
+                 export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n",
             );
         }
     }

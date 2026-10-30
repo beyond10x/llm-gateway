@@ -680,6 +680,12 @@ impl RelayModel {
         self.translated_only
     }
 
+    /// Whether a request on `wire` is relayed to the model byte for byte: it declares the wire
+    /// and its target takes client wires verbatim (it is not [`Self::translated_only`]).
+    pub(crate) fn relays(&self, wire: Wire) -> bool {
+        self.wires.contains(&wire) && !self.translated_only
+    }
+
     /// Declares the effort a messages-wire request that names none reaches the target with,
     /// as `output_config.effort`. Undeclared, such a request is relayed without one.
     #[must_use]
@@ -758,6 +764,10 @@ pub struct Relay {
     /// Where a request on a wire its model does not declare goes; without one it is refused
     /// `wire-not-served` (story:gateway-translation).
     translator: Option<Arc<dyn Translator>>,
+    /// By alias, the wires a model does not relay on whose `GET /` client the translator
+    /// admits ([`Translator::admits`]), asked once by [`Self::with_translator`]
+    /// (story:client-profiles-translated).
+    admitted: BTreeMap<String, Vec<Wire>>,
 }
 
 impl Relay {
@@ -785,6 +795,7 @@ impl Relay {
             metrics: Arc::new(Metrics::default()),
             records: Arc::new(NoRecords),
             translator: None,
+            admitted: BTreeMap::new(),
         };
         relay.register();
         Ok(relay)
@@ -794,8 +805,24 @@ impl Relay {
     /// translates it for the model's first declared wire (story:gateway-translation). A model's
     /// route series stay those of the wires it declares: a translated request on another wire
     /// feeds the process-wide series only.
+    ///
+    /// Asks `translator` now, once per model and wire the model does not relay, whether the
+    /// requests of that wire's `GET /` client reach the model ([`Translator::admits`]), so
+    /// `GET /` profiles the client there only when they do (story:client-profiles-translated).
     #[must_use]
     pub fn with_translator(mut self, translator: Arc<dyn Translator>) -> Self {
+        self.admitted = self
+            .models
+            .values()
+            .map(|model| {
+                let upstream = model.wires[0];
+                let admitted = Wire::ALL
+                    .into_iter()
+                    .filter(|&wire| !model.relays(wire) && translator.admits(wire, model, upstream))
+                    .collect();
+                (model.alias.as_str().to_owned(), admitted)
+            })
+            .collect();
         self.translator = Some(translator);
         self
     }
@@ -803,6 +830,16 @@ impl Relay {
     /// Whether a translator was composed: then every model accepts every wire.
     pub(crate) fn translates(&self) -> bool {
         self.translator.is_some()
+    }
+
+    /// Whether the requests of the client `GET /` profiles on `wire` reach `model`: relayed
+    /// ([`RelayModel::relays`]), or translated where the composed translator admitted them.
+    pub(crate) fn reaches(&self, model: &RelayModel, wire: Wire) -> bool {
+        model.relays(wire)
+            || self
+                .admitted
+                .get(model.alias.as_str())
+                .is_some_and(|admitted| admitted.contains(&wire))
     }
 
     /// Counts into `metrics` instead, registering every declared (model, wire) pair in it at

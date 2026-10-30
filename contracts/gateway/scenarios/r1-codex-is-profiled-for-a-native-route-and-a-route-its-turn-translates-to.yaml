@@ -1,0 +1,62 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r1-codex-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to
+summary: GET / profiles Codex for a responses route and a route its first turn translates to, not one refusing it
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","translation":"on","models":[],"routes_document":"format: llm.routes/1\nendpoints:\n  resp-ep: {base_url: \"http://pod-1/v1\", protocol: responses, auth: {kind: anonymous}}\n  msg-ep: {base_url: \"http://pod-2/v1\", protocol: messages, auth: {kind: anonymous}}\n  chat-ep: {base_url: \"http://pod-3/v1\", protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  native-up: resp-ep/served-responses\n  translated-up: msg-ep/served-messages\n  refused-up: {model: chat-ep/served-chat, capabilities: {tools: true, tool_choice: true, temperature: true, top_p: true, reasoning_efforts: [low, medium], context_window: 65536, max_output_tokens: 4096}}\n","pods":[[],[{"status":200,"content_type":"text/event-stream","chunks":["event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_up\",\"model\":\"served\",\"role\":\"assistant\",\"stop_reason\":null,\"stop_sequence\":null,\"type\":\"message\",\"usage\":{\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"input_tokens\":12,\"output_tokens\":1}},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"]}],[]],"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/","body":"","credential":false,"user_agent":"codex_cli_rs/0.160.0"},{"step":"request","path":"/v1/responses","body":"{\"client_metadata\":{\"session_id\":\"session-1\"},\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Sandbox: read-only.\",\"type\":\"input_text\"}],\"id\":\"msg_1\",\"role\":\"developer\",\"type\":\"message\"},{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"id\":\"msg_2\",\"role\":\"user\",\"type\":\"message\"}],\"instructions\":\"Be brief.\",\"model\":\"translated-up\",\"parallel_tool_calls\":false,\"prompt_cache_key\":\"session-1\",\"reasoning\":{\"effort\":\"high\",\"summary\":\"auto\"},\"store\":false,\"stream\":true,\"text\":{\"verbosity\":\"low\"},\"tool_choice\":\"auto\",\"tools\":[{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"},\"strict\":false,\"type\":\"function\"}]}"},{"step":"request","path":"/v1/responses","body":"{\"client_metadata\":{\"session_id\":\"session-1\"},\"include\":[\"reasoning.encrypted_content\"],\"input\":[{\"content\":[{\"text\":\"Sandbox: read-only.\",\"type\":\"input_text\"}],\"id\":\"msg_1\",\"role\":\"developer\",\"type\":\"message\"},{\"content\":[{\"text\":\"Hi\",\"type\":\"input_text\"}],\"id\":\"msg_2\",\"role\":\"user\",\"type\":\"message\"}],\"instructions\":\"Be brief.\",\"model\":\"refused-up\",\"parallel_tool_calls\":false,\"prompt_cache_key\":\"session-1\",\"reasoning\":{\"effort\":\"high\",\"summary\":\"auto\"},\"store\":false,\"stream\":true,\"text\":{\"verbosity\":\"low\"},\"tool_choice\":\"auto\",\"tools\":[{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"},\"strict\":false,\"type\":\"function\"}]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - "ok"
+    - "200 answered"
+    - "200 translated"
+    - "400 translation-unsupported"
+    bodies:
+    - |
+      # Codex profiles for this llm-gateway, one per model it serves on the responses wire with
+      # tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the
+      # gateway's owner token, and start Codex with `codex --profile <alias>`.
+
+      # ~/.codex/native-up.config.toml
+      model = "native-up"
+      model_provider = "b10x-gateway"
+      model_context_window = 200000
+
+      [model_providers.b10x-gateway]
+      name = "b10x llm-gateway"
+      base_url = "http://gateway/v1"
+      env_key = "B10X_GATEWAY_TOKEN"
+      wire_api = "responses"
+
+      # ~/.codex/translated-up.config.toml
+      model = "translated-up"
+      model_provider = "b10x-gateway"
+      model_context_window = 200000
+
+      [model_providers.b10x-gateway]
+      name = "b10x llm-gateway"
+      base_url = "http://gateway/v1"
+      env_key = "B10X_GATEWAY_TOKEN"
+      wire_api = "responses"
+    - "event: response.created\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_resp_1800000000_1_0\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":3,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"Hello\",\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":4,\"type\":\"response.output_text.delta\"}\n\nevent: response.output_text.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":5,\"text\":\"Hello\",\"type\":\"response.output_text.done\"}\n\nevent: response.content_part.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_0\",\"output_index\":0,\"part\":{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"},\"sequence_number\":6,\"type\":\"response.content_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_1_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":0,\"sequence_number\":7,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"model\":\"served\",\"object\":\"response\",\"output\":[{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_1_0\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"input_tokens_details\":{\"cache_creation_input_tokens\":0,\"cached_tokens\":0},\"output_tokens\":2,\"total_tokens\":14}},\"sequence_number\":8,\"type\":\"response.completed\"}\n\n"
+    - "{\"error\":{\"code\":\"translation-unsupported\",\"message\":\"the request uses a field or value outside the subset the gateway translates\"}}"
+    upstream:
+    - "pod-2 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-messages\",\"output_config\":{\"effort\":\"high\"},\"stream\":true,\"system\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Be brief.\\nSandbox: read-only.\",\"type\":\"text\"}],\"tool_choice\":{\"disable_parallel_tool_use\":true,\"type\":\"auto\"},\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"type\":\"object\"},\"name\":\"lookup\"}]}"
+    connections:
+    - "pod-2 plain request"
+    records:
+    - "model=translated-up wire=responses disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=2246 duration_ms=bounded tokens=absent"
+    - "model=refused-up wire=responses disposition=Refused refusal=translation-unsupported status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+    acquired: 1
+    released: 1

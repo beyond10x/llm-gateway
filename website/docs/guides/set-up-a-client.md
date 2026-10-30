@@ -20,9 +20,13 @@ Start the gateway as in [Getting started](../getting-started.md). Its document d
 | starts with `mozilla/` | an HTML page | `text/html; charset=utf-8` |
 | anything else, or none | plain text with the llm catalog lines a Loom run needs | `text/plain; charset=utf-8` |
 
-A client gets a profile for a model only when the model declares the client's wire (Codex
-`responses`, Claude Code `messages`, Loom `chat`) **and** `tool_calling = "parsed"`. Each answer
-counts one `llmgw_instruction_views_total`.
+A client gets a profile for a model only when the client's requests reach the model on the
+client's wire (Codex `responses`, Claude Code `messages`, Loom `chat`) **and** the model has
+`tool_calling = "parsed"`. They reach it on a wire the model declares, which is relayed, or on
+another wire when the gateway translates the client's recorded first turn to the model's wire
+without a refusal ([Translate between wires](translate-between-wires.md)). A Loom run is
+profiled only for models that declare `chat`. Each answer counts one
+`llmgw_instruction_views_total`.
 
 :::caution[Planned: no client has run a live session]
 These settings point a client at this gateway. The shipped binary relays to no Runpod pod yet, so

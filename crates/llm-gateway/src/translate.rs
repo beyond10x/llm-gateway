@@ -9,6 +9,11 @@
 //! target and a [`TranslatedAnswer`] over the client's connection. The target is released after
 //! the last byte. The specification is step 5 of the `Relay` command of
 //! `spec/domains/gateway.yaml`.
+//!
+//! `GET /` asks the port one more question, once, when the relay is composed
+//! ([`Translator::admits`], story:client-profiles-translated): whether a client's requests
+//! translate to a model at all, so a client is handed a profile for a model on a wire the model
+//! does not relay natively only when they do.
 
 use crate::{
     error::RefusalCode,
@@ -44,6 +49,20 @@ pub trait Translator: Send + Sync {
         &self,
         request: &TranslationRequest<'_>,
     ) -> Result<Box<dyn Translation>, RefusalCode>;
+
+    /// Whether the requests of the client `GET /` profiles on the wire `client` (Codex on
+    /// `responses`, Claude Code on `messages`, a Loom run on `chat`) reach `model`, whose upstream
+    /// speaks `upstream`, without a `translation-*` refusal. The relay asks it once per model
+    /// and wire the model does not relay natively, when the translator is composed
+    /// ([`crate::Relay::with_translator`]), never per request; `GET /` profiles the client
+    /// there only on `true`.
+    ///
+    /// `false`, the default, for a translator that cannot tell: such a gateway still translates
+    /// every request, and hands no client a profile it has not been shown to serve.
+    fn admits(&self, client: Wire, model: &RelayModel, upstream: Wire) -> bool {
+        let _ = (client, model, upstream);
+        false
+    }
 }
 
 /// A prepared request, run once against the target the relay acquired for it.

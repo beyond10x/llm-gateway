@@ -1,18 +1,21 @@
 //! Acceptance for `story:public-model-listing`, over a real loopback socket: `GET /v1/models`
 //! (row R5) and `GET /` (row R1) answer without a credential, ask the target source for
 //! nothing, and render no owner-only fact. Each case is named after the matrix row it holds.
+//! The `translated_*` cases and `review_m3_*` hold story:client-profiles-translated: a client
+//! is profiled on a wire a model does not relay natively only when the composed translator
+//! admits that client's requests.
 
 use llm_gateway::{
-    AuthKind, BillingKind, Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay,
-    RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, RouteSummary,
+    AuthKind, BillingKind, Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, RefusalCode,
+    Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory, RouteSummary,
     SharedSecretVerifier, TargetBearer, TargetLimits, TargetProvenance, TargetRefusal,
-    TargetSummary, ToolCalling, Wire,
+    TargetSummary, ToolCalling, Translation, TranslationRequest, Translator, Wire,
 };
 use std::{
     io::{self, Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
     time::Duration,
@@ -124,6 +127,9 @@ struct Declared {
     tool_calling: ToolCalling,
     max_model_len: Option<u64>,
     context_window: Option<u64>,
+    /// Its target takes no client wire verbatim (`RelayModel::with_translated_only`), as a
+    /// Bedrock model's does.
+    translated_only: bool,
 }
 
 fn declared(alias: &'static str, wires: Vec<Wire>, context_window: u64) -> Declared {
@@ -133,6 +139,7 @@ fn declared(alias: &'static str, wires: Vec<Wire>, context_window: u64) -> Decla
         tool_calling: ToolCalling::Parsed,
         max_model_len: Some(context_window / 2),
         context_window: Some(context_window),
+        translated_only: false,
     }
 }
 
@@ -144,7 +151,11 @@ fn two_models() -> Vec<Declared> {
     ]
 }
 
-fn relay(models: Vec<Declared>, acquired: &Arc<AtomicUsize>) -> Relay {
+fn relay(
+    models: Vec<Declared>,
+    acquired: &Arc<AtomicUsize>,
+    translator: Option<Arc<dyn Translator>>,
+) -> Relay {
     let models = models
         .into_iter()
         .map(|model| {
@@ -161,16 +172,73 @@ fn relay(models: Vec<Declared>, acquired: &Arc<AtomicUsize>) -> Relay {
             if let Some(window) = model.context_window {
                 relayed = relayed.with_context_window(window);
             }
+            if model.translated_only {
+                relayed = relayed.with_translated_only();
+            }
             relayed
         })
         .collect();
-    Relay::new(
+    let relay = Relay::new(
         models,
         Arc::new(CountingTargets {
             acquired: Arc::clone(acquired),
         }),
     )
-    .unwrap()
+    .unwrap();
+    match translator {
+        Some(translator) => relay.with_translator(translator),
+        None => relay,
+    }
+}
+
+/// A translator that refuses every request and overrides nothing else of the port.
+struct RefusingTranslator;
+
+impl Translator for RefusingTranslator {
+    fn prepare(
+        &self,
+        _request: &TranslationRequest<'_>,
+    ) -> Result<Box<dyn Translation>, RefusalCode> {
+        Err(RefusalCode::TranslationUnsupported)
+    }
+}
+
+/// One question the relay asked a translator: the model's alias, the client's wire and the
+/// upstream wire.
+type Asked = (String, Wire, Wire);
+
+/// A translator that admits the requests of a client on exactly the (alias, client wire) pairs
+/// it names, and records every question it is asked. It translates no request.
+struct Admitting {
+    admitted: Vec<(&'static str, Wire)>,
+    asked: Arc<Mutex<Vec<Asked>>>,
+}
+
+impl Admitting {
+    fn new(admitted: Vec<(&'static str, Wire)>) -> Self {
+        Self {
+            admitted,
+            asked: Arc::new(Mutex::new(Vec::new())),
+        }
+    }
+}
+
+impl Translator for Admitting {
+    fn prepare(
+        &self,
+        _request: &TranslationRequest<'_>,
+    ) -> Result<Box<dyn Translation>, RefusalCode> {
+        Err(RefusalCode::TranslationUnsupported)
+    }
+
+    fn admits(&self, client: Wire, model: &RelayModel, upstream: Wire) -> bool {
+        let alias = model.alias().as_str();
+        self.asked
+            .lock()
+            .unwrap()
+            .push((alias.to_owned(), client, upstream));
+        self.admitted.contains(&(alias, client))
+    }
 }
 
 struct Fixture {
@@ -184,7 +252,21 @@ impl Fixture {
         Self::composed(Some(models), true)
     }
 
+    /// A ready gateway whose relay hands every wire a model does not relay natively to
+    /// `translator`.
+    fn translating(models: Vec<Declared>, translator: Arc<dyn Translator>) -> Self {
+        Self::composed_with(Some(models), Some(translator), true)
+    }
+
     fn composed(models: Option<Vec<Declared>>, ready: bool) -> Self {
+        Self::composed_with(models, None, ready)
+    }
+
+    fn composed_with(
+        models: Option<Vec<Declared>>,
+        translator: Option<Arc<dyn Translator>>,
+        ready: bool,
+    ) -> Self {
         let acquired = Arc::new(AtomicUsize::new(0));
         let verifier = Arc::new(
             SharedSecretVerifier::new(OwnerToken::new(OWNER_SECRET.as_bytes().to_vec()).unwrap())
@@ -197,7 +279,7 @@ impl Fixture {
                 config,
                 verifier,
                 private_inventory(),
-                relay(models, &acquired),
+                relay(models, &acquired, translator),
             ),
             None => Gateway::bind(config, verifier, private_inventory()),
         }
@@ -518,6 +600,126 @@ fn r1_a_model_that_does_not_declare_the_clients_wire_gets_no_profile_for_that_cl
     assert!(claude.contains("ANTHROPIC_MODEL='textwire'"), "{claude}");
     assert!(plain.contains("upstream_name = \"chatonly\""), "{plain}");
     assert!(!plain.contains("textwire"), "{plain}");
+}
+
+/// Review finding M3: a translated-only model (as a Bedrock model is, declaring only the
+/// messages wire) was handed a Codex and a Loom profile whatever the translator would do with
+/// those clients' requests. A translator that admits no client's requests hands it neither.
+#[test]
+fn review_m3_a_translated_only_messages_model_gets_no_codex_or_loom_profile() {
+    let mut bedrock = declared("bedrock", vec![Wire::Messages], 65_536);
+    bedrock.translated_only = true;
+    let fixture = Fixture::translating(
+        vec![declared("code", Wire::ALL.to_vec(), 65_536), bedrock],
+        Arc::new(RefusingTranslator),
+    );
+    let codex = fixture.get("/", Some(CODEX)).body;
+    let plain = fixture.get("/", Some(CURL)).body;
+    assert!(codex.contains("model = \"code\""), "{codex}");
+    assert!(!codex.contains("bedrock"), "{codex}");
+    assert!(plain.contains("upstream_name = \"code\""), "{plain}");
+    assert!(!plain.contains("bedrock"), "{plain}");
+}
+
+/// On a wire a model does not declare, a client is profiled exactly when the translator admits
+/// that client's requests to the model, and the model parses tool calls: `chatonly` is handed
+/// to Codex, whose requests it admits, and not to Claude Code, whose requests it does not;
+/// `msgonly` to a Loom run; `textonly`, admitted but without tool calling, to no one.
+#[test]
+fn translated_a_client_is_profiled_on_an_undeclared_wire_only_where_the_translator_admits_it() {
+    let mut text_only = declared("textonly", vec![Wire::Chat], 32_768);
+    text_only.tool_calling = ToolCalling::Absent;
+    let fixture = Fixture::translating(
+        vec![
+            declared("chatonly", vec![Wire::Chat], 32_768),
+            declared("msgonly", vec![Wire::Messages], 16_384),
+            text_only,
+        ],
+        Arc::new(Admitting::new(vec![
+            ("chatonly", Wire::Responses),
+            ("msgonly", Wire::Chat),
+            ("textonly", Wire::Responses),
+        ])),
+    );
+    let codex = fixture.get("/", Some(CODEX)).body;
+    let claude = fixture.get("/", Some(CLAUDE)).body;
+    let plain = fixture.get("/", Some(CURL)).body;
+    assert!(codex.contains("model = \"chatonly\""), "{codex}");
+    assert!(!codex.contains("msgonly"), "{codex}");
+    assert!(!codex.contains("textonly"), "{codex}");
+    assert!(claude.contains("ANTHROPIC_MODEL='msgonly'"), "{claude}");
+    assert!(!claude.contains("chatonly"), "{claude}");
+    assert!(plain.contains("upstream_name = \"chatonly\""), "{plain}");
+    assert!(plain.contains("upstream_name = \"msgonly\""), "{plain}");
+    assert!(plain.contains("context_window = 16384"), "{plain}");
+    assert!(!plain.contains("textonly"), "{plain}");
+}
+
+/// A translated-only model relays no wire natively, its declared one included: every client,
+/// Claude Code on the messages wire too, is profiled for it only where the translator admits
+/// that client's requests.
+#[test]
+fn translated_a_translated_only_model_is_profiled_only_for_the_clients_the_translator_admits() {
+    let mut bedrock = declared("bedrock", vec![Wire::Messages], 65_536);
+    bedrock.translated_only = true;
+    let fixture = Fixture::translating(
+        vec![bedrock],
+        Arc::new(Admitting::new(vec![("bedrock", Wire::Responses)])),
+    );
+    let codex = fixture.get("/", Some(CODEX)).body;
+    let claude = fixture.get("/", Some(CLAUDE)).body;
+    let plain = fixture.get("/", Some(CURL)).body;
+    assert!(codex.contains("model = \"bedrock\""), "{codex}");
+    assert!(!claude.contains("bedrock"), "{claude}");
+    assert!(
+        claude.contains("No model of this gateway serves Claude Code"),
+        "{claude}"
+    );
+    assert!(!plain.contains("bedrock"), "{plain}");
+}
+
+/// Without a translator a translated-only model is refused `wire-not-served` on every wire, so
+/// no client is profiled for it.
+#[test]
+fn translated_without_a_translator_a_translated_only_model_gets_no_profile() {
+    let mut bedrock = declared("bedrock", vec![Wire::Messages], 65_536);
+    bedrock.translated_only = true;
+    let fixture = Fixture::start(vec![bedrock, declared("code", Wire::ALL.to_vec(), 65_536)]);
+    for agent in [CODEX, CLAUDE, CURL] {
+        let body = fixture.get("/", Some(agent)).body;
+        assert!(body.contains("code"), "{agent}: {body}");
+        assert!(!body.contains("bedrock"), "{agent}: {body}");
+    }
+}
+
+/// The relay asks the translator once, when it is composed, for each model and each wire the
+/// model does not relay natively, with the model's first declared wire as the upstream; it
+/// asks nothing more however often `GET /` is answered.
+#[test]
+fn translated_the_relay_asks_the_translator_once_at_composition_for_each_wire_not_relayed() {
+    let mut bedrock = declared("bedrock", vec![Wire::Messages], 65_536);
+    bedrock.translated_only = true;
+    let translator = Admitting::new(Vec::new());
+    let asked = Arc::clone(&translator.asked);
+    let fixture = Fixture::translating(
+        vec![
+            declared("code", Wire::ALL.to_vec(), 65_536),
+            declared("textwire", vec![Wire::Responses, Wire::Chat], 32_768),
+            bedrock,
+        ],
+        Arc::new(translator),
+    );
+    let expected: Vec<Asked> = vec![
+        ("bedrock".to_owned(), Wire::Chat, Wire::Messages),
+        ("bedrock".to_owned(), Wire::Responses, Wire::Messages),
+        ("bedrock".to_owned(), Wire::Messages, Wire::Messages),
+        ("textwire".to_owned(), Wire::Messages, Wire::Responses),
+    ];
+    assert_eq!(*asked.lock().unwrap(), expected);
+    for agent in [CODEX, CLAUDE, CURL, BROWSER, CODEX] {
+        assert_eq!(fixture.get("/", Some(agent)).status, 200);
+    }
+    assert_eq!(*asked.lock().unwrap(), expected);
 }
 
 #[test]

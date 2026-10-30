@@ -11,6 +11,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 - `task check` and CI compare `spec/` with the specification at the merge base (`b10x-llm-gateway-conformance diff`, `task spec-diff`) using `ess verify diff --fail-on breaking-or-unknown`; a breaking or unclassified change fails the gate unless `contracts/diff-acknowledgements.json`, bound to both endpoint digests, acknowledges it. CI checks out the whole history and installs `ess` before the Rust tests.
 
+### Changed
+
+- `GET /` profiles a client for a model whose upstream speaks another wire when the relay's translator admits the client's requests to it: the binary prepares Codex's and Claude Code's recorded first turns for each such model once, at start, and profiles the client where llm carries the turn, so a client is handed only models its requests reach without a `translation-*` refusal. A translated-only Bedrock model, which relays no client wire, is profiled only for a client whose first turn passes llm's Bedrock check, no longer for every client. No Loom turn is recorded, so a Loom run is still profiled only for models that declare `chat`. The translator port gains `Translator::admits`, default `false`. Two conformance scenarios hold it; the suite's floor is 294 scenarios. `docs/gateway.md` "The public routes".
+
 ## 0.21.0 (2026-10-30)
 
 ### Added

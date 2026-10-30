@@ -13,6 +13,11 @@
 //! the upstream's reasoning state sealed for this route. The specification is step 5 of the
 //! `Relay` command of `spec/domains/gateway.yaml`, and `docs/gateway.md` "Translation" is the
 //! published contract.
+//!
+//! [`Translator::admits`] answers `GET /` once per model when the relay is composed
+//! (story:client-profiles-translated): it prepares Codex's and Claude Code's recorded first
+//! turns for the model as [`Translator::prepare`] prepares a request, and admits the client
+//! exactly where llm carries that turn.
 
 use crate::{
     bedrock::BedrockRoute,
@@ -562,6 +567,51 @@ fn sealed_provenance(alias: &str) -> Result<Provenance, Error> {
     })
 }
 
+/// Codex 0.160.0's first turn, captured and sanitized in llm 0.7.0, naming the alias `code`
+/// (`tests/fixtures/codex/README.md`).
+const CODEX_FIRST_TURN: &str = include_str!("../tests/fixtures/codex/first-turn.json");
+/// Claude Code's first turn, authored from its published gateway protocol, naming the alias
+/// `code` (`crates/llm-gateway/tests/fixtures/claude-code/README.md`): `#` lines of provenance,
+/// the HTTP head, an empty line and the body.
+const CLAUDE_CODE_FIRST_TURN: &str =
+    include_str!("../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt");
+
+/// The recorded first turn of a client `GET /` profiles, as a request for one model: its body,
+/// naming the model's alias, and the `anthropic-beta` line its head carries.
+struct FirstTurn {
+    body: Vec<u8>,
+    anthropic_beta: Option<&'static str>,
+}
+
+impl FirstTurn {
+    /// The first turn of the client on `client` (Codex on `responses`, Claude Code on
+    /// `messages`) naming `alias`; `None` for a chat client, a Loom run, of which none is
+    /// recorded.
+    fn of(client: Wire, alias: &str) -> Option<Self> {
+        let (head, body) = match client {
+            Wire::Chat => return None,
+            Wire::Responses => ("", CODEX_FIRST_TURN),
+            Wire::Messages => {
+                let provenance: usize = CLAUDE_CODE_FIRST_TURN
+                    .split_inclusive('\n')
+                    .take_while(|line| line.starts_with('#'))
+                    .map(str::len)
+                    .sum();
+                CLAUDE_CODE_FIRST_TURN[provenance..].split_once("\n\n")?
+            }
+        };
+        let mut body: Value = serde_json::from_str(body).ok()?;
+        body.as_object_mut()?
+            .insert("model".to_owned(), Value::from(alias));
+        Some(Self {
+            body: serde_json::to_vec(&body).ok()?,
+            anthropic_beta: head
+                .lines()
+                .find_map(|line| line.strip_prefix("anthropic-beta: ")),
+        })
+    }
+}
+
 impl Translator for LlmTranslator {
     fn prepare(
         &self,
@@ -572,6 +622,29 @@ impl Translator for LlmTranslator {
             return self.prepare_bedrock(request, alias, route);
         }
         Ok(Box::new(self.prepare_relayed(request, alias)?))
+    }
+
+    /// Whether the client's recorded first turn ([`FirstTurn`]) is prepared for `model` without
+    /// a refusal, as [`Self::prepare`] prepares a request: llm's decoder for the client's wire,
+    /// the model's capabilities and llm's projection for `upstream`, or llm's Bedrock check for
+    /// a Bedrock model. When llm can answer, llm answers; the translator adds no rule of its own.
+    /// A Loom run, of which no turn is recorded, is admitted nowhere. The probe runs under a
+    /// subscriber that records nothing, so composing logs no refusal of a request no client sent.
+    fn admits(&self, client: Wire, model: &RelayModel, upstream: Wire) -> bool {
+        let Some(turn) = FirstTurn::of(client, model.alias().as_str()) else {
+            return false;
+        };
+        let request = TranslationRequest {
+            ingress: client,
+            upstream,
+            model,
+            body: &turn.body,
+            anthropic_beta: turn.anthropic_beta,
+            caller: Caller::default(),
+        };
+        tracing::subscriber::with_default(tracing::subscriber::NoSubscriber::default(), || {
+            self.prepare(&request).is_ok()
+        })
     }
 }
 

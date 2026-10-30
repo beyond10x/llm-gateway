@@ -9,9 +9,10 @@ use std::{collections::BTreeMap, sync::Arc};
 
 use ess_conformance::target::TargetError;
 use llm_provision::{
-    AmbiguousCreate, Completeness, ComputeAuthorization, Controller, DeploymentRecord,
-    DeploymentSpec, Dispatch, FakeProvider, HostingCommand, HostingError, HostingPolicy,
-    Idempotency, Identifier, LeaseRegistry, Phase, StopReason, TRANSITIONS,
+    AmbiguousCreate, Completeness, ComputeAuthorization, Controller, CreateRequest,
+    DeploymentRecord, DeploymentSpec, Dispatch, FakeProvider, HostingCommand, HostingError,
+    HostingPolicy, HostingProvider, Idempotency, Identifier, LeaseRegistry, Phase, StopReason,
+    TRANSITIONS,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -693,7 +694,10 @@ fn phase(phase: Phase) -> &'static str {
 // The commands `Declare`, `Provision`, `Retry`, `ObserveListed`, `ObserveTakenOver`,
 // `ObserveUnlisted`, `RequestStop`, `ConfirmStopped` and `Cancel` drive one record each through
 // `Controller::apply`; the three `Observe*` are `HostingCommand::Observe` against three
-// listings. Which declared outcome a command
+// listings: `ObserveListed` carries the record's resource under this controller's tag,
+// `ObserveTakenOver` carries it retagged by a successor that took the lease over at a newer
+// epoch, and `ObserveUnlisted` is a partial listing without it. A submitted create has a
+// resource behind it in the first two whichever answer it got. Which declared outcome a command
 // took is read off what the controller answered and the phase it left the record in; the
 // specification's lifecycle is never consulted here, so a declared transition the controller
 // does not make fails its scenario instead of being reported as made.
@@ -784,6 +788,80 @@ impl Hosted {
             .apply(now_ms, &mut self.provider, command)
             .map(|_| ())
     }
+
+    /// `Provision` with the provider answering the create as `answer` names.
+    fn provision(
+        &mut self,
+        now_ms: u64,
+        deployment: &Identifier,
+        answer: &str,
+    ) -> Result<Result<(), HostingError>, String> {
+        let command = HostingCommand::Provision {
+            deployment: deployment.clone(),
+        };
+        if answer == "AcceptedOutsideScope" {
+            // The provider accepts and answers about a resource in another account.
+            let mut elsewhere =
+                FakeProvider::new(ident(LIFECYCLE_PROVIDER)?, ident(FOREIGN_ACCOUNT)?);
+            return Ok(self
+                .controller
+                .apply(now_ms, &mut elsewhere, command)
+                .map(|_| ()));
+        }
+        self.provider.next_create(dispatch_named(answer)?);
+        Ok(self.apply(now_ms, command))
+    }
+
+    /// Makes this record's provider list the resource its create request made, under this
+    /// controller's tag at the record's epoch, whichever answer the create got back: accepted,
+    /// lost, or answered about a resource in another account. A record whose create was never
+    /// submitted has no resource, and a listing cannot carry one.
+    ///
+    /// The provider honours the request id, so a resource it already holds for this request is
+    /// the one it lists: nothing is allocated twice.
+    fn list_own(&mut self, record: &DeploymentRecord) -> Result<(), String> {
+        if record.started_at_ms.is_none() {
+            return Ok(());
+        }
+        let request = CreateRequest {
+            spec: record.requested.clone(),
+            request_id: record.request_id.clone(),
+            owner: ident(LIFECYCLE_CONTROLLER)?,
+            epoch: record.lease.as_ref().map_or(0, |lease| lease.epoch),
+        };
+        self.provider.next_create(Dispatch::Accepted);
+        let _listed = self.provider.create(&request);
+        Ok(())
+    }
+
+    /// Another controller takes the deployment's lease over at a strictly newer epoch once this
+    /// one's claim has run out, and retags the resource with it. Only a resource this
+    /// controller still holds is taken over: one whose create was submitted and whose record is
+    /// not settled. The lease registry moves with it, so a later fenced command on this record
+    /// meets the newer epoch.
+    fn take_over(&mut self, record: &DeploymentRecord) -> Result<(), String> {
+        if record.started_at_ms.is_none() || record.phase.terminal() {
+            return Ok(());
+        }
+        self.list_own(record)?;
+        let deployment = &record.deployment;
+        let held = self
+            .leases
+            .current(deployment)
+            .ok_or("the record holds no lease to take over")?;
+        let successor = ident(LIFECYCLE_SUCCESSOR)?;
+        let lease = self
+            .leases
+            .acquire(
+                &successor,
+                deployment,
+                held.expires_at_ms.saturating_add(1),
+                LIFECYCLE_HOUR_MS,
+            )
+            .map_err(|error| format!("the successor could not take the lease over: {error}"))?;
+        self.provider.retag(deployment, &successor, lease.epoch);
+        Ok(())
+    }
 }
 
 /// Answer one lifecycle command, or `None` when the command is not one.
@@ -833,6 +911,7 @@ fn refused(id: &str, error: HostingError) -> Answer {
         HostingError::WrongPhase => ("wrong-phase", "llm-gateway.hosting.WrongPhase"),
         HostingError::Missing => ("missing", "llm-gateway.hosting.Missing"),
         HostingError::Duplicate => ("duplicate", "llm-gateway.hosting.Duplicate"),
+        HostingError::StaleEpoch => ("stale-epoch", "llm-gateway.hosting.StaleEpoch"),
         // A refusal the lifecycle commands declare no outcome for.
         _ => {
             return Answer {
@@ -916,26 +995,7 @@ impl Lifecycle {
         };
         let before = hosted.record(&deployment);
         let applied = match command {
-            "Provision" => {
-                let command = HostingCommand::Provision {
-                    deployment: deployment.clone(),
-                };
-                match text(input, "answer")? {
-                    "AcceptedOutsideScope" => {
-                        // The provider accepts and answers about a resource in another account.
-                        let mut elsewhere =
-                            FakeProvider::new(ident(LIFECYCLE_PROVIDER)?, ident(FOREIGN_ACCOUNT)?);
-                        hosted
-                            .controller
-                            .apply(now_ms, &mut elsewhere, command)
-                            .map(|_| ())
-                    }
-                    answer => {
-                        hosted.provider.next_create(dispatch_named(answer)?);
-                        hosted.apply(now_ms, command)
-                    }
-                }
-            }
+            "Provision" => hosted.provision(now_ms, &deployment, text(input, "answer")?)?,
             "Retry" => {
                 hosted
                     .provider
@@ -947,14 +1007,20 @@ impl Lifecycle {
                     },
                 )
             }
-            "ObserveListed" => hosted.apply(now_ms, HostingCommand::Observe),
+            "ObserveListed" => {
+                // A complete listing that carries the record's resource under this
+                // controller's tag, whichever route took the record to where it is.
+                if let Some(record) = &before {
+                    hosted.list_own(record)?;
+                }
+                hosted.apply(now_ms, HostingCommand::Observe)
+            }
             "ObserveTakenOver" => {
                 // Another controller took the lease over at a strictly newer epoch and retagged
                 // the resource; the listing carries the new tag.
-                let epoch = hosted.leases.epoch(&deployment).saturating_add(1);
-                hosted
-                    .provider
-                    .retag(&deployment, &ident(LIFECYCLE_SUCCESSOR)?, epoch);
+                if let Some(record) = &before {
+                    hosted.take_over(record)?;
+                }
                 hosted.apply(now_ms, HostingCommand::Observe)
             }
             "ObserveUnlisted" => {
@@ -973,13 +1039,25 @@ impl Lifecycle {
                     deployment: deployment.clone(),
                 },
             ),
-            "ConfirmStopped" => hosted.apply(
-                now_ms,
-                HostingCommand::ConfirmStopped {
-                    deployment: deployment.clone(),
-                    evidence: ident(text(input, "evidence")?)?,
-                },
-            ),
+            "ConfirmStopped" => {
+                // Stop evidence is a hosting identifier. Text that is not one is refused as
+                // the specification declares, before any record is looked at.
+                let Ok(evidence) = Identifier::new(text(input, "evidence")?) else {
+                    return Ok(Answer {
+                        outcome: Some("invalid-identifier"),
+                        error: Some("llm-gateway.hosting.InvalidIdentifier"),
+                        event: None,
+                        id: id.to_owned(),
+                    });
+                };
+                hosted.apply(
+                    now_ms,
+                    HostingCommand::ConfirmStopped {
+                        deployment: deployment.clone(),
+                        evidence,
+                    },
+                )
+            }
             "Cancel" => hosted.apply(
                 now_ms,
                 HostingCommand::Cancel {
@@ -1056,18 +1134,26 @@ impl Lifecycle {
         })
     }
 
-    /// Every declared record with its phase as the lifecycle state.
+    /// Every declared record with its phase as the lifecycle state, and every other fact of it
+    /// the specification's `OwnedResource` names.
     pub fn rows(&self) -> Vec<Value> {
         self.records
             .values()
             .flat_map(|hosted| hosted.controller.snapshot())
             .map(|record| {
+                let resource = record.observed.as_ref().map(|observed| &observed.key);
                 json!({
                     "id": record.deployment.as_str(),
                     "state": format!("{:?}", record.phase),
                     "request_id": record.request_id.as_str(),
                     "reservation_id": record.authorization.reservation.as_str(),
                     "stop_evidence": record.stop_evidence.as_ref().map(Identifier::as_str),
+                    // The controller holding the record is the owner of the lease it holds.
+                    "controller_id": record.lease.as_ref().map(|lease| lease.owner.as_str()),
+                    "deployment_spec_id": record.requested.id.as_str(),
+                    "stop_reason": record.stop_reason.map(|reason| format!("{reason:?}")),
+                    "resource_name": resource.map(|key| key.name.as_str()),
+                    "resource_incarnation": resource.map(|key| key.incarnation.as_str()),
                 })
             })
             .collect()

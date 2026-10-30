@@ -132,6 +132,26 @@ declaration `duplicate`. The three `Observe*` commands answer `unchanged` where 
 nothing, as `StopRequired` does under a healthy listing (scenario
 `a-later-healthy-observation-does-not-withdraw-a-stop-obligation`).
 
+A submitted create has a resource behind it whichever answer came back, so `ObserveListed` and
+`ObserveTakenOver` list it on every route into `Uncertain`, an accepted create answered about
+another account's resource included (scenarios
+`a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it` and
+`…-is-disowned-by-a-listing-retagged-at-a-newer-epoch`). `ObserveTakenOver` is a successor taking
+the lease over at a newer epoch once this controller's claim ran out, so the lease registry moves
+with it: `Provision` and `Retry` on the `Disowned` record answer the controller's `stale-epoch`,
+which `Controller::fence` returns before the phase is read, and every other phase without an edge
+answers `wrong-phase`. ESS 0.77.0 refuses a state-specific branch beside `wrong_state:` under
+`format: ess/23`, so those two commands name the held states of every branch, and the view
+`OwnedResources` publishes every `OwnedResource` field for the check that such a refusal left the
+record unchanged.
+
+Every identifier a lifecycle command takes is typed as one: 1 to 256 printable ASCII bytes with no
+space, as `Identifier::new` accepts, so a scenario cannot send one the controller would refuse.
+The stop evidence `ConfirmStopped` attaches is free text up to 256 printable bytes; text holding a
+space is not an identifier, and the command answers `invalid-identifier` before any record is read
+(scenario `a-stop-confirmed-with-evidence-holding-a-space-is-discharged`, whose expected outcome
+was changed to that refusal).
+
 `ess verify conform mutate --class from-drop --class transition-to` scores a mutant for every
 transition and none survives; the run, and the four mutants ESS refuses to emit because their
 target state would become unreachable, are in

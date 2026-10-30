@@ -1,7 +1,7 @@
 type: ess-scenario/1
 domain: llm-gateway.hosting
 scenario: a-stop-confirmed-with-evidence-holding-a-space-is-discharged
-summary: evidence is a declared String with no refusal, so evidence holding a space must discharge, not error
+summary: "evidence holding a space is not a hosting identifier, so ConfirmStopped refuses it and the record stays Requested; expected outcome changed for story:hosting-lifecycle-declared"
 timeline:
 - at: '2026-10-30T12:00:00Z'
   command: llm-gateway.hosting.Declare
@@ -14,7 +14,7 @@ timeline:
 - at: '2026-10-30T12:00:02Z'
   command: llm-gateway.hosting.ConfirmStopped
   input: {id: d1, evidence: operator ticket 1}
-  outcome: confirmed
+  outcome: invalid-identifier
 assert:
 - view: llm-gateway.hosting.OwnedResources
   counts:
@@ -23,7 +23,7 @@ assert:
 - view: llm-gateway.hosting.OwnedResources
   contains:
     id: d1
-    state: Stopped
+    state: Requested
     request_id: request-d1
     reservation_id: reservation-a
-    stop_evidence: operator ticket 1
+    stop_evidence: null

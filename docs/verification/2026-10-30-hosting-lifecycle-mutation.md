@@ -6,6 +6,12 @@ The mutation audit for `story:hosting-lifecycle-declared`, on `impl/hosting-life
 0.77.0; the system is on `format: ess/23`. [hosting.md](../hosting.md), "The table as a declared
 lifecycle", describes the lifecycle and the commands that move it.
 
+The run below is on the specification as corrected after the adversary pass:
+`Provision` and `Retry` declare `stale-epoch` in `Disowned` and name the held states of every
+branch, the view `OwnedResources` publishes every field of the record, the identifiers are typed,
+and `ConfirmStopped` declares `invalid-identifier`. The run before that correction had the same
+verdicts over an 83-scenario baseline.
+
 ## What was run
 
 From the repository root, with the conformance binary built from the same tree:
@@ -21,26 +27,26 @@ The second line ran once for the baseline and once for each emitted mutant, with
 synthesized suite alone and does not carry the authored scenarios. The runner exits 1 on every
 suite, the baseline included: its gate refuses a run whose conformance status is not `passed`, and
 a synthesized-only suite is `inconclusive`. The collector reads each `report.json`, not the exit
-code. The baseline report is `{"total":83,"passed":83,"failed":0,"error":0,"unsupported":0,"skipped":0}`.
+code. The baseline report is `{"total":92,"passed":92,"failed":0,"error":0,"unsupported":0,"skipped":0}`.
 
 ## Result
 
 ```text
-mutation audit of llm-gateway v1 against llm-gateway-serving-libraries mutation-audit: 27 mutant(s), 23 killed, 0 survived, 0 inconclusive, 4 stillborn, 0 unwitnessed, 0 equivalent (baseline: 83 scenario(s), 0 refusal(s))
+mutation audit of llm-gateway v1 against llm-gateway-serving-libraries mutation-audit: 27 mutant(s), 23 killed, 0 survived, 0 inconclusive, 4 stillborn, 0 unwitnessed, 0 equivalent (baseline: 92 scenario(s), 0 refusal(s))
 ```
 
 `--collect` exited 0. Every one of the twelve transitions has at least one killed mutant.
 
 | Transition | Mutant | Verdict | Killed by (scenarios that failed) |
 | --- | --- | --- | --- |
-| `submit` | `to: Requested` becomes `to: Active` | killed | `transition/submit/by/Provision/accepted`, `Provision/outcome/accepted`, one more (3) |
-| `lose` | `to: Uncertain` becomes `to: Active` | killed | `transition/adopt/by/ObserveListed/adopted`, `state/Active/refuses/Retry`, three more (5) |
-| `misanswer` | `to: Uncertain` becomes `to: Active` | killed | `ObserveListed/outcome/adopted`, `ObserveTakenOver/outcome/taken-over`, five more (7) |
-| `withdraw` | `to: Cancelled` becomes `to: Active` | killed | `ConfirmStopped/outcome/confirmed`, `ObserveListed/outcome/adopted`, eight more (10) |
-| `cancel` | `to: Cancelled` becomes `to: Active` | killed | `Cancel/outcome/cancelled`, `ConfirmStopped/outcome/confirmed`, 29 more (31) |
+| `submit` | `to: Requested` becomes `to: Active` | killed | `state/Active/accepts/ObserveUnlisted`, `state/Active/refuses/Provision`, five more (7) |
+| `lose` | `to: Uncertain` becomes `to: Active` | killed | `state/Active/refuses/Provision`, `transition/lose/by/Provision/lost`, four more (6) |
+| `misanswer` | `to: Uncertain` becomes `to: Active` | killed | `state/Active/refuses/Provision`, `transition/misanswer/by/Provision/misanswered`, four more (6) |
+| `withdraw` | `to: Cancelled` becomes `to: Active` | killed | `ConfirmStopped/outcome/confirmed`, `ObserveListed/outcome/adopted`, 13 more (15) |
+| `cancel` | `to: Cancelled` becomes `to: Active` | killed | `Cancel/outcome/cancelled`, `ConfirmStopped/outcome/confirmed`, 36 more (38) |
 | `confirm` | `to: Requested` becomes `to: Active` | killed | `transition/confirm/by/Retry/accepted`, `Retry/outcome/accepted` (2) |
 | `relose` | `to: Uncertain` becomes `to: Active` | killed | `transition/relose/by/Retry/lost`, `Retry/outcome/lost` (2) |
-| `hold` | `to: Requested` becomes `to: Active` | killed | `transition/hold/by/ObserveUnlisted/unconfirmed`, `ObserveUnlisted/outcome/unconfirmed` (2) |
+| `hold` | `to: Requested` becomes `to: Active` | killed | `ObserveUnlisted/outcome/unconfirmed`, `transition/hold/by/ObserveUnlisted/unconfirmed` (2) |
 | `adopt` | drop `Active`, `Requested`, `Uncertain` from `from` (3 mutants) | killed, each | `state/<dropped>/accepts/ObserveListed` (1 each) |
 | `adopt` | `to: Active` becomes `to: Cancelled` | stillborn | ESS-MUTATE-002 ESS-ENTITY-011: `Active` cannot be reached from `Declared` |
 | `oblige` | drop each of `Active`, `Requested`, `StopRequired`, `Uncertain` (4 mutants) | killed, each | `state/<dropped>/refuses/RequestStop` (1 each) |

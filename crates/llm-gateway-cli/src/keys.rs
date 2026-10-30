@@ -65,7 +65,7 @@ impl fmt::Debug for VllmKeys {
 ///
 /// # Errors
 /// A `vllm-api-key:*` [`Refusal`] for the first file, in alias order, that breaks a rule. Every
-/// message starts `models.<alias>.vllm_api_key_file <path>:` and never quotes the bytes.
+/// message starts `models.<alias>.vllm_api_key_file:` and quotes neither the path nor the bytes.
 pub fn vllm_keys(deployment: &Deployment) -> Result<VllmKeys, Refusal> {
     let mut keys = BTreeMap::new();
     for (alias, model) in &deployment.models {
@@ -89,19 +89,17 @@ pub fn vllm_keys(deployment: &Deployment) -> Result<VllmKeys, Refusal> {
 /// Reads one credential file through the trusted-file reader as `policy` admits it, and returns
 /// its one printable ASCII token of at most 4096 bytes once trailing ASCII whitespace is
 /// trimmed: refused as the `rules`' `(too_large, not_a_token)` otherwise. Every message starts
-/// `<key> <path>:` and never quotes the bytes, and the bytes read are overwritten whichever
-/// way the rules went. A vLLM key (row B9) and a hosted endpoint's credential are read so.
+/// `<key>:` and quotes neither the path nor the bytes, and the bytes read are overwritten
+/// whichever way the rules went. A vLLM key (row B9) and a hosted endpoint's credential are
+/// read so.
 pub(crate) fn read_token(
     path: &Path,
     key: &str,
     policy: &trusted::Policy,
     (too_large, not_a_token): (StartupRefusal, StartupRefusal),
 ) -> Result<Vec<u8>, Refusal> {
-    // The reader's own message is `<path>: <detail>`; the declaration goes in front of it.
-    let mut read = trusted::read(path, policy)
-        .map_err(|refusal| Refusal::new(refusal.kind(), format!("{key} {}", refusal.message())))?
-        .into_bytes();
-    let refuse = |kind, rule: &str| Refusal::new(kind, format!("{key} {}: {rule}", path.display()));
+    let mut read = trusted::read_named(path, key, policy)?.into_bytes();
+    let refuse = |kind, rule: &str| Refusal::new(kind, format!("{key}: {rule}"));
     // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
     let end = read
         .iter()

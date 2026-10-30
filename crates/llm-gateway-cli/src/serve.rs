@@ -44,12 +44,12 @@ pub struct Stopped {
 /// `owner_secret_file` (`ingress_auth = "none"`) it is [`NoOwnerVerifier`], accepting nothing.
 ///
 /// # Errors
-/// An `owner-secret:*` [`Refusal`].
+/// An `owner-secret:*` [`Refusal`], its message starting `owner_secret_file:`, never the path.
 pub fn owner_verifier(deployment: &Deployment) -> Result<Arc<dyn OwnerVerifier>, Refusal> {
     let Some(path) = &deployment.owner_secret_file else {
         return Ok(Arc::new(NoOwnerVerifier));
     };
-    let text = trusted::read(path, &trusted::OWNER_SECRET)?;
+    let text = trusted::read_named(path, OWNER_SECRET_FILE, &trusted::OWNER_SECRET)?;
     // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
     let material = text.trim_end_matches(|character: char| character.is_ascii_whitespace());
     let token = OwnerToken::new(material.as_bytes().to_vec()).map_err(|error| {
@@ -60,13 +60,13 @@ pub fn owner_verifier(deployment: &Deployment) -> Result<Arc<dyn OwnerVerifier>,
             } else {
                 StartupRefusal::OwnerSecretNotAToken
             },
-            format!("{}: {error}", path.display()),
+            format!("{OWNER_SECRET_FILE}: {error}"),
         )
     })?;
     let verifier = SharedSecretVerifier::new(token).map_err(|error| {
         Refusal::new(
             StartupRefusal::OwnerSecretTooShort,
-            format!("{}: {error}", path.display()),
+            format!("{OWNER_SECRET_FILE}: {error}"),
         )
     })?;
     Ok(Arc::new(verifier))
@@ -76,7 +76,7 @@ pub fn owner_verifier(deployment: &Deployment) -> Result<Arc<dyn OwnerVerifier>,
 /// endpoint credential's rules; `None` without `metrics_bearer_file`.
 ///
 /// # Errors
-/// A `metrics-bearer:*` [`Refusal`], its message starting `metrics_bearer_file <path>:`.
+/// A `metrics-bearer:*` [`Refusal`], its message starting `metrics_bearer_file:`, never the path.
 pub fn metrics_bearer(deployment: &Deployment) -> Result<Option<OwnerToken>, Refusal> {
     let Some(path) = &deployment.metrics_bearer_file else {
         return Ok(None);
@@ -95,7 +95,7 @@ pub fn metrics_bearer(deployment: &Deployment) -> Result<Option<OwnerToken>, Ref
     // of this file, so that every line below keeps its number:
     // docs/llmgw-capability-matrix.md and spec/domains/upstream.yaml cite them by line
     // (`adv_b9_citations_into_serve_rs_still_land`).
-    scrape_token(path, material).map(Some)
+    scrape_token(material).map(Some)
 }
 
 fn label(value: &str) -> Result<Label, Refusal> {
@@ -331,13 +331,16 @@ impl Running {
 /// The shortest scrape token `metrics_bearer_file` may hold, the owner secret's floor.
 const MIN_METRICS_BEARER_BYTES: usize = 32;
 
-/// `material`, read from `path`, as the metrics listener's scrape token: refused
+/// The setting naming the owner secret, which its refusals name in place of the path.
+const OWNER_SECRET_FILE: &str = "owner_secret_file";
+
+/// `material`, read from `metrics_bearer_file`, as the metrics listener's scrape token: refused
 /// `metrics-bearer:not-a-token` under [`MIN_METRICS_BEARER_BYTES`] or when it is not a token.
-fn scrape_token(path: &std::path::Path, mut material: Vec<u8>) -> Result<OwnerToken, Refusal> {
+fn scrape_token(mut material: Vec<u8>) -> Result<OwnerToken, Refusal> {
     let refuse = |reason: &dyn fmt::Display| {
         Refusal::new(
             StartupRefusal::MetricsBearerNotAToken,
-            format!("metrics_bearer_file {}: {reason}", path.display()),
+            format!("metrics_bearer_file: {reason}"),
         )
     };
     if material.len() < MIN_METRICS_BEARER_BYTES {

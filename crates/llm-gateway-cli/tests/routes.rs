@@ -858,9 +858,13 @@ fn routes_the_routes_file_and_each_credential_file_are_read_through_the_trusted_
         &deployment.config_with(&writable, ""),
         deployment.home(),
         "config:unsafe-mode",
-        "routes ",
+        "routes: ",
     );
-    assert!(line.contains("routes.yaml"), "{line}");
+    assert!(line.contains("has mode 620"), "{line}");
+    assert!(
+        !line.contains("routes.yaml"),
+        "the refusal quotes the path: {line}"
+    );
 
     let readable = deployment.routes_file(&routes, 0o644);
     let config = deployment.config_with(&readable, "");
@@ -875,7 +879,7 @@ fn routes_the_routes_file_and_each_credential_file_are_read_through_the_trusted_
         &deployment.config_with(&large, ""),
         deployment.home(),
         "config:too-large",
-        "routes ",
+        "routes: ",
     );
 
     let file = deployment.routes_file(&routes, 0o600);
@@ -889,7 +893,7 @@ fn routes_the_routes_file_and_each_credential_file_are_read_through_the_trusted_
         &config,
         deployment.home(),
         "endpoint-credential:unsafe-mode",
-        "routes.openrouter.auth.secret ",
+        "routes.openrouter.auth.secret: ",
     );
     assert!(!line.contains(ROUTER_CREDENTIAL), "{line}");
     deployment
@@ -899,7 +903,7 @@ fn routes_the_routes_file_and_each_credential_file_are_read_through_the_trusted_
         &config,
         deployment.home(),
         "endpoint-credential:not-a-token",
-        "routes.openrouter.auth.secret ",
+        "routes.openrouter.auth.secret: ",
     );
     assert!(!line.contains("two tokens"), "{line}");
 }

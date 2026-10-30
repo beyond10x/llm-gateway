@@ -239,11 +239,11 @@ A changed routes document takes a restart.
 
 | Rule | Refusal |
 | --- | --- |
-| The file is read through the trusted-file reader (below): at most 2 MiB, llm's own bound, and not group- or world-writable. | `config:<rule>`, its message starting `routes <path>:` |
+| The file is read through the trusted-file reader (below): at most 2 MiB, llm's own bound, and not group- or world-writable. | `config:<rule>`, its message starting `routes:` and naming the rule, never the path |
 | A document llm refuses: malformed YAML, an unknown field, a repeated key, an unknown format, protocol, auth kind or secret source, a literal secret, a relative `file:` path, a route to an undeclared endpoint. | `config:value`, its message `routes <llm's message>`, which names a field, endpoint or route and never a value |
 | A Bedrock endpoint (`bedrock: {region: ..}`), a route's `aliases` and a route's `price`, which llm admits and the gateway does not serve, are refused, never ignored: a Bedrock model is a [`kind = "bedrock"`](#bedrock-models) hosted model, and the gateway prices no routed call. | `config:value` naming `routes.<endpoint>`, `routes.<route>.aliases` or `routes.<route>.price` |
 | A credentialed endpoint's `auth.secret` is a `file:` reference: an absolute path, or `~/<path>` resolved against `HOME`. An `env:` or `keychain:` secret is refused: the gateway reads credentials only from trusted files. | `config:value` naming `routes.<endpoint>.auth.secret` |
-| The key file is read once at start, as a hosted model's `credential_file` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret <path>:` |
+| The key file is read once at start, as a hosted model's `credential_file` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret:` and naming the rule, never the path |
 | `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |
 | An `api-key` endpoint's `auth.header` is one a hosted model's `credential_header` may be, and on a `messages` endpoint it is not `anthropic-version` (in any case), the header every request to such an endpoint is sent. | `config:value` naming `routes.<endpoint>.auth.header` |
 | A route name is not also a `[models.<alias>]` or `[hosted.<alias>]` alias. | `config:value` naming `routes.<route>` |
@@ -291,10 +291,14 @@ file must lie inside the directory the token path names; one outside it is refus
 | `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` (a Bedrock model only) | at most 16386 bytes | not group- or world-writable | one line of printable ASCII, at most 16384 bytes after one line end |
 
 A broken rule is refused as `<source>:<rule>`, the source being `config`, `owner-secret`,
-`vllm-api-key`, `endpoint-credential`, `metrics-bearer` or `container-token` (a routes document is a `config` file, a route's key file an `endpoint-credential` one):
+`vllm-api-key`, `endpoint-credential`, `metrics-bearer` or `container-token` (a routes document is a `config` file, a route's key file an `endpoint-credential` one).
+The message names the setting that gave the path (`routes`, `owner_secret_file`,
+`models.<alias>.vllm_api_key_file`, `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`, ...; the document's
+own refusals need none) and the rule's detail. It never quotes the path or the file a link
+resolves to, so a secret written into `--config` or a path setting by mistake is not printed:
 
 ```text
-b10x-llm-gateway: refused owner-secret:unsafe-mode: owner-secret: has mode 644; none of 077 may be set
+b10x-llm-gateway: refused owner-secret:unsafe-mode: owner_secret_file: has mode 644; none of 077 may be set
 ```
 
 [Refusals](refusals.md#startup-refusals) lists every startup code.

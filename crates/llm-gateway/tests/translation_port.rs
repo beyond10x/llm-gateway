@@ -39,6 +39,11 @@ enum Script {
         pieces: Vec<&'static str>,
     },
     Fail(TranslationFailure),
+    /// Tells the relay the target answered `status`, then fails with `failure`.
+    Answered {
+        status: u16,
+        failure: TranslationFailure,
+    },
     /// Asks `gone` until it is true or `for_` has passed, records what it last said, and then
     /// answers `{}` when the client is still there.
     Watch {
@@ -110,6 +115,10 @@ impl Translation for Run {
         ));
         match self.script {
             Script::Fail(failure) => Err(failure),
+            Script::Answered { status, failure } => {
+                answer.target_status(status);
+                Err(failure)
+            }
             Script::Watch { for_ } => {
                 let deadline = Instant::now() + for_;
                 let mut gone = answer.gone();
@@ -603,3 +612,66 @@ fn translate_the_writer_reports_a_client_that_closed_while_it_waited() {
     );
     assert_eq!(*composed.asked.gone.lock().unwrap(), Some(false));
 }
+
+/// A translation refused after its target answered is recorded with the status the target
+/// answered with (`TranslatedAnswer::target_status`): on a route the model declares, a model
+/// whose every wire is translated, it is a route status failure, as a 4xx the byte relay relays
+/// is. A refusal whose translation told no status counts none.
+#[test]
+fn translate_a_refusal_after_the_target_answered_counts_a_route_status_failure() {
+    for (script, failures) in [
+        (
+            Script::Answered {
+                status: 429,
+                failure: TranslationFailure::Refused(RefusalCode::UpstreamRefused),
+            },
+            1,
+        ),
+        (
+            Script::Fail(TranslationFailure::Refused(RefusalCode::UpstreamRefused)),
+            0,
+        ),
+    ] {
+        let relay = Relay::new(
+            vec![model("translated", vec![Wire::Chat]).with_translated_only()],
+            Arc::new(Targets::default()) as Arc<dyn RelayTargets>,
+        )
+        .unwrap()
+        .with_translator(Arc::new(fixture(None, script)));
+        let verifier = Arc::new(
+            SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+        );
+        let handle = Gateway::bind_with_relay(
+            GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+            verifier,
+            RouteInventory::new(Vec::new()).unwrap(),
+            relay,
+        )
+        .unwrap();
+        handle.mark_ready();
+        let raw = send(handle.local_addr(), CHAT, "{\"model\":\"translated\"}");
+        assert!(body_of(&raw).contains("\"upstream-refused\""), "{raw}");
+        let mut stream = TcpStream::connect(handle.local_addr()).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        write!(
+            stream,
+            "GET /metrics HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER}\r\n\r\n"
+        )
+        .unwrap();
+        let mut scraped = Vec::new();
+        drop(stream.read_to_end(&mut scraped));
+        let scraped = String::from_utf8(scraped).unwrap();
+        for line in [
+            format!(
+                "\nllmgw_route_upstream_status_failures_total{{model=\"translated\",wire=\"chat\"}} {failures}\n"
+            ),
+            "\nllmgw_route_refusals_total{model=\"translated\",wire=\"chat\"} 1\n".to_owned(),
+            "\nllmgw_upstream_failures_total 0\n".to_owned(),
+        ] {
+            assert!(scraped.contains(&line), "{line:?} not in\n{scraped}");
+        }
+    }
+}
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for Canned {}

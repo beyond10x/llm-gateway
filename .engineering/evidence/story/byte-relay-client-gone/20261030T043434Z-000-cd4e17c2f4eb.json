@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T04:34:34Z",
+  "actor": "human:timo",
+  "artifact": "story:byte-relay-client-gone",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "adversary findings 1, 3, 4 fixed in 7caa9610",
+    "review": "review-result:adversary-w01-relay-hosting-pass-1",
+    "outcome": "fixed"
+  }
+}

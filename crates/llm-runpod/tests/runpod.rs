@@ -1530,6 +1530,76 @@ fn an_expired_lease_is_a_stop_obligation_the_pool_carries_out() {
     assert_eq!(record.stop_evidence, Some(id("runpod-terminated-pod1")));
 }
 
+/// A step that comes later than `lease_ms` while a stream is open does not cut the stream: the
+/// lease expiry is still a stop obligation, but the pool does not carry it out while the pod
+/// has a request in flight.
+#[test]
+fn a_lease_expiry_does_not_stop_the_pod_of_an_open_stream() {
+    let stack = stack();
+    let lease = ready(&stack);
+    // No step for longer than lease_ms (3_600_000) while the stream is open.
+    stack.clock.advance(3_700_000);
+    drop(stack.pool.reap());
+    assert_eq!(
+        stack.runpod.terminations(),
+        [] as [String; 0],
+        "the pod of an open stream was terminated"
+    );
+    drop(lease);
+}
+
+/// The obligation a lease expiry opened under an open stream is carried out by the first step
+/// after the last stream ends, not left to the idle reaper.
+#[test]
+fn a_lease_expiry_stops_the_pod_once_its_last_stream_ends() {
+    let stack = stack();
+    let first = ready(&stack);
+    let second = ready(&stack);
+    stack.clock.advance(3_700_000);
+    stack.pool.reap().expect("cleanup pass");
+    drop(first);
+    stack.pool.reap().expect("cleanup pass");
+    assert_eq!(
+        stack.runpod.terminations(),
+        [] as [String; 0],
+        "one stream is still open"
+    );
+    drop(second);
+    // Well inside the idle limit (1_800_000) counted from the end of the stream.
+    stack.clock.advance(1_000);
+    stack.pool.reap().expect("cleanup pass");
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
+    let record = stack
+        .pool
+        .view()
+        .deployments
+        .into_iter()
+        .next()
+        .expect("the record");
+    assert_eq!(record.phase, Phase::Stopped);
+    assert_eq!(
+        record.stop_reason,
+        Some(llm_provision::StopReason::LeaseExpired)
+    );
+}
+
+/// An open stream spares its pod only from a lease expiry: once the pod is past its lifetime
+/// ceiling it is stopped, stream or not, although the record still names the lease expiry
+/// that came first.
+#[test]
+fn an_open_stream_does_not_spare_a_lease_expired_pod_past_its_lifetime_ceiling() {
+    let stack = stack();
+    let lease = ready(&stack);
+    stack.clock.advance(3_700_000);
+    stack.pool.reap().expect("cleanup pass");
+    assert_eq!(stack.runpod.terminations(), [] as [String; 0]);
+    // Past max_lifetime_ms (86_400_000) from the pod's start.
+    stack.clock.advance(86_400_000);
+    stack.pool.reap().expect("cleanup pass");
+    assert_eq!(stack.runpod.terminations(), vec!["pod1".to_owned()]);
+    drop(lease);
+}
+
 /// The `code` of every variant `spec/domains/runpod.yaml` declares for one enum, in order.
 fn declared_codes(type_name: &str) -> Vec<(String, String)> {
     const SPEC: &str = include_str!("../../../spec/domains/runpod.yaml");

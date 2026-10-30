@@ -31,7 +31,7 @@ use llm_gateway::{
     AnswerFraming, BasePath, RefusalCode, RelayModel, RelayTarget, TargetScheme, ToolCalling,
     TranslatedAnswer, Translation, TranslationFailure, TranslationRequest, Translator, Wire,
 };
-use llm_http::{HttpClient, Limits};
+use llm_http::{HeaderMap, HttpClient, Limits, ResponseTap};
 use llm_providers::{
     Account, ApiKeyHeader, BaseUrl, Binding, BindingDocument, Endpoint, Provider, ServedModel,
     ServingModel,
@@ -42,7 +42,7 @@ use std::{
     fmt,
     sync::{
         Arc, Mutex, PoisonError,
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicU16, AtomicU64, Ordering},
     },
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -851,13 +851,20 @@ impl Translation for Prepared {
         let handle = transport
             .handle()
             .ok_or(TranslationFailure::Refused(RefusalCode::UpstreamFailed))?;
+        // This turn's own client: it shares the transport's pool and shows this turn's tap
+        // the status of each answer head, which the relay records when no answer is written.
+        let status = Arc::new(TargetStatus::default());
+        let http = transport
+            .http
+            .clone()
+            .with_response_tap(Arc::clone(&status) as Arc<dyn ResponseTap>);
         let model: Arc<dyn Model> = if let Some(route) = &self.bedrock {
             // A Bedrock model is reached by its own client and signed with its own credentials:
             // the relay target names nothing it is sent to.
             Arc::new(
                 BedrockClient::new(
                     route.target.clone(),
-                    transport.http.clone(),
+                    http.clone(),
                     Arc::clone(&route.credentials),
                 )
                 .and_then(|client| client.with_turn_limit(TRANSLATION_TURN_TIMEOUT))
@@ -878,7 +885,7 @@ impl Translation for Prepared {
                 .bearer()
                 .map_or_else(Vec::new, |bearer| bearer.expose().to_vec());
             let resolver: Arc<dyn SecretResolver> = Arc::new(TargetSecret(secret));
-            client(self.upstream, binding, transport.http.clone(), resolver).map_err(refused)?
+            client(self.upstream, binding, http.clone(), resolver).map_err(refused)?
         };
         let blocking = BlockingModel::on_runtime(model, handle).map_err(refused)?;
         let (id, created) = self.engine.identity(self.ingress);
@@ -915,8 +922,37 @@ impl Translation for Prepared {
             shown_reasoning: String::new(),
         };
         let result = blocking.turn(&self.decoded.request, &mut sink, &cancel);
+        if let Some(status) = status.get() {
+            sink.answer.target_status(status);
+        }
         sink.finish(result)
     }
+}
+
+/// The status of the last answer head a turn's client read, told by its response tap. Nothing
+/// else of the answer is kept.
+#[derive(Default)]
+struct TargetStatus(AtomicU16);
+
+impl TargetStatus {
+    fn get(&self) -> Option<u16> {
+        Some(self.0.load(Ordering::SeqCst)).filter(|status| *status != 0)
+    }
+}
+
+impl ResponseTap for TargetStatus {
+    /// `status_line` is llm-http's `<version> <code> <reason>`.
+    fn head(&self, status_line: &str, _headers: &HeaderMap) {
+        if let Some(status) = status_line
+            .split(' ')
+            .nth(1)
+            .and_then(|code| code.parse::<u16>().ok())
+        {
+            self.0.store(status, Ordering::SeqCst);
+        }
+    }
+
+    fn chunk(&self, _bytes: &[u8]) {}
 }
 
 /// The client's wire, as llm's ingress encoder for it writes it.

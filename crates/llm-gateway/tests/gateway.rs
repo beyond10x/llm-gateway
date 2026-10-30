@@ -979,6 +979,12 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
         "the size of one internal read while relaying, not a limit on any request or answer",
     ),
     (
+        "CLIENT_DISCARD",
+        "the most one look at a waiting client discards before the next look, not a limit on \
+         any request: a client that sends more is still watched; measured by \
+         adversary_a_pipelining_client_that_left_releases_the_target_before_the_answer",
+    ),
+    (
         "DEFAULT_READ_TIMEOUT_SECONDS",
         "a timeout rather than a size bound; enforcement is measured by \
          a_stalled_head_is_refused_when_the_read_timeout_expires",
@@ -1526,3 +1532,32 @@ fn an_inspection_response_carries_exactly_these_keys() {
     // A digest nobody supplied is absent rather than empty, so it is not in the set above.
     assert!(!keys.contains("config_digest"));
 }
+
+#[test]
+fn a_repeated_header_on_a_liveness_probe_is_still_answered_live() {
+    let gateway = Fixture::start(true);
+    let health =
+        gateway.send("GET /health HTTP/1.1\r\nhost: g\r\nx-probe: 1\r\nx-probe: 2\r\n\r\n");
+    assert_eq!(health.status, 200, "{}", health.raw);
+}
+
+#[test]
+fn a_repeated_authorization_on_a_public_route_is_still_answered() {
+    let gateway = Fixture::start(true);
+    let models = gateway.send("GET /v1/models HTTP/1.1\r\nhost: g\r\nauthorization: Bearer a\r\nauthorization: Bearer b\r\n\r\n");
+    assert_eq!(models.status, 200, "{}", models.raw);
+}
+
+#[test]
+fn a_bare_lf_head_past_the_head_bound_is_request_malformed() {
+    let gateway = Fixture::start_with(true, OWNER_SECRET, 8192);
+    let mut raw = b"GET /health HTTP/1.1\nx: ".to_vec();
+    raw.extend(std::iter::repeat_n(b'a', 8200));
+    raw.extend_from_slice(b"\n\n");
+    let answer = exchange(gateway.addr, &raw);
+    assert_eq!(answer.status, 400, "{}", answer.raw);
+    assert_eq!(answer.code().as_deref(), Some("request-malformed"));
+}
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for CountAnswer {}

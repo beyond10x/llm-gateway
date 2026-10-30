@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T03:57:55Z",
+  "actor": "human:timo",
+  "artifact": "story:ingress-auth-off-warning-first",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "security review; pre-existing finding 1 fixed in 4e5b20de",
+    "review": "review-result:security-w01-cli-server-pass-1",
+    "outcome": "no-op"
+  }
+}

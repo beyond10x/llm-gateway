@@ -914,3 +914,6 @@ fn a_record_names_the_profile_of_the_pod_that_served_and_none_otherwise() {
         .collect();
     assert_eq!(served, [Some("h100-64k".to_owned()), None, None]);
 }
+
+/// The relay reads this stream as a target connection; it names no socket to shut down.
+impl RelayStream for Canned {}

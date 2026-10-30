@@ -82,6 +82,8 @@
       "llm-gateway.gateway/authored/k11-two-models-with-one-alias-are-refused-at-composition",
       "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready",
       "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model",
+      "llm-gateway.gateway/authored/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else",
+      "llm-gateway.gateway/authored/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first",
       "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series",
       "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route",
       "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure",
@@ -128,6 +130,7 @@
       "llm-gateway.gateway/authored/translate-sealed-reasoning-state-from-another-route-is-refused",
       "llm-gateway.gateway/authored/translate-sealed-reasoning-state-from-before-a-restart-is-refused",
       "llm-gateway.gateway/authored/translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it",
+      "llm-gateway.gateway/authored/translate-the-first-sealed-reasoning-item-is-the-streamed-one-with-the-reasoning-shown-as-its-summary",
       "llm-gateway.gateway/authored/translate-the-listing-names-every-wire-and-the-upstream-wires",
       "llm-gateway.gateway/authored/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged",
       "llm-gateway.gateway/authored/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged",
@@ -692,6 +695,16 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model"
       },
+      "gateway/scenarios/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else.yaml": {
+        "digest": "sha256:babc1e96ab714c8cb76d6de6666e6a86e883396fc9bbc31ead9dcb683fc864f6",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else"
+      },
+      "gateway/scenarios/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first.yaml": {
+        "digest": "sha256:190e68128badb25a41a2ca7714546a86acc636dc312bf4a9097160feec0f18e4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first"
+      },
       "gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml": {
         "digest": "sha256:dce963c659126c8ef725f736334eab69c0bb335edcfd49666558f7f4ad1b4e30",
         "disposition": "accepted",
@@ -922,6 +935,11 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-sealed-reasoning-state-is-bound-on-the-route-that-sealed-it"
       },
+      "gateway/scenarios/translate-the-first-sealed-reasoning-item-is-the-streamed-one-with-the-reasoning-shown-as-its-summary.yaml": {
+        "digest": "sha256:5a574701e7a12028044209bf801c84af8f4723f1bf34781d71e55758d25b672a",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/translate-the-first-sealed-reasoning-item-is-the-streamed-one-with-the-reasoning-shown-as-its-summary"
+      },
       "gateway/scenarios/translate-the-listing-names-every-wire-and-the-upstream-wires.yaml": {
         "digest": "sha256:b6cdad035332bfb0ec3471af1ce1bca8d521e70bbd4d2baa20173ac442cc7731",
         "disposition": "accepted",
@@ -943,12 +961,12 @@
         "scenario": "llm-gateway.gateway/authored/w1-a-body-declared-one-byte-over-32-mib-is-refused-unread"
       },
       "gateway/scenarios/w1-a-body-of-exactly-32-mib-is-relayed.yaml": {
-        "digest": "sha256:5ac8e1b6f81a90f931f0d863a571865da33a47cdd67a2807d5741720e7135a7c",
+        "digest": "sha256:328bd4de85ca45fe3c0340897987f250c49d3ec20c4d26d80524fbc1d86f0cb9",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w1-a-body-of-exactly-32-mib-is-relayed"
       },
       "gateway/scenarios/w1-a-body-shorter-than-its-declared-length-is-incomplete.yaml": {
-        "digest": "sha256:7f83911cb3637b59130511184b6dc1c1ea52abde0f08282086923f49ed7514e9",
+        "digest": "sha256:a080efe77dc843db3d09d017cabaef805f39af06f35a9bef2a4c7e2a83686048",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w1-a-body-shorter-than-its-declared-length-is-incomplete"
       },
@@ -1709,7 +1727,7 @@
       }
     },
     "counts": {
-      "authored": 284,
+      "authored": 287,
       "generated": 4,
       "outside": 0,
       "refused": 0
@@ -9384,6 +9402,310 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else": {
+      "purpose": "the metrics-only listener serves GET and HEAD of exactly /metrics without the owner, and nothing else",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"]}],\"pods\":[],\"metrics_listen\":{},\"steps\":[{\"step\":\"scrape\",\"listener\":true,\"credential\":false},{\"step\":\"scrape\",\"listener\":true,\"credential\":false,\"method\":\"HEAD\"},{\"step\":\"scrape\",\"listener\":true,\"credential\":false,\"path\":\"/metrics/\"},{\"step\":\"scrape\",\"listener\":true,\"path\":\"/v1/routes\"},{\"step\":\"scrape\",\"listener\":true,\"credential\":false,\"path\":\"/health\"},{\"step\":\"scrape\",\"listener\":true,\"credential\":false,\"path\":\"/v1/models\"},{\"step\":\"scrape\",\"listener\":true,\"credential\":false,\"method\":\"POST\"},{\"step\":\"scrape\",\"credential\":false}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "200 scraped",
+                  "200 scraped",
+                  "404 path-unknown",
+                  "404 path-unknown",
+                  "404 path-unknown",
+                  "404 path-unknown",
+                  "404 path-unknown",
+                  "401 credential-absent"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "1 llmgw_inference_requests_total 0",
+                  "1 llmgw_upstream_failures_total 0",
+                  "1 llmgw_instruction_views_total 0",
+                  "1 llmgw_pod_starts_total 0",
+                  "1 llmgw_pod_start_failures_total 0",
+                  "1 llmgw_pod_reaps_total 0",
+                  "1 llmgw_endpoint_invalidations_total 0",
+                  "1 llmgw_cold_start_wait_seconds_total bounded",
+                  "1 llmgw_pod_start_spend_refusals_total 0",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_refusals_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
+                  "1 llmgw_route_response_bytes_total{model=\"code\",wire=\"messages\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "1 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 0",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 0",
+                  "2 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "3 404 content-type=application/json",
+                  "4 404 content-type=application/json",
+                  "5 404 content-type=application/json",
+                  "6 404 content-type=application/json",
+                  "7 404 content-type=application/json",
+                  "8 401 content-type=application/json"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first": {
+      "purpose": "a scrape-token listener refuses a missing, malformed or wrong token, and any other path before the token",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"]}],\"pods\":[],\"metrics_listen\":{\"bearer\":\"scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},\"steps\":[{\"step\":\"scrape\",\"listener\":true,\"credential\":false},{\"step\":\"scrape\",\"listener\":true,\"authorization\":\"Basic c2NyYXBl\"},{\"step\":\"scrape\",\"listener\":true},{\"step\":\"scrape\",\"listener\":true,\"authorization\":\"Bearer scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"},{\"step\":\"scrape\",\"listener\":true,\"credential\":false,\"path\":\"/v1/routes\"},{\"step\":\"scrape\",\"listener\":true,\"authorization\":\"Bearer scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\",\"path\":\"/ready\"},{\"step\":\"scrape\",\"authorization\":\"Bearer scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "401 credential-absent",
+                  "401 credential-malformed",
+                  "401 credential-rejected",
+                  "200 scraped",
+                  "404 path-unknown",
+                  "404 path-unknown",
+                  "401 credential-rejected"
+                ]
+              },
+              "scrapes": {
+                "kind": "literal",
+                "value": [
+                  "1 401 content-type=application/json",
+                  "2 401 content-type=application/json",
+                  "3 401 content-type=application/json",
+                  "4 200 content-type=text/plain; version=0.0.4; charset=utf-8",
+                  "4 llmgw_inference_requests_total 0",
+                  "4 llmgw_upstream_failures_total 0",
+                  "4 llmgw_instruction_views_total 0",
+                  "4 llmgw_pod_starts_total 0",
+                  "4 llmgw_pod_start_failures_total 0",
+                  "4 llmgw_pod_reaps_total 0",
+                  "4 llmgw_endpoint_invalidations_total 0",
+                  "4 llmgw_cold_start_wait_seconds_total bounded",
+                  "4 llmgw_pod_start_spend_refusals_total 0",
+                  "4 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
+                  "4 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
+                  "4 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
+                  "4 llmgw_route_refusals_total{model=\"code\",wire=\"messages\"} 0",
+                  "4 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
+                  "4 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"messages\"} 0",
+                  "4 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"chat\"} 0",
+                  "4 llmgw_route_cold_start_holds_total{model=\"code\",wire=\"messages\"} 0",
+                  "4 llmgw_route_response_bytes_total{model=\"code\",wire=\"chat\"} 0",
+                  "4 llmgw_route_response_bytes_total{model=\"code\",wire=\"messages\"} 0",
+                  "4 llmgw_requests_total{model=\"code\",outcome=\"ok\"} 0",
+                  "4 llmgw_requests_total{model=\"code\",outcome=\"upstream_error\"} 0",
+                  "4 llmgw_requests_total{model=\"code\",outcome=\"timeout\"} 0",
+                  "4 llmgw_requests_total{model=\"code\",outcome=\"refused\"} 0",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "4 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
+                  "4 llmgw_request_duration_seconds_count{model=\"code\"} 0",
+                  "5 404 content-type=application/json",
+                  "6 404 content-type=application/json",
+                  "7 401 content-type=application/json"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series": {
       "purpose": "each authenticated relay request makes one usage record, and each record-fed series grows by the records it counts",
       "source": [
@@ -14388,6 +14710,113 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/translate-the-first-sealed-reasoning-item-is-the-streamed-one-with-the-reasoning-shown-as-its-summary": {
+      "purpose": "the first sealed reasoning item finishes the streamed one, under its id and with the reasoning shown as its summary",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"translation\":\"on\",\"models\":[{\"alias\":\"msg-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-1\",\"scheme\":\"http\"},\"upstream_model\":\"served-msg\",\"wires\":[\"messages\"]},{\"alias\":\"chat-up\",\"endpoint\":{\"auth_kind\":\"anonymous\",\"pod\":\"pod-2\",\"scheme\":\"http\"},\"upstream_model\":\"served-chat\",\"wires\":[\"chat\"]}],\"pods\":[[{\"chunks\":[\"event: message_start\\ndata: {\\\"message\\\":{\\\"content\\\":[],\\\"id\\\":\\\"msg_up\\\",\\\"model\\\":\\\"served\\\",\\\"role\\\":\\\"assistant\\\",\\\"stop_reason\\\":null,\\\"stop_sequence\\\":null,\\\"type\\\":\\\"message\\\",\\\"usage\\\":{\\\"cache_creation_input_tokens\\\":0,\\\"cache_read_input_tokens\\\":0,\\\"input_tokens\\\":12,\\\"output_tokens\\\":1}},\\\"type\\\":\\\"message_start\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"signature\\\":\\\"\\\",\\\"thinking\\\":\\\"\\\",\\\"type\\\":\\\"thinking\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"thinking\\\":\\\"Plan.\\\",\\\"type\\\":\\\"thinking_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"signature\\\":\\\"sig-up-1\\\",\\\"type\\\":\\\"signature_delta\\\"},\\\"index\\\":0,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\nevent: content_block_stop\\ndata: {\\\"index\\\":0,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: content_block_start\\ndata: {\\\"content_block\\\":{\\\"text\\\":\\\"\\\",\\\"type\\\":\\\"text\\\"},\\\"index\\\":1,\\\"type\\\":\\\"content_block_start\\\"}\\n\\nevent: content_block_delta\\ndata: {\\\"delta\\\":{\\\"text\\\":\\\"Hello\\\",\\\"type\\\":\\\"text_delta\\\"},\\\"index\\\":1,\\\"type\\\":\\\"content_block_delta\\\"}\\n\\nevent: content_block_stop\\ndata: {\\\"index\\\":1,\\\"type\\\":\\\"content_block_stop\\\"}\\n\\nevent: message_delta\\ndata: {\\\"delta\\\":{\\\"stop_reason\\\":\\\"end_turn\\\",\\\"stop_sequence\\\":null},\\\"type\\\":\\\"message_delta\\\",\\\"usage\\\":{\\\"output_tokens\\\":2}}\\n\\nevent: message_stop\\ndata: {\\\"type\\\":\\\"message_stop\\\"}\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}],[{\"chunks\":[\"data: {\\\"choices\\\":[{\\\"delta\\\":{\\\"reasoning_content\\\":\\\"Plan.\\\",\\\"role\\\":\\\"assistant\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{\\\"content\\\":\\\"Hello\\\"},\\\"finish_reason\\\":null,\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[{\\\"delta\\\":{},\\\"finish_reason\\\":\\\"stop\\\",\\\"index\\\":0}],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\"}\\n\\ndata: {\\\"choices\\\":[],\\\"id\\\":\\\"chatcmpl-up\\\",\\\"model\\\":\\\"served\\\",\\\"usage\\\":{\\\"completion_tokens\\\":2,\\\"prompt_tokens\\\":12,\\\"total_tokens\\\":14}}\\n\\ndata: [DONE]\\n\\n\"],\"content_type\":\"text/event-stream\",\"framing\":\"chunked\",\"status\":200}]],\"steps\":[{\"step\":\"mark_ready\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"msg-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"},{\"body\":\"{\\\"include\\\":[\\\"reasoning.encrypted_content\\\"],\\\"input\\\":[{\\\"content\\\":[{\\\"text\\\":\\\"Hi\\\",\\\"type\\\":\\\"input_text\\\"}],\\\"role\\\":\\\"user\\\",\\\"type\\\":\\\"message\\\"}],\\\"model\\\":\\\"chat-up\\\",\\\"store\\\":false,\\\"stream\\\":true}\",\"path\":\"/v1/responses\",\"step\":\"request\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "event: response.created\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"id\":\"rs_resp_1800000000_1_0\",\"summary\":[],\"type\":\"reasoning\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.reasoning_summary_part.added\ndata: {\"item_id\":\"rs_resp_1800000000_1_0\",\"output_index\":0,\"part\":{\"text\":\"\",\"type\":\"summary_text\"},\"sequence_number\":3,\"summary_index\":0,\"type\":\"response.reasoning_summary_part.added\"}\n\nevent: response.reasoning_summary_text.delta\ndata: {\"delta\":\"Plan.\",\"item_id\":\"rs_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":4,\"summary_index\":0,\"type\":\"response.reasoning_summary_text.delta\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_resp_1800000000_1_1\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":1,\"sequence_number\":5,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_1\",\"output_index\":1,\"part\":{\"annotations\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":6,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"Hello\",\"item_id\":\"msg_resp_1800000000_1_1\",\"output_index\":1,\"sequence_number\":7,\"type\":\"response.output_text.delta\"}\n\nevent: response.reasoning_summary_text.done\ndata: {\"item_id\":\"rs_resp_1800000000_1_0\",\"output_index\":0,\"sequence_number\":8,\"summary_index\":0,\"text\":\"Plan.\",\"type\":\"response.reasoning_summary_text.done\"}\n\nevent: response.reasoning_summary_part.done\ndata: {\"item_id\":\"rs_resp_1800000000_1_0\",\"output_index\":0,\"part\":{\"text\":\"Plan.\",\"type\":\"summary_text\"},\"sequence_number\":9,\"summary_index\":0,\"type\":\"response.reasoning_summary_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"encrypted_content\":\"<sealed>\",\"id\":\"rs_resp_1800000000_1_0\",\"summary\":[{\"text\":\"Plan.\",\"type\":\"summary_text\"}],\"type\":\"reasoning\"},\"output_index\":0,\"sequence_number\":10,\"type\":\"response.output_item.done\"}\n\nevent: response.output_text.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_1\",\"output_index\":1,\"sequence_number\":11,\"text\":\"Hello\",\"type\":\"response.output_text.done\"}\n\nevent: response.content_part.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_1_1\",\"output_index\":1,\"part\":{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"},\"sequence_number\":12,\"type\":\"response.content_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_1_1\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":1,\"sequence_number\":13,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_1\",\"model\":\"served\",\"object\":\"response\",\"output\":[{\"encrypted_content\":\"<sealed>\",\"id\":\"rs_resp_1800000000_1_0\",\"summary\":[{\"text\":\"Plan.\",\"type\":\"summary_text\"}],\"type\":\"reasoning\"},{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_1_1\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"input_tokens_details\":{\"cache_creation_input_tokens\":0,\"cached_tokens\":0},\"output_tokens\":2,\"total_tokens\":14}},\"sequence_number\":14,\"type\":\"response.completed\"}\n\n",
+                  "event: response.created\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_2\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":0,\"type\":\"response.created\"}\n\nevent: response.in_progress\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_2\",\"object\":\"response\",\"output\":[],\"status\":\"in_progress\"},\"sequence_number\":1,\"type\":\"response.in_progress\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"id\":\"rs_resp_1800000000_2_0\",\"summary\":[],\"type\":\"reasoning\"},\"output_index\":0,\"sequence_number\":2,\"type\":\"response.output_item.added\"}\n\nevent: response.reasoning_summary_part.added\ndata: {\"item_id\":\"rs_resp_1800000000_2_0\",\"output_index\":0,\"part\":{\"text\":\"\",\"type\":\"summary_text\"},\"sequence_number\":3,\"summary_index\":0,\"type\":\"response.reasoning_summary_part.added\"}\n\nevent: response.reasoning_summary_text.delta\ndata: {\"delta\":\"Plan.\",\"item_id\":\"rs_resp_1800000000_2_0\",\"output_index\":0,\"sequence_number\":4,\"summary_index\":0,\"type\":\"response.reasoning_summary_text.delta\"}\n\nevent: response.output_item.added\ndata: {\"item\":{\"content\":[],\"id\":\"msg_resp_1800000000_2_1\",\"role\":\"assistant\",\"status\":\"in_progress\",\"type\":\"message\"},\"output_index\":1,\"sequence_number\":5,\"type\":\"response.output_item.added\"}\n\nevent: response.content_part.added\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_2_1\",\"output_index\":1,\"part\":{\"annotations\":[],\"text\":\"\",\"type\":\"output_text\"},\"sequence_number\":6,\"type\":\"response.content_part.added\"}\n\nevent: response.output_text.delta\ndata: {\"content_index\":0,\"delta\":\"Hello\",\"item_id\":\"msg_resp_1800000000_2_1\",\"output_index\":1,\"sequence_number\":7,\"type\":\"response.output_text.delta\"}\n\nevent: response.reasoning_summary_text.done\ndata: {\"item_id\":\"rs_resp_1800000000_2_0\",\"output_index\":0,\"sequence_number\":8,\"summary_index\":0,\"text\":\"Plan.\",\"type\":\"response.reasoning_summary_text.done\"}\n\nevent: response.reasoning_summary_part.done\ndata: {\"item_id\":\"rs_resp_1800000000_2_0\",\"output_index\":0,\"part\":{\"text\":\"Plan.\",\"type\":\"summary_text\"},\"sequence_number\":9,\"summary_index\":0,\"type\":\"response.reasoning_summary_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"encrypted_content\":\"<sealed>\",\"id\":\"rs_resp_1800000000_2_0\",\"summary\":[{\"text\":\"Plan.\",\"type\":\"summary_text\"}],\"type\":\"reasoning\"},\"output_index\":0,\"sequence_number\":10,\"type\":\"response.output_item.done\"}\n\nevent: response.output_text.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_2_1\",\"output_index\":1,\"sequence_number\":11,\"text\":\"Hello\",\"type\":\"response.output_text.done\"}\n\nevent: response.content_part.done\ndata: {\"content_index\":0,\"item_id\":\"msg_resp_1800000000_2_1\",\"output_index\":1,\"part\":{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"},\"sequence_number\":12,\"type\":\"response.content_part.done\"}\n\nevent: response.output_item.done\ndata: {\"item\":{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_2_1\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"},\"output_index\":1,\"sequence_number\":13,\"type\":\"response.output_item.done\"}\n\nevent: response.completed\ndata: {\"response\":{\"created_at\":1800000000,\"id\":\"resp_1800000000_2\",\"model\":\"served\",\"object\":\"response\",\"output\":[{\"encrypted_content\":\"<sealed>\",\"id\":\"rs_resp_1800000000_2_0\",\"summary\":[{\"text\":\"Plan.\",\"type\":\"summary_text\"}],\"type\":\"reasoning\"},{\"content\":[{\"annotations\":[],\"text\":\"Hello\",\"type\":\"output_text\"}],\"id\":\"msg_resp_1800000000_2_1\",\"role\":\"assistant\",\"status\":\"completed\",\"type\":\"message\"}],\"status\":\"completed\",\"usage\":{\"input_tokens\":12,\"output_tokens\":2,\"total_tokens\":14}},\"sequence_number\":14,\"type\":\"response.completed\"}\n\n"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 translated",
+                  "200 translated"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"served-msg\",\"stream\":true}",
+                  "pod-2 POST /v1/chat/completions {\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/translate-the-listing-names-every-wire-and-the-upstream-wires": {
       "purpose": "with a translator GET /v1/models lists every wire for each model and the wires its upstream speaks, while GET / still profiles a client only on a wire the model declares",
       "source": [
@@ -14840,7 +15269,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"big\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"pad_to_bytes\":33554432}]}"
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"big\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\"}\",\"pad_to_bytes\":33554432,\"half_close\":false}]}"
             }
           },
           "step": "execute_command"
@@ -14936,7 +15365,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"\",\"declare_bytes\":64},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"\",\"declare_bytes\":1}]}"
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"responses\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"\",\"declare_bytes\":64,\"half_close\":true},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"\",\"declare_bytes\":1,\"half_close\":true}]}"
             }
           },
           "step": "execute_command"

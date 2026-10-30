@@ -137,7 +137,12 @@ only after the owner is authenticated and the head has admitted it.
 A head that is not HTTP/1.x, a head that is not UTF-8 (obs-text included), a header whose name
 is followed by whitespace before its colon (RFC 9112 section 5.1), a CR, LF or NUL inside a line
 (RFC 9110 section 5.5), and a head that has not arrived whole when `read_timeout` passes are each
-`request-malformed`. The owner presents
+`request-malformed`. A CR, LF or NUL inside a line is refused as soon as it arrives, so a head
+holding one is `request-malformed` at any length, never `request-too-large` or left to
+`read_timeout`. A repeated header is `request-malformed`, and a repeated `authorization` is
+`credential-malformed`, except where the request never reads it: a probe ignores every repeat,
+and a public route every repeat but `content-length`, `transfer-encoding`, `host` and
+`user-agent`. The owner presents
 `authorization: Bearer <token>`, the scheme matched without regard to case. Every `401` carries
 `www-authenticate: Bearer`, and every `405` an `allow` header naming the methods the path takes.
 
@@ -380,7 +385,23 @@ A request to a wire path is decided in this order:
    or is malformed, and a `502`, `503` or `504` answer each report the target to `invalidate` by
    its authority and answer `upstream-failed` (502). Naming the authority lets the pool drop the
    endpoint only if it is still the current one. Any other status, `500` and `4xx` included, is
-   the model's own answer and is relayed.
+   the model's own answer and is relayed. A malformed head includes a status line, a field
+   name, or a `content-type`, `content-length` or `transfer-encoding` value that is not UTF-8.
+   The value of any other field, every trailer field and every chunk extension (RFC 9112
+   section 7.1.1) is not read, so a byte that is not UTF-8 there (obs-text, RFC 9110 section
+   5.5, which a proxy in front of a target may send) is relayed past and the target is kept.
+   While the gateway waits for the answer head it watches the client every 100 ms, a read that
+   does not wait: a client that has closed its connection or its sending side, typically one
+   that gave up on a non-streamed answer the target is still generating, ends the wait. Bytes
+   the client sent after its request, such as a pipelined next request, are read and discarded
+   (at most 64 KiB a look), so a close behind them is seen too; the answer carries
+   `connection: close`, so they are never served. The gateway shuts its connection to the
+   target down, reports nothing to `invalidate`, writes nothing and releases the target; the
+   record is the one a client gone before any answer makes
+   ([Counters and usage records](#counters-and-usage-records)). The connection shut down is the
+   socket the target's stream names (`RelayStream::shutdown_handle`): the binary's plain `http`
+   connection and its TLS connection (an `https` endpoint, a Runpod pod) both name theirs. A
+   stream that names none is held until the target answers or its read timeout ends.
 9. The target's status, its `content-type` and its decoded body bytes are relayed as they
    arrive, as `transfer-encoding: chunked` with `cache-control: no-store`. The gateway relays
    answer bodies unchanged and does not rewrite them, so whatever an upstream puts in its answer
@@ -731,9 +752,11 @@ and no `[DONE]` (chat); a bound's terminal error carries `translation-too-large`
 which names the published bounds. A client that stops reading (a write to it fails) cancels the turn,
 which drops the upstream connection; so does a client waiting for a non-streamed answer that
 has closed its connection or its sending side, which the gateway asks between two events
-(`TranslatedAnswer::gone`, a peek that does not wait). Nothing is retried or replayed. The
-target is released after the last byte. The usage record carries the status of the answer
-written and its translated bytes.
+(`TranslatedAnswer::gone`, the byte relay's read that does not wait, which discards bytes sent
+after the request). Nothing is retried or replayed. The target is released after the last byte. The usage record carries the status of the answer
+written and its translated bytes. A translation that wrote no answer, refused or failed after
+its target answered, carries the status the target answered with, which the translator tells
+the relay (`TranslatedAnswer::target_status`; the binary reads it from llm's response tap).
 
 ### Known limits
 
@@ -772,8 +795,9 @@ body named (absent when it named none), the wire, its `Disposition` (`Relayed`, 
 `UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
 status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
 request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The token counters and the model the target reported are
-always absent for now. A translated request whose client went away before any answer was
-written (a non-streamed client that closed while it waited) is recorded `Relayed` with status 0,
+always absent for now. A request, relayed or translated, whose client went away before any
+answer was written (a non-streamed client that closed while it waited) is recorded `Relayed`
+with status 0,
 no target status and 0 response bytes: status 0 means no answer was written because the client
 left. An unauthenticated or shed request makes no record. The record feeds the
 counters, then leaves the crate through the `UsageRecords` port the embedding implements
@@ -807,9 +831,10 @@ which takes no dependency for it.
 | `llmgw_request_duration_seconds` | `model` | a histogram of the same records' durations, in seconds |
 
 Every (model, wire) pair a relayed model declares is registered at zero when the relay is
-composed, so an uncalled route reads 0 instead of being absent; a request for another pair feeds
-the process-wide series only. A gateway composed without a relay serves the process-wide series
-alone. An embedding that counts pod events shares one `Metrics` with the relay
+composed, so an uncalled route reads 0 instead of being absent; a request for another pair, a
+translated request on a wire its model does not declare included, feeds the process-wide series
+only. A gateway composed without a relay serves the process-wide series alone. An embedding
+that counts pod events shares one `Metrics` with the relay
 (`Relay::with_metrics`). The upstream and status series count as llmgw does (llmgw
 `src/lib.rs:598-629` at `048ebd8`). The specification is `spec/domains/telemetry.yaml`.
 

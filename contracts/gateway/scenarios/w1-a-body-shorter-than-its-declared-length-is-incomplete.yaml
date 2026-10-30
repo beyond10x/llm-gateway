@@ -6,7 +6,7 @@ timeline:
 - at: '2026-10-05T12:00:00Z'
   command: llm-gateway.gateway.Relay
   input:
-    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"","declare_bytes":64},{"step":"request","path":"/v1/messages","body":"","declare_bytes":1}]}'
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"","declare_bytes":64,"half_close":true},{"step":"request","path":"/v1/messages","body":"","declare_bytes":1,"half_close":true}]}'
   outcome: observed
 assert:
 - view: llm-gateway.gateway.LastRelay

@@ -5,6 +5,35 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## 0.17.0 (2026-10-30)
+
+### Added
+
+- Conformance scenarios for the metrics-only listener (`metrics_listen`: `GET` and `HEAD` on exactly `/metrics`, `path-unknown` for every other path or method, its scrape token) and for the first sealed reasoning item's `id` and summary; the conformance runner can bind that listener and send it a scrape.
+
+### Changed
+
+- **Breaking:** a `metrics_bearer_file` token under 32 bytes, the owner secret's floor, is refused at start as `metrics-bearer:not-a-token`, naming `metrics_bearer_file`.
+- **Breaking:** on the byte relay, a non-streamed client that shuts its sending side while the gateway waits for the answer head counts as gone, as it already did on the translated path; a client that half-closes must keep its sending side open until the answer begins.
+- **Breaking:** `RelayStream` is no longer implemented for every `Read + Write + Send` type: an embedding implements it for each stream type it opens (`TcpStream`'s is provided), and `RelayStream::shutdown_handle` names the socket the relay shuts down when the client leaves before the answer head (`None` by default).
+
+### Fixed
+
+- A probe (`/health`, `/ready`) or a public route (`GET /v1/models`, `GET /`) is answered when its head repeats a header it never reads, such as `authorization` or `x-probe`, instead of being refused `request-malformed` or `credential-malformed`.
+- A request head holding a bare LF, a stray CR or a NUL is refused `request-malformed` as soon as that byte arrives, so one past `request-head-bytes` is no longer `request-too-large` and one under it no longer waits for `read_timeout`.
+- A Runpod pool step that comes later than `lease_ms` no longer terminates a pod with a request in flight: the stop the lease expiry owes waits until the last stream ends, and the first step after that submits it. A pod past its lifetime ceiling is still stopped with a stream open.
+- `docs/hosting.md` describes the compute authorization the gateway passes: ledger `b10x-llm-gateway` with reservation `unmetered` or `spend-ceiling`, checked by ledger name only, with the Runpod spend check as the only spend cap. It no longer says a create needs an `llm-cost` reservation reserved and begun first.
+- A deployment-document refusal no longer quotes the refused value: a string outside a closed set (`auth_kind`, `ingress_auth`, …) or where a number or a list belongs is refused `config:schema` naming its line and the values allowed, never the string written.
+- The serving command line no longer echoes an unexpected argument: a usage error is `b10x-llm-gateway: usage error (<kind>)` with the usage line, exit status 2.
+- With `ingress_auth = "none"`, the warning that ingress authentication is off is written before the listener is bound, not after it already serves.
+- A byte-relayed call whose client closes its connection while the gateway waits for the answer head releases the target within about 100 ms and shuts its connection to the target down, a plain `http` one and a TLS one such as a Runpod pod's alike. A client that pipelined a next request before it closed counts as gone too: the bytes after its request are read and discarded, at most 64 KiB a look, since the answer carries `connection: close`.
+- A target's chunked answer whose chunk extension carries a non-UTF-8 byte (obs-text in a quoted value, RFC 9112 section 7.1.1) is relayed and the target kept; only the chunk size is read, and one that is not `1*HEXDIG` is still refused.
+- The conformance runner's request step keeps the client's sending side open unless it sets `half_close: true`, so relay scenarios no longer pass only by answering inside the gateway's 100 ms client watch.
+- A translated call refused after its target answered records that status in its usage record, and on a route its model declares counts one `llmgw_route_upstream_status_failures_total`; `TranslatedAnswer::target_status` is the port's new method, and the binary reads the status from llm's response tap.
+- A target answer with a non-UTF-8 byte in a header or trailer field the gateway does not read is relayed and the target kept; the status line and the `content-type`, `content-length` and `transfer-encoding` values must still be UTF-8.
+- With a translator, route series are registered only for the (model, wire) pairs a model declares; a translated request on another wire feeds the process-wide series only, as `docs/gateway.md` states.
+- `credential set` no longer quotes an unknown `--model` or `--route` name in `credential:unknown-target`: a generated key has the shape of a plain name, so the refusal calls it "the given name" whatever it is.
+
 ## 0.16.0 (2026-10-30)
 
 ### Added

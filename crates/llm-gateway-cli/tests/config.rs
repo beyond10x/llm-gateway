@@ -2132,3 +2132,247 @@ fn profiles_a_missing_or_unknown_key_is_refused_as_schema() {
         assert_eq!(refusal.code(), "config:schema", "{case}: {refusal}");
     }
 }
+
+#[test]
+fn a_value_outside_a_closed_set_is_not_quoted_in_the_refusal() {
+    let fixture = Fixture::new("closed-set-value");
+    let secret = fixture.owner_secret();
+    let text = hosted_document(
+        "127.0.0.1:0",
+        &secret,
+        &hosted_table(
+            "open",
+            "http://127.0.0.1:8000",
+            "auth_kind = \"PASTED-KEY-VALUE\"\nbilling_kind = \"self-hosted\"\n",
+        ),
+    );
+    let refusal = load(&fixture.config(&text)).unwrap_err();
+    let printed = format!("{refusal}");
+    assert!(!printed.contains("PASTED-KEY-VALUE"), "{printed}");
+    assert_eq!(refusal.code(), "config:schema", "{printed}");
+    assert!(
+        printed.contains("line 7: ") && printed.contains("`anonymous`, `bearer`, `api-key`"),
+        "{printed}"
+    );
+}
+
+/// The same rule for a string where the document takes a number or a list: serde's own message
+/// would quote the string.
+#[test]
+fn a_string_where_another_type_belongs_is_not_quoted_in_the_refusal() {
+    let fixture = Fixture::new("string-wrong-type");
+    let secret = fixture.owner_secret();
+    for line in [
+        "context_window = \"PASTED-KEY-VALUE\"\n",
+        "anthropic_beta = \"PASTED-KEY-VALUE\"\n",
+        "context_window = \"PASTED-\\\"KEY\\\\-VALUE\"\n",
+    ] {
+        let text = hosted_document(
+            "127.0.0.1:0",
+            &secret,
+            &hosted_table(
+                "open",
+                "http://127.0.0.1:8000",
+                &format!("auth_kind = \"anonymous\"\n{line}"),
+            ),
+        );
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        let printed = format!("{refusal}");
+        assert_eq!(refusal.code(), "config:schema", "{line}: {printed}");
+        for part in ["PASTED", "KEY", "VALUE"] {
+            assert!(!printed.contains(part), "{line}: {printed}");
+        }
+        assert!(printed.contains("line 8: "), "{line}: {printed}");
+    }
+}
+
+/// Security review, wave 2026-10-30-w01: no `config:*` refusal quotes a value the document
+/// holds, whatever shape the mistake has: a syntax error (an unquoted, unterminated or badly
+/// escaped string, a bare line, junk after a value), a string in a nested table, an array or an
+/// inline table where another type belongs, escaped quotes, a multi-line string, a value that
+/// itself holds `string "`, or a control character. The marker stands in value position only,
+/// never as a key, so a refusal that prints it quoted a value.
+#[test]
+fn sec_w01_no_refusal_quotes_a_value_whatever_the_mistake() {
+    const MARK: &str = SEC_W01_MARK;
+    let fixture = Fixture::new("sec-w01-no-value-quoted");
+    let control = base(&fixture);
+    let mut cases = sec_w01_syntax_mistakes(&control);
+    cases.extend(sec_w01_type_mistakes(&control));
+    let mut leaked = Vec::new();
+    for (case, text) in &cases {
+        assert!(
+            text.contains(MARK),
+            "{case}: the marker is absent, so this case tests nothing"
+        );
+        match load(&fixture.config(text)) {
+            Ok(_) => leaked.push(format!("{case}: loaded")),
+            Err(refusal) => {
+                let printed = format!("{refusal}");
+                if printed.contains(&MARK[..9]) || printed.contains(&MARK[9..]) {
+                    leaked.push(format!("{case}: {printed}"));
+                }
+            }
+        }
+    }
+    assert!(
+        leaked.is_empty(),
+        "refusals that quote a value:\n{}",
+        leaked.join("\n")
+    );
+}
+
+/// The marker [`sec_w01_no_refusal_quotes_a_value_whatever_the_mistake`] places in value
+/// position.
+const SEC_W01_MARK: &str = "PASTEDKEYb7f3e9a1c0d2";
+
+/// Documents that break TOML's syntax, each with the marker in value position.
+fn sec_w01_syntax_mistakes(control: &str) -> Vec<(&'static str, String)> {
+    const MARK: &str = SEC_W01_MARK;
+    let at_end = |line: &str| with_model_keys(control, line);
+    vec![
+        ("unquoted value", at_end(&format!("sampling = {MARK}\n"))),
+        (
+            "unquoted value, integer field",
+            at_end(&format!("max_num_seqs = {MARK}\n")),
+        ),
+        (
+            "unterminated basic string",
+            at_end(&format!("sampling = \"{MARK}\n")),
+        ),
+        (
+            "unterminated literal string",
+            at_end(&format!("sampling = '{MARK}\n")),
+        ),
+        (
+            "invalid escape",
+            at_end(&format!("sampling = \"{MARK}\\q\"\n")),
+        ),
+        (
+            "control character",
+            at_end(&format!("sampling = \"{MARK}\u{1}\"\n")),
+        ),
+        (
+            "unterminated multi-line",
+            at_end(&format!("sampling = \"\"\"{MARK}\n")),
+        ),
+        (
+            "junk after a number",
+            at_end(&format!("max_num_seqs = 1 {MARK}\n")),
+        ),
+        (
+            "junk after a string",
+            at_end(&format!("sampling = \"a\" {MARK}\n")),
+        ),
+        ("a bare line", at_end(&format!("{MARK}\n"))),
+        ("a line starting =", at_end(&format!("= {MARK}\n"))),
+        ("a pasted header line", at_end(&format!("Bearer {MARK}\n"))),
+        (
+            "an integer-like value",
+            at_end(&format!("max_num_seqs = 0x{MARK}\n")),
+        ),
+        (
+            "a datetime-like value",
+            at_end(&format!("sampling = 1979-05-27T{MARK}\n")),
+        ),
+        (
+            "unquoted in an inline table",
+            at_end(&format!("extra_vllm_args = {{ a = {MARK} }}\n")),
+        ),
+        (
+            "unquoted in an array",
+            at_end(&format!("extra_vllm_args = [\"a\", {MARK}]\n")),
+        ),
+    ]
+}
+
+/// Well-formed documents holding a value of the wrong type or outside a closed set, each with
+/// the marker in value position: in a nested table, an array, an inline table.
+fn sec_w01_type_mistakes(control: &str) -> Vec<(&'static str, String)> {
+    const MARK: &str = SEC_W01_MARK;
+    let at_end = |line: &str| with_model_keys(control, line);
+    let gpu = "gpu_types = [\"NVIDIA L40S\"]\n";
+    let provider = "[providers.runpod]\nkind = \"runpod-vllm\"\n";
+    vec![
+        (
+            "string where an integer belongs",
+            at_end(&format!("max_num_seqs = \"{MARK}\"\n")),
+        ),
+        (
+            "escaped quotes where an integer belongs",
+            at_end(&format!("max_num_seqs = \"a\\\"{MARK}\\\"b\"\n")),
+        ),
+        (
+            "multi-line string where an integer belongs",
+            at_end(&format!("max_num_seqs = \"\"\"\nline\n{MARK}\n\"\"\"\n")),
+        ),
+        (
+            "a value holding string-quote, integer field",
+            at_end(&format!("max_num_seqs = 'string \"{MARK}'\n")),
+        ),
+        (
+            "a value holding a quote then string-quote, integer field",
+            at_end(&format!("max_num_seqs = 'x\" string \"{MARK}'\n")),
+        ),
+        (
+            "string where an array belongs",
+            mutate(control, gpu, &format!("gpu_types = \"{MARK}\"\n")),
+        ),
+        (
+            "mixed array",
+            mutate(control, gpu, &format!("gpu_types = [1, \"{MARK}\"]\n")),
+        ),
+        (
+            "string in an array where a wire belongs",
+            mutate(
+                control,
+                "wires = [\"chat\", \"responses\"]\n",
+                &format!("wires = [\"chat\", \"{MARK}\"]\n"),
+            ),
+        ),
+        (
+            "string where the providers table belongs",
+            mutate(control, provider, &format!("providers = \"{MARK}\"\n")),
+        ),
+        (
+            "string where a nested table belongs",
+            mutate(
+                control,
+                provider,
+                &format!("[providers]\nrunpod = \"{MARK}\"\n"),
+            ),
+        ),
+        (
+            "inline table holding a string where a closed value belongs",
+            mutate(
+                control,
+                provider,
+                &format!("[providers]\nrunpod = {{ kind = {{ x = \"{MARK}\" }} }}\n"),
+            ),
+        ),
+        (
+            "string where a closed value belongs in a provider",
+            mutate(
+                control,
+                provider,
+                &format!("[providers.runpod]\nkind = \"{MARK}\"\n"),
+            ),
+        ),
+        (
+            "string where the listen address belongs",
+            mutate(
+                control,
+                "listen = \"127.0.0.1:0\"",
+                &format!("listen = \"{MARK}\""),
+            ),
+        ),
+        (
+            "array where the listen address belongs",
+            mutate(
+                control,
+                "listen = \"127.0.0.1:0\"",
+                &format!("listen = [\"{MARK}\"]"),
+            ),
+        ),
+    ]
+}

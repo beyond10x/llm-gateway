@@ -1,0 +1,76 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first
+summary: a scrape-token listener refuses a missing, malformed or wrong token, and any other path before the token
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","messages"]}],"pods":[],"metrics_listen":{"bearer":"scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},"steps":[{"step":"scrape","listener":true,"credential":false},{"step":"scrape","listener":true,"authorization":"Basic c2NyYXBl"},{"step":"scrape","listener":true},{"step":"scrape","listener":true,"authorization":"Bearer scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"},{"step":"scrape","listener":true,"credential":false,"path":"/v1/routes"},{"step":"scrape","listener":true,"authorization":"Bearer scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","path":"/ready"},{"step":"scrape","authorization":"Bearer scrape-token-bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 401 credential-absent
+    - 401 credential-malformed
+    - 401 credential-rejected
+    - 200 scraped
+    - 404 path-unknown
+    - 404 path-unknown
+    - 401 credential-rejected
+    scrapes:
+    - 1 401 content-type=application/json
+    - 2 401 content-type=application/json
+    - 3 401 content-type=application/json
+    - 4 200 content-type=text/plain; version=0.0.4; charset=utf-8
+    - 4 llmgw_inference_requests_total 0
+    - 4 llmgw_upstream_failures_total 0
+    - 4 llmgw_instruction_views_total 0
+    - 4 llmgw_pod_starts_total 0
+    - 4 llmgw_pod_start_failures_total 0
+    - 4 llmgw_pod_reaps_total 0
+    - 4 llmgw_endpoint_invalidations_total 0
+    - 4 llmgw_cold_start_wait_seconds_total bounded
+    - 4 llmgw_pod_start_spend_refusals_total 0
+    - '4 llmgw_route_requests_total{model="code",wire="chat"} 0'
+    - '4 llmgw_route_requests_total{model="code",wire="messages"} 0'
+    - '4 llmgw_route_refusals_total{model="code",wire="chat"} 0'
+    - '4 llmgw_route_refusals_total{model="code",wire="messages"} 0'
+    - '4 llmgw_route_upstream_status_failures_total{model="code",wire="chat"} 0'
+    - '4 llmgw_route_upstream_status_failures_total{model="code",wire="messages"} 0'
+    - '4 llmgw_route_cold_start_holds_total{model="code",wire="chat"} 0'
+    - '4 llmgw_route_cold_start_holds_total{model="code",wire="messages"} 0'
+    - '4 llmgw_route_response_bytes_total{model="code",wire="chat"} 0'
+    - '4 llmgw_route_response_bytes_total{model="code",wire="messages"} 0'
+    - '4 llmgw_requests_total{model="code",outcome="ok"} 0'
+    - '4 llmgw_requests_total{model="code",outcome="upstream_error"} 0'
+    - '4 llmgw_requests_total{model="code",outcome="timeout"} 0'
+    - '4 llmgw_requests_total{model="code",outcome="refused"} 0'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="0.05"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="0.1"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="0.25"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="0.5"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="1"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="2.5"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="5"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="10"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="30"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="60"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="120"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="300"} cumulative'
+    - '4 llmgw_request_duration_seconds_bucket{model="code",le="+Inf"} 0'
+    - '4 llmgw_request_duration_seconds_sum{model="code"} bounded'
+    - '4 llmgw_request_duration_seconds_count{model="code"} 0'
+    - 5 404 content-type=application/json
+    - 6 404 content-type=application/json
+    - 7 401 content-type=application/json
+    records: []
+    upstream: []
+    acquired: 0

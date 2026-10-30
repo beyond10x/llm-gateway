@@ -870,8 +870,10 @@ entities:
   #      connection is closed. The record feeds the counters llm-gateway.telemetry lists and
   #      leaves the gateway through the embedding's `UsageRecords`. A translated answer's
   #      record carries the status of the answer the gateway wrote as its `target_status` (llm's
-  #      client reads only a 2xx answer), and its `response_bytes` are the translated bytes;
-  #      a model's route series are registered on every wire when the relay has a translator.
+  #      client reads only a 2xx answer), and its `response_bytes` are the translated bytes; a
+  #      translated call refused after its target answered carries the status the target
+  #      answered with. A model's route series are those of the wires it declares, translator
+  #      or not: a translated request on another wire feeds the process-wide series only.
   # A refused relay is closed gracefully: the refusal is written, the write side closed, and
   # what the client still sends is read and discarded, up to 33554432 bytes and within one
   # `read_timeout_ms`, so a reset cannot destroy the refusal before the client reads it
@@ -1129,8 +1131,18 @@ commands:
       #           list is answered `target-unavailable` (wake) or `stopped` (status). Without
       #           `lifecycle` the source starts no pod for any model, and a model served by a
       #           hosted endpoint never has one, both as `None`
+      #   metrics_listen  optional, `{bearer}`: the gateway also serves the metrics-only
+      #           listener (llm-gateway.telemetry, the deployment's `metrics_listen`) on a
+      #           loopback port, as `GatewayHandle::serve_metrics`, taking `bearer` as its scrape
+      #           token when given and open without it; one it cannot bind composes nothing,
+      #           `error_code` `bind:metrics-listen`
       #   steps  in order: `{step: mark_ready}`, `{step: scrape}` (a `GET /metrics`, with
-      #           optional `credential`, default true), or `{step: request, path, body}` with
+      #           optional `credential`, default true: the owner's bearer token; `authorization`,
+      #           sent as that header's value in place of it; `method` and `path` in place of
+      #           `GET` and `/metrics`; and `listener`, default false: sent to the metrics-only
+      #           listener, which a program without `metrics_listen` makes invalid; a CR or LF
+      #           in any of them, or a space in `method` or `path`, makes the program invalid),
+      #           or `{step: request, path, body}` with
       #           optional `method` (default `POST`), `credential` (default true: the owner's
       #           bearer token), `pad_to_bytes` (the body grows by `,"pad":"a…"` before its last
       #           `}` to exactly that many bytes), `declare_bytes` (only a head declaring
@@ -1140,10 +1152,11 @@ commands:
       #           adds `anthropic-version`; a line holding a CR or LF makes the program
       #           invalid), `close_after_bytes` (the client stops reading and closes the
       #           connection once it has received at least that many body bytes; the step's
-      #           result is then `<status> closed`) and `half_close` (default true: the client
-      #           shuts its sending side once the request is written; false keeps it open, as
-      #           a client waiting for a non-streamed translated answer must, since the gateway
-      #           reads a closed sending side as a client gone), `sealed_from` (the index,
+      #           result is then `<status> closed`) and `half_close` (default false: the client
+      #           keeps its sending side open while it waits, as a client waiting for any
+      #           answer must, since the gateway reads a closed sending side as a client gone;
+      #           true shuts it once the request is written, a client that is gone before the
+      #           answer begins), `sealed_from` (the index,
       #           from 0, of an earlier request step: every `<sealed>` in this body is replaced
       #           by the first reasoning seal, `llmgw-seal-1.…`, the client received in that
       #           step's answer; a program naming a step that is not an earlier request makes

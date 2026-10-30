@@ -1344,3 +1344,214 @@ fn the_ingress_auth_off_warning_is_written_before_the_listener_serves() {
     assert!(written[1].starts_with(LISTENING), "{written:?}");
     assert_eq!(status(&ready), "200", "{ready:?}");
 }
+
+/// Security review, wave 2026-10-30-w01: the marker a command line carries in an argument
+/// position never reaches standard error or standard output, for every usage error of the
+/// serving line and of `credential`: a missing value, a value repeated, `--flag=<value>`, an
+/// unknown flag, a positional, invalid UTF-8, a value given to a flag that takes none.
+#[test]
+fn sec_w01_no_usage_error_echoes_an_argument() {
+    const MARK: &str = SEC_W01_ARGUMENT;
+    let fixture = Fixture::new("sec-w01-usage");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let mut leaked = Vec::new();
+    for args in sec_w01_usage_errors(config.to_str().unwrap()) {
+        let mut child = Command::new(binary())
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .unwrap();
+        let mut stdout = Vec::new();
+        let mut stderr = Vec::new();
+        child
+            .stdout
+            .take()
+            .unwrap()
+            .read_to_end(&mut stdout)
+            .unwrap();
+        child
+            .stderr
+            .take()
+            .unwrap()
+            .read_to_end(&mut stderr)
+            .unwrap();
+        let status = child.wait().unwrap();
+        let printed = format!(
+            "{}{}",
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
+        );
+        if printed.contains(&MARK[..9]) || printed.contains(&MARK[9..30]) {
+            leaked.push(format!("{args:?} -> {status}: {printed}"));
+        }
+    }
+    assert!(
+        leaked.is_empty(),
+        "arguments echoed:\n{}",
+        leaked.join("\n")
+    );
+}
+
+/// The argument [`sec_w01_no_usage_error_echoes_an_argument`] places on each command line.
+const SEC_W01_ARGUMENT: &str = "PASTEDKEYb7f3e9a1c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f2a4b6";
+
+/// Command lines that are usage errors, each carrying [`SEC_W01_ARGUMENT`].
+fn sec_w01_usage_errors(config: &str) -> Vec<Vec<std::ffi::OsString>> {
+    use std::{ffi::OsString, os::unix::ffi::OsStringExt as _};
+    const MARK: &str = SEC_W01_ARGUMENT;
+    let config = config.to_owned();
+    let invalid = || {
+        let mut bytes = MARK.as_bytes().to_vec();
+        bytes.push(0xff);
+        OsString::from_vec(bytes)
+    };
+    let text = |items: &[&str]| items.iter().map(OsString::from).collect::<Vec<_>>();
+    vec![
+        text(&[MARK]),
+        text(&["--config", &config, MARK]),
+        text(&["--config", &config, "--config", MARK]),
+        text(&[&format!("--config={config}"), &format!("--config={MARK}")]),
+        text(&[&format!("--confi={MARK}")]),
+        text(&[&format!("--{MARK}")]),
+        text(&[&format!("-{MARK}")]),
+        text(&["--config", &config, "--", MARK]),
+        text(&[&format!("--help={MARK}")]),
+        text(&[&format!("--version={MARK}")]),
+        vec![invalid()],
+        vec!["--config".into(), config.clone().into(), invalid()],
+        vec![
+            OsString::from("--config"),
+            OsString::from(&config),
+            OsString::from("--x"),
+            invalid(),
+        ],
+        text(&["credential", MARK]),
+        text(&["credential", "set", MARK]),
+        text(&[
+            "credential",
+            "set",
+            "--config",
+            &config,
+            "--model",
+            "a",
+            MARK,
+        ]),
+        text(&[
+            "credential",
+            "set",
+            "--config",
+            &config,
+            &format!("--key={MARK}"),
+        ]),
+        text(&[
+            "credential",
+            "set",
+            "--config",
+            &config,
+            "--model",
+            "a",
+            &format!("--stdin={MARK}"),
+        ]),
+        text(&[
+            "credential",
+            "set",
+            "--config",
+            &config,
+            "--model",
+            "a",
+            "--route",
+            MARK,
+        ]),
+        text(&[
+            "credential",
+            "set",
+            "--config",
+            &config,
+            "--model",
+            "a",
+            "--model",
+            MARK,
+        ]),
+        vec![
+            "credential".into(),
+            "set".into(),
+            "--config".into(),
+            config.clone().into(),
+            "--model".into(),
+            invalid(),
+        ],
+        vec!["credential".into(), invalid()],
+    ]
+}
+
+/// Security review, wave 2026-10-30-w01: `credential set --model <name>` and `--route <name>`
+/// quote the name in an unknown-target refusal when it is at most 64 characters of
+/// `A-Z a-z 0-9 . _ -`. A generated token of that shape (a 48-character hex key, the shape of
+/// an owner secret or a vLLM key) given where the alias belongs is a secret-shaped argument,
+/// and the invariant is that no secret-shaped argument reaches standard error.
+#[test]
+fn sec_w01_a_token_shaped_target_name_is_not_echoed() {
+    const KEY: &str = "3f9a1c0d2e4f6a8b0c2d4e6f8a0b2c4d6e8f0a2b4c6d8e0f";
+    let fixture = Fixture::new("sec-w01-token-target");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let config = config.to_str().unwrap();
+    for flag in ["--model", "--route"] {
+        let finished = run(&[
+            "credential",
+            "set",
+            "--config",
+            config,
+            flag,
+            KEY,
+            "--stdin",
+        ]);
+        assert_ne!(
+            finished.status.code(),
+            Some(0),
+            "{flag}: {:?}",
+            finished.stderr
+        );
+        assert!(
+            !finished.stderr.contains(KEY) && !finished.stdout.contains(KEY),
+            "{flag}: {:?}",
+            finished.stderr
+        );
+    }
+}
+
+/// Security review, wave 2026-10-30-w01: the scrape-token floor counts the token as the
+/// server holds it, after trailing ASCII whitespace is trimmed, so 31 bytes followed by any
+/// trailing whitespace (32 bytes or more in the file) is refused, and the refusal never quotes
+/// the token.
+#[test]
+fn sec_w01_the_scrape_token_floor_counts_the_trimmed_token() {
+    let fixture = Fixture::new("sec-w01-scrape-floor");
+    let short = "s".repeat(31);
+    for (name, bytes) in [
+        ("lf", format!("{short}\n")),
+        ("crlf", format!("{short}\r\n")),
+        ("space", format!("{short} ")),
+        ("tabs", format!("{short}\t\t\n")),
+        ("many", format!("{short}{}", "\n".repeat(64))),
+    ] {
+        let token = fixture.write(name, bytes.as_bytes(), 0o600);
+        let config = with_top_level(
+            &fixture,
+            "127.0.0.1:0",
+            &format!(
+                "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
+                free_address(),
+                token.display()
+            ),
+        );
+        let finished = run_config(&config);
+        assert_refused(&finished, "metrics-bearer:not-a-token");
+        assert!(
+            !finished.stderr.contains(&short),
+            "{name}: {}",
+            finished.stderr
+        );
+    }
+}

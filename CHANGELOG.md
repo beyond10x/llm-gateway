@@ -24,6 +24,7 @@ Nothing in any release is deployed or qualified against a live client.
 - A deployment-document refusal no longer quotes the refused value: a string outside a closed set (`auth_kind`, `ingress_auth`, …) or where a number or a list belongs is refused `config:schema` naming its line and the values allowed, never the string written.
 - The serving command line no longer echoes an unexpected argument: a usage error is `b10x-llm-gateway: usage error (<kind>)` with the usage line, exit status 2.
 - With `ingress_auth = "none"`, the warning that ingress authentication is off is written before the listener is bound, not after it already serves.
+- `credential set` no longer quotes an unknown `--model` or `--route` name in `credential:unknown-target`: a generated key has the shape of a plain name, so the refusal calls it "the given name" whatever it is.
 
 ## 0.16.0 (2026-10-30)
 

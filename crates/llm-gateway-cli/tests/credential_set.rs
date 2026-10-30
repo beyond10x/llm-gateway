@@ -755,10 +755,10 @@ routes:
     assert_refused(&finished, "credential:unknown-target");
 }
 
-/// A refusal quotes the unknown `--model` or `--route` value only if it is at most 64 characters
-/// of `A-Z a-z 0-9 . _ -`; anything else is called "the given name".
+/// A refusal never quotes the unknown `--model` or `--route` value, whatever its shape: a
+/// generated key looks like a plain short name. It is called "the given name".
 #[test]
-fn credential_set_an_unknown_target_name_is_quoted_only_when_it_is_a_plain_short_name() {
+fn credential_set_an_unknown_target_name_is_never_quoted() {
     let setup = Setup::new("quote-target");
     let secret = setup.fixture.owner_secret();
     let remote = hosted_table(
@@ -772,30 +772,27 @@ fn credential_set_an_unknown_target_name_is_quoted_only_when_it_is_a_plain_short
     let long = "a".repeat(65);
     let longest = "a".repeat(64);
     for flag in ["--model", "--route"] {
-        for (name, quoted) in [
-            ("plain-name_1.2", true),
-            (longest.as_str(), true),
-            (long.as_str(), false),
-            ("has space", false),
-            ("sk-looks/like:a-key", false),
-            ("quote\"d", false),
-            ("ünï", false),
+        for name in [
+            "plain-name_1.2",
+            longest.as_str(),
+            long.as_str(),
+            "has space",
+            "sk-looks/like:a-key",
+            "quote\"d",
+            "ünï",
         ] {
             let finished = run(&setup.fixture, &config, &[flag, name], &line(KEY));
             assert_refused(&finished, "credential:unknown-target");
-            assert_eq!(
-                finished.stderr.contains(name),
-                quoted,
+            assert!(
+                !finished.stderr.contains(name),
                 "{flag} {name:?}: {:?}",
                 finished.stderr
             );
-            if !quoted {
-                assert!(
-                    finished.stderr.contains("the given name"),
-                    "{:?}",
-                    finished.stderr
-                );
-            }
+            assert!(
+                finished.stderr.contains("the given name"),
+                "{:?}",
+                finished.stderr
+            );
         }
     }
 }

@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:credential-namespace-gateway
 kind: story
-status: active
+status: implemented
 title: A guide and manifests run the gateway in a credential namespace with ingress none and an ingress NetworkPolicy
 relations:
 - decomposes: epic:gateway
@@ -22,10 +22,11 @@ scope:
   path: website/docs/index.md
 - confidence: cited
   path: website/sidebars.ts
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T00:48:59Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T00:48:59Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-10-30T03:21:56Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

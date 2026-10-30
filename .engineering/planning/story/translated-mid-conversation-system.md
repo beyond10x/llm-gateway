@@ -6,6 +6,7 @@ status: draft
 title: A translated Messages request carries a mid-conversation system entry
 relations:
 - decomposes: epic:gateway
+- serves: vision:portable-model-inference
 revision: 2
 ---
 ## Outcome

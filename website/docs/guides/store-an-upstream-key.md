@@ -77,8 +77,12 @@ b10x-llm-gateway credential set --config gateway.toml --model local
 
 ```text
 b10x-llm-gateway: key for hosted.local.credential_file (input hidden):
-b10x-llm-gateway: credential stored keys/local probe passed http 200
+b10x-llm-gateway: credential stored hosted.local.credential_file probe passed http 200
 ```
+
+The line names the setting the file was read from, never the file's path, and so does every
+refusal about the file or its directory: a key pasted into `credential_file` by mistake is not
+printed.
 
 Nothing is echoed while you type or paste; Enter ends the key; Ctrl-C, Ctrl-D or a hang-up cancels, and a
 partial line is never stored. Before writing,
@@ -120,7 +124,7 @@ printf '%s\n' "$KEY" | b10x-llm-gateway credential set --config gateway.toml --m
 ```
 
 ```text
-b10x-llm-gateway: credential stored keys/local probe skipped http -
+b10x-llm-gateway: credential stored hosted.local.credential_file probe skipped http -
 ```
 
 A line that is not one printable ASCII token of at most 4096 bytes is refused before anything is

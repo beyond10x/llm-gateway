@@ -324,4 +324,6 @@ The gateway reads each such file once, at start: a key stored while it serves is
 next start. `credential set` writes exactly the key's bytes, with no newline, mode `0600`, and
 reads the result back through this reader before it replaces the old file. It also requires the
 file's directory to exist and to be owned by you or root and not group- or world-writable, so that
-no other user can replace the file.
+no other user can replace the file. Its success line and its refusals about the file or its
+directory name the setting (`hosted.<alias>.credential_file`, `routes.<endpoint>.auth.secret`),
+never the path.

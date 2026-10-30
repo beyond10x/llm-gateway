@@ -513,6 +513,17 @@ impl Translator for LlmTranslator {
         if let Some(route) = self.bedrock.get(alias) {
             return self.prepare_bedrock(request, alias, route);
         }
+        Ok(Box::new(self.prepare_relayed(request, alias)?))
+    }
+}
+
+impl LlmTranslator {
+    /// The request for `alias`, a model reached at the target the relay acquires.
+    fn prepare_relayed(
+        &self,
+        request: &TranslationRequest<'_>,
+        alias: &str,
+    ) -> Result<Prepared, RefusalCode> {
         let upstream_model = request.model.upstream_model().as_str();
         let mut decoded =
             decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
@@ -556,7 +567,7 @@ impl Translator for LlmTranslator {
             project(request.upstream, &decoded.request, &binding, upstream_model)
         })
         .map_err(|error| refusal(&error))?;
-        Ok(Box::new(Prepared {
+        Ok(Prepared {
             engine: Arc::clone(&self.engine),
             ingress: request.ingress,
             upstream: request.upstream,
@@ -567,7 +578,7 @@ impl Translator for LlmTranslator {
             bedrock: None,
             session: request.caller.session().map(str::to_owned),
             peer: request.caller.peer(),
-        }))
+        })
     }
 }
 
@@ -751,8 +762,9 @@ impl LlmTranslator {
             capabilities,
             decoded,
             bedrock: Some(Arc::clone(route)),
-            session: request.caller.session().map(str::to_owned),
-            peer: request.caller.peer(),
+            // A Bedrock turn is signed for Bedrock and sends no OpenCode Go session.
+            session: None,
+            peer: None,
         }))
     }
 }
@@ -861,6 +873,12 @@ fn caller_session(
 }
 
 impl Prepared {
+    /// The session llm's messages client sends the acquired `target`: the one the target
+    /// answers for this request's caller ([`caller_session`]).
+    fn upstream_session(&self, target: &dyn RelayTarget) -> Option<Id> {
+        caller_session(target, self.session.as_deref(), self.peer)
+    }
+
     /// How the acquired target is reached.
     fn reach(target: &dyn RelayTarget) -> Reach<'_> {
         let scheme = match target.scheme() {
@@ -927,7 +945,7 @@ impl Translation for Prepared {
                 .bearer()
                 .map_or_else(Vec::new, |bearer| bearer.expose().to_vec());
             let resolver: Arc<dyn SecretResolver> = Arc::new(TargetSecret(secret));
-            let session = caller_session(target, self.session.as_deref(), self.peer);
+            let session = self.upstream_session(target);
             client(self.upstream, binding, http.clone(), resolver, session).map_err(refused)?
         };
         let blocking = BlockingModel::on_runtime(model, handle).map_err(refused)?;
@@ -1425,12 +1443,14 @@ impl BlockingSink for ClientSink<'_> {
 #[cfg(test)]
 mod tests {
     use super::{
-        Credential, HttpClient, Id, Limits, REASONING_EFFORTS, Reach, TRANSLATION_CONNECT_TIMEOUT,
-        TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT, TargetSecret, binding, caller_session,
-        messages_client,
+        Credential, HttpClient, Id, Limits, LlmTranslator, REASONING_EFFORTS, Reach,
+        TRANSLATION_CONNECT_TIMEOUT, TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT,
+        TargetSecret, binding, caller_session, messages_client,
     };
     use llm_core::Capabilities;
-    use llm_gateway::{Caller, RelayStream, RelayTarget, StaticHeader, Wire};
+    use llm_gateway::{
+        Caller, Label, RelayModel, RelayStream, RelayTarget, StaticHeader, TranslationRequest, Wire,
+    };
     use std::{io, net::IpAddr, sync::Arc};
 
     /// A messages client for `base_url`, sent `session`.
@@ -1511,5 +1531,44 @@ mod tests {
             caller_session(&Answering, Some("mine"), Some(peer)),
         );
         assert_eq!(other.session_header(), None);
+    }
+
+    /// A prepared translation keeps the caller the relay handed it, and the session its client
+    /// is sent is the one the acquired target answers for that caller.
+    #[test]
+    fn a_prepared_translation_asks_the_target_for_the_callers_session() {
+        let translator = LlmTranslator::new();
+        let model = RelayModel::new(
+            Label::new("go").unwrap(),
+            Label::new("glm-5").unwrap(),
+            vec![Wire::Messages],
+        )
+        .unwrap();
+        let body = br#"{"model":"go","messages":[{"role":"user","content":"hello"}]}"#;
+        let peer: IpAddr = "10.0.0.1".parse().unwrap();
+        for (caller, expected) in [
+            (
+                Caller::new(Some("mine"), Some(peer)),
+                Some("mine".to_owned()),
+            ),
+            (Caller::new(None, Some(peer)), Some(format!("peer-{peer}"))),
+            (Caller::default(), None),
+        ] {
+            let request = TranslationRequest {
+                ingress: Wire::Chat,
+                upstream: Wire::Messages,
+                model: &model,
+                body,
+                anthropic_beta: None,
+                caller,
+            };
+            let Ok(prepared) = translator.prepare_relayed(&request, "go") else {
+                panic!("the request was refused");
+            };
+            assert_eq!(
+                prepared.upstream_session(&Answering),
+                expected.map(|value| Id::new(&value).unwrap())
+            );
+        }
     }
 }

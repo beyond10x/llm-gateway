@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T06:14:24Z",
+  "actor": "human:timo",
+  "artifact": "story:relayed-session-header",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "adversary finding 3 fixed in 0ff8423: unit test reaches Prepared.session and peer; three mutants red",
+    "review": "review-result:adversary-w02-session-pass-1",
+    "outcome": "fixed"
+  }
+}

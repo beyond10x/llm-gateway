@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: relay-a-target-answering-after-the-client-watch-is-relayed-to-a-default-client
+summary: a target that answers 400 ms after the request, four times the relay's 100 ms client watch, is relayed to a client sending with the default request options, which keep its sending side open
+timeline:
+- at: '2026-10-05T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","responses","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"late\"}"],"delay_ms":400}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    results:
+    - ok
+    - 200 relayed
+    bodies:
+    - '{"id":"late"}'
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code"}'
+    acquired: 1

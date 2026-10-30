@@ -382,6 +382,7 @@ fn prepared(ingress: Wire, upstream: Wire, body: &[u8]) -> Option<RefusalCode> {
             model: &model,
             body,
             anthropic_beta: None,
+            caller: llm_gateway::Caller::default(),
         })
         .err()
 }
@@ -1035,6 +1036,7 @@ fn translation_a_model_is_translated_under_its_declared_capabilities() {
                 model,
                 body: body.as_bytes(),
                 anthropic_beta: None,
+                caller: llm_gateway::Caller::default(),
             })
             .err()
     };

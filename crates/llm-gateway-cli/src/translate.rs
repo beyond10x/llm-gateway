@@ -28,8 +28,9 @@ use llm_credentials::{
     ResolvedSecret, Secret, SecretError, SecretRef, SecretResolver, SecretVersion,
 };
 use llm_gateway::{
-    AnswerFraming, BasePath, RefusalCode, RelayModel, RelayTarget, TargetScheme, ToolCalling,
-    TranslatedAnswer, Translation, TranslationFailure, TranslationRequest, Translator, Wire,
+    AnswerFraming, BasePath, Caller, RefusalCode, RelayModel, RelayTarget, TargetScheme,
+    ToolCalling, TranslatedAnswer, Translation, TranslationFailure, TranslationRequest, Translator,
+    Wire,
 };
 use llm_http::{HeaderMap, HttpClient, Limits, ResponseTap};
 use llm_providers::{
@@ -40,6 +41,7 @@ use serde_json::{Value, json};
 use std::{
     collections::BTreeMap,
     fmt,
+    net::IpAddr,
     sync::{
         Arc, Mutex, PoisonError,
         atomic::{AtomicU16, AtomicU64, Ordering},
@@ -563,6 +565,8 @@ impl Translator for LlmTranslator {
             capabilities,
             decoded,
             bedrock: None,
+            session: request.caller.session().map(str::to_owned),
+            peer: request.caller.peer(),
         }))
     }
 }
@@ -747,6 +751,8 @@ impl LlmTranslator {
             capabilities,
             decoded,
             bedrock: Some(Arc::clone(route)),
+            session: request.caller.session().map(str::to_owned),
+            peer: request.caller.peer(),
         }))
     }
 }
@@ -763,6 +769,10 @@ struct Prepared {
     /// The Bedrock model the turn is sent to with llm's Bedrock client; `None` for a binding to
     /// the acquired target.
     bedrock: Option<Arc<BedrockRoute>>,
+    /// The caller's own session, as [`Caller::session`] kept it.
+    session: Option<String>,
+    /// The address the caller's connection came from.
+    peer: Option<IpAddr>,
 }
 
 impl Prepared {
@@ -802,20 +812,52 @@ impl SecretResolver for TargetSecret {
     }
 }
 
-/// llm's client for `upstream` over `binding`.
+/// llm's client for `upstream` over `binding`; a messages client sends `session` as its
+/// `OpenCode` Go session ([`messages_client`]).
 fn client(
     upstream: Wire,
     binding: Binding,
     http: HttpClient,
     resolver: Arc<dyn SecretResolver>,
+    session: Option<Id>,
 ) -> Result<Arc<dyn Model>, Error> {
     Ok(match upstream {
         Wire::Chat => Arc::new(llm_chat::ChatClient::new(binding, http, resolver)),
         Wire::Responses => Arc::new(llm_responses::ResponsesClient::new(
             binding, http, resolver,
         )?),
-        Wire::Messages => Arc::new(llm_messages::MessagesClient::new(binding, http, resolver)?),
+        Wire::Messages => Arc::new(messages_client(binding, http, resolver, session)?),
     })
+}
+
+/// llm's messages client over `binding`. For an `OpenCode` Go binding it sends `session` as its
+/// `x-opencode-session` instead of the one it mints when it is built
+/// (`MessagesClient::with_session`); without one, and for any other binding, it is llm's own.
+fn messages_client(
+    binding: Binding,
+    http: HttpClient,
+    resolver: Arc<dyn SecretResolver>,
+    session: Option<Id>,
+) -> Result<llm_messages::MessagesClient, Error> {
+    let client = llm_messages::MessagesClient::new(binding, http, resolver)?;
+    Ok(match session {
+        Some(session) => client.with_session(session),
+        None => client,
+    })
+}
+
+/// The `x-opencode-session` the acquired `target` answers for the caller
+/// ([`RelayTarget::caller_header`]), as llm's identifier: the caller's own, else the one derived
+/// from its peer address. `None` leaves llm's minted session.
+fn caller_session(
+    target: &dyn RelayTarget,
+    session: Option<&str>,
+    peer: Option<IpAddr>,
+) -> Option<Id> {
+    target
+        .caller_header(&Caller::new(session, peer))
+        .filter(|header| header.name() == llm_messages::OPENCODE_SESSION_HEADER)
+        .and_then(|header| Id::new(header.value()).ok())
 }
 
 impl Prepared {
@@ -885,7 +927,8 @@ impl Translation for Prepared {
                 .bearer()
                 .map_or_else(Vec::new, |bearer| bearer.expose().to_vec());
             let resolver: Arc<dyn SecretResolver> = Arc::new(TargetSecret(secret));
-            client(self.upstream, binding, http.clone(), resolver).map_err(refused)?
+            let session = caller_session(target, self.session.as_deref(), self.peer);
+            client(self.upstream, binding, http.clone(), resolver, session).map_err(refused)?
         };
         let blocking = BlockingModel::on_runtime(model, handle).map_err(refused)?;
         let (id, created) = self.engine.identity(self.ingress);
@@ -1376,5 +1419,97 @@ impl BlockingSink for ClientSink<'_> {
         // The client is gone: stop the turn, which drops the upstream connection.
         self.cancel.cancel();
         Err(Error::cancelled())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        Credential, HttpClient, Id, Limits, REASONING_EFFORTS, Reach, TRANSLATION_CONNECT_TIMEOUT,
+        TRANSLATION_READ_TIMEOUT, TRANSLATION_TURN_TIMEOUT, TargetSecret, binding, caller_session,
+        messages_client,
+    };
+    use llm_core::Capabilities;
+    use llm_gateway::{Caller, RelayStream, RelayTarget, StaticHeader, Wire};
+    use std::{io, net::IpAddr, sync::Arc};
+
+    /// A messages client for `base_url`, sent `session`.
+    fn client(base_url: &str, session: Option<Id>) -> llm_messages::MessagesClient {
+        let capabilities = Capabilities {
+            tools: false,
+            tool_choice: false,
+            temperature: true,
+            top_p: true,
+            reasoning_efforts: REASONING_EFFORTS
+                .iter()
+                .map(|&effort| effort.to_owned())
+                .collect(),
+            context_window: 8192,
+            max_output_tokens: 8192,
+            output_streaming: true,
+            input_during_output: false,
+        };
+        let reach = Reach {
+            base_url: base_url.to_owned(),
+            credential: Credential::None,
+        };
+        let binding = binding(Wire::Messages, "go", "glm-5", capabilities, &reach).unwrap();
+        let limits = Limits {
+            response_headers: TRANSLATION_READ_TIMEOUT,
+            idle: TRANSLATION_READ_TIMEOUT,
+            total: TRANSLATION_TURN_TIMEOUT,
+        };
+        let http = HttpClient::with_connect_timeout(limits, TRANSLATION_CONNECT_TIMEOUT).unwrap();
+        messages_client(binding, http, Arc::new(TargetSecret(Vec::new())), session).unwrap()
+    }
+
+    /// A target answering `x-opencode-session: <session or peer>` for every caller.
+    struct Answering;
+
+    impl RelayTarget for Answering {
+        fn authority(&self) -> &'static str {
+            "opencode.ai"
+        }
+
+        fn caller_header(&self, caller: &Caller<'_>) -> Option<StaticHeader> {
+            let value = caller
+                .session()
+                .map(str::to_owned)
+                .or_else(|| caller.peer().map(|peer| format!("peer-{peer}")))?;
+            StaticHeader::new("x-opencode-session", &value).ok()
+        }
+
+        fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
+            Err(io::Error::other("never connected in this test"))
+        }
+    }
+
+    /// story:relayed-session-header on the translated path: llm's messages client to an
+    /// `OpenCode` Go endpoint sends the session the target answers for the caller (the caller's
+    /// own, else one derived from its peer) instead of the one it mints; without one it keeps
+    /// llm's minted session, and a client for any other endpoint sends none.
+    #[test]
+    fn a_translated_opencode_go_turn_sends_the_session_the_target_answers_for_the_caller() {
+        let go = "https://opencode.ai/inference/go/v1";
+        let peer: IpAddr = "10.0.0.1".parse().unwrap();
+        for (session, expected) in [
+            (Some("mine"), "mine".to_owned()),
+            (None, format!("peer-{peer}")),
+        ] {
+            let client = client(go, caller_session(&Answering, session, Some(peer)));
+            assert_eq!(
+                client.session_header(),
+                Some(("x-opencode-session", expected.as_str()))
+            );
+        }
+        assert_eq!(caller_session(&Answering, None, None), None);
+        let minted = client(go, None);
+        let (_, value) = minted.session_header().unwrap();
+        assert!(value.starts_with("llm-"), "{value}");
+        let other = client(
+            "https://api.example.test/v1",
+            caller_session(&Answering, Some("mine"), Some(peer)),
+        );
+        assert_eq!(other.session_header(), None);
     }
 }

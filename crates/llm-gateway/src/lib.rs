@@ -64,9 +64,9 @@ pub use inventory::{
 };
 pub use metrics::{Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
 pub use relay::{
-    BasePath, CredentialHeader, ModelPhase, ModelStatus, ReasoningEffort, Relay, RelayModel,
-    RelayStream, RelayTarget, RelayTargets, StaticHeader, TargetBearer, TargetScheme, ToolCalling,
-    Wire, read_within_timeout,
+    BasePath, CALLER_SESSION_HEADER, Caller, CredentialHeader, ModelPhase, ModelStatus,
+    ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, StaticHeader,
+    TargetBearer, TargetScheme, ToolCalling, Wire, read_within_timeout,
 };
 pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};
 pub use translate::{

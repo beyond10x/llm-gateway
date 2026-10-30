@@ -191,6 +191,7 @@ fn run(
             model,
             body: request.as_bytes(),
             anthropic_beta: None,
+            caller: llm_gateway::Caller::default(),
         })
         .unwrap_or_else(|code| panic!("prepare refused {code:?}"));
     let (address, thread) = upstream(body, held);

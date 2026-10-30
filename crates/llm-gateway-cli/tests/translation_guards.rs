@@ -31,6 +31,7 @@ fn prepare(ingress: Wire, upstream: Wire, body: &Value) -> Option<RefusalCode> {
             model: &model,
             body: body.to_string().as_bytes(),
             anthropic_beta: None,
+            caller: llm_gateway::Caller::default(),
         })
         .err()
 }

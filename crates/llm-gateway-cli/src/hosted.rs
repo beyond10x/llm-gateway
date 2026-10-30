@@ -14,6 +14,11 @@
 //! client instead, over the scheme [`RelayTarget::scheme`] reports, to the base path, with the
 //! credential; the endpoint's static headers are not sent on it, because llm's clients take no
 //! caller headers and the headers were declared for the wire they were written for.
+//!
+//! An `OpenCode` Go endpoint (story:relayed-session-header; llm's `is_opencode_go` of the base
+//! URL a translator reaches it at) is sent one `x-opencode-session` per request, chosen in order:
+//! the caller's own, then one derived from the caller's peer address ([`derived_session`]),
+//! then the static one its `headers` declare, if any ([`HostedTarget::caller_header`]).
 
 use crate::{
     config::{Deployment, Hosted, Wire},
@@ -24,17 +29,19 @@ use crate::{
     trusted,
 };
 use llm_gateway::{
-    AuthKind, BasePath, CredentialHeader, Label, ModelStatus, RelayStream, RelayTarget,
+    AuthKind, BasePath, Caller, CredentialHeader, Label, ModelStatus, RelayStream, RelayTarget,
     RelayTargets, RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance,
     TargetRefusal, TargetScheme, TargetSummary,
 };
+use ring::rand::{SecureRandom as _, SystemRandom};
 use rustls::pki_types::ServerName;
+use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
-    fmt,
+    fmt::{self, Write as _},
     io::{self, Write as _},
     net::IpAddr,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -167,6 +174,8 @@ pub struct HostedEndpoint {
     base_path: Option<BasePath>,
     credential: EndpointCredential,
     headers: Vec<StaticHeader>,
+    /// Whether the base URL is `OpenCode` Go, which is sent a session per caller.
+    opencode_go: bool,
 }
 
 /// What a checked base URL names: how the endpoint is reached, its authority, and the base path
@@ -229,12 +238,14 @@ impl HostedEndpoint {
             EndpointCredential::ApiKey { .. } => AuthKind::ApiKey,
         };
         let (scheme, authority, base_path) = Self::check(base_url, auth_kind)?;
+        let opencode_go = is_opencode_go(scheme, authority, base_path.as_ref());
         Ok(Self {
             scheme,
             authority: authority.to_owned(),
             base_path,
             credential,
             headers: Vec::new(),
+            opencode_go,
         })
     }
 
@@ -429,6 +440,64 @@ fn is_loopback(host: &str) -> bool {
             .is_ok_and(|address| address.is_loopback())
 }
 
+/// Whether the endpoint at `scheme`, `authority` and `base_path` is `OpenCode` Go, asked of llm
+/// (`llm_messages::is_opencode_go`) for the base URL a translator reaches it at, so the byte
+/// relay and llm's messages client agree on which endpoint gets a session.
+fn is_opencode_go(scheme: Scheme, authority: &str, base_path: Option<&BasePath>) -> bool {
+    let scheme = match scheme {
+        Scheme::Http => "http",
+        Scheme::Https => "https",
+    };
+    let base = base_path.map_or("/v1", BasePath::as_str);
+    llm_providers::BaseUrl::new(&format!("{scheme}://{authority}{base}"))
+        .is_ok_and(|url| llm_messages::is_opencode_go(&url))
+}
+
+/// What a derived session starts with.
+const DERIVED_SESSION_PREFIX: &str = "llmgw-";
+/// How many hex characters of the SHA-256 a derived session keeps: the first 16 bytes.
+const DERIVED_SESSION_HEX: usize = 32;
+
+/// The key every derived session of this process is made with: 32 bytes from the system random
+/// source, drawn on first use and never written out, logged or rendered. `None` when the source
+/// gave none; the gateway then derives no session.
+fn session_key() -> Option<&'static [u8; 32]> {
+    static KEY: OnceLock<Option<[u8; 32]>> = OnceLock::new();
+    KEY.get_or_init(|| {
+        let mut key = [0_u8; 32];
+        let drawn = SystemRandom::new().fill(&mut key).ok().map(|()| key);
+        if drawn.is_none() {
+            tracing::error!(
+                "the gateway could not draw its session key; an OpenCode Go endpoint is sent no derived session"
+            );
+        }
+        drawn
+    })
+    .as_ref()
+}
+
+/// The session derived from `peer` (story:relayed-session-header): `llmgw-` and the first
+/// [`DERIVED_SESSION_HEX`] lowercase hex characters of SHA-256 over this process's
+/// [`session_key`] and the address's octets (4 for IPv4, 16 for IPv6). One peer keeps one value
+/// for the process's lifetime, two peers get two, and the address cannot be read back from it.
+pub(crate) fn derived_session(peer: IpAddr) -> Option<String> {
+    let key = session_key()?;
+    let mut hash = Sha256::new();
+    hash.update(key);
+    match peer {
+        IpAddr::V4(address) => hash.update(address.octets()),
+        IpAddr::V6(address) => hash.update(address.octets()),
+    }
+    let digest = hash.finalize();
+    let mut session = String::with_capacity(DERIVED_SESSION_PREFIX.len() + DERIVED_SESSION_HEX);
+    session.push_str(DERIVED_SESSION_PREFIX);
+    for byte in digest.iter().take(DERIVED_SESSION_HEX / 2) {
+        // Writing to a String cannot fail.
+        let _written = write!(session, "{byte:02x}");
+    }
+    Some(session)
+}
+
 /// The binary's hosted target source: each hosted model's endpoint, by alias, and `rest` for
 /// every other alias (the Runpod pool, or none). An `https` endpoint is reached through `tls`.
 pub struct HostedTargets {
@@ -532,6 +601,20 @@ impl RelayTarget for HostedTarget {
 
     fn headers(&self) -> &[StaticHeader] {
         &self.endpoint.headers
+    }
+
+    /// An `OpenCode` Go endpoint's `x-opencode-session` for `caller`: the caller's own, else
+    /// the one derived from its peer address. `None` for any other endpoint, and for a caller
+    /// with neither, which leaves the static `x-opencode-session` the endpoint declares, if any.
+    fn caller_header(&self, caller: &Caller<'_>) -> Option<StaticHeader> {
+        if !self.endpoint.opencode_go {
+            return None;
+        }
+        let session = match caller.session() {
+            Some(session) => session.to_owned(),
+            None => derived_session(caller.peer()?)?,
+        };
+        StaticHeader::new(llm_messages::OPENCODE_SESSION_HEADER, &session).ok()
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -679,14 +762,17 @@ fn targets(
 
 #[cfg(test)]
 mod tests {
-    use super::{BaseUrlError, EndpointCredential, HostedEndpoint, Scheme};
+    use super::{
+        BaseUrlError, EndpointCredential, HostedEndpoint, HostedTarget, Scheme, derived_session,
+    };
     use crate::relaying::PodConnector;
     use llm_gateway::AuthKind;
     use llm_gateway::BasePath;
-    use llm_gateway::RelayStream;
+    use llm_gateway::{Caller, RelayStream, RelayTarget as _, StaticHeader};
     use std::{
         io::{self, Read, Write},
-        net::TcpListener,
+        net::{IpAddr, TcpListener},
+        sync::Arc,
         thread,
         time::{Duration, Instant},
     };
@@ -854,6 +940,66 @@ mod tests {
                     "anonymous {url}"
                 );
             }
+        }
+    }
+
+    /// story:relayed-session-header: an `OpenCode` Go endpoint answers the caller's own session,
+    /// else the one derived from its peer, else nothing, which leaves the static session it
+    /// declares (order 3: a request with no peer address). Any other endpoint answers nothing,
+    /// whatever the caller sent.
+    #[test]
+    fn an_opencode_go_endpoint_answers_the_callers_session_then_the_peers_then_none() {
+        let target = |base_url: &str| HostedTarget {
+            endpoint: Arc::new(
+                HostedEndpoint::new(base_url, EndpointCredential::Anonymous)
+                    .unwrap()
+                    .with_headers(vec![
+                        StaticHeader::new("x-opencode-session", "static-session").unwrap(),
+                    ])
+                    .unwrap(),
+            ),
+            tls: Arc::new(NoTls),
+        };
+        let answer = |target: &HostedTarget, session: Option<&str>, peer: Option<&str>| {
+            let peer = peer.map(|peer| peer.parse::<IpAddr>().unwrap());
+            target
+                .caller_header(&Caller::new(session, peer))
+                .map(|header| (header.name().to_owned(), header.value().to_owned()))
+        };
+        let go = target("https://opencode.ai/inference/go/v1");
+        assert_eq!(
+            answer(&go, Some("mine"), Some("10.0.0.1")),
+            Some(("x-opencode-session".to_owned(), "mine".to_owned()))
+        );
+        let first = answer(&go, None, Some("10.0.0.1")).unwrap().1;
+        assert_eq!(first, derived_session("10.0.0.1".parse().unwrap()).unwrap());
+        assert_eq!(answer(&go, None, Some("10.0.0.1")).unwrap().1, first);
+        assert_ne!(answer(&go, None, Some("10.0.0.2")).unwrap().1, first);
+        for peer in ["10.0.0.1", "fd00::1"] {
+            let value = answer(&go, None, Some(peer)).unwrap().1;
+            let hex = value.strip_prefix("llmgw-").unwrap();
+            assert_eq!(hex.len(), 32, "{value}");
+            assert!(
+                hex.bytes()
+                    .all(|byte| matches!(byte, b'0'..=b'9' | b'a'..=b'f')),
+                "{value}"
+            );
+        }
+        assert_eq!(answer(&go, None, None), None);
+        for other in [
+            "https://opencode.ai/inference/zen/v1",
+            "https://opencode.ai/v1",
+            "https://opencode.ai:8443/inference/go/v1",
+            "http://opencode.ai/inference/go/v1",
+            "https://api.example.test/inference/go/v1",
+        ] {
+            let target = target(other);
+            assert_eq!(
+                answer(&target, Some("mine"), Some("10.0.0.1")),
+                None,
+                "{other}"
+            );
+            assert_eq!(answer(&target, None, Some("10.0.0.1")), None, "{other}");
         }
     }
 }

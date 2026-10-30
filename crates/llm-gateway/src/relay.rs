@@ -26,7 +26,7 @@ use std::{
     collections::BTreeMap,
     fmt,
     io::{self, Read, Write},
-    net::TcpStream,
+    net::{IpAddr, TcpStream},
     sync::{Arc, mpsc},
     thread,
     time::{Duration, Instant},
@@ -296,6 +296,50 @@ impl StaticHeader {
     }
 }
 
+/// The client header a caller names its own conversation in: `OpenCode` Go's
+/// `x-opencode-session`, which that provider routes a conversation by and refuses a request
+/// without. The relay reads it from the client's head and hands it to the target as
+/// [`Caller::session`]; it never forwards it itself (`docs/gateway.md` "The upstream").
+pub const CALLER_SESSION_HEADER: &str = "x-opencode-session";
+/// The longest caller session a target is told: `caller-session-bytes`.
+const MAX_CALLER_SESSION_BYTES: usize = 256;
+
+/// Who sent one relayed request, as far as a target may need to know it to choose a
+/// per-caller header ([`RelayTarget::caller_header`]): the client's own
+/// [`CALLER_SESSION_HEADER`] when it is 1 to 256 bytes of printable ASCII without a space
+/// (0x21-0x7e, llm's identifier rule), and the address the client's connection came from. A
+/// session that breaks the rule is dropped here, so no target can send or echo it. An IPv4
+/// peer reached over an IPv6 socket is its IPv4 address.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct Caller<'a> {
+    session: Option<&'a str>,
+    peer: Option<IpAddr>,
+}
+
+impl<'a> Caller<'a> {
+    /// The caller with `session`, kept only when it follows the rule above, and `peer`.
+    pub fn new(session: Option<&'a str>, peer: Option<IpAddr>) -> Self {
+        let session = session.filter(|session| {
+            (1..=MAX_CALLER_SESSION_BYTES).contains(&session.len())
+                && session.bytes().all(|byte| byte.is_ascii_graphic())
+        });
+        Self {
+            session,
+            peer: peer.map(|peer| peer.to_canonical()),
+        }
+    }
+
+    /// The client's own session, when it sent one that follows the rule.
+    pub fn session(&self) -> Option<&'a str> {
+        self.session
+    }
+
+    /// The address the client's connection came from, when it is known.
+    pub fn peer(&self) -> Option<IpAddr> {
+        self.peer
+    }
+}
+
 /// The longest base path: `base-path-bytes`.
 const MAX_BASE_PATH_BYTES: usize = 256;
 /// The most segments a base path holds: `base-path-segments`.
@@ -383,8 +427,9 @@ pub trait RelayTarget: Send {
     }
 
     /// The credential this target expects, sent as `authorization: Bearer <key>`. `None`, the
-    /// default, sends no `authorization`. The client's own headers are never forwarded, so the
-    /// owner's credential never reaches a target.
+    /// default, sends no `authorization`. The client's own headers are never forwarded (only the
+    /// session a target answers in [`RelayTarget::caller_header`]), so the owner's credential
+    /// never reaches a target.
     fn bearer(&self) -> Option<&TargetBearer> {
         None
     }
@@ -408,6 +453,16 @@ pub trait RelayTarget: Send {
     /// [`Self::credential_header`] is skipped. The default sends none.
     fn headers(&self) -> &[StaticHeader] {
         &[]
+    }
+
+    /// A header the target is sent for `caller` on this request, in place of the static header
+    /// of the same name ([`Self::headers`]), so the target is sent one; the output clamp's count
+    /// carries it too. One named like the [`Self::credential_header`] is skipped, as a static
+    /// header is. The binary's `OpenCode` Go endpoint answers its `x-opencode-session` here
+    /// (`docs/gateway.md` "The upstream"); a translator asks it too. `None`, the default, sends
+    /// the static headers as they are.
+    fn caller_header(&self, _caller: &Caller<'_>) -> Option<StaticHeader> {
+        None
     }
 
     /// Whether the source held the request while this target started (rows L6, W6). The gateway
@@ -840,6 +895,9 @@ pub(crate) struct Admitted {
     /// The value of the client's `anthropic-beta` header line, handed to a translator and never
     /// forwarded verbatim. The head refuses a repeated header, so a client sends at most one line.
     pub(crate) anthropic_beta: Option<String>,
+    /// The value of the client's [`CALLER_SESSION_HEADER`] line, unchecked: [`Caller::new`]
+    /// keeps it only when it follows the rule, and it is never forwarded verbatim.
+    pub(crate) session: Option<String>,
 }
 
 /// Decides the body framing from the head (row W1).
@@ -1340,6 +1398,7 @@ fn translate(
         model,
         body,
         anthropic_beta: admitted.anthropic_beta.as_deref(),
+        caller: caller(stream, admitted),
     })?;
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;
@@ -1584,6 +1643,44 @@ fn watched_head(
     Some(read)
 }
 
+/// The caller of `admitted`: its session header as [`Caller::new`] keeps it, and the address
+/// `stream` came from, unknown when the socket cannot tell.
+fn caller<'a>(stream: &TcpStream, admitted: &'a Admitted) -> Caller<'a> {
+    Caller::new(
+        admitted.session.as_deref(),
+        stream.peer_addr().ok().map(|peer| peer.ip()),
+    )
+}
+
+/// The output clamp (step 7): for a `window` and a request with `max_tokens`, counts
+/// `rewritten`'s input on `target`, sent `caller` as the request will be, and clamps its
+/// `max_tokens` to the room left in `window`, and answers the bytes to send. A count that fails
+/// decides nothing; no room left is `context-exceeded`.
+fn clamp_output(
+    target: &dyn RelayTarget,
+    caller: Option<&StaticHeader>,
+    window: Option<u64>,
+    mut rewritten: body::Rewritten,
+    limits: &Limits,
+) -> Result<Vec<u8>, RefusalCode> {
+    let (Some(window), Some(_)) = (window, rewritten.max_tokens()) else {
+        return Ok(rewritten.bytes);
+    };
+    let shared = Arc::new(std::mem::take(&mut rewritten.bytes));
+    let counted = count_input(target, caller, &shared, limits);
+    // The count's thread lets go of the body before it answers; one abandoned past its
+    // deadline may still hold it, and then the relay sends a copy.
+    rewritten.bytes = Arc::try_unwrap(shared).unwrap_or_else(|shared| shared.as_ref().clone());
+    if let Some(counted) = counted {
+        let room = window.saturating_sub(counted);
+        if room < 1 {
+            return Err(RefusalCode::ContextExceeded);
+        }
+        rewritten.clamp_max_tokens(room);
+    }
+    Ok(rewritten.bytes)
+}
+
 /// Relays one admitted request, filling `call` as it learns. A refusal is returned for the
 /// caller to write; once the answer's head has been written, nothing more is refused.
 pub(crate) fn serve(
@@ -1622,7 +1719,7 @@ pub(crate) fn serve(
         );
     }
     let messages = admitted.wire == Wire::Messages;
-    let mut rewritten = analysis.rewritten(
+    let rewritten = analysis.rewritten(
         &body,
         model.upstream_model.as_str(),
         messages,
@@ -1631,35 +1728,35 @@ pub(crate) fn serve(
     drop(body);
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;
+    // The per-caller header the target asks for (an OpenCode Go session), decided once, so the
+    // count and the request carry the same value.
+    let caller_header = target.caller_header(&caller(stream, admitted));
     // The window of the server that answers: the one the target states, else the model's.
     let window = target
         .max_model_len()
         .or_else(|| model.window())
         .filter(|_| messages);
     // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
-    // never wakes a pod the relay would not have woken. A count that fails decides nothing.
-    if let (Some(window), Some(_)) = (window, rewritten.max_tokens()) {
-        let shared = Arc::new(std::mem::take(&mut rewritten.bytes));
-        let counted = count_input(target.as_ref(), &shared, limits);
-        // The count's thread lets go of the body before it answers; one abandoned past its
-        // deadline may still hold it, and then the relay sends a copy.
-        rewritten.bytes = Arc::try_unwrap(shared).unwrap_or_else(|shared| shared.as_ref().clone());
-        if let Some(counted) = counted {
-            let room = window.saturating_sub(counted);
-            if room < 1 {
-                return Err(RefusalCode::ContextExceeded);
-            }
-            rewritten.clamp_max_tokens(room);
-        }
-    }
-    let rewritten = rewritten.bytes;
+    // never wakes a pod the relay would not have woken.
+    let rewritten = clamp_output(
+        target.as_ref(),
+        caller_header.as_ref(),
+        window,
+        rewritten,
+        limits,
+    )?;
     let failed = || {
         relay.targets.invalidate(alias, target.authority());
         relay.metrics.count_invalidation();
         RefusalCode::UpstreamFailed
     };
     let mut connection = target.connect().map_err(|_| failed())?;
-    let head = request_head(target.as_ref(), admitted.wire.path(), rewritten.len());
+    let head = request_head(
+        target.as_ref(),
+        caller_header.as_ref(),
+        admitted.wire.path(),
+        rewritten.len(),
+    );
     let sent = write_request(connection.as_mut(), &head, &rewritten);
     drop(head);
     drop(rewritten);
@@ -1719,27 +1816,48 @@ impl Drop for RequestHead {
 }
 
 /// The gateway's own head for `POST <path>` to `target` with a body of `length` bytes. No
-/// header of the client's request is forwarded, so the owner's credential never reaches a
-/// target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
+/// header of the client's request is forwarded, only the `caller` header its target answered
+/// for it, so the owner's credential never reaches a target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
 /// header one token naming no header written here (`CredentialHeader::new`), so neither can end
 /// the line it is written into; nor can a static header (`StaticHeader::new`), written after
-/// `host` in the order the target gives.
-fn request_head(target: &dyn RelayTarget, wire_path: &str, length: usize) -> RequestHead {
+/// `host` in the order the target gives. The `caller` header, a `StaticHeader` too, is written
+/// where the static header of its name stands, or after the static headers when none does, so
+/// the target is sent one header of that name.
+fn request_head(
+    target: &dyn RelayTarget,
+    caller: Option<&StaticHeader>,
+    wire_path: &str,
+    length: usize,
+) -> RequestHead {
     let path = target
         .base_path()
         .map_or_else(|| wire_path.to_owned(), |base| base.join(wire_path));
     let mut start = format!("POST {path} HTTP/1.1\r\nhost: {}\r\n", target.authority());
     // A static header is never named like the target's credential header, written below when
     // the target has a key: the credential wins, and a static header cannot stand in for it.
+    // Nor is the caller's header.
     let credential_name = target.credential_header().map(CredentialHeader::as_str);
-    for header in target.headers() {
-        if credential_name == Some(header.name()) {
-            continue;
-        }
+    let mut caller = caller.filter(|header| credential_name != Some(header.name()));
+    let mut write = |header: &StaticHeader| {
         start.push_str(header.name());
         start.push_str(": ");
         start.push_str(header.value());
         start.push_str("\r\n");
+    };
+    for header in target.headers() {
+        if credential_name == Some(header.name()) {
+            continue;
+        }
+        match caller {
+            Some(replacing) if replacing.name() == header.name() => {
+                write(replacing);
+                caller = None;
+            }
+            _ => write(header),
+        }
+    }
+    if let Some(header) = caller {
+        write(header);
     }
     let end = format!(
         "content-type: application/json\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
@@ -1790,10 +1908,15 @@ fn write_request(
 /// timeout is: the relay stops waiting at the deadline and the thread, abandoned, ends when the
 /// target answers or its own timeout ends the connection. It holds no `RelayTarget`, so an
 /// abandoned count keeps no target held.
-fn count_input(target: &dyn RelayTarget, body: &Arc<Vec<u8>>, limits: &Limits) -> Option<u64> {
+fn count_input(
+    target: &dyn RelayTarget,
+    caller: Option<&StaticHeader>,
+    body: &Arc<Vec<u8>>,
+    limits: &Limits,
+) -> Option<u64> {
     let mut connection = target.connect().ok()?;
     let opened = Instant::now();
-    let head = request_head(target, COUNT_TOKENS_PATH, body.len());
+    let head = request_head(target, caller, COUNT_TOKENS_PATH, body.len());
     let body = Arc::clone(body);
     let line_bytes = limits.line_bytes;
     let (answer, answered) = mpsc::sync_channel(1);

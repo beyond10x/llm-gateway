@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-30T18:45:26Z",
+  "actor": "human:timo",
+  "artifact": "story:client-profiles-translated",
+  "kind": "story",
+  "revision": 10,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway --test public_listing; cargo test -p b10x-llm-gateway-cli --test translation",
+    "reference": "VERIFIED: base f3c076f4 with the new cases 21 passed 5 failed (review_m3 panics at public_listing.rs:581, a Codex profile for the Bedrock model) and translation 23 passed 3 failed; impl 4b2b03d 26 and 26 passed; conformance 294/294 three runs"
+  }
+}

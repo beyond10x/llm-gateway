@@ -12,7 +12,7 @@ scope:
   path: crates/llm-gateway/src/relay.rs
 - confidence: cited
   path: crates/llm-gateway/tests/prometheus_metrics.rs
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:19Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:20Z", actor: "human:timo", revision: 4}
@@ -34,9 +34,9 @@ Found by the adversarial review of 2026-10-30 (claim M2), proven by the test bel
 
 ## Acceptance
 
-`review_m2_a_translating_relay_registers_only_the_declared_wire_pairs` in
-`crates/llm-gateway/tests/prometheus_metrics.rs` passes; every other test in that file and the
-conformance suite still pass.
+`a_translating_relay_registers_only_the_declared_wire_pairs` in
+`crates/llm-gateway/tests/prometheus_metrics.rs` passes (red on 70841f2a as `review_m2_*`); every
+other test in that file and the conformance suite still pass.
 
 ## Scope (inferred)
 

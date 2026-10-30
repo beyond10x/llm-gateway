@@ -12,7 +12,7 @@ scope:
   path: crates/llm-gateway-cli/src/serve.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/binary.rs
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:20Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:21Z", actor: "human:timo", revision: 4}
@@ -35,9 +35,9 @@ Found by the adversarial review of 2026-10-30 (claim C2), proven by the test bel
 
 ## Acceptance
 
-`review_c2_a_key_pasted_as_an_argument_is_not_echoed` in `crates/llm-gateway-cli/tests/binary.rs`
-passes; `c1_a_subcommand_is_refused` is updated to the new message and passes; the generated CLI
-reference (`llm-gateway-docs generate --check`) is current.
+`an_unexpected_argument_is_refused_without_echoing_it` in `crates/llm-gateway-cli/tests/binary.rs`
+passes (red on 70841f2a); `c1_a_subcommand_is_refused` asserts the new message and passes; the
+generated CLI reference (`llm-gateway-docs generate --check`) is current.
 
 ## Scope (inferred)
 

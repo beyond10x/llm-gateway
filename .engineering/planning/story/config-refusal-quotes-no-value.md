@@ -12,7 +12,7 @@ scope:
   path: crates/llm-gateway-cli/src/config.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/config.rs
-revision: 5
+revision: 6
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:20Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:20Z", actor: "human:timo", revision: 4}
@@ -35,8 +35,10 @@ Found by the adversarial review of 2026-10-30 (claim C1), proven by the test bel
 
 ## Acceptance
 
-`review_c1_a_credential_typed_into_a_closed_enum_is_not_quoted_in_the_refusal` in
-`crates/llm-gateway-cli/tests/config.rs` passes; every other test in that file still passes.
+`a_value_outside_a_closed_set_is_not_quoted_in_the_refusal` and
+`a_string_where_another_type_belongs_is_not_quoted_in_the_refusal` in
+`crates/llm-gateway-cli/tests/config.rs` pass (both red on 70841f2a); every other test in that file
+still passes.
 
 ## Scope (inferred)
 

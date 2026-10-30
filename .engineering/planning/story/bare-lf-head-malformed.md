@@ -12,7 +12,7 @@ scope:
   path: crates/llm-gateway/src/server.rs
 - confidence: cited
   path: crates/llm-gateway/tests/gateway.rs
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:17Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:17Z", actor: "human:timo", revision: 4}
@@ -35,8 +35,8 @@ Found by the adversarial review of 2026-10-30 (claim S2), proven by the test bel
 
 ## Acceptance
 
-`review_s2_a_bare_lf_head_past_the_head_bound_is_request_malformed` in
-`crates/llm-gateway/tests/gateway.rs` passes; every other test in that file still passes.
+`a_bare_lf_head_past_the_head_bound_is_request_malformed` in `crates/llm-gateway/tests/gateway.rs`
+passes (red on 70841f2a as `review_s2_*`); every other test in that file still passes.
 
 ## Scope (inferred)
 

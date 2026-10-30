@@ -12,7 +12,7 @@ scope:
   path: crates/llm-gateway/src/server.rs
 - confidence: cited
   path: crates/llm-gateway/tests/gateway.rs
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:17Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:17Z", actor: "human:timo", revision: 4}
@@ -37,9 +37,10 @@ main 70841f2a.
 
 ## Acceptance
 
-`review_s1_a_repeated_header_on_a_liveness_probe_is_still_answered_live` and
-`review_s1_a_repeated_authorization_on_a_public_route_is_still_answered` in
-`crates/llm-gateway/tests/gateway.rs` pass. Every other test in that file still passes.
+`a_repeated_header_on_a_liveness_probe_is_still_answered_live` and
+`a_repeated_authorization_on_a_public_route_is_still_answered` in
+`crates/llm-gateway/tests/gateway.rs` pass (both red on 70841f2a as `review_s1_*`). Every other
+test in that file still passes.
 
 ## Scope (inferred)
 

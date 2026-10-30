@@ -16,7 +16,7 @@ scope:
   path: crates/llm-runpod/tests/runpod.rs
 - confidence: cited
   path: docs/hosting.md
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:23Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:23Z", actor: "human:timo", revision: 4}
@@ -39,8 +39,10 @@ Found by the adversarial review of 2026-10-30 (claim H2), proven by the test bel
 
 ## Acceptance
 
-`review_h2_an_open_stream_survives_a_step_that_comes_after_its_lease_expired` in
-`crates/llm-runpod/tests/runpod.rs` passes; every other test in `llm-runpod` and `llm-provision`
+`a_lease_expiry_does_not_stop_the_pod_of_an_open_stream` (red on 70841f2a),
+`a_lease_expiry_stops_the_pod_once_its_last_stream_ends` and
+`an_open_stream_does_not_spare_a_lease_expired_pod_past_its_lifetime_ceiling` in
+`crates/llm-runpod/tests/runpod.rs` pass; every other test in `llm-runpod` and `llm-provision`
 still passes; `docs/hosting.md` states what a lease expiry does to a pod with a request in flight.
 
 ## Scope (inferred)

@@ -14,7 +14,7 @@ scope:
   path: crates/llm-gateway-cli/src/serve.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/binary.rs
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:21Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:21Z", actor: "human:timo", revision: 4}
@@ -35,9 +35,10 @@ confirmed against the doc line.
 
 ## Acceptance
 
-A test in `crates/llm-gateway-cli/tests/binary.rs` starts the binary with `ingress_auth = "none"`
-and asserts the warning line appears on stderr before the readiness line (or before `/ready` first
-answers 200). It fails on main 70841f2a and passes after.
+`the_ingress_auth_off_warning_is_written_before_the_listener_serves` in
+`crates/llm-gateway-cli/tests/binary.rs` starts the binary with `ingress_auth = "none"` and its
+stderr pipe held full, asserts `/ready` does not answer within 5 s, and after the pipe is drained
+that the warning comes before the listening line. It fails on 70841f2a and passes after.
 
 ## Scope (inferred)
 

@@ -14,7 +14,7 @@ scope:
   path: crates/llm-gateway/tests/wire_relay.rs
 - confidence: cited
   path: docs/gateway.md
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:19Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:19Z", actor: "human:timo", revision: 4}
@@ -38,8 +38,10 @@ Found by the adversarial review of 2026-10-30 (claim R4), proven by the test bel
 
 ## Acceptance
 
-`review_r4_a_non_utf8_byte_in_an_ignored_target_header_is_relayed` in
-`crates/llm-gateway/tests/wire_relay.rs` passes; every other test in that file still passes.
+`a_non_utf8_byte_in_an_ignored_target_header_is_relayed` (red on 70841f2a as `review_r4_*`),
+`a_non_utf8_byte_in_a_target_trailer_is_relayed` and
+`a_non_utf8_byte_in_a_target_line_the_relay_reads_is_refused` in
+`crates/llm-gateway/tests/wire_relay.rs` pass; every other test in that file still passes.
 `docs/gateway.md` states the rule for target answer heads.
 
 ## Scope (inferred)

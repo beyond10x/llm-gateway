@@ -12,7 +12,7 @@ scope:
   path: crates/llm-gateway-cli/tests/translation.rs
 - confidence: cited
   path: crates/llm-gateway/src/relay.rs
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:19Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:19Z", actor: "human:timo", revision: 4}
@@ -34,8 +34,12 @@ Found by the adversarial review of 2026-10-30 (claim R2), proven by the test bel
 
 ## Acceptance
 
-`review_r2_a_translated_call_the_target_answered_429_counts_a_route_status_failure` in
-`crates/llm-gateway-cli/tests/translation.rs` passes; every other test in that file still passes.
+`translation_a_call_the_target_answered_429_records_the_target_status` in
+`crates/llm-gateway-cli/tests/translation.rs` (red on 70841f2a) and
+`translate_a_refusal_after_the_target_answered_counts_a_route_status_failure` in
+`crates/llm-gateway/tests/translation_port.rs` pass; every other test in those files still
+passes. The route-counter assertion moved to the port test because, after
+story:metrics-declared-wire-pairs, an undeclared wire has no route series.
 
 ## Scope (inferred)
 

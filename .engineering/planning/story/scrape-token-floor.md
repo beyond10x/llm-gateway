@@ -14,7 +14,7 @@ scope:
   path: crates/llm-gateway-cli/tests/binary.rs
 - confidence: cited
   path: website/docs/reference/deployment-document.md
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-30T03:10:21Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-10-30T03:10:22Z", actor: "human:timo", revision: 4}
@@ -38,9 +38,11 @@ Found by the adversarial review of 2026-10-30 (claim M1), proven by the test bel
 
 ## Acceptance
 
-`review_m1_a_one_byte_scrape_token_is_refused_at_startup` in `crates/llm-gateway-cli/tests/binary.rs`
-passes; existing `metrics_bearer_file` tests use tokens of 32 bytes or more and pass;
-`website/docs/reference/deployment-document.md` and the refusal reference state the floor.
+`a_scrape_token_under_32_bytes_is_refused_at_startup` in `crates/llm-gateway-cli/tests/binary.rs`
+passes (red on 70841f2a); existing `metrics_bearer_file` tests use tokens of 32 bytes or more and
+pass; `website/docs/reference/deployment-document.md`, the scrape guide and the
+`metrics-bearer:not-a-token` comment in `spec/domains/deployment.yaml` state the floor. The
+generated refusal reference lists codes only, so it carries no floor.
 
 ## Scope (inferred)
 

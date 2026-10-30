@@ -493,7 +493,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
     let (decision, leftover) =
         match read_head(&mut stream, shared.config.max_head_bytes, head_deadline) {
             Ok((head, leftover)) => (dispatch(&head, shared), leftover),
-            Err(code) => (Decision::refused(code), Vec::new()),
+            Err(code) => (Decision::refused(code), Leftover(Vec::new())),
         };
     // A usage record's duration runs from the end of the head (llm-gateway.telemetry).
     let begun = Instant::now();
@@ -505,6 +505,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
                 timeout,
                 count_timeout: shared.config.count_timeout,
             };
+            let leftover = leftover.into_bytes();
             match relay::serve(&mut stream, leftover, &admitted, relay, &limits, &mut call) {
                 Ok(()) => {
                     record(shared, decision.recorded, call, None, begun);
@@ -616,12 +617,14 @@ fn linger(stream: &mut TcpStream, deadline: Instant) {
 /// The head carries the owner's credential when the client presents one, so its bytes are only
 /// ever held in a [`HeadBuffer`], which each read writes into directly: an allocation it leaves
 /// for a larger one is overwritten before it is freed, and the last one when the buffer, or the
-/// [`Head`] it becomes, is dropped, on every path out of here, refusals included.
+/// [`Head`] it becomes, is dropped, on every path out of here, refusals included. What arrived
+/// after the head is a [`Leftover`], overwritten when dropped too: a pipelining client's next
+/// request, and its credential, may be in it.
 fn read_head(
     stream: &mut impl HeadStream,
     limit: usize,
     deadline: Instant,
-) -> Result<(Head, Vec<u8>), RefusalCode> {
+) -> Result<(Head, Leftover), RefusalCode> {
     let mut buffer = HeadBuffer(Vec::new());
     let mut filled = 0;
     loop {
@@ -629,7 +632,9 @@ fn read_head(
             if std::str::from_utf8(&buffer.0[..end]).is_err() {
                 return Err(RefusalCode::RequestMalformed);
             }
-            let leftover = buffer.0[end + 4..filled].to_vec();
+            let leftover = Leftover(buffer.0[end + 4..filled].to_vec());
+            #[cfg(test)]
+            head_ledger::taken(&leftover.0);
             return Ok((Head { buffer, end }, leftover));
         }
         // A byte `Request::parse` refuses wherever it stands is refused as soon as it arrives:
@@ -710,6 +715,24 @@ impl std::ops::Deref for Head {
     fn deref(&self) -> &str {
         // `read_head` returns no head that is not UTF-8, so this never answers the empty text.
         std::str::from_utf8(&self.buffer.0[..self.end]).unwrap_or_default()
+    }
+}
+
+/// The bytes [`read_head`] read past the head: the start of a body, or a pipelining client's
+/// next request, its credential included. Overwritten when dropped, on every path that does
+/// not relay; a relay takes them as they are ([`Leftover::into_bytes`]).
+struct Leftover(Vec<u8>);
+
+impl Leftover {
+    /// The bytes, for the relay, which reads the body on from them.
+    fn into_bytes(mut self) -> Vec<u8> {
+        std::mem::take(&mut self.0)
+    }
+}
+
+impl Drop for Leftover {
+    fn drop(&mut self) {
+        wipe(&mut self.0);
     }
 }
 
@@ -896,8 +919,12 @@ mod head_tests {
             read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
                 .expect("a whole head is read");
         assert_eq!(head.as_bytes(), &sent[..sent.len() - 4]);
-        assert!(leftover.is_empty() || leftover == b"{}", "{leftover:?}");
-        drop(head);
+        assert!(
+            leftover.0.is_empty() || leftover.0 == b"{}",
+            "{:?}",
+            leftover.0
+        );
+        drop((head, leftover));
         let taken = every_allocation_was_overwritten("answered", limit);
         assert!(
             taken >= 2,
@@ -918,12 +945,34 @@ mod head_tests {
             read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
                 .expect("a whole head is read");
         assert_eq!(head.as_bytes(), &sent[..sent.len() - 4]);
-        assert!(leftover.is_empty(), "{leftover:?}");
-        drop(head);
+        assert!(leftover.0.is_empty(), "{:?}", leftover.0);
+        drop((head, leftover));
         assert_eq!(
             every_allocation_was_overwritten("doubling past the bound", limit),
             3,
             "1024 bytes, then 2048, then the bound of 3000 rather than 4096"
+        );
+    }
+
+    /// What this proves: when what arrived after a head is a pipelining client's next request,
+    /// its credential included, those bytes are held in an allocation of their own that reads
+    /// zero in full, spare capacity included, as it is let go, as each of the head's own does.
+    #[test]
+    fn the_bytes_past_a_head_are_overwritten_when_they_are_let_go() {
+        let limit = 8192;
+        let first = head(600);
+        let next = head(400);
+        let mut stream = Scripted::new(vec![Ok([&first[..], &next[..]].concat())]);
+        let (head, leftover) =
+            read_head(&mut stream, limit, Instant::now() + Duration::from_secs(10))
+                .expect("the first head is read");
+        assert_eq!(head.as_bytes(), &first[..first.len() - 4]);
+        assert_eq!(leftover.0, next, "the next request is what is left");
+        drop((head, leftover));
+        assert_eq!(
+            every_allocation_was_overwritten("pipelined", limit),
+            2,
+            "the head's buffer and the bytes past it"
         );
     }
 

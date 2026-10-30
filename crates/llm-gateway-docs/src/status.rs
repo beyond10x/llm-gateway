@@ -272,7 +272,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "A translation refusal names the refused field in a log line",
-        "Each translation-unsupported or translation-invalid refusal writes one info line naming the model, the client's wire, the code and llm's diagnostic, which names the refused path or field and never a value the client sent. The answer still carries only the code. Tested on each client wire with a marker in the request's values that no log line and no answer carries.",
+        "Each translation-unsupported or translation-invalid refusal writes one info line naming the model, the client's wire, the code and llm's diagnostic, which names the refused path or field and never a value the client sent; a key the client chose outside the subset is written ?, and the names the contract lists as refused by name stay named. The answer still carries only the code. Tested on each client wire with a marker in the request's values and in a secret-shaped key, at the root and nested, that no log line and no answer carries.",
         "crates/llm-gateway-cli/tests/translation.rs::translation_a_messages_refusal_names_the_refused_path_in_one_log_line",
         Some("/docs/guides/translate-between-wires"),
     ),

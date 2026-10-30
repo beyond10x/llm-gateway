@@ -7,6 +7,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Changed
+
+- The `translation refused` line writes a key the client chose outside the subset as `?` after its location (`?`, `text.?`, `messages[].content[].?`), whatever its shape, so a key shaped as a secret is not logged. Names from a fixed list stay named: llm's own (``chat request field `n` ``) and the paths `docs/gateway.md` lists as refused by name (`text.format`, `output_config.format`, `thinking.display`, `context_management`). `docs/gateway.md` "The request".
+
 ## 0.20.0 (2026-10-30)
 
 ### Added

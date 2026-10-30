@@ -531,14 +531,23 @@ Each `translation-unsupported` or `translation-invalid` refusal of steps 2 and 4
 model's check included) writes one `tracing` event at `info`, message `translation refused`, with
 `model` (the alias), `ingress` (the client's wire), `refusal` (the code) and `refused`, llm's
 diagnostic written escaped. llm 0.19.0's diagnostic names the refused path or field and no value
-the client sent: `messages[].content[].cache_control`, `thinking.display`, ``chat request field
-`n` ``, a message role by the word "role" and never the role. An array element is written `[]`,
-without its index. A client's key enters a path only as 1 to 64 bytes of `[A-Za-z0-9_-]`; any
-other key is written `?`. The answer is unchanged: the refusal body carries the code and its fixed
+the client sent: `messages[].content[].?`, `thinking.display`, ``chat request field `n` ``, a
+message role by the word "role" and never the role. An array element is written `[]`, without
+its index. A key outside the subset is a key the client chose, so the line writes it `?` after
+the location llm names (`?` alone at the root, `text.?`, `messages[].content[].?`), whatever its
+shape: llm 0.19.0 copies such a key into its diagnostic when it is 1 to 64 bytes of
+`[A-Za-z0-9_-]`, and the gateway replaces it in the three diagnostics that copy one (chat
+`chat request field is outside the published subset: <path>`, responses `request body carries a
+field outside the pinned subset: <path>`, messages `Messages field is outside the declared
+subset: <path>`). Names from a fixed list stay named: those llm writes itself (``chat request
+field `n` ``, `messages[].content[].type`) and the paths listed below as still refused by name
+(`text.format`, `output_config.format`, `thinking.display`, `context_management`), which a key
+holding a secret cannot equal. The answer is unchanged: the refusal body carries the code and its fixed
 message, never llm's diagnostic. `translation_a_*_refusal_names_the_refused_path_in_one_log_line`
 in `crates/llm-gateway-cli/tests/translation.rs` sends each wire's refused requests with a marker
-in the message text, tool names, arguments and results and in the refused value, and finds it in
-no log line and no answer.
+in the message text, tool names, arguments and results and in the refused value, and
+`translation_a_*_refusal_writes_a_clients_key_as_a_question_mark` a secret-shaped key of 64
+bytes holding it at the root and nested; neither finds it in a log line or an answer.
 
 ```text
 2026-10-30T06:21:22.891160Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=responses refusal=translation-unsupported refused="request body carries a field outside the pinned subset: text.format"

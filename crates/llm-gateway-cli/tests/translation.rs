@@ -1345,7 +1345,7 @@ fn translation_a_chat_refusal_names_the_refused_path_in_one_log_line() {
             "cache_control",
             serde_json::json!({"type": "ephemeral"}),
             unsupported,
-            "messages[].content[].cache_control",
+            "messages[].content[].?\"",
         ),
         refused_with(
             &base,
@@ -1353,7 +1353,7 @@ fn translation_a_chat_refusal_names_the_refused_path_in_one_log_line() {
             "safeguards",
             serde_json::json!({"note": LOG_MARKER}),
             unsupported,
-            "outside the published subset: safeguards",
+            "outside the published subset: ?\"",
         ),
         refused_with(
             &base,
@@ -1487,7 +1487,7 @@ fn translation_a_messages_refusal_names_the_refused_path_in_one_log_line() {
             "cache_control",
             serde_json::json!({"type": "ephemeral", "scope": LOG_MARKER}),
             unsupported,
-            "system[].cache_control.scope",
+            "system[].cache_control.?\"",
         ),
         refused_with(
             &base,
@@ -1507,4 +1507,159 @@ fn translation_a_messages_refusal_names_the_refused_path_in_one_log_line() {
         ),
     ];
     assert_each_refusal_names_its_path("refusal-log-messages", Wire::Messages, "chat", &cases);
+}
+
+/// A key a client chose shaped as a secret: 64 bytes of `[A-Za-z0-9_-]`, the longest name llm
+/// copies into a path, holding the marker.
+const SECRET_KEY: &str = "sk_live_zqRefusalMarker7x_0123456789abcdefghijklmnopqrstuvwxyzAB";
+
+#[test]
+fn translation_the_secret_shaped_key_is_one_llm_would_copy() {
+    assert_eq!(SECRET_KEY.len(), 64);
+    assert!(
+        SECRET_KEY
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+    );
+    assert!(SECRET_KEY.contains(LOG_MARKER));
+}
+
+/// story:refusal-log-masks-client-keys, chat: a secret-shaped key outside the subset at the
+/// root, in a message and in a content part is logged as `?` at its location, never by name;
+/// `n`, a name from llm's own list, is still named.
+#[test]
+fn translation_a_chat_refusal_writes_a_clients_key_as_a_question_mark() {
+    let base = marked_chat();
+    let unsupported = RefusalCode::TranslationUnsupported;
+    let cases = [
+        refused_with(
+            &base,
+            "",
+            SECRET_KEY,
+            serde_json::json!(true),
+            unsupported,
+            "refused=\"chat request field is outside the published subset: ?\"",
+        ),
+        refused_with(
+            &base,
+            "/messages/1",
+            SECRET_KEY,
+            serde_json::json!(true),
+            unsupported,
+            "refused=\"chat request field is outside the published subset: messages[].?\"",
+        ),
+        refused_with(
+            &base,
+            "/messages/1/content/0",
+            SECRET_KEY,
+            serde_json::json!(true),
+            unsupported,
+            "refused=\"chat request field is outside the published subset: messages[].content[].?\"",
+        ),
+        refused_with(
+            &base,
+            "",
+            "n",
+            serde_json::json!(2),
+            unsupported,
+            "refused=\"chat request field `n` is outside the published subset\"",
+        ),
+    ];
+    assert_each_refusal_names_its_path("refusal-mask-chat", Wire::Chat, "messages", &cases);
+}
+
+/// story:refusal-log-masks-client-keys, responses: a secret-shaped key at the root, in `text`
+/// and in a content part is logged as `?` at its location; `text.format`, a name the contract
+/// publishes as refused by name, is still named.
+#[test]
+fn translation_a_responses_refusal_writes_a_clients_key_as_a_question_mark() {
+    let base = marked_responses();
+    let unsupported = RefusalCode::TranslationUnsupported;
+    let cases = [
+        refused_with(
+            &base,
+            "",
+            SECRET_KEY,
+            serde_json::json!(true),
+            unsupported,
+            "refused=\"request body carries a field outside the pinned subset: ?\"",
+        ),
+        refused_with(
+            &base,
+            "",
+            "text",
+            serde_json::json!({ SECRET_KEY: true }),
+            unsupported,
+            "refused=\"request body carries a field outside the pinned subset: text.?\"",
+        ),
+        refused_with(
+            &base,
+            "/input/1/content/0",
+            SECRET_KEY,
+            serde_json::json!(true),
+            unsupported,
+            "refused=\"request body carries a field outside the pinned subset: input[].content[].?\"",
+        ),
+        refused_with(
+            &base,
+            "",
+            "text",
+            serde_json::json!({"format": {"type": "json_schema", "name": "answer", "schema": {"type": "object"}}}),
+            unsupported,
+            "refused=\"request body carries a field outside the pinned subset: text.format\"",
+        ),
+    ];
+    assert_each_refusal_names_its_path("refusal-mask-responses", Wire::Responses, "chat", &cases);
+}
+
+/// story:refusal-log-masks-client-keys, messages: a secret-shaped key at the root, in
+/// `thinking` and in a content block is logged as `?` at its location; `thinking.display` and
+/// `context_management`, names the contract publishes as refused by name, are still named.
+#[test]
+fn translation_a_messages_refusal_writes_a_clients_key_as_a_question_mark() {
+    let base = marked_messages();
+    let unsupported = RefusalCode::TranslationUnsupported;
+    let cases = [
+        refused_with(
+            &base,
+            "",
+            SECRET_KEY,
+            serde_json::json!(true),
+            unsupported,
+            "refused=\"Messages field is outside the declared subset: ?\"",
+        ),
+        refused_with(
+            &base,
+            "",
+            "thinking",
+            serde_json::json!({"type": "adaptive", SECRET_KEY: true}),
+            unsupported,
+            "refused=\"Messages field is outside the declared subset: thinking.?\"",
+        ),
+        refused_with(
+            &base,
+            "/messages/0/content/0",
+            SECRET_KEY,
+            serde_json::json!(true),
+            unsupported,
+            "refused=\"Messages field is outside the declared subset: messages[].content[].?\"",
+        ),
+        refused_with(
+            &base,
+            "",
+            "thinking",
+            serde_json::json!({"type": "adaptive", "display": "summarized"}),
+            unsupported,
+            "refused=\"Messages field is outside the declared subset: thinking.display\"",
+        ),
+        refused_with(
+            &base,
+            "",
+            "context_management",
+            serde_json::json!({"edits": []}),
+            unsupported,
+            "refused=\"Messages field is outside the declared subset: context_management\"",
+        ),
+    ];
+    assert_each_refusal_names_its_path("refusal-mask-messages", Wire::Messages, "chat", &cases);
 }

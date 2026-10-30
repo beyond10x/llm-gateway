@@ -39,6 +39,7 @@ use llm_providers::{
 };
 use serde_json::{Value, json};
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fmt,
     net::IpAddr,
@@ -369,17 +370,58 @@ const fn refusal(error: &Error) -> RefusalCode {
     }
 }
 
+/// The diagnostics of llm 0.19.0 that end in a path whose last segment is a key the client
+/// chose: chat's `closed_object` (`llm-chat/src/ingress.rs`), responses' `outside`
+/// (`llm-responses/src/request.rs`), both through `llm_core::field_path`, and messages'
+/// `fields` (`llm-messages/src/lib.rs`, through its `path`). Every other diagnostic a refused
+/// request reaches is a literal, or names a field from llm's own list.
+const KEY_DIAGNOSTICS: [&str; 3] = [
+    "chat request field is outside the published subset: ",
+    "request body carries a field outside the pinned subset: ",
+    "Messages field is outside the declared subset: ",
+];
+
+/// Paths behind a [`KEY_DIAGNOSTICS`] prefix that are logged as written: llm's own
+/// `messages[].content[].type`, and the fields `docs/gateway.md` lists as still refused by name.
+/// A client key equal to one is that public name, not a secret.
+const NAMED_PATHS: [&str; 5] = [
+    "messages[].content[].type",
+    "text.format",
+    "output_config.format",
+    "thinking.display",
+    "context_management",
+];
+
+/// llm's `message` with the key a client chose written `?`: in a [`KEY_DIAGNOSTICS`] message,
+/// the path's last segment, unless the path is one of [`NAMED_PATHS`]. The location before it is
+/// llm's literal, and a key llm copies holds no `.`, so the last `.` ends the location; a path
+/// without one is a key at the root. Any other message is returned as it is.
+fn mask_client_key(message: &str) -> Cow<'_, str> {
+    for prefix in KEY_DIAGNOSTICS {
+        if let Some(path) = message.strip_prefix(prefix) {
+            if NAMED_PATHS.contains(&path) {
+                break;
+            }
+            return Cow::Owned(match path.rsplit_once('.') {
+                Some((at, _)) => format!("{prefix}{at}.?"),
+                None => format!("{prefix}?"),
+            });
+        }
+    }
+    Cow::Borrowed(message)
+}
+
 /// [`refusal`]'s code for `error`, after one `info` line naming it: the code, the client's wire,
 /// the alias and llm's message, which names the refused path or field and quotes no value the
-/// client sent (llm 0.19.0 copies a client's key into a path only as at most 64 bytes of
-/// `[A-Za-z0-9_-]`, else `?`). The message is written escaped.
+/// client sent, with a key the client chose written `?` ([`mask_client_key`]). The message is
+/// written escaped.
 fn refused(ingress: Wire, alias: &str, error: &Error) -> RefusalCode {
     let code = refusal(error);
     tracing::info!(
         model = alias,
         ingress = %ingress.label(),
         refusal = %code.wire(),
-        refused = ?error.message,
+        refused = ?mask_client_key(&error.message),
         "translation refused"
     );
     code
@@ -1588,6 +1630,211 @@ mod tests {
                 prepared.upstream_session(&Answering),
                 expected.map(|value| Id::new(&value).unwrap())
             );
+        }
+    }
+}
+
+/// story:refusal-log-masks-client-keys: each diagnostic is the one llm 0.19.0's decoder makes
+/// for the body, so a change of llm's wording on an upgrade fails here before a key is logged.
+#[cfg(test)]
+mod mask_tests {
+    use super::{NAMED_PATHS, Wire, decode, mask_client_key};
+    use serde_json::{Value, json};
+
+    /// A key a client chose, shaped as a secret: 64 bytes of `[A-Za-z0-9_-]`.
+    const KEY: &str = "sk_live_0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRST";
+
+    /// What the `translation refused` line writes for `body` on `ingress`.
+    fn logged(ingress: Wire, body: &Value) -> String {
+        let Err(error) = decode(ingress, "m", body.to_string().as_bytes()) else {
+            panic!("llm accepted {body}");
+        };
+        let logged = mask_client_key(&error.message).into_owned();
+        assert!(!logged.contains(KEY), "{logged}");
+        logged
+    }
+
+    /// `body` with each of `extra` set at its root.
+    fn with(mut body: Value, extra: &[(&str, Value)]) -> Value {
+        for (key, value) in extra {
+            body[*key] = value.clone();
+        }
+        body
+    }
+
+    fn chat(extra: &[(&str, Value)], message: &Value) -> Value {
+        with(json!({"model": "m", "messages": [message]}), extra)
+    }
+
+    fn responses(extra: &[(&str, Value)], part: &Value) -> Value {
+        let body = json!({
+            "model": "m",
+            "input": [{"type": "message", "role": "user", "content": [part]}],
+            "stream": true,
+            "store": false,
+            "include": ["reasoning.encrypted_content"]
+        });
+        with(body, extra)
+    }
+
+    fn messages(extra: &[(&str, Value)], message: &Value) -> Value {
+        with(
+            json!({"model": "m", "max_tokens": 16, "messages": [message]}),
+            extra,
+        )
+    }
+
+    #[test]
+    fn the_key_is_one_llm_copies_into_a_path() {
+        assert_eq!(KEY.len(), 64);
+        assert!(
+            KEY.bytes()
+                .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_' || byte == b'-')
+        );
+    }
+
+    #[test]
+    fn a_chat_key_is_written_as_a_question_mark_at_its_location() {
+        let user = json!({"role": "user", "content": "Hi"});
+        let prefix = "chat request field is outside the published subset: ";
+        assert_eq!(
+            logged(Wire::Chat, &chat(&[(KEY, json!(true))], &user)),
+            format!("{prefix}?")
+        );
+        assert_eq!(
+            logged(
+                Wire::Chat,
+                &chat(&[], &json!({"role": "user", "content": "Hi", KEY: true}))
+            ),
+            format!("{prefix}messages[].?")
+        );
+        assert_eq!(
+            logged(
+                Wire::Chat,
+                &chat(
+                    &[],
+                    &json!({"role": "user", "content": [{"type": "text", "text": "Hi", KEY: true}]})
+                )
+            ),
+            format!("{prefix}messages[].content[].?")
+        );
+        assert_eq!(
+            logged(Wire::Chat, &chat(&[("n", json!(2))], &user)),
+            "chat request field `n` is outside the published subset"
+        );
+    }
+
+    #[test]
+    fn a_responses_key_is_written_as_a_question_mark_at_its_location() {
+        let part = json!({"type": "input_text", "text": "Hi"});
+        let prefix = "request body carries a field outside the pinned subset: ";
+        assert_eq!(
+            logged(Wire::Responses, &responses(&[(KEY, json!(true))], &part)),
+            format!("{prefix}?")
+        );
+        assert_eq!(
+            logged(
+                Wire::Responses,
+                &responses(&[("text", json!({KEY: true}))], &part)
+            ),
+            format!("{prefix}text.?")
+        );
+        assert_eq!(
+            logged(
+                Wire::Responses,
+                &responses(&[], &json!({"type": "input_text", "text": "Hi", KEY: true}))
+            ),
+            format!("{prefix}input[].content[].?")
+        );
+        assert_eq!(
+            logged(
+                Wire::Responses,
+                &responses(&[("text", json!({"format": {"type": "text"}}))], &part)
+            ),
+            format!("{prefix}text.format")
+        );
+    }
+
+    #[test]
+    fn a_messages_key_is_written_as_a_question_mark_at_its_location() {
+        let user = json!({"role": "user", "content": [{"type": "text", "text": "Hi"}]});
+        let prefix = "Messages field is outside the declared subset: ";
+        assert_eq!(
+            logged(Wire::Messages, &messages(&[(KEY, json!(true))], &user)),
+            format!("{prefix}?")
+        );
+        assert_eq!(
+            logged(
+                Wire::Messages,
+                &messages(
+                    &[("thinking", json!({"type": "adaptive", KEY: true}))],
+                    &user
+                )
+            ),
+            format!("{prefix}thinking.?")
+        );
+        assert_eq!(
+            logged(
+                Wire::Messages,
+                &messages(
+                    &[],
+                    &json!({"role": "user", "content": [{"type": "text", "text": "Hi", KEY: true}]})
+                )
+            ),
+            format!("{prefix}messages[].content[].?")
+        );
+        for (extra, named) in [
+            (
+                (
+                    "thinking",
+                    json!({"type": "adaptive", "display": "summarized"}),
+                ),
+                "thinking.display",
+            ),
+            (
+                ("context_management", json!({"edits": []})),
+                "context_management",
+            ),
+            (
+                ("output_config", json!({"format": {"type": "json_schema"}})),
+                "output_config.format",
+            ),
+        ] {
+            assert_eq!(
+                logged(Wire::Messages, &messages(&[extra], &user)),
+                format!("{prefix}{named}")
+            );
+        }
+        assert_eq!(
+            logged(
+                Wire::Messages,
+                &messages(
+                    &[],
+                    &json!({"role": "system", "content": [{"type": "image"}]})
+                )
+            ),
+            format!("{prefix}messages[].content[].type")
+        );
+    }
+
+    #[test]
+    fn a_diagnostic_without_a_clients_key_is_written_as_llm_wrote_it() {
+        for message in [
+            "the request body is not JSON",
+            "chat request field `n` is outside the published subset",
+            "`temperature` is not a number",
+            "Messages role is outside the declared subset",
+        ] {
+            assert_eq!(mask_client_key(message), message);
+        }
+    }
+
+    /// Every name kept but llm's own literal is one `docs/gateway.md` lists as refused by name.
+    #[test]
+    fn every_named_path_is_one_the_contract_lists() {
+        let contract = include_str!("../../../docs/gateway.md");
+        for path in NAMED_PATHS {
+            assert!(contract.contains(&format!("`{path}`")), "{path}");
         }
     }
 }

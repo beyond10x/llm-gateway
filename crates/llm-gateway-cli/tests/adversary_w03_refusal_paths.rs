@@ -179,7 +179,12 @@ fn adv_w03_a_bedrock_routes_refusals_each_write_one_line_without_a_value() {
     let log = server.log();
     let refusals = refusal_lines(&log);
     assert_eq!(refusals.len(), 2, "{log:#?}");
-    assert!(refusals[0].contains("safeguards"), "{}", refusals[0]);
+    assert!(
+        refusals[0].contains("outside the published subset: ?\""),
+        "{}",
+        refusals[0]
+    );
+    assert!(!refusals[0].contains("safeguards"), "{}", refusals[0]);
     for line in &refusals {
         assert!(line.contains("refusal=translation-unsupported"), "{line}");
         assert!(line.contains("ingress=chat"), "{line}");

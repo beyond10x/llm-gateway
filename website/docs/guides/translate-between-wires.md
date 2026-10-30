@@ -69,7 +69,9 @@ curl -s http://127.0.0.1:8080/v1/responses -H "$token" \
 ```
 
 The answer names only the code. The gateway's standard error names what was refused, one `info`
-line per refusal, by path or field name and never by a value the client sent:
+line per refusal, by path or field name and never by a value the client sent. Any other key
+outside the subset is a key the client chose and is written `?` after its location, such as
+`text.?`:
 
 ```text
 2026-10-30T06:21:22.887008Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=chat refusal=translation-unsupported refused="chat request field `n` is outside the published subset"

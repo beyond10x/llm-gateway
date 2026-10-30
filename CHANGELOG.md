@@ -11,6 +11,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 - A conformance scenario relays an answer whose target holds its head back 400 ms, four times the gateway's 100 ms client watch, to a request step with default options, so it fails if the runner's request step half-closes by default again. The runner's pod answer takes `delay_ms`, at most 2000. The suite's floor is 292 scenarios.
 
+### Changed
+
+- The `translation refused` line writes a key the client chose outside the subset as `?` after its location (`?`, `text.?`, `messages[].content[].?`), whatever its shape, so a key shaped as a secret is not logged. Names from a fixed list stay named: llm's own (``chat request field `n` ``) and the paths `docs/gateway.md` lists as refused by name (`text.format`, `output_config.format`, `thinking.display`, `context_management`). `docs/gateway.md` "The request".
+
 ## 0.20.0 (2026-10-30)
 
 ### Added

@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-30T20:43:07Z",
+  "actor": "human:timo",
+  "artifact": "story:hosting-lifecycle-declared",
+  "kind": "story",
+  "revision": 11,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-w06-hosting-lifecycle-pass-2",
+    "reference": "impl/hosting-lifecycle-declared@ec4c35d",
+    "review": "review-result:adversary-w06-hosting-lifecycle-pass-2",
+    "outcome": "fixed"
+  }
+}

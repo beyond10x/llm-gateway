@@ -113,7 +113,7 @@ entities:
   # crates/llm-gateway-cli/tests/routes.rs.
   #
   # DECIDED 2026-10-23 (story:bedrock-hosted-target): a `[hosted.<alias>]` table with
-  # `kind = "bedrock"` is a HostedEndpoint served by Amazon Bedrock Runtime through llm 0.19.0's
+  # `kind = "bedrock"` is a HostedEndpoint served by Amazon Bedrock Runtime through llm 0.20.0's
   # `llm-bedrock` client, not by the relay. It declares `region`, `model_id` and
   # `credential_source = "container"`, and optionally `api`, `endpoint`, `billing_kind`,
   # `context_window`, `max_output_tokens` and `tool_calling`
@@ -139,7 +139,7 @@ entities:
       # The wires the endpoint speaks, each at its path. A request on one of them is relayed byte
       # for byte; a request on another wire is translated (story:gateway-translation;
       # llm-gateway.gateway `Relay` step 5) and sent to the endpoint on the first wire listed
-      # here, with llm 0.19.0's client for that wire: to `<scheme>://<authority>` and the base
+      # here, with llm 0.20.0's client for that wire: to `<scheme>://<authority>` and the base
       # path (`/v1` without one) joined to the wire's path, as the join rule below has it; with
       # the credential as `auth_kind` says (`authorization: Bearer <credential>`,
       # `<credential_header>: <credential>`, or none); and with llm's own protocol headers
@@ -215,7 +215,7 @@ entities:
     # vendor-specific code: an endpoint is described by its wires, its base URL and how it
     # authenticates. DECIDED 2026-10-16 (story:gateway-translation): a client may call such an
     # endpoint on any wire; one it does not speak is translated through llm's neutral turn,
-    # within llm 0.19.0's supported subset (docs/gateway.md "Translation"), not as a claim of
+    # within llm 0.20.0's supported subset (docs/gateway.md "Translation"), not as a claim of
     # vendor API equivalence.
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   # One position of one route, tried or not, for one request.

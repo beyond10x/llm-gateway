@@ -1,0 +1,13 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-stop-confirmation-naming-a-deployment-identifier-one-byte-too-long-is-refused
+summary: "invalid-identifier is guarded on an id over 256 bytes, so ConfirmStopped must refuse a 257-byte id before it looks for a record, with well-formed evidence"
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.ConfirmStopped
+  input: {id: ddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd, evidence: invoice-line-7}
+  outcome: invalid-identifier
+assert:
+- view: llm-gateway.hosting.OwnedResources
+  counts:
+    at_most: 0

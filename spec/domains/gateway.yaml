@@ -16,7 +16,7 @@ domain: llm-gateway.gateway
 # and is refused `wire-not-served` otherwise.
 # DECIDED 2026-10-16 (story:gateway-translation): the translation contract.
 #   - Where: the gateway crate holds only a std-only port (crates/llm-gateway/src/translate.rs,
-#     `Translator` and `Translation`); the binary implements it with llm 0.19.0's ingress decoders,
+#     `Translator` and `Translation`); the binary implements it with llm 0.20.0's ingress decoders,
 #     protocol clients and ingress encoders (crates/llm-gateway-cli/src/translate.rs) over a tokio
 #     runtime the binary owns. The upstream wire is the model's first declared wire.
 #   - Decode before any target: the client's body is decoded onto llm's neutral turn, checked
@@ -371,8 +371,11 @@ types:
   # The answer `GET /` chooses, from the request's `user-agent` lowercased, by the first rule
   # that holds, in the order declared (llmgw src/lib.rs:231-245 at 048ebd8). No `user-agent` is
   # `Plain`. Each renders, per relayed model, the llm-gateway.clients.ClientProfile of its
-  # `client` with the model's alias and `context_window` filled in, for exactly the models that
-  # declare that profile's wire and tool calling `Parsed`; a model without a `context_window`
+  # `client` with the model's alias and `context_window` filled in, for exactly the models with
+  # tool calling `Parsed` that the client's requests reach on that profile's wire: relayed on a
+  # wire the model declares and takes verbatim, or translated where the relay's translator
+  # admits them (llm-gateway.clients.ClientProfile, DECIDED 2026-10-30,
+  # story:client-profiles-translated); a model without a `context_window`
   # gets no context setting. The gateway origin in every base URL is `http://` and the
   # request's `host`, when it is non-empty and only ASCII letters, digits, `.`, `-`, `_`, `:`,
   # `[` and `]`, and the listener's bound address otherwise, so no other caller byte is
@@ -381,7 +384,9 @@ types:
   #               `base_url` the origin plus `/v1`, `env_key = "B10X_GATEWAY_TOKEN"`,
   #               `wire_api = "responses"`, `model` the alias and `model_context_window`.
   #   ClaudeCode  one block of `export NAME='value'` lines per model: `ANTHROPIC_BASE_URL` the
-  #               origin, each model setting the alias, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`.
+  #               origin, each model setting the alias, `CLAUDE_CODE_MAX_CONTEXT_TOKENS`; for a
+  #               model the requests reach only translated, a comment line and
+  #               `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS` `1` (llm-gateway.clients.ClientProfile).
   #   Html        the `Plain` text, HTML-escaped, inside one `<pre>` of a fixed page.
   #   Plain       where the other answers and the listing are found, then the Loom profile per
   #               model on the `chat` wire: the llm catalog (`llm.catalog/1`) lines of an
@@ -389,6 +394,13 @@ types:
   #               `auth_kind = "bearer"`, an endpoint `base_url` the origin plus `/v1`, and a
   #               serving model with `protocol = "chat-completions"`, `upstream_name` the
   #               alias, `capabilities.tools = true` and `capabilities.context_window`.
+  # With no model for its client, each answer ends naming only what was checked and found for no
+  # model (story:client-profiles-translated): for Codex and Claude Code, that none with tool
+  # calling parsed relays the client's wire or admits the client's recorded first turn
+  # translated; for Loom, that none relays the chat wire and no Loom turn is recorded to try a
+  # translated one, although the gateway translates a Loom chat request. It never says that no
+  # model declares the wire: a translated-only model that declares it and does not admit the
+  # client is left out too.
   # DECIDED: docs/design/runpod-clients.md § 5 step 7 writes `protocol = "chat"`; llm's
   # catalog spells the chat wire `chat-completions` (beyond10x/llm
   # `crates/llm-core/src/vocabulary.rs:4-10`), and the instructions render what llm reads.
@@ -521,10 +533,11 @@ entities:
   # their declared order: the ones relayed byte for byte, every other one translated
   # (story:gateway-translation; scenario translate-the-listing-names-every-wire-and-the-upstream-wires).
   # DECIDED 2026-10-16: `upstream_wires` is left out without a translator, where it would repeat
-  # `wires`, so a gateway composed as before lists exactly what it listed before. The client
-  # profiles of `GET /` stay keyed on the declared wires (llm-gateway.clients.ClientProfile):
-  # Codex and Claude Code send fields llm's translated subset refuses (docs/gateway.md
-  # "Translation"), so a profile through translation would not work.
+  # `wires`, so a gateway composed as before lists exactly what it listed before. `wires` names
+  # the wires a request is accepted on, not the clients whose requests translate: `GET /` decides
+  # those per client (llm-gateway.clients.ClientProfile, DECIDED 2026-10-30, which replaced the
+  # 2026-10-16 rule that kept profiles on the declared wires while llm's subset refused Codex's
+  # and Claude Code's first turns).
   - name: llm-gateway.gateway.ListedModel
     identity: {name: id, type: String}
     fields:
@@ -643,7 +656,7 @@ entities:
   #      Translation (story:gateway-translation): a request on a wire the model does not
   #      declare, to a relay with a translator, leaves the byte relay here. The translator
   #      prepares it for the model's first declared wire before any target is asked for: it
-  #      decodes the body with llm 0.19.0's ingress decoder for the client's wire (chat
+  #      decodes the body with llm 0.20.0's ingress decoder for the client's wire (chat
   #      `decode_ingress_request`, responses `ingest_request` with the body's model the
   #      model's alias, messages `decode_request`), each of which refuses a key outside its
   #      subset at every level by its path, `translation-unsupported` (scenario

@@ -1,0 +1,29 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-create-accepted-outside-the-scope-is-disowned-by-a-listing-retagged-at-a-newer-epoch
+summary: disown is declared from Uncertain, so a misanswered create retagged at a newer epoch must become Disowned
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.Declare
+  input: {id: d1, request_id: request-d1, reservation_id: reservation-a}
+  outcome: declared
+- at: '2026-10-30T12:00:01Z'
+  command: llm-gateway.hosting.Provision
+  input: {id: d1, answer: AcceptedOutsideScope}
+  outcome: misanswered
+- at: '2026-10-30T12:00:02Z'
+  command: llm-gateway.hosting.ObserveTakenOver
+  input: {id: d1}
+  outcome: taken-over
+assert:
+- view: llm-gateway.hosting.OwnedResources
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.OwnedResources
+  contains:
+    id: d1
+    state: Disowned
+    request_id: request-d1
+    reservation_id: reservation-a
+    stop_evidence: null

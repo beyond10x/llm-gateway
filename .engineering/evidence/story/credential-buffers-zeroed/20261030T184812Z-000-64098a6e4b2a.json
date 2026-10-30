@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-30T18:48:12Z",
+  "actor": "human:timo",
+  "artifact": "story:credential-buffers-zeroed",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test -p b10x-llm-gateway --lib; cargo test -p b10x-llm-gateway-cli --lib; cargo test -p b10x-llm-gateway-cli --test credential_set",
+    "reference": "VERIFIED at the ledger level: base f3c076f4 with the new cases gateway lib 47 passed 2 failed (an allocation was let go holding head bytes), cli lib 40 passed 6 failed, credential_set 4 passed 13 failed; impl a98c451 49 (50 with the auth patch), 46 (47), 17 passed. Freed memory itself is not observable from safe Rust."
+  }
+}

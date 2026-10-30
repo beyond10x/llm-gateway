@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Provision input",
+  "x-ess-name": "llm-gateway.hosting.Provision",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/llm-gateway.hosting.DeploymentId"
+    },
+    "answer": {
+      "$ref": "#/$defs/llm-gateway.hosting.CreateAnswer"
+    }
+  },
+  "required": [
+    "id",
+    "answer"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
+    "contract_digest": "slice-sha256/2:e64273a159036c334d354e6008a957f4745e1415389f9945ed58ac38efa3fa69",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.CreateAnswer": {
+      "title": "CreateAnswer",
+      "x-ess-name": "llm-gateway.hosting.CreateAnswer",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Accepted",
+        "AcceptedOutsideScope",
+        "Unknown",
+        "Rejected",
+        "NotSent"
+      ]
+    },
+    "llm-gateway.hosting.DeploymentId": {
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier",
+      "title": "DeploymentId",
+      "x-ess-name": "llm-gateway.hosting.DeploymentId",
+      "x-ess-kind": "newtype"
+    },
+    "llm-gateway.hosting.Identifier": {
+      "title": "Identifier",
+      "x-ess-name": "llm-gateway.hosting.Identifier",
+      "x-ess-kind": "newtype",
+      "type": "string",
+      "pattern": "^[\\u0020-\\u007E]*$",
+      "x-ess-alphabet": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    }
+  }
+}

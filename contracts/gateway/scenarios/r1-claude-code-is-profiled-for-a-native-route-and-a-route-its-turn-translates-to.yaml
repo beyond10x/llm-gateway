@@ -1,0 +1,61 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: r1-claude-code-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to
+summary: GET / profiles Claude Code for a messages route and a route its first turn translates to, not one refusing it
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","translation":"on","models":[],"routes_document":"format: llm.routes/1\nendpoints:\n  msg-ep: {base_url: \"http://pod-1/v1\", protocol: messages, auth: {kind: anonymous}}\n  chat-ep: {base_url: \"http://pod-2/v1\", protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  native-up: msg-ep/served-messages\n  translated-up: {model: chat-ep/served-chat, capabilities: {tools: true, tool_choice: true, temperature: true, top_p: true, reasoning_efforts: [low, medium, high, xhigh], context_window: 200000, max_output_tokens: 32000}}\n  refused-up: {model: chat-ep/served-plain, capabilities: {tools: true, tool_choice: true, temperature: true, top_p: true, reasoning_efforts: [low, medium, high], context_window: 200000, max_output_tokens: 32000}}\n","pods":[[],[{"status":200,"content_type":"text/event-stream","chunks":["data: {\"choices\":[{\"delta\":{\"content\":\"Hello\",\"role\":\"assistant\"},\"finish_reason\":null,\"index\":0}],\"id\":\"chatcmpl-up\",\"model\":\"served\"}\n\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\",\"index\":0}],\"id\":\"chatcmpl-up\",\"model\":\"served\"}\n\ndata: {\"choices\":[],\"id\":\"chatcmpl-up\",\"model\":\"served\",\"usage\":{\"completion_tokens\":2,\"prompt_tokens\":12,\"total_tokens\":14}}\n\ndata: [DONE]\n\n"]}]],"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/","body":"","credential":false,"user_agent":"claude-cli/2.1.293 (external, cli)"},{"step":"request","path":"/v1/messages","body":"{\"max_tokens\":16000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"metadata\":{\"user_id\":\"user-1\"},\"model\":\"translated-up\",\"output_config\":{\"effort\":\"max\"},\"stream\":true,\"system\":[{\"text\":\"Attribution.\",\"type\":\"text\"},{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Be brief.\",\"type\":\"text\"}],\"thinking\":{\"type\":\"adaptive\"},\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"type\":\"object\"},\"name\":\"lookup\"}]}"},{"step":"request","path":"/v1/messages","body":"{\"max_tokens\":16000,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"metadata\":{\"user_id\":\"user-1\"},\"model\":\"refused-up\",\"output_config\":{\"effort\":\"max\"},\"stream\":true,\"system\":[{\"text\":\"Attribution.\",\"type\":\"text\"},{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Be brief.\",\"type\":\"text\"}],\"thinking\":{\"type\":\"adaptive\"},\"tools\":[{\"description\":\"Find a city\",\"input_schema\":{\"type\":\"object\"},\"name\":\"lookup\"}]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - "ok"
+    - "200 answered"
+    - "200 translated"
+    - "400 translation-unsupported"
+    bodies:
+    - |
+      # Claude Code settings for this llm-gateway, one block per model it serves on the messages
+      # wire with tool calling parsed. Set ANTHROPIC_AUTH_TOKEN to the gateway's owner token, or
+      # name an apiKeyHelper that prints it; ANTHROPIC_API_KEY is sent as x-api-key, which this
+      # gateway does not read.
+
+      # model native-up
+      export ANTHROPIC_BASE_URL='http://gateway'
+      export ANTHROPIC_MODEL='native-up'
+      export ANTHROPIC_DEFAULT_OPUS_MODEL='native-up'
+      export ANTHROPIC_DEFAULT_SONNET_MODEL='native-up'
+      export ANTHROPIC_DEFAULT_HAIKU_MODEL='native-up'
+      export CLAUDE_CODE_SUBAGENT_MODEL='native-up'
+      export CLAUDE_CODE_MAX_CONTEXT_TOKENS='200000'
+
+      # model translated-up
+      export ANTHROPIC_BASE_URL='http://gateway'
+      export ANTHROPIC_MODEL='translated-up'
+      export ANTHROPIC_DEFAULT_OPUS_MODEL='translated-up'
+      export ANTHROPIC_DEFAULT_SONNET_MODEL='translated-up'
+      export ANTHROPIC_DEFAULT_HAIKU_MODEL='translated-up'
+      export CLAUDE_CODE_SUBAGENT_MODEL='translated-up'
+      export CLAUDE_CODE_MAX_CONTEXT_TOKENS='200000'
+      # Reached by translation, which refuses structured outputs from Claude Code.
+      export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'
+    - "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_1\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    - "{\"error\":{\"code\":\"translation-unsupported\",\"message\":\"the request uses a field or value outside the subset the gateway translates\"}}"
+    upstream:
+    - "pod-2 POST /v1/chat/completions {\"max_completion_tokens\":16000,\"messages\":[{\"content\":\"Attribution.\\nBe brief.\",\"role\":\"system\"},{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"reasoning_effort\":\"xhigh\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}},\"type\":\"function\"}]}"
+    connections:
+    - "pod-2 plain request"
+    records:
+    - "model=translated-up wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=615 duration_ms=bounded tokens=absent"
+    - "model=refused-up wire=messages disposition=Refused refusal=translation-unsupported status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+    acquired: 1
+    released: 1

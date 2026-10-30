@@ -231,8 +231,8 @@ impl SecretResolver for TokenFile {
                 );
                 SecretError::Unavailable
             })?;
-            let version = SecretVersion::new(hex_digest(text.as_bytes()))?;
             let secret = Secret::new(text.into_bytes())?;
+            let version = SecretVersion::new(hex_digest(secret.expose()))?;
             Ok(ResolvedSecret { secret, version })
         })
     }

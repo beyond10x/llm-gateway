@@ -8,7 +8,7 @@
 
 use crate::{
     json::Writer,
-    relay::{RelayModel, ToolCalling, Wire},
+    relay::{Relay, RelayModel, ToolCalling, Wire},
 };
 use std::fmt::Write as _;
 
@@ -53,17 +53,15 @@ impl InstructionAnswer {
         }
     }
 
-    /// The answer for `models`, every base URL under `origin` (`http://<authority>`).
-    pub(crate) fn render<'m>(
-        self,
-        models: impl Iterator<Item = &'m RelayModel>,
-        origin: &str,
-    ) -> String {
+    /// The answer for the models of `relay` (none without one), every base URL under `origin`
+    /// (`http://<authority>`).
+    pub(crate) fn render(self, relay: Option<&Relay>, origin: &str) -> String {
+        let models = |wire| profiled(relay, wire).map(|(model, _)| model);
         match self {
-            Self::Codex => codex(models, origin),
-            Self::ClaudeCode => claude_code(models, origin),
-            Self::Html => html(&plain(models, origin)),
-            Self::Plain => plain(models, origin),
+            Self::Codex => codex(models(Wire::Responses), origin),
+            Self::ClaudeCode => claude_code(profiled(relay, Wire::Messages), origin),
+            Self::Html => html(&plain(models(Wire::Chat), origin)),
+            Self::Plain => plain(models(Wire::Chat), origin),
         }
     }
 }
@@ -121,12 +119,20 @@ pub(crate) fn models<'m>(models: impl Iterator<Item = &'m RelayModel>, translate
     writer.finish()
 }
 
-/// Whether a client on `wire` gets a profile for `model`: the model declares the wire and
-/// parses tool calls (`llm-gateway.clients.ClientProfile`). A translated-only model serves every
-/// wire through its translator, so it declares none by name.
-fn profiled(model: &RelayModel, wire: Wire) -> bool {
-    (model.translated_only() || model.wires().contains(&wire))
-        && model.tool_calling() == ToolCalling::Parsed
+/// The models of `relay`, in alias order, for which the client on `wire` gets a profile
+/// (`llm-gateway.clients.ClientProfile`): its requests reach the model, relayed on a wire the
+/// model takes verbatim or translated where the composed translator admitted them
+/// ([`Relay::reaches`]; story:client-profiles-translated), and the model parses tool calls.
+/// Each comes with whether those requests reach it only translated.
+fn profiled(relay: Option<&Relay>, wire: Wire) -> impl Iterator<Item = (&RelayModel, bool)> {
+    relay.into_iter().flat_map(move |relay| {
+        relay
+            .models()
+            .filter(move |model| {
+                relay.reaches(model, wire) && model.tool_calling() == ToolCalling::Parsed
+            })
+            .map(move |model| (model, !model.relays(wire)))
+    })
 }
 
 /// The gateway origin: `http://` and the request's `host` when it is a plain authority, the
@@ -189,20 +195,31 @@ carries the gateway's owner token as Authorization: Bearer.
 # account a secret_reference_id that resolves to the owner token.
 ";
 
-/// What an answer says when no model has a profile for its client.
-fn none_for(client: &str, wire: Wire) -> String {
+/// What an answer says when no model has a profile for its client: only what was checked, and
+/// found for no model (story:client-profiles-translated). Every client is checked for a model
+/// with tool calling parsed that relays its wire; a translated-only model that declares the wire
+/// relays it not, so the answer never says no model declares it. A client whose first turn is
+/// recorded (`first_turn_recorded`: Codex, Claude Code) is also checked for one that admits that
+/// turn translated. No Loom turn is recorded, so a Loom run is never tried translated, although
+/// the gateway translates a Loom chat request.
+fn none_for(client: &str, wire: Wire, first_turn_recorded: bool) -> String {
+    let translated = if first_turn_recorded {
+        format!("or admits the recorded first turn of {client} translated")
+    } else {
+        format!("and no {client} turn is recorded to try a translated one")
+    };
     format!(
-        "\n# No model of this gateway serves {client}: none declares the {} wire with tool\n\
-         # calling parsed.\n",
+        "\n# No model of this gateway serves {client}: none with tool calling parsed relays the\n\
+         # {} wire, {translated}.\n",
         wire.label()
     )
 }
 
-/// The Codex `config.toml` profile per model on the responses wire.
+/// The Codex `config.toml` profile per model profiled on the responses wire.
 fn codex<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> String {
     let mut text = CODEX_HEADER.to_owned();
     let mut any = false;
-    for model in models.filter(|model| profiled(model, Wire::Responses)) {
+    for model in models {
         any = true;
         let alias = model.alias().as_str();
         let _ = writeln!(text, "\n# ~/.codex/{alias}.config.toml");
@@ -216,14 +233,20 @@ fn codex<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> Stri
         text.push_str("env_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n");
     }
     if !any {
-        text.push_str(&none_for("Codex", Wire::Responses));
+        text.push_str(&none_for("Codex", Wire::Responses, true));
     }
     text
 }
 
-/// Claude Code's environment variables per model on the messages wire. Every model setting
-/// names the alias, so no background request names a model the gateway refuses.
-fn claude_code<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> String {
+/// Claude Code's environment variables per model profiled on the messages wire. Every setting
+/// names the alias, so no background request names a model the gateway refuses. A model the
+/// requests reach only translated also turns structured output off: every translated path
+/// refuses `output_config.format` as `translation-unsupported`, and Claude Code sends it unless
+/// `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`, as its published gateway protocol says; no live
+/// client was observed (DECIDED 2026-10-30, story:client-profiles-translated). The comment line
+/// holds no quote character: an interactive shell reading `#` as a command would open the quote
+/// and swallow the export after it.
+fn claude_code<'m>(models: impl Iterator<Item = (&'m RelayModel, bool)>, origin: &str) -> String {
     const MODEL_SETTINGS: [&str; 5] = [
         "ANTHROPIC_MODEL",
         "ANTHROPIC_DEFAULT_OPUS_MODEL",
@@ -233,7 +256,7 @@ fn claude_code<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -
     ];
     let mut text = CLAUDE_CODE_HEADER.to_owned();
     let mut any = false;
-    for model in models.filter(|model| profiled(model, Wire::Messages)) {
+    for (model, translated) in models {
         any = true;
         let alias = model.alias().as_str();
         let _ = writeln!(text, "\n# model {alias}");
@@ -248,19 +271,25 @@ fn claude_code<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -
                 shell(&window.to_string())
             );
         }
+        if translated {
+            text.push_str(
+                "# Reached by translation, which refuses structured outputs from Claude Code.\n\
+                 export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n",
+            );
+        }
     }
     if !any {
-        text.push_str(&none_for("Claude Code", Wire::Messages));
+        text.push_str(&none_for("Claude Code", Wire::Messages, true));
     }
     text
 }
 
-/// The plain-text answer: where the others are found, and the Loom profile per model on the
-/// chat wire, as the llm catalog lines of design § 5 step 7.
+/// The plain-text answer: where the others are found, and the Loom profile per model profiled
+/// on the chat wire, as the llm catalog lines of design § 5 step 7.
 fn plain<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> String {
     let mut text = PLAIN_HEADER.to_owned();
     let mut any = false;
-    for model in models.filter(|model| profiled(model, Wire::Chat)) {
+    for model in models {
         any = true;
         let alias = model.alias().as_str();
         let _ = writeln!(text, "\n# model {alias}");
@@ -276,7 +305,7 @@ fn plain<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> Stri
         }
     }
     if !any {
-        text.push_str(&none_for("Loom", Wire::Chat));
+        text.push_str(&none_for("Loom", Wire::Chat, false));
     }
     text
 }

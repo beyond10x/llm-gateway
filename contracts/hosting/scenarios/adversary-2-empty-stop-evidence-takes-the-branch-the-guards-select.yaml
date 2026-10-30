@@ -1,0 +1,17 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: adversary-2-empty-stop-evidence-takes-the-branch-the-guards-select
+summary: "ess admits empty evidence; changed for story:hosting-lifecycle-declared: invalid-identifier is guarded on empty evidence, so ConfirmStopped must answer it, not confirmed"
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.Declare
+  input: {id: d1, request_id: request-d1, reservation_id: reservation-a}
+  outcome: declared
+- at: '2026-10-30T12:00:01Z'
+  command: llm-gateway.hosting.Provision
+  input: {id: d1, answer: Accepted}
+  outcome: accepted
+- at: '2026-10-30T12:00:02Z'
+  command: llm-gateway.hosting.ConfirmStopped
+  input: {id: d1, evidence: ''}
+  outcome: invalid-identifier

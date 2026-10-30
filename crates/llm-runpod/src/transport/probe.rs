@@ -68,6 +68,43 @@ impl Drop for BearerKey {
     }
 }
 
+/// The probe's request, which carries the model's key. It is written into one allocation of
+/// exactly its length, taken before the key is written into it, so it never reallocates and
+/// leaves no copy of the key in freed memory, and it is overwritten, spare capacity included,
+/// when dropped. Best effort without a `zeroize` dependency, as [`BearerKey`]'s overwrite is.
+struct Request(Vec<u8>);
+
+impl Request {
+    /// `pieces`, one after another.
+    fn of(pieces: &[&[u8]]) -> Self {
+        let mut request = Self(Vec::with_capacity(
+            pieces.iter().map(|piece| piece.len()).sum(),
+        ));
+        let sized = request.0.capacity();
+        for piece in pieces {
+            request.0.extend_from_slice(piece);
+        }
+        debug_assert_eq!(
+            request.0.capacity(),
+            sized,
+            "a probe request holding a key reallocated, leaving a copy of it in freed memory"
+        );
+        request
+    }
+
+    fn bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Drop for Request {
+    fn drop(&mut self) {
+        self.0.fill(0);
+        self.0.resize(self.0.capacity(), 0);
+        std::hint::black_box(&self.0);
+    }
+}
+
 /// Probes `<endpoint>models`. `200` is `Ready` with the served model names, `401`/`403`
 /// `Refused`, any other answer `NotReady`, and no answer `Unreachable`. An `https://` endpoint
 /// is probed through `tls`, and is `Unreachable` without it.
@@ -93,23 +130,24 @@ pub(super) fn models(
     if authority.is_empty() || authority.contains('@') {
         return Probe::Unreachable;
     }
-    let mut request = format!(
+    let start = format!(
         "GET /{path}models HTTP/1.1\r\nHost: {authority}\r\nAccept: application/json\r\nConnection: close\r\n"
     );
-    if let Some(key) = key {
-        let Some(token) = key.token() else {
-            return Probe::Unreachable;
-        };
-        request.push_str("Authorization: Bearer ");
-        request.push_str(token);
-        request.push_str("\r\n");
-    }
-    request.push_str("\r\n");
-    let answer = match tls {
-        Some(tls) => exchange_tls(tls, authority, request.as_bytes(), timeout),
-        None => exchange(authority, request.as_bytes(), timeout),
+    let [label, token, line_end]: [&[u8]; 3] = match key {
+        None => [b""; 3],
+        Some(key) => {
+            let Some(token) = key.token() else {
+                return Probe::Unreachable;
+            };
+            [b"Authorization: Bearer ", token.as_bytes(), b"\r\n"]
+        }
     };
-    request.clear();
+    let request = Request::of(&[start.as_bytes(), label, token, line_end, b"\r\n"]);
+    let answer = match tls {
+        Some(tls) => exchange_tls(tls, authority, request.bytes(), timeout),
+        None => exchange(authority, request.bytes(), timeout),
+    };
+    drop(request);
     let Some(answer) = answer else {
         return Probe::Unreachable;
     };

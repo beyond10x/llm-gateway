@@ -14,7 +14,7 @@ task check
 
 It needs [Task](https://taskfile.dev) and the `ess` command of
 [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) 0.77.0 on
-`PATH`. CI's `Gate` workflow runs the same four stages on Rust 1.98.0; run it on that toolchain
+`PATH`. CI's `Gate` workflow runs the same five stages on Rust 1.98.0; run it on that toolchain
 (`RUSTUP_TOOLCHAIN=1.98.0 task check`), because a newer Clippy can add lints CI does not have.
 
 ## 1. Rust
@@ -73,7 +73,47 @@ The ESS system `llm-gateway` has seven domains under `spec/domains/`: `gateway`,
 `telemetry`, `hosting`, `runpod`, and the planned `upstream` and `clients`, which no code
 implements yet.
 
-## 4. Conformance
+## 4. Specification diff
+
+```bash
+cargo run --locked -p b10x-llm-gateway-conformance -- diff
+```
+
+```text
+comparing spec/ with spec/ at 6db89ae7af7ca5b3076da3e8a9791ed7b6c428b8 (merge base of origin/main and HEAD)
+llm-gateway v1 → v1
+  before  8f967aba724761aaced53b8f52ccc17bac94ff7c6c04c101eb933b937bf78531
+  after   8f967aba724761aaced53b8f52ccc17bac94ff7c6c04c101eb933b937bf78531
+
+no semantic change: these two revisions mean the same system
+gate --fail-on breaking-or-unknown: passed (0 acknowledged)
+```
+
+`task spec-diff` runs this stage alone. It compares `spec/` with the specification at the merge
+base of `origin/main` and `HEAD` (`--base` names another revision; CI names the pull request's
+base branch, or the previous head of `main` on a push) using
+`ess verify diff --fail-on breaking-or-unknown`. A change ESS classifies as breaking, such as a
+removed enum variant, or as unknown, such as a changed enum attribute value, fails the stage with
+exit 4 and is named on a `spec diff failed on:` line. An added domain, type or variant is
+compatible and passes.
+
+To ship a change the stage fails, review the delta and acknowledge it in
+`contracts/diff-acknowledgements.json`, bound to the `before` and `after` digests the run printed:
+
+```json
+{
+  "format": "ess-diff-acknowledgements/1",
+  "before": "<before digest>",
+  "after": "<after digest>",
+  "acknowledged": ["system/llm-gateway/unclassified-changed"]
+}
+```
+
+ESS refuses, with exit 1, a file bound to any other pair of digests, naming an id the delta does
+not hold, or naming an id twice. The file is applied only when the change ships it: a copy the
+base already holds belongs to an earlier comparison.
+
+## 5. Conformance
 
 ```bash
 cargo run --locked -p b10x-llm-gateway-conformance -- check

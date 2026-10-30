@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:client-profiles-translated
 kind: story
-status: active
+status: implemented
 title: GET / offers each client only models its requests reach, translated or native
 relations:
 - decomposes: epic:gateway
@@ -11,28 +11,35 @@ relations:
 scope:
 - confidence: cited
   path: contracts/gateway/scenarios
-- confidence: inferred
+- confidence: cited
+  path: crates/llm-gateway-cli/src/admission
+- confidence: cited
   path: crates/llm-gateway-cli/src/translate.rs
 - confidence: cited
+  path: crates/llm-gateway-docs/src/status.rs
+- confidence: cited
   path: crates/llm-gateway/src/listing.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/relay.rs
 - confidence: cited
   path: crates/llm-gateway/src/server.rs
-- confidence: inferred
+- confidence: cited
   path: crates/llm-gateway/src/translate.rs
-- confidence: inferred
-  path: crates/llm-gateway/tests/public_listing.rs
 - confidence: cited
   path: docs/gateway.md
 - confidence: cited
   path: spec/domains/clients.yaml
 - confidence: cited
   path: spec/domains/gateway.yaml
-revision: 7
+- confidence: cited
+  path: website/docs/guides/set-up-a-client.md
+- confidence: cited
+  path: website/docs/guides/translate-between-wires.md
+revision: 13
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 5}
 - {from: "proposed", to: "active", at: "2026-10-17T10:09:03Z", actor: "human:timo", revision: 6}
+- {from: "active", to: "implemented", at: "2026-10-30T20:49:01Z", actor: "human:timo", revision: 13, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 ## Outcome
 

@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-30T18:23:40Z",
+  "actor": "human:timo",
+  "artifact": "story:spec-diff-gate",
+  "kind": "story",
+  "revision": 14,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "cargo test --locked -p b10x-llm-gateway-conformance --test spec_diff",
+    "reference": "VERIFIED, new behaviour: base f3c076f4 has no diff subcommand (8 failed, unrecognized subcommand 'diff'); impl/spec-diff-gate 99726a67: 8 passed; cargo run -p b10x-llm-gateway-conformance -- diff on the wave tree: no semantic change, exit 0"
+  }
+}

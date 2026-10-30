@@ -1975,7 +1975,8 @@ fn w4_on_the_chat_and_responses_wires_effort_max_passes_unchanged() {
 /// The name the pinned vLLM serves the model under, as its answers in the fixtures carry it.
 const SERVED_QWEN: &str = "Qwen/Qwen3.8-27B-FP8";
 
-const TOOL_TURN_REQUEST: &str = include_str!("fixtures/claude-code/1-tool-turn.request.txt");
+const TOOL_TURN_REQUEST: &str =
+    include_str!("../../llm-gateway-cli/src/admission/claude-code/1-tool-turn.request.txt");
 const TOOL_TURN_RESPONSE: &str = include_str!("fixtures/claude-code/1-tool-turn.response.txt");
 const TOOL_RESULT_REQUEST: &str = include_str!("fixtures/claude-code/2-tool-result.request.txt");
 const TOOL_RESULT_RESPONSE: &str = include_str!("fixtures/claude-code/2-tool-result.response.txt");

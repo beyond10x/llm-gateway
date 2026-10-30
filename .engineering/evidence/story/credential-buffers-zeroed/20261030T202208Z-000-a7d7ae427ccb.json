@@ -1,0 +1,15 @@
+{
+  "at": "2026-10-30T20:22:08Z",
+  "actor": "human:timo",
+  "artifact": "story:credential-buffers-zeroed",
+  "kind": "story",
+  "revision": 8,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:security-w06-credential-buffers",
+    "reference": "impl/credential-buffers-zeroed@ebbd419",
+    "review": "review-result:security-w06-credential-buffers",
+    "outcome": "fixed"
+  }
+}

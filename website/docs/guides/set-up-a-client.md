@@ -20,9 +20,13 @@ Start the gateway as in [Getting started](../getting-started.md). Its document d
 | starts with `mozilla/` | an HTML page | `text/html; charset=utf-8` |
 | anything else, or none | plain text with the llm catalog lines a Loom run needs | `text/plain; charset=utf-8` |
 
-A client gets a profile for a model only when the model declares the client's wire (Codex
-`responses`, Claude Code `messages`, Loom `chat`) **and** `tool_calling = "parsed"`. Each answer
-counts one `llmgw_instruction_views_total`.
+A client gets a profile for a model only when the client's requests reach the model on the
+client's wire (Codex `responses`, Claude Code `messages`, Loom `chat`) **and** the model has
+`tool_calling = "parsed"`. They reach it on a wire the model declares, which is relayed, or on
+another wire when the gateway translates the client's recorded first turn to the model's wire
+without a refusal ([Translate between wires](translate-between-wires.md)). A Loom run is
+profiled only for models that declare `chat`. Each answer counts one
+`llmgw_instruction_views_total`.
 
 :::caution[Planned: no client has run a live session]
 These settings point a client at this gateway. The shipped binary relays to no Runpod pod yet, so
@@ -74,6 +78,20 @@ export ANTHROPIC_DEFAULT_HAIKU_MODEL='small'
 export CLAUDE_CODE_SUBAGENT_MODEL='small'
 export CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'
 ```
+
+A block for a model Claude Code's requests reach only translated ends with two more lines:
+
+```bash
+# Reached by translation, which refuses structured outputs from Claude Code.
+export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'
+```
+
+The translation refuses `output_config.format` with `translation-unsupported`, and Claude Code
+sends it in side requests unless that variable is set
+([Translate between wires](translate-between-wires.md#claude-code-and-codex)). That the
+variable stops it is what Claude Code's published
+[gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol) says; it has not been
+observed against a live Claude Code client.
 
 What the gateway does with what Claude Code sends, for a model served by vLLM v0.27.1 with the
 Qwen3.8 chat template ([the relay](../concepts/relay.md)):

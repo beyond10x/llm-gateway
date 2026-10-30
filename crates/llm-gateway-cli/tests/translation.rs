@@ -151,6 +151,8 @@ fn header<'a>(request: &'a str, name: &str) -> Option<&'a str> {
 struct Server {
     child: Child,
     address: SocketAddr,
+    /// Every line the binary wrote to standard error before it reported its address.
+    startup: Vec<String>,
     /// Every line the binary wrote to standard error after it reported its address.
     lines: mpsc::Receiver<String>,
 }
@@ -181,19 +183,22 @@ impl Server {
             }
         });
         let deadline = Instant::now() + STARTUP;
+        let mut startup = Vec::new();
         let address = loop {
             let left = deadline.saturating_duration_since(Instant::now());
             let line = lines.recv_timeout(left).unwrap_or_else(|_| {
                 drop(child.kill());
-                panic!("the binary never reported {LISTENING:?}");
+                panic!("the binary never reported {LISTENING:?}: {startup:#?}");
             });
             if let Some(address) = line.strip_prefix(LISTENING) {
                 break address.parse().unwrap();
             }
+            startup.push(line);
         };
         Self {
             child,
             address,
+            startup,
             lines,
         }
     }
@@ -216,6 +221,20 @@ impl Server {
             stream,
             "POST {path} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
             body.len()
+        )
+        .unwrap();
+        let mut raw = Vec::new();
+        drop(stream.read_to_end(&mut raw));
+        String::from_utf8_lossy(&raw).into_owned()
+    }
+
+    /// A `GET` of `path` without a credential, with `user_agent`; the whole answer.
+    fn get(&self, path: &str, user_agent: &str) -> String {
+        let mut stream = TcpStream::connect(self.address).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        write!(
+            stream,
+            "GET {path} HTTP/1.1\r\nhost: gateway\r\nuser-agent: {user_agent}\r\n\r\n"
         )
         .unwrap();
         let mut raw = Vec::new();
@@ -404,10 +423,10 @@ fn fixture_body(text: &str) -> String {
 
 /// Claude Code's first turn (the authored fixture of `crates/llm-gateway`).
 const CLAUDE_CODE_FIRST_TURN: &str =
-    include_str!("../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt");
+    include_str!("../src/admission/claude-code/1-tool-turn.request.txt");
 /// Codex 0.160.0's first and second turns, captured and sanitized in llm 0.7.0
 /// (`tests/fixtures/codex/README.md`).
-const CODEX_FIRST_TURN: &str = include_str!("fixtures/codex/first-turn.json");
+const CODEX_FIRST_TURN: &str = include_str!("../src/admission/codex/first-turn.json");
 const CODEX_SECOND_TURN: &str = include_str!("fixtures/codex/second-turn.json");
 
 /// The JSON body of the one request `seen` holds.
@@ -600,6 +619,148 @@ fn translation_codexs_first_turn_is_carried_to_messages() {
     }
     assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
     assert!(answer.contains("event: response.completed"), "{answer}");
+}
+
+// --- Which clients a translated model is profiled for (story:client-profiles-translated) -------
+
+/// The translator admits Codex and Claude Code exactly where llm carries their recorded first
+/// turns, the ones the cases above send: its answer and `prepare`'s agree for every upstream
+/// wire either is translated to.
+#[test]
+fn translation_codex_and_claude_code_are_admitted_where_llm_carries_their_first_turns() {
+    let translator = LlmTranslator::new();
+    let claude_code = fixture_body(CLAUDE_CODE_FIRST_TURN);
+    for (client, body, upstreams) in [
+        (
+            Wire::Responses,
+            CODEX_FIRST_TURN,
+            [Wire::Chat, Wire::Messages],
+        ),
+        (
+            Wire::Messages,
+            claude_code.as_str(),
+            [Wire::Chat, Wire::Responses],
+        ),
+    ] {
+        for upstream in upstreams {
+            let model = relay_model("code", vec![upstream]);
+            assert_eq!(
+                prepared(client, upstream, body.as_bytes()),
+                None,
+                "{client:?} to {upstream:?}"
+            );
+            assert!(
+                translator.admits(client, &model, upstream),
+                "{client:?} to {upstream:?}"
+            );
+        }
+    }
+}
+
+/// Where llm refuses a client's recorded first turn, the client is not admitted. Claude Code's
+/// turn asks for effort `max`, which reaches a chat upstream as `xhigh`, and 32000 output
+/// tokens: a route under llm's default capabilities (efforts `low` to `high`, 16384 output
+/// tokens) refuses it, and so does one lacking either `xhigh` or the 32000, while one with both
+/// admits it. Codex's turn, at effort `high` with no output limit, is admitted under the
+/// defaults. Neither client's tools reach a model whose tool calling is absent. A Loom run, of
+/// which no turn is recorded, is admitted nowhere.
+#[test]
+fn translation_a_client_is_not_admitted_where_llm_refuses_its_first_turn() {
+    let chat = relay_model("code", vec![Wire::Chat]);
+    let routed =
+        LlmTranslator::new().with_capabilities("code", llm_models::routes::default_capabilities());
+    assert!(!routed.admits(Wire::Messages, &chat, Wire::Chat));
+    assert!(routed.admits(Wire::Responses, &chat, Wire::Chat));
+    let under = |efforts: &[&str], output: u64| {
+        let mut capabilities = llm_models::routes::default_capabilities();
+        capabilities.reasoning_efforts = efforts.iter().map(|&effort| effort.to_owned()).collect();
+        capabilities.max_output_tokens = output;
+        LlmTranslator::new().with_capabilities("code", capabilities)
+    };
+    let up_to_xhigh = ["low", "medium", "high", "xhigh"];
+    for (efforts, output, admitted) in [
+        (&up_to_xhigh[..], 16_384, false),
+        (&up_to_xhigh[..3], 32_000, false),
+        (&up_to_xhigh[..], 32_000, true),
+    ] {
+        assert_eq!(
+            under(efforts, output).admits(Wire::Messages, &chat, Wire::Chat),
+            admitted,
+            "efforts {efforts:?}, {output} output tokens"
+        );
+    }
+    let translator = LlmTranslator::new();
+    let text_only = RelayModel::new(
+        Label::new("code").unwrap(),
+        Label::new("served").unwrap(),
+        vec![Wire::Chat],
+    )
+    .unwrap();
+    assert!(!translator.admits(Wire::Responses, &text_only, Wire::Chat));
+    assert!(!translator.admits(Wire::Messages, &text_only, Wire::Chat));
+    for upstream in [Wire::Responses, Wire::Messages] {
+        let model = relay_model("code", vec![upstream]);
+        assert!(
+            !translator.admits(Wire::Chat, &model, upstream),
+            "{upstream:?}"
+        );
+    }
+}
+
+/// Through the binary, `GET /` hands Codex and Claude Code the hosted models their first turns
+/// translate to beside the ones they reach natively, and a Loom run only the model on its own
+/// wire; a model without tool calling no one. Composing asks about every model and writes no
+/// `translation refused` line, although the model without tool calling refuses both turns.
+#[test]
+fn translation_get_root_profiles_codex_and_claude_code_where_their_turns_translate() {
+    let fixture = Fixture::new("translation-profiles");
+    let hosted = |alias: &str, wire: &str, tools: &str| {
+        format!(
+            "[hosted.{alias}]\nwires = [\"{wire}\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nupstream_model = \"served\"\nauth_kind = \"anonymous\"\n{tools}"
+        )
+    };
+    let parsed = "tool_calling = \"parsed\"\n";
+    let table = [
+        hosted("chat-up", "chat", parsed),
+        hosted("msg-up", "messages", parsed),
+        hosted("notools", "chat", ""),
+    ]
+    .concat();
+    let server = Server::start(&document(&fixture, &table));
+    let startup = server.startup.clone();
+    let codex = server.get("/", "codex-cli/1.0");
+    let claude = server.get("/", "claude-cli/2.1.293");
+    let loom = server.get("/", "curl/8.0");
+    let log = server.log();
+    assert!(codex.contains("model = \"chat-up\"\n"), "{codex}");
+    assert!(codex.contains("model = \"msg-up\"\n"), "{codex}");
+    assert!(
+        claude.contains("export ANTHROPIC_MODEL='chat-up'\n"),
+        "{claude}"
+    );
+    assert!(
+        claude.contains("export ANTHROPIC_MODEL='msg-up'\n"),
+        "{claude}"
+    );
+    let (translated, native) = claude.split_once("\n# model msg-up\n").unwrap();
+    assert!(
+        translated.ends_with("export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n"),
+        "story:client-profiles-translated: the translated model's block turns structured output off: {claude}"
+    );
+    assert!(
+        !native.contains("CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS"),
+        "story:client-profiles-translated: the native model's block keeps structured output: {claude}"
+    );
+    assert!(loom.contains("upstream_name = \"chat-up\"\n"), "{loom}");
+    assert!(!loom.contains("msg-up"), "{loom}");
+    for answer in [&codex, &claude, &loom] {
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+        assert!(!answer.contains("notools"), "{answer}");
+    }
+    for line in startup.iter().chain(&log) {
+        assert!(!line.contains("translation refused"), "{line}");
+        assert!(!line.contains("dropped a field"), "{line}");
+    }
 }
 
 /// The user prompt and environment block of Claude Code 2.1.300's headless request, whose
@@ -987,7 +1148,7 @@ fn translation_no_log_line_carries_a_seal_or_the_upstream_state() {
 /// What llm 0.13.0 still refuses, it refuses by name, and the gateway answers each
 /// `translation-unsupported` before asking for a target: Claude Code's structured-output turn
 /// (`output_config.format`), `thinking.display`, `context_management` and `safeguards`, and a
-/// message of a role outside the subset (`tool`; llm 0.19.0 reads `system`); on Responses,
+/// message of a role outside the subset (`tool`; llm 0.20.0 reads `system`); on Responses,
 /// `text.format` and a hosted tool.
 #[test]
 fn translation_fields_llm_still_refuses_are_refused_by_name() {

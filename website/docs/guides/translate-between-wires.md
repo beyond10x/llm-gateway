@@ -10,7 +10,7 @@ source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crat
 
 The binary answers all three wires for every model. When the client's wire is one the model
 declares, the request goes to the upstream byte for byte, as [the relay](../concepts/relay.md)
-describes. When it is not, the gateway decodes the request with llm 0.19.0's decoder for the
+describes. When it is not, the gateway decodes the request with llm 0.20.0's decoder for the
 client's wire, sends the turn to the upstream with llm's client for the model's **first** declared
 wire, and writes the answer back on the client's wire with llm's encoder.
 
@@ -174,9 +174,13 @@ curl -s http://127.0.0.1:8080/v1/routes -H "$token"
 
 `config_digest` is the SHA-256 of `gateway.toml` exactly as read, its final newline included.
 
-`GET /` hands each client the settings for the models it can call on their own wire, as for
-any model. For this document Claude Code is handed the `codex` route, which reaches Anthropic
-natively, and Codex is handed nothing:
+`GET /` hands each client the settings for the models its requests reach: on the model's own
+wire, or on another when the gateway translates the client's recorded first turn there without a
+refusal. The gateway tries each client's turn once, at start. For this document Claude Code is
+handed the `codex` route, which reaches Anthropic natively, and not `claude`: its first turn
+asks for effort `max`, which reaches Chat Completions as `xhigh`, and for 32000 output tokens,
+while a plain route's efforts stop at `high` and its output at 16384 tokens. Codex is handed
+both routes, since its first turn, at effort `high`, translates to either wire:
 
 ```bash
 curl -s http://127.0.0.1:8080/ -A "claude-cli/2.1.0 (external, cli)"
@@ -202,15 +206,35 @@ export CLAUDE_CODE_MAX_CONTEXT_TOKENS='200000'
 # tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the
 # gateway's owner token, and start Codex with `codex --profile <alias>`.
 
-# No model of this gateway serves Codex: none declares the responses wire with tool
-# calling parsed.
+# ~/.codex/claude.config.toml
+model = "claude"
+model_provider = "b10x-gateway"
+model_context_window = 200000
+
+[model_providers.b10x-gateway]
+name = "b10x llm-gateway"
+base_url = "http://127.0.0.1:8080/v1"
+env_key = "B10X_GATEWAY_TOKEN"
+wire_api = "responses"
+
+# ~/.codex/codex.config.toml
+model = "codex"
+model_provider = "b10x-gateway"
+model_context_window = 200000
+
+[model_providers.b10x-gateway]
+name = "b10x llm-gateway"
+base_url = "http://127.0.0.1:8080/v1"
+env_key = "B10X_GATEWAY_TOKEN"
+wire_api = "responses"
 ```
 
 Claude Code on `codex` is relayed to Anthropic as it sends its requests, `thinking` and all,
-with the route's `anthropic-version`. `GET /` profiles a model only on a wire its upstream
-speaks, so a translated route gets no client profile. Codex's first turn to `codex` and Claude
-Code's first turn to `claude` are translated and sent ([how](#claude-code-and-codex)). What llm
-still refuses is refused before any request leaves the gateway: here Codex asking for structured
+with the route's `anthropic-version`. Codex's first turn to either route is translated and sent
+([how](#claude-code-and-codex)). Claude Code's first turn reaches `claude` once the route is a
+mapping whose `capabilities` name `xhigh` among its `reasoning_efforts` and allow at least
+32000 `max_output_tokens`; `GET /` then profiles it there too. What llm still refuses is
+refused before any request leaves the gateway: here Codex asking for structured
 output with `text.format` to `codex`, Claude Code's `thinking.display` and a thinking budget,
 which Chat Completions cannot hold, to `claude`:
 
@@ -292,9 +316,9 @@ that names no output limit gets half the model's window (200000 when it declares
   restart, start a new conversation.
 - **Claude Code's later turns** replay the signed `thinking` blocks of its previous answer. No
   seal is handed to a Messages client (llm's Messages encoder places a block the stream did not
-  show after every streamed one), so a translated route still refuses those turns
-  `translation-opaque-state`. Point Claude Code at a model whose upstream speaks Messages;
-  `GET /` profiles only those.
+  show after every streamed one), so a translated route refuses a turn replaying such a block
+  `translation-opaque-state`, as it does one signed by another upstream. `GET /` profiles
+  Claude Code for a translated route by its first turn only.
 - **A `system` message inside Messages `messages`**, which headless Claude Code sends after
   the user prompt, is carried to every upstream wire and to Bedrock. Leading ones join the
   system prompt in order. A later one stays at its place as user text in the mark
@@ -303,6 +327,15 @@ that names no output limit gets half the model's window (200000 when it declares
   `response_format`), `context_management`, `thinking.display`, hosted and custom tools, a
   thinking budget to a chat or responses upstream, and a `developer` message after the first
   item of Responses `input`.
+- **Claude Code's structured output**: Claude Code sends `output_config.format` in side
+  requests unless `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` is set, and every translated
+  route, Bedrock's included, refuses it `translation-unsupported`. So the `GET /` block of a
+  model Claude Code reaches only translated ends with
+  `export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'`. That the variable stops the request is
+  what Claude Code's published
+  [gateway protocol](https://code.claude.com/docs/en/llm-gateway-protocol) says; it has not been
+  observed against a live Claude Code client. A block for a model it reaches natively keeps
+  structured output.
 
 ## Refusals
 

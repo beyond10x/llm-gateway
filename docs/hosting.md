@@ -98,6 +98,81 @@ Any pair outside that table is refused by `Phase::may_become`, and the refusals 
 The table is published as an observed fact, so a reader of the conformance suite sees the
 transitions the library actually enforces rather than the ones a document claims.
 
+### The table as a declared lifecycle
+
+The same pairs are the ESS lifecycle of `llm-gateway.hosting.OwnedResource`
+(`spec/domains/hosting.yaml`). The record carries no `phase` field: its lifecycle state is the
+phase. The states are `Phase`'s, `Stopped`, `Cancelled` and `Disowned` are terminal, and the
+(from, to) pairs of its twelve transitions are exactly the 21 of `TRANSITIONS`, which
+`the_owned_resource_lifecycle_is_the_published_transition_table` in
+`checks/conformance/src/hosting.rs` compares in both directions. Every transition is moved by a
+declared command outcome:
+
+| Transition | Pairs | Command and outcome | What the controller was given |
+| --- | --- | --- | --- |
+| `submit` | `Declared -> Requested` | `Provision` `accepted` | a create answered `Accepted` |
+| `lose` | `Declared -> Uncertain` | `Provision` `lost` | a create whose answer was lost (`Unknown`) |
+| `misanswer` | `Declared -> Uncertain` | `Provision` `misanswered` | an accepted create naming another account |
+| `withdraw` | `Declared -> Cancelled` | `Provision` `refused` | a create `Rejected` or `NotSent` |
+| `cancel` | `Declared -> Cancelled` | `Cancel` `cancelled` | `Cancel` of a record never submitted |
+| `confirm` | `Uncertain -> Requested` | `Retry` `accepted` | a retry answered `Accepted` |
+| `relose` | `Uncertain -> Uncertain` | `Retry` `lost` | a retry whose answer was lost again |
+| `hold` | `Requested -> Requested` | `ObserveUnlisted` `unconfirmed` | a partial listing without the resource |
+| `adopt` | `Requested`, `Active`, `Uncertain` `-> Active` | `ObserveListed` `adopted` | a listing carrying the resource under this controller's tag |
+| `oblige` | each of `Requested`, `Active`, `Uncertain`, `StopRequired` `-> StopRequired` | `RequestStop` `obliged` | `RequestStop` |
+| `discharge` | the same four `-> Stopped` | `ConfirmStopped` `confirmed` | `ConfirmStopped` with the caller's evidence |
+| `disown` | the same four `-> Disowned` | `ObserveTakenOver` `taken-over` | a listing carrying the resource retagged at a strictly newer epoch |
+
+The conformance target answers these commands by driving the real `Controller` through
+`Controller::apply` against the in-process `FakeProvider`, one controller, fake and lease registry
+per record, so a command on one record cannot move another. `Declare` records the deployment and
+takes its lease; every later command runs under that lease, so the phase decides. A command the
+table refuses answers the controller's own `wrong-phase`, an unknown id `missing`, a second
+declaration `duplicate`. The three `Observe*` commands answer `unchanged` where the listing moves
+nothing, as `StopRequired` does under a healthy listing (scenario
+`a-later-healthy-observation-does-not-withdraw-a-stop-obligation`).
+
+A submitted create has a resource behind it whichever answer came back, so `ObserveListed` and
+`ObserveTakenOver` list it on every route into `Uncertain`, an accepted create answered about
+another account's resource included (scenarios
+`a-create-accepted-outside-the-scope-is-adopted-by-a-listing-that-carries-it` and
+`…-is-disowned-by-a-listing-retagged-at-a-newer-epoch`). `ObserveTakenOver` is a successor taking
+the lease over at a newer epoch once this controller's claim ran out, so the lease registry moves
+with it: `Provision` and `Retry` on the `Disowned` record answer the controller's `stale-epoch`,
+which `Controller::fence` returns before the phase is read, and every other phase without an edge
+answers `wrong-phase`. ESS 0.77.0 refuses a state-specific branch beside `wrong_state:` under
+`format: ess/23`, so those two commands name the held states of every branch, and the view
+`OwnedResources` publishes every `OwnedResource` field for the check that such a refusal left the
+record unchanged.
+
+Every identifier a lifecycle command passes to the controller, the stop evidence included, is a
+hosting identifier: 1 to 256 printable ASCII bytes with no space, as `Identifier::new` accepts.
+A declared type does not keep a scenario from sending another value: ESS 0.77.0 accepts an
+authored input that breaks its declared type, such as a `Declare` whose `id` holds a space. So
+the commands declare the refusal instead. Every lifecycle command but `Provision` and `Retry`
+answers `invalid-identifier` before any record is read where one of its identifiers is empty,
+holds a space or is over 256 bytes (scenarios
+`adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input` and
+`a-stop-confirmed-with-evidence-holding-a-space-is-discharged`, whose expected outcomes were
+changed to that refusal, and the three `…-one-byte-too-long-…` scenarios). Two limits of ESS
+0.77.0 remain. Its guards cannot say "a byte outside printable ASCII", which `Identifier::new`
+also refuses, so such a value is a target error, not a declared outcome. And `Provision` and
+`Retry` declare no `invalid-identifier`: their `answer` guards cover every answer and neither
+command has a default branch, so ESS 0.77.0 asks the refusal's witness to refute all of them and
+finds none. An authored scenario that sends either one an identifier `Identifier::new` refuses
+meets a target error; no synthesized scenario does.
+
+`ess verify conform mutate --class from-drop --class transition-to` scores a mutant for every
+transition and none survives; the run, and the four mutants ESS refuses to emit because their
+target state would become unreachable, are in
+[verification/2026-10-30-hosting-lifecycle-mutation.md](verification/2026-10-30-hosting-lifecycle-mutation.md).
+
+The listing has three commands rather than one `Observe` with a `listing` input because of a gap
+in ESS 0.77.0: it derives the wrong states of a command, not of each move, so with one command
+the scenarios never send a `Listed` listing to a `StopRequired` record and dropping a source state
+from `adopt` or `disown` changed no expectation. Split, each command has one move and its own
+wrong states. The specification marks this as an ESS 0.77.0 workaround.
+
 **A phase write guarded on `may_become` and nothing else is silent when the table forbids it.**
 That is not a hypothetical: code written for a foreign owner tag once asked for
 `Active -> Uncertain`, which is not an edge, and the record stayed live and unobliged with no

@@ -6,7 +6,7 @@
   "type": "object",
   "properties": {
     "id": {
-      "type": "string"
+      "$ref": "#/$defs/llm-gateway.hosting.DeploymentId"
     },
     "controller_id": {
       "type": "string",
@@ -23,19 +23,16 @@
       "type": "string"
     },
     "reservation_id": {
-      "type": "string"
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier"
     },
     "request_id": {
-      "type": "string"
-    },
-    "phase": {
-      "$ref": "#/$defs/llm-gateway.hosting.Phase"
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier"
     },
     "stop_reason": {
       "$ref": "#/$defs/llm-gateway.hosting.StopReason"
     },
     "stop_evidence": {
-      "type": "string"
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier"
     },
     "resource_name": {
       "type": "string"
@@ -53,73 +50,45 @@
     "deployment_spec_id",
     "reservation_id",
     "request_id",
-    "phase",
     "state"
   ],
   "additionalProperties": false,
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8f967aba724761aaced53b8f52ccc17bac94ff7c6c04c101eb933b937bf78531",
-    "contract_digest": "slice-sha256/2:99889c95986bc96aa3044a52edcebb9f9ad49c62aae291e22e3ff8fbd0d208a6",
+    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
+    "contract_digest": "slice-sha256/2:d63ad34579c02e433662be48d6a3422db540f7432dd9b3b298b1f8257da36b13",
     "regenerate": "ess generate"
   },
   "$defs": {
+    "llm-gateway.hosting.DeploymentId": {
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier",
+      "title": "DeploymentId",
+      "x-ess-name": "llm-gateway.hosting.DeploymentId",
+      "x-ess-kind": "newtype"
+    },
+    "llm-gateway.hosting.Identifier": {
+      "title": "Identifier",
+      "x-ess-name": "llm-gateway.hosting.Identifier",
+      "x-ess-kind": "newtype",
+      "type": "string",
+      "pattern": "^[\\u0020-\\u007E]*$",
+      "x-ess-alphabet": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    },
     "llm-gateway.hosting.OwnedResource.State": {
       "title": "State",
       "x-ess-name": "llm-gateway.hosting.OwnedResource.State",
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Observed"
-      ]
-    },
-    "llm-gateway.hosting.Phase": {
-      "title": "Phase",
-      "x-ess-name": "llm-gateway.hosting.Phase",
-      "x-ess-kind": "enum",
-      "type": "string",
-      "enum": [
-        "Declared",
-        "Requested",
         "Active",
-        "Uncertain",
+        "Cancelled",
+        "Declared",
+        "Disowned",
+        "Requested",
         "StopRequired",
         "Stopped",
-        "Cancelled",
-        "Disowned"
-      ],
-      "x-ess-attributes": [
-        {
-          "kind": "boolean",
-          "name": "owes_a_stop",
-          "type": "Boolean",
-          "values": {
-            "Active": false,
-            "Cancelled": false,
-            "Declared": false,
-            "Disowned": false,
-            "Requested": false,
-            "StopRequired": true,
-            "Stopped": false,
-            "Uncertain": true
-          }
-        },
-        {
-          "kind": "boolean",
-          "name": "occupies_a_slot",
-          "type": "Boolean",
-          "values": {
-            "Active": true,
-            "Cancelled": false,
-            "Declared": false,
-            "Disowned": false,
-            "Requested": true,
-            "StopRequired": true,
-            "Stopped": false,
-            "Uncertain": true
-          }
-        }
+        "Uncertain"
       ]
     },
     "llm-gateway.hosting.StopReason": {

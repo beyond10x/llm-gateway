@@ -2,12 +2,37 @@
 format: aep.planning-md/3
 id: story:credential-buffers-zeroed
 kind: story
-status: draft
+status: implemented
 title: No buffer holding a credential is freed unzeroed
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-revision: 1
+scope:
+- confidence: cited
+  path: crates/llm-gateway-cli/src/bedrock.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/credential.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/hosted.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/keys.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/serve.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/trusted.rs
+- confidence: cited
+  path: crates/llm-gateway/src/auth.rs
+- confidence: cited
+  path: crates/llm-gateway/src/server.rs
+- confidence: cited
+  path: crates/llm-runpod/src/transport/probe.rs
+- confidence: cited
+  path: docs/verification/2026-10-30-credential-buffers-zeroed.md
+revision: 11
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-30T18:08:40Z", actor: "human:timo", revision: 7}
+- {from: "proposed", to: "active", at: "2026-10-30T18:08:40Z", actor: "human:timo", revision: 8}
+- {from: "active", to: "implemented", at: "2026-10-30T20:49:01Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"test_result":1,"review_outcome":3,"verification":1}}}
 ---
 ## Outcome
 

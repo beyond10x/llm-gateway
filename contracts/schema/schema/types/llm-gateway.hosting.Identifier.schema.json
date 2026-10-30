@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.Identifier",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
+    "contract_digest": "slice-sha256/2:9a0af735c32ca2fea95e0a6504488199a1ade3e0b575e54ac9ea817750244d0a",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.Identifier": {
+      "title": "Identifier",
+      "x-ess-name": "llm-gateway.hosting.Identifier",
+      "x-ess-kind": "newtype",
+      "type": "string",
+      "pattern": "^[\\u0020-\\u007E]*$",
+      "x-ess-alphabet": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    }
+  }
+}

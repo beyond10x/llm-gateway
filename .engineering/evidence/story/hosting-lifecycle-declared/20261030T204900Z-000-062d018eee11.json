@@ -1,0 +1,13 @@
+{
+  "at": "2026-10-30T20:49:00Z",
+  "actor": "human:timo",
+  "artifact": "story:hosting-lifecycle-declared",
+  "kind": "story",
+  "revision": 13,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "local gate on wave/2026-10-30-w06: fmt, ess validate, clippy 1.98.0 -D warnings, cargo test of the five packages, conformance check 395/395, spec diff, docs generate --check; translation_guards re-run green after 756d552",
+    "reference": "wave/2026-10-30-w06@756d552"
+  }
+}

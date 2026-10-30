@@ -20,7 +20,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.21.0, released 2026-10-30 as a source release with the gateway image; tested
+**Status: 0.22.0, released 2026-10-30 as a source release with the gateway image; tested
 against in-process fakes and loopback; nothing is deployed or qualified.**
 [CHANGELOG.md](CHANGELOG.md) lists every release and what is unreleased.
 
@@ -31,7 +31,7 @@ are llm's. The gateway library relays the owner's chat, responses and messages r
 its embedding hands out, and serves health and readiness probes, a public model listing with
 setup instructions per client, and a read-only route inventory;
 it translates no protocol itself, but holds the port through which the binary translates a
-request on a wire the model's upstream does not speak, within llm 0.19.0's published subset
+request on a wire the model's upstream does not speak, within llm 0.20.0's published subset
 ([docs/gateway.md](docs/gateway.md), "Translation"): a field outside the subset is refused, never
 dropped. Claude Code's first turn and Codex's first turn are carried to another wire with their
 controls (effort, thinking, parallel tool calls, cache and verbosity hints). Codex's later turns
@@ -230,8 +230,8 @@ cargo test --workspace --locked
 task check
 ```
 
-`task check` adds formatting, Clippy, the documentation drift check, specification validation and
-the conformance suite. It needs [Task](https://taskfile.dev) and the `ess` command from
+`task check` adds formatting, Clippy, the documentation drift check, specification validation,
+the specification diff against the merge base with `origin/main` and the conformance suite. It needs [Task](https://taskfile.dev) and the `ess` command from
 [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) on `PATH`.
 [AGENTS.md](AGENTS.md) explains each step.
 

@@ -1,0 +1,29 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-stop-confirmed-with-evidence-holding-a-space-is-discharged
+summary: "evidence holding a space is not a hosting identifier, so ConfirmStopped refuses it and the record stays Requested; expected outcome changed for story:hosting-lifecycle-declared"
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.Declare
+  input: {id: d1, request_id: request-d1, reservation_id: reservation-a}
+  outcome: declared
+- at: '2026-10-30T12:00:01Z'
+  command: llm-gateway.hosting.Provision
+  input: {id: d1, answer: Accepted}
+  outcome: accepted
+- at: '2026-10-30T12:00:02Z'
+  command: llm-gateway.hosting.ConfirmStopped
+  input: {id: d1, evidence: operator ticket 1}
+  outcome: invalid-identifier
+assert:
+- view: llm-gateway.hosting.OwnedResources
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.OwnedResources
+  contains:
+    id: d1
+    state: Requested
+    request_id: request-d1
+    reservation_id: reservation-a
+    stop_evidence: null

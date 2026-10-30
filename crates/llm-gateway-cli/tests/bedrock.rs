@@ -658,7 +658,7 @@ fn fixture_body(text: &str) -> String {
 }
 
 const CLAUDE_CODE_FIRST_TURN: &str =
-    include_str!("../../llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt");
+    include_str!("../src/admission/claude-code/1-tool-turn.request.txt");
 const CLAUDE_CODE_TOOL_RESULT: &str =
     include_str!("../../llm-gateway/tests/fixtures/claude-code/2-tool-result.request.txt");
 

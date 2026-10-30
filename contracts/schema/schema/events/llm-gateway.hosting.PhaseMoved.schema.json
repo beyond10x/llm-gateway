@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PhaseMoved payload",
+  "x-ess-name": "llm-gateway.hosting.PhaseMoved",
+  "x-ess-kind": "event-payload",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/llm-gateway.hosting.DeploymentId"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
+    "contract_digest": "slice-sha256/2:2531980354a073fd1cb458a68af178527e1273808507d55c7f35106cbdb62c1d",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.DeploymentId": {
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier",
+      "title": "DeploymentId",
+      "x-ess-name": "llm-gateway.hosting.DeploymentId",
+      "x-ess-kind": "newtype"
+    },
+    "llm-gateway.hosting.Identifier": {
+      "title": "Identifier",
+      "x-ess-name": "llm-gateway.hosting.Identifier",
+      "x-ess-kind": "newtype",
+      "type": "string",
+      "pattern": "^[\\u0020-\\u007E]*$",
+      "x-ess-alphabet": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    }
+  }
+}

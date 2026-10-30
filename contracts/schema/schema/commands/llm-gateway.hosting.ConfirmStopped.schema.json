@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ConfirmStopped input",
+  "x-ess-name": "llm-gateway.hosting.ConfirmStopped",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/llm-gateway.hosting.DeploymentId"
+    },
+    "evidence": {
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier"
+    }
+  },
+  "required": [
+    "id",
+    "evidence"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
+    "contract_digest": "slice-sha256/2:14164b81fc95b52deb71f6fc0dfe864f70ebeb4f84cdafc6d3ef44cfdc6ce56b",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.DeploymentId": {
+      "$ref": "#/$defs/llm-gateway.hosting.Identifier",
+      "title": "DeploymentId",
+      "x-ess-name": "llm-gateway.hosting.DeploymentId",
+      "x-ess-kind": "newtype"
+    },
+    "llm-gateway.hosting.Identifier": {
+      "title": "Identifier",
+      "x-ess-name": "llm-gateway.hosting.Identifier",
+      "x-ess-kind": "newtype",
+      "type": "string",
+      "pattern": "^[\\u0020-\\u007E]*$",
+      "x-ess-alphabet": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+    }
+  }
+}

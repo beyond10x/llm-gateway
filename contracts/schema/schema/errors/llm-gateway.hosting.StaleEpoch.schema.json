@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "StaleEpoch payload",
+  "description": "`stale-epoch`: a strictly newer epoch owns this deployment's lease.",
+  "x-ess-name": "llm-gateway.hosting.StaleEpoch",
+  "x-ess-kind": "error-payload",
+  "type": "object",
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
+    "contract_digest": "slice-sha256/2:1127d9194bf89f99234523abee0b3953c3fd126af087d2c80d151c80149bcad9",
+    "regenerate": "ess generate"
+  }
+}

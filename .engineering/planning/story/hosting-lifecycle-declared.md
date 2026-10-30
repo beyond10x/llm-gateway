@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:hosting-lifecycle-declared
 kind: story
-status: proposed
+status: implemented
 title: The ownership state machine is an ESS lifecycle that mutation can audit
 relations:
 - decomposes: epic:spec-hardening
@@ -12,15 +12,25 @@ relations:
 - depends_on: story:runpod-production-transport
 - depends_on: story:gateway-spec-declarations
 scope:
-- confidence: inferred
+- confidence: cited
   path: checks/conformance/src/hosting.rs
-- confidence: inferred
+- confidence: cited
   path: checks/conformance/src/target.rs
-- confidence: inferred
+- confidence: cited
+  path: contracts/diff-acknowledgements.json
+- confidence: cited
+  path: contracts/hosting/scenarios
+- confidence: cited
+  path: docs/hosting.md
+- confidence: cited
+  path: docs/verification/2026-10-30-hosting-lifecycle-mutation.md
+- confidence: cited
   path: spec/domains/hosting.yaml
-revision: 6
+revision: 14
 transitions:
 - {from: "draft", to: "proposed", at: "2026-10-14T14:31:57Z", actor: "human:timo", revision: 6, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "proposed", to: "active", at: "2026-10-30T18:08:41Z", actor: "human:timo", revision: 11, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "active", to: "implemented", at: "2026-10-30T20:49:00Z", actor: "human:timo", revision: 14, decided_on: {"recorded":{"test_result":1,"review_outcome":3}}}
 ---
 ## Outcome
 

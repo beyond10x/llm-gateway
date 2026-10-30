@@ -444,38 +444,41 @@ fn probe(
     }
 }
 
-/// The directory `path` lives in: it must exist, and be owned by this user or root and not
-/// group- or world-writable, so that no other user can replace the file the server reads.
-fn directory(path: &Path) -> Result<PathBuf, CredentialFailure> {
-    let dir = match path.parent() {
+/// The directory `target.path` lives in: it must exist, and be owned by this user or root and
+/// not group- or world-writable, so that no other user can replace the file the server reads.
+/// A refusal is `<setting>: <detail>`, naming the setting the path was read from and never the
+/// path or its directory: a key written into the setting by mistake is not printed.
+fn directory(target: &CredentialTarget) -> Result<PathBuf, CredentialFailure> {
+    let setting = &target.key;
+    let dir = match target.path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
         _ => PathBuf::from("."),
     };
-    let missing = |detail: &str| {
+    let missing = |detail: &dyn fmt::Display| {
         CredentialFailure::new(
             CredentialRefusal::DirectoryMissing,
-            format!("{}: {detail}", dir.display()),
+            format!("{setting}: its directory {detail}"),
         )
     };
-    let metadata = fs::metadata(&dir).map_err(|error| missing(&error.to_string()))?;
+    let metadata =
+        fs::metadata(&dir).map_err(|error| missing(&format_args!("cannot be read: {error}")))?;
     if !metadata.is_dir() {
-        return Err(missing("is not a directory"));
+        return Err(missing(&"is not a directory"));
     }
     let owner = metadata.uid();
     let mode = metadata.permissions().mode() & 0o7777;
     if owner != geteuid().as_raw() && owner != 0 {
         return Err(CredentialFailure::new(
             CredentialRefusal::DirectoryUnsafe,
-            format!("{} is owned by neither this user nor root", dir.display()),
+            format!("{setting}: its directory is owned by neither this user nor root"),
         ));
     }
     if mode & 0o022 != 0 {
         return Err(CredentialFailure::new(
             CredentialRefusal::DirectoryUnsafe,
             format!(
-                "{} has mode {mode:04o}: another user could replace the key file; none of 022 \
-                 may be set",
-                dir.display()
+                "{setting}: its directory has mode {mode:04o}: another user could replace the \
+                 key file; none of 022 may be set"
             ),
         ));
     }
@@ -483,12 +486,13 @@ fn directory(path: &Path) -> Result<PathBuf, CredentialFailure> {
 }
 
 /// Writes `key` to a temporary file in `dir`, reads it back through the server's reader and
-/// token rule, and renames it over `target.path`. The temporary file is gone on every path.
+/// token rule, and renames it over `target.path`. The temporary file is gone on every path. A
+/// refusal names `target.key`, the setting, and never the path.
 fn write(target: &CredentialTarget, dir: &Path, key: &Key) -> Result<(), CredentialFailure> {
     let failed = |step: &str, detail: &dyn fmt::Display| {
         CredentialFailure::new(
             CredentialRefusal::Write,
-            format!("{}: {step}: {detail}", target.path.display()),
+            format!("{}: {step}: {detail}", target.key),
         )
     };
     let name = target
@@ -525,7 +529,7 @@ fn write(target: &CredentialTarget, dir: &Path, key: &Key) -> Result<(), Credent
                 &"the reader read other bytes than were written",
             ));
         }
-        fs::rename(&temporary, &target.path).map_err(|error| failed("renaming", &error))?;
+        fs::rename(&temporary, &target.path).map_err(|error| failed("renaming over it", &error))?;
         // The rename is durable once the directory is: best effort, the key is already in place.
         if let Ok(directory) = File::open(dir) {
             drop(directory.sync_all());
@@ -555,14 +559,15 @@ fn set(args: &SetArgs, tls: &dyn PodConnector) -> Result<String, CredentialFailu
     } else {
         read_terminal(&target)?
     };
-    let dir = directory(&target.path)?;
+    let dir = directory(&target)?;
     let probed = if args.no_probe {
         Probe::Skipped
     } else {
         probe(&target, &key, tls)?
     };
     write(&target, &dir, &key)?;
-    Ok(format!("{} {probed}", target.path.display()))
+    // The setting, never the path it holds: a key written there by mistake is not printed.
+    Ok(format!("{} {probed}", target.key))
 }
 
 fn report(line: fmt::Arguments<'_>) {

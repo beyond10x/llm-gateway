@@ -790,7 +790,8 @@ types:
   #                                   reads
   #   `credential:write`              the temporary file could not be created, written, flushed
   #                                   or renamed over the target
-  # No message quotes the key or any part of it.
+  # No message quotes the key or any part of it, or the target's path or its directory: a
+  # `credential:directory-*` or `credential:write` message is `<setting>: <detail>`.
   - name: llm-gateway.deployment.CredentialRefusal
     kind: enum
     variants: [UnknownTarget, NotHosted, Anonymous, NoTerminal, InputCancelled, InputUnreadable, InputEmpty, InputTooLarge, InputNotAToken, ProbeRejected, ProbeUnreachable, DirectoryMissing, DirectoryUnsafe, Write]
@@ -857,12 +858,15 @@ types:
   #                     over the target. Any refusal leaves the target as it was and removes the
   #                     temporary file
   #   the output rule   on success one line on standard error, `b10x-llm-gateway: credential
-  #                     stored <path> probe <passed|skipped|not-rejected> http <code|->`, exit
+  #                     stored <setting> probe <passed|skipped|not-rejected> http <code|->`, exit
   #                     status 0; a refusal is `b10x-llm-gateway: refused <code>: <message>`,
   #                     exit status 1; a command-line error prints one fixed usage line naming
   #                     the error kind and `b10x-llm-gateway credential set --help`, never an
   #                     argument's value, exit status 2. No line, event or refusal carries the key
-  #                     or any part of it
+  #                     or any part of it. The success line and every `credential:directory-*`
+  #                     and `credential:write` refusal name the setting the target was read from
+  #                     (`hosted.<alias>.credential_file`, `routes.<endpoint>.auth.secret`), a
+  #                     refusal as `<setting>: <detail>`, never the path or its directory
   # The reader's rules for a credential file, which every writer aims at: a regular file, not a
   # symbolic link, owned by the effective user or root, no group or world permission bit, at most
   # 4098 bytes, UTF-8, and once trailing ASCII whitespace is trimmed one printable ASCII token of

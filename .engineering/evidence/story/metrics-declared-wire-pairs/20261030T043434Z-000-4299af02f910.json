@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T04:34:34Z",
+  "actor": "human:timo",
+  "artifact": "story:metrics-declared-wire-pairs",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "adversary target held",
+    "review": "review-result:adversary-w01-relay-hosting-pass-1",
+    "outcome": "no-op"
+  }
+}

@@ -18,6 +18,7 @@ use llm_gateway::{
 use llm_gateway_cli::{
     EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, ProxyConnector,
 };
+use llm_messages::{SYSTEM_MESSAGE_CLOSE, SYSTEM_MESSAGE_OPEN};
 use std::{
     collections::BTreeMap,
     io::{BufRead, BufReader, Read, Write},
@@ -601,6 +602,93 @@ fn translation_codexs_first_turn_is_carried_to_messages() {
     assert!(answer.contains("event: response.completed"), "{answer}");
 }
 
+/// The user prompt and environment block of Claude Code 2.1.300's headless request, whose
+/// `messages` are `[user, system]`, the system entry a string.
+const HEADLESS_PROMPT: &str = "prompt-marker-list-the-crates";
+const HEADLESS_ENVIRONMENT: &str =
+    "<env>\nWorking directory: /workspace\nIs directory a git repo: Yes\nPlatform: linux\n</env>";
+
+/// A Messages request for `code` whose `messages` are `messages`.
+fn messages_request(messages: &serde_json::Value) -> String {
+    serde_json::json!({"model": "code", "max_tokens": 64, "messages": messages}).to_string()
+}
+
+/// The text of a chat message, a string or the text of each part, in order.
+fn chat_texts(message: &serde_json::Value) -> Vec<String> {
+    match &message["content"] {
+        serde_json::Value::String(text) => vec![text.clone()],
+        serde_json::Value::Array(parts) => parts
+            .iter()
+            .filter_map(|part| part["text"].as_str().map(str::to_owned))
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// Claude Code 2.1.300's headless request, `[user, system]`, reaches a chat upstream with 200:
+/// the system entry follows the user text, as user text in llm's mark, and no system message
+/// carries it.
+#[test]
+fn translation_a_later_system_entry_reaches_a_chat_upstream_as_marked_user_text() {
+    let body = messages_request(&serde_json::json!([
+        {"role": "user", "content": HEADLESS_PROMPT},
+        {"role": "system", "content": HEADLESS_ENVIRONMENT},
+    ]));
+    let (answer, sent) = through_the_binary(
+        "translation-later-system",
+        "chat",
+        CHAT_ANSWER,
+        "/v1/messages",
+        &body,
+    );
+    assert!(answer.contains("\"text\":\"Hello\""), "{answer}");
+    let messages = sent["messages"].as_array().unwrap();
+    assert!(
+        messages.iter().all(|message| message["role"] == "user"),
+        "{sent}"
+    );
+    let texts: Vec<String> = messages.iter().flat_map(chat_texts).collect();
+    assert_eq!(
+        texts,
+        [
+            HEADLESS_PROMPT.to_owned(),
+            format!("{SYSTEM_MESSAGE_OPEN}{HEADLESS_ENVIRONMENT}{SYSTEM_MESSAGE_CLOSE}"),
+        ],
+        "{sent}"
+    );
+}
+
+/// A leading system entry inside `messages` joins the system prompt: a chat upstream is sent it
+/// as the system message, and no user text carries the mark.
+#[test]
+fn translation_a_leading_system_entry_reaches_a_chat_upstream_as_the_system_message() {
+    let body = messages_request(&serde_json::json!([
+        {"role": "system", "content": HEADLESS_ENVIRONMENT},
+        {"role": "user", "content": HEADLESS_PROMPT},
+    ]));
+    let (answer, sent) = through_the_binary(
+        "translation-leading-system",
+        "chat",
+        CHAT_ANSWER,
+        "/v1/messages",
+        &body,
+    );
+    assert!(answer.contains("\"text\":\"Hello\""), "{answer}");
+    assert_eq!(sent["messages"][0]["role"], "system", "{sent}");
+    assert_eq!(
+        chat_texts(&sent["messages"][0]).concat(),
+        HEADLESS_ENVIRONMENT,
+        "{sent}"
+    );
+    assert_eq!(sent["messages"][1]["role"], "user", "{sent}");
+    assert_eq!(
+        chat_texts(&sent["messages"][1]),
+        [HEADLESS_PROMPT],
+        "{sent}"
+    );
+    assert!(!sent.to_string().contains("<system-message>"), "{sent}");
+}
+
 /// The prefix of every reasoning seal the gateway hands a client (docs/gateway.md "Reasoning
 /// state on a translated route").
 const SEAL_PREFIX: &str = "llmgw-seal-1.";
@@ -899,8 +987,8 @@ fn translation_no_log_line_carries_a_seal_or_the_upstream_state() {
 /// What llm 0.13.0 still refuses, it refuses by name, and the gateway answers each
 /// `translation-unsupported` before asking for a target: Claude Code's structured-output turn
 /// (`output_config.format`), `thinking.display`, `context_management` and `safeguards`, and a
-/// `system` message inside `messages` by its role; on Responses, `text.format` and a hosted
-/// tool.
+/// message of a role outside the subset (`tool`; llm 0.19.0 reads `system`); on Responses,
+/// `text.format` and a hosted tool.
 #[test]
 fn translation_fields_llm_still_refuses_are_refused_by_name() {
     let base: serde_json::Value =
@@ -916,17 +1004,17 @@ fn translation_fields_llm_still_refuses_are_refused_by_name() {
         serde_json::json!({"edits": [{"type": "clear_tool_uses_20250919"}]});
     let mut safeguards = base.clone();
     safeguards["safeguards"] = serde_json::json!({});
-    let mut midway = base.clone();
-    midway["messages"]
+    let mut role = base.clone();
+    role["messages"]
         .as_array_mut()
         .unwrap()
-        .push(serde_json::json!({"role": "system", "content": "Be brief."}));
+        .push(serde_json::json!({"role": "tool", "content": "Be brief."}));
     for (name, body) in [
         ("output_config.format", &structured),
         ("display", &display),
         ("context_management", &context),
         ("safeguards", &safeguards),
-        ("Messages role is outside the declared subset", &midway),
+        ("Messages role is outside the declared subset", &role),
     ] {
         let (code, message) = messages_refusal(body);
         assert_eq!(code, llm_core::ErrorCode::Unsupported, "{name}: {message}");

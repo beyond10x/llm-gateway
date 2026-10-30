@@ -3,8 +3,8 @@
 //!
 //! The serving command line, [`Cli`], is closed: `--config <CONFIG>`, help and version. The
 //! `credential set` command, [`CredentialCli`], is parsed instead only when `credential` is the
-//! first argument ([`Invocation::from_args`]), so every serving command line, and every usage
-//! error of one, is exactly what it was.
+//! first argument ([`Invocation::from_args`]), so every serving command line is exactly what it
+//! was. A usage error of either names its kind and never echoes an argument, which may be a key.
 
 use std::{ffi::OsString, path::PathBuf};
 

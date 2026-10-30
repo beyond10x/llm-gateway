@@ -88,7 +88,8 @@ pub fn page_for(mut root: clap::Command) -> String {
          `b10x-llm-gateway: stopped by <signal> accepted=<n> completed=<n>` |\n\
          | 1 | the start was refused: the document, a file it names, the listen address or the \
          signal handlers | `b10x-llm-gateway: refused <source>:<rule>: <message>` |\n\
-         | 2 | a usage error, reported by clap | clap's usage message |\n\n\
+         | 2 | a usage error, which names its kind and never echoes an argument | ``b10x-llm-gateway: usage error (<kind>); Usage: b10x-llm-gateway \
+         --config <CONFIG>; see `b10x-llm-gateway --help` `` |\n\n\
          While it serves, the process writes `b10x-llm-gateway: listening on <address>` once. \
          `RUST_LOG` sets the level of the structured events it writes beside these lines \
          (default `info`).\n",
@@ -135,7 +136,7 @@ pub fn page() -> String {
          command writes one line, `b10x-llm-gateway: credential stored <path> probe \
          <passed|skipped|not-rejected> http <code|->`, and exits 0; a refusal is \
          `b10x-llm-gateway: refused <code>: <message>` with exit status 1 and writes nothing \
-         ([the refusal reference](./refusals.md#credential-refusals)); a usage error is clap's, \
+         ([the refusal reference](./refusals.md#credential-refusals)); a usage error names its kind and never echoes an argument, \
          exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks \
          through it.\n",
     );

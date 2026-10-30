@@ -5,6 +5,15 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Fixed
+
+- A deployment-document refusal no longer quotes the refused value: a string outside a closed set (`auth_kind`, `ingress_auth`, …) or where a number or a list belongs is refused `config:schema` naming its line and the values allowed, never the string written.
+- The serving command line no longer echoes an unexpected argument: a usage error is `b10x-llm-gateway: usage error (<kind>)` with the usage line, exit status 2.
+- With `ingress_auth = "none"`, the warning that ingress authentication is off is written before the listener is bound, not after it already serves.
+- **Breaking:** a `metrics_bearer_file` token under 32 bytes, the owner secret's floor, is refused at start as `metrics-bearer:not-a-token`, naming `metrics_bearer_file`.
+
 ## 0.16.0 (2026-10-30)
 
 ### Added

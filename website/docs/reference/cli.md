@@ -31,7 +31,7 @@ The serving command line takes nothing else: a positional argument or another op
 | --- | --- | --- |
 | 0 | stopped by SIGINT or SIGTERM after every accepted request was answered | `b10x-llm-gateway: stopped by <signal> accepted=<n> completed=<n>` |
 | 1 | the start was refused: the document, a file it names, the listen address or the signal handlers | `b10x-llm-gateway: refused <source>:<rule>: <message>` |
-| 2 | a usage error, reported by clap | clap's usage message |
+| 2 | a usage error, which names its kind and never echoes an argument | ``b10x-llm-gateway: usage error (<kind>); Usage: b10x-llm-gateway --config <CONFIG>; see `b10x-llm-gateway --help` `` |
 
 While it serves, the process writes `b10x-llm-gateway: listening on <address>` once. `RUST_LOG` sets the level of the structured events it writes beside these lines (default `info`).
 
@@ -51,4 +51,4 @@ Usage: b10x-llm-gateway credential set [OPTIONS] --config <CONFIG> <--model <ALI
 | `--stdin` | no | none | Read the key from standard input, one line, instead of a hidden prompt. |
 | `--no-probe` | no | none | Store without probing the endpoint first. |
 
-Exactly one of `--model` and `--route` is required. The key is never an argument or an environment variable: it is read from a hidden prompt on the terminal, or from standard input with `--stdin`, one line whose newline is not part of it. On success the command writes one line, `b10x-llm-gateway: credential stored <path> probe <passed|skipped|not-rejected> http <code|->`, and exits 0; a refusal is `b10x-llm-gateway: refused <code>: <message>` with exit status 1 and writes nothing ([the refusal reference](./refusals.md#credential-refusals)); a usage error is clap's, exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks through it.
+Exactly one of `--model` and `--route` is required. The key is never an argument or an environment variable: it is read from a hidden prompt on the terminal, or from standard input with `--stdin`, one line whose newline is not part of it. On success the command writes one line, `b10x-llm-gateway: credential stored <path> probe <passed|skipped|not-rejected> http <code|->`, and exits 0; a refusal is `b10x-llm-gateway: refused <code>: <message>` with exit status 1 and writes nothing ([the refusal reference](./refusals.md#credential-refusals)); a usage error names its kind and never echoes an argument, exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks through it.

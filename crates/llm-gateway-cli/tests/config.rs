@@ -2132,3 +2132,56 @@ fn profiles_a_missing_or_unknown_key_is_refused_as_schema() {
         assert_eq!(refusal.code(), "config:schema", "{case}: {refusal}");
     }
 }
+
+#[test]
+fn a_value_outside_a_closed_set_is_not_quoted_in_the_refusal() {
+    let fixture = Fixture::new("closed-set-value");
+    let secret = fixture.owner_secret();
+    let text = hosted_document(
+        "127.0.0.1:0",
+        &secret,
+        &hosted_table(
+            "open",
+            "http://127.0.0.1:8000",
+            "auth_kind = \"PASTED-KEY-VALUE\"\nbilling_kind = \"self-hosted\"\n",
+        ),
+    );
+    let refusal = load(&fixture.config(&text)).unwrap_err();
+    let printed = format!("{refusal}");
+    assert!(!printed.contains("PASTED-KEY-VALUE"), "{printed}");
+    assert_eq!(refusal.code(), "config:schema", "{printed}");
+    assert!(
+        printed.contains("line 7: ") && printed.contains("`anonymous`, `bearer`, `api-key`"),
+        "{printed}"
+    );
+}
+
+/// The same rule for a string where the document takes a number or a list: serde's own message
+/// would quote the string.
+#[test]
+fn a_string_where_another_type_belongs_is_not_quoted_in_the_refusal() {
+    let fixture = Fixture::new("string-wrong-type");
+    let secret = fixture.owner_secret();
+    for line in [
+        "context_window = \"PASTED-KEY-VALUE\"\n",
+        "anthropic_beta = \"PASTED-KEY-VALUE\"\n",
+        "context_window = \"PASTED-\\\"KEY\\\\-VALUE\"\n",
+    ] {
+        let text = hosted_document(
+            "127.0.0.1:0",
+            &secret,
+            &hosted_table(
+                "open",
+                "http://127.0.0.1:8000",
+                &format!("auth_kind = \"anonymous\"\n{line}"),
+            ),
+        );
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        let printed = format!("{refusal}");
+        assert_eq!(refusal.code(), "config:schema", "{line}: {printed}");
+        for part in ["PASTED", "KEY", "VALUE"] {
+            assert!(!printed.contains(part), "{line}: {printed}");
+        }
+        assert!(printed.contains("line 8: "), "{line}: {printed}");
+    }
+}

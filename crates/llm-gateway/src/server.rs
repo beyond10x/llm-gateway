@@ -388,7 +388,7 @@ fn serve_scrape(mut stream: TcpStream, scraper: &Scraper) {
     } else {
         let deadline = Instant::now() + config.read_timeout;
         match read_head(&mut stream, config.max_head_bytes, deadline).and_then(|(head, _)| {
-            Request::parse(&head, &|_| false)
+            Request::parse(&head, &|_, _, _| false)
                 .map(|request| (request.head_only(), decide_scrape(&request, scraper)))
         }) {
             Ok((only, outcome)) => {
@@ -626,6 +626,11 @@ fn read_head(
                 .map(|head| (head, leftover))
                 .map_err(|_| RefusalCode::RequestMalformed);
         }
+        // A byte `Request::parse` refuses wherever it stands is refused as soon as it arrives:
+        // a head holding one may never send CRLFCRLF, and is malformed at any length.
+        if holds_stray_line_byte(&buffer) {
+            return Err(RefusalCode::RequestMalformed);
+        }
         // Never read past the bound, so an oversized head is refused rather than buffered.
         let room = limit.saturating_sub(buffer.len()).min(READ_CHUNK);
         if room == 0 {
@@ -648,6 +653,17 @@ fn read_head(
 
 fn find_terminator(buffer: &[u8]) -> Option<usize> {
     buffer.windows(4).position(|window| window == b"\r\n\r\n")
+}
+
+/// Whether a partial head holds a NUL, an LF that no CR precedes, or a CR that something other
+/// than an LF follows. A CR at the very end is not decided yet: its LF may be in the next read.
+fn holds_stray_line_byte(buffer: &[u8]) -> bool {
+    buffer.iter().enumerate().any(|(at, byte)| match byte {
+        0 => true,
+        b'\n' => at == 0 || buffer[at - 1] != b'\r',
+        b'\r' => buffer.get(at + 1).is_some_and(|next| *next != b'\n'),
+        _ => false,
+    })
 }
 
 /// A decided response together with whether its body is written.
@@ -684,11 +700,11 @@ struct Request<'a> {
 }
 
 impl<'a> Request<'a> {
-    /// `reads_no_credential` names the paths whose `authorization` is never read
-    /// (`IngressAuth::None`): a repeated one there is ignored rather than refused.
+    /// `ignores_repeat(method, path, name)` names the headers a request never reads: a repeated
+    /// one there is ignored rather than refused.
     fn parse(
         head: &'a str,
-        reads_no_credential: &dyn Fn(&str) -> bool,
+        ignores_repeat: &dyn Fn(&str, &str, &str) -> bool,
     ) -> Result<Self, RefusalCode> {
         // RFC 9110 section 5.5: CR, LF and NUL are never part of a field. Once the head is split
         // at its CRLFs, any that remain would let another reader see a line this one does not.
@@ -731,7 +747,7 @@ impl<'a> Request<'a> {
             }
             let name = name.to_ascii_lowercase();
             if headers.iter().any(|(seen, _)| *seen == name) {
-                if name == "authorization" && reads_no_credential(path) {
+                if ignores_repeat(method, path, &name) {
                     continue;
                 }
                 // A repeated credential is ambiguous, and an ambiguous credential is refused.
@@ -775,8 +791,29 @@ fn reads_no_credential(shared: &Shared, path: &str) -> bool {
         && Wire::from_path(path).is_some()
 }
 
+/// Whether a probe or a public route never reads `name`, so a repeat of it is no ambiguity and
+/// the request is still answered: a probe reads no header, and a public route reads only its
+/// body framing, `host` and `user-agent` (story:probes-before-head-checks).
+fn answers_any_repeat(method: &str, path: &str, name: &str) -> bool {
+    if !matches!(method, "GET" | "HEAD") {
+        return false;
+    }
+    match path {
+        "/health" | "/ready" => true,
+        listing::MODELS | listing::INSTRUCTIONS => !matches!(
+            name,
+            "content-length" | "transfer-encoding" | "host" | "user-agent"
+        ),
+        _ => false,
+    }
+}
+
 fn dispatch(head: &str, shared: &Shared) -> Decision {
-    let request = match Request::parse(head, &|path| reads_no_credential(shared, path)) {
+    let ignores_repeat = |method: &str, path: &str, name: &str| {
+        answers_any_repeat(method, path, name)
+            || (name == "authorization" && reads_no_credential(shared, path))
+    };
+    let request = match Request::parse(head, &ignores_repeat) {
         Ok(request) => request,
         Err(code) => return Decision::refused(code),
     };
@@ -1151,7 +1188,9 @@ mod tests {
     /// CRLFs is refused wherever it sits, so no other reader can see a line this one does not.
     #[test]
     fn a_cr_lf_or_nul_inside_a_head_line_is_malformed() {
-        assert!(Request::parse("POST /v1/messages HTTP/1.1\r\nx-note: a", &|_| false).is_ok());
+        assert!(
+            Request::parse("POST /v1/messages HTTP/1.1\r\nx-note: a", &|_, _, _| false).is_ok()
+        );
         for head in [
             "POST /v1/messages HTTP/1.1\r\nx-note: a\ntransfer-encoding: chunked",
             "POST /v1/messages HTTP/1.1\r\nx-note: a\rb",
@@ -1160,10 +1199,31 @@ mod tests {
             "POST /v1/messages HTTP/1.1\r\nx-n\note: a",
         ] {
             assert_eq!(
-                Request::parse(head, &|_| false).err(),
+                Request::parse(head, &|_, _, _| false).err(),
                 Some(RefusalCode::RequestMalformed),
                 "{head:?}"
             );
+        }
+    }
+
+    /// The same bytes are refused in a head that has not arrived whole, so one that never sends
+    /// CRLFCRLF is not left to the head bound or the timeout; a final CR is not decided yet.
+    #[test]
+    fn a_partial_head_with_a_stray_line_byte_is_caught_before_it_ends() {
+        for partial in [
+            &b"GET /health HTTP/1.1\nx: a"[..],
+            b"\nGET /health HTTP/1.1",
+            b"GET /health HTTP/1.1\r\nx: a\rb",
+            b"GET /health HTTP/1.1\r\nx: a\0",
+        ] {
+            assert!(super::holds_stray_line_byte(partial), "{partial:?}");
+        }
+        for partial in [
+            &b"GET /health HTTP/1.1\r\nx: a\r\n"[..],
+            b"GET /health HTTP/1.1\r\nx: a\r",
+            b"",
+        ] {
+            assert!(!super::holds_stray_line_byte(partial), "{partial:?}");
         }
     }
 

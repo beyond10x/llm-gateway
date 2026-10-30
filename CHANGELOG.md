@@ -5,6 +5,13 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## Unreleased
+
+### Fixed
+
+- A probe (`/health`, `/ready`) or a public route (`GET /v1/models`, `GET /`) is answered when its head repeats a header it never reads, such as `authorization` or `x-probe`, instead of being refused `request-malformed` or `credential-malformed`.
+- A request head holding a bare LF, a stray CR or a NUL is refused `request-malformed` as soon as that byte arrives, so one past `request-head-bytes` is no longer `request-too-large` and one under it no longer waits for `read_timeout`.
+
 ## 0.16.0 (2026-10-30)
 
 ### Added

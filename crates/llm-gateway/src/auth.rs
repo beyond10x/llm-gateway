@@ -171,12 +171,20 @@ fn sha256(message: &[u8]) -> [u8; 32] {
         0x5be0_cd19,
     ];
     let bit_length = (message.len() as u64).wrapping_mul(8);
-    let mut padded = message.to_vec();
+    // Sized before the message enters it, so the padding never moves it and no copy of a
+    // credential is left in freed memory; it is overwritten once hashed.
+    let length = (message.len() + 9).next_multiple_of(64);
+    let mut padded = Vec::with_capacity(length);
+    let sized = padded.capacity();
+    padded.extend_from_slice(message);
     padded.push(0x80);
-    while padded.len() % 64 != 56 {
-        padded.push(0);
-    }
+    padded.resize(length - 8, 0);
     padded.extend_from_slice(&bit_length.to_be_bytes());
+    debug_assert_eq!(
+        (padded.len(), padded.capacity()),
+        (length, sized),
+        "a message being hashed reallocated, leaving a copy of it in freed memory"
+    );
     for block in padded.as_chunks::<64>().0 {
         let mut schedule = [0_u32; 64];
         for (word, bytes) in schedule.iter_mut().zip(block.as_chunks::<4>().0) {
@@ -468,6 +476,18 @@ mod tests {
             hex(sha256(&million)),
             "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0"
         );
+    }
+
+    /// What this proves, through the debug assertion in `sha256`: a message of every length
+    /// up to past two blocks, every padding shape included, is hashed in the one allocation
+    /// taken for it before its first byte, so a reallocation leaves no copy of a credential in
+    /// freed memory. The digests themselves are `the_digest_is_sha_256`'s.
+    #[test]
+    fn a_message_is_hashed_in_one_allocation_whatever_its_length() {
+        let message = [b'k'; 130];
+        for length in 0..=message.len() {
+            sha256(&message[..length]);
+        }
     }
 
     /// The owner comparison runs over two digests of one fixed length, whatever the length of

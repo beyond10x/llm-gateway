@@ -1,7 +1,7 @@
 #![forbid(unsafe_code)]
 
 //! The `b10x-llm-gateway` binary's deployment document, trusted-file reader, serving loop and
-//! translator ([`LlmTranslator`], over llm 0.15.0's client crates and a tokio runtime).
+//! translator ([`LlmTranslator`], over llm 0.18.0's client crates and a tokio runtime).
 //!
 //! The specification is `spec/domains/deployment.yaml` (`llm-gateway.deployment`). The binary
 //! reads one closed TOML document through a same-handle trusted-file reader, composes the

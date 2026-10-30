@@ -10,7 +10,7 @@ source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crat
 
 The binary answers all three wires for every model. When the client's wire is one the model
 declares, the request goes to the upstream byte for byte, as [the relay](../concepts/relay.md)
-describes. When it is not, the gateway decodes the request with llm 0.15.0's decoder for the
+describes. When it is not, the gateway decodes the request with llm 0.18.0's decoder for the
 client's wire, sends the turn to the upstream with llm's client for the model's **first** declared
 wire, and writes the answer back on the client's wire with llm's encoder.
 

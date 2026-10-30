@@ -1,7 +1,7 @@
 //! The models of an llm `llm.routes/1` document a deployment names by its `routes` key
 //! (story:routes-document; `spec/domains/deployment.yaml` `RoutesDeclaration`).
 //!
-//! The document is read once at start through the trusted-file reader and parsed with llm 0.15.0's
+//! The document is read once at start through the trusted-file reader and parsed with llm 0.18.0's
 //! `Routes::parse`, which validates it strictly and performs no I/O; `llm-models` is linked
 //! without its secret-source features, so llm reads no secret. What llm's API does not expose,
 //! the path of an endpoint's `file:` secret, is read here from the same text with a minimal
@@ -582,7 +582,7 @@ fn endpoint(
 /// The static headers a route's endpoint is sent on every request it is relayed, the output
 /// clamp's count included: a Messages endpoint gets llm's `anthropic-version`, which Anthropic's
 /// API requires and llm's own client sends on the translated path; any other endpoint none.
-/// The `x-opencode-session` llm 0.15.0 sends to an `OpenCode` Go base URL on the translated path
+/// The `x-opencode-session` llm 0.18.0 sends to an `OpenCode` Go base URL on the translated path
 /// is not one of them: a relayed request carries none (`docs/gateway.md`, "The upstream").
 fn endpoint_headers(wire: Wire) -> Result<Vec<StaticHeader>, Refusal> {
     if wire != Wire::Messages {

@@ -13,7 +13,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 ### Changed
 
-- ESS 0.75.0: CI installs it and the conformance runner builds on `ess-conformance` and `ess-primitives` 0.75.0; the suite and schemas it generates are unchanged.
+- ESS 0.77.0: CI installs it and the conformance runner builds on `ess-conformance` and `ess-primitives` 0.77.0; the suite and schemas it generates are unchanged.
+- The llm crates move to tag `0.18.0`. The translator sets no `Controls::return_unpublished_calls`, so a call to an unpublished tool is still refused.
+- Crates: `base64` 0.23, `clap` 4.6, `tokio` 1.54, `webpki-roots` 1.0.11, `sha2` 0.11.1, and `Cargo.lock` at the newest compatible versions.
+- The site builds on `@beyond10x/docs-system` 0.14.1 and React 19.3. CI's gate checks out with `actions/checkout` v7.0.1 and uploads with `actions/upload-artifact` v7.0.2; the release logs in with `docker/login-action` v4.7.0.
 
 ## 0.15.0 (2026-10-26)
 

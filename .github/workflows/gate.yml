@@ -9,7 +9,7 @@ jobs:
   serving-crates:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: dtolnay/rust-toolchain@4360b52568e2003a75bf9bc1d59f33a8e3fc893c # action revision; toolchain is pinned below
         with:
           toolchain: 1.98.0
@@ -23,8 +23,8 @@ jobs:
         run: cargo run --locked -p llm-gateway-docs -- generate --check
       - name: Install ess
         env:
-          ESS_VERSION: "0.75.0"
-          ESS_SHA256: cb4634a6004cfa407de2dbecdfb66b8c3bce462364c69f932b31fa7408b900f4
+          ESS_VERSION: "0.77.0"
+          ESS_SHA256: dd31b828bf6c6d9976f339b0a25dabcf0fa7fbb33c2856c49a1e3b71a5c00089
         run: |
           set -euo pipefail
           asset="ess-$ESS_VERSION-x86_64-unknown-linux-gnu.tar.gz"
@@ -42,7 +42,7 @@ jobs:
           cargo run --locked -p b10x-llm-gateway-conformance -- check
       - name: Conformance reports
         if: always()
-        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: serving-conformance
           path: target/conformance

@@ -11,7 +11,7 @@ description = "The ESS conformance runner: checks the generated suite and schema
 workspace = true
 
 [dependencies]
-clap = { version = "4.5", features = ["derive"] }
+clap = { version = "4.6", features = ["derive"] }
 llm-gateway = { package = "b10x-llm-gateway", path = "../../crates/llm-gateway" }
 # The binary's own deployment loader, inventory and hosted target source, and its TLS client
 # with the test seam (spec/domains/upstream.yaml HostedEndpoint).
@@ -25,5 +25,5 @@ llm-runpod = { package = "b10x-llm-runpod", path = "../../crates/llm-runpod" }
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
-ess-conformance = { git = "https://github.com/beyond10x/ess.git", tag = "0.75.0" }
-ess-primitives = { git = "https://github.com/beyond10x/ess.git", tag = "0.75.0" }
+ess-conformance = { git = "https://github.com/beyond10x/ess.git", tag = "0.77.0" }
+ess-primitives = { git = "https://github.com/beyond10x/ess.git", tag = "0.77.0" }

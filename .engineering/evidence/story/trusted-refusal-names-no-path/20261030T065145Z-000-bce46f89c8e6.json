@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T06:51:45Z",
+  "actor": "human:timo",
+  "artifact": "story:trusted-refusal-names-no-path",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "findings 1-3 fixed in b26893e: credential set names the setting in refusals and its success line; CHANGELOG Breaking line names it",
+    "review": "review-result:adversary-w03-refusal-pass-1",
+    "outcome": "fixed"
+  }
+}

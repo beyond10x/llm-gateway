@@ -1577,6 +1577,12 @@ fn bedrock_a_projected_token_volume_is_followed_and_its_rotated_token_is_used() 
     assert_eq!(presented(&credentials), vec![CONTAINER_TOKEN.to_owned()]);
     volume.rotate(&format!("{ROTATED_TOKEN}\n"));
     let second = server.post("/v1/chat/completions", &request);
+    // Credentials inside the refresh window are answered at once and renewed by a fetch the
+    // request does not wait for; `log` kills the gateway, so it waits for that fetch first.
+    let deadline = Instant::now() + WAIT;
+    while presented(&credentials).len() < 2 && Instant::now() < deadline {
+        thread::sleep(Duration::from_millis(10));
+    }
     let log = server.log();
     assert!(second.starts_with("HTTP/1.1 200 OK\r\n"), "{second}");
     assert_eq!(

@@ -2,23 +2,43 @@
 format: aep.planning-md/3
 id: story:relayed-session-header
 kind: story
-status: draft
+status: implemented
 title: A relayed OpenCode Go request carries its own session header
 relations:
 - decomposes: epic:gateway
 - serves: vision:portable-model-inference
-revision: 2
+scope:
+- confidence: cited
+  path: crates/llm-gateway-cli/src/routes.rs
+- confidence: cited
+  path: crates/llm-gateway/src/relay.rs
+- confidence: cited
+  path: docs/gateway.md
+- confidence: cited
+  path: website/docs/reference/deployment-document.md
+revision: 8
+transitions:
+- {from: "draft", to: "proposed", at: "2026-10-30T04:55:18Z", actor: "human:timo", revision: 6}
+- {from: "proposed", to: "active", at: "2026-10-30T04:55:18Z", actor: "human:timo", revision: 7}
+- {from: "active", to: "implemented", at: "2026-10-30T05:46:29Z", actor: "human:timo", revision: 8, decided_on: {"recorded":{"test_result":1,"review_outcome":1}}}
 ---
 ## Outcome
 
 A request the gateway relays to an OpenCode Go base URL (`https://opencode.ai/inference/go/…`)
-carries its own `x-opencode-session`:
+carries its own `x-opencode-session`, chosen in this order:
 
-1. the caller's own `x-opencode-session` header, passed through when the request has one;
-2. otherwise a value the gateway derives per caller or per run, so two callers never share one
-   session and one caller's turns keep theirs;
-3. a static `x-opencode-session` in the hosted endpoint's `headers` only as the fallback when
-   neither applies.
+1. the caller's own `x-opencode-session` header, passed through when the request has one (one
+   printable ASCII token, at most 256 bytes; anything else is ignored, never echoed);
+2. otherwise a value derived from the caller's peer address: `llmgw-` and the first 32 hex
+   characters of SHA-256 over a per-process random key and the peer IP, so one pod (one Loom
+   run today) keeps one session, two callers never share one, and the provider never sees the
+   address;
+3. a static `x-opencode-session` in the hosted endpoint's `headers` only when neither applies
+   (a request with no peer address).
+
+Out of scope: a caller run id. Loom's boundary sends no run-id header today (no `x-…run…`
+header in loom's sources at 62f2e664); when it does, a follow-up story puts the run id before the
+peer address, under the header name agreed with loom.
 
 ## Why
 
@@ -30,13 +50,19 @@ the G7 cluster run (2026-10-30), item from the orchestrator under the grant.
 
 ## Acceptance
 
+Tests in the gateway's relay suites, each red on 1b33c588:
+
 - A relayed request to an OpenCode Go base URL with a client `x-opencode-session` reaches the
-  target with that value.
-- Two relayed requests from two callers without the header reach the target with two different
-  values; two from one caller (or one run) with the same value.
-- A configured static `x-opencode-session` is sent only when neither of the above produced one.
-- The header is never sent to a base URL that is not OpenCode Go.
-- `docs/gateway.md` "The upstream" and the deployment-document reference state the order.
+  target with that value; a malformed client value (a space, a control byte, over 256 bytes) is
+  ignored and never echoed.
+- Two relayed requests from two peer addresses without the header reach the target with two
+  different `llmgw-…` values; two from one peer address with the same value; neither contains
+  the address.
+- A configured static `x-opencode-session` is sent only when no peer address is known, and is
+  never sent beside a passed-through or derived value.
+- No `x-opencode-session` is sent to a base URL that is not OpenCode Go.
+- `docs/gateway.md` "The upstream" and the deployment-document reference state the order;
+  `cargo run --locked -p b10x-llm-gateway-conformance -- check` still passes 291/291.
 
 ## Open
 

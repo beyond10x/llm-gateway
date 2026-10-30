@@ -536,7 +536,9 @@ types:
   #                      DECIDED 2026-10-16 (story:hosted-static-headers): a vendor API needs
   #                      headers of its own (Anthropic's `anthropic-version`, OpenRouter's
   #                      `HTTP-Referer` and `X-Title`), and no client header is forwarded, so the
-  #                      document declares them per endpoint
+  #                      document declares them per endpoint. On an OpenCode Go base URL a static
+  #                      `x-opencode-session` is only a fallback for a caller with no valid
+  #                      session and no peer address (story:relayed-session-header)
   #   billing_kind       `metered`, `subscription` or `self-hosted`, default `metered`
   #   upstream_model     1..=256 printable ASCII, default the alias
   #   context_window     optional, 4096..=2000000: what the public routes publish

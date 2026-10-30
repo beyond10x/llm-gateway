@@ -28,7 +28,8 @@ domain: llm-gateway.gateway
 #     binds no carried state. Nothing is dropped.
 #   - Upstream: the target supplies the scheme, authority, base path and credential; the turn is
 #     sent once with llm's client for the upstream wire. Neither the gateway's static headers nor
-#     the Messages effort mapping and output clamp apply on this path.
+#     the Messages effort mapping and output clamp apply on this path. An OpenCode Go upstream is
+#     sent the session its target answers for the caller, else llm's minted one.
 #   - Answer: a streamed answer is written event by event as the client wire's server-sent
 #     events, a non-streamed one as its JSON object, with the upstream's reported counters and
 #     no others. Continuation state the upstream mints for its own wire (Responses reasoning
@@ -799,7 +800,11 @@ entities:
   #      endpoint, llm-gateway.upstream.HostedEndpoint) is sent `<header>: <key>` instead, and
   #      no `authorization`. The head the target receives is built by the gateway alone: no
   #      header of the client's request is forwarded, so the owner's credential never reaches
-  #      a target, in the head or anywhere else. Claude Code's `anthropic-version` and
+  #      a target, in the head or anywhere else. The one header a target may answer per caller
+  #      (`RelayTarget::caller_header`) is an OpenCode Go endpoint's `x-opencode-session`: the
+  #      caller's own when it is one printable ASCII token of at most 256 bytes, else one derived
+  #      from its peer address, written where a static header of its name stands
+  #      (story:relayed-session-header). Claude Code's `anthropic-version` and
   #      `anthropic-beta` are dropped with the rest: vLLM v0.27.1's messages endpoint reads
   #      neither (vllm/entrypoints/anthropic/api_router.py and serving.py read no request
   #      header), so the forward-verbatim rule of Claude Code's gateway protocol page, written

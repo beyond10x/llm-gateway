@@ -64,7 +64,7 @@ webpki-roots = "1.0.11"
 [dev-dependencies]
 # Test certificates for the loopback https fixture pods, on ring like the client.
 rcgen = { version = "0.14.10", default-features = false, features = ["ring"] }
-rustix = { version = "1.1", features = ["process"] }
+rustix = { version = "1.1", features = ["net", "process"] }
 sha2.workspace = true
 # This package with `test-seam`, so that `cargo test` builds `gateway-tls-seam` for the process
 # tests that run it (tests/pod_tls.rs, tests/adversary_w07_pod_tls.rs) with no feature flag.

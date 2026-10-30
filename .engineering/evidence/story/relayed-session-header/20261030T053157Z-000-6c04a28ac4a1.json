@@ -1,0 +1,14 @@
+{
+  "at": "2026-10-30T05:31:57Z",
+  "actor": "human:timo",
+  "artifact": "story:relayed-session-header",
+  "kind": "story",
+  "revision": 7,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "adversary findings 1, 2, 4 fixed in 4515e25; finding 3 infeasible",
+    "review": "review-result:adversary-w02-session-pass-1",
+    "outcome": "fixed"
+  }
+}

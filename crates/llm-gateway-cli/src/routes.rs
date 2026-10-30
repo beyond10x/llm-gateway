@@ -582,8 +582,9 @@ fn endpoint(
 /// The static headers a route's endpoint is sent on every request it is relayed, the output
 /// clamp's count included: a Messages endpoint gets llm's `anthropic-version`, which Anthropic's
 /// API requires and llm's own client sends on the translated path; any other endpoint none.
-/// The `x-opencode-session` llm 0.18.0 sends to an `OpenCode` Go base URL on the translated path
-/// is not one of them: a relayed request carries none (`docs/gateway.md`, "The upstream").
+/// The `x-opencode-session` an `OpenCode` Go base URL is sent is not one of them: the endpoint's
+/// target answers it per caller (`HostedTarget::caller_header`; `docs/gateway.md`, "The
+/// `OpenCode` Go session").
 fn endpoint_headers(wire: Wire) -> Result<Vec<StaticHeader>, Refusal> {
     if wire != Wire::Messages {
         return Ok(Vec::new());

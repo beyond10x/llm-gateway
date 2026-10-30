@@ -5,6 +5,18 @@ Every release is tagged `<version>` and publishes the source and, from the first
 [GitHub Releases](https://github.com/beyond10x/llm-gateway/releases) carry the same notes.
 Nothing in any release is deployed or qualified against a live client.
 
+## 0.18.0 (2026-10-30)
+
+### Added
+
+- An OpenCode Go endpoint is sent the caller's own valid `x-opencode-session` (1 to 256 bytes of printable ASCII without a space, checked as sent), else `llmgw-` and a hash of the caller's address under a per-process key, else the declared static one, on the byte-relayed and the translated path, so each client keeps its own upstream session. `docs/gateway.md` "The OpenCode Go session".
+- `llm_gateway::Caller`, `CALLER_SESSION_HEADER` and `RelayTarget::caller_header` (default `None`): a target may send a per-caller header in place of a static header of the same name.
+
+### Changed
+
+- **Breaking:** a static `x-opencode-session` declared for an OpenCode Go endpoint is sent only when the caller sent no valid session and its address is unknown.
+- **Breaking:** `TranslationRequest` has a `caller` field, the request's `Caller`; an embedding that builds one sets it.
+
 ## 0.17.0 (2026-10-30)
 
 ### Added

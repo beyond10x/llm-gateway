@@ -145,7 +145,9 @@ entities:
       # `<credential_header>: <credential>`, or none); and with llm's own protocol headers
       # (`anthropic-version: 2023-06-01` on messages, `accept: text/event-stream`). The
       # endpoint's static `headers` are not sent on a translated request: llm's clients take no
-      # caller headers, and the headers were declared for the wire they were written for. llm's
+      # caller headers, and the headers were declared for the wire they were written for. An
+      # OpenCode Go base URL is sent the caller's own valid `x-opencode-session`, else one derived
+      # from its peer address, else llm's minted one (story:relayed-session-header). llm's
       # client trusts the `webpki-roots` Mozilla roots, as the binary's TLS client does.
       # DECIDED 2026-10-14: a list, as a Runpod model's `wires`, rather than one wire: one
       # vendor API commonly serves several (`chat` and `responses`).
@@ -191,7 +193,10 @@ entities:
       # Static, non-secret request headers the endpoint is sent with every request, name to
       # value, written after `host` in name order and before the credential and the framing
       # headers (llm-gateway.gateway `Relay`, step 7); their rules are
-      # llm-gateway.deployment `HostedDeclaration`'s `headers`. No client header is forwarded.
+      # llm-gateway.deployment `HostedDeclaration`'s `headers`. No client header is forwarded,
+      # except that an OpenCode Go base URL is sent the caller's own valid `x-opencode-session`,
+      # else one derived from its peer address, in place of a static one of that name
+      # (story:relayed-session-header).
       # DECIDED 2026-10-16 (story:hosted-static-headers).
       - {name: headers, type: 'Map<String, String>'}
       - {name: billing_kind, type: llm-gateway.upstream.BillingKind}

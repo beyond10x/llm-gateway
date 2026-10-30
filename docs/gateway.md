@@ -360,7 +360,15 @@ A request to a wire path is decided in this order:
    `StaticHeaderError::NameLength`, `NameNotAToken`, `Reserved`, `ValueLength` and
    `ValueNotPrintable`. So no static header can end its line, replace or repeat a header the
    gateway writes, or carry `authorization`; one named like the target's own credential header
-   is not written, so the head never carries that header twice. A target whose
+   is not written, so the head never carries that header twice. A target may also answer one
+   `StaticHeader` for the request's caller (`RelayTarget::caller_header`, asked once per
+   request with a `Caller`: the client's `x-opencode-session` when it is 1 to
+   `caller-session-bytes` of 0x21-0x7e, and the address its connection came from, an IPv4
+   address mapped into IPv6 read as IPv4). It is written where the static header of its name
+   stands, or after the static headers when none does, on the request and on its count, so the
+   target is sent one header of that name; a session that breaks the rule is dropped, never
+   refused and never written. The binary's `OpenCode` Go endpoint answers its session here
+   ([The OpenCode Go session](#the-opencode-go-session)). A target whose
    `bearer` is a `TargetBearer` is sent `authorization: Bearer <key>` (row B8): for a Runpod pod,
    the model's vLLM key. A target whose `credential_header` also names a `CredentialHeader`
    (an `api-key` hosted endpoint) is sent `<header>: <key>` instead, and no `authorization`; a
@@ -375,7 +383,8 @@ A request to a wire path is decided in this order:
    (`127.0.0.0/8`, `::1`) or `localhost` is refused when the document is loaded
    (`config:value`, naming the endpoint and quoting no credential). The head is the
    gateway's own and forwards no header of the client's request, so the owner's credential never
-   reaches a target. A `TargetBearer` follows the owner material's rules, refused as
+   reaches a target; the one exception is a valid `x-opencode-session` to an OpenCode Go
+   endpoint ([the OpenCode Go session](#the-opencode-go-session)). A `TargetBearer` follows the owner material's rules, refused as
    `bearer:empty`, `bearer:too-large` (over `owner-credential-bytes`) and
    `bearer:not-printable-ascii`, so it is one token in the line it is written into; it is
    redacted in `Debug` and overwritten when dropped. The embedding decides what a stop does
@@ -599,12 +608,10 @@ credential. The turn is sent once, with llm's client for the upstream wire, to
 `/chat/completions`, `/responses` or `/messages`. The credential goes as its kind says
 (`authorization: Bearer`, the endpoint's `credential_header`, or none), resolved from the
 target's `TargetBearer` (`TargetBearer::expose`); the owner's credential and the client's
-headers never do. llm's client sends its own protocol headers (`accept: text/event-stream`,
-`anthropic-version: 2023-06-01` on messages, and on messages to an OpenCode Go base URL,
-`https://opencode.ai/inference/go/…`, an `x-opencode-session` llm mints as
-`llm-<process id>-<nanoseconds>-<sequence>`, new for every translated request because the
-translator builds a client per request; a relayed request carries none) and trusts the
-`webpki-roots` Mozilla roots; a
+headers never do, except a valid `x-opencode-session` to an OpenCode Go endpoint. llm's client sends its own protocol headers (`accept: text/event-stream`,
+`anthropic-version: 2023-06-01` on messages, and on messages to an OpenCode Go base URL, the
+`x-opencode-session` of [the OpenCode Go session](#the-opencode-go-session) below) and trusts
+the `webpki-roots` Mozilla roots; a
 hosted endpoint's static `headers` are not sent on a translated request. The projection is
 llm's: every upstream is asked for a stream (chat with `stream_options.include_usage`), a
 responses upstream with `store: false`; a messages upstream gets `max_tokens` from the request,
@@ -617,6 +624,39 @@ the messages effort mapping of step 6 nor the output clamp's count of step 7 app
 The exchange is bounded by llm's transport: 10 s to connect, 120 s for the answer's head and
 between two reads, and 3600 s in all. These are timeouts, not size bounds, so they are not in
 [Bounds](#bounds); `crates/llm-gateway-cli/src/translate.rs` holds them.
+
+#### The OpenCode Go session
+
+OpenCode Go (a base URL starting `https://opencode.ai/inference/go/`, as llm's
+`is_opencode_go` decides it for `<scheme>://<authority>` and the base path, `/v1` without one)
+refuses a request without `x-opencode-session` (400 `MissingSessionID`) and routes a
+conversation by it. The binary's hosted endpoint for such a base URL is sent exactly one
+`x-opencode-session` on every request, relayed or translated, chosen in this order:
+
+1. The caller's own `x-opencode-session`, when it is 1 to 256 bytes (`caller-session-bytes`)
+   of printable ASCII without a space (0x21-0x7e, llm's identifier rule). Any other value is
+   ignored: it is not sent, not logged and not echoed. Only SP and HTAB around it are
+   dropped, as for any field. A NUL or a byte that is not UTF-8 refuses the request
+   `request-malformed`, as it does in any header.
+2. Otherwise `llmgw-` and the first 32 lowercase hex characters of SHA-256 over a key of 32
+   random bytes the process draws once from the system random source and the caller's peer
+   address (its 4 or 16 octets; an IPv4 address mapped into IPv6 counts as IPv4). One peer keeps
+   one value for the process's lifetime, two peers get two, the provider never sees the
+   address, and a restart derives new values. Behind a proxy every caller is the proxy's
+   address and shares one session.
+3. Otherwise, a request with no peer address: on a relayed request, the static
+   `x-opencode-session` the endpoint's `headers` declare, if any; on a translated request,
+   llm's own, minted as `llm-<process id>-<nanoseconds>-<sequence>` for each request, because
+   the translator builds a client per request.
+
+A value from 1 or 2 replaces a declared static `x-opencode-session`; the static one is a
+fallback, never sent beside it. On the byte relay the session goes on every wire, the output
+clamp's count included; on the translated path llm's messages client carries it
+(`MessagesClient::with_session`), and a chat or responses upstream gets none, as llm sends it
+there. An endpoint whose base URL is not OpenCode Go (another path or port of `opencode.ai`
+included) is sent no `x-opencode-session` but a static one its `headers` declare, as before.
+`crates/llm-gateway-cli/src/hosted.rs` (`HostedTarget::caller_header`, `derived_session`) holds
+the order; the gateway crate holds only the `Caller` and the rule of step 1.
 
 ### A Bedrock upstream
 
@@ -1027,6 +1067,7 @@ list written by hand.
 | `base-path-bytes` | `MAX_BASE_PATH_BYTES` | 256 |
 | `base-path-segments` | `MAX_BASE_PATH_SEGMENTS` | 32 |
 | `static-header-value-bytes` | `MAX_STATIC_HEADER_VALUE_BYTES` | 1024 |
+| `caller-session-bytes` | `MAX_CALLER_SESSION_BYTES` | 256 |
 | `targets-per-route` | `MAX_TARGETS_PER_ROUTE` | 64 |
 | `routes` | `MAX_ROUTES` | 4096 |
 | `digest-characters` | `DIGEST_CHARACTERS` | 64 |
@@ -1045,8 +1086,8 @@ not a bound has to be named in the exemption list in `tests/gateway.rs` with a r
 than being invisible.
 
 `owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `base-path-bytes`,
-`base-path-segments`, `static-header-value-bytes`, `targets-per-route`, `routes`,
-`request-head-bytes`, `concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
+`base-path-segments`, `static-header-value-bytes`, `caller-session-bytes`, `targets-per-route`,
+`routes`, `request-head-bytes`, `concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
 `digest-characters` is an exact length. `request-head-bytes` and `concurrent-requests` are
 `GatewayConfig` defaults an embedding may override; they and `request-body-bytes` (32 MiB, as
 llmgw) are measured by enforcement over a real socket rather than by reading a field.

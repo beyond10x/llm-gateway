@@ -1,0 +1,13 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-reservation-identifier-one-byte-too-long-is-refused-before-anything-is-declared
+summary: "invalid-identifier is guarded on a reservation_id over 256 bytes, so Declare must refuse a 257-byte reservation_id and record nothing"
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.Declare
+  input: {id: d1, request_id: request-d1, reservation_id: vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv}
+  outcome: invalid-identifier
+assert:
+- view: llm-gateway.hosting.OwnedResources
+  counts:
+    at_most: 0

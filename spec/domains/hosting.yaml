@@ -10,29 +10,33 @@ domain: llm-gateway.hosting
 # `row_5_the_hosting_crate_declares_no_dependency_and_names_no_io` in
 # crates/llm-provision/tests/hosting.rs holds it. The Runpod adapter's own boundary is
 # llm-gateway.runpod's.
+conversions:
+  - from: llm-gateway.hosting.DeploymentId
+    to: String
+    because: >-
+      `deployment_spec_id` names an llm.catalog.DeploymentSpec, which no ESS reference reaches
+      across systems, so it stays text (see `OwnedResource`). The conformance target declares
+      each record's deployment spec under the deployment's own identifier (`DeploymentSpec.id`),
+      so `Declare` records its `id` as the record's `deployment_spec_id`.
 types:
-  # A hosting identifier (`Identifier::new` in crates/llm-provision/src/identity.rs): 1..=256
-  # printable ASCII bytes with no space. The controller takes nothing else, so a value outside
-  # this type cannot reach it; the lifecycle commands type their deployment, request and
-  # reservation identifiers with it.
+  # Printable ASCII text a lifecycle command passes to the controller as a hosting identifier
+  # (`Identifier::new` in crates/llm-provision/src/identity.rs takes 1..=256 printable ASCII
+  # bytes with no space): the deployment, request and reservation identifiers and the stop
+  # evidence. The type admits the space, the empty text and text over 256 bytes, because the
+  # lifecycle commands declare `invalid-identifier` for them (all but `Provision` and `Retry`,
+  # see `Declare`) and ESS 0.77.0 builds no witness for a guard its input type excludes. What no
+  # guard can say, a byte outside printable ASCII, the alphabet excludes; ESS 0.77.0 does not hold
+  # an authored input to its declared type, so such a value still reaches the conformance target,
+  # which answers it with an error.
   - name: llm-gateway.hosting.Identifier
     kind: newtype
     of: String
-    alphabet: '!"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
-    invariants: ["value.count >= 1", "value.count <= 256"]
+    alphabet: ' !"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
   # The identifier an `OwnedResource` is known by: the deployment the controller records it
   # under, a hosting identifier like the others.
   - name: llm-gateway.hosting.DeploymentId
     kind: newtype
     of: llm-gateway.hosting.Identifier
-  # Printable ASCII text of 1..=256 bytes, the space included: what a caller may write as stop
-  # evidence. Stop evidence is an `Identifier` to the controller, so `ConfirmStopped` refuses
-  # one holding a space (`invalid-identifier`) rather than the type excluding it.
-  - name: llm-gateway.hosting.PrintableText
-    kind: newtype
-    of: String
-    alphabet: ' !"#$%&''()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~'
-    invariants: ["value.count >= 1", "value.count <= 256"]
   # The resolved hosting lifecycle. `Uncertain`, `StopRequired`, `Stopped` and `Cancelled` are
   # llm.budget.Phase's words with llm.budget.Phase's meaning; the hosting-specific states are a
   # submitted create (`Requested`), an observed live resource (`Active`) and a resource a
@@ -380,7 +384,7 @@ entities:
       - {name: request_id, type: llm-gateway.hosting.Identifier}
       - {name: stop_reason, type: 'Optional<llm-gateway.hosting.StopReason>'}
       # Absent while an obligation is open; the evidence of one `EvidenceKind` once it closed.
-      - {name: stop_evidence, type: 'Optional<llm-gateway.hosting.PrintableText>'}
+      - {name: stop_evidence, type: 'Optional<llm-gateway.hosting.Identifier>'}
       # The observed identity. Absent while no provider answer exists. A name alone is not an
       # identity: a provider may hand `resource_name` to a later resource once this one is
       # gone, so `resource_incarnation` is what distinguishes them. A resource with the same name
@@ -499,19 +503,43 @@ commands:
   # `Declare` records the deployment and takes its ownership lease; every later command runs
   # under that live lease, so `Controller::fence` passes and the phase decides, until
   # `ObserveTakenOver` hands the lease to a successor at a newer epoch.
+  # Every command but `Provision` and `Retry` refuses an identifier it would hand to
+  # `Identifier::new` that is empty, holds a space or is over 256 bytes, as `invalid-identifier`,
+  # before it reads any record: ESS 0.77.0 answers an input-guarded refusal first. A byte outside
+  # printable ASCII, which `Identifier::new` also refuses, no ESS 0.77.0 guard expresses; the
+  # `Identifier` alphabet excludes it instead.
+  # ESS 0.77.0 limit: `Provision` and `Retry` declare no `invalid-identifier`. Their accepting
+  # branches' `answer` guards cover every variant of the answer type and neither command has a
+  # default branch, so ESS 0.77.0 asks the refusal's own witness to refute every one of them,
+  # although the refusal answers first, and finds none (ESS-SYNTH-003). A synthesized scenario
+  # sends them an identifier a declared record carries or a well-formed unknown one; an authored
+  # one that sends them an identifier `Identifier::new` refuses meets a target error.
   - name: llm-gateway.hosting.Declare
     input:
       - {name: id, type: llm-gateway.hosting.DeploymentId}
       - {name: request_id, type: llm-gateway.hosting.Identifier}
       - {name: reservation_id, type: llm-gateway.hosting.Identifier}
     outcomes:
+      - name: invalid-identifier
+        when:
+          any:
+            - "id.utf8_bytes == 0"
+            - {id: {contains: " "}}
+            - "id.utf8_bytes > 256"
+            - "request_id.utf8_bytes == 0"
+            - {request_id: {contains: " "}}
+            - "request_id.utf8_bytes > 256"
+            - "reservation_id.utf8_bytes == 0"
+            - {reservation_id: {contains: " "}}
+            - "reservation_id.utf8_bytes > 256"
+        error: llm-gateway.hosting.InvalidIdentifier
       - name: declared
         creates: llm-gateway.hosting.OwnedResource
         instance: id
         emits: [llm-gateway.hosting.ResourceDeclared]
         payload:
           llm-gateway.hosting.ResourceDeclared: {id: input.id}
-        sets: {request_id: input.request_id, reservation_id: input.reservation_id}
+        sets: {deployment_spec_id: input.id, request_id: input.request_id, reservation_id: input.reservation_id}
       - {name: duplicate, existing_instance: true, error: llm-gateway.hosting.Duplicate}
   - name: llm-gateway.hosting.Provision
     input:
@@ -599,6 +627,7 @@ commands:
     input:
       - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
+      - {name: invalid-identifier, when: {any: ["id.utf8_bytes == 0", {id: {contains: " "}}, "id.utf8_bytes > 256"]}, error: llm-gateway.hosting.InvalidIdentifier}
       - name: adopted
         moves: llm-gateway.hosting.OwnedResource.adopt
         instance: id
@@ -614,6 +643,7 @@ commands:
     input:
       - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
+      - {name: invalid-identifier, when: {any: ["id.utf8_bytes == 0", {id: {contains: " "}}, "id.utf8_bytes > 256"]}, error: llm-gateway.hosting.InvalidIdentifier}
       - name: taken-over
         moves: llm-gateway.hosting.OwnedResource.disown
         instance: id
@@ -627,6 +657,7 @@ commands:
     input:
       - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
+      - {name: invalid-identifier, when: {any: ["id.utf8_bytes == 0", {id: {contains: " "}}, "id.utf8_bytes > 256"]}, error: llm-gateway.hosting.InvalidIdentifier}
       - name: unconfirmed
         moves: llm-gateway.hosting.OwnedResource.hold
         instance: id
@@ -638,6 +669,7 @@ commands:
     input:
       - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
+      - {name: invalid-identifier, when: {any: ["id.utf8_bytes == 0", {id: {contains: " "}}, "id.utf8_bytes > 256"]}, error: llm-gateway.hosting.InvalidIdentifier}
       - name: obliged
         moves: llm-gateway.hosting.OwnedResource.oblige
         instance: id
@@ -647,14 +679,23 @@ commands:
       - {name: missing, unknown_instance: true, error: llm-gateway.hosting.Missing}
       - {name: wrong-phase, wrong_state: true, error: llm-gateway.hosting.WrongPhase}
   # The caller's evidence is attached as given (`EvidenceKind.CallerReference`). It is a
-  # hosting identifier to the controller, so evidence holding a space never reaches it: the
-  # caller's own `Identifier::new` refuses it first, whatever the record.
+  # hosting identifier to the controller, so empty evidence, evidence holding a space and
+  # evidence over 256 bytes never reach it: `invalid-identifier`, whatever the record.
   - name: llm-gateway.hosting.ConfirmStopped
     input:
       - {name: id, type: llm-gateway.hosting.DeploymentId}
-      - {name: evidence, type: llm-gateway.hosting.PrintableText}
+      - {name: evidence, type: llm-gateway.hosting.Identifier}
     outcomes:
-      - {name: invalid-identifier, when: {evidence: {contains: " "}}, error: llm-gateway.hosting.InvalidIdentifier}
+      - name: invalid-identifier
+        when:
+          any:
+            - "id.utf8_bytes == 0"
+            - {id: {contains: " "}}
+            - "id.utf8_bytes > 256"
+            - "evidence.utf8_bytes == 0"
+            - {evidence: {contains: " "}}
+            - "evidence.utf8_bytes > 256"
+        error: llm-gateway.hosting.InvalidIdentifier
       - name: confirmed
         moves: llm-gateway.hosting.OwnedResource.discharge
         instance: id
@@ -668,6 +709,7 @@ commands:
     input:
       - {name: id, type: llm-gateway.hosting.DeploymentId}
     outcomes:
+      - {name: invalid-identifier, when: {any: ["id.utf8_bytes == 0", {id: {contains: " "}}, "id.utf8_bytes > 256"]}, error: llm-gateway.hosting.InvalidIdentifier}
       - name: cancelled
         moves: llm-gateway.hosting.OwnedResource.cancel
         instance: id
@@ -688,7 +730,7 @@ errors:
   - name: llm-gateway.hosting.StaleEpoch
     summary: "`stale-epoch`: a strictly newer epoch owns this deployment's lease."
   - name: llm-gateway.hosting.InvalidIdentifier
-    summary: "a hosting identifier must be 1..=256 printable ASCII bytes, and a space is not one."
+    summary: "`invalid-identifier`: an identifier is empty, holds a space or is over 256 bytes; a hosting identifier is 1..=256 printable ASCII bytes with no space."
 events:
   # Test-adapter notification only; there is no production notification transport.
   - name: llm-gateway.hosting.Exercised
@@ -718,7 +760,7 @@ views:
       - {name: state, type: llm-gateway.hosting.OwnedResource.State}
       - {name: request_id, type: llm-gateway.hosting.Identifier}
       - {name: reservation_id, type: llm-gateway.hosting.Identifier}
-      - {name: stop_evidence, type: 'Optional<llm-gateway.hosting.PrintableText>'}
+      - {name: stop_evidence, type: 'Optional<llm-gateway.hosting.Identifier>'}
       - {name: controller_id, type: String}
       - {name: deployment_spec_id, type: String}
       - {name: stop_reason, type: 'Optional<llm-gateway.hosting.StopReason>'}

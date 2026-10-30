@@ -7,6 +7,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Added
+
+- Manifests in `deploy/kubernetes/credential-namespace/` and a guide, "Run in a credential namespace": the gateway in the namespace `agent-credentials` with the provider key as a mounted file, `ingress_auth = "none"`, a Service and a NetworkPolicy that admits ingress from the namespace `agents` on port 8080 only.
+
 ### Changed
 
 - ESS 0.75.0: CI installs it and the conformance runner builds on `ess-conformance` and `ess-primitives` 0.75.0; the suite and schemas it generates are unchanged.

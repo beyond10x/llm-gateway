@@ -24,6 +24,7 @@ const sidebars: SidebarsConfig = {
         'guides/serve-a-bedrock-model',
         'guides/scrape-the-counters',
         'guides/run-on-kubernetes',
+        'guides/run-in-a-credential-namespace',
         'guides/run-the-checks',
         'guides/store-an-upstream-key',
       ],

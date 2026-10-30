@@ -542,3 +542,184 @@ fn adversary_w06_a_bedrock_model_claude_code_is_not_admitted_to_is_not_said_to_l
         "`haiku` declares the messages wire with tool calling parsed, yet the answer says none does:\n{claude}"
     );
 }
+
+// --- Pass 2, on the fix 45272e7 ----------------------------------------------------------------
+
+/// A messages upstream answering `Hello` with 12 + 2 tokens, as an event stream.
+const MESSAGES_ANSWER: &str = concat!(
+    "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_up\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"served\",\"content\":[],\"stop_reason\":null,\"stop_sequence\":null,\"usage\":{\"input_tokens\":12,\"cache_creation_input_tokens\":0,\"cache_read_input_tokens\":0,\"output_tokens\":1}}}\n\n",
+    "event: content_block_start\ndata: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\n",
+    "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hello\"}}\n\n",
+    "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+    "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\",\"stop_sequence\":null},\"usage\":{\"output_tokens\":2}}\n\n",
+    "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+);
+
+/// `POST path` with the owner's credential and `body`.
+fn owner_post(server: &Server, path: &str, body: &str) -> String {
+    server.exchange(&format!(
+        "POST {path} HTTP/1.1\r\nhost: gateway\r\ncontent-type: application/json\r\nauthorization: Bearer {OWNER_SECRET}\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    ))
+}
+
+/// The Claude Code block of `alias` in the answer `claude`: from `# model <alias>` to the next
+/// block or the end.
+fn claude_block<'a>(claude: &'a str, alias: &str) -> &'a str {
+    let marker = format!("\n# model {alias}\n");
+    let start = claude
+        .find(&marker)
+        .unwrap_or_else(|| panic!("no block for {alias}: {claude}"))
+        + 1;
+    let rest = &claude[start..];
+    let end = rest[1..]
+        .find("\n# model ")
+        .map_or(rest.len(), |end| end + 2);
+    &rest[..end]
+}
+
+/// The fix rewords the no-profile line to "none with tool calling parsed takes its requests on
+/// the <wire> wire, relayed or translated" and renders it for Loom too (`listing.rs` `plain`,
+/// `none_for("Loom", Wire::Chat)`). Loom has no recorded turn, so the binary never admits it to
+/// a translated model and never asks whether its requests translate; yet the gateway translates
+/// a Loom chat request to a model that declares only `messages`
+/// (`website/docs/guides/translate-between-wires.md`: "A request inside the subset, from any
+/// client, is translated and sent"). The old text, "none declares the chat wire", was true here;
+/// the new one says the chat request just served is not taken translated.
+#[test]
+fn adversary_w06_p2_the_loom_no_profile_answer_does_not_deny_the_chat_translation_it_serves() {
+    let fixture = Fixture::new("adv-w06-p2-loom-none");
+    let upstream = Upstream::script(vec![("text/event-stream", MESSAGES_ANSWER)]);
+    let secret = fixture.owner_secret();
+    let table = format!(
+        "[hosted.msg-up]\nwires = [\"messages\"]\nbase_url = \"http://{}/v1\"\nupstream_model = \"served\"\nauth_kind = \"anonymous\"\ntool_calling = \"parsed\"\n",
+        upstream.address
+    );
+    let server = Server::start(&fixture.config(&hosted_document("127.0.0.1:0", &secret, &table)));
+    let plain = server.root("gateway", "curl/8.5.0");
+    assert!(
+        plain.contains("# No model of this gateway serves Loom"),
+        "precondition, no Loom profile for a messages-only model: {plain}"
+    );
+    let chat = json!({
+        "model": "msg-up",
+        "messages": [{"role": "user", "content": "Hi"}],
+        "tools": [{"type": "function", "function": {"name": "read", "description": "Read a file", "parameters": {"type": "object"}}}],
+        "stream": true
+    })
+    .to_string();
+    let answer = owner_post(&server, "/v1/chat/completions", &chat);
+    assert!(
+        answer.starts_with("HTTP/1.1 200 ") && answer.contains("Hello"),
+        "precondition, the gateway translates a Loom chat request with a tool to `msg-up`:\n{answer}"
+    );
+    assert!(
+        !plain.contains("takes its requests on the chat wire, relayed or translated"),
+        "GET / says no model with tool calling parsed takes Loom's requests translated, and the gateway just translated one to `msg-up` (tool calling parsed):\n{plain}"
+    );
+}
+
+/// The new comment line carries an apostrophe ("Claude Code's"). A model block pasted into an
+/// interactive zsh, whose default leaves `INTERACTIVE_COMMENTS` off, reads `#` as a command and
+/// the apostrophe as an opening quote; the quote then swallows the next line, the very
+/// `export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'` the fix adds, and the shell waits at
+/// `quote>`. Measured with zsh 5.9: `zsh -f -i` fed the block ends `zsh: unmatched '`, the
+/// variable unset; the same block without the two new lines sets every variable
+/// (`command not found: #` for `# model <alias>` only). Before the fix no comment line of a
+/// model block held a quote character.
+#[test]
+fn adversary_w06_p2_a_model_blocks_comment_lines_hold_no_quote_a_pasting_shell_would_open() {
+    let fixture = Fixture::new("adv-w06-p2-quote");
+    let upstream = Upstream::script(Vec::new());
+    let server = Server::start(&translated_chat_model(
+        &fixture,
+        "chat-up",
+        upstream.address,
+    ));
+    let claude = server.root("gateway", CLAUDE_CODE_AGENT);
+    let block = claude_block(&claude, "chat-up");
+    assert!(
+        block.contains("export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n"),
+        "precondition, the translated block exports the variable: {block}"
+    );
+    for line in block.lines().filter(|line| line.starts_with('#')) {
+        assert!(
+            !line.contains(['\'', '"', '`']),
+            "a comment line of a model block opens a quote in an interactive zsh and swallows the export after it: {line:?}\n{block}"
+        );
+    }
+}
+
+/// Green guard: in one answer, the variable follows each model's route. `a-native` (messages
+/// only) and `b-both` (chat and messages) are relayed, `c-chat` (chat only) is reached
+/// translated; only `c-chat`'s block exports it, and the whole answer runs under POSIX `sh`.
+#[test]
+fn adversary_w06_p2_the_variable_follows_the_route_of_each_block_in_one_answer() {
+    const DISABLE: &str = "export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n";
+    let fixture = Fixture::new("adv-w06-p2-several");
+    let secret = fixture.owner_secret();
+    let mut tables = String::new();
+    for (alias, wires) in [
+        ("a-native", "\"messages\""),
+        ("b-both", "\"chat\", \"messages\""),
+        ("c-chat", "\"chat\""),
+    ] {
+        std::fmt::Write::write_fmt(
+            &mut tables,
+            format_args!(
+                "[hosted.{alias}]\nwires = [{wires}]\nbase_url = \"http://127.0.0.1:9/v1\"\nupstream_model = \"served\"\nauth_kind = \"anonymous\"\ntool_calling = \"parsed\"\n\n"
+            ),
+        )
+        .unwrap();
+    }
+    let server = Server::start(&fixture.config(&hosted_document("127.0.0.1:0", &secret, &tables)));
+    let answer = server.root("gateway", CLAUDE_CODE_AGENT);
+    let (_, claude) = answer.split_once("\r\n\r\n").unwrap();
+    assert!(
+        !claude_block(claude, "a-native").contains("DISABLE_STRUCTURED"),
+        "{claude}"
+    );
+    assert!(
+        !claude_block(claude, "b-both").contains("DISABLE_STRUCTURED"),
+        "{claude}"
+    );
+    assert!(
+        claude_block(claude, "c-chat").ends_with(DISABLE),
+        "{claude}"
+    );
+    assert_eq!(claude.matches("DISABLE_STRUCTURED").count(), 1, "{claude}");
+    let script = format!(
+        "{claude}printf '%s|%s' \"$ANTHROPIC_MODEL\" \"$CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS\"\n"
+    );
+    let output = Command::new("sh").args(["-c", &script]).output().unwrap();
+    assert!(output.status.success(), "{output:?}");
+    assert_eq!(
+        String::from_utf8_lossy(&output.stdout),
+        "c-chat|1",
+        "{output:?}"
+    );
+}
+
+/// Green guard: a Bedrock model (translated-only) gets the variable, and Claude Code's
+/// structured-output request to it is refused `translation-unsupported` before any credential is
+/// fetched, so the claim "Bedrock's included" holds through the binary.
+#[test]
+fn adversary_w06_p2_a_bedrock_block_exports_the_variable_its_structured_output_needs() {
+    let fixture = Fixture::new("adv-w06-p2-bedrock");
+    let (config, environment) = bedrock_deployment(&fixture, &bedrock_table("haiku", ""));
+    let server = Server::start_with(&config, &environment);
+    let claude = server.root("gateway", CLAUDE_CODE_AGENT);
+    assert!(
+        claude_block(&claude, "haiku")
+            .ends_with("export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n"),
+        "{claude}"
+    );
+    let answer = server.claude_code(
+        CLAUDE_CODE_STRUCTURED_OUTPUT,
+        &body_naming(CLAUDE_CODE_STRUCTURED_OUTPUT, "haiku").to_string(),
+    );
+    assert!(
+        answer.contains("\"code\":\"translation-unsupported\""),
+        "{answer}"
+    );
+}

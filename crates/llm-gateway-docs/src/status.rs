@@ -286,7 +286,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Gateway",
         "Client setup for translated routes",
-        "GET / hands Codex and Claude Code a profile for a model whose upstream speaks another wire when the client's recorded first turn translates to it under the model's capabilities, and none when it is refused; the gateway asks once, at start, and logs nothing for it. Claude Code's profile for such a model turns its structured output off, which every translated path refuses. A Loom run is profiled only for models that declare chat. Tested through the binary against loopback fixture upstreams, not a vendor API.",
+        "GET / hands Codex and Claude Code a profile for a model whose upstream speaks another wire when the client's recorded first turn translates to it under the model's capabilities, and none when it is refused; the gateway asks once, at start, and logs nothing for it. Claude Code's profile for such a model turns its structured output off, which every translated path refuses, with the setting its published gateway protocol names; that setting has not been observed against a live client. A Loom run is profiled only for models that declare chat. Tested through the binary against loopback fixture upstreams, not a vendor API.",
         "crates/llm-gateway-cli/tests/translation.rs::translation_get_root_profiles_codex_and_claude_code_where_their_turns_translate",
         Some("/docs/guides/set-up-a-client"),
     ),

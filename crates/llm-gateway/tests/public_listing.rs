@@ -777,35 +777,50 @@ fn r1_with_no_model_for_a_client_the_answer_says_so() {
     }
 }
 
-/// The no-profile answer names what is missing without denying a wire a model declares: no
-/// model with tool calling parsed takes the client's requests, relayed or translated. It holds
-/// for a gateway with no model, and for one whose translated-only model declares the client's
-/// wire but whose translator does not admit the client (story:client-profiles-translated).
+/// The no-profile answer names only what was checked, and finds it for no model
+/// (story:client-profiles-translated, correction round 2). Codex and Claude Code: no model with
+/// tool calling parsed relays the wire or admits the client's recorded first turn translated.
+/// Loom: none relays the chat wire, and no Loom turn is recorded to try a translated one, though
+/// the gateway translates a Loom chat request. It holds for a gateway with no model, for one
+/// whose translated-only model declares `messages` but whose translator admits no client, and
+/// for one whose model declares every wire without tool calling parsed.
 #[test]
 fn r1_the_no_profile_answer_holds_with_and_without_a_model_declaring_the_wire() {
     let mut bedrock = declared("bedrock", vec![Wire::Messages], 65_536);
     bedrock.translated_only = true;
     let declaring = Fixture::translating(vec![bedrock], Arc::new(Admitting::new(Vec::new())));
     let empty = Fixture::composed(None, true);
+    let mut text_only = declared("textonly", Wire::ALL.to_vec(), 32_768);
+    text_only.tool_calling = ToolCalling::Absent;
+    let no_tools = Fixture::translating(vec![text_only], Arc::new(Admitting::new(Vec::new())));
     for (case, fixture) in [
         ("a translated-only bedrock", &declaring),
         ("no model", &empty),
+        ("a model without tool calling", &no_tools),
     ] {
         let codex = fixture.get("/", Some(CODEX)).body;
         let claude = fixture.get("/", Some(CLAUDE)).body;
+        let plain = fixture.get("/", Some(CURL)).body;
         assert!(
             codex.ends_with(
-                "\n# No model of this gateway serves Codex: none with tool calling parsed\n\
-                 # takes its requests on the responses wire, relayed or translated.\n"
+                "\n# No model of this gateway serves Codex: none with tool calling parsed relays the\n\
+                 # responses wire, or admits the recorded first turn of Codex translated.\n"
             ),
             "story:client-profiles-translated, {case}: {codex}"
         );
         assert!(
             claude.ends_with(
-                "\n# No model of this gateway serves Claude Code: none with tool calling parsed\n\
-                 # takes its requests on the messages wire, relayed or translated.\n"
+                "\n# No model of this gateway serves Claude Code: none with tool calling parsed relays the\n\
+                 # messages wire, or admits the recorded first turn of Claude Code translated.\n"
             ),
             "story:client-profiles-translated, {case}: {claude}"
+        );
+        assert!(
+            plain.ends_with(
+                "\n# No model of this gateway serves Loom: none with tool calling parsed relays the\n\
+                 # chat wire, and no Loom turn is recorded to try a translated one.\n"
+            ),
+            "story:client-profiles-translated, {case}: {plain}"
         );
     }
 }
@@ -836,10 +851,10 @@ fn r1_claude_code_disables_structured_outputs_only_for_a_model_reached_by_transl
     assert!(
         translated.ends_with(
             "export CLAUDE_CODE_MAX_CONTEXT_TOKENS='32768'\n\
-             # Reached by translation, which refuses Claude Code's structured outputs.\n\
+             # Reached by translation, which refuses structured outputs from Claude Code.\n\
              export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n"
         ),
-        "story:client-profiles-translated: the translated model's block disables structured outputs: {claude}"
+        "story:client-profiles-translated, correction round 2 (no quote in a comment line): the translated model's block disables structured outputs: {claude}"
     );
     assert!(
         !native.contains("CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS"),

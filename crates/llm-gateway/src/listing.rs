@@ -195,13 +195,22 @@ carries the gateway's owner token as Authorization: Bearer.
 # account a secret_reference_id that resolves to the owner token.
 ";
 
-/// What an answer says when no model has a profile for its client. It names no declared wire:
-/// a translated-only model that declares the client's wire is left out when the translator does
-/// not admit the client (story:client-profiles-translated).
-fn none_for(client: &str, wire: Wire) -> String {
+/// What an answer says when no model has a profile for its client: only what was checked, and
+/// found for no model (story:client-profiles-translated). Every client is checked for a model
+/// with tool calling parsed that relays its wire; a translated-only model that declares the wire
+/// relays it not, so the answer never says no model declares it. A client whose first turn is
+/// recorded (`first_turn_recorded`: Codex, Claude Code) is also checked for one that admits that
+/// turn translated. No Loom turn is recorded, so a Loom run is never tried translated, although
+/// the gateway translates a Loom chat request.
+fn none_for(client: &str, wire: Wire, first_turn_recorded: bool) -> String {
+    let translated = if first_turn_recorded {
+        format!("or admits the recorded first turn of {client} translated")
+    } else {
+        format!("and no {client} turn is recorded to try a translated one")
+    };
     format!(
-        "\n# No model of this gateway serves {client}: none with tool calling parsed\n\
-         # takes its requests on the {} wire, relayed or translated.\n",
+        "\n# No model of this gateway serves {client}: none with tool calling parsed relays the\n\
+         # {} wire, {translated}.\n",
         wire.label()
     )
 }
@@ -224,7 +233,7 @@ fn codex<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> Stri
         text.push_str("env_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n");
     }
     if !any {
-        text.push_str(&none_for("Codex", Wire::Responses));
+        text.push_str(&none_for("Codex", Wire::Responses, true));
     }
     text
 }
@@ -233,8 +242,10 @@ fn codex<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> Stri
 /// names the alias, so no background request names a model the gateway refuses. A model the
 /// requests reach only translated also turns structured output off: every translated path
 /// refuses `output_config.format` as `translation-unsupported`, and Claude Code sends it unless
-/// `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` (DECIDED 2026-10-30,
-/// story:client-profiles-translated).
+/// `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1`, as its published gateway protocol says; no live
+/// client was observed (DECIDED 2026-10-30, story:client-profiles-translated). The comment line
+/// holds no quote character: an interactive shell reading `#` as a command would open the quote
+/// and swallow the export after it.
 fn claude_code<'m>(models: impl Iterator<Item = (&'m RelayModel, bool)>, origin: &str) -> String {
     const MODEL_SETTINGS: [&str; 5] = [
         "ANTHROPIC_MODEL",
@@ -262,13 +273,13 @@ fn claude_code<'m>(models: impl Iterator<Item = (&'m RelayModel, bool)>, origin:
         }
         if translated {
             text.push_str(
-                "# Reached by translation, which refuses Claude Code's structured outputs.\n\
+                "# Reached by translation, which refuses structured outputs from Claude Code.\n\
                  export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'\n",
             );
         }
     }
     if !any {
-        text.push_str(&none_for("Claude Code", Wire::Messages));
+        text.push_str(&none_for("Claude Code", Wire::Messages, true));
     }
     text
 }
@@ -294,7 +305,7 @@ fn plain<'m>(models: impl Iterator<Item = &'m RelayModel>, origin: &str) -> Stri
         }
     }
     if !any {
-        text.push_str(&none_for("Loom", Wire::Chat));
+        text.push_str(&none_for("Loom", Wire::Chat, false));
     }
     text
 }

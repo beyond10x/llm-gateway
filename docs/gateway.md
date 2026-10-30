@@ -635,7 +635,9 @@ conversation by it. The binary's hosted endpoint for such a base URL is sent exa
 
 1. The caller's own `x-opencode-session`, when it is 1 to 256 bytes (`caller-session-bytes`)
    of printable ASCII without a space (0x21-0x7e, llm's identifier rule). Any other value is
-   ignored: it is not refused, not sent, not logged and not echoed.
+   ignored: it is not sent, not logged and not echoed. Only SP and HTAB around it are
+   dropped, as for any field. A NUL or a byte that is not UTF-8 refuses the request
+   `request-malformed`, as it does in any header.
 2. Otherwise `llmgw-` and the first 32 lowercase hex characters of SHA-256 over a key of 32
    random bytes the process draws once from the system random source and the caller's peer
    address (its 4 or 16 octets; an IPv4 address mapped into IPv6 counts as IPv4). One peer keeps

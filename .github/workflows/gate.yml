@@ -23,8 +23,8 @@ jobs:
         run: cargo run --locked -p llm-gateway-docs -- generate --check
       - name: Install ess
         env:
-          ESS_VERSION: "0.69.2"
-          ESS_SHA256: 8cc5a3a7ed7c27aacbff131ab1437e18e7d7d1878fee77542b3e0fff7157d414
+          ESS_VERSION: "0.75.0"
+          ESS_SHA256: cb4634a6004cfa407de2dbecdfb66b8c3bce462364c69f932b31fa7408b900f4
         run: |
           set -euo pipefail
           asset="ess-$ESS_VERSION-x86_64-unknown-linux-gnu.tar.gz"

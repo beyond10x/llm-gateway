@@ -3,16 +3,23 @@ format: aep.planning-md/3
 id: epic:client-access
 kind: epic
 status: draft
-title: Claude Code, Codex and Loom use a Runpod-hosted model through llm-gateway
+title: Claude Code, Codex and Loom use a model on OpenAI's hosted API through llm-gateway
 relations:
 - serves: vision:portable-model-inference
-revision: 4
+revision: 7
 ---
 ## Outcome
 
-The operator runs Claude Code, Codex and a Loom run against a model served from a Runpod pod,
-through one `b10x-llm-gateway` on the workstation and one owner token, with the pod started on
-demand and terminated when idle.
+The operator runs Claude Code, Codex and a Loom run against a model served from OpenAI's hosted API,
+through one `b10x-llm-gateway` on the workstation and one owner token, with the OpenAI key held in
+connectors rather than in a file the gateway reads.
+
+Until 2026-10-29 the outcome was a model on a Runpod pod started on demand and terminated when idle.
+Operator decision `approval-record:openai-hosted-qualification-no-runpod` replaced that target: Runpod
+is not used and its account stays unfunded. The implemented pod stories below (`story:pod-proxy-tls`
+and the relay chain in `epic:gateway` and `epic:hosting`) stay delivered; the two qualification
+stories now run against the hosted endpoint and depend on `story:hosted-credential-from-connectors`
+(in `epic:gateway-features`).
 
 ## Why
 
@@ -30,18 +37,20 @@ within claude, codex and loom".
 
 The relay chain is already planned in `epic:gateway` and `epic:hosting`:
 `story:provider-key-files`, `story:gateway-deployment`, `story:runpod-production-transport`,
-`story:live-runpod-wiring`, `story:cold-start-hold` and `story:public-model-listing`. This epic
-adds only what the three clients need beyond that chain:
+`story:live-runpod-wiring`, `story:cold-start-hold` and `story:public-model-listing`. The hosted
+endpoint the qualification now uses is `story:hosted-endpoints`, and its connectors-held credential
+`story:hosted-credential-from-connectors`, both in `epic:gateway-features`. This epic adds only what
+the three clients need beyond that:
 
 | Story | What it adds |
 | --- | --- |
 | `story:model-tool-calling` | a model declares tool calling; a request with tools for a model without it is refused before any pod starts |
 | `story:pod-proxy-tls` | the binary reaches a pod's `https` proxy URL over verified TLS |
-| `story:client-qualification` | one recorded live session each for Claude Code and Codex against a real pod, with its cost |
+| `story:client-qualification` | one recorded live session each for Claude Code and Codex against OpenAI's hosted API, with its cost |
 | `story:claude-code-wire` | the gateway answers what Claude Code sends, settled from cited sources and authored fixtures |
 | `story:effort-default` | a hosted model's declared effort is given to a Claude Code turn that names none |
 | `story:max-tokens-clamp` | a messages request never asks for more output than the context window has room for |
-| `story:loom-qualification` | one recorded live Loom run through llm against the same pod |
+| `story:loom-qualification` | one recorded live Loom run through llm against the same hosted model |
 
 `story:public-model-listing` (in `epic:gateway`) renders the `ClientProfile` settings at `GET /`.
 

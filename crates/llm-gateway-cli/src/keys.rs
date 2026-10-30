@@ -123,3 +123,68 @@ pub(crate) fn read_token(
     std::hint::black_box(&read);
     held
 }
+
+#[cfg(test)]
+mod tests {
+    use super::read_token;
+    use crate::{
+        refusal::StartupRefusal,
+        trusted::{self, ledger},
+    };
+    use std::{
+        fs,
+        os::unix::fs::PermissionsExt,
+        path::{Path, PathBuf},
+    };
+
+    /// `bytes` in a file of mode 0600, in a directory of its own under the build directory.
+    fn file(name: &str, bytes: &[u8]) -> PathBuf {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/tmp")
+            .join(format!("gateway-cli-unit-key-{name}-{}", std::process::id()));
+        drop(fs::remove_dir_all(&dir));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("key");
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        path
+    }
+
+    /// What this proves: every allocation a key file's bytes were held in while `read_token`
+    /// read them, the reader's included, read zero in full as it was let go, whether the rules
+    /// took the key or refused it, and none was freed by a reallocation behind its back; the key
+    /// it returns is a copy of exactly its length. That freed memory stays zero is not
+    /// observable from safe Rust.
+    #[test]
+    fn a_key_file_read_is_overwritten_whichever_way_the_rules_go() {
+        let mut long = vec![b'k'; 4097];
+        long.push(b'\n');
+        for (name, bytes, outcome) in [
+            ("token", &b"sk-key-0123456789\r\n"[..], Ok(&b"sk-key-0123456789"[..])),
+            ("spaced", b"sk key\n", Err("vllm-api-key:not-a-token")),
+            ("blank", b" \n", Err("vllm-api-key:not-a-token")),
+            ("long", &long, Err("vllm-api-key:too-large")),
+        ] {
+            let path = file(name, bytes);
+            ledger::drain();
+            let read = read_token(
+                &path,
+                "models.code.vllm_api_key_file",
+                &trusted::VLLM_API_KEY,
+                (
+                    StartupRefusal::VllmApiKeyTooLarge,
+                    StartupRefusal::VllmApiKeyNotAToken,
+                ),
+            );
+            match (read, outcome) {
+                (Ok(key), Ok(expected)) => {
+                    assert_eq!(key, expected, "{name}");
+                    assert_eq!(key.capacity(), key.len(), "{name}");
+                }
+                (Err(refusal), Err(code)) => assert_eq!(refusal.code(), code, "{name}"),
+                (read, _) => panic!("{name}: {:?}", read.map(|_| "a key")),
+            }
+            ledger::assert_every_allocation_overwritten(name);
+        }
+    }
+}

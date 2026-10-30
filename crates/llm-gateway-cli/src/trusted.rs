@@ -223,3 +223,197 @@ pub(crate) fn read_named(path: &Path, setting: &str, policy: &Policy) -> Result<
 fn named(refusal: &Refusal, setting: &str) -> Refusal {
     Refusal::new(refusal.kind(), format!("{setting}: {}", refusal.message()))
 }
+
+/// Bytes that may hold a credential: what this reader read, a key read through it, the request
+/// a probe sends one in. They are overwritten, spare capacity included, when dropped, so every
+/// path that lets them go overwrites them first, a refusal's included. Best effort without a
+/// `zeroize` dependency, as `OwnerToken` does: the black box keeps the writes observable.
+pub(crate) struct Wiped(Vec<u8>);
+
+impl Wiped {
+    /// `size` zero bytes, allocated before anything is read into them.
+    pub(crate) fn zeroed(size: usize) -> Self {
+        let bytes = vec![0; size];
+        #[cfg(test)]
+        ledger::taken(&bytes);
+        Self(bytes)
+    }
+
+    /// No bytes yet, in an allocation of exactly `capacity` bytes, made before any is written.
+    pub(crate) fn with_capacity(capacity: usize) -> Self {
+        let bytes = Vec::with_capacity(capacity);
+        #[cfg(test)]
+        ledger::taken(&bytes);
+        Self(bytes)
+    }
+
+    /// `bytes`, overwritten from now on when dropped.
+    pub(crate) fn adopt(bytes: Vec<u8>) -> Self {
+        Self(bytes)
+    }
+
+    pub(crate) fn as_slice(&self) -> &[u8] {
+        &self.0
+    }
+
+    pub(crate) fn capacity(&self) -> usize {
+        self.0.capacity()
+    }
+
+    /// Appends `bytes`; a caller that sized the allocation checks it did not move.
+    pub(crate) fn extend(&mut self, bytes: &[u8]) {
+        self.0.extend_from_slice(bytes);
+    }
+
+    /// The first `length` bytes as text, in the same allocation; bytes that are not UTF-8 come
+    /// back as they are, still overwritten when dropped.
+    pub(crate) fn into_text(mut self, length: usize) -> Result<String, Self> {
+        let mut bytes = std::mem::take(&mut self.0);
+        bytes.truncate(length);
+        String::from_utf8(bytes).map_err(|error| Self(error.into_bytes()))
+    }
+}
+
+impl Drop for Wiped {
+    fn drop(&mut self) {
+        self.0.fill(0);
+        self.0.resize(self.0.capacity(), 0);
+        std::hint::black_box(&self.0);
+        #[cfg(test)]
+        ledger::released(&self.0);
+    }
+}
+
+/// Each [`Wiped`] allocation this thread took and let go, so that a test can check every one was
+/// overwritten before it was freed and none was freed behind its back.
+#[cfg(test)]
+pub(crate) mod ledger {
+    use std::{cell::RefCell, collections::BTreeSet};
+
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum Entry {
+        /// An allocation's address and size, as it was taken.
+        Taken(usize, usize),
+        /// An allocation's address and size as it was let go, and whether every byte read zero.
+        Released(usize, usize, bool),
+    }
+
+    thread_local! {
+        static ENTRIES: RefCell<Vec<Entry>> = const { RefCell::new(Vec::new()) };
+    }
+
+    pub(crate) fn taken(bytes: &Vec<u8>) {
+        if bytes.capacity() > 0 {
+            let entry = Entry::Taken(bytes.as_ptr().addr(), bytes.capacity());
+            ENTRIES.with_borrow_mut(|entries| entries.push(entry));
+        }
+    }
+
+    pub(crate) fn released(bytes: &Vec<u8>) {
+        if bytes.capacity() > 0 {
+            let zeroed = bytes.len() == bytes.capacity() && bytes.iter().all(|byte| *byte == 0);
+            let entry = Entry::Released(bytes.as_ptr().addr(), bytes.capacity(), zeroed);
+            ENTRIES.with_borrow_mut(|entries| entries.push(entry));
+        }
+    }
+
+    /// This thread's entries since the last call, oldest first.
+    pub(crate) fn drain() -> Vec<Entry> {
+        ENTRIES.with_borrow_mut(std::mem::take)
+    }
+
+    /// Every allocation taken since the last [`drain`] was let go once, read zero in full, and
+    /// nothing was let go that was not taken, so none was freed by a reallocation behind the
+    /// buffer's back; at least one was taken.
+    pub(crate) fn assert_every_allocation_overwritten(case: &str) {
+        let mut live = BTreeSet::new();
+        let mut taken = 0;
+        for entry in drain() {
+            match entry {
+                Entry::Taken(address, size) => {
+                    assert!(live.insert((address, size)), "{case}: taken twice");
+                    taken += 1;
+                }
+                Entry::Released(address, size, zeroed) => {
+                    assert!(
+                        live.remove(&(address, size)),
+                        "{case}: let go an allocation that was never taken, so the one that was \
+                         was freed by a reallocation without being overwritten"
+                    );
+                    assert!(zeroed, "{case}: an allocation was let go holding its bytes");
+                }
+            }
+        }
+        assert!(
+            live.is_empty(),
+            "{case}: {} allocation(s) were freed without being overwritten",
+            live.len()
+        );
+        assert!(taken > 0, "{case}: the bytes were held in no allocation the ledger saw");
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        CONTAINER_TOKEN, OWNER_SECRET, Policy,
+        ledger::{self, Entry},
+        read,
+    };
+    use std::{
+        fs,
+        os::unix::fs::PermissionsExt,
+        path::{Path, PathBuf},
+    };
+
+    /// `bytes` in a file of mode 0600, in a directory of its own under the build directory.
+    fn file(name: &str, bytes: &[u8]) -> PathBuf {
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/tmp")
+            .join(format!("gateway-cli-unit-{name}-{}", std::process::id()));
+        drop(fs::remove_dir_all(&dir));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("credential");
+        fs::write(&path, bytes).unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        path
+    }
+
+    fn bound(policy: &Policy) -> usize {
+        usize::try_from(policy.limit).unwrap() + 1
+    }
+
+    /// What this proves: the text a credential file is read into is the allocation the reader
+    /// took at the bound, plus one byte to see a file past it, before its first read (the same
+    /// address and size), and none was taken or let go beside it, so no smaller allocation held
+    /// the credential and was freed by a reallocation. The reader's caller overwrites the text.
+    #[test]
+    fn a_credential_file_is_read_into_one_allocation_taken_at_the_bound_before_its_first_byte() {
+        for (name, policy) in [("owner", &OWNER_SECRET), ("container", &CONTAINER_TOKEN)] {
+            let mut sent = vec![b'k'; 3000];
+            sent.push(b'\n');
+            let path = file(name, &sent);
+            ledger::drain();
+            let text = read(&path, policy).unwrap();
+            assert_eq!(text.as_bytes(), sent, "{name}");
+            assert_eq!(
+                ledger::drain(),
+                [Entry::Taken(text.as_ptr().addr(), bound(policy))],
+                "{name}"
+            );
+            assert_eq!(text.capacity(), bound(policy), "{name}");
+        }
+    }
+
+    /// What this proves: a credential file refused after it was read was held in allocations
+    /// that each read zero in full as they were let go. That freed memory stays zero is not
+    /// observable from safe Rust.
+    #[test]
+    fn a_credential_file_refused_after_it_was_read_is_overwritten_first() {
+        let path = file("not-utf8", b"sk-\xff-credential\n");
+        ledger::drain();
+        let refused = read(&path, &OWNER_SECRET).unwrap_err();
+        assert_eq!(refused.code(), "owner-secret:not-utf8");
+        ledger::assert_every_allocation_overwritten("not UTF-8");
+    }
+}

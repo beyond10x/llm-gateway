@@ -9,7 +9,11 @@ use std::{
 };
 
 fn ess(args: &[&str]) -> Result<(), Box<dyn Error>> {
-    if !Command::new("ess").args(args).status()?.success() {
+    let status = Command::new("ess")
+        .args(args)
+        .status()
+        .map_err(|error| format!("cannot run `ess`: {error}; is it on PATH?"))?;
+    if !status.success() {
         return Err("ESS projection refused; see diagnostics above".into());
     }
     Ok(())

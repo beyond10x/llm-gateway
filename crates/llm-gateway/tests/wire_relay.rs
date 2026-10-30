@@ -3454,3 +3454,143 @@ fn usage_a_messages_stream_reaches_the_client_with_its_start_and_delta_usage_unc
         ],
     );
 }
+
+// --- A client gone before the answer head (story:byte-relay-client-gone) ------------------------
+
+/// A client that closes its connection while the target is still generating a non-streamed
+/// answer releases the target within the gateway's client watch, long before the answer
+/// arrives: the gateway shuts the target's connection down and reports nothing to the source.
+#[test]
+fn a_non_streamed_client_that_left_releases_the_target_before_the_answer() {
+    let (keep, hold) = std::sync::mpsc::channel::<()>();
+    let pod = Pod::start(vec![Answer::Reply {
+        status: 200,
+        content_type: "application/json",
+        chunks: vec![b"{\"id\":\"a\"}".to_vec()],
+        framing: Framing::Length,
+        hold_head: Some(hold),
+        hold_chunks: None,
+    }]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let mut client = TcpStream::connect(gateway.addr).unwrap();
+    client
+        .write_all(&request(
+            "POST",
+            "/v1/chat/completions",
+            Some(OWNER),
+            b"{\"model\":\"code\",\"stream\":false,\"messages\":[]}",
+        ))
+        .unwrap();
+    thread::sleep(Duration::from_millis(500));
+    drop(client);
+    let deadline = Instant::now() + Duration::from_secs(3);
+    while Instant::now() < deadline && source.released() == 0 {
+        thread::sleep(Duration::from_millis(10));
+    }
+    let released = source.released();
+    drop(keep);
+    assert_eq!(
+        released, 1,
+        "the target was still held 3 s after the client left"
+    );
+    assert!(
+        source.invalidated().is_empty(),
+        "{:?}",
+        source.invalidated()
+    );
+}
+
+// --- Target answer heads and obs-text (story:target-header-obs-text) ----------------------------
+
+/// A target on a loopback port that answers one request with `answer`, byte for byte.
+fn raw_target(answer: Vec<u8>) -> (Arc<Source>, thread::JoinHandle<()>) {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let authority = listener.local_addr().unwrap().to_string();
+    let pod = thread::spawn(move || {
+        let (mut connection, _) = listener.accept().unwrap();
+        connection.set_read_timeout(Some(WAIT)).unwrap();
+        drop(read_request(&mut connection));
+        drop(connection.write_all(&answer));
+        drop(connection.shutdown(Shutdown::Both));
+    });
+    let source = Source::new(vec![Slot {
+        authority,
+        refuses: false,
+        bearer: None,
+        header: None,
+        refuse_first: Arc::new(AtomicUsize::new(0)),
+    }]);
+    (source, pod)
+}
+
+/// `head` with `byte` after its first `@`.
+fn with_byte(head: &[u8], byte: u8) -> Vec<u8> {
+    let at = head.iter().position(|&each| each == b'@').unwrap();
+    let mut raw = head[..at].to_vec();
+    raw.push(byte);
+    raw.extend_from_slice(&head[at + 1..]);
+    raw
+}
+
+const HI: &str = "{\"model\":\"code\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}";
+
+/// A non-UTF-8 byte (obs-text, RFC 9110 section 5.5) in a header field the relay does not read
+/// is relayed, and the target is kept.
+#[test]
+fn a_non_utf8_byte_in_an_ignored_target_header_is_relayed() {
+    let (source, pod) = raw_target(with_byte(
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nx-note: caf@\r\ncontent-length: 10\r\nconnection: close\r\n\r\n{\"id\":\"a\"}",
+        0xe9,
+    ));
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let answer = gateway.post_text("/v1/chat/completions", HI);
+    pod.join().unwrap();
+    assert_eq!(answer.status, 200, "{answer:?}");
+    assert!(
+        source.invalidated().is_empty(),
+        "{:?}",
+        source.invalidated()
+    );
+}
+
+/// The same byte in the status line or in a field the relay reads (`content-type`,
+/// `content-length`, `transfer-encoding`) is a malformed head: `upstream-failed`, and the target
+/// is reported to the source.
+#[test]
+fn a_non_utf8_byte_in_a_target_line_the_relay_reads_is_refused() {
+    for head in [
+        &b"HTTP/1.1 200 O@\r\ncontent-type: application/json\r\ncontent-length: 10\r\n\r\n{\"id\":\"a\"}"[..],
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/json@\r\ncontent-length: 10\r\n\r\n{\"id\":\"a\"}",
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 10@\r\n\r\n{\"id\":\"a\"}",
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked@\r\n\r\na\r\n{\"id\":\"a\"}\r\n0\r\n\r\n",
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\nx-n@te: cafe\r\ncontent-length: 10\r\n\r\n{\"id\":\"a\"}",
+    ] {
+        let (source, pod) = raw_target(with_byte(head, 0xe9));
+        let gateway = Relayed::start(vec![code_model()], &source);
+        let answer = gateway.post_text("/v1/chat/completions", HI);
+        pod.join().unwrap();
+        assert_eq!(answer.status, 502, "{answer:?}");
+        assert_eq!(answer.code().as_deref(), Some("upstream-failed"));
+        assert_eq!(source.invalidated().len(), 1, "{:?}", source.invalidated());
+    }
+}
+
+/// A target's trailer fields are not read either, so obs-text in one ends the answer whole.
+#[test]
+fn a_non_utf8_byte_in_a_target_trailer_is_relayed() {
+    let (source, pod) = raw_target(with_byte(
+        b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ntransfer-encoding: chunked\r\n\r\na\r\n{\"id\":\"a\"}\r\n0\r\nx-note: caf@\r\n\r\n",
+        0xe9,
+    ));
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let answer = gateway.post_text("/v1/chat/completions", HI);
+    pod.join().unwrap();
+    assert_eq!(answer.status, 200, "{answer:?}");
+    assert_eq!(answer.body, b"{\"id\":\"a\"}");
+    assert!(
+        source.invalidated().is_empty(),
+        "{:?}",
+        source.invalidated()
+    );
+}

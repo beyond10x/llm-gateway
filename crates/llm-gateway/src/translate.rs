@@ -100,4 +100,10 @@ pub trait TranslatedAnswer: Send {
     fn gone(&mut self) -> bool {
         false
     }
+
+    /// Tells the relay the status the target's answer head carried, whatever it was, once it
+    /// arrived; the last one told counts. A translation that writes no answer, refused or
+    /// failed, is recorded with it as its target status, as the byte relay records the status
+    /// it read (story:translated-refusal-target-status). Ignored by default.
+    fn target_status(&mut self, _status: u16) {}
 }

@@ -1090,3 +1090,44 @@ fn translation_a_model_is_translated_under_its_declared_capabilities() {
         None
     );
 }
+
+/// story:translated-refusal-target-status: a translated call the target answered `429` is
+/// refused `upstream-refused`, and its usage record carries the target's status, as a relayed
+/// call's does. The route counters it feeds are held by
+/// `crates/llm-gateway/tests/translation_port.rs`: this chat request for a messages-only model
+/// is on a wire the model does not declare, so it feeds the process-wide series only.
+#[test]
+fn translation_a_call_the_target_answered_429_records_the_target_status() {
+    let fixture = Fixture::new("target-status-429");
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    let upstream = thread::spawn(move || {
+        let (mut connection, _) = listener.accept().unwrap();
+        connection.set_read_timeout(Some(WAIT)).unwrap();
+        drop(read_request(&mut connection));
+        let body = r#"{"type":"error","error":{"type":"rate_limit_error","message":"slow down"}}"#;
+        let head = format!(
+            "HTTP/1.1 429 Too Many Requests\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+            body.len()
+        );
+        drop(connection.write_all(head.as_bytes()));
+        drop(connection.write_all(body.as_bytes()));
+    });
+    let table = format!(
+        "[hosted.code]\nwires = [\"messages\"]\nbase_url = \"http://{address}/v1\"\nupstream_model = \"served\"\nauth_kind = \"anonymous\"\ntool_calling = \"parsed\"\n"
+    );
+    let server = Server::start(&document(&fixture, &table));
+    let body = r#"{"model":"code","messages":[{"role":"user","content":"hi"}]}"#;
+    let answer = server.post("/v1/chat/completions", body);
+    upstream.join().unwrap();
+    assert!(answer.contains("\"upstream-refused\""), "{answer}");
+    let log = server.log();
+    let records: Vec<&String> = log
+        .iter()
+        .filter(|line| line.contains("usage record"))
+        .collect();
+    let [record] = records.as_slice() else {
+        panic!("expected one usage record: {log:#?}");
+    };
+    assert!(record.contains("target_status=429"), "{record}");
+}

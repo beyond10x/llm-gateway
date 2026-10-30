@@ -145,12 +145,22 @@ answers `wrong-phase`. ESS 0.77.0 refuses a state-specific branch beside `wrong_
 `OwnedResources` publishes every `OwnedResource` field for the check that such a refusal left the
 record unchanged.
 
-Every identifier a lifecycle command takes is typed as one: 1 to 256 printable ASCII bytes with no
-space, as `Identifier::new` accepts, so a scenario cannot send one the controller would refuse.
-The stop evidence `ConfirmStopped` attaches is free text up to 256 printable bytes; text holding a
-space is not an identifier, and the command answers `invalid-identifier` before any record is read
-(scenario `a-stop-confirmed-with-evidence-holding-a-space-is-discharged`, whose expected outcome
-was changed to that refusal).
+Every identifier a lifecycle command passes to the controller, the stop evidence included, is a
+hosting identifier: 1 to 256 printable ASCII bytes with no space, as `Identifier::new` accepts.
+A declared type does not keep a scenario from sending another value: ESS 0.77.0 accepts an
+authored input that breaks its declared type, such as a `Declare` whose `id` holds a space. So
+the commands declare the refusal instead. Every lifecycle command but `Provision` and `Retry`
+answers `invalid-identifier` before any record is read where one of its identifiers is empty,
+holds a space or is over 256 bytes (scenarios
+`adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input` and
+`a-stop-confirmed-with-evidence-holding-a-space-is-discharged`, whose expected outcomes were
+changed to that refusal, and the three `…-one-byte-too-long-…` scenarios). Two limits of ESS
+0.77.0 remain. Its guards cannot say "a byte outside printable ASCII", which `Identifier::new`
+also refuses, so such a value is a target error, not a declared outcome. And `Provision` and
+`Retry` declare no `invalid-identifier`: their `answer` guards cover every answer and neither
+command has a default branch, so ESS 0.77.0 asks the refusal's witness to refute all of them and
+finds none. An authored scenario that sends either one an identifier `Identifier::new` refuses
+meets a target error; no synthesized scenario does.
 
 `ess verify conform mutate --class from-drop --class transition-to` scores a mutant for every
 transition and none survives; the run, and the four mutants ESS refuses to emit because their

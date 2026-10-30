@@ -1,9 +1,9 @@
 type: ess-scenario/1
 domain: llm-gateway.hosting
 scenario: adversary-2-a-deployment-identifier-holding-a-space-is-admitted-as-input
-summary: "ess admits an id holding a space as Declare input, and Declare declares only declared for a fresh id, so it must be declared, not an error"
+summary: "ess admits an id holding a space; changed for story:hosting-lifecycle-declared: a hosting identifier refuses the value, so Declare must answer invalid-identifier, not declared"
 timeline:
 - at: '2026-10-30T12:00:00Z'
   command: llm-gateway.hosting.Declare
   input: {id: d 1, request_id: request-d1, reservation_id: reservation-a}
-  outcome: declared
+  outcome: invalid-identifier

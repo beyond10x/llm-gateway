@@ -6,11 +6,12 @@ The mutation audit for `story:hosting-lifecycle-declared`, on `impl/hosting-life
 0.77.0; the system is on `format: ess/23`. [hosting.md](../hosting.md), "The table as a declared
 lifecycle", describes the lifecycle and the commands that move it.
 
-The run below is on the specification as corrected after the adversary pass:
+The run below is on the specification as corrected after the second adversary pass:
 `Provision` and `Retry` declare `stale-epoch` in `Disowned` and name the held states of every
-branch, the view `OwnedResources` publishes every field of the record, the identifiers are typed,
-and `ConfirmStopped` declares `invalid-identifier`. The run before that correction had the same
-verdicts over an 83-scenario baseline.
+branch, the view `OwnedResources` publishes every field of the record, and every lifecycle
+command but `Provision` and `Retry` declares `invalid-identifier` for an identifier that is
+empty, holds a space or is over 256 bytes. The runs before that correction had the same verdicts
+over an 83-scenario and a 92-scenario baseline.
 
 ## What was run
 
@@ -27,12 +28,16 @@ The second line ran once for the baseline and once for each emitted mutant, with
 synthesized suite alone and does not carry the authored scenarios. The runner exits 1 on every
 suite, the baseline included: its gate refuses a run whose conformance status is not `passed`, and
 a synthesized-only suite is `inconclusive`. The collector reads each `report.json`, not the exit
-code. The baseline report is `{"total":92,"passed":92,"failed":0,"error":0,"unsupported":0,"skipped":0}`.
+code. The baseline report is `{"total":94,"passed":94,"failed":0,"error":0,"unsupported":0,"skipped":0}`.
+Its three refusals are ESS-SYNTH-022, one `any:` child each of `Declare` and `ConfirmStopped`'s
+`invalid-identifier` guard (`request_id`, `reservation_id` and `id` over 256 bytes) that ESS 0.77.0
+finds no input for; the three authored `…-one-byte-too-long-…` scenarios withdraw them in the full
+suite, which a mutant suite does not carry.
 
 ## Result
 
 ```text
-mutation audit of llm-gateway v1 against llm-gateway-serving-libraries mutation-audit: 27 mutant(s), 23 killed, 0 survived, 0 inconclusive, 4 stillborn, 0 unwitnessed, 0 equivalent (baseline: 92 scenario(s), 0 refusal(s))
+mutation audit of llm-gateway v1 against llm-gateway-serving-libraries mutation-audit: 27 mutant(s), 23 killed, 0 survived, 0 inconclusive, 4 stillborn, 0 unwitnessed, 0 equivalent (baseline: 94 scenario(s), 3 refusal(s))
 ```
 
 `--collect` exited 0. Every one of the twelve transitions has at least one killed mutant.
@@ -42,8 +47,8 @@ mutation audit of llm-gateway v1 against llm-gateway-serving-libraries mutation-
 | `submit` | `to: Requested` becomes `to: Active` | killed | `state/Active/accepts/ObserveUnlisted`, `state/Active/refuses/Provision`, five more (7) |
 | `lose` | `to: Uncertain` becomes `to: Active` | killed | `state/Active/refuses/Provision`, `transition/lose/by/Provision/lost`, four more (6) |
 | `misanswer` | `to: Uncertain` becomes `to: Active` | killed | `state/Active/refuses/Provision`, `transition/misanswer/by/Provision/misanswered`, four more (6) |
-| `withdraw` | `to: Cancelled` becomes `to: Active` | killed | `ConfirmStopped/outcome/confirmed`, `ObserveListed/outcome/adopted`, 13 more (15) |
-| `cancel` | `to: Cancelled` becomes `to: Active` | killed | `Cancel/outcome/cancelled`, `ConfirmStopped/outcome/confirmed`, 36 more (38) |
+| `withdraw` | `to: Cancelled` becomes `to: Active` | killed | `ConfirmStopped/outcome/confirmed`, `ObserveListed/outcome/adopted`, 12 more (14) |
+| `cancel` | `to: Cancelled` becomes `to: Active` | killed | `Cancel/outcome/cancelled`, `ConfirmStopped/outcome/confirmed`, 35 more (37) |
 | `confirm` | `to: Requested` becomes `to: Active` | killed | `transition/confirm/by/Retry/accepted`, `Retry/outcome/accepted` (2) |
 | `relose` | `to: Uncertain` becomes `to: Active` | killed | `transition/relose/by/Retry/lost`, `Retry/outcome/lost` (2) |
 | `hold` | `to: Requested` becomes `to: Active` | killed | `ObserveUnlisted/outcome/unconfirmed`, `transition/hold/by/ObserveUnlisted/unconfirmed` (2) |

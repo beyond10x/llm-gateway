@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.hosting
+scenario: a-declared-record-publishes-its-deployment-as-its-deployment-spec
+summary: "Declare sets deployment_spec_id from its id, so the published record must carry the deployment it was declared under as its deployment spec"
+timeline:
+- at: '2026-10-30T12:00:00Z'
+  command: llm-gateway.hosting.Declare
+  input: {id: d1, request_id: request-d1, reservation_id: reservation-a}
+  outcome: declared
+assert:
+- view: llm-gateway.hosting.OwnedResources
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.hosting.OwnedResources
+  contains:
+    id: d1
+    state: Declared
+    deployment_spec_id: d1
+    request_id: request-d1
+    reservation_id: reservation-a

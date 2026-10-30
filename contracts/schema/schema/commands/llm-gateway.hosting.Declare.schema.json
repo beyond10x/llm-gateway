@@ -24,8 +24,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "65cbfedfd831fe04697705440f16542a28fc4bfbf5f539974db79f90ad4efdc7",
-    "contract_digest": "slice-sha256/2:cfc63e59c341f6c46c6f32848d0cd5b08472c60aa3f0451211a7831aaee7cc7e",
+    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
+    "contract_digest": "slice-sha256/2:91f376fee0591b99036089d1bda412c7df65e8880c8ca8ea6cc77f34c596e8fb",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -40,14 +40,8 @@
       "x-ess-name": "llm-gateway.hosting.Identifier",
       "x-ess-kind": "newtype",
       "type": "string",
-      "pattern": "^[\\u0021-\\u007E]*$",
-      "minLength": 1,
-      "maxLength": 256,
-      "x-ess-invariants": [
-        "value.count >= 1",
-        "value.count <= 256"
-      ],
-      "x-ess-alphabet": "!\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
+      "pattern": "^[\\u0020-\\u007E]*$",
+      "x-ess-alphabet": " !\"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~"
     }
   }
 }

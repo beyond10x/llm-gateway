@@ -905,6 +905,40 @@ fn dispatch_named(name: &str) -> Result<Dispatch, String> {
     }
 }
 
+/// The identifier inputs a lifecycle command declares `invalid-identifier` for. `Provision` and
+/// `Retry` declare none (ESS 0.77.0 builds no witness for it beside their `answer` guards), so an
+/// identifier `Identifier::new` refuses stays a target error there.
+fn guarded_identifiers(command: &str) -> &'static [&'static str] {
+    match command {
+        "Declare" => &["id", "request_id", "reservation_id"],
+        "ConfirmStopped" => &["id", "evidence"],
+        "Provision" | "Retry" => &[],
+        _ => &["id"],
+    }
+}
+
+/// Whether the specification's `invalid-identifier` guard holds for `value`: empty, holding a
+/// space, or over 256 bytes. `Identifier::new` refuses every such value, and also one holding a
+/// byte outside printable ASCII, which no ESS 0.77.0 guard expresses: that one is a target error.
+fn declared_invalid(value: &str) -> bool {
+    value.is_empty() || value.contains(' ') || value.len() > 256
+}
+
+/// `invalid-identifier`, where the command declares it and its guard holds for an input.
+fn invalid_identifier(command: &str, input: &Value) -> Result<Option<Answer>, String> {
+    for field in guarded_identifiers(command) {
+        if declared_invalid(text(input, field)?) {
+            return Ok(Some(Answer {
+                outcome: Some("invalid-identifier"),
+                error: Some("llm-gateway.hosting.InvalidIdentifier"),
+                event: None,
+                id: text(input, "id")?.to_owned(),
+            }));
+        }
+    }
+    Ok(None)
+}
+
 /// A refusal of the controller, as the declared outcome and error that name it.
 fn refused(id: &str, error: HostingError) -> Answer {
     let (outcome, error) = match error {
@@ -981,6 +1015,10 @@ impl Lifecycle {
     }
 
     fn answer(&mut self, command: &str, input: &Value) -> Result<Answer, String> {
+        // The declared identifier refusal answers before any record is looked at.
+        if let Some(refusal) = invalid_identifier(command, input)? {
+            return Ok(refusal);
+        }
         let id = text(input, "id")?;
         let deployment = ident(id)?;
         self.now_ms = self.now_ms.saturating_add(1);
@@ -1039,25 +1077,15 @@ impl Lifecycle {
                     deployment: deployment.clone(),
                 },
             ),
-            "ConfirmStopped" => {
-                // Stop evidence is a hosting identifier. Text that is not one is refused as
-                // the specification declares, before any record is looked at.
-                let Ok(evidence) = Identifier::new(text(input, "evidence")?) else {
-                    return Ok(Answer {
-                        outcome: Some("invalid-identifier"),
-                        error: Some("llm-gateway.hosting.InvalidIdentifier"),
-                        event: None,
-                        id: id.to_owned(),
-                    });
-                };
-                hosted.apply(
-                    now_ms,
-                    HostingCommand::ConfirmStopped {
-                        deployment: deployment.clone(),
-                        evidence,
-                    },
-                )
-            }
+            // Stop evidence is a hosting identifier; what the declared guard refuses was
+            // answered above.
+            "ConfirmStopped" => hosted.apply(
+                now_ms,
+                HostingCommand::ConfirmStopped {
+                    deployment: deployment.clone(),
+                    evidence: ident(text(input, "evidence")?)?,
+                },
+            ),
             "Cancel" => hosted.apply(
                 now_ms,
                 HostingCommand::Cancel {

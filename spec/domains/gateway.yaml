@@ -371,8 +371,11 @@ types:
   # The answer `GET /` chooses, from the request's `user-agent` lowercased, by the first rule
   # that holds, in the order declared (llmgw src/lib.rs:231-245 at 048ebd8). No `user-agent` is
   # `Plain`. Each renders, per relayed model, the llm-gateway.clients.ClientProfile of its
-  # `client` with the model's alias and `context_window` filled in, for exactly the models that
-  # declare that profile's wire and tool calling `Parsed`; a model without a `context_window`
+  # `client` with the model's alias and `context_window` filled in, for exactly the models with
+  # tool calling `Parsed` that the client's requests reach on that profile's wire: relayed on a
+  # wire the model declares and takes verbatim, or translated where the relay's translator
+  # admits them (llm-gateway.clients.ClientProfile, DECIDED 2026-10-30,
+  # story:client-profiles-translated); a model without a `context_window`
   # gets no context setting. The gateway origin in every base URL is `http://` and the
   # request's `host`, when it is non-empty and only ASCII letters, digits, `.`, `-`, `_`, `:`,
   # `[` and `]`, and the listener's bound address otherwise, so no other caller byte is
@@ -521,10 +524,11 @@ entities:
   # their declared order: the ones relayed byte for byte, every other one translated
   # (story:gateway-translation; scenario translate-the-listing-names-every-wire-and-the-upstream-wires).
   # DECIDED 2026-10-16: `upstream_wires` is left out without a translator, where it would repeat
-  # `wires`, so a gateway composed as before lists exactly what it listed before. The client
-  # profiles of `GET /` stay keyed on the declared wires (llm-gateway.clients.ClientProfile):
-  # Codex and Claude Code send fields llm's translated subset refuses (docs/gateway.md
-  # "Translation"), so a profile through translation would not work.
+  # `wires`, so a gateway composed as before lists exactly what it listed before. `wires` names
+  # the wires a request is accepted on, not the clients whose requests translate: `GET /` decides
+  # those per client (llm-gateway.clients.ClientProfile, DECIDED 2026-10-30, which replaced the
+  # 2026-10-16 rule that kept profiles on the declared wires while llm's subset refused Codex's
+  # and Claude Code's first turns).
   - name: llm-gateway.gateway.ListedModel
     identity: {name: id, type: String}
     fields:

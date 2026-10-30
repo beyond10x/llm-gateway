@@ -913,15 +913,19 @@ fn public(request: &Request<'_>, shared: &Shared) -> Outcome {
     if !serves_inspection(shared) {
         return Outcome::Refused(RefusalCode::Unavailable);
     }
-    let models = shared.relay.iter().flat_map(Relay::models);
     if request.path == listing::MODELS {
+        let models = shared.relay.iter().flat_map(Relay::models);
         let translates = shared.relay.as_ref().is_some_and(Relay::translates);
         return Outcome::Public(JSON, listing::models(models, translates));
     }
     let answer = InstructionAnswer::choose(request.header("user-agent"));
     let origin = listing::origin(request.header("host"), &shared.local_addr);
     shared.metrics.count_instruction_view();
-    Outcome::Public(answer.content_type(), answer.render(models, &origin))
+    // Each client is profiled where its requests reach a model (story:client-profiles-translated).
+    Outcome::Public(
+        answer.content_type(),
+        answer.render(shared.relay.as_ref(), &origin),
+    )
 }
 
 /// A lifecycle route (`llm-gateway.gateway.LifecycleRoute`), after authentication: its method,

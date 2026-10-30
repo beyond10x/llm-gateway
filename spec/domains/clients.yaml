@@ -17,9 +17,10 @@ domain: llm-gateway.clients
 # Every client reaches the gateway with the owner's one bearer credential
 # (llm-gateway.gateway, docs/gateway.md "The HTTP surface"; `credential-malformed` refuses any
 # other scheme) and names a model by its deployment alias (llm-gateway.deployment
-# ModelDeclaration). The gateway relays the request untranslated to the pod's vLLM server on the
-# same wire (docs/gateway.md "The relay", steps 6-7), so a client is served exactly when the model
-# declares the client's wire.
+# ModelDeclaration). On a wire the model declares, the gateway relays the request untranslated to
+# the pod's vLLM server (docs/gateway.md "The relay", steps 6-7); on another, a relay composed
+# with a translator translates it to the model's first declared wire (docs/gateway.md
+# "Translation"), and a client is served there when llm carries what it sends.
 #
 # Facts about the clients, read 2026-10-08:
 #   Claude Code 2.1.293 speaks only the messages wire. `ANTHROPIC_BASE_URL` is the gateway origin,
@@ -105,8 +106,28 @@ entities:
   #   Loom: wire Chat, Responses or Messages, base path "/v1", credential a `bearer` account's
   #     secret reference; model setting the serving model's `upstream_name`; context setting
   #     `capabilities.context_window`.
-  # A profile is offered for a model only when the model declares the profile's wire and its
-  # tool calling is `Parsed`.
+  # A profile is offered for a model only when the client's requests reach the model on the
+  # profile's wire and its tool calling is `Parsed`.
+  # DECIDED 2026-10-30 (story:client-profiles-translated; replaces "only when the model declares
+  # the profile's wire"): a client's requests reach a model
+  #   - relayed, on a wire the model declares and its target takes verbatim. A translated-only
+  #     model (a Bedrock model, which declares `messages` and takes no client wire verbatim)
+  #     relays none; or
+  #   - translated, on any other wire, only when the relay has a translator and the translator
+  #     admits that client's requests to the model (`Translator::admits` in
+  #     crates/llm-gateway/src/translate.rs, default `false`). The relay asks once per model and
+  #     wire it does not relay, when the translator is composed, never per request. The binary's
+  #     translator (crates/llm-gateway-cli/src/translate.rs) prepares the client's recorded first
+  #     turn for the model exactly as it prepares a request (llm's decoder for the client's
+  #     wire, the model's capabilities, llm's projection for the upstream wire or llm's Bedrock
+  #     check) and admits the client where llm carries it: Codex 0.160.0's captured first turn
+  #     and Claude Code's authored one. No Loom turn is recorded, so a Loom run is profiled for
+  #     no translated model.
+  # So `GET /` names only models a client's requests reach without a `translation-*` refusal.
+  # Before llm 0.7.0 carried those turns, translated models got no profile at all; llm 0.19.0
+  # carries both. Observed by the `Relay` scenarios
+  # r1-codex-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to and
+  # r1-claude-code-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to.
   - name: llm-gateway.clients.ClientProfile
     identity: {name: profile_id, type: String}
     fields:

@@ -284,6 +284,13 @@ pub const CAPABILITIES: &[Capability] = &[
         Some("/docs/guides/translate-between-wires"),
     ),
     shipped(
+        "Gateway",
+        "Client setup for translated routes",
+        "GET / hands Codex and Claude Code a profile for a model whose upstream speaks another wire when the client's recorded first turn translates to it under the model's capabilities, and none when it is refused; the gateway asks once, at start, and logs nothing for it. A Loom run is profiled only for models that declare chat. Tested through the binary against loopback fixture upstreams, not a vendor API.",
+        "crates/llm-gateway-cli/tests/translation.rs::translation_get_root_profiles_codex_and_claude_code_where_their_turns_translate",
+        Some("/docs/guides/set-up-a-client"),
+    ),
+    shipped(
         "Relay",
         "Codex's later turns on a translated route",
         "A translated answer to a responses client carries the upstream's reasoning state sealed for its route under a key the gateway generates at start and never writes out; the next turn on that route is served, a messages upstream getting back the thinking block it signed and a chat upstream the turn without it. An item from another route or wire, an altered or forged seal and one sealed before a restart are refused translation-opaque-state. No seal reaches a messages client. Tested with Codex's captured two-turn exchange against loopback fixture upstreams, not a vendor API.",

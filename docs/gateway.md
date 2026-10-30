@@ -169,10 +169,25 @@ containing `codex`, a Codex `config.toml` profile per model (`text/plain; charse
 containing `claude` or `anthropic`, Claude Code's environment variables per model (the same
 type); starting with `mozilla/`, an HTML page (`text/html; charset=utf-8`); anything else, or no
 `user-agent`, plain text with the llm catalog lines a Loom run needs. A client gets a profile for
-a model only when the model declares the client's wire (Codex `responses`, Claude Code `messages`,
-Loom `chat`) and parses tool calls; each profile names the model's alias and the
-`context_window` from `RelayModel::with_context_window`. The base URLs use `http://` and the
-request's `host` when it is only letters, digits, `.`, `-`, `_`, `:`, `[` and `]`, and the
+a model only when the client's requests reach the model on the client's wire (Codex `responses`,
+Claude Code `messages`, Loom `chat`) and the model parses tool calls; each profile names the
+model's alias and the `context_window` from `RelayModel::with_context_window`. The requests reach
+the model relayed on a wire it declares and its target takes verbatim (a Bedrock model, which
+declares `messages`, takes none), or translated on another wire when the relay has a translator
+that admits that client to the model (`Translator::admits`, default `false`). The relay asks once
+per model and wire it does not relay, in `Relay::with_translator`, never per request. The
+binary's translator prepares the client's recorded first turn for the model exactly as it
+prepares a request ("Translation", "The request", steps 2 to 4), and admits the client when llm
+carries it: Codex 0.160.0's captured turn
+(`crates/llm-gateway-cli/tests/fixtures/codex/first-turn.json`, effort `high`, no output limit)
+and Claude Code's authored one
+(`crates/llm-gateway/tests/fixtures/claude-code/1-tool-turn.request.txt`, effort `max`, which
+reaches a chat or responses upstream as `xhigh`, and `max_tokens` 32000). So a routes-document
+route with the default capabilities, whose efforts stop at `high` and whose output limit is
+16384, is profiled for Codex and not for Claude Code. No Loom turn is recorded, so a Loom run is
+profiled only for models that declare `chat`. `GET /` thus names only models a client's requests
+reach without a `translation-*` refusal. The base URLs use `http://` and the request's `host`
+when it is only letters, digits, `.`, `-`, `_`, `:`, `[` and `]`, and the
 listener's address otherwise. The owner token is named as the setting that carries it, never
 given. Each `GET /` or `HEAD /` answered `200` counts one `llmgw_instruction_views_total`.
 
@@ -547,7 +562,10 @@ message, never llm's diagnostic. `translation_a_*_refusal_names_the_refused_path
 in `crates/llm-gateway-cli/tests/translation.rs` sends each wire's refused requests with a marker
 in the message text, tool names, arguments and results and in the refused value, and
 `translation_a_*_refusal_writes_a_clients_key_as_a_question_mark` a secret-shaped key of 64
-bytes holding it at the root and nested; neither finds it in a log line or an answer.
+bytes holding it at the root and nested; neither finds it in a log line or an answer. The
+first turns the translator prepares at composition to decide `GET /`'s profiles write no line:
+a refused one is the answer "no profile", not a client's request
+(`translation_get_root_profiles_codex_and_claude_code_where_their_turns_translate`).
 
 ```text
 2026-10-30T06:21:22.891160Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=responses refusal=translation-unsupported refused="request body carries a field outside the pinned subset: text.format"
@@ -832,20 +850,32 @@ the relay (`TranslatedAnswer::target_status`; the binary reads it from llm's res
 
 ### Known limits
 
-Each statement about a refused field is backed by a test that feeds the request to llm's decoder
-(`translation_known_limit_*` in `crates/llm-gateway-cli/tests/translation.rs`).
+Each statement about a carried or refused field is backed by a test in
+`crates/llm-gateway-cli/tests/translation.rs` that prepares the request through llm.
 
-- **Claude Code.** Its first turn is outside the messages subset: `thinking` is refused, then a
-  `system` of more than one block, then `cache_control` on a content block, then effort `max`,
-  which no capability names; and every later turn replays signed `thinking` blocks
-  (`translation-opaque-state`). Claude Code reaches a model through translation only once llm's
-  subset grows; until then point it at a model whose upstream speaks messages, which `GET /`
-  profiles.
-- **Codex.** `instructions`, `parallel_tool_calls`, `prompt_cache_key`, `text` and a
-  `reasoning.summary` are each refused by the responses subset, and a turn replaying a reasoning
-  item the gateway did not seal for the route is `translation-opaque-state`. Codex reaches a
-  model through translation only once llm's subset grows; `GET /` profiles only models whose
-  upstream speaks responses.
+- **Claude Code.** llm 0.19.0 carries its first turn to a chat or a responses upstream:
+  `thinking` adaptive, a `system` of two blocks, `cache_control` on a block, and effort `max`,
+  which reaches either wire as `xhigh`
+  (`translation_claude_codes_first_turn_is_carried_to_chat_and_responses`). It needs a model
+  whose capabilities name `xhigh` and allow its `max_tokens` 32000, which a routes-document
+  route's default capabilities do not. Still refused: structured output
+  (`output_config.format`), `thinking.display`, `context_management`, `safeguards` and a `tool`
+  role (`translation_fields_llm_still_refuses_are_refused_by_name`), and an effort `max` or
+  `none` toward a messages upstream
+  (`translation_an_effort_is_checked_as_the_upstream_wire_receives_it`). `GET /` profiles Claude
+  Code for a translated model only when its recorded first turn passes
+  (`translation_codex_and_claude_code_are_admitted_where_llm_carries_their_first_turns`,
+  `translation_a_client_is_not_admitted_where_llm_refuses_its_first_turn`).
+- **Codex.** llm 0.19.0 carries its first turn to a chat and a messages upstream
+  (`translation_codexs_first_turn_is_carried_to_chat`,
+  `translation_codexs_first_turn_is_carried_to_messages`), and a later turn replaying the
+  reasoning item the gateway sealed for the route. Still refused: `text.format` and a hosted tool
+  (`translation_fields_llm_still_refuses_are_refused_by_name`), and a replayed reasoning item the
+  gateway did not seal for the route, `translation-opaque-state`
+  (`translation_a_replayed_item_the_gateway_did_not_seal_for_this_route_is_refused`). `GET /`
+  profiles Codex for a translated model only when its recorded first turn passes.
+- **Admission is one turn.** `GET /` admits a client by its recorded first turn only: a later
+  turn, or a field a newer client sends, can still be refused by name.
 - **Encoder refusals** (llm `story:ingress-block-boundaries`): a responses client cannot be sent
   two assistant messages back to back, or a message another item interrupts (text, reasoning,
   text from a chat upstream; text, a call, text); a messages client cannot be sent redacted

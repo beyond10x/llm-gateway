@@ -133,7 +133,12 @@ fn translation_guard_chat_refuses_an_unknown_key_at_every_level() {
         ),
         (
             "messages[].refusal",
-            with(&base, "/messages/2", "refusal", Value::Null),
+            with(
+                &base,
+                "/messages/2",
+                "refusal",
+                json!("I can't help with that."),
+            ),
         ),
         (
             "a tool call",

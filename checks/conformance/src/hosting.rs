@@ -1026,6 +1026,131 @@ mod tests {
         assert_eq!(declared, published);
     }
 
+    /// The block an entity declares, from its `  - name:` line to the next declaration.
+    fn entity_block(entity: &str) -> &'static str {
+        let start = SPEC
+            .find(&format!("  - name: {entity}\n"))
+            .unwrap_or_else(|| panic!("spec/domains/hosting.yaml declares no {entity}"));
+        let rest = &SPEC[start + 1..];
+        let end = [
+            rest.find("\n  - name: "),
+            rest.find("\n  #"),
+            rest.find("\ncommands:"),
+        ]
+        .into_iter()
+        .flatten()
+        .min()
+        .unwrap_or(rest.len());
+        &rest[..end]
+    }
+
+    /// `[A, B]` as its names, in order.
+    fn listed(text: &str) -> Vec<String> {
+        text.trim()
+            .strip_prefix('[')
+            .and_then(|inner| inner.strip_suffix(']'))
+            .unwrap_or_else(|| panic!("`{text}` is not a flow list"))
+            .split(',')
+            .map(|name| name.trim().to_owned())
+            .filter(|name| !name.is_empty())
+            .collect()
+    }
+
+    /// One declared transition: its name, its `from` states and its `to` state.
+    type Move = (String, Vec<String>, String);
+
+    /// An entity's lifecycle as declared: `initial`, `states`, `terminal` and every transition,
+    /// each read from the one flow-style line it takes. A line that does not read is a failure,
+    /// so a change of layout cannot quietly empty the table this compares.
+    fn declared_lifecycle(entity: &str) -> (String, Vec<String>, Vec<String>, Vec<Move>) {
+        let block = entity_block(entity);
+        let (_, body) = block
+            .split_once("\n    lifecycle:\n")
+            .unwrap_or_else(|| panic!("{entity} declares no lifecycle block"));
+        let mut initial = None;
+        let mut states = None;
+        let mut terminal = None;
+        let mut moves = Vec::new();
+        for line in body.lines().take_while(|line| line.starts_with("      ")) {
+            let line = line.trim();
+            if let Some(value) = line.strip_prefix("initial: ") {
+                initial = Some(value.to_owned());
+            } else if let Some(value) = line.strip_prefix("states: ") {
+                states = Some(listed(value));
+            } else if let Some(value) = line.strip_prefix("terminal: ") {
+                terminal = Some(listed(value));
+            } else if let Some(entry) = line.strip_prefix("- {name: ") {
+                let (name, rest) = entry
+                    .split_once(", from: ")
+                    .unwrap_or_else(|| panic!("`{line}` names no from"));
+                let (from, to) = rest
+                    .split_once(", to: ")
+                    .unwrap_or_else(|| panic!("`{line}` names no to"));
+                let to = to
+                    .strip_suffix('}')
+                    .unwrap_or_else(|| panic!("`{line}` is not one flow mapping"));
+                moves.push((name.to_owned(), listed(from), to.to_owned()));
+            } else if line != "transitions:" {
+                panic!("{entity}: unread lifecycle line `{line}`");
+            }
+        }
+        (
+            initial.unwrap_or_else(|| panic!("{entity} declares no initial state")),
+            states.unwrap_or_else(|| panic!("{entity} declares no states")),
+            terminal.unwrap_or_else(|| panic!("{entity} declares no terminal states")),
+            moves,
+        )
+    }
+
+    /// Acceptance 1 of the lifecycle: the ownership state machine is declared as the ESS
+    /// lifecycle of `OwnedResource`, state by state and edge by edge as `Phase` and `TRANSITIONS`
+    /// hold it. A pair added to or removed from either side fails here; so does a terminal phase
+    /// that gains an edge.
+    #[test]
+    fn the_owned_resource_lifecycle_is_the_published_transition_table() {
+        let (initial, states, terminal, moves) =
+            declared_lifecycle("llm-gateway.hosting.OwnedResource");
+        assert_eq!(initial, "Declared");
+        let phases: Vec<String> = Phase::ALL
+            .iter()
+            .map(|phase| format!("{phase:?}"))
+            .collect();
+        assert_eq!(states, phases, "the states are the phases, in their order");
+        let terminal: std::collections::BTreeSet<String> = terminal.into_iter().collect();
+        let published_terminal: std::collections::BTreeSet<String> = Phase::ALL
+            .iter()
+            .filter(|phase| phase.terminal())
+            .map(|phase| format!("{phase:?}"))
+            .collect();
+        assert_eq!(terminal, published_terminal);
+        let declared: std::collections::BTreeSet<(String, String)> = moves
+            .iter()
+            .flat_map(|(_, from, to)| from.iter().map(|from| (from.clone(), to.clone())))
+            .collect();
+        let published: std::collections::BTreeSet<(String, String)> = llm_provision::TRANSITIONS
+            .iter()
+            .map(|(from, to)| (format!("{from:?}"), format!("{to:?}")))
+            .collect();
+        assert_eq!(declared, published);
+        assert_eq!(published.len(), llm_provision::TRANSITIONS.len());
+    }
+
+    /// Acceptance 2, as far as the specification can say it: every declared transition is taken
+    /// by at least one command outcome (`moves:`), so a synthesized scenario drives each one
+    /// through the controller.
+    #[test]
+    fn every_owned_resource_transition_is_moved_by_a_command_outcome() {
+        let (_, _, _, transitions) = declared_lifecycle("llm-gateway.hosting.OwnedResource");
+        assert!(
+            !transitions.is_empty(),
+            "the lifecycle declares no transition"
+        );
+        for (name, _, _) in transitions {
+            let taken = format!("moves: llm-gateway.hosting.OwnedResource.{name}\n");
+            assert!(SPEC.contains(&taken), "no outcome moves `{name}`");
+        }
+    }
+
     #[test]
     fn the_published_transition_table_is_reported_as_the_library_holds_it() {
         let reported = transitions();

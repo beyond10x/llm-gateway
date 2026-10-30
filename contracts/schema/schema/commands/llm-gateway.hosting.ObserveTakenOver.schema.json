@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ObserveTakenOver input",
+  "x-ess-name": "llm-gateway.hosting.ObserveTakenOver",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:f6109915db4a5532e9d766e7dda0d94f701cf450df6478629b9ff4a9ea5af481",
+    "regenerate": "ess generate"
+  }
+}

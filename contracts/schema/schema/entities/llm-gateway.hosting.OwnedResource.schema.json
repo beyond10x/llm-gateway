@@ -28,9 +28,6 @@
     "request_id": {
       "type": "string"
     },
-    "phase": {
-      "$ref": "#/$defs/llm-gateway.hosting.Phase"
-    },
     "stop_reason": {
       "$ref": "#/$defs/llm-gateway.hosting.StopReason"
     },
@@ -53,15 +50,14 @@
     "deployment_spec_id",
     "reservation_id",
     "request_id",
-    "phase",
     "state"
   ],
   "additionalProperties": false,
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8f967aba724761aaced53b8f52ccc17bac94ff7c6c04c101eb933b937bf78531",
-    "contract_digest": "slice-sha256/2:99889c95986bc96aa3044a52edcebb9f9ad49c62aae291e22e3ff8fbd0d208a6",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:169bad905000fc2d1e43ce65424d68e684204c8559181dd90a8a43dddf356314",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -71,55 +67,14 @@
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Observed"
-      ]
-    },
-    "llm-gateway.hosting.Phase": {
-      "title": "Phase",
-      "x-ess-name": "llm-gateway.hosting.Phase",
-      "x-ess-kind": "enum",
-      "type": "string",
-      "enum": [
-        "Declared",
-        "Requested",
         "Active",
-        "Uncertain",
+        "Cancelled",
+        "Declared",
+        "Disowned",
+        "Requested",
         "StopRequired",
         "Stopped",
-        "Cancelled",
-        "Disowned"
-      ],
-      "x-ess-attributes": [
-        {
-          "kind": "boolean",
-          "name": "owes_a_stop",
-          "type": "Boolean",
-          "values": {
-            "Active": false,
-            "Cancelled": false,
-            "Declared": false,
-            "Disowned": false,
-            "Requested": false,
-            "StopRequired": true,
-            "Stopped": false,
-            "Uncertain": true
-          }
-        },
-        {
-          "kind": "boolean",
-          "name": "occupies_a_slot",
-          "type": "Boolean",
-          "values": {
-            "Active": true,
-            "Cancelled": false,
-            "Declared": false,
-            "Disowned": false,
-            "Requested": true,
-            "StopRequired": true,
-            "Stopped": false,
-            "Uncertain": true
-          }
-        }
+        "Uncertain"
       ]
     },
     "llm-gateway.hosting.StopReason": {

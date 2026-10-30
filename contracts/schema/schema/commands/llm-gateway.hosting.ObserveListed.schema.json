@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ObserveListed input",
+  "x-ess-name": "llm-gateway.hosting.ObserveListed",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:bb29b8f696fb80378085de719acf63f3be9381875be4cdc6d1ddc0624682b7a9",
+    "regenerate": "ess generate"
+  }
+}

@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PhaseMoved payload",
+  "x-ess-name": "llm-gateway.hosting.PhaseMoved",
+  "x-ess-kind": "event-payload",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    }
+  },
+  "required": [
+    "id"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:7c7335a6c81fe8f2a3d535ed31b18fef6665c3ab95821f1e3e971a72ab05664f",
+    "regenerate": "ess generate"
+  }
+}

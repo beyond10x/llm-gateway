@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.hosting.CreateAnswer",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:092b81c9e9360dc0e11290e868862b587f4ef59abce4b8fa0bddeba932da9d3b",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.CreateAnswer": {
+      "title": "CreateAnswer",
+      "x-ess-name": "llm-gateway.hosting.CreateAnswer",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Accepted",
+        "AcceptedOutsideScope",
+        "Unknown",
+        "Rejected",
+        "NotSent"
+      ]
+    }
+  }
+}

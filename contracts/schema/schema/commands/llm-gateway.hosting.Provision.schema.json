@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Provision input",
+  "x-ess-name": "llm-gateway.hosting.Provision",
+  "x-ess-kind": "command-input",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "answer": {
+      "$ref": "#/$defs/llm-gateway.hosting.CreateAnswer"
+    }
+  },
+  "required": [
+    "id",
+    "answer"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "b287da24832b483cb3478ba2adaccb7e7b4fdd90fdc0696f943e8be5aef450fe",
+    "contract_digest": "slice-sha256/2:a060d8fc5ed6fa1015cf7066393cac074bf3cf5c8a08d2eec919fe61fceb5355",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.hosting.CreateAnswer": {
+      "title": "CreateAnswer",
+      "x-ess-name": "llm-gateway.hosting.CreateAnswer",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Accepted",
+        "AcceptedOutsideScope",
+        "Unknown",
+        "Rejected",
+        "NotSent"
+      ]
+    }
+  }
+}

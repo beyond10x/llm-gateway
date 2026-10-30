@@ -100,22 +100,23 @@ pub(crate) const CONTAINER_TOKEN: Policy = Policy {
     resolve_links: true,
 };
 
-fn refuse(policy: &Policy, rule: FileRule, path: &Path, detail: &str) -> Refusal {
-    Refusal::new(
-        rule.refusal(policy.source),
-        format!("{}: {detail}", path.display()),
-    )
+/// The refusal of `rule` for `policy`'s source. Its message is `detail` alone: no refusal quotes
+/// the path it was given or the file a link resolves to, because a secret written by mistake as
+/// a path would be printed and logged with it. The code names the source, and a caller that
+/// knows the setting names it ([`read_named`]).
+fn refuse(policy: &Policy, rule: FileRule, detail: &str) -> Refusal {
+    Refusal::new(rule.refusal(policy.source), detail.to_owned())
 }
 
-/// Opens `target` without following a final symlink; a refusal names `path`.
-fn open_final(path: &Path, target: &Path, policy: &Policy) -> Result<File, Refusal> {
+/// Opens `target` without following a final symlink.
+fn open_final(target: &Path, policy: &Policy) -> Result<File, Refusal> {
     // Non-blocking, so a FIFO cannot hold the open; it is then refused as not a regular file.
     let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let descriptor = open(target, flags, Mode::empty()).map_err(|errno| {
         if errno == Errno::LOOP {
-            refuse(policy, FileRule::Symlink, path, "is a symbolic link")
+            refuse(policy, FileRule::Symlink, "is a symbolic link")
         } else {
-            refuse(policy, FileRule::Unreadable, path, &errno.to_string())
+            refuse(policy, FileRule::Unreadable, &errno.to_string())
         }
     })?;
     Ok(File::from(descriptor))
@@ -123,12 +124,12 @@ fn open_final(path: &Path, target: &Path, policy: &Policy) -> Result<File, Refus
 
 /// Resolves `path` through every symbolic link and opens the file it names. The resolved file
 /// must lie inside the directory `path` names, resolved too, as a projected volume's `..data`
-/// links do; one outside it is refused as a symbolic link, naming the file it resolves to. A
-/// rotation can remove the directory a resolution named before the open reaches it, so a
-/// resolved file that has vanished is resolved once more.
+/// links do; one outside it is refused as a symbolic link, naming neither file. A rotation can
+/// remove the directory a resolution named before the open reaches it, so a resolved file that
+/// has vanished is resolved once more.
 fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
     let unreadable =
-        |error: std::io::Error| refuse(policy, FileRule::Unreadable, path, &error.to_string());
+        |error: std::io::Error| refuse(policy, FileRule::Unreadable, &error.to_string());
     let parent = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
@@ -142,37 +143,31 @@ fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
             Err(refuse(
                 policy,
                 FileRule::Symlink,
-                path,
-                &format!(
-                    "resolves to {}, outside {}",
-                    resolved.display(),
-                    directory.display()
-                ),
+                "resolves outside the directory that holds it",
             ))
         }
     };
-    match open_final(path, &resolve()?, policy) {
-        Err(_) if fs::metadata(path).is_ok() => open_final(path, &resolve()?, policy),
+    match open_final(&resolve()?, policy) {
+        Err(_) if fs::metadata(path).is_ok() => open_final(&resolve()?, policy),
         opened => opened,
     }
 }
 
 /// Reads `path` as UTF-8 text after checking the opened handle against `policy`. The text is
-/// exactly the bytes read.
+/// exactly the bytes read. A refusal's message is the rule's detail alone.
 pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
     let mut file = if policy.resolve_links {
         open_resolved(path, policy)?
     } else {
-        open_final(path, path, policy)?
+        open_final(path, policy)?
     };
     let metadata = file
         .metadata()
-        .map_err(|error| refuse(policy, FileRule::Unreadable, path, &error.to_string()))?;
+        .map_err(|error| refuse(policy, FileRule::Unreadable, &error.to_string()))?;
     if !metadata.file_type().is_file() {
         return Err(refuse(
             policy,
             FileRule::NotRegular,
-            path,
             "is not a regular file",
         ));
     }
@@ -181,7 +176,6 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
         return Err(refuse(
             policy,
             FileRule::UntrustedOwner,
-            path,
             "is owned by neither this user nor root",
         ));
     }
@@ -190,7 +184,6 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
         return Err(refuse(
             policy,
             FileRule::UnsafeMode,
-            path,
             &format!(
                 "has mode {mode:03o}; none of {:03o} may be set",
                 policy.unsafe_mode
@@ -201,7 +194,6 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
         refuse(
             policy,
             FileRule::TooLarge,
-            path,
             &format!("exceeds {} bytes", policy.limit),
         )
     };
@@ -214,9 +206,20 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
     (&mut file)
         .take(policy.limit + 1)
         .read_to_end(&mut bytes)
-        .map_err(|error| refuse(policy, FileRule::Unreadable, path, &error.to_string()))?;
+        .map_err(|error| refuse(policy, FileRule::Unreadable, &error.to_string()))?;
     if u64::try_from(bytes.len()).unwrap_or(u64::MAX) > policy.limit {
         return Err(too_large());
     }
-    String::from_utf8(bytes).map_err(|_| refuse(policy, FileRule::NotUtf8, path, "is not UTF-8"))
+    String::from_utf8(bytes).map_err(|_| refuse(policy, FileRule::NotUtf8, "is not UTF-8"))
+}
+
+/// [`read`] for a file a setting names: a refusal's message is `<setting>: <detail>`, naming
+/// the setting and never the path.
+pub(crate) fn read_named(path: &Path, setting: &str, policy: &Policy) -> Result<String, Refusal> {
+    read(path, policy).map_err(|refusal| named(&refusal, setting))
+}
+
+/// `refusal` with `setting` in front of its message.
+fn named(refusal: &Refusal, setting: &str) -> Refusal {
+    Refusal::new(refusal.kind(), format!("{setting}: {}", refusal.message()))
 }

@@ -232,13 +232,16 @@ types:
   # The trusted-file rules apply to every file (llmgw `src/trusted.rs:21-42`): the file is opened
   # once without following a final symlink and every check reads that handle. `vllm-api-key`
   # and `endpoint-credential` follow `owner-secret` in every rule: mode & 0o077 and a 4098-byte
-  # file bound. Every `vllm-api-key:<rule>` message starts
-  # `models.<alias>.vllm_api_key_file <path>:`, and every `endpoint-credential:<rule>` message
-  # `hosted.<alias>.credential_file <path>:`, naming the model and the file and never the
-  # credential's bytes; a routes document's endpoint credential (RoutesDeclaration) is an
-  # `endpoint-credential` file too, its messages starting `routes.<endpoint>.auth.secret <path>:`.
+  # file bound. No trusted-file refusal quotes the path it was given or the file a link
+  # resolves to (story:trusted-refusal-names-no-path): the code names the source, a caller that
+  # knows the setting names it, and the rest is the rule's detail. Every `vllm-api-key:<rule>`
+  # message starts `models.<alias>.vllm_api_key_file:`, every `owner-secret:<rule>` message
+  # `owner_secret_file:`, and every `endpoint-credential:<rule>` message
+  # `hosted.<alias>.credential_file:`, naming the model and never the file or the credential's
+  # bytes; a routes document's endpoint credential (RoutesDeclaration) is an
+  # `endpoint-credential` file too, its messages starting `routes.<endpoint>.auth.secret:`.
   # The routes document a deployment names is a `config` file in every rule but its bound: its
-  # messages start `routes <path>:`, it is refused group- or world-writable (mode & 0o022) and
+  # messages start `routes:`, it is refused group- or world-writable (mode & 0o022) and
   # `config:too-large` over 2097152 bytes (2 MiB, llm's `MAX_CONFIG_BYTES`, the bound
   # `Routes::parse` itself applies).
   #   `<source>:unreadable`     the file cannot be opened (absent, no permission)
@@ -274,7 +277,7 @@ types:
   #   `endpoint-credential:too-large`    a credential over 4096 bytes
   #   `endpoint-credential:not-a-token`  empty, or not one printable ASCII token
   # Metrics bearer rules (story:prometheus-metrics), the endpoint credential's rules in every
-  # trusted-file rule and after trimming; every message starts `metrics_bearer_file <path>:`:
+  # trusted-file rule and after trimming; every message starts `metrics_bearer_file:`:
   #   `metrics-bearer:too-large`    a token over 4096 bytes
   #   `metrics-bearer:not-a-token`  empty, not one printable ASCII token, or under 32 bytes
   #                                 (the owner secret's floor)
@@ -287,7 +290,8 @@ types:
   # Container token rules: the trusted-file rules of a file `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`
   # names (at most 16386 bytes; group- or world-writable is `unsafe-mode`, readable is not),
   # except that its path is resolved through symbolic links first, the file it resolves to must
-  # lie inside the token path's directory (else `symlink`) and every rule is checked on that
+  # lie inside the token path's directory (else `symlink`, naming neither file; every message
+  # starts `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE:`) and every rule is checked on that
   # file, read again for each fetch: a Kubernetes projected volume (as EKS
   # Pod Identity mounts the token) links `<name>` to `..data/<name>` and `..data` to a
   # timestamped directory the kubelet swaps on rotation (layout from the AWS and Kubernetes

@@ -343,8 +343,8 @@ impl Routes {
     /// # Errors
     /// `config:value` naming `routes.<endpoint>.auth.secret` for a `~/` path without an absolute
     /// `home`; an `endpoint-credential:*` [`Refusal`] whose message starts
-    /// `routes.<endpoint>.auth.secret <path>:` for a file breaking a rule. No message quotes a
-    /// credential.
+    /// `routes.<endpoint>.auth.secret:` for a file breaking a rule. No message quotes a
+    /// credential or its path.
     pub fn read_credentials(
         &self,
         home: Option<&Path>,
@@ -634,10 +634,9 @@ fn secret_file(key: &str, secret: Option<&str>) -> Result<SecretFile, Refusal> {
 ///
 /// # Errors
 /// A `config:*` [`Refusal`] whose message starts `routes`: a trusted-file rule, with the routes
-/// document's 2 MiB bound, or [`Routes::parse`]'s.
+/// document's 2 MiB bound, as `routes: <detail>` and never the path, or [`Routes::parse`]'s.
 pub(crate) fn load(path: &Path) -> Result<Routes, Refusal> {
-    let text = trusted::read(path, &trusted::ROUTES)
-        .map_err(|refusal| Refusal::new(refusal.kind(), format!("routes {}", refusal.message())))?;
+    let text = trusted::read_named(path, "routes", &trusted::ROUTES)?;
     Routes::parse(&text)
 }
 

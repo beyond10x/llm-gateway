@@ -1014,16 +1014,17 @@ fn credential_config(fixture: &Fixture, credential: &Path) -> PathBuf {
     ))
 }
 
-/// Asserts the refusal, that its message names the declaration and the file, and that no byte
-/// of `material` reaches standard error.
+/// Asserts the refusal, that its message names the declaration and not the file, and that no
+/// byte of `material` reaches standard error.
 fn assert_credential_refused(fixture: &Fixture, credential: &Path, code: &str, material: &str) {
     let stderr = assert_refused(&shipped(), &credential_config(fixture, credential), code);
     assert!(
-        stderr.contains(&format!(
-            "{code}: hosted.remote.credential_file {}:",
-            credential.display()
-        )),
+        stderr.contains(&format!("{code}: hosted.remote.credential_file: ")),
         "{stderr:?}"
+    );
+    assert!(
+        !stderr.contains(&credential.display().to_string()),
+        "{code}: the refusal quotes the path: {stderr:?}"
     );
     if !material.trim().is_empty() {
         assert!(

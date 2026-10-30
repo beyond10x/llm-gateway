@@ -695,10 +695,13 @@ on the file it resolves to: a Kubernetes projected volume, as EKS Pod Identity m
 links `<name>` to `..data/<name>` and `..data` to a timestamped directory the kubelet swaps on
 rotation (layout from the AWS and Kubernetes documentation, unverified here against a cluster).
 The resolved file must lie inside the directory the token path names; a link out of it is
-refused `container-token:symlink`, naming the file it resolves to. Resolving on every read means a rotated token is used without a restart. The read runs on the
-runtime's blocking pool, and a file a fetch refuses makes that turn `unauthorized` with a `warn`
-line naming the rule (`rule`, such as `container-token:unsafe-mode`) and the path (`file`), never
-the token. The credentials client gives up connecting after 5 s, reading
+refused `container-token:symlink`, naming neither the token path nor the file it resolves to.
+Resolving on every read means a rotated token is used without a restart. A refusal at start
+names the variable, `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE: <detail>`, never the path. The read
+runs on the runtime's blocking pool, and a file a fetch refuses makes that turn `unauthorized`
+with a `warn` line naming the rule (`rule`, such as `container-token:unsafe-mode`) and its detail
+(`detail`, such as `has mode 666; none of 022 may be set`), never the path or the token. The
+credentials client gives up connecting after 5 s, reading
 after 10 s and in all after 30 s. The variables are read only when the document has a Bedrock
 model (`container-credentials:unset`, `container-credentials:uri`).
 

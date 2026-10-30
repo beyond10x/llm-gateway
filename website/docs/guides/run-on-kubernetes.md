@@ -181,7 +181,7 @@ b10x-llm-gateway --config /etc/llm-gateway/gateway.toml
 ```
 
 ```text
-b10x-llm-gateway: refused owner-secret:unsafe-mode: /run/llm-gateway/owner-secret: has mode 440; none of 077 may be set
+b10x-llm-gateway: refused owner-secret:unsafe-mode: owner_secret_file: has mode 440; none of 077 may be set
 ```
 
 The reader is not relaxed for this. The refusal is the gateway doing what it is for: a group

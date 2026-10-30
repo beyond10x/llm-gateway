@@ -8,6 +8,7 @@ Nothing in any release is deployed or qualified against a live client.
 ## Unreleased
 
 - Each `translation-unsupported` or `translation-invalid` refusal writes one `info` line, `translation refused`, naming the model, the client's wire, the code and llm's diagnostic, which names the refused path or field and never a value the client sent; the answer is unchanged. `docs/gateway.md` "The request".
+- **Breaking:** a trusted-file refusal no longer quotes the path it was given or the file a link resolves to, so a secret written into `--config` or a `*_file` setting by mistake is not printed or logged. The message is `<setting>: <detail>` (`owner_secret_file`, `routes`, `models.<alias>.vllm_api_key_file`, `hosted.<alias>.credential_file`, `routes.<endpoint>.auth.secret`, `metrics_bearer_file`, `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`; the document's own is `<detail>`), and the Bedrock container token's fetch warning carries `detail` in place of `file`. Refusal codes are unchanged.
 
 ## 0.18.0 (2026-10-30)
 

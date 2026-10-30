@@ -527,6 +527,23 @@ pod:
    `context_window`, else 200000. Then it is projected for the upstream wire. Either refusal is
    `translation-unsupported` or `translation-invalid` by the same rule.
 
+Each `translation-unsupported` or `translation-invalid` refusal of steps 2 and 4 (a Bedrock
+model's check included) writes one `tracing` event at `info`, message `translation refused`, with
+`model` (the alias), `ingress` (the client's wire), `refusal` (the code) and `refused`, llm's
+diagnostic written escaped. llm 0.18.0's diagnostic names the refused path or field and no value
+the client sent: `messages[].content[].cache_control`, `thinking.display`, ``chat request field
+`n` ``, a message role by the word "role" and never the role. An array element is written `[]`,
+without its index. A client's key enters a path only as 1 to 64 bytes of `[A-Za-z0-9_-]`; any
+other key is written `?`. The answer is unchanged: the refusal body carries the code and its fixed
+message, never llm's diagnostic. `translation_a_*_refusal_names_the_refused_path_in_one_log_line`
+in `crates/llm-gateway-cli/tests/translation.rs` sends each wire's refused requests with a marker
+in the message text, tool names, arguments and results and in the refused value, and finds it in
+no log line and no answer.
+
+```text
+2026-10-30T06:21:22.891160Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=responses refusal=translation-unsupported refused="request body carries a field outside the pinned subset: text.format"
+```
+
 What each client wire's decoder accepts, from llm 0.18.0. Every field a decoder reads has one rule
 (llm's `docs/design.md` "Client request fields"): **carried** to every upstream wire that has the
 concept, **translated** under another name, **advisory** (a hint a wire without the concept

@@ -369,6 +369,22 @@ const fn refusal(error: &Error) -> RefusalCode {
     }
 }
 
+/// [`refusal`]'s code for `error`, after one `info` line naming it: the code, the client's wire,
+/// the alias and llm's message, which names the refused path or field and quotes no value the
+/// client sent (llm 0.18.0 copies a client's key into a path only as at most 64 bytes of
+/// `[A-Za-z0-9_-]`, else `?`). The message is written escaped.
+fn refused(ingress: Wire, alias: &str, error: &Error) -> RefusalCode {
+    let code = refusal(error);
+    tracing::info!(
+        model = alias,
+        ingress = %ingress.label(),
+        refusal = %code.wire(),
+        refused = ?error.message,
+        "translation refused"
+    );
+    code
+}
+
 /// A decoded client request: the turn, and how the client wants its answer.
 struct Decoded {
     request: TurnRequest,
@@ -525,16 +541,16 @@ impl LlmTranslator {
         alias: &str,
     ) -> Result<Prepared, RefusalCode> {
         let upstream_model = request.model.upstream_model().as_str();
-        let mut decoded =
-            decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
+        let mut decoded = decode(request.ingress, alias, request.body)
+            .map_err(|error| refused(request.ingress, alias, &error))?;
         let scope = Scope {
             alias,
             upstream_model,
             ingress: request.ingress,
             upstream: request.upstream,
         };
-        let reading =
-            ingress_provenance(request.ingress, alias).map_err(|error| refusal(&error))?;
+        let reading = ingress_provenance(request.ingress, alias)
+            .map_err(|error| refused(request.ingress, alias, &error))?;
         bind_sealed(&self.engine.sealer, scope, &mut decoded.request, &reading)?;
         let capabilities = self.capabilities(request.model, request.upstream);
         // A messages upstream needs an output limit, and the whole window leaves no room for
@@ -566,7 +582,7 @@ impl LlmTranslator {
             rebind(&mut decoded.request, binding.provenance());
             project(request.upstream, &decoded.request, &binding, upstream_model)
         })
-        .map_err(|error| refusal(&error))?;
+        .map_err(|error| refused(request.ingress, alias, &error))?;
         Ok(Prepared {
             engine: Arc::clone(&self.engine),
             ingress: request.ingress,
@@ -635,7 +651,7 @@ fn drop_for_bedrock(ingress: Wire, alias: &str, route: &BedrockRoute, request: &
 /// not empty, the client's one header line read by llm's decoder, which refuses a malformed one.
 /// The names the model allows stay in the turn in the client's order; each other name is logged
 /// by name as dropped. A value that is not a header value at all is refused through
-/// [`refusal`] as llm's own `invalid` error, as a malformed body is: `translation-invalid`.
+/// [`refused`] as llm's own `invalid` error, as a malformed body is: `translation-invalid`.
 fn decode_with_betas(
     request: &TranslationRequest<'_>,
     alias: &str,
@@ -644,15 +660,18 @@ fn decode_with_betas(
     let mut headers = http::HeaderMap::new();
     if let Some(value) = request.anthropic_beta {
         let value = http::HeaderValue::from_str(value).map_err(|_| {
-            refusal(&Error::invalid(
-                "the anthropic-beta header is not a header value",
-            ))
+            refused(
+                request.ingress,
+                alias,
+                &Error::invalid("the anthropic-beta header is not a header value"),
+            )
         })?;
         headers.insert(llm_messages::BETA_HEADER, value);
     }
-    let origin = ingress_provenance(request.ingress, alias).map_err(|error| refusal(&error))?;
+    let origin = ingress_provenance(request.ingress, alias)
+        .map_err(|error| refused(request.ingress, alias, &error))?;
     let mut decoded = llm_messages::decode_request_with_headers(request.body, &headers, &origin)
-        .map_err(|error| refusal(&error))?;
+        .map_err(|error| refused(request.ingress, alias, &error))?;
     let betas = &mut decoded.request.controls.hints.anthropic_beta;
     betas.retain(|name| {
         let kept = allowed.contains(name);
@@ -694,8 +713,8 @@ impl LlmTranslator {
         let mut decoded = if carries_betas {
             decode_with_betas(request, alias, &route.anthropic_beta)?
         } else {
-            let decoded =
-                decode(request.ingress, alias, request.body).map_err(|error| refusal(&error))?;
+            let decoded = decode(request.ingress, alias, request.body)
+                .map_err(|error| refused(request.ingress, alias, &error))?;
             if request.anthropic_beta.is_some() {
                 tracing::info!(
                     model = alias,
@@ -752,7 +771,7 @@ impl LlmTranslator {
             .request
             .validate_for(&target.provenance, &capabilities)
             .and_then(|()| llm_bedrock::check_request(&decoded.request, target))
-            .map_err(|error| refusal(&error))?;
+            .map_err(|error| refused(request.ingress, alias, &error))?;
         Ok(Box::new(Prepared {
             engine: Arc::clone(&self.engine),
             ingress: request.ingress,

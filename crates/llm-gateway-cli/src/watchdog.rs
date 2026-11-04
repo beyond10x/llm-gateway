@@ -274,13 +274,16 @@ pub(crate) fn records(polled: &Polled, now_ms: u64) -> Vec<String> {
     }
 }
 
-/// The Runpod API key the watchdog reads the account with. No provider declares one yet: the
-/// keychain reference (`runpod_api_key`) is read here once the document carries it.
-fn runpod_key(_deployment: &Deployment) -> Result<Vec<u8>, Refusal> {
-    Err(Refusal::new(
-        StartupRefusal::ConfigValue,
-        "watchdog: no provider declares runpod_api_key, which the account read needs".to_owned(),
-    ))
+/// The Runpod API key the watchdog reads the account with: the first provider's keychain
+/// reference (`providers.<name>.api_key`).
+fn runpod_key(deployment: &Deployment) -> Result<Vec<u8>, Refusal> {
+    let (provider, reference) = crate::account::keyed_provider(deployment).ok_or_else(|| {
+        Refusal::new(
+            StartupRefusal::ConfigValue,
+            "watchdog: no provider declares api_key, which the account read needs".to_owned(),
+        )
+    })?;
+    crate::account::read_key(provider, reference)
 }
 
 /// The REST transport over `pods`' verified TLS, with every model's vLLM key for the probe.

@@ -9,6 +9,7 @@
 //! serves, and stops gracefully on SIGINT or SIGTERM. Every
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
+mod account;
 mod bedrock;
 pub mod cli;
 mod config;

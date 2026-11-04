@@ -311,6 +311,9 @@ pub struct PodPanel {
     pub cost_per_hour_usd: Option<f64>,
     pub uptime_s: Option<u64>,
     pub vllm_ready: Option<bool>,
+    /// How long the pod may go without a call before it is stopped, when its model says;
+    /// otherwise the watchdog's [`WatchdogLimits::idle_ms`] applies.
+    pub idle_ms: Option<u64>,
 }
 
 /// What a relayed model was last doing, for a heartbeat ([`Dashboard::route_activity`]).
@@ -1562,7 +1565,7 @@ fn shutdown(
         .uptime_s
         .map(|uptime| provider.read_ms.saturating_sub(uptime.saturating_mul(1000)));
     let mut candidates: Vec<(u64, &'static str)> = Vec::new();
-    if let Some(idle) = limits.idle_ms
+    if let Some(idle) = pod.idle_ms.or(limits.idle_ms)
         && in_flight == 0
         && let Some(since) = last_call.max(started)
     {

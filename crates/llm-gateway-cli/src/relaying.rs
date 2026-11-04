@@ -814,6 +814,11 @@ impl Relaying {
         self.running.local_addr()
     }
 
+    /// The dashboard's state, for the account panel and the heartbeat's route activity.
+    pub fn dashboard(&self) -> Arc<llm_gateway::Dashboard> {
+        self.running.dashboard()
+    }
+
     /// Drains and stops the gateway gracefully now, then stops the cleanup pass. A request
     /// still waiting for its pod is answered `target-unavailable` at once.
     pub fn shutdown(self) -> ShutdownReport {

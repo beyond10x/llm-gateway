@@ -29,6 +29,7 @@ const SOURCES: &[&str] = &[
     include_str!("../src/auth.rs"),
     include_str!("../src/body.rs"),
     include_str!("../src/dashboard.rs"),
+    include_str!("../src/dashboard/kpi.rs"),
     include_str!("../src/error.rs"),
     include_str!("../src/inventory.rs"),
     include_str!("../src/json.rs"),
@@ -1062,6 +1063,30 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
     (
         "TAIL",
         "how many bytes the usage scanner carries between pieces, an internal buffer",
+    ),
+    (
+        "MIN_RATED_OUTPUT_TOKENS",
+        "the fewest output tokens a call needs for the dashboard to rate its output tok/s, a \
+         display threshold that refuses nothing",
+    ),
+    (
+        "MIN_RATED_STREAMING_MS",
+        "the shortest streaming time a call needs for the dashboard to rate its output tok/s, a \
+         display threshold that refuses nothing",
+    ),
+    (
+        "RATE_WINDOW_MS",
+        "the window the dashboard's token-rate KPI averages over, a display window",
+    ),
+    (
+        "MAX_CREDENTIALS",
+        "how many credential labels the dashboard keeps subscription limits for, the least \
+         recent evicted, never a refusal",
+    ),
+    (
+        "MAX_LIMIT_HEADERS",
+        "how many rate-limit headers the dashboard keeps per credential, the rest dropped from \
+         display, never a refusal",
     ),
 ];
 

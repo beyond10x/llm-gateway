@@ -161,6 +161,11 @@ impl Running {
         self.handle.local_addr()
     }
 
+    /// The dashboard's state, for the account panel and the heartbeat's route activity.
+    pub fn dashboard(&self) -> Arc<llm_gateway::Dashboard> {
+        self.handle.dashboard()
+    }
+
     /// Each model's vLLM key, read once at startup.
     pub fn vllm_keys(&self) -> &crate::keys::VllmKeys {
         &self.vllm_keys
@@ -377,10 +382,26 @@ fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std:
             report(format_args!("{INGRESS_AUTH_OFF}"));
         }
         let heartbeat = heartbeat_file(&deployment)?;
+        let account_pods = pods.clone();
         let running = start_with(&deployment, pods)?;
+        let dashboard = running.dashboard();
+        // The key was read once already by the composition, so a failure here is rare; the
+        // gateway then serves without the account panel rather than refusing.
+        let polling = crate::account::start_for(&deployment, &account_pods, Arc::clone(&dashboard))
+            .unwrap_or_else(|refusal| {
+                report(format_args!("warning runpod account panel off: {refusal}"));
+                None
+            });
+        let activity: crate::heartbeat::ActivitySource = Arc::new(move || {
+            dashboard
+                .route_activity()
+                .into_iter()
+                .map(|route| (route.route, route.last_call_end_ms, route.in_flight))
+                .collect()
+        });
         Ok((
             running,
-            heartbeat_of(&deployment, heartbeat, crate::heartbeat::no_activity()),
+            (heartbeat_of(&deployment, heartbeat, activity), polling),
         ))
     }) {
         Ok(started) => started,

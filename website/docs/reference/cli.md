@@ -51,7 +51,7 @@ Usage: b10x-llm-gateway serve [OPTIONS]
 
 ## `b10x-llm-gateway watchdog`
 
-> Watch the pods the gateway owns and terminate one the gateway can no longer stop: its heartbeat stale, the pod idle, not ready, past its maximum runtime, or the balance under its floor. It reads the same document as `serve` and needs its `[watchdog]` table and a provider with `runpod_api_key`
+> Watch the pods the gateway owns and terminate one the gateway can no longer stop: its heartbeat stale, the pod idle, not ready, past its maximum runtime, or the balance under its floor. It reads the same document as `serve` and needs its `[watchdog]` table and a provider with a keychain `api_key`
 
 ```text
 Usage: b10x-llm-gateway watchdog [OPTIONS]
@@ -62,7 +62,7 @@ Usage: b10x-llm-gateway watchdog [OPTIONS]
 | `--config <CONFIG>` | no | none | Path to the closed TOML deployment document; the default document when absent. |
 | `--once` | no | none | Run one poll and exit instead of polling until SIGINT or SIGTERM. |
 
-`watchdog` reads the same document as `serve` and needs its `[watchdog]` table and one provider with `runpod_api_key`. It polls Runpod every `poll_seconds` and terminates only a pod the gateway owns (its name starts `b10x-llm-` and its owner tag names the gateway), writing one JSON line of format `llm-gateway.watchdog/1` on standard error for each, naming the pod and the rule. It stops on SIGINT or SIGTERM with exit status 0; a refused start exits 1 as `serve` does. [The `[watchdog]` table](./deployment-document.md#watchdog) lists its limits.
+`watchdog` reads the same document as `serve` and needs its `[watchdog]` table and one provider whose `api_key` is a keychain reference. It polls Runpod every `poll_seconds` and terminates only a pod the gateway owns (its name starts `b10x-llm-` and its owner tag names the gateway), writing one JSON line of format `llm-gateway.watchdog/1` on standard error for each, naming the pod and the rule. It stops on SIGINT or SIGTERM with exit status 0; a refused start exits 1 as `serve` does. [The `[watchdog]` table](./deployment-document.md#watchdog) lists its limits.
 
 ## `b10x-llm-gateway credential set`
 

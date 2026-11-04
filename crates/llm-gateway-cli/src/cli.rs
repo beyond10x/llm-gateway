@@ -44,7 +44,7 @@ pub struct ServeCli {
 /// Watch the pods the gateway owns and terminate one the gateway can no longer stop: its
 /// heartbeat stale, the pod idle, not ready, past its maximum runtime, or the balance under its
 /// floor. It reads the same document as `serve` and needs its `[watchdog]` table and a provider
-/// with `runpod_api_key`.
+/// with a keychain `api_key`.
 #[derive(Debug, Parser)]
 #[command(name = "watchdog", bin_name = "b10x-llm-gateway watchdog", version)]
 pub struct WatchdogCli {

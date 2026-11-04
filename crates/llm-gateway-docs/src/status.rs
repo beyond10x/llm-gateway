@@ -18,7 +18,7 @@ pub const DATA: &str = "website/data/status.json";
 pub const PAGE: &str = "website/docs/status.mdx";
 
 /// The date the list below was last checked against the code.
-const AS_OF: &str = "2026-10-17";
+const AS_OF: &str = "2026-11-04";
 
 /// One capability on the status page.
 pub struct Capability {
@@ -410,6 +410,48 @@ pub const CAPABILITIES: &[Capability] = &[
         HOSTING,
     ),
     shipped(
+        "Relay",
+        "The client's own Anthropic credential on a loopback gateway",
+        "An auth_kind = \"client\" route behind ingress_auth = \"none\" forwards the client's authorization and the request as written; a 429, 502, 503 or 529 is retried before the first answer byte only for a client that does not retry on its own.",
+        "crates/llm-gateway/tests/adversary_passthrough.rs::adv_pt_every_end_to_end_client_header_reaches_the_target_byte_for_byte",
+        DOCUMENT,
+    ),
+    shipped(
+        "Observability",
+        "Token counts in usage records",
+        "Each usage record carries the input, output, cache read and cache creation tokens the answer reported, read from a decoded copy when it is content-encoded; a count it did not report stays absent.",
+        "crates/llm-gateway-cli/tests/passthrough_encoded.rs::a_gzip_streamed_answer_reaches_the_client_unchanged_and_its_tokens_are_recorded",
+        None,
+    ),
+    shipped(
+        "Observability",
+        "Dashboard",
+        "GET /dashboard shows calls with every attempt, sessions, routes, tokens per second, cache hit rates, subscription limits, the Runpod account and a vLLM server's prefix cache.",
+        "crates/llm-gateway/tests/adversary_local_open.rs::adv_dashboard_counts_tokens_per_session_and_keeps_no_header_value",
+        Some("/docs/guides/local-gateway-for-claude-code"),
+    ),
+    shipped(
+        "Gateway",
+        "Keychain references",
+        "A credential may name an OS keychain entry, read once at start; an unreadable entry refuses the start and quotes no value.",
+        "crates/llm-gateway-cli/tests/keychain.rs::keychain_an_unreadable_entry_refuses_the_start_and_quotes_nothing",
+        DOCUMENT,
+    ),
+    shipped(
+        "Hosting",
+        "Pod watchdog",
+        "b10x-llm-gateway watchdog terminates the gateway's own pods on a stale heartbeat, a low balance, a long runtime, a pod never ready or an idle pod, and never another pod.",
+        "crates/llm-gateway-cli/src/watchdog_tests.rs::a_pod_that_is_not_the_gateways_is_never_terminated_whatever_holds",
+        HOSTING,
+    ),
+    shipped(
+        "Clients",
+        "Launchers for Claude Code and Codex",
+        "b10x-llm-gateway claude and codex start the agent against the running gateway, with the sub-agent route and its instruction for Claude Code.",
+        "crates/llm-gateway-cli/tests/launch_claude.rs::the_launcher_starts_claude_with_the_overlay_and_passes_its_exit_code",
+        Some("/docs/guides/local-gateway-for-claude-code"),
+    ),
+    shipped(
         "Specification",
         "ESS specification and conformance suite",
         "The system llm-gateway is specified in ESS; the gate answers at least 395 of 395 scenarios, skips none, and fails on drift between the specification and its generated suite.",
@@ -424,8 +466,8 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     planned(
         "Observability",
-        "Token counts in usage records",
-        "Each usage record carries the token counters and the model name the target reported; a count it did not report stays absent.",
+        "Reported model and reasoning tokens in usage records",
+        "Each usage record carries the model name the target reported and its reasoning tokens; neither is filled yet.",
         None,
     ),
     planned(

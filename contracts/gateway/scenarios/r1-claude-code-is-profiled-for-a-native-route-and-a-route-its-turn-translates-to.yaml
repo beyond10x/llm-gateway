@@ -55,7 +55,7 @@ assert:
     connections:
     - "pod-2 plain request"
     records:
-    - "model=translated-up wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=615 duration_ms=bounded tokens=absent"
-    - "model=refused-up wire=messages disposition=Refused refusal=translation-unsupported status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+    - model=translated-up wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=615 duration_ms=bounded tokens=reported
+    - model=refused-up wire=messages disposition=Refused refusal=translation-unsupported status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
     acquired: 1
     released: 1

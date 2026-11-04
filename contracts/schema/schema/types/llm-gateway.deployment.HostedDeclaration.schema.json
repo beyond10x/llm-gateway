@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8e76d595b9fb656f16e820f16069f18535f7d2ca91ef50cd4498759eb4267390",
-    "contract_digest": "slice-sha256/2:ca2b48b33821a6943d834513188f0323a1cb202b28793778900aa8b046c05cc7",
+    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
+    "contract_digest": "slice-sha256/2:e943cb14c08a94608a46e5f2a54ecb191b5db7a67e93e6c5051f65cf511d4530",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -67,6 +67,9 @@
         "credential_file": {
           "type": "string"
         },
+        "credential": {
+          "type": "string"
+        },
         "credential_header": {
           "type": "string"
         },
@@ -91,6 +94,21 @@
         },
         "reasoning_effort": {
           "$ref": "#/$defs/llm-gateway.deployment.HostedReasoningEffort"
+        },
+        "model_prefix": {
+          "type": "string"
+        },
+        "newest": {
+          "type": "string"
+        },
+        "retry_max_attempts": {
+          "type": "integer"
+        },
+        "retry_max_wait": {
+          "type": "integer"
+        },
+        "compact_window": {
+          "type": "integer"
         }
       },
       "required": [
@@ -134,7 +152,8 @@
         "Anonymous",
         "Bearer",
         "ApiKey",
-        "AwsSigv4"
+        "AwsSigv4",
+        "Client"
       ]
     },
     "llm-gateway.upstream.BedrockApi": {

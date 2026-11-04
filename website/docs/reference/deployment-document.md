@@ -119,7 +119,7 @@ of its targets with its `auth_kind` and `billing_kind`, never its URL or credent
 | --- | --- | --- |
 | `wires` | required | A non-empty set of `chat`, `responses`, `messages`, none repeated. |
 | `base_url` | required | `http://` or `https://`, a `host[:port]` of at most 256 characters, then an optional base path: no query, fragment or user information. A base path is 1 to 32 segments of `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`, at most 256 bytes, with no empty, `.` or `..` segment; one final `/` is dropped. An `http` URL for a `bearer` or `api-key` endpoint must name a loopback host (`127.0.0.0/8`, `::1` or `localhost`): a credential is never sent in cleartext to a remote host. |
-| `auth_kind` | required | `anonymous`, `bearer` or `api-key`. |
+| `auth_kind` | required | `anonymous`, `bearer`, `api-key` or `client`. A `client` endpoint is sent the client's own `authorization` and `x-api-key` lines and the request as the client wrote it ([the client's own credential](#client-routes)). |
 | `credential_file` | absent | The file holding the credential: this or `credential` is required unless `auth_kind` is `anonymous` or `client`, and refused when it is. |
 | `credential` | absent | A [`keychain:<service>/<account>`](#keychain-references) reference to the credential, in place of `credential_file`: refused beside it, on a Bedrock model, and as `endpoint-credential:<rule>`, its message starting `hosted.<alias>.credential:`, when the entry cannot be read. `credential set` refuses such a model: store the key with the platform's tool. |
 | `credential_header` | absent | The header an `api-key` endpoint receives the credential in, 1 to 64 token characters: required for `api-key`, refused otherwise, and never `authorization`, `host` or a header that frames a message. |
@@ -129,6 +129,11 @@ of its targets with its `auth_kind` and `billing_kind`, never its URL or credent
 | `context_window` | absent | 4096 to 2000000 tokens, what the public routes publish. |
 | `tool_calling` | `absent` | `parsed` or `absent`. |
 | `reasoning_effort` | absent | `low`, `medium` or `xhigh`: the effort a Messages request that names none is sent with. Any other value, `high` and `max` included, is `config:value`. |
+| `model_prefix` | absent | 1 to 64 printable ASCII characters without a space: every model name starting with it is served by this model too, relayed as the client sent it. The longest prefix wins; an alias matched exactly wins over every prefix. |
+| `newest` | absent | On a `client` endpoint only: a family of 1 to 32 lower-case letters, digits and `-`, such as `opus`. The alias is then sent as the newest model of that family the endpoint lists for the client's own credential (`GET /v1/models?limit=1000`), remembered for an hour. |
+| `retry_max_attempts` | 4 | On a `client` endpoint only, 1 to 10: the most attempts a call makes on a 429, 502, 503 or 529. A client that sends `x-stainless-retry-count` retries on its own and gets one attempt. |
+| `retry_max_wait` | 60 | On a `client` endpoint only, 0 to 600 seconds: the most a call waits for its retries in all. |
+| `compact_window` | absent | 100000 to 1000000 tokens: the auto-compact window `b10x-llm-gateway claude` gives Claude Code for this model. |
 
 Every wire path starts `/v1/`. A `base_url` without a path, or with only `/`, is asked on the
 wire path itself. A base path replaces the wire path's leading `/v1`, so a `base_url` written
@@ -230,6 +235,44 @@ credential_source = "container"
 ```
 
 The model id above is an example and is unverified.
+
+### The client's own credential {#client-routes}
+
+`auth_kind = "client"` is admitted only for `base_url = "https://api.anthropic.com"`, on
+`wires = ["messages"]` alone, with no static header named like a forwarded one and no
+`reasoning_effort`, and only when the document's `ingress_auth` is `"none"`: the client's
+`authorization` is its own credential, never an owner token. It is how Claude Code on a Claude
+subscription reaches Anthropic through a local gateway:
+
+```toml
+[hosted.claude]
+wires = ["messages"]
+base_url = "https://api.anthropic.com"
+auth_kind = "client"
+billing_kind = "subscription"
+tool_calling = "parsed"
+model_prefix = "claude-"
+```
+
+## `[launch]` {#launch}
+
+What `b10x-llm-gateway claude` and `b10x-llm-gateway codex` start their agent with. Both read the
+running gateway's routes from `GET /v1/launch` on its `listen` address, and both refuse a document whose
+`ingress_auth` is not `"none"`.
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `launch.claude.main_model` | `opus` | The `--model` Claude Code is started with unless its arguments name one; not empty, not starting with `-`. |
+| `launch.claude.implementer_route` | `qwen` | The route `CLAUDE_CODE_SUBAGENT_MODEL` names. A route that does not relay the messages wire with tool calling is left out, with a note. |
+| `launch.claude.agents` | absent | A JSON object passed as `--agents`. |
+| `launch.claude.subagent_instruction` | below | Appended to Claude Code's system prompt with `--append-system-prompt`, `{route}` and `{model}` replaced by the implementer route and the model it serves; joined after the user's own `--append-system-prompt` text when there is one. An empty string adds nothing. |
+| `launch.codex.model` | `qwen` | The route Codex is started on unless its arguments name a model. |
+
+The default instruction:
+
+```text
+To run a sub-agent on `{route}` ({model}), call the Agent tool without the `model` parameter: CLAUDE_CODE_SUBAGENT_MODEL is `{route}` in this session. The `model` enum cannot name `{route}`. Do this whenever the user asks for a `{route}` sub-agent.
+```
 
 ## `[watchdog]` {#watchdog}
 

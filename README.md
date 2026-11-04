@@ -8,6 +8,7 @@ model; this repository answers them and, later, starts the pods they reach.
 **Documentation:** <https://beyond10x.github.io/llm-gateway/>, built from
 [`website/`](website/): [getting started](https://beyond10x.github.io/llm-gateway/docs/getting-started/),
 [set up a client](https://beyond10x.github.io/llm-gateway/docs/guides/set-up-a-client/),
+[a local gateway for Claude Code](https://beyond10x.github.io/llm-gateway/docs/guides/local-gateway-for-claude-code/),
 [translate between wires](https://beyond10x.github.io/llm-gateway/docs/guides/translate-between-wires/),
 [CLI reference](https://beyond10x.github.io/llm-gateway/docs/reference/cli/),
 [deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/),

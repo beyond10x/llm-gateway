@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8e76d595b9fb656f16e820f16069f18535f7d2ca91ef50cd4498759eb4267390",
-    "contract_digest": "slice-sha256/2:9fcfe73eed34145701173530cd88e20ea0d3afbb2cbf074966fdf12beff356f7",
+    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
+    "contract_digest": "slice-sha256/2:2d67081003664b6c8ea719c6d7e31c3b75fda37a274a785941d27a3410e39cc1",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -35,6 +35,7 @@
         "SpendCeiling",
         "TargetUnavailable",
         "ToolsNotServed",
+        "ServerToolNotServed",
         "TranslationInvalid",
         "TranslationOpaqueState",
         "TranslationTooLarge",
@@ -68,6 +69,7 @@
             "RequestMalformed": "request-malformed",
             "RequestTooLarge": "request-too-large",
             "RouteUnknown": "route-unknown",
+            "ServerToolNotServed": "server-tool-not-served",
             "SpendCeiling": "spend-ceiling",
             "TargetUnavailable": "target-unavailable",
             "ToolsNotServed": "tools-not-served",
@@ -104,6 +106,7 @@
             "RequestMalformed": 400,
             "RequestTooLarge": 431,
             "RouteUnknown": 404,
+            "ServerToolNotServed": 400,
             "SpendCeiling": 503,
             "TargetUnavailable": 503,
             "ToolsNotServed": 400,
@@ -140,6 +143,7 @@
             "RequestMalformed": "the request is not well-formed HTTP",
             "RequestTooLarge": "the request head exceeds its byte bound",
             "RouteUnknown": "no such route alias",
+            "ServerToolNotServed": "this route is not Anthropic's: it serves no Anthropic server tool (web search, web fetch, code execution) and no tool without input_schema; send such a request to a claude model",
             "SpendCeiling": "the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown",
             "TargetUnavailable": "no model target is available",
             "ToolsNotServed": "the model does not serve tool calls",

@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8e76d595b9fb656f16e820f16069f18535f7d2ca91ef50cd4498759eb4267390",
-    "contract_digest": "slice-sha256/2:b99d6d18fed00e3ea80d4deb85866e7f10edcfb2e277b9afce391f3a73b67bb9",
+    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
+    "contract_digest": "slice-sha256/2:ee53796a1b9451cd7e6f0a8ab6648e17c00e0aabcbe414ab3b36cfe54fe0f5ce",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -63,6 +63,9 @@
         },
         "connectors": {
           "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
+        },
+        "api_key": {
+          "type": "string"
         },
         "daily_cap_usd": {
           "type": "string",

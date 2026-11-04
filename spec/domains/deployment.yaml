@@ -543,8 +543,8 @@ types:
   #   auth_kind          `anonymous`, `bearer`, `api-key` or `client` (`aws-sigv4` is a Bedrock
   #                      model's alone and is `config:schema` here). `client` (DECIDED 2026-11-04,
   #                      story:subscription-passthrough) forwards the client's own
-  #                      `authorization`, `x-api-key`, `anthropic-version` and `anthropic-beta`
-  #                      unchanged and is `config:value` unless `base_url` is
+  #                      `authorization` and `x-api-key`, every other header but the hop-by-hop
+  #                      ones, and the body, unchanged, and is `config:value` unless `base_url` is
   #                      `https://api.anthropic.com`, `wires` is `["messages"]`, the document's
   #                      `ingress_auth` is `none`, and the entry has no `credential_file`, no
   #                      `reasoning_effort` and no static header of those four names
@@ -552,6 +552,18 @@ types:
   #                      starting with it is served by this entry too and relayed as the client
   #                      sent it; the longest prefix wins and an alias matched exactly wins over
   #                      every prefix. `config:value` on a `bedrock` model
+  #   newest             optional, on a `client` entry only: a family of 1..=32 lower-case
+  #                      letters, digits and `-`; the alias is sent as the newest model of the
+  #                      family the endpoint lists for the client's own credential
+  #                      (`GET /v1/models?limit=1000`, remembered for an hour)
+  #   retry_max_attempts optional, on a `client` entry only, 1..=10 (default 4): the most
+  #                      attempts a call makes on a 429, 502, 503 or 529 before any answer byte
+  #                      reached the client. A client that sends `x-stainless-retry-count`
+  #                      retries on its own and gets one attempt (DECIDED 2026-11-04)
+  #   retry_max_wait     optional, on a `client` entry only, 0..=600 seconds (default 60): the
+  #                      most a call waits for its retries in all
+  #   compact_window     optional, 100000..=1000000 tokens: the auto-compact window
+  #                      `b10x-llm-gateway claude` gives Claude Code for this model
   #   credential_file    absent exactly when `auth_kind` is `anonymous` or `client`; read through the
   #                      trusted-file reader (`endpoint-credential:<rule>`). A credential goes
   #                      over `https`, or over `http` to a loopback host only (`base_url`)
@@ -648,6 +660,10 @@ types:
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
       - {name: model_prefix, type: 'Optional<String>'}
+      - {name: newest, type: 'Optional<String>'}
+      - {name: retry_max_attempts, type: 'Optional<Integer>'}
+      - {name: retry_max_wait, type: 'Optional<Integer>'}
+      - {name: compact_window, type: 'Optional<Integer>'}
   # One endpoint of a routes document (RoutesDeclaration), as llm 0.20.0 reads it
   # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
   # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,
@@ -798,6 +814,24 @@ types:
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}
       - {name: routes, type: 'Optional<String>'}
       - {name: watchdog, type: 'Optional<llm-gateway.deployment.WatchdogDeclaration>'}
+      - {name: launch, type: 'Optional<llm-gateway.deployment.LaunchDeclaration>'}
+  # DECIDED 2026-11-04 (story:live-dashboard): `[launch]`, optional, what `b10x-llm-gateway
+  # claude` and `b10x-llm-gateway codex` start their agent with. Both read the running gateway's
+  # `GET /v1/launch` and refuse a document whose `ingress_auth` is not `none`. `claude.main_model`
+  # (default `opus`) is the `--model` unless the arguments name one; `claude.implementer_route`
+  # (default `qwen`) is what `CLAUDE_CODE_SUBAGENT_MODEL` names; `claude.agents`, a JSON object,
+  # is passed as `--agents`; `claude.subagent_instruction` (a default text naming `{route}` and
+  # `{model}`; empty adds nothing) is appended with `--append-system-prompt`, joined after the
+  # user's own. `codex.model` (default `qwen`) is the route Codex starts on unless its arguments
+  # name a model. Proved by crates/llm-gateway-cli/tests/launch_claude.rs.
+  - name: llm-gateway.deployment.LaunchDeclaration
+    kind: struct
+    fields:
+      - {name: claude_main_model, type: 'Optional<String>'}
+      - {name: claude_implementer_route, type: 'Optional<String>'}
+      - {name: claude_agents, type: 'Optional<String>'}
+      - {name: claude_subagent_instruction, type: 'Optional<String>'}
+      - {name: codex_model, type: 'Optional<String>'}
   # DECIDED 2026-11-04 (story:pod-watchdog): `[watchdog]`, optional. With it `serve` writes a
   # heartbeat (format `llm-gateway.heartbeat/1`: pid, time, controller identity, and per route
   # the end of its last call and its calls in flight) every `heartbeat_seconds` (1..=60, 10) to

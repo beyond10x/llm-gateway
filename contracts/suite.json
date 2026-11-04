@@ -705,32 +705,32 @@
         "scenario": "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready"
       },
       "gateway/scenarios/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model.yaml": {
-        "digest": "sha256:9573641c31a5ef673dd87533a4b1686a09f7f8d7fc6ed293cc3bef8cf6f037fc",
+        "digest": "sha256:88f339cb60d219399080bca231e83bb734b4366974479a5edc5da77d0b004934",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model"
       },
       "gateway/scenarios/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else.yaml": {
-        "digest": "sha256:babc1e96ab714c8cb76d6de6666e6a86e883396fc9bbc31ead9dcb683fc864f6",
+        "digest": "sha256:41e0a17983307849b64fd45d1374108f099c96ed96afdd497d895fc152053180",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else"
       },
       "gateway/scenarios/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first.yaml": {
-        "digest": "sha256:190e68128badb25a41a2ca7714546a86acc636dc312bf4a9097160feec0f18e4",
+        "digest": "sha256:b8ea0f966433cb7b531fca86658358bfd7515bb12980c426be382b4ae35c540b",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first"
       },
       "gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml": {
-        "digest": "sha256:dce963c659126c8ef725f736334eab69c0bb335edcfd49666558f7f4ad1b4e30",
+        "digest": "sha256:cad0cd017ca27c2ac954f6622ba7802350d71e87965cde2a5593d96195d45936",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series"
       },
       "gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml": {
-        "digest": "sha256:c4dea6d6e48ca7f629c684cf30548d0fb61e17619eeca108023ad5424a4f89bd",
+        "digest": "sha256:c8f6a4fc0d76494e29340c26dc9a32c12efceb6a90618b91db1e87b0b8e1de3b",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route"
       },
       "gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml": {
-        "digest": "sha256:e04cd7f618c24079d52a591fff40ec2712c70914b1e4cdb4f92d8fbd354594e7",
+        "digest": "sha256:c90abf1d84770dcb7abd933655225f890889d82f6f4ef66c7a0eb800f2a022c9",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure"
       },
@@ -750,22 +750,22 @@
         "scenario": "llm-gateway.gateway/authored/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile"
       },
       "gateway/scenarios/r1-claude-code-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to.yaml": {
-        "digest": "sha256:0adae979e7b2c1fdaa95726c01d1c1dbe03c8a92a632542aebd7a789b8c6db1f",
+        "digest": "sha256:e6c0c8662b1324e9336532b47cf058fc8c11c084e5325028c6ca3eb7f2454e32",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-claude-code-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to"
       },
       "gateway/scenarios/r1-codex-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to.yaml": {
-        "digest": "sha256:e66f4c59092c4999600efeab4dcf5b5c2a9e16eef23d718b8945beb320302df1",
+        "digest": "sha256:97e8b94a5223c3ef9356572e972020c61b8e8f855e9371ae96fae52e62ef76d7",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-codex-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to"
       },
       "gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml": {
-        "digest": "sha256:c36e1abc9bcfe46356eee42f1473291374f0865c862d197e2497cc865f1b284a",
+        "digest": "sha256:3b47e9d344999d47731f03537b9b1bc93f9e0547b8880bb1cd6bf2b8e7983758",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view"
       },
       "gateway/scenarios/r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked.yaml": {
-        "digest": "sha256:97960ded45006336b1f4e845f5848ae83ae6979dd969620b93e2715228c638c1",
+        "digest": "sha256:9eaceb65daaa90ca9045d693ce7eb91319633705bcc54a333b9d7149f159ea1c",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-each-user-agent-chooses-its-setup-instructions-and-no-target-is-asked"
       },
@@ -780,7 +780,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body"
       },
       "gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml": {
-        "digest": "sha256:d8f9b5b6b0bd1c4465af35872acb6d2ec8ce431f5ba530025693f32f60caf6f7",
+        "digest": "sha256:4d904fc276923e58afe66f4c9609c9b90ac0f635adae9e20c9b00a5aa3d280d8",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero"
       },
@@ -975,12 +975,12 @@
         "scenario": "llm-gateway.gateway/authored/translate-the-listing-names-every-wire-and-the-upstream-wires"
       },
       "gateway/scenarios/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml": {
-        "digest": "sha256:4be0f1039badfd01af9403b55d8396bcabaf59d5cc031d18a310faf0c5498161",
+        "digest": "sha256:06fb1887eb9e2b9af630e3eb6b6d5486e6ae4e594aece9f42f49063f536b6a67",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/usage-on-the-chat-wire-cached-tokens-and-an-unknown-usage-field-reach-the-client-unchanged"
       },
       "gateway/scenarios/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged.yaml": {
-        "digest": "sha256:66330e68e6784c40793a3152bf88db02f8e2e173f7a16c25e51aea78db305d6d",
+        "digest": "sha256:a968bb46fab8339ac6fbf5a8462894639068066d699b6fdcd61179467882a7b2",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/usage-on-the-messages-wire-cache-tokens-and-an-unknown-usage-field-reach-the-client-unchanged"
       },
@@ -1926,9 +1926,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "a3c3c83501054ba879fa0969dad013e890a55861d19f49ed5426b02e5bf3f721",
+    "contract_digest": "ea48ec2e87753273052d9acc849d32e30390dfe39bbb6f94914ba206bb07a0c3",
     "scenario_initial_state": "empty",
-    "spec_digest": "8e76d595b9fb656f16e820f16069f18535f7d2ca91ef50cd4498759eb4267390",
+    "spec_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -2154,6 +2154,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -2225,6 +2228,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -2303,6 +2309,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -2400,6 +2409,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -2483,6 +2495,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -2572,6 +2587,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -2645,6 +2663,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -2728,6 +2749,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -2804,6 +2828,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -2875,6 +2902,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -2950,6 +2980,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3021,6 +3054,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -3111,6 +3147,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3197,6 +3236,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3277,6 +3319,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3355,6 +3400,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3426,6 +3474,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -3505,6 +3556,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3578,6 +3632,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3649,6 +3706,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -3733,6 +3793,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -3824,6 +3887,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3908,6 +3974,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -3985,6 +4054,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -4058,6 +4130,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -4129,6 +4204,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -4206,6 +4284,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -4293,6 +4374,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -4377,6 +4461,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -4448,6 +4535,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -4528,6 +4618,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -4599,6 +4692,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -4693,6 +4789,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -4775,6 +4874,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -4854,6 +4956,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -4957,6 +5062,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -5039,6 +5147,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -5128,6 +5239,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -5244,6 +5358,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -5331,6 +5448,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -5422,6 +5542,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -5511,6 +5634,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -5598,6 +5724,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -5698,6 +5827,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -5826,6 +5958,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -5933,6 +6068,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -6059,6 +6197,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -6178,6 +6319,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -6285,6 +6429,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -6379,6 +6526,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -6479,6 +6629,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -6569,6 +6722,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -6668,6 +6824,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -6748,6 +6907,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -6841,6 +7003,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -6966,6 +7131,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -7057,6 +7225,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -7167,6 +7338,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -7265,6 +7439,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -7354,6 +7531,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -7441,6 +7621,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -7571,6 +7754,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -7664,6 +7850,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -7755,6 +7944,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -7887,6 +8079,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -8008,6 +8203,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -8158,6 +8356,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -8269,6 +8470,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -8367,6 +8571,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -8485,6 +8692,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -8597,6 +8807,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -8699,6 +8912,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -8787,6 +9003,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -8871,6 +9090,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -8973,6 +9195,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -9061,6 +9286,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -9140,6 +9368,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -9225,6 +9456,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -9320,6 +9554,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -9399,6 +9636,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -9504,6 +9744,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -9594,7 +9837,90 @@
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 5",
                   "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
-                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 5"
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 5",
+                  "1 llmgw_tokens_total{model=\"code\",direction=\"input\"} 0",
+                  "1 llmgw_tokens_total{model=\"code\",direction=\"output\"} 0",
+                  "1 llmgw_cache_tokens_total{model=\"code\",kind=\"read\"} 0",
+                  "1 llmgw_cache_tokens_total{model=\"code\",kind=\"creation\"} 0",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"+Inf\"} 3",
+                  "1 llmgw_time_to_first_token_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_time_to_first_token_seconds_count{model=\"code\"} 3",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 3",
+                  "1 llmgw_queue_wait_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_queue_wait_seconds_count{model=\"code\"} 3",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_upstream_retry_wait_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_upstream_retry_wait_seconds_count{model=\"code\"} 0",
+                  "1 llmgw_tokens_per_second{direction=\"in\"} 0",
+                  "1 llmgw_tokens_per_second{direction=\"out\"} 0",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_input_tps_sum{route=\"code\"} bounded",
+                  "1 llmgw_input_tps_count{route=\"code\"} 0",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_output_tps_sum{route=\"code\"} bounded",
+                  "1 llmgw_output_tps_count{route=\"code\"} 0",
+                  "1 llmgw_in_flight_requests 0",
+                  "1 llmgw_client_retries_total{model=\"code\"} 0",
+                  "1 llmgw_repeated_bodies_total{model=\"code\"} 4",
+                  "1 llmgw_client_disconnects_total{model=\"code\"} 0",
+                  "1 llmgw_upstream_attempts_total{model=\"code\",status=\"200\"} 3",
+                  "1 llmgw_session_calls_total{session=\"287f169e87d4\",label=\"unknown\"} 6"
                 ]
               },
               "valid_program": {
@@ -9648,6 +9974,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -9737,6 +10066,7 @@
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
                   "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
                   "1 llmgw_request_duration_seconds_count{model=\"code\"} 0",
+                  "1 llmgw_in_flight_requests 0",
                   "2 200 content-type=text/plain; version=0.0.4; charset=utf-8",
                   "3 404 content-type=application/json",
                   "4 404 content-type=application/json",
@@ -9801,6 +10131,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -9892,6 +10225,7 @@
                   "4 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
                   "4 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
                   "4 llmgw_request_duration_seconds_count{model=\"code\"} 0",
+                  "4 llmgw_in_flight_requests 0",
                   "5 404 content-type=application/json",
                   "6 404 content-type=application/json",
                   "7 401 content-type=application/json"
@@ -9952,6 +10286,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -10050,6 +10387,7 @@
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
                   "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
                   "1 llmgw_request_duration_seconds_count{model=\"code\"} 0",
+                  "1 llmgw_in_flight_requests 0",
                   "2 200 content-type=text/plain; version=0.0.4; charset=utf-8",
                   "2 llmgw_inference_requests_total 3",
                   "2 llmgw_upstream_failures_total 1",
@@ -10088,7 +10426,90 @@
                   "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
                   "2 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 3",
                   "2 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
-                  "2 llmgw_request_duration_seconds_count{model=\"code\"} 3"
+                  "2 llmgw_request_duration_seconds_count{model=\"code\"} 3",
+                  "2 llmgw_tokens_total{model=\"code\",direction=\"input\"} 0",
+                  "2 llmgw_tokens_total{model=\"code\",direction=\"output\"} 0",
+                  "2 llmgw_cache_tokens_total{model=\"code\",kind=\"read\"} 0",
+                  "2 llmgw_cache_tokens_total{model=\"code\",kind=\"creation\"} 0",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "2 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"+Inf\"} 1",
+                  "2 llmgw_time_to_first_token_seconds_sum{model=\"code\"} bounded",
+                  "2 llmgw_time_to_first_token_seconds_count{model=\"code\"} 1",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "2 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 1",
+                  "2 llmgw_queue_wait_seconds_sum{model=\"code\"} bounded",
+                  "2 llmgw_queue_wait_seconds_count{model=\"code\"} 1",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "2 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "2 llmgw_upstream_retry_wait_seconds_sum{model=\"code\"} bounded",
+                  "2 llmgw_upstream_retry_wait_seconds_count{model=\"code\"} 0",
+                  "2 llmgw_tokens_per_second{direction=\"in\"} 0",
+                  "2 llmgw_tokens_per_second{direction=\"out\"} 0",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "2 llmgw_input_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "2 llmgw_input_tps_sum{route=\"code\"} bounded",
+                  "2 llmgw_input_tps_count{route=\"code\"} 0",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "2 llmgw_output_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "2 llmgw_output_tps_sum{route=\"code\"} bounded",
+                  "2 llmgw_output_tps_count{route=\"code\"} 0",
+                  "2 llmgw_in_flight_requests 0",
+                  "2 llmgw_client_retries_total{model=\"code\"} 0",
+                  "2 llmgw_repeated_bodies_total{model=\"code\"} 2",
+                  "2 llmgw_client_disconnects_total{model=\"code\"} 0",
+                  "2 llmgw_upstream_attempts_total{model=\"code\",status=\"200\"} 1",
+                  "2 llmgw_session_calls_total{session=\"287f169e87d4\",label=\"unknown\"} 3"
                 ]
               },
               "upstream": {
@@ -10148,6 +10569,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -10233,7 +10657,90 @@
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 2",
                   "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
-                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 2"
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 2",
+                  "1 llmgw_tokens_total{model=\"code\",direction=\"input\"} 0",
+                  "1 llmgw_tokens_total{model=\"code\",direction=\"output\"} 0",
+                  "1 llmgw_cache_tokens_total{model=\"code\",kind=\"read\"} 0",
+                  "1 llmgw_cache_tokens_total{model=\"code\",kind=\"creation\"} 0",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"+Inf\"} 1",
+                  "1 llmgw_time_to_first_token_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_time_to_first_token_seconds_count{model=\"code\"} 1",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 1",
+                  "1 llmgw_queue_wait_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_queue_wait_seconds_count{model=\"code\"} 1",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_upstream_retry_wait_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_upstream_retry_wait_seconds_count{model=\"code\"} 0",
+                  "1 llmgw_tokens_per_second{direction=\"in\"} 0",
+                  "1 llmgw_tokens_per_second{direction=\"out\"} 0",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_input_tps_sum{route=\"code\"} bounded",
+                  "1 llmgw_input_tps_count{route=\"code\"} 0",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_output_tps_sum{route=\"code\"} bounded",
+                  "1 llmgw_output_tps_count{route=\"code\"} 0",
+                  "1 llmgw_in_flight_requests 0",
+                  "1 llmgw_client_retries_total{model=\"code\"} 0",
+                  "1 llmgw_repeated_bodies_total{model=\"code\"} 1",
+                  "1 llmgw_client_disconnects_total{model=\"code\"} 0",
+                  "1 llmgw_upstream_attempts_total{model=\"code\",status=\"200\"} 1",
+                  "1 llmgw_session_calls_total{session=\"287f169e87d4\",label=\"unknown\"} 2"
                 ]
               },
               "valid_program": {
@@ -10287,6 +10794,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -10378,7 +10888,92 @@
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 3",
                   "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
-                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 3"
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 3",
+                  "1 llmgw_tokens_total{model=\"code\",direction=\"input\"} 0",
+                  "1 llmgw_tokens_total{model=\"code\",direction=\"output\"} 0",
+                  "1 llmgw_cache_tokens_total{model=\"code\",kind=\"read\"} 0",
+                  "1 llmgw_cache_tokens_total{model=\"code\",kind=\"creation\"} 0",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_time_to_first_token_seconds_bucket{model=\"code\",le=\"+Inf\"} 1",
+                  "1 llmgw_time_to_first_token_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_time_to_first_token_seconds_count{model=\"code\"} 1",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_queue_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 2",
+                  "1 llmgw_queue_wait_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_queue_wait_seconds_count{model=\"code\"} 2",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.05\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.1\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.25\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"0.5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"1\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"2.5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"5\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"30\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"60\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"120\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
+                  "1 llmgw_upstream_retry_wait_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_upstream_retry_wait_seconds_sum{model=\"code\"} bounded",
+                  "1 llmgw_upstream_retry_wait_seconds_count{model=\"code\"} 0",
+                  "1 llmgw_tokens_per_second{direction=\"in\"} 0",
+                  "1 llmgw_tokens_per_second{direction=\"out\"} 0",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "1 llmgw_input_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_input_tps_sum{route=\"code\"} bounded",
+                  "1 llmgw_input_tps_count{route=\"code\"} 0",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"10\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"25\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"50\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"100\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"250\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"500\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"1000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"2500\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"5000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"10000\"} cumulative",
+                  "1 llmgw_output_tps_bucket{route=\"code\",le=\"+Inf\"} 0",
+                  "1 llmgw_output_tps_sum{route=\"code\"} bounded",
+                  "1 llmgw_output_tps_count{route=\"code\"} 0",
+                  "1 llmgw_in_flight_requests 0",
+                  "1 llmgw_client_retries_total{model=\"code\"} 0",
+                  "1 llmgw_repeated_bodies_total{model=\"code\"} 2",
+                  "1 llmgw_client_disconnects_total{model=\"code\"} 0",
+                  "1 llmgw_upstream_status_total{model=\"code\",status=\"503\"} 1",
+                  "1 llmgw_upstream_attempts_total{model=\"code\",status=\"400\"} 1",
+                  "1 llmgw_upstream_attempts_total{model=\"code\",status=\"503\"} 1",
+                  "1 llmgw_session_calls_total{session=\"287f169e87d4\",label=\"unknown\"} 3"
                 ]
               },
               "upstream": {
@@ -10439,6 +11034,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -10514,6 +11112,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -10585,6 +11186,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -10681,6 +11285,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -10726,7 +11333,7 @@
               "records": {
                 "kind": "literal",
                 "value": [
-                  "model=translated-up wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=615 duration_ms=bounded tokens=absent",
+                  "model=translated-up wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=615 duration_ms=bounded tokens=reported",
                   "model=refused-up wire=messages disposition=Refused refusal=translation-unsupported status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
                 ]
               },
@@ -10802,6 +11409,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -10847,7 +11457,7 @@
               "records": {
                 "kind": "literal",
                 "value": [
-                  "model=translated-up wire=responses disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=2246 duration_ms=bounded tokens=absent",
+                  "model=translated-up wire=responses disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=2246 duration_ms=bounded tokens=reported",
                   "model=refused-up wire=responses disposition=Refused refusal=translation-unsupported status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
                 ]
               },
@@ -10921,6 +11531,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -10998,7 +11611,8 @@
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
                   "1 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
                   "1 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
-                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 0"
+                  "1 llmgw_request_duration_seconds_count{model=\"code\"} 0",
+                  "1 llmgw_in_flight_requests 0"
                 ]
               },
               "valid_program": {
@@ -11054,6 +11668,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -11083,7 +11700,7 @@
                 "value": [
                   "# Codex profiles for this llm-gateway, one per model it serves on the responses wire with\n# tool calling parsed. Save one as the file it names, export B10X_GATEWAY_TOKEN as the\n# gateway's owner token, and start Codex with `codex --profile <alias>`.\n\n# ~/.codex/code.config.toml\nmodel = \"code\"\nmodel_provider = \"b10x-gateway\"\nmodel_context_window = 65536\n\n[model_providers.b10x-gateway]\nname = \"b10x llm-gateway\"\nbase_url = \"http://gateway/v1\"\nenv_key = \"B10X_GATEWAY_TOKEN\"\nwire_api = \"responses\"\n",
                   "# Claude Code settings for this llm-gateway, one block per model it serves on the messages\n# wire with tool calling parsed. Set ANTHROPIC_AUTH_TOKEN to the gateway's owner token, or\n# name an apiKeyHelper that prints it; ANTHROPIC_API_KEY is sent as x-api-key, which this\n# gateway does not read.\n\n# model code\nexport ANTHROPIC_BASE_URL='http://gateway'\nexport ANTHROPIC_MODEL='code'\nexport ANTHROPIC_DEFAULT_OPUS_MODEL='code'\nexport ANTHROPIC_DEFAULT_SONNET_MODEL='code'\nexport ANTHROPIC_DEFAULT_HAIKU_MODEL='code'\nexport CLAUDE_CODE_SUBAGENT_MODEL='code'\nexport CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'\n",
-                  "<!DOCTYPE html>\n<html lang=\"en\">\n<head><meta charset=\"utf-8\"><title>llm-gateway</title></head>\n<body>\n<pre>\nllm-gateway\n\nGET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex\nanswers Codex profiles, and one naming claude answers Claude Code settings. Every model call\ncarries the gateway&#39;s owner token as Authorization: Bearer.\n\n# Loom, through an llm catalog (format = &quot;llm.catalog/1&quot;), one serving model per model this\n# gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the\n# account a secret_reference_id that resolves to the owner token.\n\n# model code\n[[accounts]]\nauth_kind = &quot;bearer&quot;\n\n[[endpoints]]\nbase_url = &quot;http://gateway/v1&quot;\n\n[[models]]\nupstream_name = &quot;code&quot;\n\n[[serving_models]]\nprotocol = &quot;chat-completions&quot;\n[serving_models.capabilities]\ntools = true\ncontext_window = 65536\n</pre>\n</body>\n</html>\n",
+                  "page <pre id=\"llms\"># llm-gateway\n\nThis gateway listens at &lt;http://gateway&gt;. Live calls, sessions and tokens per second: [dashboard](http://gateway/dashboard). Prometheus series: [metrics](http://gateway/metrics).\n\nEvery call carries the gateway&#39;s owner token as `Authorization: Bearer`; export it as `B10X_GATEWAY_TOKEN` below.\n\n## Routes\n\n| Model | Wires | Context window | Credential upstream |\n| --- | --- | --- | --- |\n| `code` | chat, responses, messages | 32768 | the gateway&#39;s own |\n\n## Claude Code\n\n```sh\nANTHROPIC_BASE_URL=&#39;http://gateway&#39; ANTHROPIC_AUTH_TOKEN=&quot;$B10X_GATEWAY_TOKEN&quot; claude\n```\n\n## Codex\n\n```sh\ncodex -c &#39;model_providers.llm-gateway={ name = &quot;llm-gateway&quot;, base_url = &quot;http://gateway/v1&quot;, wire_api = &quot;responses&quot;, env_key = &quot;B10X_GATEWAY_TOKEN&quot; }&#39; -c model_provider=llm-gateway -m &#39;code&#39;\n```\n\n</pre>",
                   "llm-gateway\n\nGET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex\nanswers Codex profiles, and one naming claude answers Claude Code settings. Every model call\ncarries the gateway's owner token as Authorization: Bearer.\n\n# Loom, through an llm catalog (format = \"llm.catalog/1\"), one serving model per model this\n# gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the\n# account a secret_reference_id that resolves to the owner token.\n\n# model code\n[[accounts]]\nauth_kind = \"bearer\"\n\n[[endpoints]]\nbase_url = \"http://gateway/v1\"\n\n[[models]]\nupstream_name = \"code\"\n\n[[serving_models]]\nprotocol = \"chat-completions\"\n[serving_models.capabilities]\ntools = true\ncontext_window = 65536\n",
                   "llm-gateway\n\nGET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex\nanswers Codex profiles, and one naming claude answers Claude Code settings. Every model call\ncarries the gateway's owner token as Authorization: Bearer.\n\n# Loom, through an llm catalog (format = \"llm.catalog/1\"), one serving model per model this\n# gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the\n# account a secret_reference_id that resolves to the owner token.\n\n# model code\n[[accounts]]\nauth_kind = \"bearer\"\n\n[[endpoints]]\nbase_url = \"http://gateway/v1\"\n\n[[models]]\nupstream_name = \"code\"\n\n[[serving_models]]\nprotocol = \"chat-completions\"\n[serving_models.capabilities]\ntools = true\ncontext_window = 65536\n"
                 ]
@@ -11168,6 +11785,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -11278,6 +11898,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -11366,6 +11989,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -11446,7 +12072,8 @@
                   "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"300\"} cumulative",
                   "3 llmgw_request_duration_seconds_bucket{model=\"code\",le=\"+Inf\"} 0",
                   "3 llmgw_request_duration_seconds_sum{model=\"code\"} bounded",
-                  "3 llmgw_request_duration_seconds_count{model=\"code\"} 0"
+                  "3 llmgw_request_duration_seconds_count{model=\"code\"} 0",
+                  "3 llmgw_in_flight_requests 0"
                 ]
               },
               "valid_program": {
@@ -11500,6 +12127,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -11607,6 +12237,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -11720,6 +12353,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -11820,6 +12456,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -11929,6 +12568,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -12036,6 +12678,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -12132,6 +12777,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -12223,6 +12871,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -12318,6 +12969,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -12409,6 +13063,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -12561,6 +13218,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -12638,6 +13298,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -12712,6 +13375,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -12806,6 +13472,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -12888,6 +13557,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastExchange"
         },
@@ -12964,6 +13636,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -13066,6 +13741,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -13164,6 +13842,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -13270,6 +13951,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -13368,6 +14052,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -13508,6 +14195,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -13614,6 +14304,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -13723,6 +14416,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -13821,6 +14517,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -13923,6 +14622,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -14063,6 +14765,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -14165,6 +14870,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -14279,6 +14987,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -14419,6 +15130,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -14518,6 +15232,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -14640,6 +15357,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -14770,6 +15490,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -14896,6 +15619,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -14987,6 +15713,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -15087,6 +15816,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -15192,6 +15924,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -15294,6 +16029,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -15403,6 +16141,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -15495,6 +16236,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -15540,8 +16284,8 @@
               "records": {
                 "kind": "literal",
                 "value": [
-                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=756 duration_ms=bounded tokens=absent",
-                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1092 duration_ms=bounded tokens=absent"
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=756 duration_ms=bounded tokens=reported",
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1092 duration_ms=bounded tokens=reported"
                 ]
               },
               "released": {
@@ -15616,6 +16360,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -15661,8 +16408,8 @@
               "records": {
                 "kind": "literal",
                 "value": [
-                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=317 duration_ms=bounded tokens=absent",
-                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1012 duration_ms=bounded tokens=absent"
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=317 duration_ms=bounded tokens=reported",
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1012 duration_ms=bounded tokens=reported"
                 ]
               },
               "released": {
@@ -15735,6 +16482,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -15824,6 +16574,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -15922,6 +16675,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -16018,6 +16774,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -16106,6 +16865,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -16205,6 +16967,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -16291,6 +17056,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -16381,6 +17149,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -16467,6 +17238,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -16559,6 +17333,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -16669,6 +17446,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -16784,6 +17564,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -16886,6 +17669,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -16996,6 +17782,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -17110,6 +17899,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -17216,6 +18008,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -17332,6 +18127,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -17432,6 +18230,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.gateway.LastRelay"
         },
@@ -17526,6 +18327,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -17656,6 +18460,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -18519,6 +19326,31 @@
           "input": {
             "evidence": {
               "kind": "literal",
+              "value": "evidence"
+            },
+            "id": {
+              "kind": "literal",
+              "value": "ididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididididi"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.ConfirmStopped",
+            "outcome": "invalid-identifier"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "error": "llm-gateway.hosting.InvalidIdentifier",
+          "step": "expect_error"
+        },
+        {
+          "command": "llm-gateway.hosting.ConfirmStopped",
+          "input": {
+            "evidence": {
+              "kind": "literal",
               "value": ""
             },
             "id": {
@@ -19302,6 +20134,35 @@
             },
             "request_id": {
               "kind": "literal",
+              "value": "request_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest_idrequest"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation_id"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "invalid-identifier"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "error": "llm-gateway.hosting.InvalidIdentifier",
+          "step": "expect_error"
+        },
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "id"
+            },
+            "request_id": {
+              "kind": "literal",
               "value": "request_id"
             },
             "reservation_id": {
@@ -19336,6 +20197,35 @@
             "reservation_id": {
               "kind": "literal",
               "value": " "
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.hosting.Declare",
+            "outcome": "invalid-identifier"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "error": "llm-gateway.hosting.InvalidIdentifier",
+          "step": "expect_error"
+        },
+        {
+          "command": "llm-gateway.hosting.Declare",
+          "input": {
+            "id": {
+              "kind": "literal",
+              "value": "id"
+            },
+            "request_id": {
+              "kind": "literal",
+              "value": "request_id"
+            },
+            "reservation_id": {
+              "kind": "literal",
+              "value": "reservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreservation_idreser"
             }
           },
           "step": "execute_command"
@@ -39738,6 +40628,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.Provision",
           "input": {
             "answer": {
@@ -39759,6 +40652,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.ObserveListed",
           "input": {
             "id": {
@@ -39774,6 +40670,9 @@
             "outcome": "adopted"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -39915,6 +40814,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.Provision",
           "input": {
             "answer": {
@@ -39936,6 +40838,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.ObserveTakenOver",
           "input": {
             "id": {
@@ -39951,6 +40856,9 @@
             "outcome": "taken-over"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -40431,6 +41339,9 @@
             "outcome": "declared"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -40978,6 +41889,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.Provision",
           "input": {
             "answer": {
@@ -40999,6 +41913,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.RequestStop",
           "input": {
             "id": {
@@ -41016,6 +41933,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.ObserveListed",
           "input": {
             "id": {
@@ -41031,6 +41951,9 @@
             "outcome": "unchanged"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -43040,6 +43963,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.Provision",
           "input": {
             "answer": {
@@ -43059,6 +43985,9 @@
             "outcome": "accepted"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "command": "llm-gateway.hosting.ConfirmStopped",
@@ -43647,6 +44576,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.Provision",
           "input": {
             "answer": {
@@ -43666,6 +44598,9 @@
             "outcome": "accepted"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "command": "llm-gateway.hosting.ConfirmStopped",
@@ -45657,6 +46592,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.Provision",
           "input": {
             "answer": {
@@ -45678,6 +46616,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.Retry",
           "input": {
             "answer": {
@@ -45697,6 +46638,9 @@
             "outcome": "lost"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "command": "llm-gateway.hosting.Retry",
@@ -45720,6 +46664,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "command": "llm-gateway.hosting.ObserveListed",
           "input": {
             "id": {
@@ -45735,6 +46682,9 @@
             "outcome": "adopted"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "command": "llm-gateway.hosting.ConfirmStopped",
@@ -45756,6 +46706,9 @@
             "outcome": "confirmed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -48274,6 +49227,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -48409,6 +49365,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -48505,6 +49464,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -48580,6 +49542,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -48663,6 +49628,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -48758,6 +49726,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -48851,6 +49822,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -48936,6 +49910,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -49031,6 +50008,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -49106,6 +50086,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -49197,6 +50180,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -49284,6 +50270,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -49386,6 +50375,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -49467,6 +50459,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -49556,6 +50551,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -49650,6 +50648,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -49727,6 +50728,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -49817,6 +50821,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -49901,6 +50908,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -49991,6 +51001,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -50075,6 +51088,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -50169,6 +51185,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -50256,6 +51275,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -50348,6 +51370,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -50444,6 +51469,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -50533,6 +51561,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -50608,6 +51639,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -50700,6 +51734,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -50788,6 +51825,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -50892,6 +51932,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -50994,6 +52037,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -51082,6 +52128,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -51174,6 +52223,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -51253,6 +52305,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -51352,6 +52407,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -51455,6 +52513,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -51549,6 +52610,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -51626,6 +52690,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -51701,6 +52768,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -51793,6 +52863,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -51895,6 +52968,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -51983,6 +53059,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -52086,6 +53165,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -52173,6 +53255,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -52254,6 +53339,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -52344,6 +53432,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -52483,6 +53574,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -52561,6 +53655,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -52655,6 +53752,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -52753,6 +53853,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -52862,6 +53965,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -52969,6 +54075,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -53052,6 +54161,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -53157,6 +54269,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -53243,6 +54358,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -53325,6 +54443,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -53416,6 +54537,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -53516,6 +54640,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -53611,6 +54738,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -53692,6 +54822,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -53818,6 +54951,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -53892,6 +55028,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -53996,6 +55135,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -54097,6 +55239,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -54182,6 +55327,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",
@@ -54276,6 +55424,9 @@
           "step": "expect_outcome"
         },
         {
+          "step": "expect_no_error"
+        },
+        {
           "step": "query_view",
           "view": "llm-gateway.runpod.LastExecution"
         },
@@ -54363,6 +55514,9 @@
             "outcome": "observed"
           },
           "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
         },
         {
           "step": "query_view",

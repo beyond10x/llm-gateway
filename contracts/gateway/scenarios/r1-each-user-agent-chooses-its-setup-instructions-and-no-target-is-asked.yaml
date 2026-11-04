@@ -59,40 +59,32 @@ assert:
       export ANTHROPIC_DEFAULT_HAIKU_MODEL='code'
       export CLAUDE_CODE_SUBAGENT_MODEL='code'
       export CLAUDE_CODE_MAX_CONTEXT_TOKENS='65536'
-    - |
-      <!DOCTYPE html>
-      <html lang="en">
-      <head><meta charset="utf-8"><title>llm-gateway</title></head>
-      <body>
-      <pre>
-      llm-gateway
+    - |-
+      page <pre id="llms"># llm-gateway
 
-      GET /v1/models lists the models this gateway serves. GET / with a User-Agent naming codex
-      answers Codex profiles, and one naming claude answers Claude Code settings. Every model call
-      carries the gateway&#39;s owner token as Authorization: Bearer.
+      This gateway listens at &lt;http://gateway&gt;. Live calls, sessions and tokens per second: [dashboard](http://gateway/dashboard). Prometheus series: [metrics](http://gateway/metrics).
 
-      # Loom, through an llm catalog (format = &quot;llm.catalog/1&quot;), one serving model per model this
-      # gateway serves on the chat wire with tool calling parsed. Give each table its ids, and the
-      # account a secret_reference_id that resolves to the owner token.
+      Every call carries the gateway&#39;s owner token as `Authorization: Bearer`; export it as `B10X_GATEWAY_TOKEN` below.
 
-      # model code
-      [[accounts]]
-      auth_kind = &quot;bearer&quot;
+      ## Routes
 
-      [[endpoints]]
-      base_url = &quot;http://gateway/v1&quot;
+      | Model | Wires | Context window | Credential upstream |
+      | --- | --- | --- | --- |
+      | `code` | chat, responses, messages | 32768 | the gateway&#39;s own |
 
-      [[models]]
-      upstream_name = &quot;code&quot;
+      ## Claude Code
 
-      [[serving_models]]
-      protocol = &quot;chat-completions&quot;
-      [serving_models.capabilities]
-      tools = true
-      context_window = 65536
+      ```sh
+      ANTHROPIC_BASE_URL=&#39;http://gateway&#39; ANTHROPIC_AUTH_TOKEN=&quot;$B10X_GATEWAY_TOKEN&quot; claude
+      ```
+
+      ## Codex
+
+      ```sh
+      codex -c &#39;model_providers.llm-gateway={ name = &quot;llm-gateway&quot;, base_url = &quot;http://gateway/v1&quot;, wire_api = &quot;responses&quot;, env_key = &quot;B10X_GATEWAY_TOKEN&quot; }&#39; -c model_provider=llm-gateway -m &#39;code&#39;
+      ```
+
       </pre>
-      </body>
-      </html>
     - |
       llm-gateway
 

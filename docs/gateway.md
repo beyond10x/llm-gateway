@@ -158,6 +158,17 @@ model. Like inspection, a declared body is `body-not-allowed` and before `mark_r
 without the credential, `method-not-allowed` with `allow: GET, HEAD` with it. `GET /v1/routes`
 still takes the owner credential.
 
+DECIDED 2026-11-04 (story:live-dashboard). `GET /llms.txt` is public too: Markdown naming the
+gateway's origin, its dashboard and metrics, and the launcher commands
+(`b10x-llm-gateway claude`, `b10x-llm-gateway codex`) for the models that parse tool calls; a
+model's upstream name is written only on a gateway open on loopback. `GET /` for a browser
+(`user-agent` starting `mozilla/`) is that same Markdown inside the dashboard's page, so the two
+cannot disagree. `GET /v1/launch` is what the launchers read: `llm-gateway.launch/1` JSON with the
+origin and, per relayed model, its alias, prefix, whether it forwards the client's own credential,
+whether Claude Code and Codex reach it, its context and auto-compact windows, its `/model` label
+and its phase. It reads each model's status, so it takes the owner credential (none on a gateway
+open on loopback) and is not a public route.
+
 `GET /v1/models` is `{"object":"list","data":[…]}`, one entry per model in alias order:
 `{"id":<alias>,"object":"model","owned_by":"llm-gateway","max_model_len"?:<n>,"wires":[…]}`.
 `max_model_len` is what `RelayModel::with_max_model_len` declared, and absent, never `0`, when
@@ -167,7 +178,7 @@ profiles.
 `GET /` chooses its answer from the lowercased `user-agent`, by the first rule that holds:
 containing `codex`, a Codex `config.toml` profile per model (`text/plain; charset=utf-8`);
 containing `claude` or `anthropic`, Claude Code's environment variables per model (the same
-type); starting with `mozilla/`, an HTML page (`text/html; charset=utf-8`); anything else, or no
+type); starting with `mozilla/`, the `/llms.txt` page above (`text/html; charset=utf-8`); anything else, or no
 `user-agent`, plain text with the llm catalog lines a Loom run needs. A client gets a profile for
 a model only when the client's requests reach the model on the client's wire (Codex `responses`,
 Claude Code `messages`, Loom `chat`) and the model parses tool calls; each profile names the
@@ -971,8 +982,9 @@ answer or refusal is written, before the connection is closed: the alias of the 
 body named (absent when it named none), the wire, its `Disposition` (`Relayed`, `Refused` or
 `UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
 status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
-request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The token counters and the model the target reported are
-always absent for now. A request, relayed or translated, whose client went away before any
+request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The input, output, cache read and cache creation token counters come from the usage the answer
+carried (decoded when it is content-encoded) and stay absent when it reported none; the model the
+target reported and the reasoning counter are always absent for now. A request, relayed or translated, whose client went away before any
 answer was written (a non-streamed client that closed while it waited) is recorded `Relayed`
 with status 0,
 no target status and 0 response bytes: status 0 means no answer was written because the client

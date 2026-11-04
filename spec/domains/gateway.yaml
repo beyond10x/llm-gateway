@@ -923,7 +923,9 @@ entities:
       - {name: results, type: 'List<String>'}
       # The body each request received, decoded from its HTTP framing, in order. Each reasoning
       # seal in it (`llmgw-seal-1.` and the base64url and `.` characters after it), which
-      # differs on every run because its key does, is written `<sealed>`.
+      # differs on every run because its key does, is written `<sealed>`. The browser's page,
+      # whose script and style are the built dashboard, is written `page ` and its
+      # `<pre id="llms">` block, which holds the `/llms.txt` text HTML-escaped.
       - {name: bodies, type: 'List<String>'}
       # Per request, `content-type=<value> cache-control=<value> allow=<value>`, `absent` for a
       # header that was not sent.

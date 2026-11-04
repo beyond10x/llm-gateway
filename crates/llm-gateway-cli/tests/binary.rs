@@ -130,8 +130,11 @@ struct Server {
 
 impl Server {
     fn start(config: &Path) -> Self {
-        let mut child = Command::new(binary())
-            .args(["--config", config.to_str().unwrap()])
+        Self::start_command(Command::new(binary()).args(["--config", config.to_str().unwrap()]))
+    }
+
+    fn start_command(command: &mut Command) -> Self {
+        let mut child = command
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(Stdio::piped())
@@ -317,10 +320,10 @@ fn c1_one_binary_serves_the_configured_gateway() {
 }
 
 #[test]
-fn c1_a_subcommand_is_refused() {
+fn c1_an_unknown_subcommand_is_refused() {
     let fixture = Fixture::new("c1-subcommand");
     let config = fixture.valid_config("127.0.0.1:0");
-    let finished = run(&["serve", "--config", config.to_str().unwrap()]);
+    let finished = run(&["start", "--config", config.to_str().unwrap()]);
     assert_eq!(finished.status.code(), Some(2), "{:?}", finished.stderr);
     assert!(
         finished.stderr.starts_with(
@@ -330,7 +333,78 @@ fn c1_a_subcommand_is_refused() {
         "{:?}",
         finished.stderr
     );
-    assert!(!finished.stderr.contains("serve"), "{:?}", finished.stderr);
+    assert!(!finished.stderr.contains("start"), "{:?}", finished.stderr);
+}
+
+#[test]
+fn c1_serve_with_the_config_flag_serves_the_document() {
+    let fixture = Fixture::new("c1-serve-flag");
+    let address = free_address();
+    let config = fixture.valid_config(&address.to_string());
+    let server = Server::start_command(Command::new(binary()).args([
+        "serve",
+        "--config",
+        config.to_str().unwrap(),
+    ]));
+    assert_eq!(server.address, address);
+    assert_eq!(status(&get(address, "/health", None)), "200");
+    server.stop();
+}
+
+#[test]
+fn c1_serve_without_a_flag_reads_the_default_document() {
+    let fixture = Fixture::new("c1-serve-default");
+    let address = free_address();
+    let config = fixture.valid_config(&address.to_string());
+    let home = fixture.path("xdg");
+    std::fs::create_dir_all(home.join("llm-gateway")).unwrap();
+    let default = home.join("llm-gateway/config.toml");
+    std::fs::copy(&config, &default).unwrap();
+    let server = Server::start_command(
+        Command::new(binary())
+            .arg("serve")
+            .env("XDG_CONFIG_HOME", &home),
+    );
+    assert_eq!(server.address, address, "the default document is served");
+    assert_eq!(status(&get(address, "/health", None)), "200");
+    server.stop();
+}
+
+#[test]
+fn c1_serve_without_a_default_document_is_refused_without_its_path() {
+    let fixture = Fixture::new("c1-serve-absent");
+    let home = fixture.path("xdg-empty");
+    std::fs::create_dir_all(&home).unwrap();
+    let finished = run_command(
+        Command::new(binary())
+            .arg("serve")
+            .env("XDG_CONFIG_HOME", &home),
+        &["serve"],
+    );
+    assert_refused(&finished, "config:unreadable");
+    assert!(
+        !finished.stderr.contains("xdg-empty"),
+        "{:?}",
+        finished.stderr
+    );
+}
+
+#[test]
+fn c1_serve_and_watchdog_usage_errors_echo_no_argument() {
+    for command in ["serve", "watchdog"] {
+        let finished = run(&[command, "--config"]);
+        assert_eq!(finished.status.code(), Some(2), "{:?}", finished.stderr);
+        assert!(
+            finished.stderr.starts_with(&format!(
+                "b10x-llm-gateway: usage error (InvalidValue); see `b10x-llm-gateway {command} --help`"
+            )),
+            "{:?}",
+            finished.stderr
+        );
+        let finished = run(&[command, "PASTED-KEY-VALUE"]);
+        assert_eq!(finished.status.code(), Some(2), "{:?}", finished.stderr);
+        assert!(!finished.stderr.contains("PASTED"), "{:?}", finished.stderr);
+    }
 }
 
 #[test]

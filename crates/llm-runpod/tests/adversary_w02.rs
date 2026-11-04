@@ -120,6 +120,9 @@ impl RunpodTransport for DashedIds {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.inner().container_started_at(&inbound(pod_id))
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.inner().pod_placement(&inbound(pod_id))
+    }
 }
 
 /// A pool never hands out a "ready" lease that carries no address for a running pod: the

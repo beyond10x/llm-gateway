@@ -58,7 +58,7 @@ in service until the capability matrix has no open gap and a cutover has been qu
 | `b10x-llm-gateway` | The single-owner gateway library: owner authentication, probes, the public model listing and setup instructions, route inventory, drain and stop |
 | `b10x-llm-gateway-cli` | The `b10x-llm-gateway` binary: one closed TOML deployment document, the gateway, a graceful stop on a signal |
 | `b10x-llm-provision` | The hosting lifecycle contract: resource identity, leases, stop obligations, and the in-process `FakeProvider` |
-| `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract: the in-process `EmulatedRunpod`, and `ConnectorsRunpod`, which reaches Runpod through the `connectors` CLI |
+| `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract, on Secure Cloud on-demand pods of the `vllm/vllm-openai` image only: the in-process `EmulatedRunpod`, `ConnectorsRunpod`, which reaches Runpod through the `connectors` CLI, and `RestRunpod`, which calls Runpod's REST API with a key the process holds |
 | `b10x-llm-modal` | A Modal adapter; it exports nothing yet |
 | `llm-gateway-docs` | Generates the documentation site's CLI, crate and refusal references and its status page, checks them for drift, and binds a built site to its commit |
 

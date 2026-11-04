@@ -49,7 +49,7 @@ impl BearerKey {
     }
 
     /// The key, if it is one printable ASCII token a header can carry.
-    fn token(&self) -> Option<&str> {
+    pub(super) fn token(&self) -> Option<&str> {
         let text = std::str::from_utf8(&self.0).ok()?;
         (!text.is_empty() && text.bytes().all(|byte| byte.is_ascii_graphic())).then_some(text)
     }
@@ -72,11 +72,11 @@ impl Drop for BearerKey {
 /// exactly its length, taken before the key is written into it, so it never reallocates and
 /// leaves no copy of the key in freed memory, and it is overwritten, spare capacity included,
 /// when dropped. Best effort without a `zeroize` dependency, as [`BearerKey`]'s overwrite is.
-struct Request(Vec<u8>);
+pub(super) struct Request(Vec<u8>);
 
 impl Request {
     /// `pieces`, one after another.
-    fn of(pieces: &[&[u8]]) -> Self {
+    pub(super) fn of(pieces: &[&[u8]]) -> Self {
         let mut request = Self(Vec::with_capacity(
             pieces.iter().map(|piece| piece.len()).sum(),
         ));
@@ -92,7 +92,7 @@ impl Request {
         request
     }
 
-    fn bytes(&self) -> &[u8] {
+    pub(super) fn bytes(&self) -> &[u8] {
         &self.0
     }
 }
@@ -175,7 +175,7 @@ fn exchange(authority: &str, request: &[u8], timeout: Duration) -> Option<Vec<u8
         .find_map(|address| TcpStream::connect_timeout(&address, timeout).ok())?;
     stream.set_write_timeout(Some(timeout)).ok()?;
     stream.write_all(request).ok()?;
-    read_answer(&mut &stream, deadline, |left| {
+    read_answer(&mut &stream, deadline, MAX_ANSWER_BYTES, |left| {
         stream
             .set_read_timeout(Some(left.max(Duration::from_millis(1))))
             .ok()
@@ -194,14 +194,15 @@ fn exchange_tls(
     let mut stream = tls.connect(authority, timeout).ok()?;
     stream.write_all(request).ok()?;
     stream.flush().ok()?;
-    read_answer(&mut *stream, deadline, |_| Some(()))
+    read_answer(&mut *stream, deadline, MAX_ANSWER_BYTES, |_| Some(()))
 }
 
 /// Reads the answer to its end, or to a complete `Content-Length` body, inside `deadline`.
 /// `before_read` is told the time left before each read.
-fn read_answer(
+pub(super) fn read_answer(
     stream: &mut dyn Read,
     deadline: Instant,
+    limit: usize,
     mut before_read: impl FnMut(Duration) -> Option<()>,
 ) -> Option<Vec<u8>> {
     let mut answer = Vec::new();
@@ -213,7 +214,7 @@ fn read_answer(
             Ok(0) => return Some(answer),
             Ok(read) => {
                 answer.extend_from_slice(buffer.get(..read)?);
-                if answer.len() > MAX_ANSWER_BYTES {
+                if answer.len() > limit {
                     return None;
                 }
                 if complete(&answer) {
@@ -253,7 +254,7 @@ fn complete(answer: &[u8]) -> bool {
 }
 
 /// The status code and the body of an HTTP/1.1 answer.
-fn parse(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
+pub(super) fn parse(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
     let end = head_end(answer)?;
     let head = std::str::from_utf8(answer.get(..end)?).ok()?;
     let status: u16 = head

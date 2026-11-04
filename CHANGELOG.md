@@ -7,6 +7,16 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Added
+
+- `RestRunpod`, a direct Runpod transport for a local gateway: Runpod's REST API (`https://rest.runpod.io/v1`) called with an API key the process holds, over the TLS connection the embedding hands in (the crate still links no TLS client), in minimal HTTP/1.1 with `Connection: close`, answers bounded at 8 MiB. `list_pods` is `GET /pods`; `create_pod` is `POST /pods` with the `pod.create` body unwrapped, Runpod's "no instances currently available" 4xx is `NoCapacity`, another 4xx `Refused`, and no answer, a 5xx or a timeout is resolved once by `GET /pods?name=` and the request tag, never resent; `terminate_pod` is `DELETE /pods/<id>`; spend is `GET /billing/pods?bucketSize=day`. The key is redacted in `Debug`, written only into a request buffer overwritten on drop, and appears in no answer or error. `RunpodAccount` (`AccountSnapshot`, `PodSummary`) reads the balance and spend rate from Runpod's GraphQL `myself` and the pods from `GET /pods`, for a watchdog or dashboard; `EmulatedRunpod` implements it with scripted values. `crates/llm-runpod/tests/rest.rs` drives it against a loopback fixture. `docs/design/runpod-clients.md` D1: connectors stays the path for a cluster.
+- Every created pod's placement is read back (`RunpodTransport::pod_placement`, `PodPlacement`: `GET /pods/<id>?includeMachine=true`, or `pods.list` with `includeMachine` through connectors). Unless `machine.secureCloud` is `true` and `interruptible` is not `true` (an absent `interruptible` counts as false, as Runpod omits it), the pod is terminated at once, no further GPU of the profile is tried and the start is refused; a terminate whose answer is lost is sent at most three times, and a pod still standing is never reported ready and is left to the orphan sweep. `crates/llm-runpod/tests/adversary_secure_cloud.rs`.
+- A Runpod model's image must start with `vllm/vllm-openai:` and name a tag (`ALLOWED_IMAGE_PREFIX`); any other is refused `image-not-allowed` (`ConfigError::ImageNotAllowed`), which the gateway reports `config:value`.
+
+### Removed
+
+- Community Cloud: `CloudType::Community` and the document's `cloud_type = "COMMUNITY"` are gone. A document naming `COMMUNITY` is refused `config:schema`; every create sends `cloudType: SECURE` and `interruptible: false`.
+
 ## 0.22.0 (2026-10-30)
 
 ### Added

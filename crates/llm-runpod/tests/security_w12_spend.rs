@@ -62,6 +62,9 @@ impl RunpodTransport for Recorder {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.inner.container_started_at(pod_id)
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.inner.pod_placement(pod_id)
+    }
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
         self.log.push("spend");
         self.inner.account_spend(day_start_ms)

@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
-    "contract_digest": "slice-sha256/2:c84c2b6a556d22153ba9dd6c1d92ff4648d813ecfc2a04d203a7096e9d216154",
+    "source_digest": "8e76d595b9fb656f16e820f16069f18535f7d2ca91ef50cd4498759eb4267390",
+    "contract_digest": "slice-sha256/2:56af74510cd557b2e1e6e96e88bdc017d787090d9bc1428d96593ab1091357c2",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -20,7 +20,8 @@
         "ZeroSetting",
         "SecretReference",
         "UnsafeText",
-        "ProfileConflict"
+        "ProfileConflict",
+        "ImageNotAllowed"
       ],
       "x-ess-attributes": [
         {
@@ -29,6 +30,7 @@
           "type": "String",
           "values": {
             "GpuUtilization": "gpu-utilization",
+            "ImageNotAllowed": "image-not-allowed",
             "NoGpu": "no-gpu",
             "ProfileConflict": "profile-conflict",
             "SecretReference": "secret-reference",

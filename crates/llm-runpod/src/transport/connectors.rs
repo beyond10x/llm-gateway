@@ -26,6 +26,8 @@
 //!   failure's code is `capacity`, `Refused` for any other code. An `unknown` create is
 //!   resolved by one `pods.list` on the pod's name and its request tag; everything else is
 //!   `Lost`.
+//! * A created pod's placement is one `pods.list` with `{"id": <pod>, "includeMachine": true}`
+//!   (Runpod `GET /pods?id=…&includeMachine=true`): `machine.secureCloud` and `interruptible`.
 //! * The account's spend is a read of `billing.pods` (Runpod `GET /billing/pods`), which
 //!   connectors v0.37.0's catalog does not select yet: until a connectors release offers it,
 //!   every spend read is unanswered, and a pool with a spend ceiling starts no pod.
@@ -51,8 +53,8 @@ use serde_json::{Map, Value, json};
 
 use super::probe::{self, BearerKey, PodTls};
 use crate::{
-    AccountSpend, CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget,
-    RunpodTransport, TerminateAnswer, spend::reported_micro_usd,
+    AccountSpend, CreateAnswer, Pod, PodListing, PodPlacement, PodRequest, PodStatus, Probe,
+    ProbeTarget, RunpodTransport, TerminateAnswer, spend::reported_micro_usd,
 };
 
 /// Every key a `pod.create` `body` may carry, as Runpod's pinned `PodCreateInput` names it
@@ -651,7 +653,7 @@ fn path_arg(path: &Path) -> String {
 
 /// One pod of a `pods.list` answer, or `None` when any field this adapter relies on is missing
 /// or of another shape.
-fn pod_of(value: &Value) -> Option<Pod> {
+pub(super) fn pod_of(value: &Value) -> Option<Pod> {
     let status = match value.get("desiredStatus")?.as_str()? {
         "RUNNING" => PodStatus::Running,
         "EXITED" => PodStatus::Exited,
@@ -678,9 +680,15 @@ fn pod_of(value: &Value) -> Option<Pod> {
     })
 }
 
-/// The `pod.create` input: `{"body": …}` with every key [`POD_CREATE_BODY_KEYS`] names that the
-/// request has a value for.
+/// The `pod.create` input: `{"body": …}`, the [`create_body`].
 fn create_input(request: &PodRequest) -> Value {
+    json!({ "body": create_body(request) })
+}
+
+/// Runpod's `POST /pods` body: every key [`POD_CREATE_BODY_KEYS`] names that the request has a
+/// value for. [`ConnectorsRunpod`] sends it inside `{"body": …}`, [`RestRunpod`](super::RestRunpod)
+/// as the request body itself.
+pub(super) fn create_body(request: &PodRequest) -> Map<String, Value> {
     let mut body = Map::new();
     body.insert("name".to_owned(), json!(request.name));
     body.insert("imageName".to_owned(), json!(request.image));
@@ -719,7 +727,37 @@ fn create_input(request: &PodRequest) -> Value {
         body.insert("networkVolumeId".to_owned(), json!(volume));
     }
     body.retain(|key, _| POD_CREATE_BODY_KEYS.contains(&key.as_str()));
-    json!({ "body": body })
+    body
+}
+
+/// A pod's placement from one pod entry read with `includeMachine`: `machine.secureCloud` and
+/// `interruptible`, each `None` when absent or not a boolean.
+pub(super) fn placement_of(value: &Value) -> PodPlacement {
+    PodPlacement {
+        secure_cloud: value
+            .pointer("/machine/secureCloud")
+            .and_then(Value::as_bool),
+        interruptible: value.get("interruptible").and_then(Value::as_bool),
+    }
+}
+
+/// The account's spend from Runpod's `GET /billing/pods?bucketSize=day` entries, read only when
+/// every entry is a finite, non-negative `amount` in USD and a `time` in `lastStartedAt`'s form.
+/// Each amount is rounded to the nearest micro-USD.
+pub(super) fn spend_of(entries: &[Value], day_start_ms: u64) -> Option<AccountSpend> {
+    let mut spend = AccountSpend {
+        daily_micro_usd: 0,
+        total_micro_usd: 0,
+    };
+    for entry in entries {
+        let amount = reported_micro_usd(entry.get("amount")?.as_f64()?)?;
+        let time = started_at_ms(entry.get("time")?.as_str()?)?;
+        spend.total_micro_usd = spend.total_micro_usd.checked_add(amount)?;
+        if time >= day_start_ms {
+            spend.daily_micro_usd = spend.daily_micro_usd.checked_add(amount)?;
+        }
+    }
+    Some(spend)
 }
 
 /// Runpod's `lastStartedAt` (`2024-07-12T19:14:40.144Z`, UTC) in milliseconds since the Unix
@@ -850,24 +888,24 @@ impl RunpodTransport for ConnectorsRunpod {
             .and_then(started_at_ms)
     }
 
+    /// `pods.list` with `{"id": <pod>, "includeMachine": true}`: the one pod with this id, its
+    /// `machine.secureCloud` and `interruptible`.
+    fn pod_placement(&mut self, pod_id: &str) -> Option<PodPlacement> {
+        let answer = self.read(&json!({ "id": pod_id, "includeMachine": true }));
+        let pods = answer.body()?.as_array()?;
+        let mut matching = pods
+            .iter()
+            .filter(|pod| pod.get("id").and_then(Value::as_str) == Some(pod_id));
+        let found = matching.next()?;
+        matching.next().is_none().then(|| placement_of(found))
+    }
+
     /// `billing.pods` with `{"bucketSize":"day"}`, read only when the whole answer is: a 2xx
     /// `status`, present, and every entry a finite, non-negative `amount` in USD and a `time`
     /// in `lastStartedAt`'s form. Each amount is rounded to the nearest micro-USD.
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
         let answer = self.read_operation(BILLING_PODS, &json!({ "bucketSize": "day" }));
-        let mut spend = AccountSpend {
-            daily_micro_usd: 0,
-            total_micro_usd: 0,
-        };
-        for entry in answer.confirmed_body()?.as_array()? {
-            let amount = reported_micro_usd(entry.get("amount")?.as_f64()?)?;
-            let time = started_at_ms(entry.get("time")?.as_str()?)?;
-            spend.total_micro_usd = spend.total_micro_usd.checked_add(amount)?;
-            if time >= day_start_ms {
-                spend.daily_micro_usd = spend.daily_micro_usd.checked_add(amount)?;
-            }
-        }
-        Some(spend)
+        spend_of(answer.confirmed_body()?.as_array()?, day_start_ms)
     }
 }
 

@@ -40,7 +40,7 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | Key | Default | Rule |
 | --- | --- | --- |
 | `kind` | required | `runpod-vllm` |
-| `cloud_type` | `SECURE` | `SECURE` or `COMMUNITY` |
+| `cloud_type` | `SECURE` | Only `SECURE`. `COMMUNITY` is refused `config:schema`: every pod is a Secure Cloud, on-demand pod, and a created pod placed anywhere else is terminated at once. |
 | `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one. |
 | `daily_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in one UTC day. A pod start of one of this provider's models that would pass it is refused `spend-ceiling`; a ceiling binds no other provider's pods. |
 | `total_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
@@ -68,7 +68,7 @@ a provider that declares a ceiling starts no pod and every start is refused `spe
 | `context_window` | required | 4096 to 2000000 tokens. |
 | `max_model_len` | required without `profiles` | 1024 to `context_window`. |
 | `hf_model` | required | 1 to 200 printable ASCII characters. |
-| `image` | required | 1 to 200 printable ASCII characters. |
+| `image` | required | 1 to 200 printable ASCII characters, starting with `vllm/vllm-openai:` and a tag; any other image is refused `config:value` when the binary starts. |
 | `gpu_types` | required without `profiles` | 1 to 16 candidates, tried in order, each 1 to 64 printable ASCII characters. |
 | `profiles` | absent | 1 to 8 `[[models.<alias>.profiles]]` tables, tried in order (below). Refused beside `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` or `extra_vllm_args`. |
 | `max_num_seqs` | 8 | 1 to 1024. |

@@ -1115,6 +1115,9 @@ impl RunpodTransport for Listing {
     fn container_started_at(&mut self, _pod_id: &str) -> Option<u64> {
         None
     }
+    fn pod_placement(&mut self, _pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        None
+    }
 }
 
 /// A running pod whose id the description refuses reports no endpoint, as a pod that is not
@@ -1204,6 +1207,9 @@ impl RunpodTransport for Dashed {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.0
             .container_started_at(&pod_id.replacen("pod-", "pod", 1))
+    }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.0.pod_placement(&pod_id.replacen("pod-", "pod", 1))
     }
 }
 

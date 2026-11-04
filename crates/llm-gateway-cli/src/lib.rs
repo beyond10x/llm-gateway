@@ -14,6 +14,7 @@ pub mod cli;
 mod config;
 mod credential;
 mod hosted;
+mod keychain;
 mod keys;
 mod logging;
 mod refusal;
@@ -33,6 +34,10 @@ pub use credential::{
 pub use hosted::{
     BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
     HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, Scheme, check_headers,
+};
+pub use keychain::{
+    EntryValue, KEYCHAIN_PREFIX, KeychainRef, LookupFailure, MAX_KEYCHAIN_NAME_BYTES, OsKeychain,
+    SecretSource, install_secret_source,
 };
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use logging::{TracingRecords, install_logging, log_filter};

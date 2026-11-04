@@ -23,7 +23,7 @@ Usage: b10x-llm-gateway --config <CONFIG>
 | --- | --- | --- | --- |
 | `--config <CONFIG>` | yes | none | Path to the closed TOML deployment document. |
 
-The serving command line takes nothing else: a positional argument or another option is a usage error. The one other command, `credential set` below, is reached only when `credential` is the first argument. The document the option names is described in [the deployment document](./deployment-document.md).
+The serving command line takes nothing else: a positional argument or another option is a usage error. The other commands below, `serve`, `watchdog` and `credential set`, are reached only when their name is the first argument. The document the option names is described in [the deployment document](./deployment-document.md).
 
 ## Exit status
 
@@ -34,6 +34,35 @@ The serving command line takes nothing else: a positional argument or another op
 | 2 | a usage error, which names its kind and never echoes an argument | ``b10x-llm-gateway: usage error (<kind>); Usage: b10x-llm-gateway --config <CONFIG>; see `b10x-llm-gateway --help` `` |
 
 While it serves, the process writes `b10x-llm-gateway: listening on <address>` once. `RUST_LOG` sets the level of the structured events it writes beside these lines (default `info`).
+
+## `b10x-llm-gateway serve`
+
+> Serve the deployment document: the one `--config` names, else the default document, `$XDG_CONFIG_HOME/llm-gateway/config.toml` (`~/.config/llm-gateway/config.toml` when `XDG_CONFIG_HOME` is unset)
+
+```text
+Usage: b10x-llm-gateway serve [OPTIONS]
+```
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--config <CONFIG>` | no | none | Path to the closed TOML deployment document; the default document when absent. |
+
+`serve` serves exactly as the closed command line does, with the same exit statuses and lines. Without `--config` it reads `$XDG_CONFIG_HOME/llm-gateway/config.toml`, or `~/.config/llm-gateway/config.toml` when `XDG_CONFIG_HOME` is unset or relative; with neither variable set it is refused `config:unreadable`. A usage error is ``b10x-llm-gateway: usage error (<kind>); see `b10x-llm-gateway serve --help` `` with exit status 2.
+
+## `b10x-llm-gateway watchdog`
+
+> Watch the pods the gateway owns and terminate one the gateway can no longer stop: its heartbeat stale, the pod idle, not ready, past its maximum runtime, or the balance under its floor. It reads the same document as `serve` and needs its `[watchdog]` table and a provider with `runpod_api_key`
+
+```text
+Usage: b10x-llm-gateway watchdog [OPTIONS]
+```
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--config <CONFIG>` | no | none | Path to the closed TOML deployment document; the default document when absent. |
+| `--once` | no | none | Run one poll and exit instead of polling until SIGINT or SIGTERM. |
+
+`watchdog` reads the same document as `serve` and needs its `[watchdog]` table and one provider with `runpod_api_key`. It polls Runpod every `poll_seconds` and terminates only a pod the gateway owns (its name starts `b10x-llm-` and its owner tag names the gateway), writing one `b10x-llm-gateway: watchdog terminated <pod> rule <rule>` line for each. It stops on SIGINT or SIGTERM with exit status 0; a refused start exits 1 as `serve` does. [Run the pod watchdog](../guides/run-the-pod-watchdog.md) walks through the unit.
 
 ## `b10x-llm-gateway credential set`
 

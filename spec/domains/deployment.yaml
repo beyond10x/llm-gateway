@@ -351,6 +351,24 @@ types:
   # (`config:value`).
   # `connectors`, optional: when present the provider's pods are reached through the connectors
   # connection it names, and the table is closed.
+  # DECIDED 2026-11-04 (story:keychain-references): `api_key`, optional, is a
+  # `keychain:<service>/<account>` reference to the account's Runpod API key, read once at start
+  # from the OS keychain (the keychain rule, below); the provider's pods are then managed through
+  # Runpod's REST API by the binary itself (llm-gateway.runpod `RestRunpod`). It is refused beside
+  # `connectors` (`config:value` naming `providers.<name>.api_key`), and at most one provider
+  # declares `connectors` or `api_key` (`config:value` naming `providers`). An entry that cannot
+  # be read refuses the start as `endpoint-credential:<rule>`, its message starting
+  # `providers.<name>.api_key:`. Proved by crates/llm-gateway-cli/tests/keychain.rs.
+  # The keychain rule: a reference is `keychain:<service>/<account>`, split at the first `/`, each
+  # name 1..=256 printable ASCII characters without a space (`config:value` naming the key
+  # otherwise, quoting nothing written). The entry is read once at start through
+  # `secret-tool lookup service <s> account <a>` (Linux) or `security find-generic-password -s <s>
+  # -a <a> -w` (macOS), whose arguments are the two names only, and taken by the credential-file
+  # token rule; a missing entry or an unreadable keychain is `<source>:unreadable`, the source
+  # being the key's own. ModelDeclaration `vllm_api_key` (`vllm-api-key`), HostedDeclaration
+  # `credential` (`endpoint-credential`; refused beside `credential_file` and on a Bedrock model)
+  # and a routes document endpoint's `auth.secret` take one too. No message names the reference or
+  # the value.
   # DECIDED 2026-10-16 (story:spend-caps): `daily_cap_usd` and `total_cap_usd`, optional, are the
   # spend ceilings of this provider's own account in USD (llm-gateway.runpod.SpendLedger), binding
   # only a pool built for this provider (Deployment, SpendPolicy); absent is no ceiling of
@@ -365,6 +383,7 @@ types:
       - {name: kind, type: llm-gateway.deployment.ProviderKind}
       - {name: cloud_type, type: llm-gateway.deployment.CloudType}
       - {name: connectors, type: 'Optional<llm-gateway.deployment.ConnectorsDeclaration>'}
+      - {name: api_key, type: 'Optional<String>'}
       - {name: daily_cap_usd, type: 'Optional<Decimal>'}
       - {name: total_cap_usd, type: 'Optional<Decimal>'}
   # `[providers.<name>.connectors]`: how the binary reaches the connectors owner process that
@@ -476,6 +495,7 @@ types:
       - {name: start_wait_seconds, type: Integer}
       - {name: request_hold_seconds, type: Integer}
       - {name: vllm_api_key_file, type: 'Optional<String>'}
+      - {name: vllm_api_key, type: 'Optional<String>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: price_per_hour_usd, type: 'Optional<Decimal>'}
   # One `[[models.<alias>.profiles]]` entry (story:model-profile-fallback): the
@@ -619,6 +639,7 @@ types:
       - {name: max_output_tokens, type: 'Optional<Integer>'}
       - {name: anthropic_beta, type: 'List<String>'}
       - {name: credential_file, type: 'Optional<String>'}
+      - {name: credential, type: 'Optional<String>'}
       - {name: credential_header, type: 'Optional<String>'}
       - {name: headers, type: 'Map<String, String>'}
       - {name: billing_kind, type: llm-gateway.upstream.BillingKind}
@@ -640,6 +661,7 @@ types:
       - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
       - {name: credential_header, type: 'Optional<String>'}
       - {name: credential_file, type: 'Optional<String>'}
+      - {name: credential_keychain, type: 'Optional<String>'}
   # One route of a routes document: the endpoint its model names (before the model's first `/`),
   # the model id sent upstream (after it), and its capabilities, llm's declared ones or llm's
   # defaults for a route written as a plain `<endpoint>/<model-id>` (every boolean true, efforts
@@ -666,11 +688,15 @@ types:
   #                     `file:` path, a route to an undeclared endpoint, …) is `config:value`, its
   #                     message `routes <llm's message>`, which names a field, endpoint or route
   #                     and never a value
-  #   the credential rule  credentials come only from trusted files: a `file:` secret is read
+  #   the credential rule  credentials come from trusted files and the OS keychain: a `file:`
+  #                     secret is read
   #                     once at start through the trusted-file reader with the endpoint-credential
   #                     policy (`endpoint-credential:<rule>`), a `~/` path resolved against `HOME`
   #                     (`config:value` naming `routes.<endpoint>.auth.secret` when `HOME` is
-  #                     unset or not absolute). An `env:` or `keychain:` secret is `config:value`
+  #                     unset or not absolute). A `keychain:<service>/<account>` secret is read
+  #                     once at start from the OS keychain (ProviderDeclaration's keychain rule, DECIDED 2026-11-04,
+  #                     story:keychain-references; RouteEndpointDeclaration `credential_keychain`).
+  #                     An `env:` secret, or a malformed `keychain:` one, is `config:value`
   #                     naming `routes.<endpoint>.auth.secret`. An `api-key` endpoint's
   #                     `auth.header` must also pass HostedDeclaration's `credential_header` rule
   #                     (`config:value` naming `routes.<endpoint>.auth.header`), and on a

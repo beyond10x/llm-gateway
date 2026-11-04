@@ -4,6 +4,7 @@
 //! [`NetworkVolume`].
 
 use crate::{
+    keychain::KeychainRef,
     refusal::{Refusal, StartupRefusal},
     routes::Routes,
     trusted,
@@ -107,6 +108,10 @@ struct HostedDocument {
     endpoint: Option<String>,
     #[serde(default)]
     credential_file: Option<PathBuf>,
+    /// A `keychain:<service>/<account>` reference in place of `credential_file`
+    /// (story:keychain-references).
+    #[serde(default)]
+    credential: Option<String>,
     #[serde(default)]
     credential_header: Option<String>,
     #[serde(default)]
@@ -314,6 +319,10 @@ struct ProviderDocument {
     cloud_type: CloudTypeDocument,
     #[serde(default)]
     connectors: Option<ConnectorsDocument>,
+    /// The Runpod API key as a `keychain:<service>/<account>` reference: the provider then
+    /// calls Runpod's REST API itself (story:keychain-references).
+    #[serde(default)]
+    api_key: Option<String>,
     #[serde(default)]
     daily_cap_usd: Option<f64>,
     #[serde(default)]
@@ -417,6 +426,10 @@ struct ModelDocument {
     request_hold_seconds: Option<u64>,
     #[serde(default)]
     vllm_api_key_file: Option<PathBuf>,
+    /// The vLLM key as a `keychain:<service>/<account>` reference, in place of
+    /// `vllm_api_key_file`.
+    #[serde(default)]
+    vllm_api_key: Option<String>,
     #[serde(default)]
     tool_calling: ToolCallingDocument,
     #[serde(default)]
@@ -503,6 +516,10 @@ pub struct Provider {
     /// The connectors connection the provider's pods are reached through, when it declares
     /// one; `None` leaves its models answered `target-unavailable`.
     pub connectors: Option<ConnectorsBinding>,
+    /// The keychain entry holding the account's Runpod API key, when declared: the provider's
+    /// pods are then managed through Runpod's REST API by this process, never beside a
+    /// `connectors` connection (story:keychain-references).
+    pub api_key: Option<KeychainRef>,
     /// The account's daily spend ceiling in micro-USD (`daily_cap_usd`); `None` is none.
     pub daily_cap_micro_usd: Option<u64>,
     /// The account's total spend ceiling in micro-USD (`total_cap_usd`); `None` is none.
@@ -538,6 +555,8 @@ pub struct Model {
     /// The file holding the key this model's pod's vLLM server expects (row B9). Only the path
     /// is loaded here; [`crate::vllm_keys`] reads it.
     pub vllm_api_key_file: Option<PathBuf>,
+    /// The keychain entry holding that key, in place of the file; never both.
+    pub vllm_api_key: Option<KeychainRef>,
     /// Whether the model's pod parses tool calls; `absent` unless the document says
     /// `parsed`. A request offering tools to an `Absent` model is refused before a pod is
     /// asked for.
@@ -560,6 +579,9 @@ pub struct Hosted {
     /// The file holding the credential; absent exactly when `auth_kind` is `Anonymous`. Only
     /// the path is loaded here; the composition reads it.
     pub credential_file: Option<PathBuf>,
+    /// The keychain entry holding the credential, in place of the file; never both, and
+    /// exactly one when `auth_kind` takes a credential.
+    pub credential_keychain: Option<KeychainRef>,
     /// The header an `ApiKey` endpoint receives the credential in; present exactly then.
     pub credential_header: Option<CredentialHeader>,
     pub billing_kind: BillingKind,
@@ -835,6 +857,17 @@ fn providers(
             .connectors
             .map(|table| connectors_binding(&format!("providers.{name}.connectors"), table))
             .transpose()?;
+        let api_key = provider
+            .api_key
+            .as_deref()
+            .map(|text| keychain_ref(&format!("providers.{name}.api_key"), text))
+            .transpose()?;
+        ensure(
+            !(api_key.is_some() && connectors.is_some()),
+            &format!("providers.{name}.api_key"),
+            "cannot stand beside a connectors connection: the provider's pods are managed \
+             either through connectors or with its own key, not both",
+        )?;
         let daily_cap_micro_usd = provider
             .daily_cap_usd
             .map(|usd| amount(&format!("providers.{name}.daily_cap_usd"), usd, MAX_CAP_USD))
@@ -849,6 +882,7 @@ fn providers(
                 kind: provider.kind,
                 cloud_type,
                 connectors,
+                api_key,
                 daily_cap_micro_usd,
                 total_cap_micro_usd,
             },
@@ -857,11 +891,11 @@ fn providers(
     ensure(
         providers
             .values()
-            .filter(|provider| provider.connectors.is_some())
+            .filter(|provider| provider.connectors.is_some() || provider.api_key.is_some())
             .count()
             <= 1,
         "providers",
-        "may declare at most one connectors connection",
+        "may declare at most one connectors connection or api_key",
     )?;
     let metered = providers
         .values()
@@ -908,6 +942,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         )
     };
     refuse_bedrock_keys(at, &declared)?;
+    let credential_keychain = hosted_credential(at, &declared)?;
     let wires = declared.wires.ok_or_else(|| missing("wires"))?;
     let base_url = declared.base_url.ok_or_else(|| missing("base_url"))?;
     let auth_kind = declared.auth_kind.ok_or_else(|| missing("auth_kind"))?;
@@ -943,12 +978,6 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
             ));
         }
     }
-    ensure(
-        declared.credential_file.is_some()
-            != matches!(auth_kind, AuthKind::Anonymous | AuthKind::Client),
-        &key("credential_file"),
-        "is required unless auth_kind is anonymous or client, and absent when it is",
-    )?;
     ensure(
         declared.credential_header.is_some() == (auth_kind == AuthKind::ApiKey),
         &key("credential_header"),
@@ -992,6 +1021,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         base_url,
         auth_kind,
         credential_file: declared.credential_file,
+        credential_keychain,
         credential_header,
         billing_kind: billing_kind(&declared.billing_kind),
         upstream_model,
@@ -1000,6 +1030,38 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         reasoning_effort,
         model_prefix: declared.model_prefix,
     })
+}
+
+/// A hosted endpoint's credential, named once: `credential_file` or the `credential` keychain
+/// reference, required unless `auth_kind` is anonymous or client and absent when it is. The
+/// reference, when declared.
+fn hosted_credential(at: &str, declared: &HostedDocument) -> Result<Option<KeychainRef>, Refusal> {
+    let (file, credential) = (
+        declared.credential_file.is_some(),
+        declared.credential.as_deref(),
+    );
+    // A missing `auth_kind` is refused as missing by the caller.
+    let Some(auth_kind) = &declared.auth_kind else {
+        return Ok(None);
+    };
+    ensure(
+        !(file && credential.is_some()),
+        &format!("{at}.credential"),
+        "cannot stand beside credential_file: name the credential once",
+    )?;
+    ensure(
+        (file || credential.is_some())
+            != matches!(
+                auth_kind,
+                AuthKindDocument::Anonymous | AuthKindDocument::Client
+            ),
+        &format!("{at}.credential_file"),
+        "or credential is required unless auth_kind is anonymous or client, and absent when it \
+         is",
+    )?;
+    credential
+        .map(|text| keychain_ref(&format!("{at}.credential"), text))
+        .transpose()
 }
 
 /// `model_prefix`, when declared: 1..=64 printable ASCII characters without a space.
@@ -1135,6 +1197,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         ("base_url", declared.base_url.is_some()),
         ("auth_kind", declared.auth_kind.is_some()),
         ("credential_file", declared.credential_file.is_some()),
+        ("credential", declared.credential.is_some()),
         ("credential_header", declared.credential_header.is_some()),
         ("upstream_model", declared.upstream_model.is_some()),
         ("reasoning_effort", declared.reasoning_effort.is_some()),
@@ -1304,6 +1367,17 @@ fn connectors_binding(at: &str, table: ConnectorsDocument) -> Result<ConnectorsB
     })
 }
 
+/// A `keychain:<service>/<account>` reference; the refusal quotes nothing written.
+fn keychain_ref(key: &str, text: &str) -> Result<KeychainRef, Refusal> {
+    KeychainRef::parse(text).ok_or_else(|| {
+        value(
+            key,
+            "must be a keychain:<service>/<account> reference: each name 1..=256 printable ASCII \
+             characters without a space, the service without a /",
+        )
+    })
+}
+
 fn bounded_text(key: &str, value: &str, limit: usize) -> Result<(), Refusal> {
     ensure(
         (1..=limit).contains(&value.len())
@@ -1329,8 +1403,19 @@ fn validate_model(at: &str, mut model: ModelDocument) -> Result<Model, Refusal> 
             )
         })
         .transpose()?;
+    ensure(
+        !(model.vllm_api_key_file.is_some() && model.vllm_api_key.is_some()),
+        &format!("{at}.vllm_api_key"),
+        "cannot stand beside vllm_api_key_file: name the key once",
+    )?;
+    let vllm_api_key = model
+        .vllm_api_key
+        .as_deref()
+        .map(|text| keychain_ref(&format!("{at}.vllm_api_key"), text))
+        .transpose()?;
     Ok(Model {
         price_per_hour_micro_usd: price,
+        vllm_api_key,
         ..into_model(model, profiles)
     })
 }
@@ -1633,6 +1718,7 @@ fn into_model(model: ModelDocument, profiles: Vec<(String, ProfileDocument)>) ->
             .request_hold_seconds
             .unwrap_or(model.start_wait_seconds),
         vllm_api_key_file: model.vllm_api_key_file,
+        vllm_api_key: None,
         tool_calling: match model.tool_calling {
             ToolCallingDocument::Parsed => ToolCalling::Parsed,
             ToolCallingDocument::Absent => ToolCalling::Absent,

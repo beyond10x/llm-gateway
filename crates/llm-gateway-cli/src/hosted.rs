@@ -657,13 +657,15 @@ impl RelayTarget for HostedTarget {
     }
 }
 
-/// Every hosted model's endpoint, its credential file read once through the trusted-file reader,
-/// then every route's ([`crate::Routes::read_credentials`], [`crate::Routes::hosted_endpoints`]).
+/// Every hosted model's endpoint, its credential file read once through the trusted-file reader
+/// or its `credential` keychain entry once ([`crate::keychain`]), then every route's
+/// ([`crate::Routes::read_credentials`], [`crate::Routes::hosted_endpoints`]).
 ///
 /// # Errors
 /// An `endpoint-credential:*` [`Refusal`] for the first file, in alias order, that breaks a
-/// rule: every message starts `hosted.<alias>.credential_file:` and quotes neither the path nor
-/// the bytes. `config:value` for a declaration the loader would not have admitted.
+/// rule: every message starts `hosted.<alias>.credential_file:` or `hosted.<alias>.credential:`
+/// and quotes neither the path, the reference nor the bytes. `config:value` for a declaration
+/// the loader would not have admitted.
 pub(crate) fn hosted_endpoints(
     deployment: &Deployment,
 ) -> Result<BTreeMap<String, HostedEndpoint>, Refusal> {
@@ -690,17 +692,38 @@ pub(crate) fn hosted_endpoints(
                 )
             })
         };
-        let credential = match (
-            hosted.auth_kind,
-            &hosted.credential_file,
-            &hosted.credential_header,
-        ) {
+        // The keychain entry `credential` names, in place of the file (story:keychain-references).
+        let keychain = |reference: &crate::keychain::KeychainRef| {
+            let key = format!("{at}.credential");
+            let material = crate::keychain::read_keychain_token(
+                reference,
+                &key,
+                (
+                    StartupRefusal::EndpointCredentialUnreadable,
+                    StartupRefusal::EndpointCredentialTooLarge,
+                    StartupRefusal::EndpointCredentialNotAToken,
+                ),
+            )?;
+            TargetBearer::new(material).map_err(|error| {
+                Refusal::new(
+                    StartupRefusal::EndpointCredentialNotAToken,
+                    format!("{key}: {error}"),
+                )
+            })
+        };
+        let secret = match (&hosted.credential_file, &hosted.credential_keychain) {
+            (None, None) => None,
+            (Some(path), None) => Some(read(path)?),
+            (None, Some(reference)) => Some(keychain(reference)?),
+            (Some(_), Some(_)) => return Err(invalid("names its credential twice")),
+        };
+        let credential = match (hosted.auth_kind, secret, &hosted.credential_header) {
             (AuthKind::Anonymous, None, None) => EndpointCredential::Anonymous,
             (AuthKind::Client, None, None) => EndpointCredential::Client,
-            (AuthKind::Bearer, Some(path), None) => EndpointCredential::Bearer(read(path)?),
-            (AuthKind::ApiKey, Some(path), Some(header)) => EndpointCredential::ApiKey {
+            (AuthKind::Bearer, Some(bearer), None) => EndpointCredential::Bearer(bearer),
+            (AuthKind::ApiKey, Some(key), Some(header)) => EndpointCredential::ApiKey {
                 header: header.clone(),
-                key: read(path)?,
+                key,
             },
             _ => return Err(invalid("declares a credential its auth_kind does not take")),
         };

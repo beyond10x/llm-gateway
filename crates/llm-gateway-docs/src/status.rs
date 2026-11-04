@@ -300,9 +300,16 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "The models of an llm.routes/1 document",
-        "routes = \"<path>\" serves each route of an llm.routes/1 document under its name from its endpoint: relayed byte for byte on the endpoint's wire to its base path, translated from the other wires under the route's capabilities, beside [models.*] and [hosted.*]. Credentials come only from file: key files read through the trusted reader; env: and keychain: secrets, a base_url without its API path and an alias collision are refused at start. Tested against loopback endpoints, not against a vendor API.",
+        "routes = \"<path>\" serves each route of an llm.routes/1 document under its name from its endpoint: relayed byte for byte on the endpoint's wire to its base path, translated from the other wires under the route's capabilities, beside [models.*] and [hosted.*]. Credentials come from file: key files read through the trusted reader or keychain: entries of the OS keychain; env: secrets, a base_url without its API path and an alias collision are refused at start. Tested against loopback endpoints, not against a vendor API.",
         "crates/llm-gateway-cli/tests/routes.rs::routes_a_request_on_the_endpoints_wire_is_relayed_and_hosted_is_unchanged",
         Some("/docs/guides/translate-between-wires"),
+    ),
+    shipped(
+        "Binary",
+        "Credentials from the OS keychain",
+        "A keychain:<service>/<account> reference names the Runpod API key ([providers.<name>] api_key), a vLLM key (vllm_api_key), a hosted credential (credential) or a route's auth.secret in place of a file. The entry is read once at start through secret-tool on Linux or security on macOS, whose arguments carry the two names only, into memory overwritten when dropped; no refusal names the reference or the value. A provider with an api_key manages its pods through Runpod's REST API itself. Tested with an in-memory keychain and loopback endpoints; no real keychain is read and no Runpod API is called.",
+        "crates/llm-gateway-cli/tests/keychain.rs::keychain_a_hosted_endpoint_is_sent_the_entrys_value_as_its_bearer",
+        Some("/docs/reference/deployment-document"),
     ),
     shipped(
         "Binary",

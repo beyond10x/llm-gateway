@@ -61,14 +61,29 @@ impl fmt::Debug for VllmKeys {
     }
 }
 
-/// Reads each model's `vllm_api_key_file` once through the trusted-file reader.
+/// Reads each model's `vllm_api_key_file` once through the trusted-file reader, or its
+/// `vllm_api_key` keychain entry once ([`crate::keychain`]).
 ///
 /// # Errors
-/// A `vllm-api-key:*` [`Refusal`] for the first file, in alias order, that breaks a rule. Every
-/// message starts `models.<alias>.vllm_api_key_file:` and quotes neither the path nor the bytes.
+/// A `vllm-api-key:*` [`Refusal`] for the first key, in alias order, that breaks a rule. Every
+/// message starts `models.<alias>.vllm_api_key_file:` or `models.<alias>.vllm_api_key:` and
+/// quotes neither the path, the reference nor the bytes.
 pub fn vllm_keys(deployment: &Deployment) -> Result<VllmKeys, Refusal> {
     let mut keys = BTreeMap::new();
     for (alias, model) in &deployment.models {
+        if let Some(reference) = &model.vllm_api_key {
+            let material = crate::keychain::read_keychain_token(
+                reference,
+                &format!("models.{alias}.vllm_api_key"),
+                (
+                    StartupRefusal::VllmApiKeyUnreadable,
+                    StartupRefusal::VllmApiKeyTooLarge,
+                    StartupRefusal::VllmApiKeyNotAToken,
+                ),
+            )?;
+            keys.insert(alias.clone(), VllmKey(material));
+            continue;
+        }
         let Some(path) = &model.vllm_api_key_file else {
             continue;
         };
@@ -97,9 +112,21 @@ pub(crate) fn read_token(
     path: &Path,
     key: &str,
     policy: &trusted::Policy,
-    (too_large, not_a_token): (StartupRefusal, StartupRefusal),
+    rules: (StartupRefusal, StartupRefusal),
 ) -> Result<Vec<u8>, Refusal> {
     let read = Wiped::adopt(trusted::read_named(path, key, policy)?.into_bytes());
+    token_of(read, key, rules)
+}
+
+/// `read`'s one printable ASCII token of at most 4096 bytes once trailing ASCII whitespace is
+/// trimmed, as [`read_token`] takes it: the bytes of `read` are overwritten whichever way the
+/// rules go, and the token returned is a copy of exactly its length. A keychain entry
+/// ([`crate::keychain`]) is taken so too.
+pub(crate) fn token_of(
+    read: Wiped,
+    key: &str,
+    (too_large, not_a_token): (StartupRefusal, StartupRefusal),
+) -> Result<Vec<u8>, Refusal> {
     let refuse = |kind, rule: &str| Refusal::new(kind, format!("{key}: {rule}"));
     // ASCII whitespace only: a trailing newline or CRLF, never a non-ASCII character.
     let material = read.as_slice().trim_ascii_end();

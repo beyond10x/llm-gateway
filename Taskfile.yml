@@ -12,6 +12,10 @@ tasks:
     desc: Check ESS projection drift and run behavioral conformance three times
     cmds:
       - cargo run --locked -p b10x-llm-gateway-conformance -- check
+  dashboard:
+    desc: Build the dashboard page into crates/llm-gateway/src/dashboard.html
+    cmds:
+      - pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard build
   docs:
     desc: Check the generated documentation pages for drift and the hand-written ones for the public boundary
     cmds:

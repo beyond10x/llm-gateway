@@ -218,26 +218,79 @@ pub const INGRESS_AUTH_OFF: &str = "warning ingress auth is off (ingress_auth = 
 
 /// Writes one line to standard error. A standard error that is gone (a log reader that exited)
 /// changes nothing: the line is lost, and the exit status still says what happened.
-fn report(line: fmt::Arguments<'_>) {
+pub(crate) fn report(line: fmt::Arguments<'_>) {
     use std::io::Write as _;
     drop(writeln!(std::io::stderr(), "b10x-llm-gateway: {line}"));
 }
 
-/// The `b10x-llm-gateway` process over `pods`: with `credential` as the first argument, the
-/// `credential set` command, which reaches `https` endpoints over `pods` too; otherwise parse the
-/// serving command line, install logging, load the
-/// document, [`start_with`] `pods`, serve until SIGINT or SIGTERM, and stop gracefully, writing
-/// the lines `spec/domains/deployment.yaml` names. The shipped binary's `main` passes
-/// [`crate::ProxyConnector::shipped`]; only the `gateway-tls-seam` test program passes another.
-pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
-    use clap::{CommandFactory as _, Parser as _};
-    // `credential …` first is the one other command; anything else is the serving line, parsed
-    // exactly as before.
-    if let crate::cli::Invocation::Credential(args) =
-        crate::cli::Invocation::from_args(std::env::args_os().collect())
-    {
-        return crate::credential::main(args, &pods);
+/// A usage error of a subcommand: its kind and its help line, never an argument (clap quotes
+/// the offending one, which may be a key). Help and version exit as clap prints them.
+pub(crate) fn usage_error(error: &clap::Error, command: &str) -> std::process::ExitCode {
+    use clap::error::ErrorKind;
+    if matches!(
+        error.kind(),
+        ErrorKind::DisplayHelp | ErrorKind::DisplayVersion
+    ) {
+        error.exit();
     }
+    report(format_args!(
+        "usage error ({:?}); see `b10x-llm-gateway {command} --help`",
+        error.kind()
+    ));
+    std::process::ExitCode::from(2)
+}
+
+/// The document `--config` names, else the default document ([`crate::cli::default_config`]).
+///
+/// # Errors
+/// `config:unreadable` when there is no `--config` and neither `XDG_CONFIG_HOME` nor `HOME` is
+/// set.
+pub(crate) fn document_path(
+    config: Option<std::path::PathBuf>,
+) -> Result<std::path::PathBuf, Refusal> {
+    config.or_else(crate::cli::default_config).ok_or_else(|| {
+        Refusal::new(
+            StartupRefusal::ConfigUnreadable,
+            "no --config and no default document: neither XDG_CONFIG_HOME nor HOME is set"
+                .to_owned(),
+        )
+    })
+}
+
+/// The `b10x-llm-gateway` process over `pods`: with `credential` as the first argument, the
+/// `credential set` command, which reaches `https` endpoints over `pods` too; with `watchdog`,
+/// the pod watchdog; with `serve`, the serving command line reading the default document unless
+/// `--config` names one; otherwise the closed serving command line. Serving installs logging,
+/// loads the document, [`start_with`] `pods`, serves until SIGINT or SIGTERM, and stops
+/// gracefully, writing the lines `spec/domains/deployment.yaml` names. The shipped binary's
+/// `main` passes [`crate::ProxyConnector::shipped`]; only the `gateway-tls-seam` test program
+/// passes another.
+pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
+    use crate::cli::Invocation;
+    use clap::Parser as _;
+    match Invocation::from_args(std::env::args_os().collect()) {
+        Invocation::Credential(args) => crate::credential::main(args, &pods),
+        Invocation::Watchdog(args) => match crate::cli::WatchdogCli::try_parse_from(args) {
+            Ok(cli) => crate::watchdog::main(&cli, &pods),
+            Err(error) => usage_error(&error, "watchdog"),
+        },
+        Invocation::ServeCommand(args) => match crate::cli::ServeCli::try_parse_from(args) {
+            Ok(cli) => match document_path(cli.config) {
+                Ok(config) => serve_document(&config, pods),
+                Err(refusal) => {
+                    report(format_args!("refused {refusal}"));
+                    std::process::ExitCode::FAILURE
+                }
+            },
+            Err(error) => usage_error(&error, "serve"),
+        },
+        Invocation::Serve => serve_closed_line(pods),
+    }
+}
+
+/// The closed serving command line, parsed exactly as in every earlier release.
+fn serve_closed_line(pods: crate::ProxyConnector) -> std::process::ExitCode {
+    use clap::{CommandFactory as _, Parser as _};
     let args = match crate::cli::Cli::try_parse() {
         Ok(args) => args,
         Err(error) => {
@@ -258,10 +311,15 @@ pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
             return std::process::ExitCode::from(2);
         }
     };
+    serve_document(&args.config, pods)
+}
+
+/// Serves the document at `config` until SIGINT or SIGTERM.
+fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std::process::ExitCode {
     // Events (row O3) go to standard error beside the lines `report` writes, which they leave
     // unchanged; at the default level they are one `usage` event per authenticated model call.
     crate::install_logging();
-    let running = match crate::load(&args.config).and_then(|deployment| {
+    let running = match crate::load(config).and_then(|deployment| {
         tracing::debug!(
             models = deployment.models.len(),
             digest = %deployment.digest,

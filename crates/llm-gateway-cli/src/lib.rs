@@ -20,10 +20,11 @@ mod refusal;
 mod relaying;
 mod routes;
 mod seal;
-mod serve;
+pub(crate) mod serve;
 mod tls;
 mod translate;
 mod trusted;
+mod watchdog;
 
 pub use config::{Bedrock, Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
 pub use credential::{

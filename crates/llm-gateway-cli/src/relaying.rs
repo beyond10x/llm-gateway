@@ -103,7 +103,7 @@ pub trait PodConnector: Send + Sync {
 
 /// The transport's readiness probe over a [`PodConnector`]: the TLS connection
 /// `ConnectorsRunpod` probes an `https://` endpoint through.
-struct ProbeOver(Arc<dyn PodConnector>);
+pub(crate) struct ProbeOver(pub(crate) Arc<dyn PodConnector>);
 
 impl PodTls for ProbeOver {
     fn connect(&self, authority: &str, timeout: Duration) -> io::Result<Box<dyn PodStream>> {

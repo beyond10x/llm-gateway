@@ -80,6 +80,122 @@ struct Document {
     /// `[launch.claude]`: what `b10x-llm-gateway claude` starts Claude Code with.
     #[serde(default)]
     launch: LaunchDocument,
+    /// `[watchdog]`: the heartbeat `serve` writes and the limits `watchdog` enforces
+    /// (story:pod-watchdog).
+    #[serde(default)]
+    watchdog: Option<WatchdogDocument>,
+}
+
+/// `[watchdog]` (`llm-gateway.deployment.WatchdogDeclaration`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct WatchdogDocument {
+    #[serde(default)]
+    heartbeat_file: Option<PathBuf>,
+    #[serde(default = "default_heartbeat_seconds")]
+    heartbeat_seconds: u64,
+    #[serde(default = "default_poll_seconds")]
+    poll_seconds: u64,
+    #[serde(default = "default_stale_minutes")]
+    stale_minutes: u64,
+    #[serde(default = "default_not_ready_minutes")]
+    not_ready_minutes: u64,
+    #[serde(default = "default_max_runtime_hours")]
+    max_runtime_hours: u64,
+    #[serde(default = "default_min_balance_usd")]
+    min_balance_usd: f64,
+}
+
+const fn default_heartbeat_seconds() -> u64 {
+    10
+}
+const fn default_poll_seconds() -> u64 {
+    60
+}
+const fn default_stale_minutes() -> u64 {
+    5
+}
+const fn default_not_ready_minutes() -> u64 {
+    45
+}
+const fn default_max_runtime_hours() -> u64 {
+    24
+}
+const fn default_min_balance_usd() -> f64 {
+    5.0
+}
+
+/// `[watchdog]`, checked: how often `serve` writes its heartbeat and where, and the limits past
+/// which `b10x-llm-gateway watchdog` terminates a pod the gateway owns.
+#[derive(Debug, Clone, PartialEq)]
+pub struct WatchdogConfig {
+    /// The heartbeat file; `None` is the default under the XDG state directory
+    /// (`crate::heartbeat::default_path`).
+    pub heartbeat_file: Option<PathBuf>,
+    /// How often `serve` rewrites the heartbeat: 1..=60 s, 10 by default.
+    pub heartbeat_seconds: u64,
+    /// How often the watchdog reads the account: 10..=3600 s, 60 by default.
+    pub poll_seconds: u64,
+    /// A heartbeat older than this is a gateway that cannot stop its pods: 1..=1440 min, 5 by
+    /// default, and at least three heartbeat intervals.
+    pub stale_minutes: u64,
+    /// A pod not ready this long is terminated: 1..=1440 min, 45 by default.
+    pub not_ready_minutes: u64,
+    /// A pod running this long is terminated: 1..=720 h, 24 by default.
+    pub max_runtime_hours: u64,
+    /// Under this balance every owned pod is terminated: 0..=100000 USD, 5 by default.
+    pub min_balance_usd: f64,
+}
+
+fn validate_watchdog(declared: WatchdogDocument) -> Result<WatchdogConfig, Refusal> {
+    let at = "watchdog";
+    within(
+        at,
+        "heartbeat_seconds",
+        &declared.heartbeat_seconds,
+        &(1..=60),
+    )?;
+    within(at, "poll_seconds", &declared.poll_seconds, &(10..=3600))?;
+    within(at, "stale_minutes", &declared.stale_minutes, &(1..=1440))?;
+    ensure(
+        declared.stale_minutes.saturating_mul(60) >= declared.heartbeat_seconds.saturating_mul(3),
+        "watchdog.stale_minutes",
+        "must be at least three heartbeat intervals",
+    )?;
+    within(
+        at,
+        "not_ready_minutes",
+        &declared.not_ready_minutes,
+        &(1..=1440),
+    )?;
+    within(
+        at,
+        "max_runtime_hours",
+        &declared.max_runtime_hours,
+        &(1..=720),
+    )?;
+    ensure(
+        declared.min_balance_usd.is_finite()
+            && (0.0..=100_000.0).contains(&declared.min_balance_usd),
+        "watchdog.min_balance_usd",
+        "must be within 0..=100000",
+    )?;
+    if let Some(file) = &declared.heartbeat_file {
+        ensure(
+            !file.as_os_str().is_empty(),
+            "watchdog.heartbeat_file",
+            "must not be empty",
+        )?;
+    }
+    Ok(WatchdogConfig {
+        heartbeat_file: declared.heartbeat_file,
+        heartbeat_seconds: declared.heartbeat_seconds,
+        poll_seconds: declared.poll_seconds,
+        stale_minutes: declared.stale_minutes,
+        not_ready_minutes: declared.not_ready_minutes,
+        max_runtime_hours: declared.max_runtime_hours,
+        min_balance_usd: declared.min_balance_usd,
+    })
 }
 
 /// `[launch]`: the launchers' settings.
@@ -147,14 +263,15 @@ pub struct LaunchClaude {
     pub implementer_route: String,
     /// A JSON object passed as `--agents`; none by default.
     pub agents: Option<String>,
-    /// Appended to Claude Code's system prompt so the main model leaves the Agent tool's
-    /// `model` unset and subagents run on the implementer route. `{route}` and `{model}` are
-    /// replaced by the route and the model it serves; empty disables it.
+    /// Appended to Claude Code's system prompt so the main model knows how to start a
+    /// sub-agent on the route `CLAUDE_CODE_SUBAGENT_MODEL` names: by leaving the Agent tool's
+    /// `model` unset. `{route}` and `{model}` are replaced by the route and the model it
+    /// serves; empty disables it.
     pub subagent_instruction: String,
 }
 
 /// The default `[launch.claude].subagent_instruction`.
-pub const SUBAGENT_INSTRUCTION: &str = "Subagents: omit the Agent tool's `model` parameter so they run on the implementer model `{route}` ({model}). Set `model` only when the user names a model, e.g. 'opus' for an adversarial review.";
+pub const SUBAGENT_INSTRUCTION: &str = "To run a sub-agent on `{route}` ({model}), call the Agent tool without the `model` parameter: CLAUDE_CODE_SUBAGENT_MODEL is `{route}` in this session. The `model` enum cannot name `{route}`. Do this whenever the user asks for a `{route}` sub-agent.";
 
 impl Default for LaunchClaude {
     fn default() -> Self {
@@ -800,6 +917,8 @@ pub struct Deployment {
     pub launch_claude: LaunchClaude,
     /// `[launch.codex]`, or its defaults.
     pub launch_codex: LaunchCodex,
+    /// `[watchdog]` when declared: `serve` then writes the heartbeat, and `watchdog` runs.
+    pub watchdog: Option<WatchdogConfig>,
 }
 
 impl Deployment {
@@ -975,11 +1094,13 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
     )?;
     let launch_claude = launch_claude(document.launch.claude)?;
     let launch_codex = launch_codex(document.launch.codex)?;
+    let watchdog = document.watchdog.map(validate_watchdog).transpose()?;
     let mut gateway = GatewayConfig::new(document.listen);
     gateway.ingress_auth = ingress_auth;
     Ok(Deployment {
         launch_claude,
         launch_codex,
+        watchdog,
         gateway,
         owner_secret_file: document.owner_secret_file,
         metrics_listen: document.metrics_listen,

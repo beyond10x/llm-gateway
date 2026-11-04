@@ -14,6 +14,7 @@ pub mod cli;
 mod config;
 mod credential;
 mod decode;
+pub mod heartbeat;
 mod hosted;
 mod keychain;
 mod keys;
@@ -30,8 +31,8 @@ mod trusted;
 mod watchdog;
 
 pub use config::{
-    Bedrock, Deployment, Hosted, LaunchClaude, LaunchCodex, Model, Provider, ProviderKind, Wire,
-    load, parse,
+    Bedrock, Deployment, Hosted, LaunchClaude, LaunchCodex, Model, Provider, ProviderKind,
+    WatchdogConfig, Wire, load, parse,
 };
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,

@@ -122,7 +122,7 @@ fn the_launcher_starts_claude_with_the_overlay_and_passes_its_exit_code() {
             "--verbose",
             "--version",
             "--append-system-prompt",
-            "Subagents: omit the Agent tool's `model` parameter so they run on the implementer model `qwen` (served-model). Set `model` only when the user names a model, e.g. 'opus' for an adversarial review."
+            "To run a sub-agent on `qwen` (served-model), call the Agent tool without the `model` parameter: CLAUDE_CODE_SUBAGENT_MODEL is `qwen` in this session. The `model` enum cannot name `qwen`. Do this whenever the user asks for a `qwen` sub-agent."
         ]
     );
     assert!(

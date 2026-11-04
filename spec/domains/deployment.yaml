@@ -797,6 +797,34 @@ types:
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}
       - {name: routes, type: 'Optional<String>'}
+      - {name: watchdog, type: 'Optional<llm-gateway.deployment.WatchdogDeclaration>'}
+  # DECIDED 2026-11-04 (story:pod-watchdog): `[watchdog]`, optional. With it `serve` writes a
+  # heartbeat (format `llm-gateway.heartbeat/1`: pid, time, controller identity, and per route
+  # the end of its last call and its calls in flight) every `heartbeat_seconds` (1..=60, 10) to
+  # `heartbeat_file` (default `$XDG_STATE_HOME/llm-gateway/heartbeat.json`, else
+  # `$HOME/.local/state/llm-gateway/heartbeat.json`), written to a temporary file, mode 0600, and
+  # renamed. `b10x-llm-gateway watchdog`, a separate process, reads the Runpod account every
+  # `poll_seconds` (10..=3600, 60) and terminates a pod the gateway owns (name prefix
+  # `b10x-llm-` and owner tag `b10x-llm-gateway`) when, in this order: the balance is under
+  # `min_balance_usd` (0..=100000, 5); the heartbeat is missing or older than `stale_minutes`
+  # (1..=1440, 5, at least three heartbeat intervals); the pod has run longer than
+  # `max_runtime_hours` (1..=720, 24); it has not been ready for `not_ready_minutes` (1..=1440,
+  # 45); or the heartbeat lists its model with no call in flight and the last call ended longer
+  # ago than the model's `idle_timeout_minutes`, never less than `stale_minutes`. It never
+  # terminates any other pod. Each termination, and each failed account read, is one JSON line
+  # (`llm-gateway.watchdog/1`) on standard error. A value outside its range is `config:value`
+  # naming `watchdog.<key>`. Proved by `watchdog::tests` and `heartbeat::tests` in
+  # crates/llm-gateway-cli/src.
+  - name: llm-gateway.deployment.WatchdogDeclaration
+    kind: struct
+    fields:
+      - {name: heartbeat_file, type: 'Optional<String>'}
+      - {name: heartbeat_seconds, type: Integer}
+      - {name: poll_seconds, type: Integer}
+      - {name: stale_minutes, type: Integer}
+      - {name: not_ready_minutes, type: Integer}
+      - {name: max_runtime_hours, type: Integer}
+      - {name: min_balance_usd, type: Decimal}
   # Why `b10x-llm-gateway credential set` refused (CredentialSetCommand), reported as
   # `credential:<rule>`:
   #   `credential:unknown-target`     `--model` names no `[hosted.*]` or `[models.*]` alias, or

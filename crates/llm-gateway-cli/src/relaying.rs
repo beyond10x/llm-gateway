@@ -1085,6 +1085,20 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
             Some(effort) => relayed.with_reasoning_effort(effort),
             None => relayed,
         };
+        let relayed = if hosted.auth_kind == llm_gateway::AuthKind::Client {
+            relayed.with_client_credentials()
+        } else {
+            relayed
+        };
+        let relayed = match &hosted.model_prefix {
+            Some(prefix) => relayed.with_model_prefix(prefix).map_err(|error| {
+                Refusal::new(
+                    StartupRefusal::ConfigValue,
+                    format!("hosted.{alias}.model_prefix: {error}"),
+                )
+            })?,
+            None => relayed,
+        };
         models.push(match hosted.context_window {
             Some(window) => relayed.with_context_window(u64::from(window)),
             None => relayed,

@@ -1400,6 +1400,9 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
             session: request
                 .field(relay::CALLER_SESSION_HEADER)
                 .map(str::to_owned),
+            client_credentials: (shared.config.ingress_auth == IngressAuth::None)
+                .then(|| relay::ClientCredentials::read(|name| request.header(name)))
+                .flatten(),
         }),
         Err(code) => Outcome::Refused(code),
     }

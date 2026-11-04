@@ -134,11 +134,11 @@ pub enum Invocation {
 impl Invocation {
     /// The command line `args` (the program first) selects.
     pub fn from_args(args: Vec<OsString>) -> Self {
-        let rest = || args.iter().skip(1).cloned().collect();
-        match args.get(1).and_then(|first| first.to_str()) {
-            Some("credential") => Self::Credential(rest()),
-            Some("serve") => Self::ServeCommand(rest()),
-            Some("watchdog") => Self::Watchdog(rest()),
+        let rest: Vec<OsString> = args.into_iter().skip(1).collect();
+        match rest.first().and_then(|first| first.to_str()) {
+            Some("credential") => Self::Credential(rest),
+            Some("serve") => Self::ServeCommand(rest),
+            Some("watchdog") => Self::Watchdog(rest),
             _ => Self::Serve,
         }
     }

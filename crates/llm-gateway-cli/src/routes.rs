@@ -420,7 +420,7 @@ impl Routes {
                         "is required for an api-key endpoint",
                     ));
                 }
-                (AuthKind::AwsSigv4, _) => {
+                (AuthKind::AwsSigv4 | AuthKind::Client, _) => {
                     return Err(value(
                         &format!("routes.{}.auth", endpoint.name),
                         "is no auth kind a routes-document endpoint takes",

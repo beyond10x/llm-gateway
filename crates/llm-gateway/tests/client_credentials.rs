@@ -114,8 +114,7 @@ fn relay(marked: bool, prefix: bool, owner: bool, model: &str) -> Relayed {
     let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
     let verifier: Arc<dyn OwnerVerifier> = if owner {
         Arc::new(
-            SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap())
-                .unwrap(),
+            SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
         )
     } else {
         config.ingress_auth = IngressAuth::None;
@@ -174,7 +173,11 @@ fn head(request: &str) -> Vec<String> {
 #[test]
 fn a_marked_model_forwards_the_four_headers_byte_for_byte_and_nothing_else() {
     let relayed = relay(true, false, false, "claude");
-    assert!(relayed.answer.starts_with("HTTP/1.1 200 "), "{}", relayed.answer);
+    assert!(
+        relayed.answer.starts_with("HTTP/1.1 200 "),
+        "{}",
+        relayed.answer
+    );
     let head = head(&relayed.request);
     for line in FORWARDED {
         assert_eq!(
@@ -195,13 +198,20 @@ fn a_marked_model_forwards_the_four_headers_byte_for_byte_and_nothing_else() {
             "{absent} is never forwarded: {head:?}"
         );
     }
-    assert!(head[0].starts_with("POST /v1/messages HTTP/1.1"), "{head:?}");
+    assert!(
+        head[0].starts_with("POST /v1/messages HTTP/1.1"),
+        "{head:?}"
+    );
 }
 
 #[test]
 fn an_unmarked_model_forwards_none_of_them() {
     let relayed = relay(false, false, false, "claude");
-    assert!(relayed.answer.starts_with("HTTP/1.1 200 "), "{}", relayed.answer);
+    assert!(
+        relayed.answer.starts_with("HTTP/1.1 200 "),
+        "{}",
+        relayed.answer
+    );
     for secret in ["SUBSCRIPTION-TOKEN", "CLIENT-KEY", "anthropic-"] {
         assert!(
             !relayed.request.contains(secret),
@@ -214,7 +224,11 @@ fn an_unmarked_model_forwards_none_of_them() {
 #[test]
 fn a_gateway_that_authenticates_its_owner_never_forwards_the_owner_credential() {
     let relayed = relay(true, false, true, "claude");
-    assert!(relayed.answer.starts_with("HTTP/1.1 200 "), "{}", relayed.answer);
+    assert!(
+        relayed.answer.starts_with("HTTP/1.1 200 "),
+        "{}",
+        relayed.answer
+    );
     for secret in [OWNER, "CLIENT-KEY", "authorization", "anthropic-beta"] {
         assert!(
             !relayed.request.contains(secret),
@@ -227,7 +241,11 @@ fn a_gateway_that_authenticates_its_owner_never_forwards_the_owner_credential() 
 #[test]
 fn a_prefix_serves_every_name_with_it_relayed_as_sent() {
     let relayed = relay(true, true, false, "claude-opus-4-7");
-    assert!(relayed.answer.starts_with("HTTP/1.1 200 "), "{}", relayed.answer);
+    assert!(
+        relayed.answer.starts_with("HTTP/1.1 200 "),
+        "{}",
+        relayed.answer
+    );
     assert!(
         relayed.request.contains(r#""model":"claude-opus-4-7""#),
         "{}",
@@ -239,7 +257,11 @@ fn a_prefix_serves_every_name_with_it_relayed_as_sent() {
         "a name without the prefix is model-unknown: {}",
         unknown.answer
     );
-    assert!(unknown.answer.contains("model-unknown"), "{}", unknown.answer);
+    assert!(
+        unknown.answer.contains("model-unknown"),
+        "{}",
+        unknown.answer
+    );
 }
 
 #[test]

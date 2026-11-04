@@ -1692,6 +1692,7 @@ mod relay {
             RelayError::NoWire => "no-wire",
             RelayError::RepeatedWire => "repeated-wire",
             RelayError::DuplicateModel => "duplicate-model",
+            RelayError::EmptyPrefix => "empty-prefix",
         }
     }
 

@@ -25,12 +25,14 @@ domain: llm-gateway.upstream
 # (docs/gateway.md "What the crate cannot do, structurally").
 types:
   # How a target authenticates upstream (inventory.rs, wire names `anonymous`, `bearer`,
-  # `api-key`, `aws-sigv4`). The kind is inspectable; the material is never in the inventory.
+  # `api-key`, `aws-sigv4`, `client`). `Client`: no credential of the gateway's; the client's own
+  # `authorization`, `x-api-key`, `anthropic-version` and `anthropic-beta` are forwarded to
+  # `https://api.anthropic.com` (story:subscription-passthrough). The kind is inspectable; the material is never in the inventory.
   # `AwsSigv4`: an Amazon Bedrock model, each request signed with AWS Signature Version 4 by
   # llm's Bedrock client from the container credentials (HostedEndpoint `kind` below).
   - name: llm-gateway.upstream.AuthKind
     kind: enum
-    variants: [Anonymous, Bearer, ApiKey, AwsSigv4]
+    variants: [Anonymous, Bearer, ApiKey, AwsSigv4, Client]
   # What serves a hosted model: `Endpoint`, an endpoint speaking one of the three wires, or
   # `Bedrock`, Amazon Bedrock Runtime reached through llm's Bedrock client (wire names
   # `endpoint`, `bedrock`; the deployment document's `kind`, default `endpoint`).

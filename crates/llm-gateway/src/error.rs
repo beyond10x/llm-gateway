@@ -299,6 +299,8 @@ closed_enum! {
         RepeatedWire => "a relayed model names one wire twice";
         /// Two models with one alias.
         DuplicateModel => "two relayed models declare the same alias";
+        /// A model name prefix that is empty.
+        EmptyPrefix => "a relayed model's name prefix must not be empty";
     }
 }
 

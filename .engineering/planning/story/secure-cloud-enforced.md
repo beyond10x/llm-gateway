@@ -2,21 +2,25 @@
 format: aep.planning-md/3
 id: story:secure-cloud-enforced
 kind: story
-status: draft
+status: implemented
 title: Every pod the gateway creates is a Secure Cloud, on-demand pod of an allowed image
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
 scope:
 - confidence: cited
+  path: crates/llm-gateway-cli/src/config.rs
+- confidence: cited
   path: crates/llm-runpod/src/config.rs
 - confidence: cited
   path: crates/llm-runpod/src/provider.rs
 - confidence: cited
-  path: crates/llm-gateway-cli/src/config.rs
-- confidence: cited
   path: spec/domains/deployment.yaml
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-04T16:18:55Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-04T16:18:55Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-04T16:18:55Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

@@ -2,19 +2,23 @@
 format: aep.planning-md/3
 id: story:subscription-passthrough
 kind: story
-status: draft
+status: implemented
 title: A hosted route to api.anthropic.com forwards the client's own credential
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
 scope:
 - confidence: cited
-  path: crates/llm-gateway/src/relay.rs
-- confidence: cited
   path: crates/llm-gateway-cli/src/hosted.rs
 - confidence: cited
+  path: crates/llm-gateway/src/relay.rs
+- confidence: cited
   path: docs/gateway.md
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-04T16:18:56Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-04T16:18:56Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-04T16:18:56Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

@@ -2,19 +2,23 @@
 format: aep.planning-md/3
 id: story:pod-watchdog
 kind: story
-status: draft
+status: implemented
 title: A watchdog process stops the gateway's pods when the gateway cannot
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
 scope:
 - confidence: cited
-  path: crates/llm-gateway-cli/src/watchdog.rs
-- confidence: cited
   path: crates/llm-gateway-cli/src/heartbeat.rs
 - confidence: cited
+  path: crates/llm-gateway-cli/src/watchdog.rs
+- confidence: cited
   path: deploy/systemd/llm-gateway-watchdog.service
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-04T16:18:56Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-04T16:18:56Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-04T16:18:56Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

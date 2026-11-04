@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:live-dashboard
 kind: story
-status: draft
+status: implemented
 title: A live dashboard and Prometheus series show every call, session and owned pod
 relations:
 - decomposes: epic:gateway-features
@@ -13,14 +13,18 @@ scope:
 - confidence: cited
   path: crates/llm-gateway/src/dashboard.rs
 - confidence: cited
-  path: crates/llm-gateway/src/usage.rs
-- confidence: cited
   path: crates/llm-gateway/src/metrics.rs
 - confidence: cited
   path: crates/llm-gateway/src/server.rs
 - confidence: cited
+  path: crates/llm-gateway/src/usage.rs
+- confidence: cited
   path: dashboard/src/App.vue
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-04T16:18:57Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-04T16:18:57Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-04T16:18:57Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

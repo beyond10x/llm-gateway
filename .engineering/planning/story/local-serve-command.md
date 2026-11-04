@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:local-serve-command
 kind: story
-status: draft
+status: implemented
 title: b10x-llm-gateway serve reads the operator's own document by default
 relations:
 - decomposes: epic:gateway-features
@@ -14,7 +14,11 @@ scope:
   path: crates/llm-gateway-cli/src/serve.rs
 - confidence: cited
   path: crates/llm-gateway-cli/tests/binary.rs
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-04T16:18:54Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-04T16:18:54Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-04T16:18:54Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

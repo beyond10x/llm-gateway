@@ -2,23 +2,27 @@
 format: aep.planning-md/3
 id: story:keychain-references
 kind: story
-status: draft
+status: implemented
 title: A local gateway reads its keys from the OS keychain and manages Runpod pods without connectors
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
 scope:
 - confidence: cited
-  path: crates/llm-gateway-cli/src/keychain.rs
-- confidence: cited
   path: crates/llm-gateway-cli/src/config.rs
+- confidence: cited
+  path: crates/llm-gateway-cli/src/keychain.rs
 - confidence: cited
   path: crates/llm-gateway-cli/src/routes.rs
 - confidence: cited
   path: crates/llm-runpod/src/transport/rest.rs
 - confidence: cited
   path: docs/design/runpod-clients.md
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-04T16:18:55Z", actor: "human:timo", revision: 2, decided_on: {"recorded":{"test_result":1}}}
+- {from: "proposed", to: "active", at: "2026-11-04T16:18:55Z", actor: "human:timo", revision: 3, decided_on: {"recorded":{"test_result":1}}}
+- {from: "active", to: "implemented", at: "2026-11-04T16:18:55Z", actor: "human:timo", revision: 4, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Outcome
 

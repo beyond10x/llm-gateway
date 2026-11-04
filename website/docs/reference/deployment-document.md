@@ -16,8 +16,9 @@ outside its rule is refused as `config:value`. Either refusal exits 1 before any
 b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `profiles`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `tool_calling`, `price_per_hour_usd`
 ```
 
-The document holds no Runpod API key: that key stays in the connectors keyring, which is why
-`runpod_api_key_file` above is refused. The specification of the document is the domain
+The document holds no Runpod API key: with a `connectors` table that key stays in the connectors
+keyring, and a local gateway names it by an OS keychain entry, never a value or a file, which is
+why `runpod_api_key_file` above is refused ([keychain references](#keychain-references)). The specification of the document is the domain
 `llm-gateway.deployment`, in
 [`spec/domains/deployment.yaml`](https://github.com/beyond10x/llm-gateway/blob/main/spec/domains/deployment.yaml).
 
@@ -41,7 +42,8 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | --- | --- | --- |
 | `kind` | required | `runpod-vllm` |
 | `cloud_type` | `SECURE` | Only `SECURE`. `COMMUNITY` is refused `config:schema`: every pod is a Secure Cloud, on-demand pod, and a created pod placed anywhere else is terminated at once. |
-| `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one. |
+| `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one, or an `api_key`. |
+| `api_key` | absent | A [`keychain:<service>/<account>`](#keychain-references) reference to the account's Runpod API key: the binary then calls Runpod's REST API (`https://rest.runpod.io/v1`) itself, over TLS verified against the roots compiled into it. Refused beside a `connectors` table, and on more than one provider. The key is read once at start and refused as `endpoint-credential:<rule>`, its message starting `providers.<name>.api_key:`. A start that cannot read one complete pod listing serves the provider's models `target-unavailable`, as for an unreachable connectors connection. |
 | `daily_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in one UTC day. A pod start of one of this provider's models that would pass it is refused `spend-ceiling`; a ceiling binds no other provider's pods. |
 | `total_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in all. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
 
@@ -85,6 +87,7 @@ a provider that declares a ceiling starts no pod and every start is refused `spe
 | `start_wait_seconds` | 600 | 10 to 3600: the pod's startup deadline. |
 | `request_hold_seconds` | `start_wait_seconds` | 0 to `start_wait_seconds`: how long one request waits for a starting pod. |
 | `vllm_api_key_file` | absent | The file holding the key the model's vLLM server expects. |
+| `vllm_api_key` | absent | A [`keychain:<service>/<account>`](#keychain-references) reference to that key, in place of the file: refused beside `vllm_api_key_file`, and as `vllm-api-key:<rule>` when the entry cannot be read. |
 | `price_per_hour_usd` | absent | Above 0, at most 1000: the most the model's pod costs per hour on any of its GPU types, which the spend check prices it by. Required once a provider declares a spend ceiling. |
 
 Without `profiles`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` and
@@ -116,7 +119,8 @@ of its targets with its `auth_kind` and `billing_kind`, never its URL or credent
 | `wires` | required | A non-empty set of `chat`, `responses`, `messages`, none repeated. |
 | `base_url` | required | `http://` or `https://`, a `host[:port]` of at most 256 characters, then an optional base path: no query, fragment or user information. A base path is 1 to 32 segments of `A-Z`, `a-z`, `0-9`, `-`, `.`, `_`, `~`, at most 256 bytes, with no empty, `.` or `..` segment; one final `/` is dropped. An `http` URL for a `bearer` or `api-key` endpoint must name a loopback host (`127.0.0.0/8`, `::1` or `localhost`): a credential is never sent in cleartext to a remote host. |
 | `auth_kind` | required | `anonymous`, `bearer` or `api-key`. |
-| `credential_file` | absent | The file holding the credential: required unless `auth_kind` is `anonymous`, and refused when it is. |
+| `credential_file` | absent | The file holding the credential: this or `credential` is required unless `auth_kind` is `anonymous` or `client`, and refused when it is. |
+| `credential` | absent | A [`keychain:<service>/<account>`](#keychain-references) reference to the credential, in place of `credential_file`: refused beside it, on a Bedrock model, and as `endpoint-credential:<rule>`, its message starting `hosted.<alias>.credential:`, when the entry cannot be read. `credential set` refuses such a model: store the key with the platform's tool. |
 | `credential_header` | absent | The header an `api-key` endpoint receives the credential in, 1 to 64 token characters: required for `api-key`, refused otherwise, and never `authorization`, `host` or a header that frames a message. |
 | `[hosted.<alias>.headers]` | absent | Static, non-secret request headers, name to string value, sent with every request (below). On an OpenCode Go endpoint a static `x-opencode-session` is only a fallback. |
 | `billing_kind` | `metered` | `metered`, `subscription` or `self-hosted`. |
@@ -242,8 +246,8 @@ A changed routes document takes a restart.
 | The file is read through the trusted-file reader (below): at most 2 MiB, llm's own bound, and not group- or world-writable. | `config:<rule>`, its message starting `routes:` and naming the rule, never the path |
 | A document llm refuses: malformed YAML, an unknown field, a repeated key, an unknown format, protocol, auth kind or secret source, a literal secret, a relative `file:` path, a route to an undeclared endpoint. | `config:value`, its message `routes <llm's message>`, which names a field, endpoint or route and never a value |
 | A Bedrock endpoint (`bedrock: {region: ..}`), a route's `aliases` and a route's `price`, which llm admits and the gateway does not serve, are refused, never ignored: a Bedrock model is a [`kind = "bedrock"`](#bedrock-models) hosted model, and the gateway prices no routed call. | `config:value` naming `routes.<endpoint>`, `routes.<route>.aliases` or `routes.<route>.price` |
-| A credentialed endpoint's `auth.secret` is a `file:` reference: an absolute path, or `~/<path>` resolved against `HOME`. An `env:` or `keychain:` secret is refused: the gateway reads credentials only from trusted files. | `config:value` naming `routes.<endpoint>.auth.secret` |
-| The key file is read once at start, as a hosted model's `credential_file` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret:` and naming the rule, never the path |
+| A credentialed endpoint's `auth.secret` is a `file:` reference, an absolute path or `~/<path>` resolved against `HOME`, or a [`keychain:<service>/<account>`](#keychain-references) reference. An `env:` secret is refused: the gateway reads credentials from trusted files and the OS keychain only. | `config:value` naming `routes.<endpoint>.auth.secret` |
+| The key file or keychain entry is read once at start, as a hosted model's `credential_file` or `credential` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret:` and naming the rule, never the path |
 | `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |
 | An `api-key` endpoint's `auth.header` is one a hosted model's `credential_header` may be, and on a `messages` endpoint it is not `anthropic-version` (in any case), the header every request to such an endpoint is sent. | `config:value` naming `routes.<endpoint>.auth.header` |
 | A route name is not also a `[models.<alias>]` or `[hosted.<alias>]` alias. | `config:value` naming `routes.<route>` |
@@ -252,7 +256,7 @@ A changed routes document takes a restart.
 An endpoint whose key is `secret: "env:ANTHROPIC_API_KEY"`:
 
 ```text
-b10x-llm-gateway: refused config:value: routes.anthropic.auth.secret must be a file: reference: the gateway reads a credential only from a trusted file, never from an env: variable or a keychain: entry
+b10x-llm-gateway: refused config:value: routes.anthropic.auth.secret must be a file: or keychain: reference: the gateway reads a credential from a trusted file or the OS keychain, never from an env: variable
 ```
 
 A route is served under its endpoint's credential (`bearer` or `api-key` in its `auth.header`,
@@ -327,3 +331,36 @@ file's directory to exist and to be owned by you or root and not group- or world
 no other user can replace the file. Its success line and its refusals about the file or its
 directory name the setting (`hosted.<alias>.credential_file`, `routes.<endpoint>.auth.secret`),
 never the path.
+
+### Keychain references {#keychain-references}
+
+A gateway run by one operator on their own machine may name a credential by an OS keychain entry
+instead of a file: `keychain:<service>/<account>`, split at the first `/`, each name 1 to 256
+printable ASCII characters without a space. The keys that take one are a provider's `api_key`, a
+model's `vllm_api_key`, a hosted model's `credential` and a route endpoint's `auth.secret`. A
+gateway in a cluster names files: it never assumes a desktop keychain.
+
+The entry is read once, at start, through the platform's own tool, which receives the two names
+and nothing else: `secret-tool lookup service <service> account <account>` on Linux (libsecret,
+with any Secret Service such as GNOME Keyring or KWallet), and
+`security find-generic-password -s <service> -a <account> -w` on macOS. The value is read from
+the tool's standard output into memory that is overwritten when it is let go, and is taken by
+the token rule above: one trailing line ending is trimmed, and the rest must be one printable
+ASCII token of at most 4096 bytes. An entry the keychain does not hold, a keychain the tool cannot
+read (no tool, a locked keychain, a refused unlock prompt) and a value outside the token rule each
+refuse the start, as `<source>:unreadable`, `<source>:too-large` or `<source>:not-a-token`, the
+source being the key's own (`endpoint-credential` for `api_key`, `credential` and `auth.secret`,
+`vllm-api-key` for `vllm_api_key`). The message names the document key and never the reference
+or the value.
+
+Store an entry with the same tool, reading the value from standard input so that it reaches no
+argument list or shell history:
+
+```shell
+secret-tool store --label="Runpod API key" service llm-gateway account runpod
+security add-generic-password -s llm-gateway -a runpod -w
+```
+
+`secret-tool store` prompts for the value on a terminal and otherwise reads it from standard
+input; `security add-generic-password` with `-w` as its last option prompts for it. Both are the
+tools' documented forms and are untested here.

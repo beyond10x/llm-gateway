@@ -28,8 +28,8 @@ use llm_gateway::{
 use llm_runpod::{
     CleanupReport, Clock, ComputeAuthorization, ConnectorsBinding, ConnectorsRunpod, Hold,
     HostingPolicy, Identifier, LeaseRegistry, ModelPhase, ModelStatus, PodListing, PodStream,
-    PodTls, PoolError, RunpodModel, RunpodPool, RunpodTransport, SpendPolicy, SpendRefusal,
-    StreamLease,
+    PodTls, PoolError, RestBinding, RestRunpod, RunpodModel, RunpodPool, RunpodTransport,
+    SpendPolicy, SpendRefusal, StreamLease,
 };
 use std::{
     collections::BTreeMap,
@@ -366,7 +366,7 @@ fn relayed_models(
         let key = keys.get(alias).ok_or_else(|| {
             Refusal::new(
                 StartupRefusal::ConfigValue,
-                format!("{at} is required to relay to a Runpod pod"),
+                format!("{at} is required to relay to a Runpod pod, or its vllm_api_key"),
             )
         })?;
         let bearer = TargetBearer::new(key.expose().to_vec()).map_err(|error| {
@@ -957,6 +957,13 @@ where
     F: FnOnce(ConnectorsRunpod) -> W,
 {
     let parts = Parts::read(deployment, &pods)?;
+    if let Some((provider, reference)) = deployment
+        .providers
+        .iter()
+        .find_map(|(name, provider)| Some((name, provider.api_key.clone()?)))
+    {
+        return start_rest(deployment, parts, provider, &reference, pods);
+    }
     let connected = deployment
         .providers
         .iter()
@@ -999,6 +1006,74 @@ where
     let pool = Arc::new(runpod_pool(
         &subset,
         wrap(transport),
+        Arc::new(WallClock::default()),
+    )?);
+    let targets = PoolTargets::from_relayed(
+        relayed,
+        authorization,
+        Arc::clone(&pool),
+        pods,
+        Arc::clone(&parts.stopping),
+        Arc::clone(&parts.metrics),
+    );
+    let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
+    compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
+}
+
+/// The composition for a provider that names its Runpod API key by a keychain entry
+/// (story:keychain-references): the key is read once from the OS keychain, and the provider's
+/// models run through one `RunpodPool` over `RestRunpod`, which calls Runpod's REST API itself
+/// over the pod connector's TLS. When one complete pod listing cannot be read at start, no pool
+/// is composed and its models are `target-unavailable`, as for an unreachable `connectors`
+/// connection. A key the keychain does not yield refuses the start with an
+/// `endpoint-credential:*` refusal naming `providers.<name>.api_key`.
+fn start_rest(
+    deployment: &Deployment,
+    parts: Parts,
+    provider: &str,
+    reference: &crate::keychain::KeychainRef,
+    pods: Arc<dyn PodConnector>,
+) -> Result<Relaying, Refusal> {
+    let mut subset = deployment.clone();
+    subset.models.retain(|_, model| model.provider == provider);
+    subset.providers.retain(|name, _| name == provider);
+    if subset.models.is_empty() {
+        return compose(deployment, parts, Arc::new(Unconnected), None);
+    }
+    runpod_models(&subset)?;
+    hosting_policy(&subset)?;
+    spend_policy(&subset)?;
+    let authorization = compute_authorization_for(&subset)?;
+    let relayed = relayed_models(&subset, &parts.vllm_keys)?;
+    let key = crate::keychain::read_keychain_token(
+        reference,
+        &format!("providers.{provider}.api_key"),
+        (
+            StartupRefusal::EndpointCredentialUnreadable,
+            StartupRefusal::EndpointCredentialTooLarge,
+            StartupRefusal::EndpointCredentialNotAToken,
+        ),
+    )?;
+    let mut transport = RestRunpod::new(RestBinding::runpod(), key);
+    transport.set_tls(Arc::new(ProbeOver(Arc::clone(&pods))));
+    if !transport
+        .list_pods()
+        .is_ok_and(|listing: PodListing| listing.complete)
+    {
+        tracing::warn!(
+            provider,
+            "Runpod REST API unreachable; its models answer target-unavailable"
+        );
+        return compose(deployment, parts, Arc::new(Unconnected), None);
+    }
+    for alias in subset.models.keys() {
+        if let Some(key) = parts.vllm_keys.get(alias) {
+            transport.set_vllm_key(alias, key.expose().to_vec());
+        }
+    }
+    let pool = Arc::new(runpod_pool(
+        &subset,
+        transport,
         Arc::new(WallClock::default()),
     )?);
     let targets = PoolTargets::from_relayed(

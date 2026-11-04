@@ -11,8 +11,9 @@
 //! request on the endpoint's own wire is relayed byte for byte to its base path; a request on
 //! another wire is translated under the route's capabilities.
 //!
-//! Credentials come only from trusted files, as every other credential of the gateway: an
-//! `env:` or `keychain:` secret is refused, and a `file:` secret is read once at start with the
+//! Credentials come from trusted files or the OS keychain, as every other credential of the
+//! gateway: an `env:` secret is refused, a `keychain:` entry is read once at start
+//! ([`crate::keychain`]), and a `file:` secret is read once at start with the
 //! endpoint-credential policy, a `~/` path resolved against `HOME`.
 
 use crate::{
@@ -65,19 +66,24 @@ pub const MAX_ROUTE_NAME_BYTES: usize = LABEL_BYTES - 1 - LONGEST_WIRE_LABEL;
 /// How much of a refused route name a message quotes.
 const QUOTED_NAME_BYTES: usize = 32;
 
-/// Where an endpoint's `file:` secret lives: an absolute path, or one below `HOME`.
+/// Where an endpoint's secret lives: a `file:` secret's absolute path or one below `HOME`, or a
+/// `keychain:` entry (story:keychain-references).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum SecretFile {
     Absolute(PathBuf),
     /// Relative to the home directory (`file:~/<path>`).
     Home(PathBuf),
+    /// An entry of the OS keychain (`keychain:<service>/<account>`).
+    Keychain(crate::keychain::KeychainRef),
 }
 
 impl SecretFile {
-    /// The file's path, a [`Self::Home`] one joined to `home`; `None` without an absolute home.
+    /// The file's path, a [`Self::Home`] one joined to `home`; `None` without an absolute home,
+    /// and for a keychain entry, which is no file.
     pub fn resolve(&self, home: Option<&Path>) -> Option<PathBuf> {
         match self {
             Self::Absolute(path) => Some(path.clone()),
+            Self::Keychain(_) => None,
             Self::Home(relative) => home
                 .filter(|home| home.is_absolute())
                 .map(|home| home.join(relative)),
@@ -210,7 +216,7 @@ impl Routes {
     ///
     /// # Errors
     /// `config:value`: `routes <llm's message>` for a document llm refuses, and otherwise naming
-    /// `routes.<endpoint>.auth.secret` for an `env:` or `keychain:` secret,
+    /// `routes.<endpoint>.auth.secret` for an `env:` secret or a malformed `keychain:` one,
     /// `routes.<endpoint>.base_url` for a URL without its API path, one outside the base-path
     /// rule or one sending a credential over `http` to a remote host, and
     /// `routes.<endpoint>.auth.header` for a header the gateway will not send a credential in.
@@ -355,21 +361,33 @@ impl Routes {
                 continue;
             };
             let key = format!("routes.{}.auth.secret", endpoint.name);
-            let path = secret.resolve(home).ok_or_else(|| {
-                value(
+            let material = if let SecretFile::Keychain(reference) = secret {
+                crate::keychain::read_keychain_token(
+                    reference,
                     &key,
-                    "names a file:~/ path, and HOME is not set to an absolute directory",
-                )
-            })?;
-            let material = read_token(
-                &path,
-                &key,
-                &trusted::ENDPOINT_CREDENTIAL,
-                (
-                    StartupRefusal::EndpointCredentialTooLarge,
-                    StartupRefusal::EndpointCredentialNotAToken,
-                ),
-            )?;
+                    (
+                        StartupRefusal::EndpointCredentialUnreadable,
+                        StartupRefusal::EndpointCredentialTooLarge,
+                        StartupRefusal::EndpointCredentialNotAToken,
+                    ),
+                )?
+            } else {
+                let path = secret.resolve(home).ok_or_else(|| {
+                    value(
+                        &key,
+                        "names a file:~/ path, and HOME is not set to an absolute directory",
+                    )
+                })?;
+                read_token(
+                    &path,
+                    &key,
+                    &trusted::ENDPOINT_CREDENTIAL,
+                    (
+                        StartupRefusal::EndpointCredentialTooLarge,
+                        StartupRefusal::EndpointCredentialNotAToken,
+                    ),
+                )?
+            };
             let bearer = TargetBearer::new(material).map_err(|error| {
                 Refusal::new(
                     StartupRefusal::EndpointCredentialNotAToken,
@@ -507,13 +525,25 @@ fn endpoint(
     };
     let secret = match declaration.secret_kind() {
         None => None,
-        Some(SecretKind::Environment | SecretKind::Keychain) => {
+        Some(SecretKind::Environment) => {
             return Err(value(
                 &key("auth.secret"),
-                "must be a file: reference: the gateway reads a credential only from a trusted \
-                 file, never from an env: variable or a keychain: entry",
+                "must be a file: or keychain: reference: the gateway reads a credential from a \
+                 trusted file or the OS keychain, never from an env: variable",
             ));
         }
+        Some(SecretKind::Keychain) => Some(
+            secret
+                .and_then(crate::keychain::KeychainRef::parse)
+                .map(SecretFile::Keychain)
+                .ok_or_else(|| {
+                    value(
+                        &key("auth.secret"),
+                        "must be a keychain:<service>/<account> reference: each name 1..=256 \
+                         printable ASCII characters without a space",
+                    )
+                })?,
+        ),
         Some(SecretKind::File) => Some(secret_file(&key("auth.secret"), secret)?),
     };
     let base_url = declaration.base_url().as_str().to_owned();

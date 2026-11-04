@@ -15,6 +15,7 @@ mod config;
 mod credential;
 mod decode;
 mod hosted;
+mod keychain;
 mod keys;
 mod launch;
 mod logging;
@@ -39,6 +40,10 @@ pub use decode::Decoder;
 pub use hosted::{
     BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
     HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, Scheme, check_headers,
+};
+pub use keychain::{
+    EntryValue, KEYCHAIN_PREFIX, KeychainRef, LookupFailure, MAX_KEYCHAIN_NAME_BYTES, OsKeychain,
+    SecretSource, install_secret_source,
 };
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use logging::{TracingRecords, install_logging, log_filter};

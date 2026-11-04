@@ -7,7 +7,7 @@
 
 use std::fmt::Write as _;
 
-use super::{State, escape, series};
+use super::{RouteTotals, State, escape, series};
 use crate::json::Writer;
 
 /// One route's upstream server, read by the embedding ([`super::Dashboard::set_upstream`]).
@@ -38,16 +38,90 @@ impl UpstreamStats {
     }
 }
 
-/// The hit rate over every route's upstream, and the tokens hit.
-#[allow(clippy::cast_precision_loss)]
-pub(super) fn server_cache(state: &State) -> (Option<f64>, u64) {
-    let (hits, queries) = state.upstreams.values().fold((0_u64, 0_u64), |(h, q), up| {
-        (
-            h.saturating_add(up.prefix_cache_hit_tokens),
-            q.saturating_add(up.prefix_cache_query_tokens),
-        )
-    });
-    ((queries > 0).then(|| hits as f64 / queries as f64), hits)
+/// One route's cache figures, and where they come from.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct RouteCache {
+    /// `"vllm"` when the route's upstream server reported its prefix cache, else `"calls"`.
+    pub(super) source: &'static str,
+    /// Prompt tokens served from a cache.
+    pub(super) read: u64,
+    /// Cache creation tokens the calls reported; always 0 for a vLLM server.
+    pub(super) creation: u64,
+    /// Every prompt token: cached, written to the cache and uncached.
+    pub(super) prompt: u64,
+}
+
+impl RouteCache {
+    /// Cache reads over every prompt token; `None` before any prompt token was counted.
+    #[allow(clippy::cast_precision_loss)]
+    pub(super) fn hit_rate(&self) -> Option<f64> {
+        (self.prompt > 0).then(|| self.read as f64 / self.prompt as f64)
+    }
+
+    /// Prompt tokens no cache served and none was written from.
+    pub(super) fn uncached(&self) -> u64 {
+        self.prompt
+            .saturating_sub(self.read)
+            .saturating_sub(self.creation)
+    }
+}
+
+/// A route's cache: a vLLM server's own prefix-cache counters when the embedding read them,
+/// because its answers carry no cache field, else what the route's calls reported.
+pub(super) fn route_cache(totals: &RouteTotals, upstream: Option<&UpstreamStats>) -> RouteCache {
+    match upstream {
+        Some(up) => RouteCache {
+            source: "vllm",
+            read: up.prefix_cache_hit_tokens,
+            creation: 0,
+            prompt: up.prefix_cache_query_tokens.max(up.prefix_cache_hit_tokens),
+        },
+        None => RouteCache {
+            source: "calls",
+            read: totals.cache_read_tokens,
+            creation: totals.cache_creation_tokens,
+            prompt: totals.cache_read_tokens
+                + totals.cache_creation_tokens
+                + totals.uncached_input_tokens,
+        },
+    }
+}
+
+/// Every route's cache, by route: the routes with calls, and a route whose server was read
+/// before its first call.
+pub(super) fn route_caches(state: &State) -> Vec<(String, RouteCache)> {
+    let empty = RouteTotals::default();
+    let mut routes: Vec<&String> = state.routes.keys().chain(state.upstreams.keys()).collect();
+    routes.sort();
+    routes.dedup();
+    routes
+        .into_iter()
+        .map(|route| {
+            let totals = state.routes.get(route).unwrap_or(&empty);
+            (
+                route.clone(),
+                route_cache(totals, state.upstreams.get(route)),
+            )
+        })
+        .collect()
+}
+
+/// The cache over every route: reads, creation and prompt tokens summed.
+pub(super) fn overall(state: &State) -> RouteCache {
+    route_caches(state).into_iter().fold(
+        RouteCache {
+            source: "calls",
+            read: 0,
+            creation: 0,
+            prompt: 0,
+        },
+        |sum, (_, route)| RouteCache {
+            source: sum.source,
+            read: sum.read + route.read,
+            creation: sum.creation + route.creation,
+            prompt: sum.prompt + route.prompt,
+        },
+    )
 }
 
 /// The `upstream` member of a route row.

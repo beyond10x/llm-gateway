@@ -1139,7 +1139,7 @@ record types are declared once in `dashboard.rs` (`SNAPSHOT_TYPES`);
   the first token, and only when it has at least `MIN_RATED_OUTPUT_TOKENS` (50) output tokens
   over at least `MIN_RATED_STREAMING_MS` (250 ms); otherwise it is `null`. A `null` rate is left
   out of every average, histogram and KPI.
-- **Cache.** The client-side hit rate is cache read over every input token, from the usage the
+- **Cache.** A route's hit rate is cache read over every prompt token, from the usage the
   answers report (`cache_read_input_tokens`, or `cached_tokens` in `prompt_tokens_details` or
   `input_tokens_details`); a call whose answer reports none has `null` cache fields, never an
   estimate. A vLLM server reports no cache fields in its answers, so for a hosted route on a
@@ -1148,8 +1148,11 @@ record types are declared once in `dashboard.rs` (`SNAPSHOT_TYPES`);
   (`Dashboard::set_upstream`) the increase of `vllm:prefix_cache_hits_total` and
   `vllm:prefix_cache_queries_total` since it began reading, `vllm:num_requests_running`,
   `vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc` and whether `<base path>/models`
-  answered 200. The route row carries it as `upstream`, and the KPI as
-  `server_cache_hit_rate`, labelled server-side (vLLM prefix cache).
+  answered 200. The route row carries it as `upstream`. Such a route's cache figures are the
+  server's (`cache_source` `vllm`): `cache_read_tokens` its hits, its prompt tokens its queries,
+  `cache_hit_rate` the hits over the queries; its calls and sessions keep a `null` cache read. The
+  KPI `cache_hit_rate` and `llmgw_cache_hit_ratio` are every route's cache reads over every
+  route's prompt tokens, both sources together, and `cache_routes` lists each route's figures.
 - **Runpod account.** With a provider whose `api_key` is a keychain reference, the binary reads
   the account every 60 seconds (`Dashboard::set_provider`): balance, spend rate, the pods the
   gateway owns, and every other live pod counted in `other_pods`. A pod a hosted route reaches

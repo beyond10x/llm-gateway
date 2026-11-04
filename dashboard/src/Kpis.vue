@@ -93,14 +93,20 @@ const limits = computed<Limit[]>(() =>
         <div class="sub">{{ tps(kpi.output_rate) }} <span class="muted">last 60 s</span></div>
       </div>
       <div v-if="kpi" class="tile">
-        <div class="label"><abbr title="cache read / (cache read + cache creation + uncached input)">Cache hit rate</abbr></div>
+        <div class="label"><abbr title="cache read / every prompt token, over every route: Anthropic's reported cache, and a vLLM server's prefix-cache hits over its queries">Cache hit rate</abbr></div>
         <div class="value">{{ pct(kpi.cache_hit_rate) }}</div>
         <div class="sub">
           read {{ count(kpi.cache_read_tokens) }} · created {{ count(kpi.cache_creation_tokens) }} · uncached {{ count(kpi.uncached_input_tokens) }}
         </div>
-        <div v-if="kpi.server_cache_hit_rate !== null" class="sub">
-          {{ pct(kpi.server_cache_hit_rate) }} server-side (vLLM prefix cache) · {{ count(kpi.server_cache_hit_tokens) }} tokens hit
-        </div>
+        <table v-if="kpi.cache_routes.length > 0" class="mini">
+          <tbody>
+            <tr v-for="r in kpi.cache_routes" :key="r.route">
+              <th scope="row">{{ r.route }} <span v-if="r.source === 'vllm'" class="badge">vLLM</span></th>
+              <td class="n">{{ pct(r.hit_rate) }}</td>
+              <td class="n">{{ count(r.read_tokens) }} / {{ count(r.prompt_tokens) }}</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
       <div v-if="kpi" class="tile wide">
         <div class="label">Throughput, last 60 s</div>

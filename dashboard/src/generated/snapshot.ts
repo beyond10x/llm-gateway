@@ -72,7 +72,7 @@ export interface SessionRow {
   calls: number;
   input_tokens: number;
   output_tokens: number;
-  cache_read_tokens: number;
+  cache_read_tokens: number | null;
   input_tps: number | null;
   output_tps: number | null;
   last_ms: number;
@@ -87,6 +87,8 @@ export interface RouteRow {
   cache_read_tokens: number;
   cache_creation_tokens: number;
   uncached_input_tokens: number;
+  cache_hit_rate: number | null;
+  cache_source: "calls" | "vllm";
   input_tps: number | null;
   output_tps: number | null;
   in_flight: number;
@@ -145,8 +147,7 @@ export interface Kpi {
   cache_creation_tokens: number;
   uncached_input_tokens: number;
   cache_hit_rate: number | null;
-  server_cache_hit_rate: number | null;
-  server_cache_hit_tokens: number;
+  cache_routes: RouteCache[];
   route_rates: RouteRate[];
 }
 
@@ -154,6 +155,14 @@ export interface RouteRate {
   route: string;
   input_tps: number | null;
   output_tps: number | null;
+}
+
+export interface RouteCache {
+  route: string;
+  source: "calls" | "vllm";
+  hit_rate: number | null;
+  read_tokens: number;
+  prompt_tokens: number;
 }
 
 export interface LimitRow {

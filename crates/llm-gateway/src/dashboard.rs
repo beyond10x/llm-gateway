@@ -151,7 +151,7 @@ const SESSION: RecordType = RecordType {
         ("calls", "number"),
         ("input_tokens", "number"),
         ("output_tokens", "number"),
-        ("cache_read_tokens", "number"),
+        ("cache_read_tokens", "number | null"),
         ("input_tps", "number | null"),
         ("output_tps", "number | null"),
         ("last_ms", "number"),
@@ -169,6 +169,8 @@ const ROUTE: RecordType = RecordType {
         ("cache_read_tokens", "number"),
         ("cache_creation_tokens", "number"),
         ("uncached_input_tokens", "number"),
+        ("cache_hit_rate", "number | null"),
+        ("cache_source", "\"calls\" | \"vllm\""),
         ("input_tps", "number | null"),
         ("output_tps", "number | null"),
         ("in_flight", "number"),
@@ -242,8 +244,7 @@ const KPI: RecordType = RecordType {
         ("cache_creation_tokens", "number"),
         ("uncached_input_tokens", "number"),
         ("cache_hit_rate", "number | null"),
-        ("server_cache_hit_rate", "number | null"),
-        ("server_cache_hit_tokens", "number"),
+        ("cache_routes", "RouteCache[]"),
         ("route_rates", "RouteRate[]"),
     ],
 };
@@ -257,6 +258,17 @@ const ROUTE_RATE: RecordType = RecordType {
     ],
 };
 
+const ROUTE_CACHE: RecordType = RecordType {
+    name: "RouteCache",
+    fields: &[
+        ("route", "string"),
+        ("source", "\"calls\" | \"vllm\""),
+        ("hit_rate", "number | null"),
+        ("read_tokens", "number"),
+        ("prompt_tokens", "number"),
+    ],
+};
+
 const LIMIT: RecordType = RecordType {
     name: "LimitRow",
     fields: &[
@@ -267,7 +279,7 @@ const LIMIT: RecordType = RecordType {
 };
 
 /// Every record type of the snapshot, in the order the generated TypeScript declares them.
-pub const SNAPSHOT_TYPES: [RecordType; 13] = [
+pub const SNAPSHOT_TYPES: [RecordType; 14] = [
     SNAPSHOT,
     CALL,
     ATTEMPT,
@@ -280,6 +292,7 @@ pub const SNAPSHOT_TYPES: [RecordType; 13] = [
     POD_SHUTDOWN,
     KPI,
     ROUTE_RATE,
+    ROUTE_CACHE,
     LIMIT,
 ];
 
@@ -587,6 +600,8 @@ struct SessionTotals {
     input_tokens: u64,
     output_tokens: u64,
     cache_read_tokens: u64,
+    /// Whether any of the session's calls reported a cache read; a vLLM answer reports none.
+    cache_reported: bool,
     /// Input tokens of the calls with a time to first token, and the sum of those times.
     rate_input_tokens: u64,
     ttft_ms: u64,
@@ -867,6 +882,7 @@ impl Dashboard {
         session.input_tokens += usage.input_tokens.unwrap_or(0);
         session.output_tokens += usage.output_tokens.unwrap_or(0);
         session.cache_read_tokens += usage.cache_read_tokens.unwrap_or(0);
+        session.cache_reported |= usage.cache_read_tokens.is_some();
         if let Some((tokens, ttft)) = input_sample(&usage, record.wire, finished.ttft_ms) {
             session.rate_input_tokens += tokens;
             session.ttft_ms += ttft;
@@ -1536,7 +1552,13 @@ fn session_record(writer: &mut Writer, key: &str, totals: &SessionTotals) {
         "calls" => writer.number(totals.calls),
         "input_tokens" => writer.number(totals.input_tokens),
         "output_tokens" => writer.number(totals.output_tokens),
-        "cache_read_tokens" => writer.number(totals.cache_read_tokens),
+        "cache_read_tokens" => {
+            if totals.cache_reported {
+                writer.number(totals.cache_read_tokens);
+            } else {
+                writer.null();
+            }
+        }
         "input_tps" => optional_decimal(writer, totals.input_tps()),
         "output_tps" => optional_decimal(writer, totals.output_tps()),
         "last_ms" => writer.number(totals.last_ms),
@@ -1551,15 +1573,18 @@ fn route_record(
     in_flight: u64,
     upstream: Option<&UpstreamStats>,
 ) {
+    let cache = upstream::route_cache(totals, upstream);
     record(writer, &ROUTE, |writer, key| match key {
         "route" => writer.string(route),
         "calls" => writer.number(totals.calls),
         "errors" => writer.number(totals.errors),
         "input_tokens" => writer.number(totals.input_tokens),
         "output_tokens" => writer.number(totals.output_tokens),
-        "cache_read_tokens" => writer.number(totals.cache_read_tokens),
-        "cache_creation_tokens" => writer.number(totals.cache_creation_tokens),
-        "uncached_input_tokens" => writer.number(totals.uncached_input_tokens),
+        "cache_read_tokens" => writer.number(cache.read),
+        "cache_creation_tokens" => writer.number(cache.creation),
+        "uncached_input_tokens" => writer.number(cache.uncached()),
+        "cache_hit_rate" => optional_decimal(writer, cache.hit_rate()),
+        "cache_source" => writer.string(cache.source),
         "input_tps" => optional_decimal(writer, totals.input_tps.mean()),
         "output_tps" => optional_decimal(writer, totals.output_tps.mean()),
         "in_flight" => writer.number(in_flight),
@@ -1894,6 +1919,123 @@ mod tests {
         );
         assert!(
             metrics.contains("llmgw_input_tps_count{route=\"claude\"} 2\n"),
+            "{metrics}"
+        );
+    }
+
+    /// One finished call on `route` in `session`, with no timing.
+    fn finish_plain(dashboard: &Arc<Dashboard>, route: &str, session: &str, usage: Usage) {
+        let observed = Observed::read(headers(&[("x-claude-code-session-id", session)]));
+        let progress = dashboard.begin(Wire::Messages, &observed);
+        progress.route(route);
+        dashboard.finish(
+            &record(route, 100),
+            Finished {
+                id: progress.id(),
+                started_ms: super::now_ms(),
+                upstream: None,
+                upstream_model: None,
+                queue_wait_ms: None,
+                ttft_ms: None,
+                usage,
+                body_digest: None,
+                client_disconnected: false,
+                upstream_retry_after: None,
+                attempts: Vec::new(),
+                credential: None,
+                usage_note: None,
+                observed,
+            },
+        );
+    }
+
+    /// A Claude call whose answer reported its cache, and a vLLM call whose answer reported
+    /// none, on a route whose server says 600 of 1000 prompt tokens hit its prefix cache.
+    #[test]
+    fn the_cache_hit_rate_joins_reported_cache_reads_and_a_vllm_servers_prefix_cache() {
+        let dashboard = Arc::new(Dashboard::default());
+        for (route, session, usage) in [
+            (
+                "claude",
+                "c",
+                Usage {
+                    input_tokens: Some(2),
+                    output_tokens: Some(10),
+                    cache_read_tokens: Some(4000),
+                    cache_creation_tokens: Some(300),
+                },
+            ),
+            (
+                "qwen",
+                "q",
+                Usage {
+                    input_tokens: Some(1000),
+                    output_tokens: Some(10),
+                    cache_read_tokens: None,
+                    cache_creation_tokens: None,
+                },
+            ),
+        ] {
+            finish_plain(&dashboard, route, session, usage);
+        }
+        dashboard.set_upstream(
+            "qwen",
+            Some(super::UpstreamStats {
+                source: "vllm".to_owned(),
+                read_ms: 1,
+                prefix_cache_hit_tokens: 600,
+                prefix_cache_query_tokens: 1000,
+                ..super::UpstreamStats::default()
+            }),
+        );
+        let snapshot = dashboard.snapshot();
+        let routes = &snapshot
+            [snapshot.find("\"routes\":").unwrap()..snapshot.find("\"provider\":").unwrap()];
+        assert!(
+            routes.contains(
+                "\"cache_read_tokens\":4000,\"cache_creation_tokens\":300,\"uncached_input_tokens\":2,\"cache_hit_rate\":0.930,\"cache_source\":\"calls\""
+            ),
+            "{routes}"
+        );
+        assert!(
+            routes.contains(
+                "\"cache_read_tokens\":600,\"cache_creation_tokens\":0,\"uncached_input_tokens\":400,\"cache_hit_rate\":0.600,\"cache_source\":\"vllm\""
+            ),
+            "the vLLM route's cache is its server's: {routes}"
+        );
+        let kpi = &snapshot[snapshot.find("\"kpi\":").unwrap()..];
+        assert!(
+            kpi.contains(
+                "\"cache_read_tokens\":4600,\"cache_creation_tokens\":300,\"uncached_input_tokens\":402,\"cache_hit_rate\":0.868"
+            ),
+            "4600 of 5302 prompt tokens over both routes: {kpi}"
+        );
+        assert!(
+            kpi.contains("{\"route\":\"qwen\",\"source\":\"vllm\",\"hit_rate\":0.600,\"read_tokens\":600,\"prompt_tokens\":1000}"),
+            "{kpi}"
+        );
+        let sessions = &snapshot
+            [snapshot.find("\"sessions\":").unwrap()..snapshot.find("\"routes\":").unwrap()];
+        assert_eq!(
+            sessions.matches("\"cache_read_tokens\":null").count(),
+            1,
+            "the vLLM session's cache is unknown, never 0: {sessions}"
+        );
+        assert!(
+            sessions.contains("\"cache_read_tokens\":4000"),
+            "{sessions}"
+        );
+        let calls = &snapshot
+            [snapshot.find("\"calls\":").unwrap()..snapshot.find("\"in_flight\":").unwrap()];
+        assert!(calls.contains("\"cache_read_tokens\":null"), "{calls}");
+        let metrics = dashboard.render_prometheus();
+        let ratio = 4600.0_f64 / 5302.0;
+        assert!(
+            metrics.contains(&format!("llmgw_cache_hit_ratio {ratio}\n")),
+            "{metrics}"
+        );
+        assert!(
+            metrics.contains("llmgw_upstream_prefix_cache_hit_ratio{route=\"qwen\"} 0.6\n"),
             "{metrics}"
         );
     }

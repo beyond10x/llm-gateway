@@ -460,13 +460,7 @@ mod tests {
             "{metrics}"
         );
         let snapshot = dashboard.snapshot();
-        assert!(
-            snapshot.contains("\"server_cache_hit_rate\":0.750"),
-            "{snapshot}"
-        );
-        assert!(
-            snapshot.contains("\"server_cache_hit_tokens\":300"),
-            "{snapshot}"
-        );
+        assert!(snapshot.contains("\"cache_hit_rate\":0.750"), "{snapshot}");
+        assert!(snapshot.contains("\"read_tokens\":300"), "{snapshot}");
     }
 }

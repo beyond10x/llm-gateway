@@ -212,6 +212,7 @@ fn optional_decimal(writer: &mut Writer, value: Option<f64>) {
 pub(super) fn kpi_record(writer: &mut Writer, state: &State, now: u64) {
     let totals = totals(state);
     let (input_rate, output_rate) = window_rates(state, now);
+    let cache = super::upstream::overall(state);
     super::record(writer, &super::KPI, |writer, key| match key {
         "input_tokens" => {
             writer.number(totals.uncached + totals.cache_read + totals.cache_creation);
@@ -219,15 +220,24 @@ pub(super) fn kpi_record(writer: &mut Writer, state: &State, now: u64) {
         "output_tokens" => writer.number(totals.output),
         "input_rate" => optional_decimal(writer, input_rate),
         "output_rate" => optional_decimal(writer, output_rate),
-        "cache_read_tokens" => writer.number(totals.cache_read),
-        "cache_creation_tokens" => writer.number(totals.cache_creation),
-        "uncached_input_tokens" => writer.number(totals.uncached),
-        "cache_hit_rate" => optional_decimal(
-            writer,
-            hit_rate(totals.cache_read, totals.cache_creation, totals.uncached),
-        ),
-        "server_cache_hit_rate" => optional_decimal(writer, super::upstream::server_cache(state).0),
-        "server_cache_hit_tokens" => writer.number(super::upstream::server_cache(state).1),
+        "cache_read_tokens" => writer.number(cache.read),
+        "cache_creation_tokens" => writer.number(cache.creation),
+        "uncached_input_tokens" => writer.number(cache.uncached()),
+        "cache_hit_rate" => optional_decimal(writer, cache.hit_rate()),
+        "cache_routes" => {
+            writer.begin_array();
+            for (route, figures) in super::upstream::route_caches(state) {
+                super::record(writer, &super::ROUTE_CACHE, |writer, key| match key {
+                    "route" => writer.string(&route),
+                    "source" => writer.string(figures.source),
+                    "hit_rate" => optional_decimal(writer, figures.hit_rate()),
+                    "read_tokens" => writer.number(figures.read),
+                    "prompt_tokens" => writer.number(figures.prompt),
+                    _ => writer.null(),
+                });
+            }
+            writer.end_array();
+        }
         "route_rates" => {
             writer.begin_array();
             for (route, (input, output)) in route_rates(state, now) {
@@ -271,14 +281,13 @@ fn gauge(out: &mut String, name: &str, labels: &str, value: f64) {
 
 /// The KPI, throughput and subscription-limit series.
 pub(super) fn render(out: &mut String, state: &State, now: u64) {
-    let totals = totals(state);
     let hit = series(
         out,
         "llmgw_cache_hit_ratio",
         "gauge",
-        "Cache reads over every input token (cache read + cache creation + uncached input).",
+        "Cache reads over every prompt token, over every route: a call's reported cache read, creation and uncached input, and for a vLLM route its server's prefix-cache hits and queries.",
     );
-    if let Some(ratio) = hit_rate(totals.cache_read, totals.cache_creation, totals.uncached) {
+    if let Some(ratio) = super::upstream::overall(state).hit_rate() {
         let _ = writeln!(out, "{hit} {ratio}");
     }
     let (input, output) = window_rates(state, now);

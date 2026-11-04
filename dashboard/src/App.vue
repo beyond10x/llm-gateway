@@ -179,10 +179,9 @@ function yesNo(v: boolean | null): string {
             <thead>
               <tr>
                 <th scope="col">Route</th><th scope="col" class="n">Calls</th><th scope="col" class="n">Errors</th>
-                <th scope="col" class="n">Tokens in / out</th><th scope="col" class="n">Cache r / w</th><th scope="col" class="n">Uncached in</th>
+                <th scope="col" class="n">Tokens in / out</th><th scope="col" class="n">Cache r / w</th><th scope="col" class="n">Uncached in</th><th scope="col" class="n"><abbr title="cache read / every prompt token; vLLM: the server's prefix-cache hits over its queries, in tokens, since the gateway began reading">Cache hit</abbr></th>
                 <th scope="col" class="n"><abbr title="average over the route's calls">In tok/s</abbr></th><th scope="col" class="n"><abbr title="average over the route's calls">Out tok/s</abbr></th>
                 <th scope="col" class="n">In flight</th>
-                <th scope="col" class="n"><abbr title="server-side (vLLM prefix cache): hits over queries, in tokens, since the gateway began reading">Server cache</abbr></th>
                 <th scope="col" class="n"><abbr title="requests running / waiting at the vLLM server">Server run / wait</abbr></th>
                 <th scope="col" class="n"><abbr title="share of the vLLM server's KV cache in use">KV cache</abbr></th>
               </tr>
@@ -193,12 +192,12 @@ function yesNo(v: boolean | null): string {
                 <td class="n">{{ count(r.calls) }}</td>
                 <td class="n" :class="{ 'bad-text': r.errors > 0 }">{{ count(r.errors) }}</td>
                 <td class="n">{{ tokenPair(r.input_tokens, r.output_tokens) }}</td>
-                <td class="n">{{ tokenPair(r.cache_read_tokens, r.cache_creation_tokens) }}</td>
+                <td class="n">{{ tokenPair(r.cache_read_tokens, r.cache_creation_tokens) }} <span v-if="r.cache_source === 'vllm'" class="badge" title="from the vLLM server's prefix-cache counters">vLLM</span></td>
                 <td class="n">{{ count(r.uncached_input_tokens) }}</td>
+                <td class="n">{{ pct(r.cache_hit_rate) }}</td>
                 <td class="n">{{ tps(r.input_tps) }}</td>
                 <td class="n">{{ tps(r.output_tps) }}</td>
                 <td class="n">{{ r.in_flight }}</td>
-                <td class="n">{{ r.upstream ? pct(r.upstream.prefix_cache_hit_ratio) : DASH }}</td>
                 <td class="n">{{ r.upstream ? `${count(r.upstream.requests_running)} / ${count(r.upstream.requests_waiting)}` : DASH }}</td>
                 <td class="n">{{ r.upstream ? pct(r.upstream.kv_cache_usage) : DASH }}</td>
               </tr>

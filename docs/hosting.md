@@ -435,8 +435,10 @@ model declaration is refused with `no-gpu` when it names no GPU type, `gpu-utili
 `gpu_memory_utilization` outside (0, 1], `zero-setting` for a zero count, limit, deadline or
 window, `secret-reference` for a secret name that is not `[A-Za-z0-9_]+`, `unsafe-text` for
 an empty or unprintable value bound for the pod's command line or environment, or a profile name
-that is not 1 to 32 of `A-Za-z0-9-_`, and `profile-conflict` when two profiles share a name or a
-GPU type. Every fallback profile is checked as the model is.
+that is not 1 to 32 of `A-Za-z0-9-_`, `profile-conflict` when two profiles share a name or a GPU type, and `image-not-allowed` for an
+image that is not `vllm/vllm-openai:` and a tag. Every fallback profile is checked as the model is.
+After every create the adapter reads the pod's placement and terminates the pod at once, refusing
+its GPU type, unless it is on Secure Cloud and not interruptible.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out. It does not carry it

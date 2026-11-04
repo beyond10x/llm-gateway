@@ -318,10 +318,12 @@ types:
   - name: llm-gateway.deployment.ProviderKind
     kind: enum
     variants: [RunpodVllm]
-  # `cloud_type`: `SECURE` or `COMMUNITY`, default `SECURE`; maps onto llm_runpod::CloudType.
+  # `cloud_type`: only `SECURE`, the default; maps onto llm_runpod::CloudType. DECIDED 2026-11-04
+  # (story:secure-cloud-enforced): `COMMUNITY` is gone, and a document naming it is
+  # `config:schema`.
   - name: llm-gateway.deployment.CloudType
     kind: enum
-    variants: [Secure, Community]
+    variants: [Secure]
   # `wires` entries: `chat`, `responses`, `messages` (llmgw `src/config.rs:56-64`).
   - name: llm-gateway.deployment.Wire
     kind: enum

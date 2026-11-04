@@ -301,6 +301,9 @@ impl RunpodTransport for Fixture {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.runpod.container_started_at(pod_id)
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.runpod.pod_placement(pod_id)
+    }
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
         self.runpod.account_spend(day_start_ms)
     }
@@ -391,7 +394,6 @@ fn build_model(input: &ModelInput) -> Result<RunpodModel, String> {
             .unwrap_or_else(|| vec!["NVIDIA L40S".to_owned(), "NVIDIA H100 NVL".to_owned()]),
         cloud_type: match input.cloud_type.as_deref() {
             None | Some("SECURE") => CloudType::Secure,
-            Some("COMMUNITY") => CloudType::Community,
             Some(_) => return Err("fixture:unknown-cloud-type".to_owned()),
         },
         container_disk_gb: input.container_disk_gb.unwrap_or(80),

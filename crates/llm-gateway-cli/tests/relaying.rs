@@ -435,6 +435,29 @@ fn k27_the_default_idle_timeout_keeps_a_quiet_pod_past_its_cold_start() {
     assert_eq!(pool.reap().unwrap().idle.len(), 1);
 }
 
+/// story:secure-cloud-enforced: a model whose image is not `vllm/vllm-openai:<tag>` is
+/// `config:value`, and the refusal does not quote the image.
+#[test]
+fn an_image_outside_the_allowed_prefix_is_a_value_refusal() {
+    let fixture = Fixture::new("image-not-allowed");
+    for image in [
+        "example/miner:v1",
+        "vllm/vllm-openai:",
+        "vllm/vllm-openai-fork:v1",
+    ] {
+        let deployment = deployment(&fixture, |text| {
+            mutate(
+                &text,
+                "image = \"vllm/vllm-openai:v0.27.1\"",
+                &format!("image = \"{image}\""),
+            )
+        });
+        let refusal = llm_gateway_cli::runpod_models(&deployment).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{image}");
+        assert!(!refusal.to_string().contains(image), "{image}: {refusal}");
+    }
+}
+
 #[test]
 fn k27_each_pool_input_is_fixed_or_read_from_the_document() {
     let fixture = Fixture::new("k27-inputs");
@@ -442,7 +465,7 @@ fn k27_each_pool_input_is_fixed_or_read_from_the_document() {
         let text = mutate(
             &text,
             "kind = \"runpod-vllm\"\n",
-            "kind = \"runpod-vllm\"\ncloud_type = \"COMMUNITY\"\n",
+            "kind = \"runpod-vllm\"\ncloud_type = \"SECURE\"\n",
         );
         mutate(
             &text,
@@ -471,7 +494,7 @@ fn k27_each_pool_input_is_fixed_or_read_from_the_document() {
     assert_eq!(model.hf_model, "example/small-model");
     assert_eq!(model.image.as_str(), "vllm/vllm-openai:v0.27.1");
     assert_eq!(model.gpu_types, vec!["NVIDIA L40S".to_owned()]);
-    assert_eq!(model.cloud_type, llm_runpod::CloudType::Community);
+    assert_eq!(model.cloud_type, llm_runpod::CloudType::Secure);
     assert_eq!(model.container_disk_gb, 120);
     assert_eq!(model.startup_deadline_ms, 90_000);
     assert_eq!(model.idle_timeout_ms, 7 * 60_000);

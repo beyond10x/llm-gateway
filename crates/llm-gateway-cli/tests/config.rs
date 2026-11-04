@@ -136,6 +136,31 @@ fn k29_the_llmgw_defaults_apply() {
     assert_eq!(model.start_wait_seconds, 600);
 }
 
+/// story:secure-cloud-enforced: `COMMUNITY` is gone from the document, so naming it is a
+/// schema refusal, and `SECURE` is still accepted.
+#[test]
+fn community_cloud_is_a_schema_refusal() {
+    let fixture = Fixture::new("community-cloud");
+    let community = mutate(
+        &base(&fixture),
+        "kind = \"runpod-vllm\"\n",
+        "kind = \"runpod-vllm\"\ncloud_type = \"COMMUNITY\"\n",
+    );
+    assert_eq!(
+        load(&fixture.config(&community)).unwrap_err().code(),
+        "config:schema"
+    );
+    let secure = mutate(
+        &base(&fixture),
+        "kind = \"runpod-vllm\"\n",
+        "kind = \"runpod-vllm\"\ncloud_type = \"SECURE\"\n",
+    );
+    assert_eq!(
+        load(&fixture.config(&secure)).unwrap().providers["runpod"].cloud_type,
+        CloudType::Secure
+    );
+}
+
 #[test]
 fn k29_explicit_values_replace_the_defaults() {
     // Proves the defaults are defaults, not constants: every defaulted key set to another value.
@@ -143,7 +168,7 @@ fn k29_explicit_values_replace_the_defaults() {
     let text = mutate(
         &base(&fixture),
         "kind = \"runpod-vllm\"\n",
-        "kind = \"runpod-vllm\"\ncloud_type = \"COMMUNITY\"\n",
+        "kind = \"runpod-vllm\"\ncloud_type = \"SECURE\"\n",
     );
     let text = with_model_keys(
         &text,
@@ -154,10 +179,7 @@ fn k29_explicit_values_replace_the_defaults() {
          idle_timeout_minutes = 0\nstart_wait_seconds = 10\n",
     );
     let deployment = load(&fixture.config(&text)).unwrap();
-    assert_eq!(
-        deployment.providers["runpod"].cloud_type,
-        CloudType::Community
-    );
+    assert_eq!(deployment.providers["runpod"].cloud_type, CloudType::Secure);
     let model = &deployment.models["small"];
     assert_eq!(model.vllm.max_num_seqs, 16);
     assert!((model.vllm.gpu_memory_utilization - 0.5).abs() < f64::EPSILON);
@@ -668,7 +690,7 @@ fn k29_an_enumerated_value_written_as_an_inline_table_is_refused_as_schema() {
         (
             "cloud_type",
             "kind = \"runpod-vllm\"",
-            "kind = \"runpod-vllm\"\ncloud_type = { COMMUNITY = {} }",
+            "kind = \"runpod-vllm\"\ncloud_type = { SECURE = {} }",
         ),
         (
             "wires",

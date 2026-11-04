@@ -238,6 +238,16 @@ secret the gateway still holds, the vLLM key; that is a later choice and not on 
 start: the transport invokes connectors, and the key file story reads only the vLLM key. The
 `decision-blocker:runpod-control-plane` in the store holds this choice. Default if not answered: A.
 
+DECIDED 2026-11-04 (story:keychain-references): A stays the path for a gateway in a cluster, where
+the process must never hold the Runpod key. A local gateway, run by one operator on their own
+machine, may instead hold the key in its own process through an OS keychain reference, and call
+Runpod's REST API (`https://rest.runpod.io/v1`) directly with `RestRunpod`
+(`crates/llm-runpod/src/transport/rest.rs`). The crate still links no TLS client: the embedding
+hands in the TLS connection, as it does for the readiness probe. The key is redacted in `Debug`,
+written only into the `Authorization` header of a request buffer that is overwritten when dropped,
+and never appears in an answer, error or log line. Both transports enforce Secure Cloud on-demand
+placement after every create (story:secure-cloud-enforced).
+
 ## 5. What the operator does by hand
 
 1. **Runpod account and key.** Create the account at https://www.runpod.io, add credit, and create an

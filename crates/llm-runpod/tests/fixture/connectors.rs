@@ -32,6 +32,10 @@
 //! `body_keys_refused`. Every answer goes out in connectors' published framing (`succeed`,
 //! `fail`): a script may write the bare `result` or `error`, and the fixture frames it; `raw`
 //! is printed as given. It opens no socket and reads no key.
+//!
+//! A `pods.list` whose input asks for `includeMachine` (a created pod's placement read) is keyed
+//! `invoke pods.list machine`, apart from every other listing, so a test scripts the
+//! `machine.secureCloud` and `interruptible` it answers without shifting the listings.
 
 use std::{
     collections::hash_map::DefaultHasher,
@@ -355,6 +359,15 @@ fn keyed(
     match parsed {
         Line::Invoke(_, operation) => {
             invoke_checks(rest, operation, input, record);
+            // A placement read (`includeMachine`) is keyed on its own, so a test scripts the
+            // machine fields it answers apart from the listings.
+            let machine = operation == "pods.list"
+                && input
+                    .and_then(|input| serde_json::from_str::<Value>(input).ok())
+                    .is_some_and(|input| input["includeMachine"] == json!(true));
+            if machine {
+                return ("invoke pods.list machine".to_owned(), None);
+            }
             (format!("invoke {operation}"), None)
         }
         Line::Refused | Line::Unknown => {

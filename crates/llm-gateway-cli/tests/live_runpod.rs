@@ -65,6 +65,9 @@ impl<T: RunpodTransport> RunpodTransport for LoopbackProbe<T> {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.inner.container_started_at(pod_id)
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.inner.pod_placement(pod_id)
+    }
 }
 
 /// Reaches every pod at the loopback pod.

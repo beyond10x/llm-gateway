@@ -335,10 +335,9 @@ fn default_connectors_timeout_seconds() -> u64 {
 enum CloudTypeDocument {
     #[default]
     Secure,
-    Community,
 }
 
-from_string_only!(CloudTypeDocument { "SECURE" => Secure, "COMMUNITY" => Community });
+from_string_only!(CloudTypeDocument { "SECURE" => Secure });
 
 /// `ingress_auth` (`llm-gateway.deployment.IngressAuth`).
 #[derive(Default)]
@@ -823,7 +822,6 @@ fn providers(
         closed_name(&format!("providers.{name}"), &name)?;
         let cloud_type = match provider.cloud_type {
             CloudTypeDocument::Secure => CloudType::Secure,
-            CloudTypeDocument::Community => CloudType::Community,
         };
         let connectors = provider
             .connectors

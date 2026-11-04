@@ -187,6 +187,9 @@ impl RunpodTransport for Wedging {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.inner.container_started_at(pod_id)
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.inner.pod_placement(pod_id)
+    }
 }
 
 /// Acceptance: "readiness/crash recovery". A pod that served once and then answers "not ready"

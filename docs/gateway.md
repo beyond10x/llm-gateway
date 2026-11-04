@@ -1131,9 +1131,13 @@ record types are declared once in `dashboard.rs` (`SNAPSHOT_TYPES`);
 `llm-gateway-docs generate --check`. The page is built from `dashboard/` (Vue, Vite) into
 `crates/llm-gateway/src/dashboard.html`.
 
-- **Calls** (the last `MAX_CALLS`) with every attempt, its status, wait, `retry-after`, relayed
-  answer headers and `error_body`; **in-flight** calls; **sessions** (the last
-  `MAX_SESSIONS`); **routes**; the **KPI** tiles; **subscription limits** per credential label.
+- **Calls** (the last `MAX_CALLS`; the page shows the newest 30 and the rest on request) with
+  every attempt, its status, wait, `retry-after`, relayed answer headers and `error_body`;
+  **in-flight** calls with the route and the upstream model id the call is sent as;
+  **sessions** (the last `MAX_SESSIONS`); **routes**. A session and a route count `errors` and,
+  apart from them, `cancelled`: calls the client left before any answer was written (status 0,
+  no refusal) or while it was written; the **KPI** tiles; **subscription limits** per credential
+  label.
 - **Tokens per second.** A call's input rate is (uncached + cache read + cache creation input
   tokens) over its time to first token. Its output rate is its output tokens over the time after
   the first token, and only when it has at least `MIN_RATED_OUTPUT_TOKENS` (50) output tokens
@@ -1150,7 +1154,9 @@ record types are declared once in `dashboard.rs` (`SNAPSHOT_TYPES`);
   `vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc` and whether `<base path>/models`
   answered 200. The route row carries it as `upstream`. Such a route's cache figures are the
   server's (`cache_source` `vllm`): `cache_read_tokens` its hits, its prompt tokens its queries,
-  `cache_hit_rate` the hits over the queries; its calls and sessions keep a `null` cache read. The
+  `cache_hit_rate` the hits over the queries, and `cache_creation_tokens` `null`, because vLLM
+  stores every computed block itself and reports no separate write; its calls and sessions keep
+  a `null` cache read. The
   KPI `cache_hit_rate` and `llmgw_cache_hit_ratio` are every route's cache reads over every
   route's prompt tokens, both sources together, and `cache_routes` lists each route's figures.
 - **Runpod account.** With a provider whose `api_key` is a keychain reference, the binary reads

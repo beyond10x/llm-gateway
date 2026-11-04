@@ -15,7 +15,7 @@ tasks:
   dashboard:
     desc: Build the dashboard page into crates/llm-gateway/src/dashboard.html
     cmds:
-      - pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard build
+      - pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard test && pnpm --dir dashboard build
   docs:
     desc: Check the generated documentation pages for drift and the hand-written ones for the public boundary
     cmds:

@@ -321,7 +321,9 @@ fn adv_dashboard_counts_tokens_per_session_and_keeps_no_header_value() {
     );
     assert!(snapshot.contains("\"label\":\"claude-code\""), "{snapshot}");
     assert!(
-        snapshot.contains("\"calls\":2,\"input_tokens\":2400,\"output_tokens\":600"),
+        snapshot.contains(
+            "\"calls\":2,\"errors\":0,\"cancelled\":0,\"input_tokens\":2400,\"output_tokens\":600"
+        ),
         "{snapshot}"
     );
     assert!(snapshot.contains("\"cache_read_tokens\":64"), "{snapshot}");

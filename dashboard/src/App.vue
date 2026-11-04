@@ -28,6 +28,11 @@ function toggle(id: number) {
   else open.add(id);
 }
 
+const RECENT_CALLS = 30;
+const VLLM_WRITE = 'vLLM stores computed blocks automatically; not reported separately';
+const allCalls = ref(false);
+const shownCalls = computed(() => (snap.value ? (allCalls.value ? snap.value.calls : snap.value.calls.slice(0, RECENT_CALLS)) : []));
+
 const showKpis = computed(() => !!snap.value && (!!snap.value.kpi || !!snap.value.limits?.length || !!snap.value.provider));
 
 function inflightState(f: InFlight): string {
@@ -119,7 +124,7 @@ function yesNo(v: boolean | null): string {
       </dl>
       <div class="scroll">
         <table>
-          <caption>Owned pods</caption>
+          <caption>Pods</caption>
           <thead>
             <tr>
               <th scope="col">Pod</th><th scope="col">Model</th><th scope="col">State</th><th scope="col">GPU</th>
@@ -153,11 +158,12 @@ function yesNo(v: boolean | null): string {
         <div class="scroll">
           <table>
             <thead>
-              <tr><th scope="col">Route</th><th scope="col">Wire</th><th scope="col">State</th><th scope="col" class="n">Elapsed</th><th scope="col">Session</th></tr>
+              <tr><th scope="col">Route</th><th scope="col">Model</th><th scope="col">Wire</th><th scope="col">State</th><th scope="col" class="n">Elapsed</th><th scope="col">Session</th></tr>
             </thead>
             <tbody>
               <tr v-for="f in snap.in_flight" :key="f.id">
                 <td>{{ f.route ?? DASH }}</td>
+                <td class="mono">{{ f.upstream_model ?? DASH }}</td>
                 <td>{{ f.wire }}</td>
                 <td>
                   <span class="pill" :class="f.state === 'streaming' ? 'ok' : 'warn'">{{ inflightState(f) }}</span>
@@ -166,7 +172,7 @@ function yesNo(v: boolean | null): string {
                 <td class="n">{{ ms(f.elapsed_ms) }}</td>
                 <td class="mono">{{ f.session }}</td>
               </tr>
-              <tr v-if="snap.in_flight.length === 0"><td colspan="5" class="empty">Idle.</td></tr>
+              <tr v-if="snap.in_flight.length === 0"><td colspan="6" class="empty">Idle.</td></tr>
             </tbody>
           </table>
         </div>
@@ -178,7 +184,7 @@ function yesNo(v: boolean | null): string {
           <table>
             <thead>
               <tr>
-                <th scope="col">Route</th><th scope="col" class="n">Calls</th><th scope="col" class="n">Errors</th>
+                <th scope="col">Route</th><th scope="col" class="n">Calls</th><th scope="col" class="n">Errors</th><th scope="col" class="n"><abbr title="the client left before or while the answer was written: status 0, no refusal">Cancelled</abbr></th>
                 <th scope="col" class="n">Tokens in / out</th><th scope="col" class="n">Cache r / w</th><th scope="col" class="n">Uncached in</th><th scope="col" class="n"><abbr title="cache read / every prompt token; vLLM: the server's prefix-cache hits over its queries, in tokens, since the gateway began reading">Cache hit</abbr></th>
                 <th scope="col" class="n"><abbr title="average over the route's calls">In tok/s</abbr></th><th scope="col" class="n"><abbr title="average over the route's calls">Out tok/s</abbr></th>
                 <th scope="col" class="n">In flight</th>
@@ -191,8 +197,9 @@ function yesNo(v: boolean | null): string {
                 <th scope="row">{{ r.route }}<div v-if="r.upstream_model && r.upstream_model !== r.route" class="muted small">{{ r.upstream_model }}</div></th>
                 <td class="n">{{ count(r.calls) }}</td>
                 <td class="n" :class="{ 'bad-text': r.errors > 0 }">{{ count(r.errors) }}</td>
+                <td class="n">{{ count(r.cancelled) }}</td>
                 <td class="n">{{ tokenPair(r.input_tokens, r.output_tokens) }}</td>
-                <td class="n">{{ tokenPair(r.cache_read_tokens, r.cache_creation_tokens) }} <span v-if="r.cache_source === 'vllm'" class="badge" title="from the vLLM server's prefix-cache counters">vLLM</span></td>
+                <td class="n" :title="r.cache_source === 'vllm' ? VLLM_WRITE : undefined">{{ tokenPair(r.cache_read_tokens, r.cache_creation_tokens) }} <span v-if="r.cache_source === 'vllm'" class="badge" title="from the vLLM server's prefix-cache counters">vLLM</span></td>
                 <td class="n">{{ count(r.uncached_input_tokens) }}</td>
                 <td class="n">{{ pct(r.cache_hit_rate) }}</td>
                 <td class="n">{{ tps(r.input_tps) }}</td>
@@ -201,7 +208,7 @@ function yesNo(v: boolean | null): string {
                 <td class="n">{{ r.upstream ? `${count(r.upstream.requests_running)} / ${count(r.upstream.requests_waiting)}` : DASH }}</td>
                 <td class="n">{{ r.upstream ? pct(r.upstream.kv_cache_usage) : DASH }}</td>
               </tr>
-              <tr v-if="snap.routes.length === 0"><td colspan="12" class="empty">No routes yet.</td></tr>
+              <tr v-if="snap.routes.length === 0"><td colspan="13" class="empty">No routes yet.</td></tr>
             </tbody>
           </table>
         </div>
@@ -214,7 +221,7 @@ function yesNo(v: boolean | null): string {
         <table>
           <thead>
             <tr>
-              <th scope="col">Session</th><th scope="col" class="n">Calls</th><th scope="col" class="n">Tokens in / out</th>
+              <th scope="col">Session</th><th scope="col" class="n">Calls</th><th scope="col" class="n">Errors</th><th scope="col" class="n"><abbr title="the client left before or while the answer was written: status 0, no refusal">Cancelled</abbr></th><th scope="col" class="n">Tokens in / out</th>
               <th scope="col" class="n">Cache read</th><th scope="col" class="n"><abbr title="input tokens per second until the first token">In tok/s</abbr></th>
               <th scope="col" class="n"><abbr title="output tokens per second after the first token">Out tok/s</abbr></th><th scope="col" class="n">Last seen</th>
             </tr>
@@ -223,13 +230,15 @@ function yesNo(v: boolean | null): string {
             <tr v-for="s in snap.sessions" :key="s.session">
               <th scope="row">{{ s.label }} <span class="mono muted small">{{ s.session }}</span></th>
               <td class="n">{{ count(s.calls) }}</td>
+              <td class="n" :class="{ 'bad-text': s.errors > 0 }">{{ count(s.errors) }}</td>
+              <td class="n">{{ count(s.cancelled) }}</td>
               <td class="n">{{ tokenPair(s.input_tokens, s.output_tokens) }}</td>
               <td class="n">{{ count(s.cache_read_tokens) }}</td>
               <td class="n">{{ tps(s.input_tps) }}</td>
               <td class="n">{{ tps(s.output_tps) }}</td>
               <td class="n">{{ ago(now, s.last_ms) }}</td>
             </tr>
-            <tr v-if="snap.sessions.length === 0"><td colspan="7" class="empty">No sessions yet.</td></tr>
+            <tr v-if="snap.sessions.length === 0"><td colspan="9" class="empty">No sessions yet.</td></tr>
           </tbody>
         </table>
       </div>
@@ -249,7 +258,7 @@ function yesNo(v: boolean | null): string {
             </tr>
           </thead>
           <tbody>
-            <template v-for="c in snap.calls" :key="c.id">
+            <template v-for="c in shownCalls" :key="c.id">
             <tr>
               <td class="mono" :title="ago(now, c.started_ms)">{{ clock(c.started_ms) }}</td>
               <td>{{ c.route ?? DASH }}<div v-if="c.upstream_model && c.upstream_model !== c.route" class="muted small">{{ c.upstream_model }}</div><div v-if="c.upstream" class="muted small">{{ c.upstream }}</div></td>
@@ -297,6 +306,9 @@ function yesNo(v: boolean | null): string {
           </tbody>
         </table>
       </div>
+      <p v-if="snap.calls.length > RECENT_CALLS" class="more">
+        <button type="button" @click="allCalls = !allCalls">{{ allCalls ? `Show the last ${RECENT_CALLS}` : `Show all ${snap.calls.length}` }}</button>
+      </p>
     </section>
   </main>
 

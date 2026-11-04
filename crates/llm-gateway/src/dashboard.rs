@@ -131,6 +131,7 @@ const IN_FLIGHT: RecordType = RecordType {
         ("id", "number"),
         ("started_ms", "number"),
         ("route", "string | null"),
+        ("upstream_model", "string | null"),
         ("wire", WIRE_TS),
         (
             "state",
@@ -149,6 +150,8 @@ const SESSION: RecordType = RecordType {
         ("session", "string"),
         ("label", "string"),
         ("calls", "number"),
+        ("errors", "number"),
+        ("cancelled", "number"),
         ("input_tokens", "number"),
         ("output_tokens", "number"),
         ("cache_read_tokens", "number | null"),
@@ -164,10 +167,11 @@ const ROUTE: RecordType = RecordType {
         ("route", "string"),
         ("calls", "number"),
         ("errors", "number"),
+        ("cancelled", "number"),
         ("input_tokens", "number"),
         ("output_tokens", "number"),
         ("cache_read_tokens", "number"),
-        ("cache_creation_tokens", "number"),
+        ("cache_creation_tokens", "number | null"),
         ("uncached_input_tokens", "number"),
         ("cache_hit_rate", "number | null"),
         ("cache_source", "\"calls\" | \"vllm\""),
@@ -586,6 +590,7 @@ fn output_sample(usage: &Usage, ttft_ms: Option<u64>, duration_ms: u64) -> Optio
 struct Flight {
     started_ms: u64,
     route: Option<String>,
+    upstream_model: Option<String>,
     wire: Wire,
     streaming: bool,
     attempt: u32,
@@ -597,6 +602,8 @@ struct Flight {
 struct SessionTotals {
     label: String,
     calls: u64,
+    errors: u64,
+    cancelled: u64,
     input_tokens: u64,
     output_tokens: u64,
     cache_read_tokens: u64,
@@ -654,6 +661,8 @@ impl Histogram {
 struct RouteTotals {
     calls: u64,
     errors: u64,
+    /// Calls the client left before any answer was written, or while it streamed.
+    cancelled: u64,
     input_tokens: u64,
     output_tokens: u64,
     cache_read_tokens: u64,
@@ -677,13 +686,25 @@ struct RouteTotals {
     upstream_model: Option<String>,
 }
 
+/// Whether a call failed: an outcome other than `ok`, or a status of 400 or more.
+fn errored(record: &UsageRecord) -> bool {
+    record.outcome != Outcome::Ok || record.status >= 400
+}
+
+/// Whether the client left: no answer was written (status 0, no refusal), or the client went
+/// away while it was written. A cancelled call is not an error.
+fn cancelled(record: &UsageRecord, finished: &Finished) -> bool {
+    finished.client_disconnected || (record.status == 0 && record.refusal.is_none())
+}
+
 impl RouteTotals {
     /// Adds one finished call of this route.
     fn add(&mut self, record: &UsageRecord, finished: &Finished, repeated_body: bool, now: u64) {
         let usage = &finished.usage;
-        let errored = record.outcome != Outcome::Ok || record.status >= 400;
+        let cancelled = cancelled(record, finished);
         self.calls += 1;
-        self.errors += u64::from(errored);
+        self.errors += u64::from(errored(record) && !cancelled);
+        self.cancelled += u64::from(cancelled);
         self.input_tokens += usage.input_tokens.unwrap_or(0);
         self.output_tokens += usage.output_tokens.unwrap_or(0);
         self.cache_read_tokens += usage.cache_read_tokens.unwrap_or(0);
@@ -784,6 +805,13 @@ impl Progress {
         });
     }
 
+    /// The model id the call is sent to upstream, once the request is rewritten.
+    pub(crate) fn upstream_model(&self, model: &str) {
+        self.dashboard.update(self.id, |flight| {
+            flight.upstream_model = Some(model.to_owned());
+        });
+    }
+
     /// The first byte of the answer was written to the client.
     pub(crate) fn streaming(&self) {
         self.dashboard
@@ -840,6 +868,7 @@ impl Dashboard {
             Flight {
                 started_ms: now_ms(),
                 route: None,
+                upstream_model: None,
                 wire,
                 streaming: false,
                 attempt: 1,
@@ -879,6 +908,9 @@ impl Dashboard {
             .or_default();
         session.label.clone_from(&finished.observed.label);
         session.calls += 1;
+        let cancelled = cancelled(record, &finished);
+        session.errors += u64::from(errored(record) && !cancelled);
+        session.cancelled += u64::from(cancelled);
         session.input_tokens += usage.input_tokens.unwrap_or(0);
         session.output_tokens += usage.output_tokens.unwrap_or(0);
         session.cache_read_tokens += usage.cache_read_tokens.unwrap_or(0);
@@ -1529,6 +1561,7 @@ fn flight_record(writer: &mut Writer, id: u64, flight: &Flight, now: u64) {
         "id" => writer.number(id),
         "started_ms" => writer.number(flight.started_ms),
         "route" => optional_string(writer, flight.route.as_deref()),
+        "upstream_model" => optional_string(writer, flight.upstream_model.as_deref()),
         "wire" => writer.string(flight.wire.label()),
         "state" => writer.string(if flight.streaming {
             "streaming"
@@ -1550,6 +1583,8 @@ fn session_record(writer: &mut Writer, key: &str, totals: &SessionTotals) {
         "session" => writer.string(key),
         "label" => writer.string(&totals.label),
         "calls" => writer.number(totals.calls),
+        "errors" => writer.number(totals.errors),
+        "cancelled" => writer.number(totals.cancelled),
         "input_tokens" => writer.number(totals.input_tokens),
         "output_tokens" => writer.number(totals.output_tokens),
         "cache_read_tokens" => {
@@ -1578,10 +1613,18 @@ fn route_record(
         "route" => writer.string(route),
         "calls" => writer.number(totals.calls),
         "errors" => writer.number(totals.errors),
+        "cancelled" => writer.number(totals.cancelled),
         "input_tokens" => writer.number(totals.input_tokens),
         "output_tokens" => writer.number(totals.output_tokens),
         "cache_read_tokens" => writer.number(cache.read),
-        "cache_creation_tokens" => writer.number(cache.creation),
+        // A vLLM server stores every computed block itself and reports no separate write.
+        "cache_creation_tokens" => {
+            if cache.source == "vllm" {
+                writer.null();
+            } else {
+                writer.number(cache.creation);
+            }
+        }
         "uncached_input_tokens" => writer.number(cache.uncached()),
         "cache_hit_rate" => optional_decimal(writer, cache.hit_rate()),
         "cache_source" => writer.string(cache.source),
@@ -1925,11 +1968,17 @@ mod tests {
 
     /// One finished call on `route` in `session`, with no timing.
     fn finish_plain(dashboard: &Arc<Dashboard>, route: &str, session: &str, usage: Usage) {
+        finish_as(dashboard, &record(route, 100), session, usage);
+    }
+
+    /// One finished call made `call` in `session`, with no timing.
+    fn finish_as(dashboard: &Arc<Dashboard>, call: &UsageRecord, session: &str, usage: Usage) {
+        let route = call.model.as_deref().unwrap_or_default();
         let observed = Observed::read(headers(&[("x-claude-code-session-id", session)]));
         let progress = dashboard.begin(Wire::Messages, &observed);
         progress.route(route);
         dashboard.finish(
-            &record(route, 100),
+            call,
             Finished {
                 id: progress.id(),
                 started_ms: super::now_ms(),
@@ -1947,6 +1996,52 @@ mod tests {
                 observed,
             },
         );
+    }
+
+    /// An answered call, one the client left before any answer (status 0, no refusal) and a
+    /// 502, then a call in flight on its upstream model.
+    #[test]
+    fn a_call_the_client_left_is_cancelled_not_an_error_and_in_flight_names_its_model() {
+        let dashboard = Arc::new(Dashboard::default());
+        let left = UsageRecord {
+            status: 0,
+            target_status: None,
+            outcome: Outcome::UpstreamError,
+            ..record("qwen", 100)
+        };
+        let failed = UsageRecord {
+            status: 502,
+            target_status: Some(502),
+            outcome: Outcome::UpstreamError,
+            ..record("qwen", 100)
+        };
+        for call in [record("qwen", 100), left, failed] {
+            finish_as(&dashboard, &call, "s", Usage::default());
+        }
+        let observed = Observed::read(headers(&[("x-claude-code-session-id", "s")]));
+        let progress = dashboard.begin(Wire::Messages, &observed);
+        progress.route("qwen");
+        progress.upstream_model("qwen3.6-35b-a3b");
+        let snapshot = dashboard.snapshot();
+        let in_flight = &snapshot
+            [snapshot.find("\"in_flight\":").unwrap()..snapshot.find("\"sessions\":").unwrap()];
+        assert!(
+            in_flight.contains("\"route\":\"qwen\",\"upstream_model\":\"qwen3.6-35b-a3b\""),
+            "{in_flight}"
+        );
+        let sessions = &snapshot
+            [snapshot.find("\"sessions\":").unwrap()..snapshot.find("\"routes\":").unwrap()];
+        assert!(
+            sessions.contains("\"calls\":3,\"errors\":1,\"cancelled\":1"),
+            "{sessions}"
+        );
+        let routes = &snapshot
+            [snapshot.find("\"routes\":").unwrap()..snapshot.find("\"provider\":").unwrap()];
+        assert!(
+            routes.contains("\"calls\":3,\"errors\":1,\"cancelled\":1"),
+            "{routes}"
+        );
+        drop(progress);
     }
 
     /// A Claude call whose answer reported its cache, and a vLLM call whose answer reported
@@ -1999,7 +2094,7 @@ mod tests {
         );
         assert!(
             routes.contains(
-                "\"cache_read_tokens\":600,\"cache_creation_tokens\":0,\"uncached_input_tokens\":400,\"cache_hit_rate\":0.600,\"cache_source\":\"vllm\""
+                "\"cache_read_tokens\":600,\"cache_creation_tokens\":null,\"uncached_input_tokens\":400,\"cache_hit_rate\":0.600,\"cache_source\":\"vllm\""
             ),
             "the vLLM route's cache is its server's: {routes}"
         );

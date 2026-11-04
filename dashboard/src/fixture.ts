@@ -77,19 +77,19 @@ export function fixture(now: number): Snapshot {
     started_ms: now - 5 * 3600_000 - 17 * 60_000,
     calls,
     in_flight: [
-      { id: 1001, started_ms: now - 2_400, route: 'qwen-coder', wire: 'chat', state: 'streaming', attempt: 1, retry_at_ms: null, elapsed_ms: 2_400, session: '8b27d4aa' },
-      { id: 1002, started_ms: now - 41_000, route: 'claude-sonnet', wire: 'messages', state: 'waiting-upstream', attempt: 1, retry_at_ms: null, elapsed_ms: 41_000, session: '3f9a1c0e' },
-      { id: 1003, started_ms: now - 6_000, route: 'claude-haiku', wire: 'messages', state: 'waiting-retry', attempt: 2, retry_at_ms: retryAt, elapsed_ms: 6_000, session: '3f9a1c0e' },
+      { id: 1001, started_ms: now - 2_400, route: 'qwen-coder', upstream_model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', wire: 'chat', state: 'streaming', attempt: 1, retry_at_ms: null, elapsed_ms: 2_400, session: '8b27d4aa' },
+      { id: 1002, started_ms: now - 41_000, route: 'claude-sonnet', upstream_model: 'claude-sonnet-4-5', wire: 'messages', state: 'waiting-upstream', attempt: 1, retry_at_ms: null, elapsed_ms: 41_000, session: '3f9a1c0e' },
+      { id: 1003, started_ms: now - 6_000, route: 'claude-haiku', upstream_model: 'claude-haiku-4-5', wire: 'messages', state: 'waiting-retry', attempt: 2, retry_at_ms: retryAt, elapsed_ms: 6_000, session: '3f9a1c0e' },
     ],
     sessions: [
-      { session: '3f9a1c0e', label: 'claude-code', calls: 214, input_tokens: 1_840_221, output_tokens: 98_412, cache_read_tokens: 14_220_900, input_tps: 6120.4, output_tps: 71.3, last_ms: now - 4_000 },
-      { session: '8b27d4aa', label: 'codex', calls: 88, input_tokens: 2_920_004, output_tokens: 140_881, cache_read_tokens: null, input_tps: 9412.8, output_tps: 118.6, last_ms: now - 2_400 },
-      { session: 'c01e5f72', label: 'curl/8.11', calls: 3, input_tokens: 120, output_tokens: 0, cache_read_tokens: 0, input_tps: null, output_tps: null, last_ms: now - 3 * 3600_000 },
+      { session: '3f9a1c0e', label: 'claude-code', calls: 214, errors: 2, cancelled: 1, input_tokens: 1_840_221, output_tokens: 98_412, cache_read_tokens: 14_220_900, input_tps: 6120.4, output_tps: 71.3, last_ms: now - 4_000 },
+      { session: '8b27d4aa', label: 'codex', calls: 88, errors: 0, cancelled: 0, input_tokens: 2_920_004, output_tokens: 140_881, cache_read_tokens: null, input_tps: 9412.8, output_tps: 118.6, last_ms: now - 2_400 },
+      { session: 'c01e5f72', label: 'curl/8.11', calls: 3, errors: 1, cancelled: 0, input_tokens: 120, output_tokens: 0, cache_read_tokens: 0, input_tps: null, output_tps: null, last_ms: now - 3 * 3600_000 },
     ],
     routes: [
-      { route: 'qwen-coder', calls: 131, errors: 4, input_tokens: 3_010_442, output_tokens: 161_002, cache_read_tokens: 1_376_200, cache_creation_tokens: 0, uncached_input_tokens: 1_635_200, cache_hit_rate: 1_376_200 / 3_011_400, cache_source: 'vllm', input_tps: 9_212.5, output_tps: 112.4, in_flight: 1, upstream_model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', upstream: { source: 'vllm', read_ms: now - 6_000, prefix_cache_hit_ratio: 0.457, prefix_cache_hit_tokens: 1_376_200, prefix_cache_query_tokens: 3_011_400, requests_running: 1, requests_waiting: 0, kv_cache_usage: 0.31, ready: true } },
-      { route: 'claude-sonnet', calls: 160, errors: 2, input_tokens: 1_500_120, output_tokens: 70_211, cache_read_tokens: 12_440_000, cache_creation_tokens: 380_000, uncached_input_tokens: 48_120, cache_hit_rate: 12_440_000 / 12_868_120, cache_source: 'calls', input_tps: 6_104.9, output_tps: 68.7, in_flight: 1, upstream_model: 'claude-sonnet-4-5', upstream: null },
-      { route: 'claude-haiku', calls: 14, errors: 0, input_tokens: 250_000, output_tokens: 8_080, cache_read_tokens: 1_780_900, cache_creation_tokens: 22_000, uncached_input_tokens: 6_400, cache_hit_rate: 1_780_900 / 1_809_300, cache_source: 'calls', input_tps: 11_820, output_tps: 164.2, in_flight: 1, upstream_model: 'claude-haiku-4-5', upstream: null },
+      { route: 'qwen-coder', calls: 131, errors: 1, cancelled: 3, input_tokens: 3_010_442, output_tokens: 161_002, cache_read_tokens: 1_376_200, cache_creation_tokens: null, uncached_input_tokens: 1_635_200, cache_hit_rate: 1_376_200 / 3_011_400, cache_source: 'vllm', input_tps: 9_212.5, output_tps: 112.4, in_flight: 1, upstream_model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', upstream: { source: 'vllm', read_ms: now - 6_000, prefix_cache_hit_ratio: 0.457, prefix_cache_hit_tokens: 1_376_200, prefix_cache_query_tokens: 3_011_400, requests_running: 1, requests_waiting: 0, kv_cache_usage: 0.31, ready: true } },
+      { route: 'claude-sonnet', calls: 160, errors: 2, cancelled: 0, input_tokens: 1_500_120, output_tokens: 70_211, cache_read_tokens: 12_440_000, cache_creation_tokens: 380_000, uncached_input_tokens: 48_120, cache_hit_rate: 12_440_000 / 12_868_120, cache_source: 'calls', input_tps: 6_104.9, output_tps: 68.7, in_flight: 1, upstream_model: 'claude-sonnet-4-5', upstream: null },
+      { route: 'claude-haiku', calls: 14, errors: 0, cancelled: 0, input_tokens: 250_000, output_tokens: 8_080, cache_read_tokens: 1_780_900, cache_creation_tokens: 22_000, uncached_input_tokens: 6_400, cache_hit_rate: 1_780_900 / 1_809_300, cache_source: 'calls', input_tps: 11_820, output_tps: 164.2, in_flight: 1, upstream_model: 'claude-haiku-4-5', upstream: null },
     ],
     kpi: {
       input_tokens: 4_760_562,

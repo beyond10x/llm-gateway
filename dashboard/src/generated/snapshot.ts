@@ -58,6 +58,7 @@ export interface InFlight {
   id: number;
   started_ms: number;
   route: string | null;
+  upstream_model: string | null;
   wire: "chat" | "responses" | "messages";
   state: "waiting-upstream" | "waiting-retry" | "streaming";
   attempt: number;
@@ -70,6 +71,8 @@ export interface SessionRow {
   session: string;
   label: string;
   calls: number;
+  errors: number;
+  cancelled: number;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number | null;
@@ -82,10 +85,11 @@ export interface RouteRow {
   route: string;
   calls: number;
   errors: number;
+  cancelled: number;
   input_tokens: number;
   output_tokens: number;
   cache_read_tokens: number;
-  cache_creation_tokens: number;
+  cache_creation_tokens: number | null;
   uncached_input_tokens: number;
   cache_hit_rate: number | null;
   cache_source: "calls" | "vllm";

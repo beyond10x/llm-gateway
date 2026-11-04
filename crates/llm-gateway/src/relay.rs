@@ -2258,6 +2258,9 @@ fn outbound(
     // for its `model`: no effort mapping and no output clamp.
     let messages = admitted.wire == Wire::Messages && !model.client_credentials;
     let (mut rewritten, sent) = rewrite(analysis, body, model, messages, resolved.as_deref());
+    if let Some(progress) = &call.progress {
+        progress.upstream_model(&sent);
+    }
     call.upstream_model = Some(sent);
     if let Some(cap) = model.max_tokens_cap {
         rewritten.clamp_max_tokens(cap);

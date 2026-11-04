@@ -195,10 +195,48 @@ fn adversary_w05_a_parsed_model_asks_for_a_target_on_every_wire() {
     let gateway = Relayed::start(&source);
     for path in ["/v1/chat/completions", "/v1/responses", "/v1/messages"] {
         assert_eq!(
-            gateway.post(path, "{\"model\":\"code\",\"tools\":[{}]}"),
+            gateway.post(
+                path,
+                "{\"model\":\"code\",\"tools\":[{\"name\":\"t\",\"input_schema\":{}}]}"
+            ),
             (503, "target-unavailable".to_string()),
             "{path}"
         );
     }
     assert_eq!(source.acquired(), 3);
+}
+
+/// An Anthropic server tool (`web_search_*`, `web_fetch_*`, …) or a tool without `input_schema`,
+/// offered on the messages wire to a model that does not forward to Anthropic, is refused with
+/// `server-tool-not-served` before any target: a self-hosted server never answers it with its
+/// own schema error. A custom tool on the same model, and a chat-wire function tool, pass.
+#[test]
+fn adversary_server_tools_are_refused_on_a_self_hosted_messages_route_without_a_target() {
+    let source = Arc::new(Source::default());
+    let gateway = Relayed::start(&source);
+    for tools in [
+        r#"[{"type":"web_search_20250305","name":"web_search","max_uses":5}]"#,
+        r#"[{"name":"Read","input_schema":{}},{"type":"web_fetch_20250910","name":"web_fetch"}]"#,
+        r#"[{"name":"schema_less"}]"#,
+    ] {
+        let body = format!(r#"{{"model":"code","max_tokens":1,"messages":[],"tools":{tools}}}"#);
+        assert_eq!(
+            gateway.post("/v1/messages", &body),
+            (400, "server-tool-not-served".to_string()),
+            "{body}"
+        );
+    }
+    assert_eq!(source.acquired(), 0);
+    let custom = r#"{"model":"code","max_tokens":1,"messages":[],"tools":[{"name":"Read","input_schema":{"type":"object"}}]}"#;
+    assert_eq!(
+        gateway.post("/v1/messages", custom),
+        (503, "target-unavailable".to_string())
+    );
+    let chat =
+        r#"{"model":"code","messages":[],"tools":[{"type":"function","function":{"name":"f"}}]}"#;
+    assert_eq!(
+        gateway.post("/v1/chat/completions", chat),
+        (503, "target-unavailable".to_string())
+    );
+    assert_eq!(source.acquired(), 2);
 }

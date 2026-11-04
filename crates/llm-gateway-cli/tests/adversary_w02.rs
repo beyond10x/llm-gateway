@@ -176,17 +176,18 @@ fn adv_b9_citations_into_serve_rs_still_land() {
     let serve = fs::read_to_string(root().join("crates/llm-gateway-cli/src/serve.rs")).unwrap();
     let lines: Vec<&str> = serve.lines().collect();
     let range = |from: usize, to: usize| lines[from - 1..to].join("\n");
-    // D2 cites 169-188 for the stop and 191-213 (C1 191-236) for `start`; the lines moved down
+    // D2 cites 171-188 for the stop and 198-213 (C1 198-289) for `start`; the lines moved down
     // five when story:ingress-auth-optional let `owner_verifier` answer without an owner secret,
-    // and 26 more when story:prometheus-metrics added `metrics_bearer` above them.
+    // and 26 more when story:prometheus-metrics added `metrics_bearer` above them, and again
+    // when `serve` learned its default document and the `watchdog` command.
     assert!(
-        range(169, 188).contains("fn wait_for_stop"),
-        "serve.rs:169-188"
+        range(171, 188).contains("fn wait_for_stop"),
+        "serve.rs:171-188"
     );
-    assert!(range(191, 213).contains("pub fn start"), "serve.rs:191-213");
+    assert!(range(198, 213).contains("pub fn start"), "serve.rs:198-213");
     assert!(
-        range(191, 236).contains("pub fn main_with"),
-        "serve.rs:191-236"
+        range(198, 289).contains("pub fn main_with"),
+        "serve.rs:198-289"
     );
     // spec/domains/upstream.yaml cites serve.rs:122 and :143 for the per-wire targets.
     assert!(

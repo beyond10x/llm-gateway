@@ -238,6 +238,7 @@ fn tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors() {
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
         "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pods.list machine": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pod.create": [created(&running_small_pod())],
     }));
     let config = fixture.config(&connected_document(
@@ -303,6 +304,7 @@ fn tls_an_untrusted_pod_certificate_is_upstream_failed_and_the_pod_reads_nothing
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
         "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pods.list machine": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pod.create": [created(&running_small_pod())],
     }));
     let config = fixture.config(&connected_document(

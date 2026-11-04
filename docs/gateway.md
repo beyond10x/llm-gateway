@@ -1048,6 +1048,7 @@ every code the gateway can emit.
 | `spend-ceiling` | `refused` |
 | `target-unavailable` | `refused` |
 | `tools-not-served` | `refused` |
+| `server-tool-not-served` | `refused` |
 | `translation-invalid` | `refused` |
 | `translation-opaque-state` | `refused` |
 | `translation-too-large` | `upstream_error` |
@@ -1113,6 +1114,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `spend-ceiling` | 503 | the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown |
 | `target-unavailable` | 503 | no model target is available |
 | `tools-not-served` | 400 | the model does not serve tool calls |
+| `server-tool-not-served` | 400 | this route is not Anthropic's: it serves no Anthropic server tool (web search, web fetch, code execution) and no tool without input_schema; send such a request to a claude model |
 | `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |
 | `translation-opaque-state` | 400 | the request carries reasoning state the gateway did not seal for this route |
 | `translation-too-large` | 502 | the model's answer passed a bound of the translated path, published in the gateway contract |

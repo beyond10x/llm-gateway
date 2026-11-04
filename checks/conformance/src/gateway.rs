@@ -1693,6 +1693,8 @@ mod relay {
             RelayError::RepeatedWire => "repeated-wire",
             RelayError::DuplicateModel => "duplicate-model",
             RelayError::EmptyPrefix => "empty-prefix",
+            RelayError::EmptyFamily => "empty-family",
+            RelayError::BetaNotAToken => "beta-not-a-token",
         }
     }
 

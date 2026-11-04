@@ -53,6 +53,30 @@ const MODEL_SERIES: [(&str, &str); 2] = [
 /// The samples one model registers at zero: four outcomes, twelve finite buckets and `+Inf`,
 /// then `_sum` and `_count`.
 const MODEL_SAMPLES: usize = 4 + 13 + 2;
+/// The dashboard's series after them (story:live-dashboard), each with its `# TYPE`. Before any
+/// call only `llmgw_in_flight_requests` has a sample.
+const DASHBOARD_SERIES: [(&str, &str); 20] = [
+    ("llmgw_tokens_total", "counter"),
+    ("llmgw_cache_tokens_total", "counter"),
+    ("llmgw_time_to_first_token_seconds", "histogram"),
+    ("llmgw_queue_wait_seconds", "histogram"),
+    ("llmgw_upstream_retry_wait_seconds", "histogram"),
+    ("llmgw_cache_hit_ratio", "gauge"),
+    ("llmgw_tokens_per_second", "gauge"),
+    ("llmgw_input_tps", "histogram"),
+    ("llmgw_output_tps", "histogram"),
+    ("llmgw_anthropic_utilization", "gauge"),
+    ("llmgw_anthropic_reset_seconds", "gauge"),
+    ("llmgw_anthropic_status", "gauge"),
+    ("llmgw_in_flight_requests", "gauge"),
+    ("llmgw_client_retries_total", "counter"),
+    ("llmgw_repeated_bodies_total", "counter"),
+    ("llmgw_client_disconnects_total", "counter"),
+    ("llmgw_upstream_status_total", "counter"),
+    ("llmgw_upstream_attempts_total", "counter"),
+    ("llmgw_session_calls_total", "counter"),
+    ("llmgw_session_tokens_per_second", "gauge"),
+];
 
 fn label(value: &str) -> Label {
     Label::new(value).unwrap()
@@ -405,6 +429,7 @@ fn r4_metrics_is_prometheus_text_carrying_llmgws_13_series_names_in_order() {
         assert!(!text.is_empty(), "{name} has no help text");
         let kind = MODEL_SERIES
             .iter()
+            .chain(DASHBOARD_SERIES.iter())
             .find_map(|(model, kind)| (*model == name).then_some(*kind))
             .unwrap_or("counter");
         assert_eq!(lines.next(), Some(format!("# TYPE {name} {kind}").as_str()));
@@ -418,6 +443,7 @@ fn r4_metrics_is_prometheus_text_carrying_llmgws_13_series_names_in_order() {
         .iter()
         .chain(ROUTE_SERIES.iter())
         .chain(MODEL_SERIES.iter().map(|(name, _)| name))
+        .chain(DASHBOARD_SERIES.iter().map(|(name, _)| name))
         .map(|name| (*name).to_owned())
         .collect();
     assert_eq!(names, expected);
@@ -437,6 +463,7 @@ fn r4_a_gateway_without_a_relay_serves_the_process_wide_series_and_no_route() {
     let expected: BTreeMap<String, String> = PROCESS_SERIES
         .iter()
         .map(|name| ((*name).to_owned(), "0".to_owned()))
+        .chain([("llmgw_in_flight_requests".to_owned(), "0".to_owned())])
         .collect();
     assert_eq!(scraped, expected);
 }
@@ -502,7 +529,8 @@ fn o2_every_declared_model_and_wire_is_registered_at_zero_before_any_request() {
     }
     assert_eq!(
         scraped.len(),
-        PROCESS_SERIES.len() + 3 * ROUTE_SERIES.len() + 2 * MODEL_SAMPLES
+        PROCESS_SERIES.len() + 3 * ROUTE_SERIES.len() + 2 * MODEL_SAMPLES + 1,
+        "the one dashboard sample before any call is the in-flight gauge"
     );
 }
 

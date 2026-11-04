@@ -270,6 +270,14 @@ pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
     use clap::Parser as _;
     match Invocation::from_args(std::env::args_os().collect()) {
         Invocation::Credential(args) => crate::credential::main(args, &pods),
+        Invocation::Claude(args) => match crate::cli::ClaudeCli::try_parse_from(args) {
+            Ok(cli) => crate::launch::main(cli),
+            Err(error) => usage_error(&error, "claude"),
+        },
+        Invocation::Codex(args) => match crate::cli::CodexCli::try_parse_from(args) {
+            Ok(cli) => crate::launch::codex_main(cli),
+            Err(error) => usage_error(&error, "codex"),
+        },
         Invocation::Watchdog(args) => match crate::cli::WatchdogCli::try_parse_from(args) {
             Ok(cli) => crate::watchdog::main(&cli, &pods),
             Err(error) => usage_error(&error, "watchdog"),

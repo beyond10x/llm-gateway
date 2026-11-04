@@ -418,13 +418,13 @@ fn adv_ccw_head_api_hello_with_both_credential_headers_or_x_api_key_alone() {
     assert_eq!(gateway.acquired(), 0);
 }
 
-/// PROBE (green, a measurement): Claude Code's optional `POST /v1/messages/count_tokens`, which
-/// the pinned vLLM v0.27.1 serves (`vllm/entrypoints/anthropic/api_router.py:95-96`), is not a
-/// relayed wire path. It reaches inspection and is refused there; no target is asked.
+/// Claude Code's `POST /v1/messages/count_tokens`, which the pinned vLLM v0.27.1 serves
+/// (`vllm/entrypoints/anthropic/api_router.py:95-96`), is relayed to the target of the model the
+/// body names, at that path, and its answer comes back unchanged.
 #[test]
-fn adv_ccw_probe_count_tokens_is_refused_and_asks_for_no_target() {
+fn adv_ccw_count_tokens_is_relayed_to_the_target_at_its_own_path() {
     let _serial = serial();
-    let pod = Pod::start(0);
+    let pod = Pod::start(1);
     let gateway = Relayed::start(&pod);
     let (status, answer) = exchange(
         gateway.addr,
@@ -433,7 +433,9 @@ fn adv_ccw_probe_count_tokens_is_refused_and_asks_for_no_target() {
             br#"{"model":"code","messages":[{"role":"user","content":"hi"}]}"#,
         ),
     );
-    assert_eq!(status, 405, "{answer}");
-    assert!(answer.contains("method-not-allowed"), "{answer}");
-    assert_eq!(gateway.acquired(), 0);
+    assert_eq!(status, 200, "{answer}");
+    assert!(answer.ends_with("\r\n2\r\n{}\r\n0\r\n\r\n"), "{answer}");
+    assert_eq!(gateway.acquired(), 1);
+    let seen = pod.seen.lock().unwrap().clone();
+    assert!(seen[0].starts_with(b"POST /v1/messages/count_tokens HTTP/1.1\r\n"));
 }

@@ -13,8 +13,10 @@ mod bedrock;
 pub mod cli;
 mod config;
 mod credential;
+mod decode;
 mod hosted;
 mod keys;
+mod launch;
 mod logging;
 mod refusal;
 mod relaying;
@@ -26,10 +28,14 @@ mod translate;
 mod trusted;
 mod watchdog;
 
-pub use config::{Bedrock, Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
+pub use config::{
+    Bedrock, Deployment, Hosted, LaunchClaude, LaunchCodex, Model, Provider, ProviderKind, Wire,
+    load, parse,
+};
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,
 };
+pub use decode::Decoder;
 pub use hosted::{
     BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
     HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, Scheme, check_headers,

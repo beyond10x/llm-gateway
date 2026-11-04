@@ -47,6 +47,23 @@ export function usd(n: number | null | undefined): string {
   return `$${n.toFixed(n < 10 ? 3 : 2)}`;
 }
 
+export function tps(n: number | null | undefined): string {
+  if (n === null || n === undefined) return DASH;
+  return `${count(n)} tok/s`;
+}
+
+export function pct(fraction: number | null | undefined): string {
+  if (fraction === null || fraction === undefined || !Number.isFinite(fraction)) return DASH;
+  const p = fraction * 100;
+  return `${p >= 10 || p === 0 ? p.toFixed(0) : p.toFixed(1)}%`;
+}
+
+export function countdown(nowMs: number, atMs: number | null | undefined): string {
+  if (atMs === null || atMs === undefined) return DASH;
+  const left = atMs - nowMs;
+  return left <= 0 ? 'now' : `in ${span(left)}`;
+}
+
 export function clock(t: number): string {
   const d = new Date(t);
   const p = (x: number) => String(x).padStart(2, '0');

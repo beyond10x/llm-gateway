@@ -153,7 +153,10 @@ impl Open {
         pod: Option<&Pod>,
         records: Option<Arc<Records>>,
     ) -> Self {
-        let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
+        // Bound to every address, not loopback alone: a gateway that authenticates nobody and
+        // listens on loopback only opens every path (story:local-open-mode), which
+        // `adversary_local_open.rs` holds. This one is reached over loopback all the same.
+        let mut config = GatewayConfig::new("0.0.0.0:0".parse().unwrap());
         config.read_timeout = WAIT;
         config.ingress_auth = IngressAuth::None;
         let inventory = RouteInventory::new(Vec::new()).unwrap();
@@ -169,7 +172,7 @@ impl Open {
             None => Gateway::bind(config, verifier, inventory).unwrap(),
         };
         handle.mark_ready();
-        let addr = handle.local_addr();
+        let addr = SocketAddr::from(([127, 0, 0, 1], handle.local_addr().port()));
         Self {
             handle: Some(handle),
             addr,

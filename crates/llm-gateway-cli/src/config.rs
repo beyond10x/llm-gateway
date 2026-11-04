@@ -76,6 +76,126 @@ struct Document {
     /// The `llm.routes/1` document whose routes are served (story:routes-document).
     #[serde(default)]
     routes: Option<PathBuf>,
+    /// `[launch.claude]`: what `b10x-llm-gateway claude` starts Claude Code with.
+    #[serde(default)]
+    launch: LaunchDocument,
+}
+
+/// `[launch]`: the launchers' settings.
+#[derive(Deserialize, Default)]
+#[serde(deny_unknown_fields)]
+struct LaunchDocument {
+    #[serde(default)]
+    claude: Option<LaunchClaudeDocument>,
+    #[serde(default)]
+    codex: Option<LaunchCodexDocument>,
+}
+
+/// `[launch.claude]`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LaunchClaudeDocument {
+    #[serde(default)]
+    main_model: Option<String>,
+    #[serde(default)]
+    implementer_route: Option<String>,
+    #[serde(default)]
+    agents: Option<String>,
+    #[serde(default)]
+    subagent_instruction: Option<String>,
+}
+
+/// `[launch.codex]`.
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LaunchCodexDocument {
+    #[serde(default)]
+    model: Option<String>,
+}
+
+/// `[launch.codex]`, checked, with its defaults.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchCodex {
+    /// The route `codex` is started on unless its command line names a model. Default `qwen`.
+    pub model: String,
+}
+
+impl Default for LaunchCodex {
+    fn default() -> Self {
+        Self {
+            model: "qwen".to_owned(),
+        }
+    }
+}
+
+fn launch_codex(document: Option<LaunchCodexDocument>) -> Result<LaunchCodex, Refusal> {
+    let mut launch = LaunchCodex::default();
+    if let Some(model) = document.and_then(|document| document.model) {
+        closed_name("launch.codex.model", &model)?;
+        launch.model = model;
+    }
+    Ok(launch)
+}
+
+/// `[launch.claude]`, checked, with its defaults.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LaunchClaude {
+    /// Passed to `claude` as `--model` unless the command line names one. Default `opus`.
+    pub main_model: String,
+    /// The route subagents use. Default `qwen`.
+    pub implementer_route: String,
+    /// A JSON object passed as `--agents`; none by default.
+    pub agents: Option<String>,
+    /// Appended to Claude Code's system prompt so the main model leaves the Agent tool's
+    /// `model` unset and subagents run on the implementer route. `{route}` and `{model}` are
+    /// replaced by the route and the model it serves; empty disables it.
+    pub subagent_instruction: String,
+}
+
+/// The default `[launch.claude].subagent_instruction`.
+pub const SUBAGENT_INSTRUCTION: &str = "Subagents: omit the Agent tool's `model` parameter so they run on the implementer model `{route}` ({model}). Set `model` only when the user names a model, e.g. 'opus' for an adversarial review.";
+
+impl Default for LaunchClaude {
+    fn default() -> Self {
+        Self {
+            main_model: "opus".to_owned(),
+            implementer_route: "qwen".to_owned(),
+            agents: None,
+            subagent_instruction: SUBAGENT_INSTRUCTION.to_owned(),
+        }
+    }
+}
+
+fn launch_claude(document: Option<LaunchClaudeDocument>) -> Result<LaunchClaude, Refusal> {
+    let mut launch = LaunchClaude::default();
+    let Some(document) = document else {
+        return Ok(launch);
+    };
+    if let Some(model) = document.main_model {
+        ensure(
+            !model.is_empty() && !model.starts_with('-'),
+            "launch.claude.main_model",
+            "must be a model name",
+        )?;
+        launch.main_model = model;
+    }
+    if let Some(route) = document.implementer_route {
+        closed_name("launch.claude.implementer_route", &route)?;
+        launch.implementer_route = route;
+    }
+    if let Some(agents) = document.agents {
+        let parsed: Result<serde_json::Value, _> = serde_json::from_str(&agents);
+        ensure(
+            matches!(parsed, Ok(serde_json::Value::Object(_))),
+            "launch.claude.agents",
+            "must be a JSON object of agents",
+        )?;
+        launch.agents = Some(agents);
+    }
+    if let Some(instruction) = document.subagent_instruction {
+        launch.subagent_instruction = instruction;
+    }
+    Ok(launch)
 }
 
 /// `[hosted.<alias>]`: a model a hosted endpoint serves (`llm-gateway.deployment.HostedDeclaration`).
@@ -137,6 +257,19 @@ struct HostedDocument {
     /// (story:subscription-passthrough).
     #[serde(default)]
     model_prefix: Option<String>,
+    /// On a client route: the model family the alias tracks, resolved to the newest model of
+    /// it the client's own credential lists.
+    #[serde(default)]
+    newest: Option<String>,
+    /// On a client route: how many attempts a call makes at most on a 429, 502, 503 or 529.
+    #[serde(default)]
+    retry_max_attempts: Option<u32>,
+    /// On a client route: the most seconds a call waits for its retries in all.
+    #[serde(default)]
+    retry_max_wait: Option<u32>,
+    /// The auto-compact window `b10x-llm-gateway claude` gives Claude Code for this model.
+    #[serde(default)]
+    compact_window: Option<u32>,
 }
 
 /// The key under which the toml crate presents a datetime to a visitor as a one-entry table.
@@ -575,6 +708,17 @@ pub struct Hosted {
     pub headers: Vec<StaticHeader>,
     /// Every model name starting with it is served by this entry too, relayed as sent.
     pub model_prefix: Option<String>,
+    /// The most output tokens a request may ask for: a larger `max_tokens` is lowered to it.
+    pub max_tokens_cap: Option<u32>,
+    /// On a client route: `anthropic-beta` values sent besides the client's own.
+    pub anthropic_beta: Vec<String>,
+    /// On a client route: the model family the alias resolves to the newest model of.
+    pub newest: Option<String>,
+    /// On a client route: the most attempts and the most seconds of waiting in all, when
+    /// declared; the gateway's defaults otherwise.
+    pub retry: (Option<u32>, Option<u32>),
+    /// The auto-compact window the Claude Code launcher sets for this model, when declared.
+    pub compact_window: Option<u32>,
 }
 
 /// `[hosted.<alias>] kind = "bedrock"`, with every default applied and every rule checked: a
@@ -630,6 +774,10 @@ pub struct Deployment {
     pub routes: Routes,
     /// SHA-256 of the exact document bytes read, as 64 lowercase hex characters.
     pub digest: String,
+    /// `[launch.claude]`, or its defaults.
+    pub launch_claude: LaunchClaude,
+    /// `[launch.codex]`, or its defaults.
+    pub launch_codex: LaunchCodex,
 }
 
 impl Deployment {
@@ -803,9 +951,13 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         "metrics_bearer_file",
         "is allowed only with metrics_listen",
     )?;
+    let launch_claude = launch_claude(document.launch.claude)?;
+    let launch_codex = launch_codex(document.launch.codex)?;
     let mut gateway = GatewayConfig::new(document.listen);
     gateway.ingress_auth = ingress_auth;
     Ok(Deployment {
+        launch_claude,
+        launch_codex,
         gateway,
         owner_secret_file: document.owner_secret_file,
         metrics_listen: document.metrics_listen,
@@ -886,8 +1038,6 @@ fn refuse_bedrock_keys(at: &str, declared: &HostedDocument) -> Result<(), Refusa
         ("credential_source", declared.credential_source.is_some()),
         ("api", declared.api.is_some()),
         ("endpoint", declared.endpoint.is_some()),
-        ("max_output_tokens", declared.max_output_tokens.is_some()),
-        ("anthropic_beta", declared.anthropic_beta.is_some()),
     ] {
         ensure(
             !present,
@@ -908,6 +1058,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         )
     };
     refuse_bedrock_keys(at, &declared)?;
+    let (retry, compact_window) = route_extras(at, &declared)?;
     let wires = declared.wires.ok_or_else(|| missing("wires"))?;
     let base_url = declared.base_url.ok_or_else(|| missing("base_url"))?;
     let auth_kind = declared.auth_kind.ok_or_else(|| missing("auth_kind"))?;
@@ -924,25 +1075,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         AuthKindDocument::ApiKey => AuthKind::ApiKey,
         AuthKindDocument::Client => AuthKind::Client,
     };
-    match crate::hosted::HostedEndpoint::check(&base_url, auth_kind) {
-        Ok(_) => {}
-        Err(crate::hosted::BaseUrlError::Malformed) => {
-            return Err(value(
-                &key("base_url"),
-                "must be http:// or https://, a host[:port] of at most 256 printable ASCII \
-                 characters and an optional base path of at most 32 segments and 256 bytes, each \
-                 segment one or more of A-Z a-z 0-9 - . _ ~ and neither . nor .., with no query, \
-                 fragment or user information",
-            ));
-        }
-        Err(crate::hosted::BaseUrlError::CleartextCredential) => {
-            return Err(value(
-                &key("base_url"),
-                "must be https:// for a credential sent to a host that is not loopback \
-                 (127.0.0.0/8, ::1 or localhost): a credential is never sent in cleartext",
-            ));
-        }
-    }
+    check_base_url(&key("base_url"), &base_url, auth_kind)?;
     ensure(
         declared.credential_file.is_some()
             != matches!(auth_kind, AuthKind::Anonymous | AuthKind::Client),
@@ -986,7 +1119,19 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         check_client_route(at, &base_url, &wires, &headers, reasoning_effort.is_some())?;
     }
     check_model_prefix(at, declared.model_prefix.as_deref())?;
+    let (anthropic_beta, newest) = client_settings(
+        at,
+        auth_kind,
+        declared.max_output_tokens,
+        declared.anthropic_beta,
+        declared.newest,
+    )?;
     Ok(Hosted {
+        max_tokens_cap: declared.max_output_tokens,
+        retry,
+        compact_window,
+        anthropic_beta,
+        newest,
         headers,
         wires,
         base_url,
@@ -1000,6 +1145,135 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         reasoning_effort,
         model_prefix: declared.model_prefix,
     })
+}
+
+/// An endpoint's `base_url` at `key`, checked by [`crate::hosted::HostedEndpoint::check`].
+fn check_base_url(key: &str, base_url: &str, auth_kind: AuthKind) -> Result<(), Refusal> {
+    match crate::hosted::HostedEndpoint::check(base_url, auth_kind) {
+        Ok(_) => Ok(()),
+        Err(crate::hosted::BaseUrlError::Malformed) => Err(value(
+            key,
+            "must be http:// or https://, a host[:port] of at most 256 printable ASCII \
+                 characters and an optional base path of at most 32 segments and 256 bytes, each \
+                 segment one or more of A-Z a-z 0-9 - . _ ~ and neither . nor .., with no query, \
+                 fragment or user information",
+        )),
+        Err(crate::hosted::BaseUrlError::CleartextCredential) => Err(value(
+            key,
+            "must be https:// for a credential sent to a host that is not loopback \
+                 (127.0.0.0/8, ::1 or localhost): a credential is never sent in cleartext",
+        )),
+    }
+}
+
+/// An endpoint's output cap, checked, and a client route's beta extras and newest family.
+/// A client route's `retry_max_attempts` and `retry_max_wait`, as declared.
+type RetryKeys = (Option<u32>, Option<u32>);
+
+/// `retry_max_attempts` (1 to 10) and `retry_max_wait` (0 to 600 seconds), keys of a client route
+/// only, and `compact_window` (100000 to 1000000 tokens, the range Claude Code takes).
+fn route_extras(at: &str, declared: &HostedDocument) -> Result<(RetryKeys, Option<u32>), Refusal> {
+    let client = matches!(declared.auth_kind, Some(AuthKindDocument::Client));
+    if let Some(attempts) = declared.retry_max_attempts {
+        ensure(
+            client,
+            &format!("{at}.retry_max_attempts"),
+            "is a key of auth_kind = \"client\" only",
+        )?;
+        within(at, "retry_max_attempts", &attempts, &(1..=10))?;
+    }
+    if let Some(wait) = declared.retry_max_wait {
+        ensure(
+            client,
+            &format!("{at}.retry_max_wait"),
+            "is a key of auth_kind = \"client\" only",
+        )?;
+        within(at, "retry_max_wait", &wait, &(0..=600))?;
+    }
+    if let Some(window) = declared.compact_window {
+        within(at, "compact_window", &window, &(100_000..=1_000_000))?;
+    }
+    Ok((
+        (declared.retry_max_attempts, declared.retry_max_wait),
+        declared.compact_window,
+    ))
+}
+
+fn client_settings(
+    at: &str,
+    auth_kind: AuthKind,
+    cap: Option<u32>,
+    betas: Option<Vec<String>>,
+    newest: Option<String>,
+) -> Result<(Vec<String>, Option<String>), Refusal> {
+    if let Some(cap) = cap {
+        within(at, "max_output_tokens", &cap, &(1..=2_000_000))?;
+    }
+    let client = auth_kind == AuthKind::Client;
+    Ok((
+        client_betas(at, client, betas)?,
+        newest_family(at, client, newest)?,
+    ))
+}
+
+/// `anthropic_beta` on an endpoint: only a client route takes it, each value an
+/// `llm_core::anthropic_beta_name`, distinct, at most `llm_core::MAX_ANTHROPIC_BETAS`. A refusal
+/// names the key, never a value.
+fn client_betas(
+    at: &str,
+    client: bool,
+    declared: Option<Vec<String>>,
+) -> Result<Vec<String>, Refusal> {
+    let Some(betas) = declared else {
+        return Ok(Vec::new());
+    };
+    let at = format!("{at}.anthropic_beta");
+    ensure(
+        client,
+        &at,
+        "is a key of auth_kind = \"client\" or kind = \"bedrock\" only",
+    )?;
+    ensure(
+        !betas.is_empty() && betas.len() <= llm_core::MAX_ANTHROPIC_BETAS,
+        &at,
+        &format!("must name 1 to {} betas", llm_core::MAX_ANTHROPIC_BETAS),
+    )?;
+    ensure(
+        betas.iter().all(|name| llm_core::anthropic_beta_name(name)),
+        &at,
+        "names each beta as letters, digits, -, _ and .",
+    )?;
+    let distinct: BTreeSet<&String> = betas.iter().collect();
+    ensure(distinct.len() == betas.len(), &at, "names each beta once")?;
+    Ok(betas)
+}
+
+/// `newest` on an endpoint: only a client route takes it, a family name of 1..=32 lower-case
+/// letters, digits and `-`.
+fn newest_family(
+    at: &str,
+    client: bool,
+    declared: Option<String>,
+) -> Result<Option<String>, Refusal> {
+    let Some(family) = declared else {
+        return Ok(None);
+    };
+    let at = format!("{at}.newest");
+    ensure(
+        client,
+        &at,
+        "is a key of auth_kind = \"client\" only: the newest model is read with the client's \
+         own credential",
+    )?;
+    ensure(
+        (1..=32).contains(&family.len())
+            && family
+                .bytes()
+                .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'),
+        &at,
+        "must be 1 to 32 lower-case letters, digits and -, such as opus",
+    )?;
+    Ok(Some(family))
 }
 
 /// `model_prefix`, when declared: 1..=64 printable ASCII characters without a space.
@@ -1045,10 +1319,10 @@ fn check_client_route(
     ensure(
         !headers
             .iter()
-            .any(|header| llm_gateway::CLIENT_CREDENTIAL_HEADERS.contains(&header.name())),
+            .any(|header| matches!(header.name(), "authorization" | "x-api-key")),
         &format!("{at}.headers"),
-        "must not name a header the client's own is forwarded in (authorization, x-api-key, \
-         anthropic-version, anthropic-beta) for auth_kind = \"client\"",
+        "must not name a header the client's own credential is forwarded in (authorization, \
+         x-api-key) for auth_kind = \"client\"; an anthropic-* header replaces the client's",
     )?;
     ensure(
         !effort,
@@ -1140,6 +1414,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         ("reasoning_effort", declared.reasoning_effort.is_some()),
         ("headers", !declared.headers.is_empty()),
         ("model_prefix", declared.model_prefix.is_some()),
+        ("newest", declared.newest.is_some()),
     ] {
         ensure(
             !present,

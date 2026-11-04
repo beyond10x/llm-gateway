@@ -11,6 +11,7 @@
 
 use crate::{
     auth, body,
+    dashboard::{Observed, Progress},
     error::{
         BasePathError, CredentialHeaderError, RefusalCode, RelayError, StaticHeaderError,
         TargetRefusal, TokenError,
@@ -20,14 +21,21 @@ use crate::{
     translate::{
         AnswerFraming, TranslatedAnswer, TranslationFailure, TranslationRequest, Translator,
     },
+    usage::{Usage, UsageScanner},
 };
+use passthrough::Retry;
+pub use passthrough::{
+    BodyDecoder, DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_WAIT, Decoded, MAX_ERROR_BODY,
+};
+
+mod passthrough;
 use std::{
     any::Any,
     collections::BTreeMap,
     fmt,
     io::{self, Read, Write},
     net::{IpAddr, TcpStream},
-    sync::{Arc, mpsc},
+    sync::{Arc, Mutex, PoisonError, mpsc},
     thread,
     time::{Duration, Instant},
 };
@@ -39,6 +47,8 @@ const RELAY_CHUNK: usize = 16_384;
 /// Where the output clamp counts a messages request's input at its target (vLLM v0.27.1,
 /// `vllm/entrypoints/anthropic/api_router.py` lines 95-133).
 const COUNT_TOKENS_PATH: &str = "/v1/messages/count_tokens";
+/// The model list a newest-model resolution reads.
+const MODELS_PATH: &str = "/v1/models?limit=1000";
 
 /// A wire the gateway relays. Each has its own path, and the target is asked on the same path.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -304,28 +314,73 @@ pub const CALLER_SESSION_HEADER: &str = "x-opencode-session";
 /// The longest caller session a target is told: `caller-session-bytes`.
 const MAX_CALLER_SESSION_BYTES: usize = 256;
 
-/// The client headers a model marked [`RelayModel::with_client_credentials`] is sent as the
-/// client sent them, in this order, when the gateway authenticates nobody
-/// (`ingress_auth = "none"`): the client's own Anthropic credential and the two headers that say
-/// what it is allowed. No other client header is ever forwarded (story:subscription-passthrough).
-pub const CLIENT_CREDENTIAL_HEADERS: [&str; 4] = [
-    "authorization",
-    "x-api-key",
-    "anthropic-version",
-    "anthropic-beta",
+/// The client headers a model marked [`RelayModel::with_client_credentials`] is never sent,
+/// when the gateway authenticates nobody (`ingress_auth = "none"`): the hop-by-hop headers of
+/// RFC 9110 section 7.6.1, which belong to the client's connection to the gateway and not to
+/// the request, `host`, which names the gateway, `content-length`, which the gateway writes for
+/// the body it sends, and `expect`, which the gateway has already answered. Every other header,
+/// the client's credential included, is forwarded as the client sent it, and so is every header
+/// the client's own `connection` line names as hop-by-hop (story:subscription-passthrough).
+pub const UNFORWARDED_HEADERS: [&str; 12] = [
+    "connection",
+    "keep-alive",
+    "proxy-connection",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+    "host",
+    "content-length",
+    "expect",
 ];
 
-/// The [`CLIENT_CREDENTIAL_HEADERS`] lines of one client request, as `name: value\r\n` with the
-/// name in lower case and the value as the client sent it. Overwritten when dropped: it holds the
-/// client's credential.
-pub(crate) struct ClientCredentials(Vec<u8>);
+/// The most client lines one request forwards.
+const MAX_CLIENT_LINES: usize = 128;
+
+/// Whether a header `name` belongs to one connection only: an [`UNFORWARDED_HEADERS`] entry, or
+/// one the `connection` line names.
+fn hop_by_hop(name: &str, connection: &[String]) -> bool {
+    UNFORWARDED_HEADERS.contains(&name) || connection.iter().any(|named| named == name)
+}
+
+/// The header names a `connection` value lists, in lower case.
+fn connection_names(value: Option<&str>) -> Vec<String> {
+    value
+        .map(|value| {
+            value
+                .split(',')
+                .map(|name| name.trim().to_ascii_lowercase())
+                .filter(|name| !name.is_empty())
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// The forwarded lines of one client request (every header but [`hop_by_hop`] ones), each `name: value\r\n` with the
+/// name in lower case and the value as the client sent it, in the order sent, at most
+/// [`MAX_CLIENT_LINES`]. Overwritten when dropped: it holds the client's credential.
+pub(crate) struct ClientCredentials {
+    bytes: Vec<u8>,
+    /// Each line's name and the range of its value in `bytes`.
+    lines: Vec<(String, std::ops::Range<usize>)>,
+}
 
 impl ClientCredentials {
-    /// The lines `header` answers for the forwarded names; `None` when the client sent none.
-    pub(crate) fn read<'h>(header: impl Fn(&str) -> Option<&'h str>) -> Option<Self> {
-        let present: Vec<(&str, &str)> = CLIENT_CREDENTIAL_HEADERS
-            .iter()
-            .filter_map(|&name| header(name).map(|value| (name, value)))
+    /// The forwarded lines among `headers`; `None` when the client sent none.
+    pub(crate) fn read<'h>(headers: impl Iterator<Item = (&'h str, &'h str)>) -> Option<Self> {
+        let headers: Vec<(&str, &str)> = headers.collect();
+        let connection = connection_names(
+            headers
+                .iter()
+                .find(|(name, _)| *name == "connection")
+                .map(|(_, value)| *value),
+        );
+        let present: Vec<(&str, &str)> = headers
+            .into_iter()
+            .filter(|(name, _)| !hop_by_hop(name, &connection))
+            .take(MAX_CLIENT_LINES)
             .collect();
         if present.is_empty() {
             return None;
@@ -334,33 +389,109 @@ impl ClientCredentials {
             .iter()
             .map(|(name, value)| name.len() + value.len() + 4)
             .sum();
-        let mut lines = Vec::with_capacity(length);
+        let mut credentials = Self {
+            bytes: Vec::with_capacity(length),
+            lines: Vec::with_capacity(present.len()),
+        };
         for (name, value) in present {
-            lines.extend_from_slice(name.as_bytes());
-            lines.extend_from_slice(b": ");
-            lines.extend_from_slice(value.as_bytes());
-            lines.extend_from_slice(b"\r\n");
+            credentials.push(name, value.as_bytes());
         }
-        Some(Self(lines))
+        Some(credentials)
+    }
+
+    fn push(&mut self, name: &str, value: &[u8]) {
+        self.bytes.extend_from_slice(name.as_bytes());
+        self.bytes.extend_from_slice(b": ");
+        let start = self.bytes.len();
+        self.bytes.extend_from_slice(value);
+        self.lines.push((name.to_owned(), start..self.bytes.len()));
+        self.bytes.extend_from_slice(b"\r\n");
+    }
+
+    /// The lines a target is sent: every client line but one the target declares a static
+    /// header of its own name for (the route's value wins), the route's `extra` beta values
+    /// appended to the client's `anthropic-beta`, distinct, or sent alone when the client
+    /// sent none.
+    pub(crate) fn forwarded(&self, statics: &[StaticHeader], extra: &[String]) -> Self {
+        let overridden = |name: &str| statics.iter().any(|header| header.name() == name);
+        let mut extra: Vec<&str> = extra.iter().map(String::as_str).collect();
+        let length = self.bytes.len() + extra.iter().map(|beta| beta.len() + 1).sum::<usize>() + 20;
+        let mut out = Self {
+            bytes: Vec::with_capacity(length),
+            lines: Vec::with_capacity(self.lines.len() + 1),
+        };
+        for (name, range) in &self.lines {
+            if overridden(name) {
+                continue;
+            }
+            let value = &self.bytes[range.clone()];
+            if name != "anthropic-beta" || extra.is_empty() {
+                out.push(name, value);
+                continue;
+            }
+            let sent = String::from_utf8_lossy(value);
+            let mut merged = sent.trim().to_owned();
+            for beta in std::mem::take(&mut extra) {
+                if !sent.split(',').any(|known| known.trim() == beta) {
+                    if !merged.is_empty() {
+                        merged.push(',');
+                    }
+                    merged.push_str(beta);
+                }
+            }
+            out.push(name, merged.as_bytes());
+        }
+        if !extra.is_empty() && !overridden("anthropic-beta") {
+            out.push("anthropic-beta", extra.join(",").as_bytes());
+        }
+        out
     }
 
     fn as_bytes(&self) -> &[u8] {
-        &self.0
+        &self.bytes
+    }
+
+    /// The value of the first line `name`, as sent.
+    pub(crate) fn value(&self, name: &str) -> Option<&[u8]> {
+        self.lines
+            .iter()
+            .find(|(line, _)| line == name)
+            .map(|(_, range)| &self.bytes[range.clone()])
+    }
+
+    /// The lines a model list is asked with: the credential and the `anthropic-*` lines only, so
+    /// the list is neither compressed nor typed by a line meant for the call.
+    fn for_listing(&self) -> Self {
+        let mut out = Self {
+            bytes: Vec::with_capacity(self.bytes.len()),
+            lines: Vec::new(),
+        };
+        for (name, range) in &self.lines {
+            if matches!(name.as_str(), "authorization" | "x-api-key")
+                || name.starts_with("anthropic-")
+            {
+                out.push(name, &self.bytes[range.clone()]);
+            }
+        }
+        out
     }
 }
 
 impl Drop for ClientCredentials {
     fn drop(&mut self) {
-        self.0.fill(0);
-        std::hint::black_box(&self.0);
+        self.bytes.fill(0);
+        std::hint::black_box(&self.bytes);
     }
 }
 
 impl Clone for ClientCredentials {
     fn clone(&self) -> Self {
-        let mut lines = Vec::with_capacity(self.0.len());
-        lines.extend_from_slice(&self.0);
-        Self(lines)
+        let mut bytes = Vec::with_capacity(self.bytes.len());
+        bytes.extend_from_slice(&self.bytes);
+        Self {
+            bytes,
+            lines: self.lines.clone(),
+        }
     }
 }
 
@@ -705,6 +836,11 @@ pub struct RelayModel {
     translated_only: bool,
     client_credentials: bool,
     model_prefix: Option<String>,
+    newest: Option<String>,
+    max_tokens_cap: Option<u64>,
+    anthropic_beta: Vec<String>,
+    retry: Retry,
+    compact_window: Option<u64>,
 }
 
 impl RelayModel {
@@ -733,6 +869,11 @@ impl RelayModel {
             translated_only: false,
             client_credentials: false,
             model_prefix: None,
+            newest: None,
+            max_tokens_cap: None,
+            anthropic_beta: Vec::new(),
+            retry: Retry::default(),
+            compact_window: None,
         })
     }
 
@@ -751,7 +892,7 @@ impl RelayModel {
     }
 
     /// Declares that the model's target authenticates the client itself: when the gateway
-    /// authenticates nobody, the client's [`CLIENT_CREDENTIAL_HEADERS`] are forwarded to it as
+    /// authenticates nobody, the client's headers but [`UNFORWARDED_HEADERS`] are forwarded to it as
     /// sent, and the body reaches it with only its `model` rewritten (no effort mapping, no
     /// output clamp, never translated: a request on a wire it does not declare is
     /// `wire-not-served`). A hosted Anthropic route serving clients on their own subscription is
@@ -782,6 +923,83 @@ impl RelayModel {
 
     pub fn model_prefix(&self) -> Option<&str> {
         self.model_prefix.as_deref()
+    }
+
+    /// Declares that a request naming the alias is sent the newest model whose ID contains
+    /// `family` (`opus`, `sonnet`, …): the first such ID, in the order the target lists them, of
+    /// its `GET /v1/models?limit=1000`, asked with the client's own credential lines and
+    /// remembered for [`NEWEST_TTL`]. When the list cannot be read the upstream model is sent.
+    /// Only a [`Self::with_client_credentials`] model resolves (story:subscription-passthrough).
+    ///
+    /// # Errors
+    /// [`RelayError::EmptyFamily`] for an empty family.
+    pub fn with_newest(mut self, family: &str) -> Result<Self, RelayError> {
+        if family.is_empty() {
+            return Err(RelayError::EmptyFamily);
+        }
+        self.newest = Some(family.to_ascii_lowercase());
+        Ok(self)
+    }
+
+    pub fn newest(&self) -> Option<&str> {
+        self.newest.as_deref()
+    }
+
+    /// Declares the most output tokens a request may ask for: a larger `max_tokens` is lowered
+    /// to it, a smaller one and a body without one are sent as they are.
+    #[must_use]
+    pub fn with_max_tokens_cap(mut self, cap: u64) -> Self {
+        self.max_tokens_cap = Some(cap);
+        self
+    }
+
+    /// Declares `anthropic-beta` values a client-credential model's target is sent besides the
+    /// client's own, appended to its line when it does not carry them already.
+    ///
+    /// # Errors
+    /// [`RelayError::BetaNotAToken`] for a value that could not stand in a header list.
+    pub fn with_anthropic_beta(mut self, betas: Vec<String>) -> Result<Self, RelayError> {
+        let token = |beta: &String| {
+            (1..=128).contains(&beta.len())
+                && beta
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.'))
+        };
+        if !betas.iter().all(token) {
+            return Err(RelayError::BetaNotAToken);
+        }
+        self.anthropic_beta = betas;
+        Ok(self)
+    }
+
+    /// Declares how a client-credential model's call is retried on a 429, 502, 503 or 529
+    /// answer: at most `max_attempts` attempts (1 is no retry, 0 counts as 1), waiting at most
+    /// `max_wait` in all.
+    #[must_use]
+    pub fn with_retry(mut self, max_attempts: u32, max_wait: Duration) -> Self {
+        self.retry = Retry {
+            max_attempts: max_attempts.max(1),
+            max_wait,
+        };
+        self
+    }
+
+    /// How a client-credential model's call is retried.
+    pub fn retry(&self) -> (u32, Duration) {
+        (self.retry.max_attempts, self.retry.max_wait)
+    }
+
+    /// Declares the auto-compact window a Claude Code session on this model is given by the
+    /// launcher (`GET /v1/launch`).
+    #[must_use]
+    pub fn with_compact_window(mut self, window: u64) -> Self {
+        self.compact_window = Some(window);
+        self
+    }
+
+    /// The auto-compact window, when declared.
+    pub fn compact_window(&self) -> Option<u64> {
+        self.compact_window
     }
 
     /// Whether a request on `wire` is relayed to the model byte for byte: it declares the wire
@@ -872,6 +1090,10 @@ pub struct Relay {
     /// admits ([`Translator::admits`]), asked once by [`Self::with_translator`]
     /// (story:client-profiles-translated).
     admitted: BTreeMap<String, Vec<Wire>>,
+    /// By alias, the newest model ID a [`RelayModel::with_newest`] model resolved to, and when.
+    newest: Mutex<BTreeMap<String, (String, Instant)>>,
+    /// Decodes a copy of a content-encoded passthrough answer for its usage and error body.
+    decoder: Option<Arc<dyn BodyDecoder>>,
 }
 
 impl Relay {
@@ -900,6 +1122,8 @@ impl Relay {
             records: Arc::new(NoRecords),
             translator: None,
             admitted: BTreeMap::new(),
+            newest: Mutex::default(),
+            decoder: None,
         };
         relay.register();
         Ok(relay)
@@ -958,6 +1182,19 @@ impl Relay {
         self.metrics = metrics;
         self.register();
         self
+    }
+
+    /// Reads the usage and the error body of a content-encoded passthrough answer from a copy
+    /// `decoder` decodes; the client still receives the answer's bytes as they came. Without
+    /// one such an answer's usage stays unknown.
+    #[must_use]
+    pub fn with_decoder(mut self, decoder: Arc<dyn BodyDecoder>) -> Self {
+        self.decoder = Some(decoder);
+        self
+    }
+
+    pub(crate) fn decoder(&self) -> Option<Arc<dyn BodyDecoder>> {
+        self.decoder.clone()
     }
 
     /// Hands every [`UsageRecord`] to `records` (row O3: the binary logs each).
@@ -1043,9 +1280,18 @@ pub(crate) struct Admitted {
     /// The value of the client's [`CALLER_SESSION_HEADER`] line, unchecked: [`Caller::new`]
     /// keeps it only when it follows the rule, and it is never forwarded verbatim.
     pub(crate) session: Option<String>,
-    /// The client's [`CLIENT_CREDENTIAL_HEADERS`] lines, read only when the gateway authenticates
+    /// The client's forwarded lines (every header but [`UNFORWARDED_HEADERS`]), read only when the gateway authenticates
     /// nobody; forwarded only to a model marked [`RelayModel::with_client_credentials`].
     pub(crate) client_credentials: Option<ClientCredentials>,
+    /// Who sent the call, for the dashboard: a session hash, a label, the user agent and the
+    /// client's retry count; no header value it reads is kept but the user agent.
+    pub(crate) observed: Observed,
+    /// The request is `POST /v1/messages/count_tokens`: relayed to the same target as a
+    /// messages call, at that path, with no output clamp and no token usage recorded.
+    pub(crate) count_tokens: bool,
+    /// The request target as the client sent it, the path with its query: what a passthrough
+    /// route is sent.
+    pub(crate) request_target: String,
 }
 
 /// Decides the body framing from the head (row W1).
@@ -1307,11 +1553,35 @@ enum Answer {
     Close,
 }
 
+/// The longest answer line value relayed to the client.
+const MAX_RELAYED_VALUE: usize = 256;
+/// The most bytes of answer lines relayed to the client.
+const MAX_RELAYED_BYTES: usize = 4096;
+
+/// Whether a target's answer line `name` reaches the client: the ones a client reads to retry
+/// and to show its usage limits (`retry-after`, `x-should-retry`, `request-id` and every
+/// `anthropic-ratelimit-*`), as the Claude Code gateway protocol asks. No other answer line is
+/// relayed; the relay writes its own framing.
+fn relays_answer_line(name: &str) -> bool {
+    matches!(name, "retry-after" | "x-should-retry" | "request-id")
+        || name.starts_with("anthropic-ratelimit-")
+}
+
 /// The head of a target's answer.
 struct Head {
     status: u16,
     content_type: Option<String>,
     framing: Answer,
+    /// The `retry-after` value, kept when it is at most 64 bytes of printable ASCII.
+    retry_after: Option<String>,
+    /// The answer lines relayed to the client besides its framing ([`relays_answer_line`]),
+    /// each `name: value\r\n`.
+    relayed: String,
+    /// The reason phrase of the status line, as sent.
+    reason: String,
+    /// Every line of the final head, its name in lower case and the line as sent: what a
+    /// passthrough route relays.
+    lines: Vec<(String, Vec<u8>)>,
 }
 
 /// Reads the target's answer head. Every head it sends, interim `1xx` heads included, comes out
@@ -1343,6 +1613,7 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
         let mut parts = start.splitn(3, ' ');
         let version = parts.next().unwrap_or_default();
         let status = parts.next().unwrap_or_default();
+        let reason = parts.next().unwrap_or_default().to_owned();
         if !version.starts_with("HTTP/1.") || status.len() != 3 {
             return Err(invalid());
         }
@@ -1351,8 +1622,11 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
             return Err(invalid());
         }
         let mut content_type = None;
+        let mut retry_after = None;
+        let mut relayed = String::new();
         let mut length = None;
         let mut chunked = false;
+        let mut lines = Vec::new();
         loop {
             let line = next_line(input)?;
             if line.is_empty() {
@@ -1364,6 +1638,7 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
                 .ok_or_else(invalid)?;
             let name = text(&line[..colon])?.trim().to_ascii_lowercase();
             let read = || text(&line[colon + 1..]).map(|value| value.trim().to_owned());
+            lines.push((name.clone(), line.clone()));
             match name.as_str() {
                 "content-type" => {
                     let value = read()?;
@@ -1373,6 +1648,25 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
                 }
                 "content-length" => length = Some(read()?.parse::<u64>().map_err(|_| invalid())?),
                 "transfer-encoding" => chunked = read()?.to_ascii_lowercase().ends_with("chunked"),
+                // A relayed line's value that is not short printable ASCII is not relayed, and
+                // does not fail the head.
+                name if relays_answer_line(name) => {
+                    let Some(value) = read().ok().filter(|value| {
+                        value.len() <= MAX_RELAYED_VALUE
+                            && value.bytes().all(|byte| (0x20..0x7f).contains(&byte))
+                    }) else {
+                        continue;
+                    };
+                    if name == "retry-after" {
+                        retry_after = Some(value.clone());
+                    }
+                    if relayed.len() + name.len() + value.len() + 4 <= MAX_RELAYED_BYTES {
+                        relayed.push_str(name);
+                        relayed.push_str(": ");
+                        relayed.push_str(&value);
+                        relayed.push_str("\r\n");
+                    }
+                }
                 _ => {}
             }
         }
@@ -1392,6 +1686,10 @@ fn read_answer_head(input: &mut Buffered<'_>, limit: usize) -> io::Result<Head> 
             status,
             content_type,
             framing,
+            retry_after,
+            relayed,
+            reason,
+            lines,
         });
     }
 }
@@ -1451,6 +1749,8 @@ pub(crate) struct Limits {
     pub(crate) timeout: Duration,
     /// The output clamp's count deadline, `GatewayConfig::count_timeout`.
     pub(crate) count_timeout: Duration,
+    /// The relay's decoder ([`Relay::with_decoder`]).
+    pub(crate) decoder: Option<Arc<dyn BodyDecoder>>,
 }
 
 /// What a relay learned about its call, for the usage record.
@@ -1468,6 +1768,51 @@ pub(crate) struct Call {
     /// Whether the target's read timed out before its answer head arrived: an
     /// `upstream-failed` that is counted a `timeout` (`llm-gateway.telemetry.Outcome`).
     pub(crate) timed_out: bool,
+    /// When the request head was read: the start of the queue wait and of the time to first
+    /// token (story:live-dashboard). `None` leaves both unmeasured.
+    pub(crate) begun: Option<Instant>,
+    /// Milliseconds from `begun` until the target's connection was open.
+    pub(crate) queue_wait_ms: Option<u64>,
+    /// Milliseconds from `begun` until the first answer body byte was written to the client.
+    pub(crate) ttft_ms: Option<u64>,
+    /// The token counts the answer reported, read as it streamed.
+    pub(crate) usage: Usage,
+    /// The client stopped reading before the answer's last byte.
+    pub(crate) client_disconnected: bool,
+    /// The `retry-after` a 429 or 5xx answer of the target carried.
+    pub(crate) retry_after: Option<String>,
+    /// The authority of the acquired target.
+    pub(crate) upstream: Option<String>,
+    /// The model name the target was sent.
+    pub(crate) upstream_model: Option<String>,
+    /// A digest of the request body, for the repeated-body flag.
+    pub(crate) body_digest: Option<[u8; 32]>,
+    /// Each attempt of a passthrough call at its target, in order.
+    pub(crate) attempts: Vec<crate::dashboard::Attempt>,
+    /// The label of the credential a passthrough client sent (`dashboard::credential_label`).
+    pub(crate) credential: Option<String>,
+    /// Why the usage is unknown though the answer carried it, e.g. `undecodable(br)`.
+    pub(crate) usage_note: Option<String>,
+    /// The call's entry in the dashboard's in-flight registry, removed when dropped.
+    pub(crate) progress: Option<Progress>,
+}
+
+impl Call {
+    /// Milliseconds since `begun`.
+    fn since_begun(&self) -> Option<u64> {
+        self.begun
+            .map(|begun| u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX))
+    }
+
+    /// The first answer byte reached the client.
+    fn first_byte(&mut self) {
+        if self.ttft_ms.is_none() {
+            self.ttft_ms = self.since_begun();
+            if let Some(progress) = &self.progress {
+                progress.streaming();
+            }
+        }
+    }
 }
 
 /// A model that serves a request, and the translator when the request is translated.
@@ -1499,6 +1844,9 @@ fn served_model<'r>(
         })
         .ok_or(RefusalCode::ModelUnknown)?;
     call.model = Some(model.alias.as_str().to_string());
+    if let Some(progress) = &call.progress {
+        progress.route(model.alias.as_str());
+    }
     let translator = if model.wires.contains(&wire) && !model.translated_only {
         None
     } else if model.client_credentials {
@@ -1513,6 +1861,9 @@ fn served_model<'r>(
     };
     if analysis.offers_tools && model.tool_calling == ToolCalling::Absent {
         return Err(RefusalCode::ToolsNotServed);
+    }
+    if wire == Wire::Messages && analysis.offers_server_tool && !model.client_credentials {
+        return Err(RefusalCode::ServerToolNotServed);
     }
     Ok((model, translator))
 }
@@ -1539,6 +1890,7 @@ fn acquire(
     }
     let target = acquired.map_err(TargetRefusal::refusal)?;
     call.profile = target.profile();
+    call.upstream = Some(target.authority().to_owned());
     Ok(target)
 }
 
@@ -1572,6 +1924,8 @@ fn translate(
         gone: false,
         written: 0,
         target: None,
+        call,
+        scanner: UsageScanner::default(),
     };
     let ran = prepared.run(target.as_ref(), &mut answer);
     let Some(framing) = answer.framing else {
@@ -1580,7 +1934,7 @@ fn translate(
             return Ok(());
         }
         // A target that answered is recorded with its status, as on the byte relay.
-        call.target_status = answer.target;
+        answer.call.target_status = answer.target;
         return match ran {
             Ok(()) => Err(RefusalCode::UpstreamRefused),
             Err(TranslationFailure::UpstreamFailed) => {
@@ -1592,8 +1946,10 @@ fn translate(
         };
     };
     answer.finish(framing);
-    call.target_status = answer.status();
-    call.response_bytes = answer.written;
+    answer.call.target_status = answer.status();
+    answer.call.response_bytes = answer.written;
+    answer.call.client_disconnected = answer.gone;
+    answer.call.usage = answer.scanner.usage();
     // The target is released only now, after the last byte: row L12's hold.
     drop(target);
     Ok(())
@@ -1612,6 +1968,10 @@ struct ClientAnswer<'s> {
     written: u64,
     /// The status of the target's answer head, as the translation told it.
     target: Option<u16>,
+    /// The call, told when the first body byte reached the client.
+    call: &'s mut Call,
+    /// Reads the answer's usage from the client-wire bytes written.
+    scanner: UsageScanner,
 }
 
 impl ClientAnswer<'_> {
@@ -1703,6 +2063,10 @@ impl TranslatedAnswer for ClientAnswer<'_> {
         };
         if there {
             self.written = self.written.saturating_add(size);
+            if size > 0 {
+                self.scanner.feed(bytes);
+                self.call.first_byte();
+            }
         }
         there
     }
@@ -1805,6 +2169,27 @@ fn watched_head(
     Some(read)
 }
 
+/// The target's answer head, read while watching the client: `Ok(None)` when the client went
+/// away first, `Err` when no answer head arrived (`call.timed_out` says whether it timed out).
+fn target_head(
+    stream: &TcpStream,
+    input: &mut Buffered<'_>,
+    limits: &Limits,
+    call: &mut Call,
+) -> Result<Option<Head>, ()> {
+    match watched_head(stream, input, limits.line_bytes) {
+        None => Ok(None),
+        Some(Ok(head)) => Ok(Some(head)),
+        Some(Err(error)) => {
+            call.timed_out = matches!(
+                error.kind(),
+                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
+            );
+            Err(())
+        }
+    }
+}
+
 /// The caller of `admitted`: its session header as [`Caller::new`] keeps it, and the address
 /// `stream` came from, unknown when the socket cannot tell.
 fn caller<'a>(stream: &TcpStream, admitted: &'a Admitted) -> Caller<'a> {
@@ -1843,26 +2228,180 @@ fn clamp_output(
     Ok(rewritten.bytes)
 }
 
-/// The body `model`'s target is sent (step 6): its `model` the upstream name, or the name as the
-/// client sent it when a prefix matched it; on the messages wire (`messages`), every effort
-/// mapped and the model's declared effort inserted where the body names none.
+/// How long a [`RelayModel::with_newest`] model keeps the ID it resolved to.
+pub const NEWEST_TTL: Duration = Duration::from_secs(3600);
+/// The longest model list a newest-model resolution reads.
+const MAX_MODEL_LIST_BYTES: usize = 1_048_576;
+
+/// What `target` is sent for one request (steps 6 and 7): the rewritten body, clamped, and
+/// the client lines forwarded with it. Records the model name sent in `call`.
+fn outbound(
+    (analysis, body): (&body::Analysis, &[u8]),
+    (model, target): (&RelayModel, &dyn RelayTarget),
+    admitted: &Admitted,
+    relay: &Relay,
+    limits: &Limits,
+    caller_header: Option<&StaticHeader>,
+    call: &mut Call,
+) -> Result<(Vec<u8>, Option<ClientCredentials>), RefusalCode> {
+    let forwarded = admitted
+        .client_credentials
+        .as_ref()
+        .filter(|_| model.client_credentials)
+        .map(|client| client.forwarded(target.headers(), &model.anthropic_beta));
+    let resolved = model
+        .newest
+        .as_deref()
+        .filter(|_| model.client_credentials && analysis.model == model.alias.as_str())
+        .and_then(|family| newest(relay, model, family, target, forwarded.as_ref()));
+    // A model that authenticates the client itself is sent the body as the client wrote it but
+    // for its `model`: no effort mapping and no output clamp.
+    let messages = admitted.wire == Wire::Messages && !model.client_credentials;
+    let (mut rewritten, sent) = rewrite(analysis, body, model, messages, resolved.as_deref());
+    call.upstream_model = Some(sent);
+    if let Some(cap) = model.max_tokens_cap {
+        rewritten.clamp_max_tokens(cap);
+    }
+    // The window of the server that answers: the one the target states, else the model's.
+    let window = target
+        .max_model_len()
+        .or_else(|| model.window())
+        .filter(|_| messages && !admitted.count_tokens);
+    // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
+    // never wakes a pod the relay would not have woken.
+    let bytes = clamp_output(target, caller_header, window, rewritten, limits)?;
+    Ok((bytes, forwarded))
+}
+
+/// The newest model ID containing `family` that `target` lists, remembered for
+/// [`NEWEST_TTL`]; `None` when the list cannot be read or names none.
+fn newest(
+    relay: &Relay,
+    model: &RelayModel,
+    family: &str,
+    target: &dyn RelayTarget,
+    client: Option<&ClientCredentials>,
+) -> Option<String> {
+    let alias = model.alias.as_str();
+    let known = relay
+        .newest
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .get(alias)
+        .filter(|(_, at)| at.elapsed() < NEWEST_TTL)
+        .map(|(id, _)| id.clone());
+    if known.is_some() {
+        return known;
+    }
+    let list = model_list(target, client)?;
+    let id = newest_in(&list, family)?;
+    relay
+        .newest
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .insert(alias.to_owned(), (id.clone(), Instant::now()));
+    Some(id)
+}
+
+/// `GET /v1/models?limit=1000` on `target`, sent the client's lines, and the body of a 2xx
+/// answer no longer than [`MAX_MODEL_LIST_BYTES`].
+fn model_list(target: &dyn RelayTarget, client: Option<&ClientCredentials>) -> Option<Vec<u8>> {
+    let mut connection = target.connect().ok()?;
+    let client = client.map(ClientCredentials::for_listing);
+    let mut head = request_head(
+        target,
+        None,
+        MODELS_PATH,
+        0,
+        client.as_ref().map(ClientCredentials::as_bytes),
+    );
+    // The same head as a request's, asked as a `GET`: shorter, so it never reallocates.
+    head.0.splice(0..4, *b"GET");
+    write_request(connection.as_mut(), &head, &[]).ok()?;
+    drop(head);
+    let mut input = Buffered {
+        source: Source::Target(connection.as_mut()),
+        buffer: Vec::new(),
+        start: 0,
+    };
+    let mut answer_head = read_answer_head(&mut input, 65_536).ok()?;
+    if !(200..300).contains(&answer_head.status) {
+        return None;
+    }
+    let mut list = Vec::new();
+    while let Some(piece) = next_piece(&mut input, &mut answer_head.framing, 65_536).ok()? {
+        list.extend_from_slice(&piece);
+        if list.len() > MAX_MODEL_LIST_BYTES {
+            return None;
+        }
+    }
+    Some(list)
+}
+
+/// The first `"id"` string value in `list` whose lower case contains `family`: the newest, in
+/// a list ordered newest first as Anthropic's is.
+fn newest_in(list: &[u8], family: &str) -> Option<String> {
+    let text = std::str::from_utf8(list).ok()?;
+    text.match_indices("\"id\"").find_map(|(at, key)| {
+        let rest = text[at + key.len()..].trim_start().strip_prefix(':')?;
+        let rest = rest.trim_start().strip_prefix('"')?;
+        let id = &rest[..rest.find('"')?];
+        let fits = !id.is_empty()
+            && id.len() <= 128
+            && id.bytes().all(|byte| {
+                byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':' | b'@')
+            });
+        (fits && id.to_ascii_lowercase().contains(family)).then(|| id.to_owned())
+    })
+}
+
+/// The body `model`'s target is sent (step 6), and the model name in it: the `resolved` newest
+/// ID, else the upstream name, or the name as the client sent it when a prefix matched it; on
+/// the messages wire (`messages`), every effort mapped and the model's declared effort inserted
+/// where the body names none.
 fn rewrite(
     analysis: &body::Analysis,
     body: &[u8],
     model: &RelayModel,
     messages: bool,
-) -> body::Rewritten {
-    let upstream_model = if analysis.model == model.alias.as_str() || model.model_prefix.is_none() {
+    resolved: Option<&str>,
+) -> (body::Rewritten, String) {
+    let upstream_model = if let Some(resolved) = resolved {
+        resolved
+    } else if analysis.model == model.alias.as_str() || model.model_prefix.is_none() {
         model.upstream_model.as_str()
     } else {
         analysis.model.as_str()
     };
-    analysis.rewritten(
+    let rewritten = analysis.rewritten(
         body,
         upstream_model,
         messages,
         model.reasoning_effort.filter(|_| messages),
-    )
+    );
+    (rewritten, upstream_model.to_owned())
+}
+
+/// The request body, after a `100 Continue` when the client asked for one, read under the
+/// call's deadline.
+fn request_body(
+    stream: &mut TcpStream,
+    leftover: Vec<u8>,
+    admitted: &Admitted,
+    limits: &Limits,
+) -> Result<Vec<u8>, RefusalCode> {
+    let deadline = Instant::now() + limits.timeout;
+    if admitted.expects_continue
+        && !crate::server::write_by(stream, b"HTTP/1.1 100 Continue\r\n\r\n", deadline)
+    {
+        return Err(RefusalCode::RequestMalformed);
+    }
+    let mut input = Buffered {
+        source: Source::Client(stream, deadline),
+        buffer: leftover,
+        start: 0,
+    };
+    read_body(&mut input, admitted.framing, limits.line_bytes)
 }
 
 /// Relays one admitted request, filling `call` as it learns. A refusal is returned for the
@@ -1875,23 +2414,14 @@ pub(crate) fn serve(
     limits: &Limits,
     call: &mut Call,
 ) -> Result<(), RefusalCode> {
-    let deadline = Instant::now() + limits.timeout;
-    if admitted.expects_continue
-        && !crate::server::write_by(stream, b"HTTP/1.1 100 Continue\r\n\r\n", deadline)
-    {
-        return Err(RefusalCode::RequestMalformed);
-    }
-    let body = {
-        let mut input = Buffered {
-            source: Source::Client(stream, deadline),
-            buffer: leftover,
-            start: 0,
-        };
-        read_body(&mut input, admitted.framing, limits.line_bytes)?
-    };
+    let body = request_body(stream, leftover, admitted, limits)?;
+    call.body_digest = Some(auth::sha256(&body));
     let analysis = body::analyse(&body)?;
     let (model, translator) = served_model(relay, &analysis, admitted.wire, call)?;
     if let Some(translator) = translator {
+        if admitted.count_tokens {
+            return Err(RefusalCode::WireNotServed);
+        }
         return translate(
             stream,
             &body,
@@ -1902,46 +2432,52 @@ pub(crate) fn serve(
             call,
         );
     }
-    // A model that authenticates the client itself is sent the body as the client wrote it but
-    // for its `model`: no effort mapping and no output clamp.
-    let messages = admitted.wire == Wire::Messages && !model.client_credentials;
-    let rewritten = rewrite(&analysis, &body, model, messages);
-    let forwarded = admitted
-        .client_credentials
-        .as_ref()
-        .filter(|_| model.client_credentials);
-    drop(body);
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;
     // The per-caller header the target asks for (an OpenCode Go session), decided once, so the
     // count and the request carry the same value.
     let caller_header = target.caller_header(&caller(stream, admitted));
-    // The window of the server that answers: the one the target states, else the model's.
-    let window = target
-        .max_model_len()
-        .or_else(|| model.window())
-        .filter(|_| messages);
-    // The output clamp (step 7): only now, on the target `acquire` handed out, so the count
-    // never wakes a pod the relay would not have woken.
-    let rewritten = clamp_output(
-        target.as_ref(),
-        caller_header.as_ref(),
-        window,
-        rewritten,
+    let (rewritten, forwarded) = outbound(
+        (&analysis, &body),
+        (model, target.as_ref()),
+        admitted,
+        relay,
         limits,
+        caller_header.as_ref(),
+        call,
     )?;
+    drop(body);
     let failed = || {
         relay.targets.invalidate(alias, target.authority());
         relay.metrics.count_invalidation();
         RefusalCode::UpstreamFailed
     };
+    if let (true, Some(forwarded)) = (model.client_credentials, forwarded.as_ref()) {
+        let relayed = passthrough::relay(
+            stream,
+            admitted,
+            (model, target.as_ref()),
+            (&rewritten, forwarded),
+            limits,
+            call,
+            &failed,
+        );
+        // The target is released only now, after the last byte: row L12's hold.
+        drop(target);
+        return relayed;
+    }
     let mut connection = target.connect().map_err(|_| failed())?;
+    call.queue_wait_ms = call.since_begun();
     let head = request_head(
         target.as_ref(),
         caller_header.as_ref(),
-        admitted.wire.path(),
+        if admitted.count_tokens {
+            COUNT_TOKENS_PATH
+        } else {
+            admitted.wire.path()
+        },
         rewritten.len(),
-        forwarded.map(ClientCredentials::as_bytes),
+        forwarded.as_ref().map(ClientCredentials::as_bytes),
     );
     let sent = write_request(connection.as_mut(), &head, &rewritten);
     drop(head);
@@ -1956,32 +2492,31 @@ pub(crate) fn serve(
     };
     // A client gone before anything was written to it: there is no one to answer, and the
     // target, whose connection the watch shut down, is released untouched.
-    let Some(read) = watched_head(stream, &mut input, limits.line_bytes) else {
+    let Some(mut head) = target_head(stream, &mut input, limits, call).map_err(|()| failed())?
+    else {
         return Ok(());
     };
-    let mut head = match read {
-        Ok(head) => head,
-        Err(error) => {
-            call.timed_out = matches!(
-                error.kind(),
-                io::ErrorKind::TimedOut | io::ErrorKind::WouldBlock
-            );
-            return Err(failed());
-        }
-    };
     call.target_status = Some(head.status);
+    if head.status == 429 || head.status >= 500 {
+        call.retry_after = head.retry_after.take();
+    }
     // A gateway status from the target means the pod behind it is gone or unreachable; a
     // model error arrives as 4xx or 500 instead (llmgw `src/lib.rs:629-643`).
     if matches!(head.status, 502..=504) {
         return Err(failed());
     }
-    call.response_bytes = stream_answer(
+    stream_answer(
         stream,
         &mut input,
         &mut head,
         limits,
         admitted.chunked_answer,
+        call,
     );
+    if admitted.count_tokens {
+        // A count's `input_tokens` is no call's usage.
+        call.usage = Usage::default();
+    }
     // The target is released only now, after the last byte: row L12's hold.
     drop(input);
     drop(connection);
@@ -2004,7 +2539,7 @@ impl Drop for RequestHead {
 /// The gateway's own head for `POST <path>` to `target` with a body of `length` bytes. No
 /// header of the client's request is forwarded, only the `caller` header its target answered
 /// for it and, for a model marked [`RelayModel::with_client_credentials`] behind a gateway that
-/// authenticates nobody, the `client` lines ([`CLIENT_CREDENTIAL_HEADERS`]), which then stand in
+/// authenticates nobody, the `client` lines (every header but [`UNFORWARDED_HEADERS`]), which then stand in
 /// for the target's own credential and for any static header of their names; so the owner's
 /// credential never reaches a target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
 /// header one token naming no header written here (`CredentialHeader::new`), so neither can end
@@ -2036,7 +2571,7 @@ fn request_head(
     };
     for header in target.headers() {
         if credential_name == Some(header.name())
-            || (client.is_some() && CLIENT_CREDENTIAL_HEADERS.contains(&header.name()))
+            || (client.is_some() && matches!(header.name(), "authorization" | "x-api-key"))
         {
             continue;
         }
@@ -2159,13 +2694,31 @@ fn count_over(
 /// Writes the answer's head, then each decoded piece as it arrives: as one chunk each when
 /// `chunked`, so a failure on either side ends the answer without its last chunk and the client
 /// sees it cut short; unframed for an HTTP/1.0 client, ended by closing the connection.
-/// Returns the decoded body bytes written to the client.
+/// Fills `call` with the decoded body bytes written to the client, the time to the first one,
+/// the token counts the answer reported and whether the client went away before its end.
 fn stream_answer(
     stream: &mut TcpStream,
     input: &mut Buffered<'_>,
     head: &mut Head,
     limits: &Limits,
     chunked: bool,
+    call: &mut Call,
+) {
+    let mut scanner = UsageScanner::default();
+    let written = relay_pieces(stream, input, head, limits, chunked, call, &mut scanner);
+    call.response_bytes = written;
+    call.usage = scanner.usage();
+}
+
+/// [`stream_answer`]'s writing: the head, then every piece, scanned for usage as it passes.
+fn relay_pieces(
+    stream: &mut TcpStream,
+    input: &mut Buffered<'_>,
+    head: &mut Head,
+    limits: &Limits,
+    chunked: bool,
+    call: &mut Call,
+    scanner: &mut UsageScanner,
 ) -> u64 {
     let phrase = crate::server::relayed_phrase(head.status);
     let content_type = head
@@ -2178,17 +2731,20 @@ fn stream_answer(
         ""
     };
     let start = format!(
-        "HTTP/1.1 {} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
-        head.status
+        "HTTP/1.1 {} {phrase}\r\n{content_type}{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+        head.status,
+        relayed = head.relayed,
     );
     let mut written: u64 = 0;
     if !crate::server::write_by(stream, start.as_bytes(), Instant::now() + limits.timeout) {
+        call.client_disconnected = true;
         return written;
     }
     loop {
         match next_piece(input, &mut head.framing, limits.line_bytes) {
             Ok(Some(piece)) => {
                 let size = u64::try_from(piece.len()).unwrap_or(u64::MAX);
+                scanner.feed(&piece);
                 let framed = if chunked {
                     let mut framed = format!("{:x}\r\n", piece.len()).into_bytes();
                     framed.extend_from_slice(&piece);
@@ -2200,7 +2756,11 @@ fn stream_answer(
                 // Each write has its own deadline: a stream may last as long as the model
                 // talks, but a client that stops reading cannot hold the connection.
                 if !crate::server::write_by(stream, &framed, Instant::now() + limits.timeout) {
+                    call.client_disconnected = true;
                     return written;
+                }
+                if size > 0 {
+                    call.first_byte();
                 }
                 written = written.saturating_add(size);
             }
@@ -2396,6 +2956,14 @@ mod tests {
                 RelayError::EmptyPrefix => model("a", vec![Wire::Messages])
                     .unwrap()
                     .with_model_prefix("")
+                    .unwrap_err(),
+                RelayError::EmptyFamily => model("a", vec![Wire::Messages])
+                    .unwrap()
+                    .with_newest("")
+                    .unwrap_err(),
+                RelayError::BetaNotAToken => model("a", vec![Wire::Messages])
+                    .unwrap()
+                    .with_anthropic_beta(vec!["oauth-2025-04-20\r\nx: y".to_owned()])
                     .unwrap_err(),
             };
             assert_eq!(observed, *expected);

@@ -1,5 +1,5 @@
 import { ref, shallowRef } from 'vue';
-import type { Snapshot } from './generated/snapshot.ts';
+import type { Snapshot } from './extra.ts';
 
 export type Link = 'connecting' | 'live' | 'polling' | 'offline';
 

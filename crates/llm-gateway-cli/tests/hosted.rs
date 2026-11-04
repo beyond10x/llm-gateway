@@ -665,9 +665,10 @@ fn hosted_static_headers_reach_the_endpoint_beside_its_credential() {
 #[test]
 fn ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed() {
     let fixture = Fixture::new("ingress-none");
+    // Bound off loopback: on loopback `ingress_auth = "none"` opens every path (local open mode).
     let endpoint = Endpoint::start();
     let config = fixture.config(&format!(
-        "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\n\n{}",
+        "listen = \"0.0.0.0:0\"\ningress_auth = \"none\"\n\n{}",
         hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n")
     ));
     let server = Server::start(&shipped(), &config, None);
@@ -718,7 +719,7 @@ fn ingress_none_with_a_secret_serves_the_owner_surface_to_that_secret_only() {
     let fixture = Fixture::new("ingress-none-secret");
     let endpoint = Endpoint::start();
     let config = fixture.config(&format!(
-        "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\nowner_secret_file = \"{}\"\n\n{}",
+        "listen = \"0.0.0.0:0\"\ningress_auth = \"none\"\nowner_secret_file = \"{}\"\n\n{}",
         fixture.owner_secret().display(),
         hosted_table("open", &endpoint.base_url(), "auth_kind = \"anonymous\"\n")
     ));

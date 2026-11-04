@@ -55,7 +55,7 @@ fn each_broken_rule_is_a_value_refusal_naming_its_key() {
         ),
         (
             "none",
-            format!("{CLIENT}\n[hosted.claude.headers]\nanthropic-version = \"2023-06-01\""),
+            format!("{CLIENT}\n[hosted.claude.headers]\nx-api-key = \"k\""),
             "hosted.claude.headers",
         ),
         ("bearer", CLIENT.to_owned(), "hosted.claude.auth_kind"),
@@ -90,4 +90,63 @@ fn a_prefix_on_another_route_is_accepted_and_a_bearer_route_still_needs_its_key(
         deployment.hosted["claude"].model_prefix.as_deref(),
         Some("vendor/")
     );
+}
+
+#[test]
+fn a_client_route_takes_a_newest_family_an_output_cap_beta_extras_and_an_anthropic_header() {
+    let entry = format!(
+        "{CLIENT}\nnewest = \"opus\"\nmax_output_tokens = 32000\n\
+         anthropic_beta = [\"context-1m-2025-08-07\"]\n\
+         [hosted.claude.headers]\nanthropic-version = \"2023-06-01\""
+    );
+    let deployment = parse(&document("none", &entry)).unwrap();
+    let claude = &deployment.hosted["claude"];
+    assert_eq!(claude.newest.as_deref(), Some("opus"));
+    assert_eq!(claude.max_tokens_cap, Some(32_000));
+    assert_eq!(claude.anthropic_beta, ["context-1m-2025-08-07"]);
+    assert_eq!(claude.headers.len(), 1);
+}
+
+#[test]
+fn newest_and_beta_extras_belong_to_a_client_route_and_are_checked() {
+    let bearer = "wires = [\"messages\"]\nbase_url = \"https://example.com/v1\"\n\
+                  auth_kind = \"bearer\"\ncredential_file = \"key\"";
+    let cases = [
+        (
+            format!("{bearer}\nnewest = \"opus\""),
+            "hosted.claude.newest",
+        ),
+        (
+            format!("{bearer}\nanthropic_beta = [\"b1\"]"),
+            "hosted.claude.anthropic_beta",
+        ),
+        (
+            format!("{CLIENT}\nnewest = \"Opus\""),
+            "hosted.claude.newest",
+        ),
+        (format!("{CLIENT}\nnewest = \"\""), "hosted.claude.newest"),
+        (
+            format!("{CLIENT}\nanthropic_beta = [\"a b\"]"),
+            "hosted.claude.anthropic_beta",
+        ),
+        (
+            format!("{CLIENT}\nanthropic_beta = [\"b1\", \"b1\"]"),
+            "hosted.claude.anthropic_beta",
+        ),
+        (
+            format!("{CLIENT}\nmax_output_tokens = 0"),
+            "hosted.claude.max_output_tokens",
+        ),
+    ];
+    for (entry, key) in cases {
+        let refusal = parse(&document("none", &entry)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{key}: {refusal}");
+        assert!(refusal.message().contains(key), "{key}: {refusal}");
+    }
+    let capped = parse(&document(
+        "none",
+        &format!("{bearer}\nmax_output_tokens = 4096"),
+    ))
+    .unwrap();
+    assert_eq!(capped.hosted["claude"].max_tokens_cap, Some(4096));
 }

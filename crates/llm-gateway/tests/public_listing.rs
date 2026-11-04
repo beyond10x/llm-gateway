@@ -538,24 +538,20 @@ fn r1_any_other_user_agent_or_none_gets_plain_text_with_the_loom_profile_per_mod
 }
 
 #[test]
-fn r1_a_browser_gets_an_html_page_with_the_loom_profile_per_model() {
+fn r1_a_browser_gets_the_html_page_holding_llms_txt() {
     let fixture = Fixture::start(two_models());
     let answer = fixture.get("/", Some(BROWSER));
     assert_eq!(answer.status, 200, "{}", answer.raw);
     assert_eq!(answer.header("content-type"), Some(HTML));
     assert!(
-        answer.body.starts_with("<!DOCTYPE html>\n"),
+        answer.body.starts_with("<!doctype html>"),
         "{}",
         answer.body
     );
-    assert!(answer.body.contains("<pre>"), "{}", answer.body);
-    for (alias, window) in [("code", 65_536), ("small", 32_768)] {
-        let escaped = loom_lines(alias, window).replace('"', "&quot;");
-        assert!(
-            answer.body.contains(&escaped),
-            "{escaped}\nin\n{}",
-            answer.body
-        );
+    assert!(answer.body.contains("<pre id=\"llms\">"), "{}", answer.body);
+    for alias in ["code", "small"] {
+        let row = format!("| `{alias}` | chat, responses, messages | ");
+        assert!(answer.body.contains(&row), "{row}\nin\n{}", answer.body);
     }
     // The same page for any agent that starts with `mozilla/`, whatever its case.
     let lower = fixture.get("/", Some("mozilla/5.0 (X11; Linux x86_64)"));
@@ -899,10 +895,7 @@ fn r1_aliases_are_escaped_for_the_text_they_are_written_into() {
         "{claude}"
     );
     let html = fixture.get("/", Some(BROWSER)).body;
-    assert!(
-        html.contains("upstream_name = &quot;o&#39;k\\&quot;&lt;b&gt;&amp;\\\\&quot;"),
-        "{html}"
-    );
+    assert!(html.contains("`o&#39;k&quot;&lt;b&gt;&amp;\\`"), "{html}");
     assert!(!html.contains("<b>"), "{html}");
 }
 

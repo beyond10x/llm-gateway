@@ -1065,6 +1065,50 @@ impl Parts {
 /// `reasoning_effort`: a Runpod model's is already its server's default chat-template
 /// argument. A route of the routes document is relayed as
 /// [`crate::Routes::relay_models`] says.
+/// A hosted model's output cap, and a client route's beta extras and newest family.
+fn route_settings(
+    relayed: RelayModel,
+    hosted: &crate::config::Hosted,
+    alias: &str,
+) -> Result<RelayModel, Refusal> {
+    let refused = |key: &str, error: llm_gateway::RelayError| {
+        Refusal::new(
+            StartupRefusal::ConfigValue,
+            format!("hosted.{alias}.{key}: {error}"),
+        )
+    };
+    let relayed = match hosted.max_tokens_cap {
+        Some(cap) => relayed.with_max_tokens_cap(u64::from(cap)),
+        None => relayed,
+    };
+    let relayed = if hosted.anthropic_beta.is_empty() {
+        relayed
+    } else {
+        relayed
+            .with_anthropic_beta(hosted.anthropic_beta.clone())
+            .map_err(|error| refused("anthropic_beta", error))?
+    };
+    let relayed = match hosted.compact_window {
+        Some(window) => relayed.with_compact_window(u64::from(window)),
+        None => relayed,
+    };
+    let relayed = match hosted.retry {
+        (None, None) => relayed,
+        (attempts, wait) => relayed.with_retry(
+            attempts.unwrap_or(llm_gateway::DEFAULT_RETRY_ATTEMPTS),
+            wait.map_or(llm_gateway::DEFAULT_RETRY_WAIT, |seconds| {
+                std::time::Duration::from_secs(u64::from(seconds))
+            }),
+        ),
+    };
+    match &hosted.newest {
+        Some(family) => relayed
+            .with_newest(family)
+            .map_err(|error| refused("newest", error)),
+        None => Ok(relayed),
+    }
+}
+
 fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     let mut models = Vec::with_capacity(deployment.models.len() + deployment.hosted.len());
     for (alias, hosted) in &deployment.hosted {
@@ -1090,6 +1134,7 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
         } else {
             relayed
         };
+        let relayed = route_settings(relayed, hosted, alias)?;
         let relayed = match &hosted.model_prefix {
             Some(prefix) => relayed.with_model_prefix(prefix).map_err(|error| {
                 Refusal::new(
@@ -1193,6 +1238,7 @@ fn compose(
         .map_err(|error| Refusal::new(StartupRefusal::ConfigValue, format!("models: {error}")))?
         .with_translator(Arc::new(translator))
         .with_metrics(Arc::clone(&metrics))
+        .with_decoder(Arc::new(crate::decode::Decoder))
         .with_records(Arc::new(crate::logging::TracingRecords));
     let signals = Running::install_signals()?;
     let bind = deployment.gateway.bind;

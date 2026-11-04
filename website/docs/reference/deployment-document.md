@@ -34,6 +34,7 @@ The document holds no Runpod API key: that key stays in the connectors keyring, 
 | `routes` | no | The path of an llm `llm.routes/1` document whose routes are served beside the tables below ([`routes`](#routes)). A relative path is read from the working directory. |
 | `[models.<alias>]` | at least one model, here, in `hosted` or in `routes` | The models Runpod pods serve, under the same naming rule. |
 | `[hosted.<alias>]` | at least one model, here, in `models` or in `routes` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
+| `[watchdog]` | no | The heartbeat `serve` writes and the limits `b10x-llm-gateway watchdog` enforces ([`[watchdog]`](#watchdog)). Absent: no heartbeat, and `watchdog` refuses to start. |
 
 ## `[providers.<name>]`
 
@@ -225,6 +226,29 @@ credential_source = "container"
 ```
 
 The model id above is an example and is unverified.
+
+## `[watchdog]` {#watchdog}
+
+The gateway can stop with a pod still running. `b10x-llm-gateway watchdog` is a second process,
+reading the same document, that terminates the pods the gateway owns when the gateway cannot.
+With this table `serve` writes a heartbeat file, and `watchdog` reads it.
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `heartbeat_file` | `$XDG_STATE_HOME/llm-gateway/heartbeat.json`, else `$HOME/.local/state/llm-gateway/heartbeat.json` | Where `serve` writes its heartbeat: written to a temporary file beside it, mode 0600, then renamed. A relative path is read from the working directory. |
+| `heartbeat_seconds` | 10 | 1 to 60: how often `serve` rewrites it. |
+| `poll_seconds` | 60 | 10 to 3600: how often `watchdog` reads the Runpod account. |
+| `stale_minutes` | 5 | 1 to 1440, and at least three heartbeat intervals: a heartbeat this old, or none, is a gateway that cannot stop its pods. |
+| `not_ready_minutes` | 45 | 1 to 1440: a pod not ready this long is terminated. |
+| `max_runtime_hours` | 24 | 1 to 720: a pod running this long is terminated. |
+| `min_balance_usd` | 5 | 0 to 100000: under this account balance every owned pod is terminated. |
+
+A value outside its range is `config:value` naming `watchdog.<key>`. The watchdog terminates a
+pod only when its name starts with `b10x-llm-` and its owner tag is `b10x-llm-gateway`; no other
+pod of the account is ever touched. For each such pod it terminates on the first of: the balance
+under `min_balance_usd`, a stale heartbeat, the runtime past `max_runtime_hours`, the pod not
+ready for `not_ready_minutes`, or the heartbeat showing its model with no call in flight and
+its last call older than its `idle_timeout_minutes` (never less than `stale_minutes`).
 
 ## `routes` {#routes}
 

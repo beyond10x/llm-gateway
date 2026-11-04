@@ -1,0 +1,15 @@
+[Unit]
+Description=llm-gateway pod watchdog
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.cargo/bin/b10x-llm-gateway watchdog
+Restart=always
+RestartSec=10
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=default.target

@@ -13,6 +13,7 @@ mod bedrock;
 pub mod cli;
 mod config;
 mod credential;
+pub mod heartbeat;
 mod hosted;
 mod keys;
 mod logging;
@@ -26,7 +27,9 @@ mod translate;
 mod trusted;
 mod watchdog;
 
-pub use config::{Bedrock, Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
+pub use config::{
+    Bedrock, Deployment, Hosted, Model, Provider, ProviderKind, WatchdogConfig, Wire, load, parse,
+};
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,
 };

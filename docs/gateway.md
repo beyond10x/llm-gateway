@@ -264,7 +264,7 @@ Its status is `RunpodPool::status`, read from the hosting state machine with no 
 `Gateway::bind_with_relay` composes the gateway with a `Relay`: the relayed models and an injected
 `RelayTargets`. A `RelayModel` is an alias, the model name its target expects, a non-empty set
 of distinct `Wire`s (`relay:no-wire`, `relay:repeated-wire`; two models with one alias are
-`relay:duplicate-model`), its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
+`relay:duplicate-model`; an empty name prefix is `relay:empty-prefix`), its `ToolCalling`, `Parsed` or `Absent`, which is `Absent` unless
 `with_tool_calling` says otherwise, an optional `ReasoningEffort` (`with_reasoning_effort`,
 step 6), and the optional `max_model_len` and `context_window` the public routes publish, the
 first of which declared is its window (`RelayModel::window`, step 7). The embedding implements `RelayTargets` over its pool: `acquire` hands
@@ -418,8 +418,10 @@ A request to a wire path is decided in this order:
    (`127.0.0.0/8`, `::1`) or `localhost` is refused when the document is loaded
    (`config:value`, naming the endpoint and quoting no credential). The head is the
    gateway's own and forwards no header of the client's request, so the owner's credential never
-   reaches a target; the one exception is a valid `x-opencode-session` to an OpenCode Go
-   endpoint ([the OpenCode Go session](#the-opencode-go-session)). A `TargetBearer` follows the owner material's rules, refused as
+   reaches a target; the exceptions are a valid `x-opencode-session` to an OpenCode Go
+   endpoint ([the OpenCode Go session](#the-opencode-go-session)) and the client's own
+   credential to a model marked `RelayModel::with_client_credentials`
+   ([the client's own credential](#the-clients-own-credential)). A `TargetBearer` follows the owner material's rules, refused as
    `bearer:empty`, `bearer:too-large` (over `owner-credential-bytes`) and
    `bearer:not-printable-ascii`, so it is one token in the line it is written into; it is
    redacted in `Debug` and overwritten when dropped. The embedding decides what a stop does
@@ -460,6 +462,27 @@ A request to a wire path is decided in this order:
 A refused relay closes gracefully: the refusal is written, the write side closed, and what the
 client still sends is read and discarded (up to `request-body-bytes`, within `read_timeout`), so
 a reset cannot destroy the refusal before the client reads it.
+
+### The client's own credential
+
+DECIDED 2026-11-04 (story:subscription-passthrough). A model marked
+`RelayModel::with_client_credentials` authenticates the client itself. When the gateway
+authenticates nobody (`IngressAuth::None`), the client's `authorization`, `x-api-key`,
+`anthropic-version` and `anthropic-beta` lines (`CLIENT_CREDENTIAL_HEADERS`) are read from its
+head into a buffer overwritten when dropped and written into the request head to that model, in
+that order, the names in lower case and the values byte for byte. They stand in for the target's
+own credential and for any static header of their names. No other client header is forwarded,
+and a gateway that authenticates its owner forwards none of them, since its `authorization` is
+the owner's token. The body reaches such a model with only its `model` rewritten: no effort
+mapping (step 6), no output clamp (step 7), and a request on a wire it does not declare is
+`wire-not-served`, never translated. A model may also declare a name prefix
+(`RelayModel::with_model_prefix`): every model name starting with it is served by that model
+and relayed as the client sent it; the longest prefix wins, and an alias matched exactly wins
+over every prefix. The binary marks a hosted entry `auth_kind = "client"`, which it admits only
+for `https://api.anthropic.com`, on the messages wire, behind `ingress_auth = "none"`, so Claude
+Code on a Claude subscription reaches Anthropic through a local gateway with
+`ANTHROPIC_BASE_URL=http://127.0.0.1:<port>`. No record, event or dashboard field carries any of
+the four values.
 
 ### Claude Code on the messages wire
 
@@ -676,7 +699,8 @@ credential. The turn is sent once, with llm's client for the upstream wire, to
 `/chat/completions`, `/responses` or `/messages`. The credential goes as its kind says
 (`authorization: Bearer`, the endpoint's `credential_header`, or none), resolved from the
 target's `TargetBearer` (`TargetBearer::expose`); the owner's credential and the client's
-headers never do, except a valid `x-opencode-session` to an OpenCode Go endpoint. llm's client sends its own protocol headers (`accept: text/event-stream`,
+headers never do, except a valid `x-opencode-session` to an OpenCode Go endpoint (a model
+marked `RelayModel::with_client_credentials` is never translated). llm's client sends its own protocol headers (`accept: text/event-stream`,
 `anthropic-version: 2023-06-01` on messages, and on messages to an OpenCode Go base URL, the
 `x-opencode-session` of [the OpenCode Go session](#the-opencode-go-session) below) and trusts
 the `webpki-roots` Mozilla roots; a

@@ -304,6 +304,72 @@ pub const CALLER_SESSION_HEADER: &str = "x-opencode-session";
 /// The longest caller session a target is told: `caller-session-bytes`.
 const MAX_CALLER_SESSION_BYTES: usize = 256;
 
+/// The client headers a model marked [`RelayModel::with_client_credentials`] is sent as the
+/// client sent them, in this order, when the gateway authenticates nobody
+/// (`ingress_auth = "none"`): the client's own Anthropic credential and the two headers that say
+/// what it is allowed. No other client header is ever forwarded (story:subscription-passthrough).
+pub const CLIENT_CREDENTIAL_HEADERS: [&str; 4] = [
+    "authorization",
+    "x-api-key",
+    "anthropic-version",
+    "anthropic-beta",
+];
+
+/// The [`CLIENT_CREDENTIAL_HEADERS`] lines of one client request, as `name: value\r\n` with the
+/// name in lower case and the value as the client sent it. Overwritten when dropped: it holds the
+/// client's credential.
+pub(crate) struct ClientCredentials(Vec<u8>);
+
+impl ClientCredentials {
+    /// The lines `header` answers for the forwarded names; `None` when the client sent none.
+    pub(crate) fn read<'h>(header: impl Fn(&str) -> Option<&'h str>) -> Option<Self> {
+        let present: Vec<(&str, &str)> = CLIENT_CREDENTIAL_HEADERS
+            .iter()
+            .filter_map(|&name| header(name).map(|value| (name, value)))
+            .collect();
+        if present.is_empty() {
+            return None;
+        }
+        let length = present
+            .iter()
+            .map(|(name, value)| name.len() + value.len() + 4)
+            .sum();
+        let mut lines = Vec::with_capacity(length);
+        for (name, value) in present {
+            lines.extend_from_slice(name.as_bytes());
+            lines.extend_from_slice(b": ");
+            lines.extend_from_slice(value.as_bytes());
+            lines.extend_from_slice(b"\r\n");
+        }
+        Some(Self(lines))
+    }
+
+    fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Drop for ClientCredentials {
+    fn drop(&mut self) {
+        self.0.fill(0);
+        std::hint::black_box(&self.0);
+    }
+}
+
+impl Clone for ClientCredentials {
+    fn clone(&self) -> Self {
+        let mut lines = Vec::with_capacity(self.0.len());
+        lines.extend_from_slice(&self.0);
+        Self(lines)
+    }
+}
+
+impl std::fmt::Debug for ClientCredentials {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str("ClientCredentials(<redacted>)")
+    }
+}
+
 /// Who sent one relayed request, as far as a target may need to know it to choose a
 /// per-caller header ([`RelayTarget::caller_header`]): the client's own
 /// [`CALLER_SESSION_HEADER`] when it is 1 to 256 bytes of printable ASCII without a space
@@ -637,6 +703,8 @@ pub struct RelayModel {
     context_window: Option<u64>,
     reasoning_effort: Option<ReasoningEffort>,
     translated_only: bool,
+    client_credentials: bool,
+    model_prefix: Option<String>,
 }
 
 impl RelayModel {
@@ -663,6 +731,8 @@ impl RelayModel {
             context_window: None,
             reasoning_effort: None,
             translated_only: false,
+            client_credentials: false,
+            model_prefix: None,
         })
     }
 
@@ -678,6 +748,40 @@ impl RelayModel {
 
     pub fn translated_only(&self) -> bool {
         self.translated_only
+    }
+
+    /// Declares that the model's target authenticates the client itself: when the gateway
+    /// authenticates nobody, the client's [`CLIENT_CREDENTIAL_HEADERS`] are forwarded to it as
+    /// sent, and the body reaches it with only its `model` rewritten (no effort mapping, no
+    /// output clamp, never translated: a request on a wire it does not declare is
+    /// `wire-not-served`). A hosted Anthropic route serving clients on their own subscription is
+    /// such a model (story:subscription-passthrough).
+    #[must_use]
+    pub fn with_client_credentials(mut self) -> Self {
+        self.client_credentials = true;
+        self
+    }
+
+    pub fn client_credentials(&self) -> bool {
+        self.client_credentials
+    }
+
+    /// Declares that the model serves every model name starting with `prefix` besides its alias,
+    /// relaying such a name as the client sent it. The longest matching prefix wins; an alias
+    /// matching exactly wins over every prefix.
+    ///
+    /// # Errors
+    /// [`RelayError::EmptyPrefix`] for an empty prefix.
+    pub fn with_model_prefix(mut self, prefix: &str) -> Result<Self, RelayError> {
+        if prefix.is_empty() {
+            return Err(RelayError::EmptyPrefix);
+        }
+        self.model_prefix = Some(prefix.to_owned());
+        Ok(self)
+    }
+
+    pub fn model_prefix(&self) -> Option<&str> {
+        self.model_prefix.as_deref()
     }
 
     /// Whether a request on `wire` is relayed to the model byte for byte: it declares the wire
@@ -818,7 +922,11 @@ impl Relay {
                 let upstream = model.wires[0];
                 let admitted = Wire::ALL
                     .into_iter()
-                    .filter(|&wire| !model.relays(wire) && translator.admits(wire, model, upstream))
+                    .filter(|&wire| {
+                        !model.client_credentials
+                            && !model.relays(wire)
+                            && translator.admits(wire, model, upstream)
+                    })
                     .collect();
                 (model.alias.as_str().to_owned(), admitted)
             })
@@ -935,6 +1043,9 @@ pub(crate) struct Admitted {
     /// The value of the client's [`CALLER_SESSION_HEADER`] line, unchecked: [`Caller::new`]
     /// keeps it only when it follows the rule, and it is never forwarded verbatim.
     pub(crate) session: Option<String>,
+    /// The client's [`CLIENT_CREDENTIAL_HEADERS`] lines, read only when the gateway authenticates
+    /// nobody; forwarded only to a model marked [`RelayModel::with_client_credentials`].
+    pub(crate) client_credentials: Option<ClientCredentials>,
 }
 
 /// Decides the body framing from the head (row W1).
@@ -1374,10 +1485,24 @@ fn served_model<'r>(
     let model = relay
         .models
         .get(&analysis.model)
+        .or_else(|| {
+            relay
+                .models
+                .values()
+                .filter(|model| {
+                    model
+                        .model_prefix
+                        .as_deref()
+                        .is_some_and(|prefix| analysis.model.starts_with(prefix))
+                })
+                .max_by_key(|model| model.model_prefix.as_deref().map_or(0, str::len))
+        })
         .ok_or(RefusalCode::ModelUnknown)?;
     call.model = Some(model.alias.as_str().to_string());
     let translator = if model.wires.contains(&wire) && !model.translated_only {
         None
+    } else if model.client_credentials {
+        return Err(RefusalCode::WireNotServed);
     } else {
         Some(
             relay
@@ -1718,6 +1843,28 @@ fn clamp_output(
     Ok(rewritten.bytes)
 }
 
+/// The body `model`'s target is sent (step 6): its `model` the upstream name, or the name as the
+/// client sent it when a prefix matched it; on the messages wire (`messages`), every effort
+/// mapped and the model's declared effort inserted where the body names none.
+fn rewrite(
+    analysis: &body::Analysis,
+    body: &[u8],
+    model: &RelayModel,
+    messages: bool,
+) -> body::Rewritten {
+    let upstream_model = if analysis.model == model.alias.as_str() || model.model_prefix.is_none() {
+        model.upstream_model.as_str()
+    } else {
+        analysis.model.as_str()
+    };
+    analysis.rewritten(
+        body,
+        upstream_model,
+        messages,
+        model.reasoning_effort.filter(|_| messages),
+    )
+}
+
 /// Relays one admitted request, filling `call` as it learns. A refusal is returned for the
 /// caller to write; once the answer's head has been written, nothing more is refused.
 pub(crate) fn serve(
@@ -1755,13 +1902,14 @@ pub(crate) fn serve(
             call,
         );
     }
-    let messages = admitted.wire == Wire::Messages;
-    let rewritten = analysis.rewritten(
-        &body,
-        model.upstream_model.as_str(),
-        messages,
-        model.reasoning_effort.filter(|_| messages),
-    );
+    // A model that authenticates the client itself is sent the body as the client wrote it but
+    // for its `model`: no effort mapping and no output clamp.
+    let messages = admitted.wire == Wire::Messages && !model.client_credentials;
+    let rewritten = rewrite(&analysis, &body, model, messages);
+    let forwarded = admitted
+        .client_credentials
+        .as_ref()
+        .filter(|_| model.client_credentials);
     drop(body);
     let alias = model.alias.as_str();
     let target = acquire(relay, alias, admitted.wire, call)?;
@@ -1793,6 +1941,7 @@ pub(crate) fn serve(
         caller_header.as_ref(),
         admitted.wire.path(),
         rewritten.len(),
+        forwarded.map(ClientCredentials::as_bytes),
     );
     let sent = write_request(connection.as_mut(), &head, &rewritten);
     drop(head);
@@ -1854,7 +2003,10 @@ impl Drop for RequestHead {
 
 /// The gateway's own head for `POST <path>` to `target` with a body of `length` bytes. No
 /// header of the client's request is forwarded, only the `caller` header its target answered
-/// for it, so the owner's credential never reaches a target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
+/// for it and, for a model marked [`RelayModel::with_client_credentials`] behind a gateway that
+/// authenticates nobody, the `client` lines ([`CLIENT_CREDENTIAL_HEADERS`]), which then stand in
+/// for the target's own credential and for any static header of their names; so the owner's
+/// credential never reaches a target. The target's bearer is one printable token (`TargetBearer::new`) and its credential
 /// header one token naming no header written here (`CredentialHeader::new`), so neither can end
 /// the line it is written into; nor can a static header (`StaticHeader::new`), written after
 /// `host` in the order the target gives. The `caller` header, a `StaticHeader` too, is written
@@ -1865,6 +2017,7 @@ fn request_head(
     caller: Option<&StaticHeader>,
     wire_path: &str,
     length: usize,
+    client: Option<&[u8]>,
 ) -> RequestHead {
     let path = target
         .base_path()
@@ -1882,7 +2035,9 @@ fn request_head(
         start.push_str("\r\n");
     };
     for header in target.headers() {
-        if credential_name == Some(header.name()) {
+        if credential_name == Some(header.name())
+            || (client.is_some() && CLIENT_CREDENTIAL_HEADERS.contains(&header.name()))
+        {
             continue;
         }
         match caller {
@@ -1899,10 +2054,12 @@ fn request_head(
     let end = format!(
         "content-type: application/json\r\ncontent-length: {length}\r\nconnection: close\r\n\r\n"
     );
-    let credential: [&[u8]; 4] = match (target.bearer(), target.credential_header()) {
+    // Forwarded client lines replace the target's own credential: a target is sent one.
+    let bearer = target.bearer().filter(|_| client.is_none());
+    let credential: [&[u8]; 4] = match (bearer, target.credential_header()) {
         (Some(bearer), Some(header)) => [header.as_str().as_bytes(), b": ", &bearer.0, b"\r\n"],
         (Some(bearer), None) => [b"authorization: Bearer ", b"", &bearer.0, b"\r\n"],
-        (None, _) => [b""; 4],
+        (None, _) => [client.unwrap_or_default(), b"", b"", b""],
     };
     let length =
         start.len() + credential.iter().map(|piece| piece.len()).sum::<usize>() + end.len();
@@ -1953,7 +2110,7 @@ fn count_input(
 ) -> Option<u64> {
     let mut connection = target.connect().ok()?;
     let opened = Instant::now();
-    let head = request_head(target, caller, COUNT_TOKENS_PATH, body.len());
+    let head = request_head(target, caller, COUNT_TOKENS_PATH, body.len(), None);
     let body = Arc::clone(body);
     let line_bytes = limits.line_bytes;
     let (answer, answered) = mpsc::sync_channel(1);
@@ -2236,6 +2393,10 @@ mod tests {
                     Arc::new(NoTargets),
                 )
                 .unwrap_err(),
+                RelayError::EmptyPrefix => model("a", vec![Wire::Messages])
+                    .unwrap()
+                    .with_model_prefix("")
+                    .unwrap_err(),
             };
             assert_eq!(observed, *expected);
         }

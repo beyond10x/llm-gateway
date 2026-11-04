@@ -518,9 +518,19 @@ types:
   #                      DECIDED 2026-10-16 (story:hosted-base-path): a path was refused before;
   #                      a vendor whose API lives below a prefix (`https://openrouter.ai/api/v1`)
   #                      is now reached without a proxy in front of it
-  #   auth_kind          `anonymous`, `bearer` or `api-key` (`aws-sigv4` is a Bedrock model's
-  #                      alone and is `config:schema` here)
-  #   credential_file    absent exactly when `auth_kind` is `anonymous`; read through the
+  #   auth_kind          `anonymous`, `bearer`, `api-key` or `client` (`aws-sigv4` is a Bedrock
+  #                      model's alone and is `config:schema` here). `client` (DECIDED 2026-11-04,
+  #                      story:subscription-passthrough) forwards the client's own
+  #                      `authorization`, `x-api-key`, `anthropic-version` and `anthropic-beta`
+  #                      unchanged and is `config:value` unless `base_url` is
+  #                      `https://api.anthropic.com`, `wires` is `["messages"]`, the document's
+  #                      `ingress_auth` is `none`, and the entry has no `credential_file`, no
+  #                      `reasoning_effort` and no static header of those four names
+  #   model_prefix       optional, 1..=64 printable ASCII without a space: every model name
+  #                      starting with it is served by this entry too and relayed as the client
+  #                      sent it; the longest prefix wins and an alias matched exactly wins over
+  #                      every prefix. `config:value` on a `bedrock` model
+  #   credential_file    absent exactly when `auth_kind` is `anonymous` or `client`; read through the
   #                      trusted-file reader (`endpoint-credential:<rule>`). A credential goes
   #                      over `https`, or over `http` to a loopback host only (`base_url`)
   #   credential_header  present exactly when `auth_kind` is `api-key`: 1..=64 RFC 9110 token
@@ -614,6 +624,7 @@ types:
       - {name: context_window, type: 'Optional<Integer>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
+      - {name: model_prefix, type: 'Optional<String>'}
   # One endpoint of a routes document (RoutesDeclaration), as llm 0.20.0 reads it
   # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
   # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,

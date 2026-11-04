@@ -163,6 +163,10 @@ pub enum EndpointCredential {
         header: CredentialHeader,
         key: TargetBearer,
     },
+    /// No credential of the gateway's: the client's own `authorization`, `x-api-key`,
+    /// `anthropic-version` and `anthropic-beta` are forwarded instead
+    /// (`llm_gateway::RelayModel::with_client_credentials`).
+    Client,
 }
 
 /// One hosted endpoint: where it is and what it is sent. It has no `Display`, and its `Debug`
@@ -236,6 +240,7 @@ impl HostedEndpoint {
             EndpointCredential::Anonymous => AuthKind::Anonymous,
             EndpointCredential::Bearer(_) => AuthKind::Bearer,
             EndpointCredential::ApiKey { .. } => AuthKind::ApiKey,
+            EndpointCredential::Client => AuthKind::Client,
         };
         let (scheme, authority, base_path) = Self::check(base_url, auth_kind)?;
         let opencode_go = is_opencode_go(scheme, authority, base_path.as_ref());
@@ -340,7 +345,7 @@ impl HostedEndpoint {
             let _written = write!(start, "{}: {}\r\n", header.name(), header.value());
         }
         let credential: [&[u8]; 4] = match &self.credential {
-            EndpointCredential::Anonymous => [b""; 4],
+            EndpointCredential::Anonymous | EndpointCredential::Client => [b""; 4],
             EndpointCredential::Bearer(bearer) => {
                 [b"authorization: Bearer ", b"", bearer.expose(), b"\r\n"]
             }
@@ -600,7 +605,7 @@ impl RelayTarget for HostedTarget {
 
     fn bearer(&self) -> Option<&TargetBearer> {
         match &self.endpoint.credential {
-            EndpointCredential::Anonymous => None,
+            EndpointCredential::Anonymous | EndpointCredential::Client => None,
             EndpointCredential::Bearer(bearer) => Some(bearer),
             EndpointCredential::ApiKey { key, .. } => Some(key),
         }
@@ -691,6 +696,7 @@ pub(crate) fn hosted_endpoints(
             &hosted.credential_header,
         ) {
             (AuthKind::Anonymous, None, None) => EndpointCredential::Anonymous,
+            (AuthKind::Client, None, None) => EndpointCredential::Client,
             (AuthKind::Bearer, Some(path), None) => EndpointCredential::Bearer(read(path)?),
             (AuthKind::ApiKey, Some(path), Some(header)) => EndpointCredential::ApiKey {
                 header: header.clone(),

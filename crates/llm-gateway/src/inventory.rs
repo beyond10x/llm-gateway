@@ -64,6 +64,9 @@ pub enum AuthKind {
     /// Each request signed with AWS Signature Version 4 under credentials the gateway fetches
     /// (an Amazon Bedrock target).
     AwsSigv4,
+    /// No credential of the gateway's: the client's own Anthropic credential is forwarded
+    /// (story:subscription-passthrough).
+    Client,
 }
 
 impl AuthKind {
@@ -73,6 +76,7 @@ impl AuthKind {
             Self::Bearer => "bearer",
             Self::ApiKey => "api-key",
             Self::AwsSigv4 => "aws-sigv4",
+            Self::Client => "client",
         }
     }
 }

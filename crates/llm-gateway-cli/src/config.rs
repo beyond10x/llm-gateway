@@ -133,6 +133,10 @@ struct HostedDocument {
     /// Read through [`header_table`], so a refusal of its shape quotes no value.
     #[serde(default, deserialize_with = "header_table")]
     headers: BTreeMap<String, String>,
+    /// Every model name starting with it is served too, relayed as sent
+    /// (story:subscription-passthrough).
+    #[serde(default)]
+    model_prefix: Option<String>,
 }
 
 /// The key under which the toml crate presents a datetime to a visitor as a one-entry table.
@@ -283,10 +287,11 @@ enum AuthKindDocument {
     Anonymous,
     Bearer,
     ApiKey,
+    Client,
 }
 
 from_string_only!(AuthKindDocument {
-    "anonymous" => Anonymous, "bearer" => Bearer, "api-key" => ApiKey
+    "anonymous" => Anonymous, "bearer" => Bearer, "api-key" => ApiKey, "client" => Client
 });
 
 #[derive(Default)]
@@ -569,6 +574,8 @@ pub struct Hosted {
     /// The static headers every request to the endpoint carries, in name order
     /// (story:hosted-static-headers).
     pub headers: Vec<StaticHeader>,
+    /// Every model name starting with it is served by this entry too, relayed as sent.
+    pub model_prefix: Option<String>,
 }
 
 /// `[hosted.<alias>] kind = "bedrock"`, with every default applied and every rule checked: a
@@ -786,6 +793,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         "owner_secret_file",
         "is required unless ingress_auth is none",
     )?;
+    check_client_routes(&hosted, ingress_auth)?;
     ensure(
         document.metrics_listen != Some(document.listen),
         "metrics_listen",
@@ -916,6 +924,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         AuthKindDocument::Anonymous => AuthKind::Anonymous,
         AuthKindDocument::Bearer => AuthKind::Bearer,
         AuthKindDocument::ApiKey => AuthKind::ApiKey,
+        AuthKindDocument::Client => AuthKind::Client,
     };
     match crate::hosted::HostedEndpoint::check(&base_url, auth_kind) {
         Ok(_) => {}
@@ -937,9 +946,10 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         }
     }
     ensure(
-        declared.credential_file.is_some() != (auth_kind == AuthKind::Anonymous),
+        declared.credential_file.is_some()
+            != matches!(auth_kind, AuthKind::Anonymous | AuthKind::Client),
         &key("credential_file"),
-        "is required unless auth_kind is anonymous, and absent when it is",
+        "is required unless auth_kind is anonymous or client, and absent when it is",
     )?;
     ensure(
         declared.credential_header.is_some() == (auth_kind == AuthKind::ApiKey),
@@ -974,6 +984,10 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
     let headers = static_headers(&key("headers"), &declared.headers)?;
     crate::hosted::check_headers(&headers, credential_header.as_ref())
         .map_err(|error| value(&key("headers"), &error.to_string()))?;
+    if auth_kind == AuthKind::Client {
+        check_client_route(at, &base_url, &wires, &headers, reasoning_effort.is_some())?;
+    }
+    check_model_prefix(at, declared.model_prefix.as_deref())?;
     Ok(Hosted {
         headers,
         wires,
@@ -986,7 +1000,80 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         context_window: declared.context_window,
         tool_calling: tool_calling(declared.tool_calling.unwrap_or_default()),
         reasoning_effort,
+        model_prefix: declared.model_prefix,
     })
+}
+
+/// `model_prefix`, when declared: 1..=64 printable ASCII characters without a space.
+fn check_model_prefix(at: &str, prefix: Option<&str>) -> Result<(), Refusal> {
+    let Some(prefix) = prefix else {
+        return Ok(());
+    };
+    ensure(
+        !prefix.is_empty()
+            && prefix.len() <= 64
+            && prefix.bytes().all(|byte| byte.is_ascii_graphic()),
+        &format!("{at}.model_prefix"),
+        "must be 1..=64 printable ASCII characters without a space",
+    )
+}
+
+/// The one upstream a route may forward a client's own credential to.
+pub const CLIENT_CREDENTIAL_BASE_URL: &str = "https://api.anthropic.com";
+
+/// `auth_kind = "client"` (story:subscription-passthrough): the base URL is
+/// [`CLIENT_CREDENTIAL_BASE_URL`], the one wire is `messages`, no static header is named like a
+/// forwarded one, and no reasoning effort is declared (the body is relayed as the client wrote
+/// it). That the gateway authenticates nobody is checked with the whole document
+/// ([`check_client_routes`]).
+fn check_client_route(
+    at: &str,
+    base_url: &str,
+    wires: &[Wire],
+    headers: &[StaticHeader],
+    effort: bool,
+) -> Result<(), Refusal> {
+    ensure(
+        base_url.trim_end_matches('/') == CLIENT_CREDENTIAL_BASE_URL,
+        &format!("{at}.base_url"),
+        "must be https://api.anthropic.com for auth_kind = \"client\": a client's own \
+         credential goes to Anthropic and nowhere else",
+    )?;
+    ensure(
+        wires == [Wire::Messages],
+        &format!("{at}.wires"),
+        "must be [\"messages\"] for auth_kind = \"client\"",
+    )?;
+    ensure(
+        !headers
+            .iter()
+            .any(|header| llm_gateway::CLIENT_CREDENTIAL_HEADERS.contains(&header.name())),
+        &format!("{at}.headers"),
+        "must not name a header the client's own is forwarded in (authorization, x-api-key, \
+         anthropic-version, anthropic-beta) for auth_kind = \"client\"",
+    )?;
+    ensure(
+        !effort,
+        &format!("{at}.reasoning_effort"),
+        "is not a key of auth_kind = \"client\": the body is relayed as the client wrote it",
+    )
+}
+
+/// Every `auth_kind = "client"` route needs `ingress_auth = "none"`: a gateway that authenticates
+/// its owner reads `authorization` as the owner's token, which is never forwarded.
+fn check_client_routes(
+    hosted: &BTreeMap<String, Hosted>,
+    ingress_auth: IngressAuth,
+) -> Result<(), Refusal> {
+    for (alias, declared) in hosted {
+        ensure(
+            declared.auth_kind != AuthKind::Client || ingress_auth == IngressAuth::None,
+            &format!("hosted.{alias}.auth_kind"),
+            "\"client\" needs ingress_auth = \"none\": the client's authorization is its own \
+             credential, not the owner's token",
+        )?;
+    }
+    Ok(())
 }
 
 const fn tool_calling(declared: ToolCallingDocument) -> ToolCalling {
@@ -1054,6 +1141,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         ("upstream_model", declared.upstream_model.is_some()),
         ("reasoning_effort", declared.reasoning_effort.is_some()),
         ("headers", !declared.headers.is_empty()),
+        ("model_prefix", declared.model_prefix.is_some()),
     ] {
         ensure(
             !present,

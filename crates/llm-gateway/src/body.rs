@@ -37,6 +37,9 @@ pub(crate) struct Analysis {
     /// Whether a top-level `tools` member is a non-empty array: the body offers the model a
     /// tool. With `tools` named twice at the top level, either one counts.
     pub(crate) offers_tools: bool,
+    /// Whether a top-level tool is an Anthropic server or built-in tool: a `type` other than
+    /// `custom`, or no `input_schema`.
+    pub(crate) offers_server_tool: bool,
     /// Where a declared effort would be written, or `None` when the body names an effort
     /// already or its top-level `output_config` is not an object.
     effort_slot: Option<EffortSlot>,
@@ -171,6 +174,8 @@ enum Role {
     Top,
     OutputConfig,
     TemplateKwargs,
+    /// One element of the top-level `tools` array.
+    Tool,
     Other,
 }
 
@@ -183,6 +188,12 @@ enum Slot {
     TemplateKwargs,
     Effort,
     Tools,
+    /// An element of the top-level `tools` array.
+    Tool,
+    /// A tool's `input_schema`.
+    ToolSchema,
+    /// A tool's `type`.
+    ToolType,
     /// The top-level `max_tokens` of a request.
     MaxTokens,
     /// The top-level `input_tokens` of a count answer.
@@ -202,6 +213,8 @@ impl Slot {
             (Role::OutputConfig, "effort") | (Role::TemplateKwargs, "reasoning_effort") => {
                 Self::Effort
             }
+            (Role::Tool, "input_schema") => Self::ToolSchema,
+            (Role::Tool, "type") => Self::ToolType,
             _ => Self::Other,
         }
     }
@@ -211,9 +224,12 @@ impl Slot {
             Self::Root => Role::Top,
             Self::OutputConfig => Role::OutputConfig,
             Self::TemplateKwargs => Role::TemplateKwargs,
+            Self::Tool => Role::Tool,
             Self::Model
             | Self::Effort
             | Self::Tools
+            | Self::ToolSchema
+            | Self::ToolType
             | Self::MaxTokens
             | Self::InputTokens
             | Self::Other => Role::Other,
@@ -224,7 +240,8 @@ impl Slot {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Frame {
     Object(Role),
-    Array,
+    /// An array; `true` for the top-level `tools`.
+    Array(bool),
 }
 
 /// What the scan expects next.
@@ -257,6 +274,9 @@ struct Found {
     /// The array just opened is a top-level `tools`; its first element decides `offers_tools`.
     tools_opened: bool,
     offers_tools: bool,
+    /// Per object element of the top-level `tools`: whether it names `input_schema`, and its
+    /// `type` when that is a string.
+    tools: Vec<(bool, Option<String>)>,
     /// A top-level `output_config.effort` or `chat_template_kwargs.reasoning_effort` member was
     /// seen, whatever its value.
     names_effort: bool,
@@ -303,6 +323,17 @@ impl Found {
             self.names_effort = true;
         }
         match slot {
+            Slot::Tool if raw == b"{" => self.tools.push((false, None)),
+            Slot::ToolSchema => {
+                if let Some(tool) = self.tools.last_mut() {
+                    tool.0 = true;
+                }
+            }
+            Slot::ToolType => {
+                if let Some(tool) = self.tools.last_mut() {
+                    tool.1 = text;
+                }
+            }
             Slot::MaxTokens => self.max_tokens.named(span, raw),
             Slot::InputTokens => self.input_tokens.named(span, raw),
             Slot::Model => {
@@ -379,7 +410,7 @@ fn value_token(
         Some(b'[') => {
             found.value(slot, position..position + 1, b"[", None);
             found.tools_opened = slot == Slot::Tools;
-            stack.push(Frame::Array);
+            stack.push(Frame::Array(slot == Slot::Tools));
             Ok((position + 1, Next::FirstElement))
         }
         Some(b'"') => {
@@ -414,6 +445,7 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
         model_span,
         efforts: found.efforts,
         offers_tools: found.offers_tools,
+        offers_server_tool: found.tools.iter().any(server_tool),
         effort_slot,
         max_tokens: found.max_tokens.once(),
     })
@@ -480,7 +512,7 @@ fn scan(body: &[u8]) -> Result<Found, RefusalCode> {
             }
             Next::FirstElement => {
                 found.offers_tools |= std::mem::take(&mut found.tools_opened);
-                Next::Value(Slot::Other)
+                Next::Value(element(&stack))
             }
             Next::AfterValue => match (stack.last(), byte) {
                 (None, None) => break,
@@ -488,11 +520,11 @@ fn scan(body: &[u8]) -> Result<Found, RefusalCode> {
                     position += 1;
                     Next::Member
                 }
-                (Some(Frame::Array), Some(b',')) => {
+                (Some(Frame::Array(_)), Some(b',')) => {
                     position += 1;
-                    Next::Value(Slot::Other)
+                    Next::Value(element(&stack))
                 }
-                (Some(Frame::Object(_)), Some(b'}')) | (Some(Frame::Array), Some(b']')) => {
+                (Some(Frame::Object(_)), Some(b'}')) | (Some(Frame::Array(_)), Some(b']')) => {
                     found.closes(&stack, value_end, true);
                     stack.pop();
                     position += 1;
@@ -503,6 +535,22 @@ fn scan(body: &[u8]) -> Result<Found, RefusalCode> {
         };
     }
     Ok(found)
+}
+
+/// The slot of the next element of the array on top of `stack`.
+fn element(stack: &[Frame]) -> Slot {
+    if stack.last() == Some(&Frame::Array(true)) {
+        Slot::Tool
+    } else {
+        Slot::Other
+    }
+}
+
+/// Whether one top-level tool is an Anthropic server or versioned built-in tool
+/// (`web_search_*`, `web_fetch_*`, `code_execution_*`, `bash_*`, …): it names a `type` other
+/// than `custom`, or no `input_schema`. Only Anthropic serves one.
+fn server_tool((schema, kind): &(bool, Option<String>)) -> bool {
+    !schema || kind.as_deref().is_some_and(|kind| kind != "custom")
 }
 
 fn skip_whitespace(bytes: &[u8], mut position: usize) -> usize {
@@ -638,6 +686,36 @@ mod tests {
 
     fn model(body: &str) -> Result<String, RefusalCode> {
         analyse(body.as_bytes()).map(|analysis| analysis.model)
+    }
+
+    #[test]
+    fn a_server_or_schema_less_tool_is_told_from_a_custom_one() {
+        let server = |tools: &str| {
+            analyse(format!(r#"{{"model":"m","tools":{tools}}}"#).as_bytes())
+                .unwrap()
+                .offers_server_tool
+        };
+        for tools in [
+            r#"[{"type":"web_search_20250305","name":"web_search","max_uses":5}]"#,
+            r#"[{"name":"a","input_schema":{}},{"type":"web_fetch_20250910","name":"web_fetch"}]"#,
+            r#"[{"type":"code_execution_20250825","name":"code_execution"}]"#,
+            r#"[{"name":"no_schema"}]"#,
+        ] {
+            assert!(server(tools), "{tools}");
+        }
+        for tools in [
+            "[]",
+            r#"[{"name":"Read","input_schema":{"type":"object","properties":{"type":{"type":"string"}}}}]"#,
+            r#"[{"type":"custom","name":"x","input_schema":{"type":"object"}}]"#,
+        ] {
+            assert!(!server(tools), "{tools}");
+        }
+        assert!(
+            !analyse(br#"{"model":"m","x":[{"type":"web_search_20250305"}]}"#)
+                .unwrap()
+                .offers_server_tool,
+            "only the top-level tools array counts"
+        );
     }
 
     #[test]

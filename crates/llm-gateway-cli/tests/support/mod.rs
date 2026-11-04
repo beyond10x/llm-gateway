@@ -235,7 +235,7 @@ pub fn created(pod: &serde_json::Value) -> serde_json::Value {
 pub fn running_small_pod() -> serde_json::Value {
     serde_json::json!({
         "id": "podsmall1", "name": "b10x-llm-small", "desiredStatus": "RUNNING",
-        "env": {}, "gpu": {"id": "NVIDIA L40S", "count": 1},
+        "env": {}, "gpu": {"id": "NVIDIA L40S", "count": 1}, "machine": {"secureCloud": true},
         "lastStartedAt": "2026-10-08T10:00:00.000Z",
     })
 }

@@ -283,7 +283,7 @@ fn serve(dir: &Path) -> Gateway {
         configmap["data"]["gateway.toml"]
             .as_str()
             .unwrap()
-            .replace("\"0.0.0.0:8080\"", "\"127.0.0.1:0\"")
+            .replace("\"0.0.0.0:8080\"", "\"0.0.0.0:0\"")
             .replace("\"/run/llm-gateway/", &format!("\"{}/", output.display())),
     )
     .unwrap();

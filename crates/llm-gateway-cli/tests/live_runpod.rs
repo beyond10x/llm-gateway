@@ -173,6 +173,7 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
         "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pods.list machine": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pod.create": [created(&running_small_pod())],
     }));
     let deployment = load(&fixture.config(&connected_document(

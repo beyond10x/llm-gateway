@@ -1,7 +1,7 @@
 //! story:subscription-passthrough at the library: a model marked
-//! [`RelayModel::with_client_credentials`] forwards the client's `authorization`, `x-api-key`,
-//! `anthropic-version` and `anthropic-beta` byte for byte, and no other client header; a model
-//! without the mark forwards none of them; a gateway that authenticates its owner forwards none
+//! [`RelayModel::with_client_credentials`] forwards every client header but the hop-by-hop ones,
+//! `host` and `content-length`, its value byte for byte; a model without the mark forwards none
+//! of them; a gateway that authenticates its owner forwards none
 //! of them even to a marked model; and a model with a name prefix serves every model name with it,
 //! relayed as the client sent it (`docs/gateway.md` "The upstream").
 //!
@@ -30,11 +30,14 @@ const CLIENT_HEADERS: &str = "Authorization: Bearer client-SUBSCRIPTION-TOKEN-00
                               x-claude-code-session-id: 0b5c7e5e-session\r\n\
                               x-stainless-retry-count: 0\r\n\
                               user-agent: claude-cli/2.1.318 (external, sdk-cli)\r\n";
-const FORWARDED: [&str; 4] = [
+const FORWARDED: [&str; 7] = [
     "authorization: Bearer client-SUBSCRIPTION-TOKEN-0001",
     "x-api-key: CLIENT-KEY",
     "anthropic-version: 2023-06-01",
     "anthropic-beta: oauth-2025-04-20,beta-two",
+    "x-claude-code-session-id: 0b5c7e5e-session",
+    "x-stainless-retry-count: 0",
+    "user-agent: claude-cli/2.1.318 (external, sdk-cli)",
 ];
 
 struct Recording {
@@ -171,7 +174,7 @@ fn head(request: &str) -> Vec<String> {
 }
 
 #[test]
-fn a_marked_model_forwards_the_four_headers_byte_for_byte_and_nothing_else() {
+fn a_marked_model_forwards_every_end_to_end_header_byte_for_byte() {
     let relayed = relay(true, false, false, "claude");
     assert!(
         relayed.answer.starts_with("HTTP/1.1 200 "),
@@ -186,20 +189,8 @@ fn a_marked_model_forwards_the_four_headers_byte_for_byte_and_nothing_else() {
             "{line:?} is forwarded once: {head:?}"
         );
     }
-    for absent in [
-        "x-claude-code-session-id",
-        "x-stainless-retry-count",
-        "user-agent",
-    ] {
-        assert!(
-            !head
-                .iter()
-                .any(|line| line.to_ascii_lowercase().starts_with(absent)),
-            "{absent} is never forwarded: {head:?}"
-        );
-    }
     assert!(
-        head[0].starts_with("POST /v1/messages HTTP/1.1"),
+        head[0].starts_with("POST /v1/messages?beta=true HTTP/1.1"),
         "{head:?}"
     );
 }

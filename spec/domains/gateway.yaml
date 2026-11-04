@@ -176,6 +176,7 @@ types:
       - {name: SpendCeiling, attributes: {code: spend-ceiling, status: 503, message: "the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown"}}
       - {name: TargetUnavailable, attributes: {code: target-unavailable, status: 503, message: "no model target is available"}}
       - {name: ToolsNotServed, attributes: {code: tools-not-served, status: 400, message: "the model does not serve tool calls"}}
+      - {name: ServerToolNotServed, attributes: {code: server-tool-not-served, status: 400, message: "this route is not Anthropic's: it serves no Anthropic server tool (web search, web fetch, code execution) and no tool without input_schema; send such a request to a claude model"}}
       - {name: TranslationInvalid, attributes: {code: translation-invalid, status: 400, message: "the request breaks a rule of the subset the gateway translates"}}
       - {name: TranslationOpaqueState, attributes: {code: translation-opaque-state, status: 400, message: "the request carries reasoning state the gateway did not seal for this route"}}
       - {name: TranslationTooLarge, attributes: {code: translation-too-large, status: 502, message: "the model's answer passed a bound of the translated path, published in the gateway contract"}}
@@ -922,7 +923,9 @@ entities:
       - {name: results, type: 'List<String>'}
       # The body each request received, decoded from its HTTP framing, in order. Each reasoning
       # seal in it (`llmgw-seal-1.` and the base64url and `.` characters after it), which
-      # differs on every run because its key does, is written `<sealed>`.
+      # differs on every run because its key does, is written `<sealed>`. The browser's page,
+      # whose script and style are the built dashboard, is written `page ` and its
+      # `<pre id="llms">` block, which holds the `/llms.txt` text HTML-escaped.
       - {name: bodies, type: 'List<String>'}
       # Per request, `content-type=<value> cache-control=<value> allow=<value>`, `absent` for a
       # header that was not sent.

@@ -9,6 +9,8 @@ export interface Snapshot {
   sessions: SessionRow[];
   routes: RouteRow[];
   provider: ProviderPanel | null;
+  kpi: Kpi;
+  limits: LimitRow[];
 }
 
 export interface CallRecord {
@@ -16,6 +18,7 @@ export interface CallRecord {
   started_ms: number;
   route: string | null;
   upstream: string | null;
+  upstream_model: string | null;
   wire: "chat" | "responses" | "messages";
   status: number;
   target_status: number | null;
@@ -29,12 +32,26 @@ export interface CallRecord {
   output_tokens: number | null;
   cache_read_tokens: number | null;
   cache_creation_tokens: number | null;
+  input_tps: number | null;
+  output_tps: number | null;
+  usage_note: string | null;
   client_retry: number | null;
   repeated_body: boolean;
   client_disconnected: boolean;
   upstream_retry_after: string | null;
+  attempts: AttemptRecord[];
   session: string;
   user_agent: string | null;
+}
+
+export interface AttemptRecord {
+  attempt: number;
+  status: number | null;
+  duration_ms: number;
+  wait_ms: number;
+  retry_after: string | null;
+  headers: Record<string, string>;
+  error_body: string | null;
 }
 
 export interface InFlight {
@@ -42,7 +59,9 @@ export interface InFlight {
   started_ms: number;
   route: string | null;
   wire: "chat" | "responses" | "messages";
-  state: "waiting-upstream" | "streaming";
+  state: "waiting-upstream" | "waiting-retry" | "streaming";
+  attempt: number;
+  retry_at_ms: number | null;
   elapsed_ms: number;
   session: string;
 }
@@ -67,7 +86,24 @@ export interface RouteRow {
   output_tokens: number;
   cache_read_tokens: number;
   cache_creation_tokens: number;
+  uncached_input_tokens: number;
+  input_tps: number | null;
+  output_tps: number | null;
   in_flight: number;
+  upstream_model: string | null;
+  upstream: UpstreamRow | null;
+}
+
+export interface UpstreamRow {
+  source: string;
+  read_ms: number;
+  prefix_cache_hit_ratio: number | null;
+  prefix_cache_hit_tokens: number;
+  prefix_cache_query_tokens: number;
+  requests_running: number | null;
+  requests_waiting: number | null;
+  kv_cache_usage: number | null;
+  ready: boolean | null;
 }
 
 export interface ProviderPanel {
@@ -91,4 +127,37 @@ export interface PodRow {
   vllm_ready: boolean | null;
   last_call_ms: number | null;
   in_flight: number;
+  shutdown: PodShutdown | null;
+  external: boolean;
+}
+
+export interface PodShutdown {
+  at_ms: number;
+  limit: "idle" | "max-runtime" | "balance";
+}
+
+export interface Kpi {
+  input_tokens: number;
+  output_tokens: number;
+  input_rate: number | null;
+  output_rate: number | null;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  uncached_input_tokens: number;
+  cache_hit_rate: number | null;
+  server_cache_hit_rate: number | null;
+  server_cache_hit_tokens: number;
+  route_rates: RouteRate[];
+}
+
+export interface RouteRate {
+  route: string;
+  input_tps: number | null;
+  output_tps: number | null;
+}
+
+export interface LimitRow {
+  credential: string;
+  seen_ms: number;
+  headers: Record<string, string>;
 }

@@ -158,6 +158,17 @@ model. Like inspection, a declared body is `body-not-allowed` and before `mark_r
 without the credential, `method-not-allowed` with `allow: GET, HEAD` with it. `GET /v1/routes`
 still takes the owner credential.
 
+DECIDED 2026-11-04 (story:live-dashboard). `GET /llms.txt` is public too: Markdown naming the
+gateway's origin, its dashboard and metrics, and the launcher commands
+(`b10x-llm-gateway claude`, `b10x-llm-gateway codex`) for the models that parse tool calls; a
+model's upstream name is written only on a gateway open on loopback. `GET /` for a browser
+(`user-agent` starting `mozilla/`) is that same Markdown inside the dashboard's page, so the two
+cannot disagree. `GET /v1/launch` is what the launchers read: `llm-gateway.launch/1` JSON with the
+origin and, per relayed model, its alias, prefix, whether it forwards the client's own credential,
+whether Claude Code and Codex reach it, its context and auto-compact windows, its `/model` label
+and its phase. It reads each model's status, so it takes the owner credential (none on a gateway
+open on loopback) and is not a public route.
+
 `GET /v1/models` is `{"object":"list","data":[…]}`, one entry per model in alias order:
 `{"id":<alias>,"object":"model","owned_by":"llm-gateway","max_model_len"?:<n>,"wires":[…]}`.
 `max_model_len` is what `RelayModel::with_max_model_len` declared, and absent, never `0`, when
@@ -167,7 +178,7 @@ profiles.
 `GET /` chooses its answer from the lowercased `user-agent`, by the first rule that holds:
 containing `codex`, a Codex `config.toml` profile per model (`text/plain; charset=utf-8`);
 containing `claude` or `anthropic`, Claude Code's environment variables per model (the same
-type); starting with `mozilla/`, an HTML page (`text/html; charset=utf-8`); anything else, or no
+type); starting with `mozilla/`, the `/llms.txt` page above (`text/html; charset=utf-8`); anything else, or no
 `user-agent`, plain text with the llm catalog lines a Loom run needs. A client gets a profile for
 a model only when the client's requests reach the model on the client's wire (Codex `responses`,
 Claude Code `messages`, Loom `chat`) and the model parses tool calls; each profile names the
@@ -466,23 +477,49 @@ a reset cannot destroy the refusal before the client reads it.
 ### The client's own credential
 
 DECIDED 2026-11-04 (story:subscription-passthrough). A model marked
-`RelayModel::with_client_credentials` authenticates the client itself. When the gateway
-authenticates nobody (`IngressAuth::None`), the client's `authorization`, `x-api-key`,
-`anthropic-version` and `anthropic-beta` lines (`CLIENT_CREDENTIAL_HEADERS`) are read from its
-head into a buffer overwritten when dropped and written into the request head to that model, in
-that order, the names in lower case and the values byte for byte. They stand in for the target's
-own credential and for any static header of their names. No other client header is forwarded,
-and a gateway that authenticates its owner forwards none of them, since its `authorization` is
-the owner's token. The body reaches such a model with only its `model` rewritten: no effort
-mapping (step 6), no output clamp (step 7), and a request on a wire it does not declare is
+`RelayModel::with_client_credentials` authenticates the client itself. Behind a gateway that authenticates nobody
+(`IngressAuth::None`) it is sent the client's credential lines; behind one that authenticates its
+owner it is sent none, since the client's `authorization` is the owner's token. The
+request reaches the model as the client sent it: its request target with the query, every header
+but `UNFORWARDED_HEADERS` (the hop-by-hop lines, `host`, `content-length` and `expect`) and the
+ones the client's `connection` line names, `accept-encoding` included, and its body, rewritten
+only where the route resolves an alias. The client's `authorization` and `x-api-key` lines
+(`CLIENT_CREDENTIAL_HEADERS`) are held in a buffer overwritten when dropped. No effort mapping
+(step 6) and no output clamp (step 7) apply, and a request on a wire the model does not declare is
 `wire-not-served`, never translated. A model may also declare a name prefix
-(`RelayModel::with_model_prefix`): every model name starting with it is served by that model
-and relayed as the client sent it; the longest prefix wins, and an alias matched exactly wins
-over every prefix. The binary marks a hosted entry `auth_kind = "client"`, which it admits only
-for `https://api.anthropic.com`, on the messages wire, behind `ingress_auth = "none"`, so Claude
-Code on a Claude subscription reaches Anthropic through a local gateway with
-`ANTHROPIC_BASE_URL=http://127.0.0.1:<port>`. No record, event or dashboard field carries any of
-the four values.
+(`RelayModel::with_model_prefix`): every model name starting with it is served by that model and
+relayed as the client sent it; the longest prefix wins, and an alias matched exactly wins over
+every prefix. The binary marks a hosted entry `auth_kind = "client"`, which it admits only for
+`https://api.anthropic.com`, on the messages wire, behind `ingress_auth = "none"`, so Claude Code
+on a Claude subscription reaches Anthropic through a local gateway with
+`ANTHROPIC_BASE_URL=http://127.0.0.1:<port>`.
+
+The answer reaches the client the same way: its status line, every header but the hop-by-hop
+ones, and its body byte for byte, re-chunked only where the target chunked it. A
+content-encoded answer (`gzip`, `x-gzip`, `deflate`, `br` or `zstd`) is passed on encoded; a
+copy of at most 16 MiB is decoded through the relay's `BodyDecoder`
+(`Relay::with_decoder`, which the binary composes) into at most 64 MiB, and the usage is read
+from the decoded copy. When the copy cannot be decoded, or is cut at either size, the call's
+tokens are unknown and its record says `usage_note = "undecodable(<coding>)"`; a client that left
+mid-answer is not such a case.
+
+**Retries.** DECIDED 2026-11-04. A 429, 502, 503 or 529 answer is retried while no byte of it has
+reached the client, never when the target says `x-should-retry: false`. The wait is the target's
+`retry-after` (seconds or an HTTP date), else an exponential backoff of 1, 2, 4 and 8 seconds
+with jitter, capped at 30 seconds. A model's attempts and its total wait are bounded by its
+`retry_max_attempts` (default 4, `DEFAULT_RETRY_ATTEMPTS`) and `retry_max_wait` (default 60
+seconds); when they are spent the last answer is passed through as it came. A client that sends
+`x-stainless-retry-count`, as the Anthropic SDKs and Claude Code do, retries on its own, so the
+gateway makes exactly one attempt for each of its requests and passes the answer through: a
+retry here would multiply the client's own. The gateway retries only for a client that sends no
+retry header. Every attempt is recorded in the call: its status, its wait, the
+answer's relayed header lines (printable values only, within a fixed byte budget), and, for an answer outside 2xx, its
+body as `error_body`: decoded when it was encoded (at most 64 KiB of it read), cut to
+`MAX_ERROR_BODY` (2048) bytes, and redacted of token-shaped strings.
+
+No record, event or dashboard field carries a credential value. The dashboard groups
+subscription limits by a credential label, the first eight hex digits of the SHA-256 of the
+`authorization` or `x-api-key` value, which names a login without revealing it.
 
 ### Claude Code on the messages wire
 
@@ -945,8 +982,9 @@ answer or refusal is written, before the connection is closed: the alias of the 
 body named (absent when it named none), the wire, its `Disposition` (`Relayed`, `Refused` or
 `UpstreamFailed`), the refusal code when it was not relayed, the status the client received, the
 status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
-request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The token counters and the model the target reported are
-always absent for now. A request, relayed or translated, whose client went away before any
+request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The input, output, cache read and cache creation token counters come from the usage the answer
+carried (decoded when it is content-encoded) and stay absent when it reported none; the model the
+target reported and the reasoning counter are always absent for now. A request, relayed or translated, whose client went away before any
 answer was written (a non-streamed client that closed while it waited) is recorded `Relayed`
 with status 0,
 no target status and 0 response bytes: status 0 means no answer was written because the client
@@ -1048,6 +1086,7 @@ every code the gateway can emit.
 | `spend-ceiling` | `refused` |
 | `target-unavailable` | `refused` |
 | `tools-not-served` | `refused` |
+| `server-tool-not-served` | `refused` |
 | `translation-invalid` | `refused` |
 | `translation-opaque-state` | `refused` |
 | `translation-too-large` | `upstream_error` |
@@ -1081,6 +1120,55 @@ sets the top-level `metrics_listen`, a key beside `listen` (the scrape token is 
   the gateway's shutdown or drop.
 - The owner-guarded `/metrics` of the serving listener is unchanged.
 
+### The dashboard
+
+DECIDED 2026-11-04 (story:live-dashboard). `GET /dashboard` serves one self-contained page,
+`/dashboard/snapshot` its JSON (`llm-gateway.dashboard/1`) and `/dashboard/events` the same JSON
+as a server-sent event at once and after every change. They take the owner credential like
+inspection (none on a gateway open on loopback) and serve while unready and while draining. The
+record types are declared once in `dashboard.rs` (`SNAPSHOT_TYPES`);
+`dashboard/src/generated/snapshot.ts` is generated from them and drift-checked by
+`llm-gateway-docs generate --check`. The page is built from `dashboard/` (Vue, Vite) into
+`crates/llm-gateway/src/dashboard.html`.
+
+- **Calls** (the last `MAX_CALLS`) with every attempt, its status, wait, `retry-after`, relayed
+  answer headers and `error_body`; **in-flight** calls; **sessions** (the last
+  `MAX_SESSIONS`); **routes**; the **KPI** tiles; **subscription limits** per credential label.
+- **Tokens per second.** A call's input rate is (uncached + cache read + cache creation input
+  tokens) over its time to first token. Its output rate is its output tokens over the time after
+  the first token, and only when it has at least `MIN_RATED_OUTPUT_TOKENS` (50) output tokens
+  over at least `MIN_RATED_STREAMING_MS` (250 ms); otherwise it is `null`. A `null` rate is left
+  out of every average, histogram and KPI.
+- **Cache.** The client-side hit rate is cache read over every input token, from the usage the
+  answers report (`cache_read_input_tokens`, or `cached_tokens` in `prompt_tokens_details` or
+  `input_tokens_details`); a call whose answer reports none has `null` cache fields, never an
+  estimate. A vLLM server reports no cache fields in its answers, so for a hosted route on a
+  Runpod pod's proxy address (`https://<pod>-<port>.proxy.runpod.net`) the binary reads the
+  server's `/metrics` every 15 seconds with the route's key and hands the dashboard
+  (`Dashboard::set_upstream`) the increase of `vllm:prefix_cache_hits_total` and
+  `vllm:prefix_cache_queries_total` since it began reading, `vllm:num_requests_running`,
+  `vllm:num_requests_waiting`, `vllm:kv_cache_usage_perc` and whether `<base path>/models`
+  answered 200. The route row carries it as `upstream`, and the KPI as
+  `server_cache_hit_rate`, labelled server-side (vLLM prefix cache).
+- **Runpod account.** With a provider whose `api_key` is a keychain reference, the binary reads
+  the account every 60 seconds (`Dashboard::set_provider`): balance, spend rate, the pods the
+  gateway owns, and every other live pod counted in `other_pods`. A pod a hosted route reaches
+  through its proxy address is also a row, marked `external`: it has no countdown and is never
+  stopped or changed. Each owned pod's `shutdown` is the earliest of its model's idle stop (no
+  call in flight, `idle_timeout_minutes` after the later of its last call and its start),
+  `[watchdog].max_runtime_hours` after its start, and the time the balance falls under
+  `[watchdog].min_balance_usd` at the current spend rate.
+
+The page's series on `/metrics` follow the route series: token and cache counters, the
+time-to-first-token, queue-wait and retry-wait histograms, `llmgw_cache_hit_ratio`,
+`llmgw_tokens_per_second{direction}`, `llmgw_input_tps` and `llmgw_output_tps{route}`,
+`llmgw_anthropic_utilization`, `llmgw_anthropic_reset_seconds` and
+`llmgw_anthropic_status{window,credential}`, `llmgw_upstream_prefix_cache_hit_ratio`,
+`llmgw_upstream_requests_running`, `llmgw_upstream_requests_waiting` and
+`llmgw_upstream_kv_cache_usage_ratio{route}`, then the in-flight, client, status, attempt and
+session series, and the provider's balance, pods and `llmgw_pod_shutdown_seconds{pod,limit}`. A
+gauge is written only once it has a value. `tests/observability.rs` holds the order.
+
 ## Refusals
 
 A refusal names its own stable code and a message this crate wrote. It quotes nothing the caller
@@ -1113,6 +1201,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `spend-ceiling` | 503 | the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown |
 | `target-unavailable` | 503 | no model target is available |
 | `tools-not-served` | 400 | the model does not serve tool calls |
+| `server-tool-not-served` | 400 | this route is not Anthropic's: it serves no Anthropic server tool (web search, web fetch, code execution) and no tool without input_schema; send such a request to a claude model |
 | `translation-invalid` | 400 | the request breaks a rule of the subset the gateway translates |
 | `translation-opaque-state` | 400 | the request carries reasoning state the gateway did not seal for this route |
 | `translation-too-large` | 502 | the model's answer passed a bound of the translated path, published in the gateway contract |

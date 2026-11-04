@@ -351,17 +351,26 @@ fn summary(value: &Value) -> Option<PodSummary> {
         name: text("/name")?,
         desired_status: text("/desiredStatus").unwrap_or_default(),
         cost_per_hour_usd: value.get("costPerHr").and_then(number),
-        gpu: text("/gpu/id"),
+        gpu: text("/gpu/id").or_else(|| text("/machine/gpuTypeId")),
         uptime_seconds: value.get("uptimeSeconds").and_then(Value::as_u64),
         last_started_at_ms: value
             .get("lastStartedAt")
             .and_then(Value::as_str)
-            .and_then(started_at_ms),
+            .and_then(rest_started_at_ms),
         env_owner: value
             .pointer(&format!("/env/{TAG_OWNER}"))
             .and_then(Value::as_str)
             .map(str::to_owned),
     })
+}
+
+/// Runpod REST's `lastStartedAt`, `2026-11-04 13:43:01.245 +0000 UTC` (UTC only), or the RFC 3339
+/// form GraphQL writes, in milliseconds since the Unix epoch.
+fn rest_started_at_ms(stamp: &str) -> Option<u64> {
+    match stamp.strip_suffix(" +0000 UTC") {
+        Some(utc) => started_at_ms(&format!("{}Z", utc.replacen(' ', "T", 1))),
+        None => started_at_ms(stamp),
+    }
 }
 
 /// Whether a refused create's answer says Runpod has no machine of the GPU type free.
@@ -430,7 +439,7 @@ impl RunpodTransport for RestRunpod {
         self.pod(pod_id, "")?
             .get("lastStartedAt")
             .and_then(Value::as_str)
-            .and_then(started_at_ms)
+            .and_then(rest_started_at_ms)
     }
 
     fn pod_placement(&mut self, pod_id: &str) -> Option<PodPlacement> {
@@ -451,7 +460,7 @@ impl RunpodAccount for RestRunpod {
     /// `None` when the pod listing failed; a failed balance read leaves only the balance and
     /// spend rate unreported. A pod entry without an id or a name is left out.
     fn account(&mut self) -> Option<AccountSnapshot> {
-        let pods = self.pods("")?;
+        let pods = self.pods("?includeMachine=true")?;
         let (balance_usd, spend_per_hour_usd) = self.balance();
         Some(AccountSnapshot {
             balance_usd,
@@ -463,7 +472,18 @@ impl RunpodAccount for RestRunpod {
 
 #[cfg(test)]
 mod tests {
-    use super::{encode, loopback, target};
+    use super::{encode, loopback, rest_started_at_ms, target};
+
+    #[test]
+    fn the_rest_start_stamp_is_read_in_utc() {
+        let rfc = rest_started_at_ms("2026-11-04T13:43:01.245Z");
+        assert!(rfc.is_some());
+        assert_eq!(rest_started_at_ms("2026-11-04 13:43:01.245 +0000 UTC"), rfc);
+        assert_eq!(
+            rest_started_at_ms("2026-11-04 13:43:01.245 +0100 CET"),
+            None
+        );
+    }
 
     #[test]
     fn plain_http_is_only_for_a_loopback_host() {

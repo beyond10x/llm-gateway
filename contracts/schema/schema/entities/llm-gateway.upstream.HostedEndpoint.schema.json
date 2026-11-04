@@ -70,8 +70,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "8e76d595b9fb656f16e820f16069f18535f7d2ca91ef50cd4498759eb4267390",
-    "contract_digest": "slice-sha256/2:abcb2b61d282aa6e69298191866ff087791f093914391e8155787d92d9a2949f",
+    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
+    "contract_digest": "slice-sha256/2:e05d406f6a4baec7d4c3e7ad6a45f55944fb9dee758b573aec8020179b13a0cc",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -95,7 +95,8 @@
         "Anonymous",
         "Bearer",
         "ApiKey",
-        "AwsSigv4"
+        "AwsSigv4",
+        "Client"
       ]
     },
     "llm-gateway.upstream.BedrockApi": {

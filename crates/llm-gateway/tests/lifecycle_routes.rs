@@ -373,10 +373,13 @@ fn the_owner_credential_the_method_a_body_and_readiness_are_decided_before_the_s
         "",
     );
     unready.shutdown();
+    // Bound to every address: on loopback alone, `IngressAuth::None` opens every path
+    // (story:local-open-mode).
     let handle = gateway(Arc::clone(&source), true, |config| {
         config.ingress_auth = IngressAuth::None;
+        config.bind = "0.0.0.0:0".parse().unwrap();
     });
-    let address = handle.local_addr();
+    let address = SocketAddr::from(([127, 0, 0, 1], handle.local_addr().port()));
     let anonymous_wake = send(address, "POST", "/v1/models/small/wake", false, "");
     let anonymous_status = send(address, "GET", "/v1/models/small/status", false, "");
     let get_wake = send(address, "GET", "/v1/models/small/wake", true, "");

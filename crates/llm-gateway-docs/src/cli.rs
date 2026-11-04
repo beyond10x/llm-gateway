@@ -160,11 +160,12 @@ pub fn page() -> String {
     ));
     out.push_str(
         "\n`watchdog` reads the same document as `serve` and needs its `[watchdog]` table and one \
-         provider with `runpod_api_key`. It polls Runpod every `poll_seconds` and terminates only a \
+         provider whose `api_key` is a keychain reference. It polls Runpod every `poll_seconds` and terminates only a \
          pod the gateway owns (its name starts `b10x-llm-` and its owner tag names the gateway), \
-         writing one `b10x-llm-gateway: watchdog terminated <pod> rule <rule>` line for each. It \
-         stops on SIGINT or SIGTERM with exit status 0; a refused start exits 1 as `serve` does. \
-         [Run the pod watchdog](../guides/run-the-pod-watchdog.md) walks through the unit.\n",
+         writing one JSON line of format `llm-gateway.watchdog/1` on standard error for each, \
+         naming the pod and the rule. It stops on SIGINT or SIGTERM with exit status 0; a \
+         refused start exits 1 as `serve` does. [The `[watchdog]` table](./deployment-document.md#watchdog) \
+         lists its limits.\n",
     );
     out.push_str(&subcommand_section(
         llm_gateway_cli::cli::CredentialCli::command(),
@@ -183,6 +184,25 @@ pub fn page() -> String {
          ([the refusal reference](./refusals.md#credential-refusals)); a usage error names its kind and never echoes an argument, \
          exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks \
          through it.\n",
+    );
+    out.push_str(&command_section(llm_gateway_cli::cli::ClaudeCli::command()));
+    out.push_str(
+        "\n`claude` asks the running gateway named by the document for its routes, writes the \
+         settings overlay and runs Claude Code with it; Claude Code's exit status is the \
+         command's. Unless the arguments name one, it adds `--model` with \
+         `[launch.claude].main_model`, `--agents` with `[launch.claude].agents` when that is \
+         set, and `--append-system-prompt` with `[launch.claude].subagent_instruction`, its \
+         `{route}` and `{model}` filled from the implementer route; when the arguments carry \
+         their own `--append-system-prompt`, the instruction is joined after that text, never \
+         in its place. An empty instruction adds nothing. A gateway that authenticates its owner \
+         is refused: the overlay would have to carry the owner token. \
+         [A local gateway for Claude Code](../guides/local-gateway-for-claude-code.md) walks \
+         through it.\n",
+    );
+    out.push_str(&command_section(llm_gateway_cli::cli::CodexCli::command()));
+    out.push_str(
+        "\n`codex` runs Codex with the gateway as a `-c` model-provider override; nothing is \
+         written under `~/.codex/`. Codex's exit status is the command's.\n",
     );
     out
 }

@@ -286,7 +286,13 @@ fn check_fails_on_every_kind_of_drift() {
     for file in ["Cargo.toml", "Cargo.lock"] {
         fs::copy(root.join(file), tree.join(file)).unwrap();
     }
-    for dir in ["crates", "checks", "website/docs", "website/data"] {
+    for dir in [
+        "crates",
+        "checks",
+        "website/docs",
+        "website/data",
+        "dashboard/src/generated",
+    ] {
         copy_tree(&root.join(dir), &tree.join(dir));
     }
     let at = tree.to_str().unwrap();
@@ -305,6 +311,7 @@ fn check_fails_on_every_kind_of_drift() {
         (REFUSALS_PAGE, false),
         (STATUS_PAGE, false),
         (STATUS_DATA, true),
+        ("dashboard/src/generated/snapshot.ts", false),
     ] {
         if remove {
             fs::remove_file(tree.join(file)).unwrap();

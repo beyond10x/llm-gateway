@@ -1383,8 +1383,8 @@ fn bedrock_a_document_mixing_or_misnaming_bedrock_keys_is_refused() {
                 .replace(&format!("http://{}", bedrock.address), "http://bedrock.example.test"),
         ),
         (
-            "max_output_tokens on an endpoint",
-            "[hosted.local]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nauth_kind = \"anonymous\"\nmax_output_tokens = 4096\n".to_owned(),
+            "a zero output cap on an endpoint",
+            "[hosted.local]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nauth_kind = \"anonymous\"\nmax_output_tokens = 0\n".to_owned(),
         ),
         (
             "a zero output limit",

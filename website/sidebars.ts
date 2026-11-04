@@ -20,6 +20,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'guides/set-up-a-client',
+        'guides/local-gateway-for-claude-code',
         'guides/translate-between-wires',
         'guides/serve-a-bedrock-model',
         'guides/scrape-the-counters',

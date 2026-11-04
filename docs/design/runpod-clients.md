@@ -248,12 +248,24 @@ written only into the `Authorization` header of a request buffer that is overwri
 and never appears in an answer, error or log line. Both transports enforce Secure Cloud on-demand
 placement after every create (story:secure-cloud-enforced).
 
+In the binary (story:keychain-references): `[providers.<name>] api_key =
+"keychain:<service>/<account>"` names the key, refused beside a `connectors` table; the entry is
+read once at start through `secret-tool lookup service <s> account <a>` (Linux) or `security
+find-generic-password -s <s> -a <a> -w` (macOS), whose argument list carries the two names only,
+into memory overwritten when dropped (`crates/llm-gateway-cli/src/keychain.rs`). The serving
+composition then runs the provider's pool over `RestRunpod` instead of `ConnectorsRunpod`. The
+same reference may name a model's vLLM key (`vllm_api_key`), a hosted endpoint's credential
+(`credential`) and a routes document endpoint's `auth.secret`, which earlier releases refused.
+
 ## 5. What the operator does by hand
 
 1. **Runpod account and key.** Create the account at https://www.runpod.io, add credit, and create an
    API key in the console (Settings, API Keys). Store it where D1 says: A, through `connectors` (the
    connect step for the Runpod connection, once connectors carries the bundle); C, as a file:
    `install -m 600 /dev/stdin ~/.config/b10x-llm-gateway/runpod-api-key`, pasting the key.
+   A local gateway: in the OS keychain, `secret-tool store --label="Runpod API key" service
+   llm-gateway account runpod` (Linux) or `security add-generic-password -s llm-gateway -a runpod
+   -w` (macOS), named as `api_key = "keychain:llm-gateway/runpod"`.
 2. **The pod's vLLM key.** Create a Runpod secret (console, Secrets) named for the model, e.g.
    `vllm_small`, holding `openssl rand -hex 32`, and write the same value to
    `~/.config/b10x-llm-gateway/vllm-key-small` with mode 600. The pod receives it as

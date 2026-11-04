@@ -120,6 +120,12 @@ refusal_codes! {
     /// is [`crate::ToolCalling::Absent`].
     ToolsNotServed => "tools-not-served", 400,
         "the model does not serve tool calls";
+    /// The body offers an Anthropic server or built-in tool (a `type` other than `custom`, such
+    /// as `web_search_*`, `web_fetch_*` or `code_execution_*`, or a tool without
+    /// `input_schema`) to a model that does not forward to Anthropic. Refused before any
+    /// target, so a self-hosted server never answers with its own schema error.
+    ServerToolNotServed => "server-tool-not-served", 400,
+        "this route is not Anthropic's: it serves no Anthropic server tool (web search, web fetch, code execution) and no tool without input_schema; send such a request to a claude model";
     /// A translated request (story:gateway-translation) whose body names a field or value outside
     /// the subset the translator decodes, or is past one of its size bounds. Refused before any
     /// target is asked for.
@@ -301,6 +307,10 @@ closed_enum! {
         DuplicateModel => "two relayed models declare the same alias";
         /// A model name prefix that is empty.
         EmptyPrefix => "a relayed model's name prefix must not be empty";
+        /// A newest-model family that is empty.
+        EmptyFamily => "a relayed model's newest-model family must not be empty";
+        /// An `anthropic-beta` value that is not 1..=128 letters, digits, `-`, `_` or `.`.
+        BetaNotAToken => "an anthropic-beta value must be 1..=128 bytes of letters, digits, '-', '_' and '.'";
     }
 }
 

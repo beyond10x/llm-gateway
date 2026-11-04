@@ -119,6 +119,18 @@ fn named(flag: &str) -> String {
     format!("{flag} (the given name)")
 }
 
+/// The refusal for a target whose key is a `keychain:` entry: the operator stores it with the
+/// platform's own tool, never through this command (story:keychain-references).
+fn in_keychain(key: &str) -> CredentialFailure {
+    CredentialFailure::new(
+        CredentialRefusal::NotHosted,
+        format!(
+            "{key} names a keychain: entry: store the key with secret-tool store (Linux) or \
+             security add-generic-password (macOS); this command writes only key files"
+        ),
+    )
+}
+
 /// The target `name` of `kind` in `deployment`, read from the document only: no file is opened.
 ///
 /// # Errors
@@ -140,6 +152,9 @@ pub fn target(
         TargetKind::Model => {
             if let Some(hosted) = deployment.hosted.get(name) {
                 let at = format!("hosted.{name}");
+                if hosted.credential_keychain.is_some() {
+                    return Err(in_keychain(&format!("{at}.credential")));
+                }
                 let path = hosted
                     .credential_file
                     .clone()
@@ -201,6 +216,9 @@ pub fn target(
             let at = format!("routes.{}", endpoint.name());
             let secret = endpoint.secret().ok_or_else(|| anonymous(&at))?;
             let key = format!("{at}.auth.secret");
+            if matches!(secret, crate::routes::SecretFile::Keychain(_)) {
+                return Err(in_keychain(&key));
+            }
             let path = secret.resolve(home).ok_or_else(|| {
                 Refusal::new(
                     StartupRefusal::ConfigValue,

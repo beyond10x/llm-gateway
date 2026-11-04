@@ -2,13 +2,15 @@
 //! hand-written pages for drift, and binds a built site to its source commit and lists its
 //! routes. The site build itself is Docusaurus.
 //!
-//! Five files are generated:
+//! Six files are generated:
 //!
 //! - `website/docs/reference/cli.md`, from the clap definition `llm_gateway_cli::cli::Cli`;
 //! - `website/docs/reference/crates.md`, from `cargo metadata --no-deps`;
 //! - `website/docs/reference/refusals.md`, from `llm_gateway::RefusalCode::ALL`;
 //! - `website/data/status.json` (`b10x-status/1`) and `website/docs/status.mdx`, from the
-//!   capability list in `status.rs`, whose every shipped item names the test that holds it.
+//!   capability list in `status.rs`, whose every shipped item names the test that holds it;
+//! - `dashboard/src/generated/snapshot.ts`, the dashboard page's types, from
+//!   `llm_gateway::SNAPSHOT_TYPES`.
 //!
 //! `generate --check` also checks the hand-written pages: no raw admonition title, no story id
 //! and no home-directory path.
@@ -74,6 +76,10 @@ enum Action {
 /// Generated files keyed by their path relative to the repository root.
 type Outputs = BTreeMap<&'static str, String>;
 
+/// The dashboard page's TypeScript types, generated from `llm_gateway::SNAPSHOT_TYPES` so the
+/// page and the snapshot the server writes cannot drift apart.
+const DASHBOARD_TYPES: &str = "dashboard/src/generated/snapshot.ts";
+
 fn outputs(root: &Path) -> Result<Outputs> {
     let crates = crates::page(&crates::metadata(root)?)?;
     let record = status::record(root)?;
@@ -83,6 +89,7 @@ fn outputs(root: &Path) -> Result<Outputs> {
         (refusals::PAGE, refusals::page()),
         (status::DATA, status::data(&record)),
         (status::PAGE, status::page(&record)),
+        (DASHBOARD_TYPES, llm_gateway::dashboard_typescript()),
     ]))
 }
 

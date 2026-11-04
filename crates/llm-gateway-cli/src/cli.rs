@@ -20,7 +20,9 @@ use clap::{ArgGroup, Args, Parser, Subcommand};
     version,
     after_help = "To serve the default document ($XDG_CONFIG_HOME/llm-gateway/config.toml): b10x-llm-gateway serve --help\n\
                   To stop owned pods the gateway cannot: b10x-llm-gateway watchdog --help\n\
-                  To store an upstream key in the file the document names: b10x-llm-gateway credential set --help"
+                  To store an upstream key in the file the document names: b10x-llm-gateway credential set --help\n\
+                  To start Claude Code against the running gateway: b10x-llm-gateway claude --help\n\
+                  To start Codex against the running gateway: b10x-llm-gateway codex --help"
 )]
 pub struct Cli {
     /// Path to the closed TOML deployment document.
@@ -42,7 +44,7 @@ pub struct ServeCli {
 /// Watch the pods the gateway owns and terminate one the gateway can no longer stop: its
 /// heartbeat stale, the pod idle, not ready, past its maximum runtime, or the balance under its
 /// floor. It reads the same document as `serve` and needs its `[watchdog]` table and a provider
-/// with `runpod_api_key`.
+/// with a keychain `api_key`.
 #[derive(Debug, Parser)]
 #[command(name = "watchdog", bin_name = "b10x-llm-gateway watchdog", version)]
 pub struct WatchdogCli {
@@ -52,6 +54,42 @@ pub struct WatchdogCli {
     /// Run one poll and exit instead of polling until SIGINT or SIGTERM.
     #[arg(long)]
     pub once: bool,
+}
+
+/// Start Claude Code against the running gateway: `claude --settings <overlay>` with every
+/// other argument passed on. The overlay sets `ANTHROPIC_BASE_URL`, the subagent
+/// model to `[launch.claude].implementer_route`, the `/model` picker rows and auto-compact
+/// windows of the gateway's routes; it names no credential, so Claude Code keeps its own login.
+/// It is written mode 0600 under `$XDG_RUNTIME_DIR` and deleted when `claude` exits.
+#[derive(Debug, Parser)]
+#[command(name = "claude", bin_name = "b10x-llm-gateway claude")]
+pub struct ClaudeCli {
+    /// Path to the closed TOML deployment document; the default document when absent.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+    /// The Claude Code program to run.
+    #[arg(long, env = "B10X_LLM_GATEWAY_CLAUDE_BIN", hide = true)]
+    pub claude_bin: Option<PathBuf>,
+    /// Arguments passed to `claude` unchanged.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<OsString>,
+}
+
+/// Start Codex against the running gateway: `codex` with the gateway as a `-c` provider
+/// override and, unless a model is given, `-m` with `[launch.codex].model` and its context and
+/// auto-compact windows. Every other argument is passed on; nothing is written to `~/.codex/`.
+#[derive(Debug, Parser)]
+#[command(name = "codex", bin_name = "b10x-llm-gateway codex")]
+pub struct CodexCli {
+    /// Path to the closed TOML deployment document; the default document when absent.
+    #[arg(long)]
+    pub config: Option<PathBuf>,
+    /// The Codex program to run.
+    #[arg(long, env = "B10X_LLM_GATEWAY_CODEX_BIN", hide = true)]
+    pub codex_bin: Option<PathBuf>,
+    /// Arguments passed to `codex` unchanged.
+    #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub args: Vec<OsString>,
 }
 
 /// The default deployment document: `$XDG_CONFIG_HOME/llm-gateway/config.toml` when
@@ -129,6 +167,10 @@ pub enum Invocation {
     Watchdog(Vec<OsString>),
     /// `b10x-llm-gateway credential …`: the arguments from `credential` on.
     Credential(Vec<OsString>),
+    /// `b10x-llm-gateway claude …`: the arguments from `claude` on.
+    Claude(Vec<OsString>),
+    /// `b10x-llm-gateway codex …`: the arguments from `codex` on.
+    Codex(Vec<OsString>),
 }
 
 impl Invocation {
@@ -136,6 +178,8 @@ impl Invocation {
     pub fn from_args(args: Vec<OsString>) -> Self {
         let rest: Vec<OsString> = args.into_iter().skip(1).collect();
         match rest.first().and_then(|first| first.to_str()) {
+            Some("claude") => Self::Claude(rest),
+            Some("codex") => Self::Codex(rest),
             Some("credential") => Self::Credential(rest),
             Some("serve") => Self::ServeCommand(rest),
             Some("watchdog") => Self::Watchdog(rest),

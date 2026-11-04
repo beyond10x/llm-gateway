@@ -711,7 +711,8 @@ fn routes_a_document_with_only_routes_is_admitted_and_served() {
 
 // --- Acceptance 3 and 4, Rules 1 to 4: what refuses the start ---------------------------------
 
-/// Acceptance 3: an `env:` or `keychain:` secret, a pathless `base_url`, a path outside the
+/// Acceptance 3: an `env:` secret (a `keychain:` one is admitted: `tests/keychain.rs`), a
+/// pathless `base_url`, a path outside the
 /// base-path rule, a credential over `http` to a remote host, and a document llm refuses each
 /// start nothing, refused `config:value` naming what broke the rule.
 #[test]
@@ -725,11 +726,6 @@ fn routes_each_rule_of_the_document_refuses_the_start_as_config_value() {
             "env",
             routes.replace(&anthropic_secret, "\"env:ANTHROPIC_API_KEY\""),
             "routes.anthropic.auth.secret ",
-        ),
-        (
-            "keychain",
-            routes.replace("\"file:~/router-key\"", "\"keychain:llm/router\""),
-            "routes.openrouter.auth.secret ",
         ),
         (
             "pathless",

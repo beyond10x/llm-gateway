@@ -161,6 +161,11 @@ impl Running {
         self.handle.local_addr()
     }
 
+    /// The dashboard's state, for the account panel and the heartbeat's route activity.
+    pub fn dashboard(&self) -> Arc<llm_gateway::Dashboard> {
+        self.handle.dashboard()
+    }
+
     /// Each model's vLLM key, read once at startup.
     pub fn vllm_keys(&self) -> &crate::keys::VllmKeys {
         &self.vllm_keys
@@ -270,6 +275,14 @@ pub fn main_with(pods: crate::ProxyConnector) -> std::process::ExitCode {
     use clap::Parser as _;
     match Invocation::from_args(std::env::args_os().collect()) {
         Invocation::Credential(args) => crate::credential::main(args, &pods),
+        Invocation::Claude(args) => match crate::cli::ClaudeCli::try_parse_from(args) {
+            Ok(cli) => crate::launch::main(cli),
+            Err(error) => usage_error(&error, "claude"),
+        },
+        Invocation::Codex(args) => match crate::cli::CodexCli::try_parse_from(args) {
+            Ok(cli) => crate::launch::codex_main(cli),
+            Err(error) => usage_error(&error, "codex"),
+        },
         Invocation::Watchdog(args) => match crate::cli::WatchdogCli::try_parse_from(args) {
             Ok(cli) => crate::watchdog::main(&cli, &pods),
             Err(error) => usage_error(&error, "watchdog"),
@@ -314,12 +327,51 @@ fn serve_closed_line(pods: crate::ProxyConnector) -> std::process::ExitCode {
     serve_document(&args.config, pods)
 }
 
+/// The heartbeat file of a document with `[watchdog]`; `None` without one.
+///
+/// # Errors
+/// `config:value` naming `watchdog.heartbeat_file` when none is declared and neither
+/// `XDG_STATE_HOME` nor `HOME` is set.
+pub(crate) fn heartbeat_file(
+    deployment: &Deployment,
+) -> Result<Option<std::path::PathBuf>, Refusal> {
+    deployment
+        .watchdog
+        .as_ref()
+        .map(|config| {
+            crate::heartbeat::path_of(config).ok_or_else(|| {
+                Refusal::new(
+                    StartupRefusal::ConfigValue,
+                    "watchdog.heartbeat_file: none declared, and neither XDG_STATE_HOME nor HOME is set"
+                        .to_owned(),
+                )
+            })
+        })
+        .transpose()
+}
+
+/// Starts the heartbeat at `file` with `activity`, every `heartbeat_seconds` of the document's
+/// `[watchdog]`; `None` without a file.
+pub(crate) fn heartbeat_of(
+    deployment: &Deployment,
+    file: Option<std::path::PathBuf>,
+    activity: crate::heartbeat::ActivitySource,
+) -> Option<crate::heartbeat::Beating> {
+    let config = deployment.watchdog.as_ref()?;
+    Some(crate::heartbeat::start(
+        file?,
+        std::time::Duration::from_secs(config.heartbeat_seconds),
+        crate::CONTROLLER,
+        activity,
+    ))
+}
+
 /// Serves the document at `config` until SIGINT or SIGTERM.
 fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std::process::ExitCode {
     // Events (row O3) go to standard error beside the lines `report` writes, which they leave
     // unchanged; at the default level they are one `usage` event per authenticated model call.
     crate::install_logging();
-    let running = match crate::load(config).and_then(|deployment| {
+    let (running, beating) = match crate::load(config).and_then(|deployment| {
         tracing::debug!(
             models = deployment.models.len(),
             digest = %deployment.digest,
@@ -329,9 +381,40 @@ fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std:
         if deployment.gateway.ingress_auth == IngressAuth::None {
             report(format_args!("{INGRESS_AUTH_OFF}"));
         }
-        start_with(&deployment, pods)
+        let heartbeat = heartbeat_file(&deployment)?;
+        let account_pods = pods.clone();
+        let running = start_with(&deployment, pods)?;
+        let dashboard = running.dashboard();
+        // The key was read once already by the composition, so a failure here is rare; the
+        // gateway then serves without the account panel rather than refusing.
+        let polling = crate::account::start_for(&deployment, &account_pods, Arc::clone(&dashboard))
+            .unwrap_or_else(|refusal| {
+                report(format_args!("warning runpod account panel off: {refusal}"));
+                None
+            });
+        let stats =
+            crate::vllm_stats::start_for(&deployment, &account_pods, Arc::clone(&dashboard))
+                .unwrap_or_else(|refusal| {
+                    report(format_args!("warning vllm server figures off: {refusal}"));
+                    None
+                });
+        let activity: crate::heartbeat::ActivitySource = Arc::new(move || {
+            dashboard
+                .route_activity()
+                .into_iter()
+                .map(|route| (route.route, route.last_call_end_ms, route.in_flight))
+                .collect()
+        });
+        Ok((
+            running,
+            (
+                heartbeat_of(&deployment, heartbeat, activity),
+                polling,
+                stats,
+            ),
+        ))
     }) {
-        Ok(running) => running,
+        Ok(started) => started,
         Err(refusal) => {
             report(format_args!("refused {refusal}"));
             return std::process::ExitCode::FAILURE;
@@ -339,6 +422,9 @@ fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std:
     };
     report(format_args!("listening on {}", running.local_addr()));
     let stopped = running.wait_for_stop();
+    // The heartbeat ends with the gateway; its last beat stays and goes stale, so the watchdog
+    // stops the pods unless a gateway beats again within `stale_minutes`.
+    drop(beating);
     report(format_args!(
         "stopped by {} accepted={} completed={}",
         stopped.signal, stopped.report.accepted, stopped.report.completed

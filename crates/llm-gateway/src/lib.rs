@@ -42,7 +42,9 @@
 
 mod auth;
 mod body;
+mod dashboard;
 mod error;
+mod guide;
 mod inventory;
 mod json;
 mod listing;
@@ -50,9 +52,15 @@ mod metrics;
 mod relay;
 mod server;
 mod translate;
+mod usage;
 
 pub use auth::{
     Authenticated, NoOwnerVerifier, OwnerToken, OwnerVerifier, SharedSecretVerifier, Verdict,
+};
+pub use dashboard::{
+    Dashboard, MAX_CALLS, MAX_LIMIT_CREDENTIALS, MAX_SESSIONS, PodPanel, ProviderPanel, RecordType,
+    RouteActivity, SNAPSHOT_FORMAT, SNAPSHOT_TYPES, UpstreamStats, WatchdogLimits, cache_hit_rate,
+    typescript as dashboard_typescript,
 };
 pub use error::{
     BasePathError, CredentialHeaderError, InventoryError, LabelError, RefusalCode, RelayError,
@@ -64,12 +72,14 @@ pub use inventory::{
 };
 pub use metrics::{Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
 pub use relay::{
-    BasePath, CALLER_SESSION_HEADER, CLIENT_CREDENTIAL_HEADERS, Caller, CredentialHeader,
-    ModelPhase, ModelStatus, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, StaticHeader, TargetBearer, TargetScheme, ToolCalling, Wire, read_within_timeout,
+    BasePath, BodyDecoder, CALLER_SESSION_HEADER, Caller, CredentialHeader, DEFAULT_RETRY_ATTEMPTS,
+    DEFAULT_RETRY_WAIT, Decoded, MAX_ERROR_BODY, ModelPhase, ModelStatus, ReasoningEffort, Relay,
+    RelayModel, RelayStream, RelayTarget, RelayTargets, StaticHeader, TargetBearer, TargetScheme,
+    ToolCalling, UNFORWARDED_HEADERS, Wire, read_within_timeout,
 };
 pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};
 pub use translate::{
     AnswerFraming, TranslatedAnswer, Translation, TranslationFailure, TranslationRequest,
     Translator,
 };
+pub use usage::{Usage, UsageScanner};

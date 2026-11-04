@@ -12,13 +12,14 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 
 | Path | What it is |
 | --- | --- |
-| `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency; it holds the translation port (`Translator`) and translates nothing itself |
-| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `llm-models`), the Bedrock models (`bedrock.rs`, over `llm-bedrock`, signed from the container credentials endpoint), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.20.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`. It carries the dependencies the gateway crate must not have |
+| `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency; it holds the translation port (`Translator`) and translates nothing itself, the body-decoding port (`BodyDecoder`) and decodes nothing itself, the passthrough of a client-credential route (`relay/passthrough.rs`) and the dashboard (`dashboard.rs`, `dashboard/`), whose page `src/dashboard.html` is built from `dashboard/` |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `llm-models`), the Bedrock models (`bedrock.rs`, over `llm-bedrock`, signed from the container credentials endpoint), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.20.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`; the keychain reader (`keychain.rs`), the watchdog and its heartbeat (`watchdog.rs`, `heartbeat.rs`), the launchers (`launch.rs`), the answer decoder (`decode.rs`: `flate2`, `brotli-decompressor`, `ruzstd`), and the dashboard's Runpod account and vLLM server readers (`account.rs`, `vllm_stats.rs`). It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests; `ConnectorsRunpod`, which reaches the control plane only through the `connectors` CLI (a cluster); `RestRunpod`, which calls Runpod's REST API with a key the process holds (a local gateway). Every created pod's placement is read back and a pod off Secure Cloud on-demand is terminated at once |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
 | `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
+| `dashboard/` | The dashboard page: Vue 3 and TypeScript, built with Vite and pnpm (`pnpm --dir dashboard build`) into one file, `crates/llm-gateway/src/dashboard.html`. Its record types `src/generated/snapshot.ts` are generated |
 | `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served at `https://beyond10x.github.io/llm-gateway/`, deployed by the `Documentation site` workflow |
 | `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters, the per-model `llmgw_requests_total{model,outcome}` counter and `llmgw_request_duration_seconds{model}` histogram, the metrics-only listener and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
@@ -53,6 +54,10 @@ at all.
 | `credential set` writes a key file only after the server's own reader reads it back, never carries the key on a line, and the serving command line is unchanged | `crates/llm-gateway-cli/tests/credential_set.rs`, `crates/llm-gateway-cli/tests/binary.rs` (`c1_*`, `c4_*`) |
 | A pushed `<major>.<minor>.<patch>` tag, and nothing else, publishes `ghcr.io/beyond10x/llm-gateway:<version>` for `linux/amd64` and `linux/arm64`, natively, labelled with the tag's commit, never replacing an existing version, with `contents: read` and `packages: write` only and every action pinned by commit SHA | `crates/llm-gateway-cli/tests/release_workflow.rs` |
 | The credential-namespace manifests hold no comment, put every object in `agent-credentials`, admit one namespace on one port, give the gateway the provider key as a file only, start the binary on their ConfigMap, and appear in the guide exactly as the files have them | `crates/llm-gateway-cli/tests/credential_namespace.rs` |
+| A client's own credential reaches only an `auth_kind = "client"` route behind `ingress_auth = "none"`, the request and answer pass byte for byte, and a client that retries on its own (`x-stainless-retry-count`) is never retried | `crates/llm-gateway/tests/adversary_passthrough.rs` (`adv_pt_*`), `crates/llm-gateway-cli/tests/passthrough_encoded.rs` |
+| The watchdog terminates only a pod named `b10x-llm-*` with the gateway's owner tag; the dashboard's external pod is never stopped and has no countdown | `crates/llm-gateway-cli/src/watchdog_tests.rs::a_pod_that_is_not_the_gateways_is_never_terminated_whatever_holds`, `crates/llm-gateway-cli/src/account.rs` tests |
+| Every dashboard record type writes its declared fields in order and nothing else, and the page's TypeScript types equal the declarations | `every_declared_field_is_written_in_order_and_nothing_else` in `crates/llm-gateway/src/dashboard.rs`, `llm-gateway-docs generate --check` |
+| No test reads a real keychain or calls a live Anthropic or Runpod API | the in-memory `SecretSource` of `crates/llm-gateway-cli/src/keychain.rs`; loopback fixtures in `passthrough_encoded.rs`, `rest.rs` and `vllm_stats.rs` |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
 | No test makes a paid call or provisions an external resource. Tests run against `EmulatedRunpod` or a fixture, never a live API. | `crates/llm-runpod/tests/transport.rs` drives `ConnectorsRunpod` against the `connectors-fixture` binary and a loopback pod; `crates/llm-runpod/tests/rest.rs` drives `RestRunpod` against a loopback HTTP fixture; every other Runpod test drives `EmulatedRunpod` |
 
@@ -110,17 +115,18 @@ Never edit these by hand; change `spec/` or the scenarios and regenerate:
 | --- | --- |
 | `contracts/suite.json` | `ess verify conform synthesize --path spec --suite-format 5 --target ir --scenarios contracts --out contracts/suite.json` |
 | `contracts/schema/schema/` | `ess generate --path spec --kind schema --out contracts/schema` |
-| `website/docs/reference/cli.md`, `website/docs/reference/crates.md`, `website/docs/reference/refusals.md`, `website/docs/status.mdx`, `website/data/status.json` | `cargo run --locked -p llm-gateway-docs -- generate` |
+| `website/docs/reference/cli.md`, `website/docs/reference/crates.md`, `website/docs/reference/refusals.md`, `website/docs/status.mdx`, `website/data/status.json`, `dashboard/src/generated/snapshot.ts` | `cargo run --locked -p llm-gateway-docs -- generate` |
+| `crates/llm-gateway/src/dashboard.html` | `pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard build` |
 
-The CLI reference comes from `llm_gateway_cli::cli::Cli` and `CredentialCli`, the crate list from `cargo metadata`
+The CLI reference comes from `llm_gateway_cli::cli::Cli`, `ServeCli`, `WatchdogCli`, `CredentialCli`, `ClaudeCli` and `CodexCli`, the crate list from `cargo metadata`
 (each package's `description` is public text), the refusal reference from `RefusalCode::ALL`,
 `StartupRefusal::ALL` and `CredentialRefusal::ALL`, and the status page from `CAPABILITIES` in
 `crates/llm-gateway-docs/src/status.rs`, where each `shipped` item names its test as
 `path::function`. A capability that ships, or a story that lands, changes that list.
 
-`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.77.0 release asset, checked
+`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.86.0 release asset, checked
 against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
-`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.77.0`. Move
+`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.86.0`. Move
 all three together, to the newest ESS release (workspace rule), and regenerate both files in the
 same commit.
 

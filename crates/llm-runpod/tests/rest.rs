@@ -523,7 +523,7 @@ fn spend_is_read_from_billing_pods_by_day() {
 
 #[test]
 fn the_account_is_the_pods_and_the_graphql_balance() {
-    let pods = json!([pod("abc123", "req-1"), {"id": "foreign", "name": "someone-else", "desiredStatus": "EXITED", "costPerHr": "0.44"}])
+    let pods = json!([pod("abc123", "req-1"), {"id": "foreign", "name": "someone-else", "desiredStatus": "EXITED", "costPerHr": "0.44", "machine": {"gpuTypeId": "NVIDIA RTX PRO 6000 Blackwell Server Edition"}, "lastStartedAt": "2026-11-04 13:43:01.245 +0000 UTC"}])
         .to_string();
     let balance = r#"{"data":{"myself":{"clientBalance":12.5,"currentSpendPerHr":0.99}}}"#;
     let server = Server::start(vec![answer(200, &pods), answer(200, balance)]);
@@ -544,9 +544,19 @@ fn the_account_is_the_pods_and_the_graphql_balance() {
     );
     let foreign = &account.pods[1];
     assert_eq!(foreign.env_owner, None);
+    assert_eq!(
+        foreign.gpu.as_deref(),
+        Some("NVIDIA RTX PRO 6000 Blackwell Server Edition"),
+        "the REST listing names the GPU under machine.gpuTypeId"
+    );
+    assert_eq!(
+        foreign.last_started_at_ms,
+        llm_runpod::started_at_ms("2026-11-04T13:43:01.245Z"),
+        "the REST listing writes the start as `<date> <time> +0000 UTC`"
+    );
     assert_eq!(foreign.cost_per_hour_usd, Some(0.44));
     let seen = server.seen();
-    assert_eq!(seen[0].line, "GET /v1/pods HTTP/1.1");
+    assert_eq!(seen[0].line, "GET /v1/pods?includeMachine=true HTTP/1.1");
     assert_eq!(seen[1].line, "POST /graphql HTTP/1.1");
     assert_headers(&seen[1]);
     let query = seen[1].json()["query"].as_str().expect("query").to_owned();

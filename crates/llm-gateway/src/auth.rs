@@ -155,11 +155,12 @@ const SHA256_K: [u32; 64] = [
 ];
 
 /// SHA-256 (FIPS 180-4), written here because the gateway links no crate at all
-/// (`tests/dependency_boundary.rs`). It hashes owner credentials for comparison only; its
-/// output never leaves this module.
+/// (`tests/dependency_boundary.rs`). It hashes owner credentials for comparison only, and the
+/// dashboard hashes the header that names a session ([`crate::dashboard`]) so the header value
+/// is never kept; a credential's digest never leaves this module.
 // The working variables keep FIPS 180-4's own names, a to h, so the code reads against the standard.
 #[allow(clippy::many_single_char_names)]
-fn sha256(message: &[u8]) -> [u8; 32] {
+pub(crate) fn sha256(message: &[u8]) -> [u8; 32] {
     let mut state: [u32; 8] = [
         0x6a09_e667,
         0xbb67_ae85,

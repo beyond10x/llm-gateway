@@ -87,9 +87,9 @@ export function fixture(now: number): Snapshot {
       { session: 'c01e5f72', label: 'curl/8.11', calls: 3, input_tokens: 120, output_tokens: 0, cache_read_tokens: 0, input_tps: null, output_tps: null, last_ms: now - 3 * 3600_000 },
     ],
     routes: [
-      { route: 'qwen-coder', calls: 131, errors: 4, input_tokens: 3_010_442, output_tokens: 161_002, cache_read_tokens: 0, cache_creation_tokens: 0, uncached_input_tokens: 3_010_442, input_tps: 9_212.5, output_tps: 112.4, in_flight: 1, upstream_model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct' },
-      { route: 'claude-sonnet', calls: 160, errors: 2, input_tokens: 1_500_120, output_tokens: 70_211, cache_read_tokens: 12_440_000, cache_creation_tokens: 380_000, uncached_input_tokens: 48_120, input_tps: 6_104.9, output_tps: 68.7, in_flight: 1, upstream_model: 'claude-sonnet-4-5' },
-      { route: 'claude-haiku', calls: 14, errors: 0, input_tokens: 250_000, output_tokens: 8_080, cache_read_tokens: 1_780_900, cache_creation_tokens: 22_000, uncached_input_tokens: 6_400, input_tps: 11_820, output_tps: 164.2, in_flight: 1, upstream_model: 'claude-haiku-4-5' },
+      { route: 'qwen-coder', calls: 131, errors: 4, input_tokens: 3_010_442, output_tokens: 161_002, cache_read_tokens: 0, cache_creation_tokens: 0, uncached_input_tokens: 3_010_442, input_tps: 9_212.5, output_tps: 112.4, in_flight: 1, upstream_model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', upstream: { source: 'vllm', read_ms: now - 6_000, prefix_cache_hit_ratio: 0.457, prefix_cache_hit_tokens: 1_376_200, prefix_cache_query_tokens: 3_011_400, requests_running: 1, requests_waiting: 0, kv_cache_usage: 0.31, ready: true } },
+      { route: 'claude-sonnet', calls: 160, errors: 2, input_tokens: 1_500_120, output_tokens: 70_211, cache_read_tokens: 12_440_000, cache_creation_tokens: 380_000, uncached_input_tokens: 48_120, input_tps: 6_104.9, output_tps: 68.7, in_flight: 1, upstream_model: 'claude-sonnet-4-5', upstream: null },
+      { route: 'claude-haiku', calls: 14, errors: 0, input_tokens: 250_000, output_tokens: 8_080, cache_read_tokens: 1_780_900, cache_creation_tokens: 22_000, uncached_input_tokens: 6_400, input_tps: 11_820, output_tps: 164.2, in_flight: 1, upstream_model: 'claude-haiku-4-5', upstream: null },
     ],
     kpi: {
       input_tokens: 4_760_562,
@@ -100,6 +100,8 @@ export function fixture(now: number): Snapshot {
       cache_creation_tokens: 402_000,
       uncached_input_tokens: 3_064_962,
       cache_hit_rate: 14_220_900 / (14_220_900 + 402_000 + 3_064_962),
+      server_cache_hit_rate: 0.457,
+      server_cache_hit_tokens: 1_376_200,
       route_rates: [
         { route: 'qwen-coder', input_tps: 1_204.3, output_tps: 28.1 },
         { route: 'claude-sonnet', input_tps: 638.3, output_tps: 13.7 },
@@ -147,8 +149,9 @@ export function fixture(now: number): Snapshot {
       spend_per_hour_usd: 2.39,
       other_pods: 1,
       pods: [
-        { id: 'abc123xyz', name: 'b10x-llm-qwen-coder', model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', state: 'RUNNING', gpu: 'NVIDIA H100 80GB HBM3', cost_per_hour_usd: 2.39, uptime_s: 3 * 3600 + 1240, vllm_ready: true, last_call_ms: now - 2_400, in_flight: 1, shutdown: { at_ms: T0 + 17 * 60_000, limit: 'idle' } },
-        { id: 'def456uvw', name: 'b10x-llm-small', model: null, state: 'STARTING', gpu: 'NVIDIA L40S', cost_per_hour_usd: 0.86, uptime_s: 95, vllm_ready: false, last_call_ms: null, in_flight: 0, shutdown: { at_ms: T0 + 4 * 60_000 + 30_000, limit: 'max-runtime' } },
+        { id: 'abc123xyz', name: 'b10x-llm-qwen-coder', model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', state: 'RUNNING', gpu: 'NVIDIA H100 80GB HBM3', cost_per_hour_usd: 2.39, uptime_s: 3 * 3600 + 1240, vllm_ready: true, last_call_ms: now - 2_400, in_flight: 1, shutdown: { at_ms: T0 + 17 * 60_000, limit: 'idle' }, external: false },
+        { id: 'def456uvw', name: 'b10x-llm-small', model: null, state: 'STARTING', gpu: 'NVIDIA L40S', cost_per_hour_usd: 0.86, uptime_s: 95, vllm_ready: false, last_call_ms: null, in_flight: 0, shutdown: { at_ms: T0 + 4 * 60_000 + 30_000, limit: 'max-runtime' }, external: false },
+        { id: 'ghi789rst', name: 'qwen-shared', model: 'qwen-coder', state: 'RUNNING', gpu: 'NVIDIA A100 80GB PCIe', cost_per_hour_usd: 1.64, uptime_s: 26 * 3600, vllm_ready: true, last_call_ms: now - 9_000, in_flight: 0, shutdown: null, external: true },
       ],
       watchdog_heartbeat_age_ms: 420_000,
     },

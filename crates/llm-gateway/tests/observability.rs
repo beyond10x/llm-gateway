@@ -55,7 +55,7 @@ const MODEL_SERIES: [(&str, &str); 2] = [
 const MODEL_SAMPLES: usize = 4 + 13 + 2;
 /// The dashboard's series after them (story:live-dashboard), each with its `# TYPE`. Before any
 /// call only `llmgw_in_flight_requests` has a sample.
-const DASHBOARD_SERIES: [(&str, &str); 20] = [
+const DASHBOARD_SERIES: [(&str, &str); 24] = [
     ("llmgw_tokens_total", "counter"),
     ("llmgw_cache_tokens_total", "counter"),
     ("llmgw_time_to_first_token_seconds", "histogram"),
@@ -68,6 +68,10 @@ const DASHBOARD_SERIES: [(&str, &str); 20] = [
     ("llmgw_anthropic_utilization", "gauge"),
     ("llmgw_anthropic_reset_seconds", "gauge"),
     ("llmgw_anthropic_status", "gauge"),
+    ("llmgw_upstream_prefix_cache_hit_ratio", "gauge"),
+    ("llmgw_upstream_requests_running", "gauge"),
+    ("llmgw_upstream_requests_waiting", "gauge"),
+    ("llmgw_upstream_kv_cache_usage_ratio", "gauge"),
     ("llmgw_in_flight_requests", "gauge"),
     ("llmgw_client_retries_total", "counter"),
     ("llmgw_repeated_bodies_total", "counter"),

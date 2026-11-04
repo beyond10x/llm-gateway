@@ -392,6 +392,12 @@ fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std:
                 report(format_args!("warning runpod account panel off: {refusal}"));
                 None
             });
+        let stats =
+            crate::vllm_stats::start_for(&deployment, &account_pods, Arc::clone(&dashboard))
+                .unwrap_or_else(|refusal| {
+                    report(format_args!("warning vllm server figures off: {refusal}"));
+                    None
+                });
         let activity: crate::heartbeat::ActivitySource = Arc::new(move || {
             dashboard
                 .route_activity()
@@ -401,7 +407,11 @@ fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std:
         });
         Ok((
             running,
-            (heartbeat_of(&deployment, heartbeat, activity), polling),
+            (
+                heartbeat_of(&deployment, heartbeat, activity),
+                polling,
+                stats,
+            ),
         ))
     }) {
         Ok(started) => started,

@@ -20,9 +20,11 @@ use crate::{
     usage::Usage,
 };
 mod kpi;
+mod upstream;
 
 pub(crate) use kpi::credential_label;
 pub use kpi::{MAX_CREDENTIALS as MAX_LIMIT_CREDENTIALS, hit_rate as cache_hit_rate};
+pub use upstream::UpstreamStats;
 
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -171,6 +173,22 @@ const ROUTE: RecordType = RecordType {
         ("output_tps", "number | null"),
         ("in_flight", "number"),
         ("upstream_model", "string | null"),
+        ("upstream", "UpstreamRow | null"),
+    ],
+};
+
+const UPSTREAM: RecordType = RecordType {
+    name: "UpstreamRow",
+    fields: &[
+        ("source", "string"),
+        ("read_ms", "number"),
+        ("prefix_cache_hit_ratio", "number | null"),
+        ("prefix_cache_hit_tokens", "number"),
+        ("prefix_cache_query_tokens", "number"),
+        ("requests_running", "number | null"),
+        ("requests_waiting", "number | null"),
+        ("kv_cache_usage", "number | null"),
+        ("ready", "boolean | null"),
     ],
 };
 
@@ -201,6 +219,7 @@ const POD: RecordType = RecordType {
         ("last_call_ms", "number | null"),
         ("in_flight", "number"),
         ("shutdown", "PodShutdown | null"),
+        ("external", "boolean"),
     ],
 };
 
@@ -223,6 +242,8 @@ const KPI: RecordType = RecordType {
         ("cache_creation_tokens", "number"),
         ("uncached_input_tokens", "number"),
         ("cache_hit_rate", "number | null"),
+        ("server_cache_hit_rate", "number | null"),
+        ("server_cache_hit_tokens", "number"),
         ("route_rates", "RouteRate[]"),
     ],
 };
@@ -246,13 +267,14 @@ const LIMIT: RecordType = RecordType {
 };
 
 /// Every record type of the snapshot, in the order the generated TypeScript declares them.
-pub const SNAPSHOT_TYPES: [RecordType; 12] = [
+pub const SNAPSHOT_TYPES: [RecordType; 13] = [
     SNAPSHOT,
     CALL,
     ATTEMPT,
     IN_FLIGHT,
     SESSION,
     ROUTE,
+    UPSTREAM,
     PROVIDER,
     POD,
     POD_SHUTDOWN,
@@ -314,6 +336,9 @@ pub struct PodPanel {
     /// How long the pod may go without a call before it is stopped, when its model says;
     /// otherwise the watchdog's [`WatchdogLimits::idle_ms`] applies.
     pub idle_ms: Option<u64>,
+    /// A pod one of the gateway's routes reaches that the gateway does not own: shown, never
+    /// stopped, with no countdown.
+    pub external: bool,
 }
 
 /// What a relayed model was last doing, for a heartbeat ([`Dashboard::route_activity`]).
@@ -693,6 +718,8 @@ struct State {
     limits: BTreeMap<String, kpi::LimitEntry>,
     /// Watchdog limits for the shutdown countdown, set by the embedding.
     watchdog: Option<WatchdogLimits>,
+    /// Each route's upstream server, as the embedding last read it.
+    upstreams: BTreeMap<String, UpstreamStats>,
     /// Raised on every change, so an event stream knows when to write.
     generation: u64,
 }
@@ -906,6 +933,20 @@ impl Dashboard {
         self.changed(state);
     }
 
+    /// Replaces what `route`'s upstream server last said about itself; `None` removes it.
+    pub fn set_upstream(&self, route: &str, read: Option<UpstreamStats>) {
+        let mut state = self.lock();
+        match read {
+            Some(read) => {
+                state.upstreams.insert(route.to_owned(), read);
+            }
+            None => {
+                state.upstreams.remove(route);
+            }
+        }
+        self.changed(state);
+    }
+
     /// Replaces the provider panel; `None` removes it.
     pub fn set_provider(&self, provider: Option<ProviderPanel>) {
         let mut state = self.lock();
@@ -996,7 +1037,13 @@ impl Dashboard {
             "routes" => {
                 writer.begin_array();
                 for (route, totals) in &state.routes {
-                    route_record(writer, route, totals, in_flight(&state, route));
+                    route_record(
+                        writer,
+                        route,
+                        totals,
+                        in_flight(&state, route),
+                        state.upstreams.get(route),
+                    );
                 }
                 writer.end_array();
             }
@@ -1020,6 +1067,7 @@ impl Dashboard {
         render_tokens(out, &state);
         render_histograms(out, &state);
         kpi::render(out, &state, now);
+        upstream::render(out, &state);
         let in_flight = series(
             out,
             "llmgw_in_flight_requests",
@@ -1110,6 +1158,9 @@ fn render_shutdowns(out: &mut String, state: &State, provider: &ProviderPanel, n
         "Seconds until the watchdog stops an owned pod, labelled with the limit that fires first.",
     );
     for pod in &provider.pods {
+        if pod.external {
+            continue;
+        }
         let model = pod.model.as_deref();
         let last_call = model
             .and_then(|model| state.routes.get(model))
@@ -1493,7 +1544,13 @@ fn session_record(writer: &mut Writer, key: &str, totals: &SessionTotals) {
     });
 }
 
-fn route_record(writer: &mut Writer, route: &str, totals: &RouteTotals, in_flight: u64) {
+fn route_record(
+    writer: &mut Writer,
+    route: &str,
+    totals: &RouteTotals,
+    in_flight: u64,
+    upstream: Option<&UpstreamStats>,
+) {
     record(writer, &ROUTE, |writer, key| match key {
         "route" => writer.string(route),
         "calls" => writer.number(totals.calls),
@@ -1507,6 +1564,7 @@ fn route_record(writer: &mut Writer, route: &str, totals: &RouteTotals, in_fligh
         "output_tps" => optional_decimal(writer, totals.output_tps.mean()),
         "in_flight" => writer.number(in_flight),
         "upstream_model" => optional_string(writer, totals.upstream_model.as_deref()),
+        "upstream" => upstream::record(writer, upstream),
         _ => writer.null(),
     });
 }
@@ -1532,8 +1590,17 @@ fn provider_record(writer: &mut Writer, provider: &ProviderPanel, state: &State,
                 let last_call = route.and_then(|route| route.last_call_end_ms);
                 let shutdown = state
                     .watchdog
+                    .filter(|_| !pod.external)
                     .and_then(|limits| shutdown(&limits, provider, pod, last_call, flights));
-                pod_record(writer, pod, last_call, flights, shutdown);
+                let ready = if pod.external {
+                    pod.model
+                        .as_deref()
+                        .and_then(|model| state.upstreams.get(model))
+                        .and_then(|up| up.ready)
+                } else {
+                    pod.vllm_ready
+                };
+                pod_record(writer, pod, ready, last_call, flights, shutdown);
             }
             writer.end_array();
         }
@@ -1592,6 +1659,7 @@ fn shutdown(
 fn pod_record(
     writer: &mut Writer,
     pod: &PodPanel,
+    ready: Option<bool>,
     last_call: Option<u64>,
     in_flight: u64,
     shutdown: Option<(u64, &'static str)>,
@@ -1604,7 +1672,7 @@ fn pod_record(
         "gpu" => optional_string(writer, pod.gpu.as_deref()),
         "cost_per_hour_usd" => optional_decimal(writer, pod.cost_per_hour_usd),
         "uptime_s" => optional_number(writer, pod.uptime_s),
-        "vllm_ready" => match pod.vllm_ready {
+        "vllm_ready" => match ready {
             Some(ready) => writer.boolean(ready),
             None => writer.null(),
         },
@@ -1618,6 +1686,7 @@ fn pod_record(
             }),
             None => writer.null(),
         },
+        "external" => writer.boolean(pod.external),
         _ => writer.null(),
     });
 }
@@ -1955,6 +2024,13 @@ mod tests {
             idle_ms: Some(600_000),
             ..super::WatchdogLimits::default()
         }));
+        dashboard.set_upstream(
+            "m",
+            Some(super::UpstreamStats {
+                source: "vllm".to_owned(),
+                ..super::UpstreamStats::default()
+            }),
+        );
         let snapshot = dashboard.snapshot();
         drop(progress);
         for kind in SNAPSHOT_TYPES {

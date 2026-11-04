@@ -59,7 +59,7 @@ pub use auth::{
 };
 pub use dashboard::{
     Dashboard, MAX_CALLS, MAX_LIMIT_CREDENTIALS, MAX_SESSIONS, PodPanel, ProviderPanel, RecordType,
-    RouteActivity, SNAPSHOT_FORMAT, SNAPSHOT_TYPES, WatchdogLimits, cache_hit_rate,
+    RouteActivity, SNAPSHOT_FORMAT, SNAPSHOT_TYPES, UpstreamStats, WatchdogLimits, cache_hit_rate,
     typescript as dashboard_typescript,
 };
 pub use error::{

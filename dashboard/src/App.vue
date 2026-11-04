@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue';
 import { useFeed, type Link } from './feed.ts';
-import { DASH, ago, clock, count, countdown, ms, span, tps, usd } from './format.ts';
+import { DASH, ago, clock, count, countdown, ms, pct, span, tps, usd } from './format.ts';
 import type { CallRecord, InFlight, PodRow, Snapshot } from './extra.ts';
 import Kpis from './Kpis.vue';
 
@@ -138,9 +138,10 @@ function yesNo(v: boolean | null): string {
               <td :class="p.vllm_ready ? 'ok-text' : p.vllm_ready === false ? 'warn-text' : ''">{{ yesNo(p.vllm_ready) }}</td>
               <td class="n">{{ ago(now, p.last_call_ms) }}</td>
               <td class="n">{{ p.in_flight }}</td>
-              <td :class="{ 'warn-text': shutdownSoon(p) }">{{ shutdown(p) }}</td>
+              <td v-if="p.external" class="muted">external, not stopped by this gateway</td>
+              <td v-else :class="{ 'warn-text': shutdownSoon(p) }">{{ shutdown(p) }}</td>
             </tr>
-            <tr v-if="snap.provider.pods.length === 0"><td colspan="10" class="empty">No owned pods.</td></tr>
+            <tr v-if="snap.provider.pods.length === 0"><td colspan="10" class="empty">No pods.</td></tr>
           </tbody>
         </table>
       </div>
@@ -181,6 +182,9 @@ function yesNo(v: boolean | null): string {
                 <th scope="col" class="n">Tokens in / out</th><th scope="col" class="n">Cache r / w</th><th scope="col" class="n">Uncached in</th>
                 <th scope="col" class="n"><abbr title="average over the route's calls">In tok/s</abbr></th><th scope="col" class="n"><abbr title="average over the route's calls">Out tok/s</abbr></th>
                 <th scope="col" class="n">In flight</th>
+                <th scope="col" class="n"><abbr title="server-side (vLLM prefix cache): hits over queries, in tokens, since the gateway began reading">Server cache</abbr></th>
+                <th scope="col" class="n"><abbr title="requests running / waiting at the vLLM server">Server run / wait</abbr></th>
+                <th scope="col" class="n"><abbr title="share of the vLLM server's KV cache in use">KV cache</abbr></th>
               </tr>
             </thead>
             <tbody>
@@ -194,8 +198,11 @@ function yesNo(v: boolean | null): string {
                 <td class="n">{{ tps(r.input_tps) }}</td>
                 <td class="n">{{ tps(r.output_tps) }}</td>
                 <td class="n">{{ r.in_flight }}</td>
+                <td class="n">{{ r.upstream ? pct(r.upstream.prefix_cache_hit_ratio) : DASH }}</td>
+                <td class="n">{{ r.upstream ? `${count(r.upstream.requests_running)} / ${count(r.upstream.requests_waiting)}` : DASH }}</td>
+                <td class="n">{{ r.upstream ? pct(r.upstream.kv_cache_usage) : DASH }}</td>
               </tr>
-              <tr v-if="snap.routes.length === 0"><td colspan="9" class="empty">No routes yet.</td></tr>
+              <tr v-if="snap.routes.length === 0"><td colspan="12" class="empty">No routes yet.</td></tr>
             </tbody>
           </table>
         </div>

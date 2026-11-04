@@ -226,6 +226,8 @@ pub(super) fn kpi_record(writer: &mut Writer, state: &State, now: u64) {
             writer,
             hit_rate(totals.cache_read, totals.cache_creation, totals.uncached),
         ),
+        "server_cache_hit_rate" => optional_decimal(writer, super::upstream::server_cache(state).0),
+        "server_cache_hit_tokens" => writer.number(super::upstream::server_cache(state).1),
         "route_rates" => {
             writer.begin_array();
             for (route, (input, output)) in route_rates(state, now) {

@@ -29,6 +29,7 @@ pub(crate) mod serve;
 mod tls;
 mod translate;
 mod trusted;
+mod vllm_stats;
 mod watchdog;
 
 pub use config::{

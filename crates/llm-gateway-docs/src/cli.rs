@@ -185,6 +185,25 @@ pub fn page() -> String {
          exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks \
          through it.\n",
     );
+    out.push_str(&command_section(llm_gateway_cli::cli::ClaudeCli::command()));
+    out.push_str(
+        "\n`claude` asks the running gateway named by the document for its routes, writes the \
+         settings overlay and runs Claude Code with it; Claude Code's exit status is the \
+         command's. Unless the arguments name one, it adds `--model` with \
+         `[launch.claude].main_model`, `--agents` with `[launch.claude].agents` when that is \
+         set, and `--append-system-prompt` with `[launch.claude].subagent_instruction`, its \
+         `{route}` and `{model}` filled from the implementer route; when the arguments carry \
+         their own `--append-system-prompt`, the instruction is joined after that text, never \
+         in its place. An empty instruction adds nothing. A gateway that authenticates its owner \
+         is refused: the overlay would have to carry the owner token. \
+         [A local gateway for Claude Code](../guides/local-gateway-for-claude-code.md) walks \
+         through it.\n",
+    );
+    out.push_str(&command_section(llm_gateway_cli::cli::CodexCli::command()));
+    out.push_str(
+        "\n`codex` runs Codex with the gateway as a `-c` model-provider override; nothing is \
+         written under `~/.codex/`. Codex's exit status is the command's.\n",
+    );
     out
 }
 

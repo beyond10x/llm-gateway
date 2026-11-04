@@ -30,6 +30,7 @@ const SOURCES: &[&str] = &[
     include_str!("../src/body.rs"),
     include_str!("../src/dashboard.rs"),
     include_str!("../src/dashboard/kpi.rs"),
+    include_str!("../src/dashboard/upstream.rs"),
     include_str!("../src/error.rs"),
     include_str!("../src/inventory.rs"),
     include_str!("../src/json.rs"),

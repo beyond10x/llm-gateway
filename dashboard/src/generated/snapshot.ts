@@ -91,6 +91,19 @@ export interface RouteRow {
   output_tps: number | null;
   in_flight: number;
   upstream_model: string | null;
+  upstream: UpstreamRow | null;
+}
+
+export interface UpstreamRow {
+  source: string;
+  read_ms: number;
+  prefix_cache_hit_ratio: number | null;
+  prefix_cache_hit_tokens: number;
+  prefix_cache_query_tokens: number;
+  requests_running: number | null;
+  requests_waiting: number | null;
+  kv_cache_usage: number | null;
+  ready: boolean | null;
 }
 
 export interface ProviderPanel {
@@ -115,6 +128,7 @@ export interface PodRow {
   last_call_ms: number | null;
   in_flight: number;
   shutdown: PodShutdown | null;
+  external: boolean;
 }
 
 export interface PodShutdown {
@@ -131,6 +145,8 @@ export interface Kpi {
   cache_creation_tokens: number;
   uncached_input_tokens: number;
   cache_hit_rate: number | null;
+  server_cache_hit_rate: number | null;
+  server_cache_hit_tokens: number;
   route_rates: RouteRate[];
 }
 

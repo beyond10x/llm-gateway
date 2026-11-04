@@ -81,3 +81,35 @@ Usage: b10x-llm-gateway credential set [OPTIONS] --config <CONFIG> <--model <ALI
 | `--no-probe` | no | none | Store without probing the endpoint first. |
 
 Exactly one of `--model` and `--route` is required. The key is never an argument or an environment variable: it is read from a hidden prompt on the terminal, or from standard input with `--stdin`, one line whose newline is not part of it. On success the command writes one line, `b10x-llm-gateway: credential stored <setting> probe <passed|skipped|not-rejected> http <code|->`, and exits 0. `<setting>` is the setting the key file was read from, `hosted.<alias>.credential_file` or `routes.<endpoint>.auth.secret`, never the file's path: a key written into the setting by mistake is not printed. A refusal is `b10x-llm-gateway: refused <code>: <message>` with exit status 1 and writes nothing ([the refusal reference](./refusals.md#credential-refusals)); a usage error names its kind and never echoes an argument, exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks through it.
+
+## `b10x-llm-gateway claude`
+
+> Start Claude Code against the running gateway: `claude --settings <overlay>` with every other argument passed on. The overlay sets `ANTHROPIC_BASE_URL`, the subagent model to `[launch.claude].implementer_route`, the `/model` picker rows and auto-compact windows of the gateway's routes; it names no credential, so Claude Code keeps its own login. It is written mode 0600 under `$XDG_RUNTIME_DIR` and deleted when `claude` exits
+
+```text
+Usage: b10x-llm-gateway claude [OPTIONS] [ARGS]...
+```
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--config <CONFIG>` | no | none | Path to the closed TOML deployment document; the default document when absent. |
+| `--claude-bin <CLAUDE_BIN>` | no | none | The Claude Code program to run. |
+| `<ARGS>` | no | none | Arguments passed to `claude` unchanged. |
+
+`claude` asks the running gateway named by the document for its routes, writes the settings overlay and runs Claude Code with it; Claude Code's exit status is the command's. Unless the arguments name one, it adds `--model` with `[launch.claude].main_model`, `--agents` with `[launch.claude].agents` when that is set, and `--append-system-prompt` with `[launch.claude].subagent_instruction`, its `{route}` and `{model}` filled from the implementer route; when the arguments carry their own `--append-system-prompt`, the instruction is joined after that text, never in its place. An empty instruction adds nothing. A gateway that authenticates its owner is refused: the overlay would have to carry the owner token. [A local gateway for Claude Code](../guides/local-gateway-for-claude-code.md) walks through it.
+
+## `b10x-llm-gateway codex`
+
+> Start Codex against the running gateway: `codex` with the gateway as a `-c` provider override and, unless a model is given, `-m` with `[launch.codex].model` and its context and auto-compact windows. Every other argument is passed on; nothing is written to `~/.codex/`
+
+```text
+Usage: b10x-llm-gateway codex [OPTIONS] [ARGS]...
+```
+
+| Option | Required | Default | Meaning |
+| --- | --- | --- | --- |
+| `--config <CONFIG>` | no | none | Path to the closed TOML deployment document; the default document when absent. |
+| `--codex-bin <CODEX_BIN>` | no | none | The Codex program to run. |
+| `<ARGS>` | no | none | Arguments passed to `codex` unchanged. |
+
+`codex` runs Codex with the gateway as a `-c` model-provider override; nothing is written under `~/.codex/`. Codex's exit status is the command's.

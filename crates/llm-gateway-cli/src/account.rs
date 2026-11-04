@@ -58,7 +58,7 @@ pub(crate) fn panel(
     deployment: &Deployment,
 ) -> ProviderPanel {
     let live = |pod: &&llm_runpod::PodSummary| pod.desired_status != "TERMINATED";
-    let pods: Vec<PodPanel> = snapshot
+    let mut pods: Vec<PodPanel> = snapshot
         .pods
         .iter()
         .filter(live)
@@ -80,12 +80,37 @@ pub(crate) fn panel(
                 state: pod.desired_status.clone(),
                 gpu: pod.gpu.clone(),
                 cost_per_hour_usd: pod.cost_per_hour_usd,
-                uptime_s: pod.uptime_seconds,
+                uptime_s: uptime(pod, read_ms),
                 vllm_ready: None,
                 idle_ms,
+                external: false,
             }
         })
         .collect();
+    // The pods a hosted route reaches through Runpod's proxy: shown read-only, never stopped.
+    let external = crate::vllm_stats::pod_routes(deployment);
+    pods.extend(
+        snapshot
+            .pods
+            .iter()
+            .filter(live)
+            .filter(|pod| !owned(pod))
+            .filter_map(|pod| {
+                let (alias, _) = external.iter().find(|(_, id)| *id == pod.id)?;
+                Some(PodPanel {
+                    id: pod.id.clone(),
+                    name: pod.name.clone(),
+                    model: Some(alias.clone()),
+                    state: pod.desired_status.clone(),
+                    gpu: pod.gpu.clone(),
+                    cost_per_hour_usd: pod.cost_per_hour_usd,
+                    uptime_s: uptime(pod, read_ms),
+                    vllm_ready: None,
+                    idle_ms: None,
+                    external: true,
+                })
+            }),
+    );
     let others = snapshot
         .pods
         .iter()
@@ -103,6 +128,16 @@ pub(crate) fn panel(
     }
 }
 
+/// How long `pod` has run: Runpod's `uptimeSeconds`, else the time since its `lastStartedAt` while it
+/// runs (the REST listing writes no uptime).
+fn uptime(pod: &llm_runpod::PodSummary, read_ms: u64) -> Option<u64> {
+    pod.uptime_seconds.or_else(|| {
+        pod.last_started_at_ms
+            .filter(|_| pod.desired_status == "RUNNING")
+            .map(|at| read_ms.saturating_sub(at) / 1000)
+    })
+}
+
 /// The limits each pod's countdown is computed from: the idle stop comes per pod from its
 /// model; the maximum runtime and the balance floor from `[watchdog]`, when declared.
 pub(crate) fn limits(deployment: &Deployment) -> WatchdogLimits {
@@ -116,7 +151,7 @@ pub(crate) fn limits(deployment: &Deployment) -> WatchdogLimits {
         })
 }
 
-/// The account read running beside `serve`; dropping it stops the thread.
+/// A read running beside `serve` on its own thread; dropping it stops the thread.
 pub(crate) struct Polling {
     stop: Arc<(Mutex<bool>, Condvar)>,
     thread: Option<JoinHandle<()>>,
@@ -139,32 +174,44 @@ pub(crate) fn start<T: RunpodAccount + Send + 'static>(
     provider: String,
     deployment: Deployment,
     dashboard: Arc<Dashboard>,
-    every: Duration,
+    period: Duration,
 ) -> Polling {
     dashboard.set_watchdog(Some(limits(&deployment)));
+    every("runpod-account", period, move || {
+        if let Some(snapshot) = transport.account() {
+            dashboard.set_provider(Some(panel(
+                &provider,
+                &snapshot,
+                crate::heartbeat::unix_ms(),
+                &deployment,
+            )));
+        } else {
+            tracing::warn!(
+                provider = provider.as_str(),
+                "runpod account read failed; the dashboard keeps the last read"
+            );
+        }
+    })
+}
+
+/// Runs `tick` at once and then every `interval` on a thread named `name`, until the returned
+/// handle drops.
+pub(crate) fn every(
+    name: &str,
+    interval: Duration,
+    mut tick: impl FnMut() + Send + 'static,
+) -> Polling {
     let stop = Arc::new((Mutex::new(false), Condvar::new()));
     let signal = Arc::clone(&stop);
     let thread = thread::Builder::new()
-        .name("runpod-account".to_owned())
+        .name(name.to_owned())
         .spawn(move || {
             let (stopped, wake) = &*signal;
             loop {
-                if let Some(snapshot) = transport.account() {
-                    dashboard.set_provider(Some(panel(
-                        &provider,
-                        &snapshot,
-                        crate::heartbeat::unix_ms(),
-                        &deployment,
-                    )));
-                } else {
-                    tracing::warn!(
-                        provider = provider.as_str(),
-                        "runpod account read failed; the dashboard keeps the last read"
-                    );
-                }
+                tick();
                 let guard = stopped.lock().unwrap_or_else(PoisonError::into_inner);
                 let (guard, _) = wake
-                    .wait_timeout_while(guard, every, |stopped| !*stopped)
+                    .wait_timeout_while(guard, interval, |stopped| !*stopped)
                     .unwrap_or_else(PoisonError::into_inner);
                 if *guard {
                     return;
@@ -208,6 +255,8 @@ mod tests {
          [models.qwen]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\n\
          hf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\n\
          gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\nidle_timeout_minutes = 15\n\n\
+         [hosted.ext]\nwires = [\"chat\"]\nbase_url = \"https://p3-8000.proxy.runpod.net/v1\"\n\
+         upstream_model = \"m\"\nauth_kind = \"anonymous\"\n\n\
          [watchdog]\nmax_runtime_hours = 8\nmin_balance_usd = 5.0\n";
 
     fn pod(id: &str, name: &str, owner: Option<&str>, status: &str) -> PodSummary {
@@ -246,7 +295,18 @@ mod tests {
         let panel = panel("runpod", &snapshot(), 1_000, &deployment());
         assert_eq!(panel.balance_usd, Some(42.0));
         assert_eq!(panel.other_pods, 2);
-        assert_eq!(panel.pods.len(), 1);
+        assert_eq!(panel.pods.len(), 2);
+        let external = &panel.pods[1];
+        assert_eq!(
+            (
+                external.id.as_str(),
+                external.model.as_deref(),
+                external.external
+            ),
+            ("p3", Some("ext"), true),
+            "the pod a hosted route reaches is shown, marked external"
+        );
+        assert_eq!(external.idle_ms, None);
         let row = &panel.pods[0];
         assert_eq!(row.id, "p1");
         assert_eq!(row.model.as_deref(), Some("qwen"));
@@ -293,6 +353,14 @@ mod tests {
         assert!(
             metrics.contains("llmgw_pod_shutdown_seconds{pod=\"p1\",limit=\"idle\"}"),
             "{metrics}"
+        );
+        assert!(
+            !metrics.contains("pod=\"p3\""),
+            "an external pod has no countdown: {metrics}"
+        );
+        assert!(
+            snapshot_text.contains("\"id\":\"p3\"") && snapshot_text.contains("\"external\":true"),
+            "{snapshot_text}"
         );
     }
 }

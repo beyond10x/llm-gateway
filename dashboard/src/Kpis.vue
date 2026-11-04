@@ -98,6 +98,9 @@ const limits = computed<Limit[]>(() =>
         <div class="sub">
           read {{ count(kpi.cache_read_tokens) }} · created {{ count(kpi.cache_creation_tokens) }} · uncached {{ count(kpi.uncached_input_tokens) }}
         </div>
+        <div v-if="kpi.server_cache_hit_rate !== null" class="sub">
+          {{ pct(kpi.server_cache_hit_rate) }} server-side (vLLM prefix cache) · {{ count(kpi.server_cache_hit_tokens) }} tokens hit
+        </div>
       </div>
       <div v-if="kpi" class="tile wide">
         <div class="label">Throughput, last 60 s</div>

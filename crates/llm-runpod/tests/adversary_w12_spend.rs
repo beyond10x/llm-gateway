@@ -147,6 +147,9 @@ impl RunpodTransport for DayStarts {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.runpod.container_started_at(pod_id)
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.runpod.pod_placement(pod_id)
+    }
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
         self.asked.lock().unwrap().push(day_start_ms);
         self.runpod.account_spend(day_start_ms)

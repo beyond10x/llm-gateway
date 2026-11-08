@@ -115,7 +115,7 @@ fn request(cached: bool) -> PodRequest {
 fn provider_model() -> RunpodModel {
     RunpodModel {
         hf_model: "Qwen/Qwen3".to_owned(),
-        image: Identifier::new("vllm-image").expect("image"),
+        image: Identifier::new("vllm/vllm-openai:v0.11.0").expect("image"),
         gpu_types: vec!["NVIDIA A40".to_owned(), "NVIDIA L40S".to_owned()],
         cloud_type: CloudType::Secure,
         container_disk_gb: 40,
@@ -209,7 +209,7 @@ fn an_unknown_create_through_the_provider_does_not_accept_an_earlier_requests_po
             provider: Identifier::new("runpod").expect("provider"),
             account: Identifier::new("acct").expect("account"),
             model: Identifier::new("qwen").expect("model"),
-            image: Identifier::new("vllm-image").expect("image"),
+            image: Identifier::new("vllm/vllm-openai:v0.11.0").expect("image"),
             resource_name: Identifier::new("qwen").expect("name"),
             requested_lifetime_ms: 3_600_000,
         },

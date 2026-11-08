@@ -435,8 +435,10 @@ model declaration is refused with `no-gpu` when it names no GPU type, `gpu-utili
 `gpu_memory_utilization` outside (0, 1], `zero-setting` for a zero count, limit, deadline or
 window, `secret-reference` for a secret name that is not `[A-Za-z0-9_]+`, `unsafe-text` for
 an empty or unprintable value bound for the pod's command line or environment, or a profile name
-that is not 1 to 32 of `A-Za-z0-9-_`, and `profile-conflict` when two profiles share a name or a
-GPU type. Every fallback profile is checked as the model is.
+that is not 1 to 32 of `A-Za-z0-9-_`, `profile-conflict` when two profiles share a name or a GPU type, and `image-not-allowed` for an
+image that is not `vllm/vllm-openai:` and a tag. Every fallback profile is checked as the model is.
+After every create the adapter reads the pod's placement and terminates the pod at once, refusing
+its GPU type, unless it is on Secure Cloud and not interruptible.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out. It does not carry it
@@ -751,3 +753,56 @@ of the live control plane; the production transport has run only against a fixtu
 `connectors` CLI and no paid call has been made. [Runpod verification](verification/runpod.md)
 records the emulated evidence, [the transport record](verification/runpod-transport.md) the
 fixture evidence.
+
+### The watchdog: a stop that does not depend on the gateway
+
+The gateway's pool discharges its stop obligations only while the gateway runs. A gateway that
+crashes, is killed, or loses its host with a pod running leaves that pod billing. The watchdog
+is the second discharger: `b10x-llm-gateway watchdog`, the same binary run as a separate process
+under its own service unit (`deploy/systemd/llm-gateway-watchdog.service`, a systemd user unit
+with `Restart=always`), reading the same document.
+
+Both sides are enabled by a `[watchdog]` table:
+
+| Key | Default | Range | Meaning |
+|---|---|---|---|
+| `heartbeat_file` | `$XDG_STATE_HOME/llm-gateway/heartbeat.json`, else `$HOME/.local/state/llm-gateway/heartbeat.json` | | Where `serve` writes its heartbeat |
+| `heartbeat_seconds` | 10 | 1..=60 | How often `serve` rewrites it |
+| `poll_seconds` | 60 | 10..=3600 | How often the watchdog reads the account |
+| `stale_minutes` | 5 | 1..=1440, at least three heartbeats | A heartbeat this old is a gateway that cannot stop its pods |
+| `not_ready_minutes` | 45 | 1..=1440 | A pod not ready this long is terminated |
+| `max_runtime_hours` | 24 | 1..=720 | A pod running this long is terminated |
+| `min_balance_usd` | 5 | 0..=100000 | Under this balance every owned pod is terminated |
+
+`serve` writes the heartbeat to a temporary file beside it (mode 0600, directory 0700) and
+renames it over the old one: its process id, the time, its controller identity, and per route
+the end of its last call and its calls in flight. When the gateway stops, the heartbeat stops
+with it and its last beat goes stale.
+
+The watchdog terminates a pod only when it is the gateway's: its name starts with `b10x-llm-`
+and its `B10X_LLM_OWNER` environment tag is `b10x-llm-gateway`. Every other pod of the account,
+whoever started it, is never terminated, whatever holds. For each owned pod it checks, in this
+order, and terminates on the first that holds:
+
+1. `min-balance`: the account balance is under `min_balance_usd`. An unreported balance checks
+   nothing.
+2. `stale-heartbeat`: the heartbeat is missing, unreadable, or older than `stale_minutes`.
+3. `max-runtime`: the pod has existed longer than `max_runtime_hours`, counted from the earliest
+   of its container start, its reported uptime and when this watchdog first saw it.
+4. `not-ready`: the pod has not answered its vLLM readiness probe for `not_ready_minutes`. The
+   watchdog probes only a pod that would otherwise be terminated; a ready answer starts the
+   window again.
+5. `idle`: the heartbeat lists the pod's model with no call in flight, and its last call ended
+   longer ago than the model's `idle_timeout_minutes`, never less than `stale_minutes`, so the
+   watchdog does not race the gateway's own idle stop. A model the heartbeat does not list has
+   no idle limit here; the gateway's pool still stops it.
+
+Each terminate, whatever Runpod answered (`terminated`, `refused`, `lost`), and each account read
+that failed, is one JSON line of format `llm-gateway.watchdog/1` on standard error, naming the
+pod, its name and the reason. A failed account read terminates nothing. `--once` runs one poll
+and exits. The account is read with Runpod's REST API, so the watchdog needs the Runpod API key
+the document's provider names; it never goes through the gateway.
+
+`watchdog::tests` in `crates/llm-gateway-cli/src` prove each limit, the order, and that a pod of
+another owner, of no owner, or outside the name space is never terminated, over the emulated
+control plane; no limit has been exercised against a live account.

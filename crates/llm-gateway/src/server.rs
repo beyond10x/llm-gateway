@@ -2,8 +2,10 @@
 //! graceful stop.
 
 use crate::{
-    auth::{Authenticated, OwnerToken, OwnerVerifier},
+    auth::{Authenticated, OwnerToken, OwnerVerifier, Verdict},
+    dashboard::{Dashboard, Finished, Observed},
     error::RefusalCode,
+    guide,
     inventory::RouteInventory,
     listing::{self, InstructionAnswer},
     metrics::{self, Disposition, Metrics, UsageRecord},
@@ -44,6 +46,19 @@ const WAKE_SUFFIX: &str = "/wake";
 const STATUS_SUFFIX: &str = "/status";
 /// The owner's counters as Prometheus text (row R4).
 const METRICS: &str = "/metrics";
+const DASHBOARD: &str = "/dashboard";
+const DASHBOARD_SNAPSHOT: &str = "/dashboard/snapshot";
+const DASHBOARD_EVENTS: &str = "/dashboard/events";
+/// The dashboard page: one self-contained HTML file built from `dashboard/` (`task dashboard`).
+const DASHBOARD_HTML: &str = include_str!("dashboard.html");
+const HTML: &str = "text/html; charset=utf-8";
+const EVENT_STREAM: &str = "text/event-stream";
+/// The fastest an event stream writes a new snapshot.
+const EVENTS_INTERVAL: Duration = Duration::from_millis(500);
+/// How long an event stream stays silent before it writes a comment line.
+const EVENTS_KEEPALIVE: Duration = Duration::from_secs(15);
+/// Claude Code's token count, relayed to the target of the model the body names.
+const COUNT_TOKENS: &str = "/v1/messages/count_tokens";
 const JSON: &str = "application/json";
 /// The Prometheus text exposition format, version 0.0.4.
 const PROMETHEUS_TEXT: &str = "text/plain; version=0.0.4; charset=utf-8";
@@ -120,6 +135,8 @@ struct Shared {
     accepted: AtomicU64,
     completed: AtomicU64,
     in_flight: AtomicU64,
+    /// Every relayed call, in flight and finished, for `/dashboard` and `/metrics`.
+    dashboard: Arc<Dashboard>,
 }
 
 /// Composes and starts the gateway.
@@ -180,6 +197,7 @@ impl Gateway {
             accepted: AtomicU64::new(0),
             completed: AtomicU64::new(0),
             in_flight: AtomicU64::new(0),
+            dashboard: Arc::new(Dashboard::default()),
         });
         let accepting = Arc::clone(&shared);
         let accept = thread::spawn(move || accept_loop(&listener, &accepting));
@@ -225,6 +243,18 @@ impl GatewayHandle {
     /// Whether inspection is currently served.
     pub fn is_ready(&self) -> bool {
         is_ready(&self.shared)
+    }
+
+    /// The dashboard's state: the embedding sets its provider panel there and reads each
+    /// relayed model's activity for a heartbeat.
+    pub fn dashboard(&self) -> Arc<Dashboard> {
+        Arc::clone(&self.shared.dashboard)
+    }
+
+    /// Whether the gateway authenticates nobody on any path: it authenticates nobody
+    /// (`IngressAuth::None`) and listens on a loopback address only (story:local-open-mode).
+    pub fn is_local_open(&self) -> bool {
+        local_open(&self.shared)
     }
 
     /// Binds a metrics listener on `bind` and returns the address bound
@@ -429,7 +459,7 @@ fn decide_scrape(request: &Request<'_>, scraper: &Scraper) -> Outcome {
     if declares_body(request) {
         return Outcome::Refused(RefusalCode::BodyNotAllowed);
     }
-    Outcome::Metrics(scraper.shared.metrics.render())
+    Outcome::Metrics(metrics_text(&scraper.shared))
 }
 
 /// A decided response, before it is written.
@@ -447,6 +477,8 @@ enum Outcome {
     Relay(Admitted),
     /// A lifecycle route's answer: `202` for a wake, `200` for a status.
     Lifecycle(u16, String),
+    /// The dashboard's event stream, written by [`events`] until the client leaves.
+    Events,
 }
 
 /// One of the owner's two lifecycle routes per relayed model (story:model-wake-and-status).
@@ -497,18 +529,33 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
         };
     // A usage record's duration runs from the end of the head (llm-gateway.telemetry).
     let begun = Instant::now();
-    let mut call = Call::default();
+    let mut call = Call {
+        begun: Some(begun),
+        ..Call::default()
+    };
+    let mut observed = Observed::default();
     let outcome = match (decision.outcome, &shared.relay) {
+        (Outcome::Events, _) => {
+            events(&mut stream, shared, decision.head_only, timeout);
+            drop(stream.shutdown(Shutdown::Both));
+            return;
+        }
         (Outcome::Relay(admitted), Some(relay)) => {
+            observed = admitted
+                .observed
+                .clone()
+                .at(stream.peer_addr().ok().map(|peer| peer.ip()));
+            call.progress = Some(shared.dashboard.begin(admitted.wire, &observed));
             let limits = relay::Limits {
                 line_bytes: shared.config.max_head_bytes,
                 timeout,
                 count_timeout: shared.config.count_timeout,
+                decoder: relay.decoder(),
             };
             let leftover = leftover.into_bytes();
             match relay::serve(&mut stream, leftover, &admitted, relay, &limits, &mut call) {
                 Ok(()) => {
-                    record(shared, decision.recorded, call, None, begun);
+                    record(shared, decision.recorded, call, None, (begun, observed));
                     drop(stream.shutdown(Shutdown::Both));
                     return;
                 }
@@ -532,7 +579,13 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
     if let Some(code) = refusal {
         // Written before the connection is closed, so a client that has read its answer to
         // the end can count on the record having been made.
-        record(shared, decision.recorded, call, Some(code), begun);
+        record(
+            shared,
+            decision.recorded,
+            call,
+            Some(code),
+            (begun, observed),
+        );
     }
     if decision.linger {
         linger(&mut stream, Instant::now() + timeout);
@@ -550,7 +603,7 @@ fn record(
     wire: Option<Wire>,
     call: Call,
     refusal: Option<RefusalCode>,
-    begun: Instant,
+    (begun, observed): (Instant, Observed),
 ) {
     let (Some(wire), Some(relay)) = (wire, &shared.relay) else {
         return;
@@ -568,7 +621,9 @@ fn record(
         ),
         Some(code) => (Disposition::Refused, code.status(), 0),
     };
-    relay.observe(&UsageRecord {
+    let duration_ms = u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX);
+    let usage = call.usage;
+    let record = UsageRecord {
         outcome: metrics::Outcome::of(refusal, call.timed_out),
         model: call.model,
         wire,
@@ -577,15 +632,40 @@ fn record(
         refusal,
         status,
         reported_model: None,
-        input_tokens: None,
-        output_tokens: None,
-        cached_input_tokens: None,
-        cache_creation_input_tokens: None,
+        input_tokens: usage.input_tokens,
+        output_tokens: usage.output_tokens,
+        cached_input_tokens: usage.cache_read_tokens,
+        cache_creation_input_tokens: usage.cache_creation_tokens,
         reasoning_output_tokens: None,
         response_bytes,
-        duration_ms: u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX),
+        duration_ms,
         profile: call.profile,
-    });
+    };
+    relay.observe(&record);
+    // The in-flight entry goes only once the call is recorded as finished.
+    shared.dashboard.finish(
+        &record,
+        Finished {
+            id: call
+                .progress
+                .as_ref()
+                .map_or(0, crate::dashboard::Progress::id),
+            started_ms: crate::dashboard::now_ms().saturating_sub(duration_ms),
+            upstream: call.upstream,
+            upstream_model: call.upstream_model,
+            queue_wait_ms: call.queue_wait_ms,
+            ttft_ms: call.ttft_ms,
+            usage,
+            body_digest: call.body_digest,
+            client_disconnected: call.client_disconnected,
+            upstream_retry_after: call.retry_after,
+            attempts: call.attempts,
+            observed,
+            credential: call.credential,
+            usage_note: call.usage_note,
+        },
+    );
+    drop(call.progress);
 }
 
 /// Closes a relay connection that was refused gracefully: the answer is already written, so
@@ -1080,6 +1160,9 @@ impl Decision {
 struct Request<'a> {
     method: &'a str,
     path: &'a str,
+    /// The request target as sent: the path with its query, relayed as-is to a passthrough
+    /// route.
+    target: &'a str,
     /// `HTTP/1.0`, which takes neither a chunked answer nor an interim `100 Continue`.
     http_1_0: bool,
     /// Each field's value without its optional whitespace (SP and HTAB, RFC 9110 section 5.6.3).
@@ -1149,6 +1232,7 @@ impl<'a> Request<'a> {
         Ok(Self {
             method,
             path,
+            target,
             http_1_0: version == "HTTP/1.0",
             headers,
         })
@@ -1177,12 +1261,30 @@ impl<'a> Request<'a> {
     }
 }
 
-/// Whether `path` is a model call whose credential is never read: a wire path of a relaying
-/// gateway whose `ingress_auth` is `None` (story:ingress-auth-optional).
+/// Whether `path` is a request whose credential is never read: any path of a gateway that is
+/// open locally ([`local_open`]), else a model call (a wire path or the token count) of a
+/// relaying gateway whose `ingress_auth` is `None` (story:ingress-auth-optional).
 fn reads_no_credential(shared: &Shared, path: &str) -> bool {
-    shared.config.ingress_auth == IngressAuth::None
-        && shared.relay.is_some()
-        && Wire::from_path(path).is_some()
+    local_open(shared)
+        || (shared.config.ingress_auth == IngressAuth::None
+            && shared.relay.is_some()
+            && relayed(path).is_some())
+}
+
+/// A gateway that authenticates nobody and is bound to a loopback address reads no credential
+/// on any path: only the machine it runs on can reach it (story:local-open-mode). Bound to any
+/// other address, `IngressAuth::None` opens the model calls alone.
+fn local_open(shared: &Shared) -> bool {
+    shared.config.ingress_auth == IngressAuth::None && shared.local_addr.ip().is_loopback()
+}
+
+/// The wire of a relayed path, and whether it is the messages wire's token count
+/// (`POST /v1/messages/count_tokens`, relayed to the same target as the call it counts).
+fn relayed(path: &str) -> Option<(Wire, bool)> {
+    if path == COUNT_TOKENS {
+        return Some((Wire::Messages, true));
+    }
+    Wire::from_path(path).map(|wire| (wire, false))
 }
 
 /// Whether a probe or a public route never reads `name`, so a repeat of it is no ambiguity and
@@ -1194,7 +1296,7 @@ fn answers_any_repeat(method: &str, path: &str, name: &str) -> bool {
     }
     match path {
         "/health" | "/ready" => true,
-        listing::MODELS | listing::INSTRUCTIONS => !matches!(
+        listing::MODELS | listing::INSTRUCTIONS | guide::PATH => !matches!(
             name,
             "content-length" | "transfer-encoding" | "host" | "user-agent"
         ),
@@ -1214,7 +1316,7 @@ fn dispatch(head: &str, shared: &Shared) -> Decision {
     let head_only = request.head_only();
     // A wake is a `POST` too, and may still be sending a body it is refused for.
     let linger = shared.relay.is_some()
-        && (Wire::from_path(request.path).is_some() || Lifecycle::of(request.path).is_some());
+        && (relayed(request.path).is_some() || Lifecycle::of(request.path).is_some());
     let (outcome, recorded) = decide(&request, shared);
     Decision {
         outcome,
@@ -1248,23 +1350,50 @@ fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
     }
     // The public routes: two more literal paths with the same two methods, answered without a
     // credential. Any other method goes on to authentication, so it cannot enumerate anything.
-    if request.is_read() && matches!(request.path, listing::MODELS | listing::INSTRUCTIONS) {
+    if request.is_read()
+        && matches!(
+            request.path,
+            listing::MODELS | listing::INSTRUCTIONS | guide::PATH
+        )
+    {
         return (public(request, shared), None);
     }
     // A model call under `IngressAuth::None` reads no credential (story:ingress-auth-optional);
-    // every other path still authenticates below, so nothing else opens.
+    // every other path still authenticates below, so nothing else opens, unless the gateway is
+    // open locally (story:local-open-mode), where no path reads one.
     if reads_no_credential(shared, request.path)
-        && let Some(wire) = Wire::from_path(request.path)
+        && let Some((wire, count)) = relayed(request.path)
     {
-        return (admit(request, shared, wire), Some(wire));
+        return (admit(request, shared, wire, count), Some(wire));
     }
     // Everything else establishes the authenticated context before decoding anything further.
-    let owner = match authenticate(request, shared) {
+    // Open locally, the machine's own user is the owner and presents nothing.
+    let owner = if local_open(shared) {
+        Verdict::Owner
+            .into_authenticated()
+            .ok_or(RefusalCode::CredentialRejected)
+    } else {
+        authenticate(request, shared)
+    };
+    let owner = match owner {
         Ok(owner) => owner,
         Err(code) => return (Outcome::Refused(code), None),
     };
-    if let (Some(wire), Some(_)) = (Wire::from_path(request.path), &shared.relay) {
-        return (admit(request, shared, wire), Some(wire));
+    if let (Some((wire, count)), Some(_)) = (relayed(request.path), &shared.relay) {
+        return (admit(request, shared, wire, count), Some(wire));
+    }
+    if matches!(
+        request.path,
+        DASHBOARD | DASHBOARD_SNAPSHOT | DASHBOARD_EVENTS
+    ) {
+        return (dashboard(request, shared), None);
+    }
+    if request.path == guide::LAUNCH && request.is_read() {
+        let origin = listing::origin(request.header("host"), &shared.local_addr);
+        return (
+            Outcome::Public(JSON, guide::launch(shared.relay.as_ref(), &origin)),
+            None,
+        );
     }
     if let (Some((route, alias)), Some(relay)) = (Lifecycle::of(request.path), &shared.relay) {
         return (lifecycle(request, shared, relay, route, alias), None);
@@ -1287,7 +1416,71 @@ fn scrape(request: &Request<'_>, shared: &Shared) -> Outcome {
     if !serves_inspection(shared) {
         return Outcome::Refused(RefusalCode::Unavailable);
     }
-    Outcome::Metrics(shared.metrics.render())
+    Outcome::Metrics(metrics_text(shared))
+}
+
+/// The counters, then the dashboard's series.
+fn metrics_text(shared: &Shared) -> String {
+    let mut text = shared.metrics.render();
+    text.push_str(&shared.dashboard.render_prometheus());
+    text
+}
+
+/// `GET /dashboard` (the page), `/dashboard/snapshot` (its JSON) and `/dashboard/events` (a
+/// snapshot as a server-sent event on every change), under inspection's method and body rules.
+/// The dashboard serves while unready and while draining: it is how an operator watches both.
+fn dashboard(request: &Request<'_>, shared: &Shared) -> Outcome {
+    if !request.is_read() {
+        return Outcome::NotAllowed("GET, HEAD");
+    }
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    match request.path {
+        DASHBOARD => Outcome::Public(HTML, DASHBOARD_HTML.to_owned()),
+        DASHBOARD_SNAPSHOT => Outcome::Public(JSON, shared.dashboard.snapshot()),
+        _ => Outcome::Events,
+    }
+}
+
+/// Writes the event stream of `/dashboard/events`: a snapshot at once and after every change, at
+/// most one per [`EVENTS_INTERVAL`], a comment after [`EVENTS_KEEPALIVE`] of silence, until the
+/// client goes away or the gateway drains or stops.
+fn events(stream: &mut TcpStream, shared: &Shared, head_only: bool, timeout: Duration) {
+    let head = format!(
+        "HTTP/1.1 200 OK\r\ncontent-type: {EVENT_STREAM}\r\ncache-control: no-store\r\nconnection: close\r\n\r\n"
+    );
+    if !write_by(stream, head.as_bytes(), Instant::now() + timeout) || head_only {
+        return;
+    }
+    let mut seen = shared.dashboard.generation();
+    let mut snapshot = true;
+    let mut quiet = Instant::now();
+    while shared.running.load(Ordering::SeqCst) && !shared.draining.load(Ordering::SeqCst) {
+        let event = if snapshot {
+            format!("event: snapshot\ndata: {}\n\n", shared.dashboard.snapshot())
+        } else if quiet.elapsed() >= EVENTS_KEEPALIVE {
+            ": keepalive\n\n".to_owned()
+        } else {
+            String::new()
+        };
+        if !event.is_empty() {
+            if !write_by(stream, event.as_bytes(), Instant::now() + timeout) {
+                return;
+            }
+            quiet = Instant::now();
+        }
+        thread::sleep(if snapshot {
+            EVENTS_INTERVAL
+        } else {
+            Duration::ZERO
+        });
+        let now = shared
+            .dashboard
+            .wait_for_change(seen, Duration::from_secs(1));
+        snapshot = now != seen;
+        seen = now;
+    }
 }
 
 /// `GET /v1/models` (row R5) and `GET /` (row R1), under inspection's body and readiness rules.
@@ -1307,6 +1500,14 @@ fn public(request: &Request<'_>, shared: &Shared) -> Outcome {
     let answer = InstructionAnswer::choose(request.header("user-agent"));
     let origin = listing::origin(request.header("host"), &shared.local_addr);
     shared.metrics.count_instruction_view();
+    // `/llms.txt` and the browser's `/` are one text: the page renders the Markdown it holds.
+    let guide = || guide::render(shared.relay.as_ref(), &origin, local_open(shared));
+    if request.path == guide::PATH {
+        return Outcome::Public(guide::MARKDOWN, guide());
+    }
+    if answer == InstructionAnswer::Html {
+        return Outcome::Public(HTML, guide::page(DASHBOARD_HTML, &guide()));
+    }
     // Each client is profiled where its requests reach a model (story:client-profiles-translated).
     Outcome::Public(
         answer.content_type(),
@@ -1377,7 +1578,7 @@ fn declares_body(request: &Request<'_>) -> bool {
 
 /// Decides from the head alone whether a relay may read its body: the method, readiness, and
 /// the body framing and its declared size (rows R6-R8 and W1).
-fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
+fn admit(request: &Request<'_>, shared: &Shared, wire: Wire, count_tokens: bool) -> Outcome {
     if request.method != "POST" {
         return Outcome::NotAllowed("POST");
     }
@@ -1400,6 +1601,19 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire) -> Outcome {
             session: request
                 .field(relay::CALLER_SESSION_HEADER)
                 .map(str::to_owned),
+            client_credentials: (shared.config.ingress_auth == IngressAuth::None)
+                .then(|| {
+                    relay::ClientCredentials::read(
+                        request
+                            .headers
+                            .iter()
+                            .map(|(name, value)| (name.as_str(), *value)),
+                    )
+                })
+                .flatten(),
+            observed: Observed::read(|name| request.header(name)),
+            request_target: request.target.to_owned(),
+            count_tokens,
         }),
         Err(code) => Outcome::Refused(code),
     }
@@ -1478,6 +1692,8 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
         // `serve` relays an admitted request before anything is written; one that reaches
         // here had no relay to go to.
         Outcome::Relay(_) => refused(RefusalCode::PathUnknown),
+        // `serve` writes the event stream itself.
+        Outcome::Events => (200, String::new(), None),
     };
     let content_type = match outcome {
         Outcome::Metrics(_) => PROMETHEUS_TEXT,

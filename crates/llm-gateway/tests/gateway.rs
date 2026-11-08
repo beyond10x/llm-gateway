@@ -28,14 +28,20 @@ const SOURCES: &[&str] = &[
     include_str!("../src/lib.rs"),
     include_str!("../src/auth.rs"),
     include_str!("../src/body.rs"),
+    include_str!("../src/dashboard.rs"),
+    include_str!("../src/dashboard/kpi.rs"),
+    include_str!("../src/dashboard/upstream.rs"),
     include_str!("../src/error.rs"),
     include_str!("../src/inventory.rs"),
     include_str!("../src/json.rs"),
     include_str!("../src/listing.rs"),
     include_str!("../src/metrics.rs"),
     include_str!("../src/relay.rs"),
+    include_str!("../src/relay/passthrough.rs"),
+    include_str!("../src/guide.rs"),
     include_str!("../src/server.rs"),
     include_str!("../src/translate.rs"),
+    include_str!("../src/usage.rs"),
 ];
 const OTHER_SECRET: &str = "other-token-0123456789abcdef0123456789abcdef";
 /// The catalog's account names this reference; resolving it is never part of inspection.
@@ -545,13 +551,15 @@ impl RelayTargets for ProvokingTargets {
 }
 
 /// Three chat-only models: `down`, whose target cannot be reached, `cold`, whose target is
-/// still starting, and `none`, which has none; and `full`, a messages model with a window of 10
+/// still starting, and `none`, which has none; and `full`, a messages model that parses tool
+/// calls, with a window of 10
 /// tokens whose target counts every input at 10.
 fn provoking_relay() -> Relay {
     let model = |alias: &str| RelayModel::new(label(alias), label("served"), vec![Wire::Chat]);
     let full = RelayModel::new(label("full"), label("served"), vec![Wire::Messages])
         .unwrap()
-        .with_max_model_len(10);
+        .with_max_model_len(10)
+        .with_tool_calling(llm_gateway::ToolCalling::Parsed);
     Relay::new(
         vec![
             model("down").unwrap(),
@@ -659,6 +667,10 @@ fn provoke(code: RefusalCode) -> Provocation {
         RefusalCode::WireNotServed => relayed("/v1/messages", "{\"model\":\"none\"}"),
         // `none` declares no tool calling, so it takes `Absent`.
         RefusalCode::ToolsNotServed => relayed(chat, "{\"model\":\"none\",\"tools\":[{}]}"),
+        RefusalCode::ServerToolNotServed => relayed(
+            "/v1/messages",
+            "{\"model\":\"full\",\"tools\":[{\"type\":\"web_search_20250305\"}]}",
+        ),
         RefusalCode::TargetUnavailable => relayed(chat, "{\"model\":\"none\"}"),
         // The input leaves none of the window's 10 tokens for output.
         RefusalCode::ContextExceeded => {
@@ -999,6 +1011,83 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
         "the delay a model-cold-start refusal asks the client to wait (row W6), a hint rather \
          than a limit; its header is measured by \
          w6_a_model_still_starting_past_its_hold_budget_is_model_cold_start_with_retry_after_30",
+    ),
+    (
+        "MAX_CLIENT_LINES",
+        "how many client lines a passthrough forwards, a truncation rather than a refusal: the \
+         head is bounded by request-head-bytes; measured by \
+         adv_pt_only_the_first_128_forwarded_client_lines_reach_the_target",
+    ),
+    (
+        "MAX_ERROR_BODY",
+        "how much of an error answer's body a call record keeps, a truncation of a record and \
+         never of the answer, which reaches the client whole",
+    ),
+    (
+        "MAX_RELAYED_VALUE",
+        "the longest answer line value relayed to the client; a longer one is dropped, never \
+         refused; measured by adv_pt_an_answer_line_past_its_cap_is_not_relayed",
+    ),
+    (
+        "MAX_RELAYED_BYTES",
+        "the most answer line bytes relayed to the client in total; lines past it are dropped, \
+         never refused; measured by adv_pt_an_answer_line_past_its_cap_is_not_relayed",
+    ),
+    (
+        "MAX_MODEL_LIST_BYTES",
+        "the largest model list a newest alias reads; a longer one falls back to the \
+         configured model rather than refusing; measured by \
+         adv_pt_a_model_list_past_its_cap_falls_back_to_the_configured_model",
+    ),
+    (
+        "MAX_CALLS",
+        "how many finished calls the dashboard retains, a ring size rather than a limit on any \
+         request",
+    ),
+    (
+        "MAX_SESSIONS",
+        "how many sessions the dashboard retains, the least recent evicted, never a refusal",
+    ),
+    (
+        "MAX_USER_AGENT_BYTES",
+        "how much of a user agent the dashboard keeps for display, truncated, never refused",
+    ),
+    (
+        "DIGESTS",
+        "how many recent body digests the dashboard keeps to spot a repeated body, a window \
+         rather than a limit",
+    ),
+    (
+        "SESSION_HEX",
+        "the length of the session hash the dashboard shows, a display width",
+    ),
+    (
+        "TAIL",
+        "how many bytes the usage scanner carries between pieces, an internal buffer",
+    ),
+    (
+        "MIN_RATED_OUTPUT_TOKENS",
+        "the fewest output tokens a call needs for the dashboard to rate its output tok/s, a \
+         display threshold that refuses nothing",
+    ),
+    (
+        "MIN_RATED_STREAMING_MS",
+        "the shortest streaming time a call needs for the dashboard to rate its output tok/s, a \
+         display threshold that refuses nothing",
+    ),
+    (
+        "RATE_WINDOW_MS",
+        "the window the dashboard's token-rate KPI averages over, a display window",
+    ),
+    (
+        "MAX_CREDENTIALS",
+        "how many credential labels the dashboard keeps subscription limits for, the least \
+         recent evicted, never a refusal",
+    ),
+    (
+        "MAX_LIMIT_HEADERS",
+        "how many rate-limit headers the dashboard keeps per credential, the rest dropped from \
+         display, never a refusal",
     ),
 ];
 

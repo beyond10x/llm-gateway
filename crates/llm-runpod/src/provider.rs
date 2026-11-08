@@ -8,7 +8,7 @@
 //! from the environment it was created with. The hosting contract decides adoption from those.
 
 use std::{
-    collections::{BTreeMap, VecDeque},
+    collections::{BTreeMap, BTreeSet, VecDeque},
     sync::Arc,
 };
 
@@ -21,6 +21,7 @@ use llm_provision::{
 use crate::{
     Clock, CreateAnswer, Pod, PodStatus, Probe, ProbeTarget, RunpodModel, RunpodTransport,
     SpendPolicy, SpendRefusal, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
+    config::image_allowed,
     request::{Tags, in_namespace, pod_request},
     spend::{DAY_MS, admit, estimate},
 };
@@ -66,7 +67,12 @@ pub struct RunpodProvider<T> {
     /// The GPU type of each pod by incarnation, as its create or a listing reported it: a GPU
     /// type belongs to at most one profile of a model, so it names the pod's profile.
     gpus: BTreeMap<String, String>,
+    /// Pods whose placement was refused and whose terminate was not confirmed: never ready.
+    condemned: BTreeSet<String>,
 }
+
+/// How many terminates a pod whose placement was refused is sent, while each answer is lost.
+const CONDEMNED_TERMINATE_ATTEMPTS: usize = 3;
 
 impl<T: std::fmt::Debug> std::fmt::Debug for RunpodProvider<T> {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -104,6 +110,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             live: Vec::new(),
             spend_refusal: None,
             gpus: BTreeMap::new(),
+            condemned: BTreeSet::new(),
         }
     }
 
@@ -245,6 +252,12 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         // A running pod with no address cannot serve anybody, whatever it answers, so it is
         // never ready: no lease without an address is handed out, and its startup deadline
         // retires it like a pod that never becomes ready.
+        // A pod whose placement was refused is never ready, whatever it answers.
+        let (ready, served_model) = if self.condemned.contains(&pod.id) {
+            (Some(false), None)
+        } else {
+            (ready, served_model)
+        };
         let (ready, served_model) = if pod.status == PodStatus::Running && endpoint.is_none() {
             (Some(false), None)
         } else {
@@ -306,6 +319,22 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         probe
     }
 
+    /// Terminates a pod whose placement was refused, at once. A terminate whose answer is lost
+    /// is sent again, at most [`CONDEMNED_TERMINATE_ATTEMPTS`] times in all. A pod that still
+    /// stands is kept in the condemned set: it is never described as ready, so the pool never
+    /// leases it, and the pool's orphan sweep, which stops any pod of this controller that no
+    /// live record holds, terminates it on a later pass. Nothing is logged.
+    fn condemn(&mut self, pod_id: &str) {
+        for _ in 0..CONDEMNED_TERMINATE_ATTEMPTS {
+            match self.transport.terminate_pod(pod_id) {
+                TerminateAnswer::Terminated => return,
+                TerminateAnswer::Refused => break,
+                TerminateAnswer::Lost => {}
+            }
+        }
+        self.condemned.insert(pod_id.to_owned());
+    }
+
     /// Tries each GPU type of one profile in order, the spend check before each create, until
     /// the start's startup deadline, counted from `started_ms`, has passed.
     fn create_on(
@@ -343,6 +372,14 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             }
             match self.transport.create_pod(&body) {
                 CreateAnswer::Created(pod) => {
+                    // Secure Cloud, on demand, or not at all: a pod placed anywhere else, or
+                    // whose placement cannot be read, is terminated before anything can use it,
+                    // and its GPU type is refused, so no further create of this profile is sent.
+                    let placement = self.transport.pod_placement(&pod.id);
+                    if !placement.is_some_and(|placement| placement.is_secure_on_demand()) {
+                        self.condemn(&pod.id);
+                        return ProfileOutcome::Refused;
+                    }
                     self.remember_gpu(&pod);
                     return ProfileOutcome::Done(Box::new(match self.describe(&pod, None) {
                         Some(resource) => CreateOutcome {
@@ -410,12 +447,13 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
             dispatch: Dispatch::NotSent,
             resource: None,
         };
-        // An undeclared model, or a specification whose image is not the declared one, is
-        // never sent: this adapter does not silently substitute either.
+        // An undeclared model, a specification whose image is not the declared one, or an image
+        // outside `ALLOWED_IMAGE_PREFIX`, is never sent: this adapter does not silently
+        // substitute either, and runs no other image even for a model the pool did not check.
         let Some(model) = self.models.get(&request.spec.model).cloned() else {
             return not_sent;
         };
-        if model.image != request.spec.image {
+        if model.image != request.spec.image || !image_allowed(model.image.as_str()) {
             return not_sent;
         }
         let tags = Tags {
@@ -450,6 +488,7 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
             TerminateAnswer::Terminated => {
                 self.health.remove(key.incarnation.as_str());
                 self.gpus.remove(key.incarnation.as_str());
+                self.condemned.remove(key.incarnation.as_str());
                 return StopOutcome {
                     dispatch: Dispatch::Accepted,
                     evidence: Identifier::new(format!("runpod-terminated-{}", key.incarnation))

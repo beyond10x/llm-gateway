@@ -41,8 +41,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "ea3816cb3238c69149678087b8adeb4bd7057a7b27e074e1027398a77be2c097",
-    "contract_digest": "slice-sha256/2:d565d454a354c877bb7f827ea9e367daf0218e7b117a50b1ee68f986fb401ef5",
+    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
+    "contract_digest": "slice-sha256/2:12c255bb4d15d776bfb3f92d61373f61202eec7c75ec229dbd569c0852e80bcb",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -62,8 +62,7 @@
       "x-ess-kind": "enum",
       "type": "string",
       "enum": [
-        "Secure",
-        "Community"
+        "Secure"
       ]
     },
     "llm-gateway.deployment.ConnectorsDeclaration": {
@@ -141,6 +140,12 @@
         },
         "routes": {
           "type": "string"
+        },
+        "watchdog": {
+          "$ref": "#/$defs/llm-gateway.deployment.WatchdogDeclaration"
+        },
+        "launch": {
+          "$ref": "#/$defs/llm-gateway.deployment.LaunchDeclaration"
         }
       },
       "required": [
@@ -209,6 +214,9 @@
         "credential_file": {
           "type": "string"
         },
+        "credential": {
+          "type": "string"
+        },
         "credential_header": {
           "type": "string"
         },
@@ -233,6 +241,21 @@
         },
         "reasoning_effort": {
           "$ref": "#/$defs/llm-gateway.deployment.HostedReasoningEffort"
+        },
+        "model_prefix": {
+          "type": "string"
+        },
+        "newest": {
+          "type": "string"
+        },
+        "retry_max_attempts": {
+          "type": "integer"
+        },
+        "retry_max_wait": {
+          "type": "integer"
+        },
+        "compact_window": {
+          "type": "integer"
         }
       },
       "required": [
@@ -265,6 +288,30 @@
         "Bearer",
         "None"
       ]
+    },
+    "llm-gateway.deployment.LaunchDeclaration": {
+      "title": "LaunchDeclaration",
+      "x-ess-name": "llm-gateway.deployment.LaunchDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "claude_main_model": {
+          "type": "string"
+        },
+        "claude_implementer_route": {
+          "type": "string"
+        },
+        "claude_agents": {
+          "type": "string"
+        },
+        "claude_subagent_instruction": {
+          "type": "string"
+        },
+        "codex_model": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false
     },
     "llm-gateway.deployment.ModelDeclaration": {
       "title": "ModelDeclaration",
@@ -355,6 +402,9 @@
         "vllm_api_key_file": {
           "type": "string"
         },
+        "vllm_api_key": {
+          "type": "string"
+        },
         "tool_calling": {
           "$ref": "#/$defs/llm-gateway.clients.ToolCalling"
         },
@@ -438,6 +488,9 @@
         },
         "connectors": {
           "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
+        },
+        "api_key": {
+          "type": "string"
         },
         "daily_cap_usd": {
           "type": "string",
@@ -527,6 +580,9 @@
           "type": "string"
         },
         "credential_file": {
+          "type": "string"
+        },
+        "credential_keychain": {
           "type": "string"
         }
       },
@@ -650,6 +706,46 @@
         "Off"
       ]
     },
+    "llm-gateway.deployment.WatchdogDeclaration": {
+      "title": "WatchdogDeclaration",
+      "x-ess-name": "llm-gateway.deployment.WatchdogDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "heartbeat_file": {
+          "type": "string"
+        },
+        "heartbeat_seconds": {
+          "type": "integer"
+        },
+        "poll_seconds": {
+          "type": "integer"
+        },
+        "stale_minutes": {
+          "type": "integer"
+        },
+        "not_ready_minutes": {
+          "type": "integer"
+        },
+        "max_runtime_hours": {
+          "type": "integer"
+        },
+        "min_balance_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        }
+      },
+      "required": [
+        "heartbeat_seconds",
+        "poll_seconds",
+        "stale_minutes",
+        "not_ready_minutes",
+        "max_runtime_hours",
+        "min_balance_usd"
+      ],
+      "additionalProperties": false
+    },
     "llm-gateway.deployment.Wire": {
       "title": "Wire",
       "x-ess-name": "llm-gateway.deployment.Wire",
@@ -670,7 +766,8 @@
         "Anonymous",
         "Bearer",
         "ApiKey",
-        "AwsSigv4"
+        "AwsSigv4",
+        "Client"
       ]
     },
     "llm-gateway.upstream.BedrockApi": {

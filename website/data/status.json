@@ -1,5 +1,5 @@
 {
-  "asOf": "2026-10-17",
+  "asOf": "2026-11-04",
   "format": "b10x-status/1",
   "items": [
     {
@@ -228,9 +228,16 @@
     },
     {
       "area": "Relay",
-      "detail": "routes = \"<path>\" serves each route of an llm.routes/1 document under its name from its endpoint: relayed byte for byte on the endpoint's wire to its base path, translated from the other wires under the route's capabilities, beside [models.*] and [hosted.*]. Credentials come only from file: key files read through the trusted reader; env: and keychain: secrets, a base_url without its API path and an alias collision are refused at start. Tested against loopback endpoints, not against a vendor API.",
+      "detail": "routes = \"<path>\" serves each route of an llm.routes/1 document under its name from its endpoint: relayed byte for byte on the endpoint's wire to its base path, translated from the other wires under the route's capabilities, beside [models.*] and [hosted.*]. Credentials come from file: key files read through the trusted reader or keychain: entries of the OS keychain; env: secrets, a base_url without its API path and an alias collision are refused at start. Tested against loopback endpoints, not against a vendor API.",
       "href": "/docs/guides/translate-between-wires",
       "label": "The models of an llm.routes/1 document",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
+      "detail": "A keychain:<service>/<account> reference names the Runpod API key ([providers.<name>] api_key), a vLLM key (vllm_api_key), a hosted credential (credential) or a route's auth.secret in place of a file. The entry is read once at start through secret-tool on Linux or security on macOS, whose arguments carry the two names only, into memory overwritten when dropped; no refusal names the reference or the value. A provider with an api_key manages its pods through Runpod's REST API itself. Tested with an in-memory keychain and loopback endpoints; no real keychain is read and no Runpod API is called.",
+      "href": "/docs/reference/deployment-document",
+      "label": "Credentials from the OS keychain",
       "status": "shipped"
     },
     {
@@ -331,6 +338,47 @@
       "status": "shipped"
     },
     {
+      "area": "Relay",
+      "detail": "An auth_kind = \"client\" route behind ingress_auth = \"none\" forwards the client's authorization and the request as written; a 429, 502, 503 or 529 is retried before the first answer byte only for a client that does not retry on its own.",
+      "href": "/docs/reference/deployment-document",
+      "label": "The client's own Anthropic credential on a loopback gateway",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "Each usage record carries the input, output, cache read and cache creation tokens the answer reported, read from a decoded copy when it is content-encoded; a count it did not report stays absent.",
+      "label": "Token counts in usage records",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "GET /dashboard shows calls with every attempt, sessions, routes, tokens per second, cache hit rates, subscription limits, the Runpod account and a vLLM server's prefix cache.",
+      "href": "/docs/guides/local-gateway-for-claude-code",
+      "label": "Dashboard",
+      "status": "shipped"
+    },
+    {
+      "area": "Gateway",
+      "detail": "A credential may name an OS keychain entry, read once at start; an unreadable entry refuses the start and quotes no value.",
+      "href": "/docs/reference/deployment-document",
+      "label": "Keychain references",
+      "status": "shipped"
+    },
+    {
+      "area": "Hosting",
+      "detail": "b10x-llm-gateway watchdog terminates the gateway's own pods on a stale heartbeat, a low balance, a long runtime, a pod never ready or an idle pod, and never another pod.",
+      "href": "/docs/concepts/hosting",
+      "label": "Pod watchdog",
+      "status": "shipped"
+    },
+    {
+      "area": "Clients",
+      "detail": "b10x-llm-gateway claude and codex start the agent against the running gateway, with the sub-agent route and its instruction for Claude Code.",
+      "href": "/docs/guides/local-gateway-for-claude-code",
+      "label": "Launchers for Claude Code and Codex",
+      "status": "shipped"
+    },
+    {
       "area": "Specification",
       "detail": "The system llm-gateway is specified in ESS; the gate answers at least 395 of 395 scenarios, skips none, and fails on drift between the specification and its generated suite.",
       "href": "/docs/guides/run-the-checks",
@@ -345,8 +393,8 @@
     },
     {
       "area": "Observability",
-      "detail": "Each usage record carries the token counters and the model name the target reported; a count it did not report stays absent.",
-      "label": "Token counts in usage records",
+      "detail": "Each usage record carries the model name the target reported and its reasoning tokens; neither is filled yet.",
+      "label": "Reported model and reasoning tokens in usage records",
       "status": "planned"
     },
     {

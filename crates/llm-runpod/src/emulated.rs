@@ -13,8 +13,15 @@ use std::{
 };
 
 use crate::{
-    AccountSpend, CreateAnswer, Pod, PodListing, PodRequest, PodStatus, Probe, ProbeTarget,
-    RunpodTransport, TerminateAnswer,
+    AccountSnapshot, AccountSpend, CreateAnswer, Pod, PodListing, PodPlacement, PodRequest,
+    PodStatus, PodSummary, Probe, ProbeTarget, RunpodAccount, RunpodTransport, TerminateAnswer,
+};
+
+/// Where an emulated pod is placed unless a test says otherwise: a Secure Cloud machine, and
+/// `interruptible` absent, as Runpod reports an on-demand pod.
+const SECURE_ON_DEMAND: PodPlacement = PodPlacement {
+    secure_cloud: Some(true),
+    interruptible: None,
 };
 
 /// The instant every emulated container start is counted back from: a pod scripted with uptime
@@ -28,6 +35,10 @@ struct Emulated {
     probes_until_ready: u32,
     uptimes: VecDeque<u64>,
     credential_refused: bool,
+    /// What a placement read answers; `None` is a read that fails.
+    placement: Option<PodPlacement>,
+    cost_per_hour_usd: Option<f64>,
+    started_at_ms: Option<u64>,
 }
 
 #[derive(Debug, Default)]
@@ -48,7 +59,17 @@ struct State {
     /// What a spend read answers; `None`, the default, is a read that answers nothing.
     account_spend: Option<SpendScript>,
     spend_reads: u32,
+    /// The placement the next created pod gets, once; `None` here is the default placement.
+    next_placement: Option<Placed>,
+    placement_reads: u32,
+    balance_usd: Option<f64>,
+    spend_per_hour_usd: Option<f64>,
+    account_unanswered: bool,
 }
+
+/// The placement one created pod is scripted to get; `Placed(None)` is an unreadable one.
+#[derive(Debug, Clone, Copy)]
+struct Placed(Option<PodPlacement>);
 
 /// What the emulated account's spend reads answer.
 #[derive(Debug, Clone)]
@@ -206,8 +227,96 @@ impl EmulatedRunpod {
             probes_until_ready: 0,
             uptimes: VecDeque::new(),
             credential_refused: false,
+            placement: Some(SECURE_ON_DEMAND),
+            cost_per_hour_usd: None,
+            started_at_ms: None,
         });
         id
+    }
+
+    /// The next pod created gets this placement instead of the default Secure Cloud, on-demand
+    /// one; `None` makes its placement unreadable. Applies to one created pod.
+    pub fn place_next_create(&self, placement: Option<PodPlacement>) {
+        self.state().next_placement = Some(Placed(placement));
+    }
+    /// Sets what a placement read of an existing pod answers; `None` is a read that fails.
+    pub fn set_placement(&self, pod_id: &str, placement: Option<PodPlacement>) {
+        for pod in &mut self.state().pods {
+            if pod.pod.id == pod_id {
+                pod.placement = placement;
+            }
+        }
+    }
+    /// Placement reads made, whatever they answered.
+    pub fn placement_reads(&self) -> u32 {
+        self.state().placement_reads
+    }
+    /// What account reads answer from now on: the balance and the spend rate in USD. Until
+    /// this is called both are unreported.
+    pub fn set_account(&self, balance_usd: Option<f64>, spend_per_hour_usd: Option<f64>) {
+        let mut state = self.state();
+        state.balance_usd = balance_usd;
+        state.spend_per_hour_usd = spend_per_hour_usd;
+    }
+    /// Account reads from now on fail (`true`) or answer (`false`, the default).
+    pub fn account_unanswered(&self, unanswered: bool) {
+        self.state().account_unanswered = unanswered;
+    }
+    /// Sets a pod's price per hour in USD, as an account read reports it.
+    pub fn set_cost_per_hour(&self, pod_id: &str, usd: Option<f64>) {
+        for pod in &mut self.state().pods {
+            if pod.pod.id == pod_id {
+                pod.cost_per_hour_usd = usd;
+            }
+        }
+    }
+    /// Sets when a pod's container last started, in milliseconds since the Unix epoch, as an
+    /// account read reports it (Runpod's `lastStartedAt`).
+    pub fn set_started_at(&self, pod_id: &str, at_ms: Option<u64>) {
+        for pod in &mut self.state().pods {
+            if pod.pod.id == pod_id {
+                pod.started_at_ms = at_ms;
+            }
+        }
+    }
+}
+
+/// Runpod's `desiredStatus` word for an emulated pod's status.
+fn desired_status(status: PodStatus) -> &'static str {
+    match status {
+        PodStatus::Created => "CREATED",
+        PodStatus::Running => "RUNNING",
+        PodStatus::Exited => "EXITED",
+        PodStatus::Terminated => "TERMINATED",
+    }
+}
+
+impl RunpodAccount for EmulatedRunpod {
+    /// The scripted balance and spend rate, and every existing pod with its scripted price and
+    /// start time. Uptime is not emulated.
+    fn account(&mut self) -> Option<AccountSnapshot> {
+        let state = self.state();
+        if state.account_unanswered {
+            return None;
+        }
+        Some(AccountSnapshot {
+            balance_usd: state.balance_usd,
+            spend_per_hour_usd: state.spend_per_hour_usd,
+            pods: state
+                .pods
+                .iter()
+                .map(|pod| PodSummary {
+                    id: pod.pod.id.clone(),
+                    name: pod.pod.name.clone(),
+                    desired_status: desired_status(pod.pod.status).to_owned(),
+                    cost_per_hour_usd: pod.cost_per_hour_usd,
+                    gpu: pod.pod.gpu_type.clone(),
+                    uptime_seconds: None,
+                    last_started_at_ms: pod.started_at_ms,
+                    env_owner: pod.pod.env.get(crate::TAG_OWNER).cloned(),
+                })
+                .collect(),
+        })
     }
 }
 
@@ -257,6 +366,12 @@ impl RunpodTransport for EmulatedRunpod {
             probes_until_ready: state.ready_after,
             uptimes: state.uptimes.iter().copied().collect(),
             credential_refused: false,
+            placement: state
+                .next_placement
+                .take()
+                .map_or(Some(SECURE_ON_DEMAND), |Placed(placement)| placement),
+            cost_per_hour_usd: None,
+            started_at_ms: None,
         };
         state.pods.push(emulated);
         if lost == Some(true) {
@@ -305,6 +420,16 @@ impl RunpodTransport for EmulatedRunpod {
             .find(|pod| pod.pod.id == pod_id)
             .and_then(|pod| pod.uptimes.pop_front())
             .map(|uptime| EMULATED_START_ORIGIN_MS.saturating_sub(uptime))
+    }
+
+    fn pod_placement(&mut self, pod_id: &str) -> Option<PodPlacement> {
+        let mut state = self.state();
+        state.placement_reads = state.placement_reads.saturating_add(1);
+        state
+            .pods
+            .iter()
+            .find(|pod| pod.pod.id == pod_id)
+            .and_then(|pod| pod.placement)
     }
 
     /// Answers the scripted spend: a stated spend whatever the day's start, billed amounts

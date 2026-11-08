@@ -1,7 +1,7 @@
 //! Gateway conformance observations over a loopback socket.
 //!
 //! This module composes the real `b10x-llm-gateway` — an `OwnerToken`, a `SharedSecretVerifier`
-//! and a `RouteInventory` — binds it to `127.0.0.1:0`, sends the authored raw HTTP/1.1 requests
+//! and a `RouteInventory` — binds it to `127.0.0.1:0` (a relaying one to `0.0.0.0:0`, reached over loopback), sends the authored raw HTTP/1.1 requests
 //! and reports what the gateway wrote back. It parses nothing the gateway did not write, decides
 //! no refusal, reads no suite and branches on no scenario name. The only I/O is the loopback
 //! connection to the listener this module bound.
@@ -302,6 +302,11 @@ fn compose(program: &Program) -> Result<GatewayHandle, String> {
         config.max_concurrent_requests = count;
     }
     Gateway::bind(config, Arc::new(verifier), snapshot).map_err(|_| "bind:refused".to_owned())
+}
+
+/// The loopback address of a listener bound to `addr`.
+fn loopback(addr: SocketAddr) -> SocketAddr {
+    SocketAddr::from(([127, 0, 0, 1], addr.port()))
 }
 
 /// What one exchange wrote back, split once at the end of its head.
@@ -1692,6 +1697,9 @@ mod relay {
             RelayError::NoWire => "no-wire",
             RelayError::RepeatedWire => "repeated-wire",
             RelayError::DuplicateModel => "duplicate-model",
+            RelayError::EmptyPrefix => "empty-prefix",
+            RelayError::EmptyFamily => "empty-family",
+            RelayError::BetaNotAToken => "beta-not-a-token",
         }
     }
 
@@ -1930,7 +1938,10 @@ mod relay {
         };
         let inventory =
             RouteInventory::new(Vec::new()).map_err(|_| "fixture:inventory".to_owned())?;
-        let bind = "127.0.0.1:0"
+        // Bound to every address and reached over loopback: a gateway that authenticates nobody
+        // and listens on loopback alone opens every path (story:local-open-mode), which no
+        // authored scenario of `ingress_auth = "none"` describes; `adversary_local_open.rs` holds it.
+        let bind = "0.0.0.0:0"
             .parse()
             .map_err(|_| "fixture:bind-address".to_owned())?;
         let mut config = GatewayConfig::new(bind);
@@ -2272,6 +2283,20 @@ mod relay {
         out
     }
 
+    /// `text` as the `bodies` fact writes it: the browser page, whose script and style are the
+    /// built dashboard bundle, is written `page ` and the `<pre id="llms">` block it carries;
+    /// every other body as received.
+    fn page_fact(text: &str) -> String {
+        const OPEN: &str = "<pre id=\"llms\">";
+        let Some(start) = text.find(OPEN) else {
+            return text.to_owned();
+        };
+        let Some(length) = text[start..].find("</pre>") else {
+            return text.to_owned();
+        };
+        format!("page {}", &text[start..start + length + "</pre>".len()])
+    }
+
     /// `seal` with the first character of its state part replaced by another.
     fn altered(seal: &str) -> String {
         let (prefix, rest) = seal.split_at(SEAL_PREFIX.len());
@@ -2511,31 +2536,57 @@ mod relay {
         format!("{status} scraped")
     }
 
-    /// A sample of `llmgw_request_duration_seconds` as the `scrapes` fact writes it: a finite
-    /// bucket `cumulative` when it is at least the bucket before it and at most the `+Inf`
-    /// bucket, `_sum` `bounded` when it is at most `_count` times the run, every other sample of
-    /// the family as served. `None` for a sample of any other series.
+    /// The histograms whose samples are measured: the seconds families, whose `_sum` is at most
+    /// `_count` times the run, and the tokens-per-second families, whose `_sum` is any finite
+    /// non-negative rate.
+    const MEASURED: [(&str, bool); 6] = [
+        ("llmgw_request_duration_seconds", true),
+        ("llmgw_time_to_first_token_seconds", true),
+        ("llmgw_queue_wait_seconds", true),
+        ("llmgw_upstream_retry_wait_seconds", true),
+        ("llmgw_input_tps", false),
+        ("llmgw_output_tps", false),
+    ];
+
+    /// A sample of a [`MEASURED`] histogram as the `scrapes` fact writes it: a finite bucket
+    /// `cumulative` when it is at least the bucket before it and at most the `+Inf` bucket,
+    /// `_sum` `bounded` when it is within its bound, every other sample of the family as served.
+    /// `None` for a sample of any other series.
     fn histogram(samples: &[&str], at: usize, run: Duration) -> Option<String> {
-        const BUCKET: &str = "llmgw_request_duration_seconds_bucket{";
-        const SUM: &str = "llmgw_request_duration_seconds_sum{";
-        const COUNT: &str = "llmgw_request_duration_seconds_count{";
         let line = samples[at];
+        let (family, timed) = MEASURED.iter().find(|(family, _)| {
+            line.strip_prefix(family)
+                .is_some_and(|rest| rest.starts_with('_'))
+        })?;
+        let (bucket_prefix, sum_prefix, count_prefix) = (
+            format!("{family}_bucket{{"),
+            format!("{family}_sum{{"),
+            format!("{family}_count{{"),
+        );
         let (series, value) = line.rsplit_once(' ')?;
         let number = |text: &str| text.parse::<f64>().ok();
-        if let Some(labels) = series.strip_prefix(SUM) {
+        if let Some(labels) = series.strip_prefix(sum_prefix.as_str()) {
             let count = samples
                 .iter()
-                .find_map(|other| other.strip_prefix(COUNT)?.strip_prefix(labels))
+                .find_map(|other| {
+                    other
+                        .strip_prefix(count_prefix.as_str())?
+                        .strip_prefix(labels)
+                })
                 .and_then(|rest| number(rest.trim()))?;
-            let bounded =
-                number(value).is_some_and(|sum| (0.0..=count * run.as_secs_f64()).contains(&sum));
+            let bound = if *timed {
+                count * run.as_secs_f64()
+            } else {
+                f64::MAX
+            };
+            let bounded = number(value).is_some_and(|sum| (0.0..=bound).contains(&sum));
             return Some(if bounded {
                 format!("{series} bounded")
             } else {
                 line.to_owned()
             });
         }
-        if !series.starts_with(BUCKET) || series.ends_with("le=\"+Inf\"}") {
+        if !series.starts_with(bucket_prefix.as_str()) || series.ends_with("le=\"+Inf\"}") {
             return None;
         }
         let model = &series[..series.find(",le=")?];
@@ -2609,7 +2660,7 @@ mod relay {
                 results.push("no-response".to_owned());
                 continue;
             };
-            let addr = serving.handle.local_addr();
+            let addr = crate::gateway::loopback(serving.handle.local_addr());
             if matches!(step, Step::MarkReady) {
                 serving.handle.mark_ready();
                 results.push("ok".to_owned());
@@ -2618,7 +2669,7 @@ mod relay {
             if let Step::Scrape { listener, .. } = step {
                 scrape_number += 1;
                 let addr = if listener.unwrap_or(false) {
-                    serving.metrics
+                    serving.metrics.map(crate::gateway::loopback)
                 } else {
                     Some(addr)
                 };
@@ -2659,7 +2710,7 @@ mod relay {
             };
             results.push(summary(&received, &progress));
             let body = String::from_utf8_lossy(&received.body).into_owned();
-            bodies.push(redact_seals(&body));
+            bodies.push(page_fact(&redact_seals(&body)));
             if let Some(slot) = answered.last_mut() {
                 *slot = Some(body);
             }

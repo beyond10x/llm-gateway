@@ -65,6 +65,9 @@ impl<T: RunpodTransport> RunpodTransport for LoopbackProbe<T> {
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
         self.inner.container_started_at(pod_id)
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.inner.pod_placement(pod_id)
+    }
 }
 
 /// Reaches every pod at the loopback pod.
@@ -170,6 +173,7 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
     let connectors = Connectors::new(&fixture);
     connectors.script(&serde_json::json!({
         "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
+        "invoke pods.list machine": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pod.create": [created(&running_small_pod())],
     }));
     let deployment = load(&fixture.config(&connected_document(

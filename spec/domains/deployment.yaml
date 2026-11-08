@@ -318,10 +318,12 @@ types:
   - name: llm-gateway.deployment.ProviderKind
     kind: enum
     variants: [RunpodVllm]
-  # `cloud_type`: `SECURE` or `COMMUNITY`, default `SECURE`; maps onto llm_runpod::CloudType.
+  # `cloud_type`: only `SECURE`, the default; maps onto llm_runpod::CloudType. DECIDED 2026-11-04
+  # (story:secure-cloud-enforced): `COMMUNITY` is gone, and a document naming it is
+  # `config:schema`.
   - name: llm-gateway.deployment.CloudType
     kind: enum
-    variants: [Secure, Community]
+    variants: [Secure]
   # `wires` entries: `chat`, `responses`, `messages` (llmgw `src/config.rs:56-64`).
   - name: llm-gateway.deployment.Wire
     kind: enum
@@ -349,6 +351,24 @@ types:
   # (`config:value`).
   # `connectors`, optional: when present the provider's pods are reached through the connectors
   # connection it names, and the table is closed.
+  # DECIDED 2026-11-04 (story:keychain-references): `api_key`, optional, is a
+  # `keychain:<service>/<account>` reference to the account's Runpod API key, read once at start
+  # from the OS keychain (the keychain rule, below); the provider's pods are then managed through
+  # Runpod's REST API by the binary itself (llm-gateway.runpod `RestRunpod`). It is refused beside
+  # `connectors` (`config:value` naming `providers.<name>.api_key`), and at most one provider
+  # declares `connectors` or `api_key` (`config:value` naming `providers`). An entry that cannot
+  # be read refuses the start as `endpoint-credential:<rule>`, its message starting
+  # `providers.<name>.api_key:`. Proved by crates/llm-gateway-cli/tests/keychain.rs.
+  # The keychain rule: a reference is `keychain:<service>/<account>`, split at the first `/`, each
+  # name 1..=256 printable ASCII characters without a space (`config:value` naming the key
+  # otherwise, quoting nothing written). The entry is read once at start through
+  # `secret-tool lookup service <s> account <a>` (Linux) or `security find-generic-password -s <s>
+  # -a <a> -w` (macOS), whose arguments are the two names only, and taken by the credential-file
+  # token rule; a missing entry or an unreadable keychain is `<source>:unreadable`, the source
+  # being the key's own. ModelDeclaration `vllm_api_key` (`vllm-api-key`), HostedDeclaration
+  # `credential` (`endpoint-credential`; refused beside `credential_file` and on a Bedrock model)
+  # and a routes document endpoint's `auth.secret` take one too. No message names the reference or
+  # the value.
   # DECIDED 2026-10-16 (story:spend-caps): `daily_cap_usd` and `total_cap_usd`, optional, are the
   # spend ceilings of this provider's own account in USD (llm-gateway.runpod.SpendLedger), binding
   # only a pool built for this provider (Deployment, SpendPolicy); absent is no ceiling of
@@ -363,6 +383,7 @@ types:
       - {name: kind, type: llm-gateway.deployment.ProviderKind}
       - {name: cloud_type, type: llm-gateway.deployment.CloudType}
       - {name: connectors, type: 'Optional<llm-gateway.deployment.ConnectorsDeclaration>'}
+      - {name: api_key, type: 'Optional<String>'}
       - {name: daily_cap_usd, type: 'Optional<Decimal>'}
       - {name: total_cap_usd, type: 'Optional<Decimal>'}
   # `[providers.<name>.connectors]`: how the binary reaches the connectors owner process that
@@ -474,6 +495,7 @@ types:
       - {name: start_wait_seconds, type: Integer}
       - {name: request_hold_seconds, type: Integer}
       - {name: vllm_api_key_file, type: 'Optional<String>'}
+      - {name: vllm_api_key, type: 'Optional<String>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: price_per_hour_usd, type: 'Optional<Decimal>'}
   # One `[[models.<alias>.profiles]]` entry (story:model-profile-fallback): the
@@ -518,9 +540,31 @@ types:
   #                      DECIDED 2026-10-16 (story:hosted-base-path): a path was refused before;
   #                      a vendor whose API lives below a prefix (`https://openrouter.ai/api/v1`)
   #                      is now reached without a proxy in front of it
-  #   auth_kind          `anonymous`, `bearer` or `api-key` (`aws-sigv4` is a Bedrock model's
-  #                      alone and is `config:schema` here)
-  #   credential_file    absent exactly when `auth_kind` is `anonymous`; read through the
+  #   auth_kind          `anonymous`, `bearer`, `api-key` or `client` (`aws-sigv4` is a Bedrock
+  #                      model's alone and is `config:schema` here). `client` (DECIDED 2026-11-04,
+  #                      story:subscription-passthrough) forwards the client's own
+  #                      `authorization` and `x-api-key`, every other header but the hop-by-hop
+  #                      ones, and the body, unchanged, and is `config:value` unless `base_url` is
+  #                      `https://api.anthropic.com`, `wires` is `["messages"]`, the document's
+  #                      `ingress_auth` is `none`, and the entry has no `credential_file`, no
+  #                      `reasoning_effort` and no static header of those four names
+  #   model_prefix       optional, 1..=64 printable ASCII without a space: every model name
+  #                      starting with it is served by this entry too and relayed as the client
+  #                      sent it; the longest prefix wins and an alias matched exactly wins over
+  #                      every prefix. `config:value` on a `bedrock` model
+  #   newest             optional, on a `client` entry only: a family of 1..=32 lower-case
+  #                      letters, digits and `-`; the alias is sent as the newest model of the
+  #                      family the endpoint lists for the client's own credential
+  #                      (`GET /v1/models?limit=1000`, remembered for an hour)
+  #   retry_max_attempts optional, on a `client` entry only, 1..=10 (default 4): the most
+  #                      attempts a call makes on a 429, 502, 503 or 529 before any answer byte
+  #                      reached the client. A client that sends `x-stainless-retry-count`
+  #                      retries on its own and gets one attempt (DECIDED 2026-11-04)
+  #   retry_max_wait     optional, on a `client` entry only, 0..=600 seconds (default 60): the
+  #                      most a call waits for its retries in all
+  #   compact_window     optional, 100000..=1000000 tokens: the auto-compact window
+  #                      `b10x-llm-gateway claude` gives Claude Code for this model
+  #   credential_file    absent exactly when `auth_kind` is `anonymous` or `client`; read through the
   #                      trusted-file reader (`endpoint-credential:<rule>`). A credential goes
   #                      over `https`, or over `http` to a loopback host only (`base_url`)
   #   credential_header  present exactly when `auth_kind` is `api-key`: 1..=64 RFC 9110 token
@@ -607,6 +651,7 @@ types:
       - {name: max_output_tokens, type: 'Optional<Integer>'}
       - {name: anthropic_beta, type: 'List<String>'}
       - {name: credential_file, type: 'Optional<String>'}
+      - {name: credential, type: 'Optional<String>'}
       - {name: credential_header, type: 'Optional<String>'}
       - {name: headers, type: 'Map<String, String>'}
       - {name: billing_kind, type: llm-gateway.upstream.BillingKind}
@@ -614,6 +659,11 @@ types:
       - {name: context_window, type: 'Optional<Integer>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: reasoning_effort, type: 'Optional<llm-gateway.deployment.HostedReasoningEffort>'}
+      - {name: model_prefix, type: 'Optional<String>'}
+      - {name: newest, type: 'Optional<String>'}
+      - {name: retry_max_attempts, type: 'Optional<Integer>'}
+      - {name: retry_max_wait, type: 'Optional<Integer>'}
+      - {name: compact_window, type: 'Optional<Integer>'}
   # One endpoint of a routes document (RoutesDeclaration), as llm 0.20.0 reads it
   # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
   # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,
@@ -627,6 +677,7 @@ types:
       - {name: auth_kind, type: llm-gateway.upstream.AuthKind}
       - {name: credential_header, type: 'Optional<String>'}
       - {name: credential_file, type: 'Optional<String>'}
+      - {name: credential_keychain, type: 'Optional<String>'}
   # One route of a routes document: the endpoint its model names (before the model's first `/`),
   # the model id sent upstream (after it), and its capabilities, llm's declared ones or llm's
   # defaults for a route written as a plain `<endpoint>/<model-id>` (every boolean true, efforts
@@ -653,11 +704,15 @@ types:
   #                     `file:` path, a route to an undeclared endpoint, …) is `config:value`, its
   #                     message `routes <llm's message>`, which names a field, endpoint or route
   #                     and never a value
-  #   the credential rule  credentials come only from trusted files: a `file:` secret is read
+  #   the credential rule  credentials come from trusted files and the OS keychain: a `file:`
+  #                     secret is read
   #                     once at start through the trusted-file reader with the endpoint-credential
   #                     policy (`endpoint-credential:<rule>`), a `~/` path resolved against `HOME`
   #                     (`config:value` naming `routes.<endpoint>.auth.secret` when `HOME` is
-  #                     unset or not absolute). An `env:` or `keychain:` secret is `config:value`
+  #                     unset or not absolute). A `keychain:<service>/<account>` secret is read
+  #                     once at start from the OS keychain (ProviderDeclaration's keychain rule, DECIDED 2026-11-04,
+  #                     story:keychain-references; RouteEndpointDeclaration `credential_keychain`).
+  #                     An `env:` secret, or a malformed `keychain:` one, is `config:value`
   #                     naming `routes.<endpoint>.auth.secret`. An `api-key` endpoint's
   #                     `auth.header` must also pass HostedDeclaration's `credential_header` rule
   #                     (`config:value` naming `routes.<endpoint>.auth.header`), and on a
@@ -758,6 +813,52 @@ types:
       - {name: models, type: 'Map<String, llm-gateway.deployment.ModelDeclaration>'}
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}
       - {name: routes, type: 'Optional<String>'}
+      - {name: watchdog, type: 'Optional<llm-gateway.deployment.WatchdogDeclaration>'}
+      - {name: launch, type: 'Optional<llm-gateway.deployment.LaunchDeclaration>'}
+  # DECIDED 2026-11-04 (story:live-dashboard): `[launch]`, optional, what `b10x-llm-gateway
+  # claude` and `b10x-llm-gateway codex` start their agent with. Both read the running gateway's
+  # `GET /v1/launch` and refuse a document whose `ingress_auth` is not `none`. `claude.main_model`
+  # (default `opus`) is the `--model` unless the arguments name one; `claude.implementer_route`
+  # (default `qwen`) is what `CLAUDE_CODE_SUBAGENT_MODEL` names; `claude.agents`, a JSON object,
+  # is passed as `--agents`; `claude.subagent_instruction` (a default text naming `{route}` and
+  # `{model}`; empty adds nothing) is appended with `--append-system-prompt`, joined after the
+  # user's own. `codex.model` (default `qwen`) is the route Codex starts on unless its arguments
+  # name a model. Proved by crates/llm-gateway-cli/tests/launch_claude.rs.
+  - name: llm-gateway.deployment.LaunchDeclaration
+    kind: struct
+    fields:
+      - {name: claude_main_model, type: 'Optional<String>'}
+      - {name: claude_implementer_route, type: 'Optional<String>'}
+      - {name: claude_agents, type: 'Optional<String>'}
+      - {name: claude_subagent_instruction, type: 'Optional<String>'}
+      - {name: codex_model, type: 'Optional<String>'}
+  # DECIDED 2026-11-04 (story:pod-watchdog): `[watchdog]`, optional. With it `serve` writes a
+  # heartbeat (format `llm-gateway.heartbeat/1`: pid, time, controller identity, and per route
+  # the end of its last call and its calls in flight) every `heartbeat_seconds` (1..=60, 10) to
+  # `heartbeat_file` (default `$XDG_STATE_HOME/llm-gateway/heartbeat.json`, else
+  # `$HOME/.local/state/llm-gateway/heartbeat.json`), written to a temporary file, mode 0600, and
+  # renamed. `b10x-llm-gateway watchdog`, a separate process, reads the Runpod account every
+  # `poll_seconds` (10..=3600, 60) and terminates a pod the gateway owns (name prefix
+  # `b10x-llm-` and owner tag `b10x-llm-gateway`) when, in this order: the balance is under
+  # `min_balance_usd` (0..=100000, 5); the heartbeat is missing or older than `stale_minutes`
+  # (1..=1440, 5, at least three heartbeat intervals); the pod has run longer than
+  # `max_runtime_hours` (1..=720, 24); it has not been ready for `not_ready_minutes` (1..=1440,
+  # 45); or the heartbeat lists its model with no call in flight and the last call ended longer
+  # ago than the model's `idle_timeout_minutes`, never less than `stale_minutes`. It never
+  # terminates any other pod. Each termination, and each failed account read, is one JSON line
+  # (`llm-gateway.watchdog/1`) on standard error. A value outside its range is `config:value`
+  # naming `watchdog.<key>`. Proved by `watchdog::tests` and `heartbeat::tests` in
+  # crates/llm-gateway-cli/src.
+  - name: llm-gateway.deployment.WatchdogDeclaration
+    kind: struct
+    fields:
+      - {name: heartbeat_file, type: 'Optional<String>'}
+      - {name: heartbeat_seconds, type: Integer}
+      - {name: poll_seconds, type: Integer}
+      - {name: stale_minutes, type: Integer}
+      - {name: not_ready_minutes, type: Integer}
+      - {name: max_runtime_hours, type: Integer}
+      - {name: min_balance_usd, type: Decimal}
   # Why `b10x-llm-gateway credential set` refused (CredentialSetCommand), reported as
   # `credential:<rule>`:
   #   `credential:unknown-target`     `--model` names no `[hosted.*]` or `[models.*]` alias, or

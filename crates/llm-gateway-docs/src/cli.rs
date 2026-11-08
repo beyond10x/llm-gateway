@@ -80,8 +80,9 @@ pub fn page_for(mut root: clap::Command) -> String {
     }
     out.push_str(
         "\nThe serving command line takes nothing else: a positional argument or another option is \
-         a usage error. The one other command, `credential set` below, is reached only when \
-         `credential` is the first argument. The document the option names is described in \
+         a usage error. The other commands below, `serve`, `watchdog` and `credential set`, are \
+         reached only when their name is the first argument. The document the option names is \
+         described in \
          [the deployment document](./deployment-document.md).\n\n\
          ## Exit status\n\n| Status | When | Last line on standard error |\n| --- | --- | --- |\n\
          | 0 | stopped by SIGINT or SIGTERM after every accepted request was answered | \
@@ -94,6 +95,26 @@ pub fn page_for(mut root: clap::Command) -> String {
          `RUST_LOG` sets the level of the structured events it writes beside these lines \
          (default `info`).\n",
     );
+    out
+}
+
+/// The section for a command line reached by its first argument (`serve`, `watchdog`): its
+/// about text, usage line and options.
+fn command_section(mut command: clap::Command) -> String {
+    command.build();
+    let name = command
+        .get_bin_name()
+        .unwrap_or(command.get_name())
+        .to_owned();
+    let mut out = format!(
+        "\n## `{name}`\n\n> {}\n\n```text\n{}\n```\n\n\
+         | Option | Required | Default | Meaning |\n| --- | --- | --- | --- |\n",
+        cell(&text(command.get_long_about().or(command.get_about()))),
+        command.render_usage().to_string().trim_end(),
+    );
+    for row in arguments(&command) {
+        let _ = writeln!(out, "| {} |", row.join(" | "));
+    }
     out
 }
 
@@ -125,6 +146,27 @@ fn subcommand_section(mut command: clap::Command, leaf: &str) -> String {
 /// The CLI reference page for `b10x-llm-gateway`.
 pub fn page() -> String {
     let mut out = page_for(llm_gateway_cli::cli::Cli::command());
+    out.push_str(&command_section(llm_gateway_cli::cli::ServeCli::command()));
+    out.push_str(
+        "\n`serve` serves exactly as the closed command line does, with the same exit statuses and \
+         lines. Without `--config` it reads `$XDG_CONFIG_HOME/llm-gateway/config.toml`, or \
+         `~/.config/llm-gateway/config.toml` when `XDG_CONFIG_HOME` is unset or relative; with \
+         neither variable set it is refused `config:unreadable`. A usage error is \
+         ``b10x-llm-gateway: usage error (<kind>); see `b10x-llm-gateway serve --help` `` with exit \
+         status 2.\n",
+    );
+    out.push_str(&command_section(
+        llm_gateway_cli::cli::WatchdogCli::command(),
+    ));
+    out.push_str(
+        "\n`watchdog` reads the same document as `serve` and needs its `[watchdog]` table and one \
+         provider whose `api_key` is a keychain reference. It polls Runpod every `poll_seconds` and terminates only a \
+         pod the gateway owns (its name starts `b10x-llm-` and its owner tag names the gateway), \
+         writing one JSON line of format `llm-gateway.watchdog/1` on standard error for each, \
+         naming the pod and the rule. It stops on SIGINT or SIGTERM with exit status 0; a \
+         refused start exits 1 as `serve` does. [The `[watchdog]` table](./deployment-document.md#watchdog) \
+         lists its limits.\n",
+    );
     out.push_str(&subcommand_section(
         llm_gateway_cli::cli::CredentialCli::command(),
         "set",
@@ -143,6 +185,25 @@ pub fn page() -> String {
          exit status 2. [Store an upstream key](../guides/store-an-upstream-key.md) walks \
          through it.\n",
     );
+    out.push_str(&command_section(llm_gateway_cli::cli::ClaudeCli::command()));
+    out.push_str(
+        "\n`claude` asks the running gateway named by the document for its routes, writes the \
+         settings overlay and runs Claude Code with it; Claude Code's exit status is the \
+         command's. Unless the arguments name one, it adds `--model` with \
+         `[launch.claude].main_model`, `--agents` with `[launch.claude].agents` when that is \
+         set, and `--append-system-prompt` with `[launch.claude].subagent_instruction`, its \
+         `{route}` and `{model}` filled from the implementer route; when the arguments carry \
+         their own `--append-system-prompt`, the instruction is joined after that text, never \
+         in its place. An empty instruction adds nothing. A gateway that authenticates its owner \
+         is refused: the overlay would have to carry the owner token. \
+         [A local gateway for Claude Code](../guides/local-gateway-for-claude-code.md) walks \
+         through it.\n",
+    );
+    out.push_str(&command_section(llm_gateway_cli::cli::CodexCli::command()));
+    out.push_str(
+        "\n`codex` runs Codex with the gateway as a `-c` model-provider override; nothing is \
+         written under `~/.codex/`. Codex's exit status is the command's.\n",
+    );
     out
 }
 
@@ -159,6 +220,10 @@ mod tests {
         assert!(page.contains("| `--config <CONFIG>` | yes | none |"));
         assert!(!page.contains("`--help`"), "help and version are not rows");
         assert!(page.contains("## `b10x-llm-gateway credential set`"));
+        assert!(page.contains("## `b10x-llm-gateway serve`"));
+        assert!(page.contains("Usage: b10x-llm-gateway serve [OPTIONS]"));
+        assert!(page.contains("## `b10x-llm-gateway watchdog`"));
+        assert!(page.contains("| `--once` | no | none |"));
         assert!(page.contains("| `--model <ALIAS>` | no | none |"));
         assert!(page.contains("| `--no-probe` | no | none |"));
     }

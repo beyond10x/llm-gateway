@@ -3,8 +3,10 @@ domain: llm-gateway.telemetry
 # The gateway's counters and its per-call record (docs/llmgw-capability-matrix.md rows R4, O1, O2,
 # O3; story:gateway-observability). The `Relay` command of llm-gateway.gateway observes both: its
 # `records` fact holds one UsageRecord per call, and its `scrapes` fact holds what `GET /metrics`
-# served. PLANNED: the token counters and `reported_model` of UsageRecord, and their series, which
-# story:usage-records adds; no code fills them yet and every record carries them absent.
+# served. DECIDED 2026-11-04 (story:live-dashboard): the input, output, cache read and cache
+# creation counters are filled from the usage a copy of the answer carried, decoded when it is
+# content-encoded; a counter the answer did not report stays absent. PLANNED: `reported_model`
+# and `reasoning_output_tokens`, which story:usage-records adds; no code fills them yet.
 #
 # Series. llmgw serves 13 Prometheus counters at `GET /metrics`, all prefixed `llmgw_`
 # (llmgw src/lib.rs:144-180 at 048ebd8; llmgw README.md "Metrics"): eight process-wide and five

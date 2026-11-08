@@ -8,6 +8,7 @@ model; this repository answers them and, later, starts the pods they reach.
 **Documentation:** <https://beyond10x.github.io/llm-gateway/>, built from
 [`website/`](website/): [getting started](https://beyond10x.github.io/llm-gateway/docs/getting-started/),
 [set up a client](https://beyond10x.github.io/llm-gateway/docs/guides/set-up-a-client/),
+[a local gateway for Claude Code](https://beyond10x.github.io/llm-gateway/docs/guides/local-gateway-for-claude-code/),
 [translate between wires](https://beyond10x.github.io/llm-gateway/docs/guides/translate-between-wires/),
 [CLI reference](https://beyond10x.github.io/llm-gateway/docs/reference/cli/),
 [deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/),
@@ -58,7 +59,7 @@ in service until the capability matrix has no open gap and a cutover has been qu
 | `b10x-llm-gateway` | The single-owner gateway library: owner authentication, probes, the public model listing and setup instructions, route inventory, drain and stop |
 | `b10x-llm-gateway-cli` | The `b10x-llm-gateway` binary: one closed TOML deployment document, the gateway, a graceful stop on a signal |
 | `b10x-llm-provision` | The hosting lifecycle contract: resource identity, leases, stop obligations, and the in-process `FakeProvider` |
-| `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract: the in-process `EmulatedRunpod`, and `ConnectorsRunpod`, which reaches Runpod through the `connectors` CLI |
+| `b10x-llm-runpod` | A Runpod vLLM adapter behind that contract, on Secure Cloud on-demand pods of the `vllm/vllm-openai` image only: the in-process `EmulatedRunpod`, `ConnectorsRunpod`, which reaches Runpod through the `connectors` CLI, and `RestRunpod`, which calls Runpod's REST API with a key the process holds |
 | `b10x-llm-modal` | A Modal adapter; it exports nothing yet |
 | `llm-gateway-docs` | Generates the documentation site's CLI, crate and refusal references and its status page, checks them for drift, and binds a built site to its commit |
 
@@ -149,8 +150,14 @@ A `[models.<alias>]` table may name `vllm_api_key_file`: the file holding the ke
 pod's vLLM server expects, the same value stored as the model's Runpod secret. It is read once at
 startup under the owner secret's rules, except that any non-empty printable token of at most 4096
 bytes is accepted; a broken rule refuses the start as `vllm-api-key:<rule>`. The document holds no
-Runpod API key and refuses `runpod_api_key_file`: that key stays in connectors' keyring
-([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1).
+Runpod API key and refuses `runpod_api_key_file`: with a `connectors` table that key stays in
+connectors' keyring, and a gateway on an operator's own machine may instead name it as
+`[providers.<name>] api_key = "keychain:<service>/<account>"`, an OS keychain entry read once at
+start, and then calls Runpod's REST API itself
+([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1). The same reference
+names a model's `vllm_api_key`, a hosted model's `credential` and a route endpoint's
+`auth.secret` in place of a file
+([keychain references](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/#keychain-references)).
 
 A `[hosted.<alias>]` table serves a model from a hosted endpoint instead of a pod: `wires`,
 `base_url` (`http://` or `https://`, a `host[:port]` and an optional base path that replaces

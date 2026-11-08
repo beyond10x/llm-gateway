@@ -117,6 +117,10 @@ impl RunpodTransport for Counted {
         self.count();
         self.runpod.container_started_at(pod_id)
     }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.count();
+        self.runpod.pod_placement(pod_id)
+    }
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
         self.count();
         self.runpod.account_spend(day_start_ms)

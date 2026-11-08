@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.WatchdogDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
+    "contract_digest": "slice-sha256/2:894e388aa199b4c8e953d46094184cf480c337fe01559f095e71ff3061842002",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.WatchdogDeclaration": {
+      "title": "WatchdogDeclaration",
+      "x-ess-name": "llm-gateway.deployment.WatchdogDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "heartbeat_file": {
+          "type": "string"
+        },
+        "heartbeat_seconds": {
+          "type": "integer"
+        },
+        "poll_seconds": {
+          "type": "integer"
+        },
+        "stale_minutes": {
+          "type": "integer"
+        },
+        "not_ready_minutes": {
+          "type": "integer"
+        },
+        "max_runtime_hours": {
+          "type": "integer"
+        },
+        "min_balance_usd": {
+          "type": "string",
+          "format": "decimal",
+          "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+        }
+      },
+      "required": [
+        "heartbeat_seconds",
+        "poll_seconds",
+        "stale_minutes",
+        "not_ready_minutes",
+        "max_runtime_hours",
+        "min_balance_usd"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

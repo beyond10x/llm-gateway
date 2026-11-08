@@ -5,11 +5,13 @@
 //! `llm_provision::DeploymentSpec`: the hosting contract describes what any provider is asked
 //! for, and these are the settings only a Runpod vLLM pod has.
 
-/// Where a pod is placed. Runpod's own two words.
+/// Where a pod is placed. Only Runpod's Secure Cloud: Community Cloud hosts are third-party
+/// machines, and this adapter never asks for one. Every create also sends `interruptible:
+/// false`, and the placement Runpod reports back is checked after the create
+/// ([`PodPlacement`](crate::PodPlacement)).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CloudType {
     Secure,
-    Community,
 }
 
 impl CloudType {
@@ -17,10 +19,13 @@ impl CloudType {
     pub const fn as_str(self) -> &'static str {
         match self {
             Self::Secure => "SECURE",
-            Self::Community => "COMMUNITY",
         }
     }
 }
+
+/// The only images a pod may run: the vLLM project's OpenAI-compatible server, any tag.
+/// [`RunpodModel::validate`] refuses every other image as [`ConfigError::ImageNotAllowed`].
+pub const ALLOWED_IMAGE_PREFIX: &str = "vllm/vllm-openai:";
 
 /// Whether the model's chat template thinks by default.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -117,6 +122,8 @@ pub enum ConfigError {
     UnsafeText,
     /// Two profiles of one model share a name or a GPU type.
     ProfileConflict,
+    /// The image does not start with [`ALLOWED_IMAGE_PREFIX`].
+    ImageNotAllowed,
 }
 
 impl ConfigError {
@@ -128,6 +135,7 @@ impl ConfigError {
         Self::SecretReference,
         Self::UnsafeText,
         Self::ProfileConflict,
+        Self::ImageNotAllowed,
     ];
 
     /// The stable kebab-case code.
@@ -139,6 +147,7 @@ impl ConfigError {
             Self::SecretReference => "secret-reference",
             Self::UnsafeText => "unsafe-text",
             Self::ProfileConflict => "profile-conflict",
+            Self::ImageNotAllowed => "image-not-allowed",
         }
     }
 }
@@ -152,6 +161,7 @@ impl std::fmt::Display for ConfigError {
             Self::SecretReference => "the vLLM key secret name must be [A-Za-z0-9_]+",
             Self::UnsafeText => "a Runpod model value is empty or not printable",
             Self::ProfileConflict => "two profiles of a Runpod model share a name or a GPU type",
+            Self::ImageNotAllowed => "a Runpod model image is not an allowed vLLM server image",
         })
     }
 }
@@ -177,6 +187,13 @@ fn profile_name(value: &str) -> bool {
         && value
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_')
+}
+
+/// Whether a pod may run `image`: [`ALLOWED_IMAGE_PREFIX`] and a non-empty tag after it.
+pub(crate) fn image_allowed(image: &str) -> bool {
+    image
+        .strip_prefix(ALLOWED_IMAGE_PREFIX)
+        .is_some_and(|tag| !tag.is_empty())
 }
 
 /// The checks one profile's GPU types and vLLM settings answer, in [`RunpodModel::validate`]'s
@@ -284,6 +301,9 @@ impl RunpodModel {
                 return Err(ConfigError::ProfileConflict);
             }
             gpus.extend(own);
+        }
+        if !image_allowed(self.image.as_str()) {
+            return Err(ConfigError::ImageNotAllowed);
         }
         Ok(())
     }

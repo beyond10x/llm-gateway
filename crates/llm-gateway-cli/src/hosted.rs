@@ -163,6 +163,10 @@ pub enum EndpointCredential {
         header: CredentialHeader,
         key: TargetBearer,
     },
+    /// No credential of the gateway's: the client's own `authorization`, `x-api-key`,
+    /// `anthropic-version` and `anthropic-beta` are forwarded instead
+    /// (`llm_gateway::RelayModel::with_client_credentials`).
+    Client,
 }
 
 /// One hosted endpoint: where it is and what it is sent. It has no `Display`, and its `Debug`
@@ -236,6 +240,7 @@ impl HostedEndpoint {
             EndpointCredential::Anonymous => AuthKind::Anonymous,
             EndpointCredential::Bearer(_) => AuthKind::Bearer,
             EndpointCredential::ApiKey { .. } => AuthKind::ApiKey,
+            EndpointCredential::Client => AuthKind::Client,
         };
         let (scheme, authority, base_path) = Self::check(base_url, auth_kind)?;
         let opencode_go = is_opencode_go(scheme, authority, base_path.as_ref());
@@ -340,7 +345,7 @@ impl HostedEndpoint {
             let _written = write!(start, "{}: {}\r\n", header.name(), header.value());
         }
         let credential: [&[u8]; 4] = match &self.credential {
-            EndpointCredential::Anonymous => [b""; 4],
+            EndpointCredential::Anonymous | EndpointCredential::Client => [b""; 4],
             EndpointCredential::Bearer(bearer) => {
                 [b"authorization: Bearer ", b"", bearer.expose(), b"\r\n"]
             }
@@ -600,7 +605,7 @@ impl RelayTarget for HostedTarget {
 
     fn bearer(&self) -> Option<&TargetBearer> {
         match &self.endpoint.credential {
-            EndpointCredential::Anonymous => None,
+            EndpointCredential::Anonymous | EndpointCredential::Client => None,
             EndpointCredential::Bearer(bearer) => Some(bearer),
             EndpointCredential::ApiKey { key, .. } => Some(key),
         }
@@ -652,13 +657,15 @@ impl RelayTarget for HostedTarget {
     }
 }
 
-/// Every hosted model's endpoint, its credential file read once through the trusted-file reader,
-/// then every route's ([`crate::Routes::read_credentials`], [`crate::Routes::hosted_endpoints`]).
+/// Every hosted model's endpoint, its credential file read once through the trusted-file reader
+/// or its `credential` keychain entry once ([`crate::keychain`]), then every route's
+/// ([`crate::Routes::read_credentials`], [`crate::Routes::hosted_endpoints`]).
 ///
 /// # Errors
 /// An `endpoint-credential:*` [`Refusal`] for the first file, in alias order, that breaks a
-/// rule: every message starts `hosted.<alias>.credential_file:` and quotes neither the path nor
-/// the bytes. `config:value` for a declaration the loader would not have admitted.
+/// rule: every message starts `hosted.<alias>.credential_file:` or `hosted.<alias>.credential:`
+/// and quotes neither the path, the reference nor the bytes. `config:value` for a declaration
+/// the loader would not have admitted.
 pub(crate) fn hosted_endpoints(
     deployment: &Deployment,
 ) -> Result<BTreeMap<String, HostedEndpoint>, Refusal> {
@@ -685,16 +692,38 @@ pub(crate) fn hosted_endpoints(
                 )
             })
         };
-        let credential = match (
-            hosted.auth_kind,
-            &hosted.credential_file,
-            &hosted.credential_header,
-        ) {
+        // The keychain entry `credential` names, in place of the file (story:keychain-references).
+        let keychain = |reference: &crate::keychain::KeychainRef| {
+            let key = format!("{at}.credential");
+            let material = crate::keychain::read_keychain_token(
+                reference,
+                &key,
+                (
+                    StartupRefusal::EndpointCredentialUnreadable,
+                    StartupRefusal::EndpointCredentialTooLarge,
+                    StartupRefusal::EndpointCredentialNotAToken,
+                ),
+            )?;
+            TargetBearer::new(material).map_err(|error| {
+                Refusal::new(
+                    StartupRefusal::EndpointCredentialNotAToken,
+                    format!("{key}: {error}"),
+                )
+            })
+        };
+        let secret = match (&hosted.credential_file, &hosted.credential_keychain) {
+            (None, None) => None,
+            (Some(path), None) => Some(read(path)?),
+            (None, Some(reference)) => Some(keychain(reference)?),
+            (Some(_), Some(_)) => return Err(invalid("names its credential twice")),
+        };
+        let credential = match (hosted.auth_kind, secret, &hosted.credential_header) {
             (AuthKind::Anonymous, None, None) => EndpointCredential::Anonymous,
-            (AuthKind::Bearer, Some(path), None) => EndpointCredential::Bearer(read(path)?),
-            (AuthKind::ApiKey, Some(path), Some(header)) => EndpointCredential::ApiKey {
+            (AuthKind::Client, None, None) => EndpointCredential::Client,
+            (AuthKind::Bearer, Some(bearer), None) => EndpointCredential::Bearer(bearer),
+            (AuthKind::ApiKey, Some(key), Some(header)) => EndpointCredential::ApiKey {
                 header: header.clone(),
-                key: read(path)?,
+                key,
             },
             _ => return Err(invalid("declares a credential its auth_kind does not take")),
         };

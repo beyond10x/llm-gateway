@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.runpod.PodPlacement",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
+    "contract_digest": "slice-sha256/2:b1b93fa4d49e76545efa57db4bba3c8cd420914db89977ef0f311fa22c1e7e2e",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.runpod.PodPlacement": {
+      "title": "PodPlacement",
+      "x-ess-name": "llm-gateway.runpod.PodPlacement",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "secureCloud": {
+          "type": "boolean"
+        },
+        "interruptible": {
+          "type": "boolean"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

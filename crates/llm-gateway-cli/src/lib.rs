@@ -9,29 +9,44 @@
 //! serves, and stops gracefully on SIGINT or SIGTERM. Every
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
+mod account;
 mod bedrock;
 pub mod cli;
 mod config;
 mod credential;
+mod decode;
+pub mod heartbeat;
 mod hosted;
+mod keychain;
 mod keys;
+mod launch;
 mod logging;
 mod refusal;
 mod relaying;
 mod routes;
 mod seal;
-mod serve;
+pub(crate) mod serve;
 mod tls;
 mod translate;
 mod trusted;
+mod vllm_stats;
+mod watchdog;
 
-pub use config::{Bedrock, Deployment, Hosted, Model, Provider, ProviderKind, Wire, load, parse};
+pub use config::{
+    Bedrock, Deployment, Hosted, LaunchClaude, LaunchCodex, Model, Provider, ProviderKind,
+    WatchdogConfig, Wire, load, parse,
+};
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,
 };
+pub use decode::Decoder;
 pub use hosted::{
     BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
     HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, Scheme, check_headers,
+};
+pub use keychain::{
+    EntryValue, KEYCHAIN_PREFIX, KeychainRef, LookupFailure, MAX_KEYCHAIN_NAME_BYTES, OsKeychain,
+    SecretSource, install_secret_source,
 };
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use logging::{TracingRecords, install_logging, log_filter};

@@ -2,15 +2,23 @@
 //!
 //! Every call a Runpod adapter makes goes through [`RunpodTransport`], so the lifecycle can be
 //! driven end to end by [`EmulatedRunpod`](crate::EmulatedRunpod) without a socket, an HTTP
-//! client or a credential. The production transport, [`ConnectorsRunpod`], reaches Runpod's
-//! control plane only through the `connectors` CLI and its Runpod catalog bundle
-//! (`spec/domains/runpod.yaml`, `ConnectorsOperation`), and probes a pod's own `GET <endpoint>models`:
-//! an `http://` endpoint over a plain socket, an `https://` one over the TLS connection its
-//! embedding hands in ([`PodTls`]). It holds no HTTP client library, no TLS client and no
-//! control-plane credential.
+//! client or a credential. Two production transports reach Runpod's control plane:
+//!
+//! * [`ConnectorsRunpod`] only through the `connectors` CLI and its Runpod catalog bundle
+//!   (`spec/domains/runpod.yaml`, `ConnectorsOperation`). It never holds the Runpod key, so it
+//!   is the transport for a gateway in a cluster.
+//! * [`RestRunpod`] calls Runpod's REST API (`https://rest.runpod.io/v1`) itself with an API
+//!   key its embedding hands in, for a local gateway whose process reads the key through an OS
+//!   keychain reference. It speaks HTTP/1.1 over the [`PodTls`] connection the embedding hands
+//!   in, and also implements [`RunpodAccount`], the account view a watchdog reads.
+//!
+//! Both probe a pod's own `GET <endpoint>models`: an `http://` endpoint over a plain socket, an
+//! `https://` one over the TLS connection its embedding hands in ([`PodTls`]). The crate links
+//! no HTTP client library and no TLS client.
 
 mod connectors;
 mod probe;
+mod rest;
 
 use std::collections::BTreeMap;
 
@@ -18,6 +26,7 @@ use crate::{AccountSpend, CloudType};
 
 pub use connectors::{ConnectorsBinding, ConnectorsRunpod, POD_CREATE_BODY_KEYS, started_at_ms};
 pub use probe::{PodStream, PodTls};
+pub use rest::{RestBinding, RestRunpod};
 
 /// Runpod's own word for a pod's desired state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,6 +75,53 @@ pub struct PodRequest {
     pub network_volume_id: Option<String>,
     pub volume_mount_path: Option<String>,
     pub data_center_ids: Vec<String>,
+}
+
+/// Where Runpod placed a pod: its machine's `secureCloud` and the pod's `interruptible`, as
+/// `GET /pods/<id>?includeMachine=true` answers them. `None` is a field Runpod did not report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PodPlacement {
+    pub secure_cloud: Option<bool>,
+    pub interruptible: Option<bool>,
+}
+
+impl PodPlacement {
+    /// A Secure Cloud machine, and not an interruptible (spot) pod. Runpod omits
+    /// `interruptible` for an on-demand pod (observed 2026-11-04), so an absent one counts as
+    /// false; an absent `secureCloud` does not count as true.
+    pub fn is_secure_on_demand(&self) -> bool {
+        self.secure_cloud == Some(true) && self.interruptible != Some(true)
+    }
+}
+
+/// One pod as the account view lists it, for an operator's watchdog or dashboard.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PodSummary {
+    pub id: String,
+    pub name: String,
+    /// Runpod's `desiredStatus` as it answered it (`RUNNING`, `EXITED`, …).
+    pub desired_status: String,
+    pub cost_per_hour_usd: Option<f64>,
+    pub gpu: Option<String>,
+    pub uptime_seconds: Option<u64>,
+    /// Runpod's `lastStartedAt`, in milliseconds since the Unix epoch.
+    pub last_started_at_ms: Option<u64>,
+    /// The pod's [`TAG_OWNER`](crate::TAG_OWNER) environment value, if it carries one.
+    pub env_owner: Option<String>,
+}
+
+/// The account as one read sees it: balance, spend rate and every pod.
+#[derive(Debug, Clone, PartialEq)]
+pub struct AccountSnapshot {
+    pub balance_usd: Option<f64>,
+    pub spend_per_hour_usd: Option<f64>,
+    pub pods: Vec<PodSummary>,
+}
+
+/// An account-wide read for an operator's watchdog or dashboard. Allocates nothing.
+pub trait RunpodAccount {
+    /// The account's balance, spend rate and pods; `None` when the read failed.
+    fn account(&mut self) -> Option<AccountSnapshot>;
 }
 
 /// What a create call told us.
@@ -135,6 +191,10 @@ pub trait RunpodTransport {
     /// `lastStartedAt`), or `None` while that is unknown. A value later than the previous one
     /// means the container restarted.
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64>;
+    /// Where the pod was placed, read right after its create; `None` when the read failed or
+    /// did not find exactly this pod. Allocates nothing. The provider terminates a pod at once
+    /// unless this answers a [`PodPlacement::is_secure_on_demand`] placement.
+    fn pod_placement(&mut self, pod_id: &str) -> Option<PodPlacement>;
     /// The account's reported spend: since `day_start_ms` (the current UTC day's start, in
     /// milliseconds since the Unix epoch) and in all. Allocates nothing. `None` when the read
     /// failed or answered nothing, which the spend check never takes for a met ceiling; a

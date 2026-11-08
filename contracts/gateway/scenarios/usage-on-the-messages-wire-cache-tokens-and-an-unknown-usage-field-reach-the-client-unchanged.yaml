@@ -33,5 +33,5 @@ assert:
     invalidated: []
     released: 2
     records:
-    - model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=317 duration_ms=bounded tokens=absent
-    - model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1012 duration_ms=bounded tokens=absent
+    - model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=317 duration_ms=bounded tokens=reported
+    - model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=1012 duration_ms=bounded tokens=reported

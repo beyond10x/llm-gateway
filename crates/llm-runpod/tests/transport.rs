@@ -499,10 +499,119 @@ fn every_create_answer_that_is_not_a_definite_refusal_is_lost() {
     }
 }
 
+/// A pod entry as `pods.list` with `includeMachine` answers it: this `machine` object, and
+/// `interruptible` only when given, as Runpod omits it for an on-demand pod.
+fn placed(id: &str, machine: &Value, interruptible: Option<bool>) -> Value {
+    let mut pod = runpod_pod(id, "b10x-llm-qwen", "RUNNING");
+    pod["machine"] = machine.clone();
+    if let Some(interruptible) = interruptible {
+        pod["interruptible"] = json!(interruptible);
+    }
+    pod
+}
+
+/// story:secure-cloud-enforced: the placement is one `pods.list` with the pod's id and
+/// `includeMachine`, read from `machine.secureCloud` and `interruptible`; an absent
+/// `interruptible` is unreported, and a listing that does not hold exactly this pod answers
+/// nothing.
+#[test]
+fn a_placement_is_read_by_id_with_the_machine() {
+    use llm_runpod::PodPlacement;
+    let cases = [
+        (
+            listed(&json!([placed(
+                "abc123",
+                &json!({"secureCloud": true}),
+                None
+            )])),
+            Some(PodPlacement {
+                secure_cloud: Some(true),
+                interruptible: None,
+            }),
+        ),
+        (
+            listed(&json!([placed(
+                "abc123",
+                &json!({"secureCloud": false}),
+                Some(false)
+            )])),
+            Some(PodPlacement {
+                secure_cloud: Some(false),
+                interruptible: Some(false),
+            }),
+        ),
+        (
+            listed(&json!([placed(
+                "abc123",
+                &json!({"secureCloud": true}),
+                Some(true)
+            )])),
+            Some(PodPlacement {
+                secure_cloud: Some(true),
+                interruptible: Some(true),
+            }),
+        ),
+        (
+            listed(&json!([runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")])),
+            Some(PodPlacement {
+                secure_cloud: None,
+                interruptible: None,
+            }),
+        ),
+        (listed(&json!([])), None),
+        (
+            listed(&json!([
+                placed("abc123", &json!({"secureCloud": true}), None),
+                placed("abc123", &json!({"secureCloud": true}), None),
+            ])),
+            None,
+        ),
+        (failed("refused", "provider_refused"), None),
+    ];
+    for (at, (answer, expected)) in cases.into_iter().enumerate() {
+        let fixture = Fixture::new(&format!("placement_{at}"));
+        fixture.script(&json!({"invoke pods.list machine": [answer]}));
+        assert_eq!(
+            fixture.transport().pod_placement("abc123"),
+            expected,
+            "case {at}"
+        );
+        let calls = fixture.calls_of("invoke pods.list machine");
+        assert_eq!(calls.len(), 1, "case {at}");
+        assert_eq!(
+            input(&calls[0]),
+            json!({"id": "abc123", "includeMachine": true}),
+            "case {at}"
+        );
+    }
+}
+
+/// Through the provider: a created pod on a Community Cloud machine is terminated at once and
+/// the start is rejected, with no further create.
+#[test]
+fn a_community_pod_through_the_provider_is_terminated_and_rejected() {
+    let fixture = Fixture::new("provider_community");
+    fixture.script(&json!({
+        "invoke pod.create": [invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")}))],
+        "invoke pods.list machine": [listed(&json!([placed("abc123", &json!({"secureCloud": false}), None)]))],
+        "invoke pod.terminate": [invoked("applied", &json!({"status": 204}))],
+    }));
+    let outcome = provider(&fixture).create(&create_request());
+    assert_eq!(outcome.dispatch, Dispatch::Rejected);
+    assert_eq!(
+        fixture.calls_of("invoke pod.create").len(),
+        1,
+        "no second GPU"
+    );
+    let terminations = fixture.calls_of("invoke pod.terminate");
+    assert_eq!(terminations.len(), 1);
+    assert_eq!(input(&terminations[0]), json!({"podId": "abc123"}));
+}
+
 fn provider_model() -> RunpodModel {
     RunpodModel {
         hf_model: "Qwen/Qwen3".to_owned(),
-        image: Identifier::new("vllm-image").expect("image"),
+        image: Identifier::new("vllm/vllm-openai:v0.11.0").expect("image"),
         gpu_types: vec!["NVIDIA A40".to_owned(), "NVIDIA L40S".to_owned()],
         cloud_type: CloudType::Secure,
         container_disk_gb: 40,
@@ -544,7 +653,7 @@ fn create_request() -> CreateRequest {
             provider: Identifier::new("runpod").expect("provider"),
             account: Identifier::new("acct").expect("account"),
             model: Identifier::new("qwen").expect("model"),
-            image: Identifier::new("vllm-image").expect("image"),
+            image: Identifier::new("vllm/vllm-openai:v0.11.0").expect("image"),
             resource_name: Identifier::new("qwen").expect("name"),
             requested_lifetime_ms: 3_600_000,
         },
@@ -615,7 +724,9 @@ fn a_capacity_refusal_through_the_provider_moves_on_to_the_next_profile() {
         failed("refused", "capacity"),
         failed("refused", "capacity"),
         invoked("applied", &json!({"status": 201, "body": runpod_pod("abc123", "b10x-llm-qwen", "RUNNING")})),
-    ]}));
+    ],
+        "invoke pods.list machine": [listed(&json!([placed("abc123", &json!({"secureCloud": true}), None)]))],
+    }));
     let mut model = provider_model();
     model.profile = "small".to_owned();
     model.fallbacks = vec![RunpodProfile {

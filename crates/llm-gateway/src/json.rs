@@ -72,6 +72,22 @@ impl Writer {
         self.fresh = false;
     }
 
+    pub(crate) fn null(&mut self) {
+        self.separate();
+        self.out.push_str("null");
+        self.fresh = false;
+    }
+
+    /// A decimal with three fraction digits; a value that is not finite is `null`.
+    pub(crate) fn decimal(&mut self, value: f64) {
+        if !value.is_finite() {
+            return self.null();
+        }
+        self.separate();
+        let _ = std::fmt::Write::write_fmt(&mut self.out, format_args!("{value:.3}"));
+        self.fresh = false;
+    }
+
     pub(crate) fn finish(self) -> String {
         self.out
     }

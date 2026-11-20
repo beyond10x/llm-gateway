@@ -633,6 +633,12 @@ types:
   #                      dropped and logged by name. At most 32 distinct names, each by
   #                      `llm_core::anthropic_beta_name`; `config:value` on an endpoint and on
   #                      a model whose `api` is `converse`
+  #   reasoning_efforts  optional (story:bedrock-invoke-effort): the reasoning efforts the
+  #                      model takes as `output_config.effort`, each of `low`, `medium`,
+  #                      `high`, `xhigh` and `max` at most once; all five when undeclared on
+  #                      an `anthropic-invoke` model, `[]` for one that takes none. An effort
+  #                      outside the list is `translation-unsupported`. `config:value` on an
+  #                      endpoint, on a model whose `api` is `converse`, and for another name
   #   tool_calling       as an endpoint's, default `parsed`
   - name: llm-gateway.deployment.HostedDeclaration
     kind: struct
@@ -650,6 +656,7 @@ types:
       - {name: endpoint, type: 'Optional<String>'}
       - {name: max_output_tokens, type: 'Optional<Integer>'}
       - {name: anthropic_beta, type: 'List<String>'}
+      - {name: reasoning_efforts, type: 'Optional<List<String>>'}
       - {name: credential_file, type: 'Optional<String>'}
       - {name: credential, type: 'Optional<String>'}
       - {name: credential_header, type: 'Optional<String>'}

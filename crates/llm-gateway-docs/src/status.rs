@@ -244,8 +244,15 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Amazon Bedrock models",
-        "A [hosted.<alias>] model of kind = \"bedrock\" is served by llm's Bedrock client: region, model or inference-profile id, InvokeModel for an Anthropic id and Converse otherwise, every request signed with SigV4 from the container credentials endpoint (Amazon EKS Pod Identity). Chat tool turns stream their tool-call deltas or answer whole. A field Bedrock does not take is dropped and its name logged. Tested against a fixture Bedrock Runtime and credentials endpoint, not against AWS.",
+        "A [hosted.<alias>] model of kind = \"bedrock\" is served by llm's Bedrock client: region, model or inference-profile id, InvokeModel for an Anthropic id and Converse otherwise, every request signed with SigV4 from the container credentials endpoint (Amazon EKS Pod Identity). Chat tool turns stream their tool-call deltas or answer whole. A field a Converse model does not take is dropped and its name logged. Tested against a fixture Bedrock Runtime and credentials endpoint, not against AWS.",
         "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_a_streamed_chat_tool_turn_reaches_invoke_signed_and_answers_tool_call_deltas",
+        BEDROCK,
+    ),
+    shipped(
+        "Clients",
+        "A reasoning effort on a Bedrock InvokeModel model",
+        "A client's reasoning effort, on every wire, reaches an InvokeModel model's body as output_config.effort when the model's reasoning_efforts list holds it (low, medium, high, xhigh and max when undeclared); any other effort is refused translation-unsupported before anything is sent, never dropped. Tested against a fixture Bedrock Runtime, not against AWS.",
+        "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_an_effort_beside_adaptive_thinking_reaches_invoke_as_output_config_effort",
         BEDROCK,
     ),
     shipped(

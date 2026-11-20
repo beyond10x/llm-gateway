@@ -726,10 +726,10 @@ const fn field_name(ingress: Wire, field: Dropped) -> &'static str {
     }
 }
 
-/// A field a Bedrock target does not take.
+/// A field a Converse target does not take.
 #[derive(Clone, Copy)]
 enum Dropped {
-    /// Bedrock has no effort control on either operation.
+    /// llm's Converse encoder carries no effort (story:bedrock-invoke-effort keeps the drop).
     Effort,
     /// Converse has no parallel tool call control.
     ParallelToolCalls,
@@ -737,14 +737,16 @@ enum Dropped {
     Thinking,
 }
 
-/// Removes from `request` each field `route` does not take, logging its name, the alias and
-/// nothing else: no value, no prompt and no answer text.
+/// Removes from `request` each field a `converse` route does not take, logging its name, the
+/// alias and nothing else: no value, no prompt and no answer text. An `anthropic-invoke` route
+/// takes every one of them: its effort is checked against the model's `reasoning_efforts` by
+/// llm and sent as `output_config.effort`, or refused (story:bedrock-invoke-effort).
 fn drop_for_bedrock(ingress: Wire, alias: &str, route: &BedrockRoute, request: &mut TurnRequest) {
     let mut dropped = Vec::new();
-    if request.sampling.reasoning_effort.take().is_some() {
-        dropped.push(Dropped::Effort);
-    }
     if route.api() == Api::Converse {
+        if request.sampling.reasoning_effort.take().is_some() {
+            dropped.push(Dropped::Effort);
+        }
         if request.controls.parallel_tool_calls.take().is_some() {
             dropped.push(Dropped::ParallelToolCalls);
         }

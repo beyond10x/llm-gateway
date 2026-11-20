@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:bedrock-invoke-effort
 kind: story
-status: active
+status: implemented
 title: A reasoning effort reaches an Anthropic model on InvokeModel
 summary: output_config.effort reaches InvokeModel; reasoning_efforts lists what the model takes; an effort outside it is refused, never dropped
 relations:
@@ -31,10 +31,11 @@ scope:
   path: website/docs/guides/serve-a-bedrock-model.md
 - confidence: cited
   path: website/docs/reference/deployment-document.md
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-20T23:45:33Z", actor: "agent:ai-agent-platform", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-20T23:45:33Z", actor: "agent:ai-agent-platform", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-20T23:56:45Z", actor: "agent:ai-agent-platform", revision: 5, decided_on: {"recorded":{"test_result":1},"asserted":{"test_result":1}}}
 ---
 ## Source
 

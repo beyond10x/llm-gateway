@@ -817,10 +817,18 @@ credentials client gives up connecting after 5 s, reading
 after 10 s and in all after 30 s. The variables are read only when the document has a Bedrock
 model (`container-credentials:unset`, `container-credentials:uri`).
 
-Preparation differs from an endpoint's in three ways. A field Bedrock does not take is dropped,
-not refused, and its name alone is logged at `info` (`model`, `field`; never a value, a prompt or
-an answer): a reasoning effort on every Bedrock model, parallel tool calls on `converse`, and
-thinking on a model id that is not Anthropic's. A request without an output limit is sent
+Preparation differs from an endpoint's in four ways. A reasoning effort, from any client wire,
+reaches an `anthropic-invoke` model as llm's Messages encoder writes it, `output_config.effort`
+in the Invoke body, when the model's `reasoning_efforts` holds it: a Bedrock-only list of
+`low`, `medium`, `high`, `xhigh` and `max`, each at most once, all five when undeclared, `[]`
+for a model that takes no effort (`config:value` on an endpoint, on a `converse` model or for
+another name). An effort the list does not hold is refused `translation-unsupported` before
+anything is sent, never dropped. A field a `converse` model does not take is dropped, not
+refused, and its name alone is logged at `info` (`model`, `field`; never a value, a prompt or
+an answer): a reasoning effort and parallel tool calls, because llm's Converse encoder refuses
+both and Converse has no field of its own for either (an Anthropic model's effort could travel
+in `additionalModelRequestFields`, which llm does not write), and thinking on a model id that
+is not Anthropic's, which only Anthropic models take there. A request without an output limit is sent
 `min(16384, w / 2, m)` of its window `w` (200000 by default) and its `max_output_tokens` `m`
 (1 to `w`, `w` when undeclared, a Bedrock-only key the inventory lists); a request asking for
 more than `m` is refused as for any limit its capabilities set. And reasoning state a client sends

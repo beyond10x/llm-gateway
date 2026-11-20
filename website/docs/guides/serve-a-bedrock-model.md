@@ -46,6 +46,7 @@ list-inference-profiles` before you use it.
 | `context_window` | absent | 4096 to 2000000 tokens. Without one, the gateway works with 200000. |
 | `max_output_tokens` | the window | 1 to the window. The most output a turn may ask for; a turn naming none is given half the window, at most 16384 and at most this. The inventory lists it. |
 | `anthropic_beta` | empty | The `anthropic-beta` names a Messages client may send to this model, at most 32 distinct names of `A-Z a-z 0-9 - _ .`, each at most 128 bytes. `anthropic-invoke` only: refused on `converse`, an empty list too. See [Beta names](#beta-names). |
+| `reasoning_efforts` | all five | The efforts the model takes as `output_config.effort`: `low`, `medium`, `high`, `xhigh` and `max`, each at most once; `[]` for a model that takes none. `anthropic-invoke` only: refused on `converse`. |
 | `tool_calling` | `parsed` | `parsed` or `absent`. |
 
 The default `api` is `anthropic-invoke` when the model id is Anthropic's: its first dotted part
@@ -88,14 +89,30 @@ turns stream their tool-call deltas or answer whole, a one-token warm-up probe
 (`max_tokens: 1`) is answered, and Claude Code's `claude -p` turn reaches an Anthropic model
 through InvokeModel with its signed thinking carried back on the next turn.
 
-Bedrock does not take some fields a client sends. The gateway drops these and logs the field's
-name at `info`, never its value, and never prompt or answer text:
+A reasoning effort (`reasoning_effort`, `reasoning.effort`, `output_config.effort`) reaches an
+`anthropic-invoke` model in the InvokeModel body as `output_config.effort` when the model's
+`reasoning_efforts` holds it. An effort the list does not hold is refused
+`translation-unsupported`, and nothing is sent. Declare the list for a model that takes fewer
+efforts than all five, or `[]` for one that takes none:
+
+```toml
+[hosted.sonnet]
+kind = "bedrock"
+region = "eu-central-1"
+model_id = "eu.anthropic.claude-sonnet-4-6"
+credential_source = "container"
+reasoning_efforts = ["low", "medium", "high"]
+```
+
+A `converse` model does not take some fields a client sends, because llm's Converse encoder
+writes none of them. The gateway drops these and logs the field's name at `info`, never its
+value, and never prompt or answer text:
 
 | Field | Dropped on |
 | --- | --- |
-| A reasoning effort (`reasoning_effort`, `reasoning.effort`, `output_config.effort`) | every Bedrock model |
+| A reasoning effort (`reasoning_effort`, `reasoning.effort`, `output_config.effort`) | `converse` |
 | Parallel tool calls (`parallel_tool_calls`, `tool_choice.disable_parallel_tool_use`) | `converse` |
-| Thinking (`thinking`, `reasoning`) | a model id that is not Anthropic's |
+| Thinking (`thinking`, `reasoning`) | `converse`, for a model id that is not Anthropic's |
 
 A request without an output limit is sent half the context window, at most 16384 tokens. A
 `temperature` above 1 on `anthropic-invoke` and `output_config.format` are still refused, not

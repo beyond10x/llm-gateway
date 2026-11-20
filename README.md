@@ -44,7 +44,7 @@ never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never
 against a vendor API. A `[hosted.<alias>] kind = "bedrock"` model is translated and sent to
 Amazon Bedrock with llm's Bedrock client, signed from the container credentials endpoint (Amazon EKS Pod
-Identity), carrying a messages client's `anthropic-beta` names to InvokeModel only when the model's `anthropic_beta` list allows them; that path has run only against a fixture Bedrock Runtime, never against AWS. The hosting contract opens no socket and allocates nothing. The Runpod
+Identity), carrying a messages client's `anthropic-beta` names to InvokeModel only when the model's `anthropic_beta` list allows them and a client's reasoning effort as `output_config.effort` when the model's `reasoning_efforts` holds it (refused otherwise, never dropped); that path has run only against a fixture Bedrock Runtime, never against AWS. The hosting contract opens no socket and allocates nothing. The Runpod
 adapter's production transport reaches Runpod only through the `connectors` CLI; its tests run
 against `EmulatedRunpod` or a fixture of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
 provisions a resource.

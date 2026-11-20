@@ -113,8 +113,9 @@ fn provenance(alias: &str, model: &Bedrock) -> Result<Provenance, Error> {
 }
 
 /// What a Bedrock model is translated under: tools when it parses tool calls, temperature and
-/// `top_p`, no reasoning effort (it is dropped), its window or [`DEFAULT_CONTEXT_WINDOW`], its
-/// declared output limit or else the window, and streamed output.
+/// `top_p`, no reasoning effort (an `anthropic-invoke` model's `reasoning_efforts` are set on
+/// it in [`routes`]), its window or [`DEFAULT_CONTEXT_WINDOW`], its declared output limit or
+/// else the window, and streamed output.
 pub(crate) fn capabilities(
     window: Option<u32>,
     max_output: Option<u32>,
@@ -352,13 +353,17 @@ pub(crate) fn routes(
                 format!("hosted.{alias} cannot be served by llm's Bedrock client"),
             )
         };
+        let mut declared = capabilities(
+            model.context_window,
+            model.max_output_tokens,
+            model.tool_calling,
+        );
+        declared
+            .reasoning_efforts
+            .clone_from(&model.reasoning_efforts);
         let target = BedrockTarget::new(
             provenance(alias, model).map_err(|_| invalid())?,
-            capabilities(
-                model.context_window,
-                model.max_output_tokens,
-                model.tool_calling,
-            ),
+            declared,
             model.region.clone(),
             model.model_id.clone(),
             model.api,

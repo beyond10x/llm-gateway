@@ -172,9 +172,16 @@
     },
     {
       "area": "Relay",
-      "detail": "A [hosted.<alias>] model of kind = \"bedrock\" is served by llm's Bedrock client: region, model or inference-profile id, InvokeModel for an Anthropic id and Converse otherwise, every request signed with SigV4 from the container credentials endpoint (Amazon EKS Pod Identity). Chat tool turns stream their tool-call deltas or answer whole. A field Bedrock does not take is dropped and its name logged. Tested against a fixture Bedrock Runtime and credentials endpoint, not against AWS.",
+      "detail": "A [hosted.<alias>] model of kind = \"bedrock\" is served by llm's Bedrock client: region, model or inference-profile id, InvokeModel for an Anthropic id and Converse otherwise, every request signed with SigV4 from the container credentials endpoint (Amazon EKS Pod Identity). Chat tool turns stream their tool-call deltas or answer whole. A field a Converse model does not take is dropped and its name logged. Tested against a fixture Bedrock Runtime and credentials endpoint, not against AWS.",
       "href": "/docs/guides/serve-a-bedrock-model",
       "label": "Amazon Bedrock models",
+      "status": "shipped"
+    },
+    {
+      "area": "Clients",
+      "detail": "A client's reasoning effort, on every wire, reaches an InvokeModel model's body as output_config.effort when the model's reasoning_efforts list holds it (low, medium, high, xhigh and max when undeclared); any other effort is refused translation-unsupported before anything is sent, never dropped. Tested against a fixture Bedrock Runtime, not against AWS.",
+      "href": "/docs/guides/serve-a-bedrock-model",
+      "label": "A reasoning effort on a Bedrock InvokeModel model",
       "status": "shipped"
     },
     {

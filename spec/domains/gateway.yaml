@@ -724,10 +724,13 @@ entities:
   #      hosted model (llm-gateway.upstream.HostedEndpoint) is served as a model whose upstream
   #      wire is `messages` and which is translated only, so a request on every wire, the
   #      messages wire included, leaves the byte relay here; a relay without a translator
-  #      refuses it `wire-not-served`. The translator prepares it as above with three
-  #      differences. A field Bedrock does not take is dropped rather than refused, and its
-  #      name alone logged (a reasoning effort, on every Bedrock model; parallel tool calls on
-  #      `Converse`; thinking on a model id that is not Anthropic's). Carried reasoning state
+  #      refuses it `wire-not-served`. The translator prepares it as above with four
+  #      differences. A reasoning effort reaches an `AnthropicInvoke` model as
+  #      `output_config.effort` when the model's `reasoning_efforts` holds it, and is refused
+  #      `translation-unsupported` before anything is sent when it does not
+  #      (story:bedrock-invoke-effort). A field a `Converse` model does not take is dropped
+  #      rather than refused, and its name alone logged (a reasoning effort; parallel tool
+  #      calls; thinking on a model id that is not Anthropic's). Carried reasoning state
   #      a client sends back on the messages wire to an `AnthropicInvoke` model is passed to
   #      Bedrock as that model's own; any other is bound or refused as above. A messages
   #      client's `anthropic-beta` header to an `AnthropicInvoke` model whose `anthropic_beta`

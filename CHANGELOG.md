@@ -20,6 +20,10 @@ Nothing in any release is deployed or qualified against a live client.
 - Every created pod's placement is read back (`RunpodTransport::pod_placement`, `PodPlacement`: `GET /pods/<id>?includeMachine=true`, or `pods.list` with `includeMachine` through connectors). Unless `machine.secureCloud` is `true` and `interruptible` is not `true` (an absent `interruptible` counts as false, as Runpod omits it), the pod is terminated at once, no further GPU of the profile is tried and the start is refused; a terminate whose answer is lost is sent at most three times, and a pod still standing is never reported ready and is left to the orphan sweep. `crates/llm-runpod/tests/adversary_secure_cloud.rs`.
 - A Runpod model's image must start with `vllm/vllm-openai:` and name a tag (`ALLOWED_IMAGE_PREFIX`); any other is refused `image-not-allowed` (`ConfigError::ImageNotAllowed`), which the gateway reports `config:value`.
 
+### Changed
+
+- A reasoning effort now reaches an `anthropic-invoke` Bedrock model as `output_config.effort`, from every client wire, instead of being dropped. `[hosted.<alias>] reasoning_efforts` (Bedrock `anthropic-invoke` only; default `low`, `medium`, `high`, `xhigh`, `max`; `[]` for none) lists what the model takes; any other effort is refused `translation-unsupported` before anything is sent. A deployment whose model takes no effort or fewer levels declares the list. A `converse` model still drops an effort, parallel tool calls and non-Anthropic thinking, as `docs/gateway.md` says why.
+
 ### Removed
 
 - Community Cloud: `CloudType::Community` and the document's `cloud_type = "COMMUNITY"` are gone. A document naming `COMMUNITY` is refused `config:schema`; every create sends `cloudType: SECURE` and `interruptible: false`.

@@ -519,7 +519,8 @@ fn dropped(log: &[String], field: &str) -> bool {
 
 /// A streamed chat request with a tool reaches `InvokeModel` with response stream for the
 /// configured model id, signed with the container credentials; the tool call Bedrock streams is
-/// answered as chat tool-call deltas, and the effort Bedrock does not take is dropped by name.
+/// answered as chat tool-call deltas, and the client's effort reaches the body as
+/// `output_config.effort`.
 #[test]
 fn bedrock_a_streamed_chat_tool_turn_reaches_invoke_signed_and_answers_tool_call_deltas() {
     let deployment = Deployment::new("bedrock-chat-stream");
@@ -568,10 +569,10 @@ fn bedrock_a_streamed_chat_tool_turn_reaches_invoke_signed_and_answers_tool_call
     assert_eq!(sent["anthropic_version"], "bedrock-2023-05-31", "{sent}");
     assert!(sent.get("model").is_none(), "{sent}");
     assert!(sent.get("stream").is_none(), "{sent}");
-    assert!(sent.get("output_config").is_none(), "{sent}");
+    assert_eq!(sent["output_config"], json!({"effort": "high"}), "{sent}");
     assert_eq!(sent["tools"][0]["name"], "get_weather", "{sent}");
     assert_fetched(&credentials);
-    assert!(dropped(&log, "reasoning_effort"), "{log:?}");
+    assert!(!dropped(&log, "reasoning_effort"), "{log:?}");
     assert_quiet(&log);
 }
 
@@ -684,8 +685,8 @@ fn claude_code(name: &str, fixture: &str) -> (String, Value, Vec<String>) {
 }
 
 /// Claude Code's first turn reaches `InvokeModel` with its system blocks, `cache_control`,
-/// adaptive thinking and tools; its effort, which the target does not take, is dropped and
-/// logged by name; the tool call is answered as Messages events.
+/// adaptive thinking, tools and its effort `max`, which a model declaring no
+/// `reasoning_efforts` takes; the tool call is answered as Messages events.
 #[test]
 fn bedrock_claude_codes_first_turn_reaches_invoke_and_is_answered_on_messages() {
     let (answer, sent, log) = claude_code("bedrock-claude-code-1", CLAUDE_CODE_FIRST_TURN);
@@ -697,7 +698,8 @@ fn bedrock_claude_codes_first_turn_reaches_invoke_and_is_answered_on_messages() 
     assert_eq!(sent["anthropic_version"], "bedrock-2023-05-31", "{sent}");
     assert_eq!(sent["max_tokens"], fixture["max_tokens"], "{sent}");
     assert_eq!(sent["thinking"], json!({"type": "adaptive"}), "{sent}");
-    assert!(sent.get("output_config").is_none(), "{sent}");
+    assert_eq!(sent["output_config"], fixture["output_config"], "{sent}");
+    assert_eq!(sent["output_config"], json!({"effort": "max"}), "{sent}");
     assert!(sent.get("model").is_none(), "{sent}");
     assert!(sent.to_string().contains("cache_control"), "{sent}");
     assert_eq!(
@@ -705,7 +707,7 @@ fn bedrock_claude_codes_first_turn_reaches_invoke_and_is_answered_on_messages() 
         fixture["tools"].as_array().map(Vec::len),
         "{sent}"
     );
-    assert!(dropped(&log, "output_config.effort"), "{log:?}");
+    assert!(!dropped(&log, "output_config.effort"), "{log:?}");
     assert_quiet(&log);
 }
 
@@ -1812,4 +1814,226 @@ fn bedrock_a_token_link_resolving_outside_its_directory_is_refused() {
     assert!(!stderr.contains(&link.display().to_string()), "{stderr}");
     assert!(!stderr.contains(CONTAINER_TOKEN), "{stderr}");
     assert!(credentials.seen().is_empty(), "{:?}", credentials.seen());
+}
+
+// --- Criterion: a reasoning effort reaches InvokeModel (story:bedrock-invoke-effort) -----------
+
+/// A Sonnet 4.6 inference profile, as a deployment that serves Claude on Bedrock names it.
+/// Unverified against AWS; the fixture endpoint accepts any id.
+const SONNET_ID: &str = "eu.anthropic.claude-sonnet-4-6";
+
+/// The order lookup tool on the messages wire.
+fn lookup_order_tool() -> Value {
+    json!({"name": "lookup_order", "description": "Order status by id",
+        "input_schema": {"type": "object", "properties": {"order_id": {"type": "string"}},
+            "required": ["order_id"]}})
+}
+
+/// Posts each messages request in `requests` to a Bedrock alias for `model_id` declared with
+/// `lines`, answering each with `answer`, and returns every client answer, the body of each
+/// request Bedrock received, and the log.
+fn messages_bodies(
+    name: &str,
+    model_id: &str,
+    lines: &str,
+    answer: &[u8],
+    requests: &[Value],
+) -> (Vec<String>, Vec<Value>, Vec<String>) {
+    let deployment = Deployment::new(name);
+    let credentials = Recorder::credentials(4 * requests.len());
+    let bedrock = Recorder::start(EVENT_STREAM, vec![answer.to_vec(); requests.len()]);
+    let config = deployment.config(&bedrock_table("claude", model_id, &bedrock, lines));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let answers = requests
+        .iter()
+        .map(|request| server.post("/v1/messages", &request.to_string()))
+        .collect();
+    let log = server.log();
+    let bodies = bedrock.seen().iter().map(|seen| body(seen)).collect();
+    (answers, bodies, log)
+}
+
+/// Effort `low`, `medium` and `high` beside adaptive thinking reach a Sonnet 4.6 model's
+/// `InvokeModel` body as `output_config.effort`, `thinking` as sent; nothing is logged as
+/// dropped. The body is compared whole: the cache mark on the prompt is llm's automatic rolling
+/// breakpoint, which a request carrying no mark of its own is given.
+#[test]
+fn bedrock_an_effort_beside_adaptive_thinking_reaches_invoke_as_output_config_effort() {
+    let efforts = ["low", "medium", "high"];
+    let requests: Vec<Value> = efforts
+        .iter()
+        .map(|effort| {
+            json!({"model": "claude", "max_tokens": 4096, "stream": true,
+                "thinking": {"type": "adaptive"}, "output_config": {"effort": effort},
+                "messages": [{"role": "user", "content": PROMPT_MARKER}]})
+        })
+        .collect();
+    let (answers, bodies, log) =
+        messages_bodies("bedrock-effort", SONNET_ID, "", &invoke_text(), &requests);
+    for answer in &answers {
+        assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+        assert!(answer.contains(ANSWER_MARKER), "{answer}");
+    }
+    assert_eq!(bodies.len(), efforts.len(), "{bodies:?}");
+    for (effort, sent) in efforts.iter().zip(&bodies) {
+        assert_eq!(
+            *sent,
+            json!({
+                "anthropic_version": "bedrock-2023-05-31",
+                "max_tokens": 4096,
+                "messages": [{"role": "user", "content": [{"type": "text", "text": PROMPT_MARKER,
+                    "cache_control": {"type": "ephemeral"}}]}],
+                "thinking": {"type": "adaptive"},
+                "output_config": {"effort": effort},
+            }),
+            "{effort}"
+        );
+    }
+    assert!(!dropped(&log, "output_config.effort"), "{log:?}");
+    assert_quiet(&log);
+}
+
+/// A forced tool beside `thinking: disabled` and no effort, on Haiku 5.5, reaches the body as
+/// it was sent: the named tool choice, thinking disabled and no `output_config`.
+#[test]
+fn bedrock_a_forced_tool_with_thinking_disabled_reaches_invoke_as_sent() {
+    let request = json!({"model": "claude", "max_tokens": 4096, "stream": true,
+        "thinking": {"type": "disabled"},
+        "tool_choice": {"type": "tool", "name": "lookup_order"},
+        "tools": [lookup_order_tool()],
+        "messages": [{"role": "user", "content": PROMPT_MARKER}]});
+    let (answers, bodies, log) = messages_bodies(
+        "bedrock-forced-tool",
+        MODEL_ID,
+        "",
+        &invoke_call("lookup_order", "order_id"),
+        &[request],
+    );
+    assert!(
+        answers[0].starts_with("HTTP/1.1 200 OK\r\n"),
+        "{}",
+        answers[0]
+    );
+    assert!(
+        answers[0].contains("\"name\":\"lookup_order\""),
+        "{}",
+        answers[0]
+    );
+    assert_eq!(
+        bodies,
+        vec![json!({
+            "anthropic_version": "bedrock-2023-05-31",
+            "max_tokens": 4096,
+            "messages": [{"role": "user", "content": [{"type": "text", "text": PROMPT_MARKER,
+                "cache_control": {"type": "ephemeral"}}]}],
+            "thinking": {"type": "disabled"},
+            "tool_choice": {"type": "tool", "name": "lookup_order"},
+            "tools": [lookup_order_tool()],
+        })]
+    );
+    assert!(!log.iter().any(|line| line.contains("dropped")), "{log:?}");
+    assert_quiet(&log);
+}
+
+/// An effort the model's `reasoning_efforts` does not hold is refused `translation-unsupported`
+/// (400) at preparation, on the messages and the chat wire, and nothing reaches Bedrock; an
+/// effort the list holds is carried.
+#[test]
+fn bedrock_an_effort_the_model_does_not_take_is_refused_before_anything_is_sent() {
+    let deployment = Deployment::new("bedrock-effort-refused");
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&format!(
+        "{}{}",
+        bedrock_table(
+            "sonnet",
+            SONNET_ID,
+            &bedrock,
+            "reasoning_efforts = [\"low\", \"medium\", \"high\"]\n",
+        ),
+        bedrock_table("legacy", SONNET_ID, &bedrock, "reasoning_efforts = []\n"),
+    ));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let messages = |model: &str, effort: &str| {
+        json!({"model": model, "max_tokens": 64, "thinking": {"type": "adaptive"},
+            "output_config": {"effort": effort},
+            "messages": [{"role": "user", "content": PROMPT_MARKER}]})
+        .to_string()
+    };
+    for (case, path, request) in [
+        ("max on sonnet", "/v1/messages", messages("sonnet", "max")),
+        ("low on legacy", "/v1/messages", messages("legacy", "low")),
+        (
+            "chat minimal on sonnet",
+            "/v1/chat/completions",
+            json!({"model": "sonnet", "reasoning_effort": "minimal",
+                "messages": [{"role": "user", "content": PROMPT_MARKER}]})
+            .to_string(),
+        ),
+    ] {
+        let answer = server.post(path, &request);
+        assert!(answer.starts_with("HTTP/1.1 400 "), "{case}: {answer}");
+        assert!(
+            answer.contains("translation-unsupported"),
+            "{case}: {answer}"
+        );
+    }
+    assert!(bedrock.seen().is_empty(), "{:?}", bedrock.seen());
+    let answer = server.post("/v1/messages", &messages("sonnet", "high"));
+    let log = server.log();
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{seen:?}");
+    assert_eq!(body(&seen[0])["output_config"], json!({"effort": "high"}));
+    assert!(!dropped(&log, "effort"), "{log:?}");
+    assert_quiet(&log);
+}
+
+/// `reasoning_efforts` on an endpoint or on a `converse` model, or naming an effort outside
+/// `low`, `medium`, `high`, `xhigh` and `max`, or one twice, refuses the start `config:value`.
+#[test]
+fn bedrock_a_misdeclared_reasoning_efforts_list_is_refused_by_its_key() {
+    let deployment = Deployment::new("bedrock-efforts-document");
+    let credentials = Recorder::credentials(0);
+    let bedrock = Recorder::start(EVENT_STREAM, Vec::new());
+    let environment = Environment::container(&credentials, &deployment.token);
+    for (case, table) in [
+        (
+            "on an endpoint",
+            "[hosted.local]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nauth_kind = \"anonymous\"\nreasoning_efforts = [\"low\"]\n".to_owned(),
+        ),
+        (
+            "on converse",
+            bedrock_table(
+                "nova",
+                "eu.amazon.nova-fixture-v1:0",
+                &bedrock,
+                "reasoning_efforts = [\"low\"]\n",
+            ),
+        ),
+        (
+            "an unknown effort",
+            bedrock_table("sonnet", SONNET_ID, &bedrock, "reasoning_efforts = [\"turbo\"]\n"),
+        ),
+        (
+            "an effort twice",
+            bedrock_table(
+                "sonnet",
+                SONNET_ID,
+                &bedrock,
+                "reasoning_efforts = [\"low\", \"low\"]\n",
+            ),
+        ),
+    ] {
+        let config = deployment.config(&table);
+        let stderr = assert_refused(&config, &environment, "config:value");
+        assert!(stderr.contains("reasoning_efforts"), "{case}: {stderr}");
+        assert!(!stderr.contains(CONTAINER_TOKEN), "{case}: {stderr}");
+    }
 }

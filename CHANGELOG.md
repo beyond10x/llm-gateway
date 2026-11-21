@@ -7,6 +7,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+## 0.23.0 (2026-11-21)
+
 ### Added
 
 - `b10x-llm-gateway serve [--config <file>]` serves the default document, `$XDG_CONFIG_HOME/llm-gateway/config.toml` (else `~/.config/llm-gateway/config.toml`), when no file is named; the closed command line `b10x-llm-gateway <file>` is unchanged.

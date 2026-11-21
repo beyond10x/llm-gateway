@@ -10,7 +10,7 @@ source: docs/gateway.md (Translation), crates/llm-gateway/src/translate.rs, crat
 
 The binary answers all three wires for every model. When the client's wire is one the model
 declares, the request goes to the upstream byte for byte, as [the relay](../concepts/relay.md)
-describes. When it is not, the gateway decodes the request with llm 0.20.0's decoder for the
+describes. When it is not, the gateway decodes the request with llm 0.24.0's decoder for the
 client's wire, sends the turn to the upstream with llm's client for the model's **first** declared
 wire, and writes the answer back on the client's wire with llm's encoder.
 
@@ -75,7 +75,7 @@ outside the subset is a key the client chose and is written `?` after its locati
 
 ```text
 2026-10-30T06:21:22.887008Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=chat refusal=translation-unsupported refused="chat request field `n` is outside the published subset"
-2026-10-30T06:21:22.891160Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=responses refusal=translation-unsupported refused="request body carries a field outside the pinned subset: text.format"
+2026-10-30T06:21:22.891160Z  INFO llm_gateway_cli::translate: translation refused model="claude" ingress=responses refusal=translation-unsupported refused="binding does not take structured output"
 ```
 
 A responses request carrying Codex's `instructions`, and a chat request, are inside the subset:
@@ -233,8 +233,9 @@ Claude Code on `codex` is relayed to Anthropic as it sends its requests, `thinki
 with the route's `anthropic-version`. Codex's first turn to either route is translated and sent
 ([how](#claude-code-and-codex)). Claude Code's first turn reaches `claude` once the route is a
 mapping whose `capabilities` name `xhigh` among its `reasoning_efforts` and allow at least
-32000 `max_output_tokens`; `GET /` then profiles it there too. What llm still refuses is
-refused before any request leaves the gateway: here Codex asking for structured
+32000 `max_output_tokens`; `GET /` then profiles it there too. What llm, or the capabilities
+the gateway translates under, still refuse is refused before any request leaves the gateway:
+here Codex asking for structured
 output with `text.format` to `codex`, Claude Code's `thinking.display` and a thinking budget,
 which Chat Completions cannot hold, to `claude`:
 
@@ -323,10 +324,14 @@ that names no output limit gets half the model's window (200000 when it declares
   the user prompt, is carried to every upstream wire and to Bedrock. Leading ones join the
   system prompt in order. A later one stays at its place as user text in the mark
   `<system-message>\n<text>\n</system-message>`; after a tool call it follows the tool results.
-- **Still refused by name**: structured output (`output_config.format`, `text.format`,
-  `response_format`), `context_management`, `thinking.display`, hosted and custom tools, a
+- **Still refused by name**: `context_management`, `thinking.display`, hosted and custom tools, a
   thinking budget to a chat or responses upstream, and a `developer` message after the first
   item of Responses `input`.
+- **Structured output and images**: llm reads structured output (`output_config.format`,
+  `text.format`, `response_format`) and a user image on every client wire, but the gateway
+  translates under capabilities that declare both off, so a translated route, Bedrock's
+  included, refuses them `translation-unsupported` before any request leaves the gateway. A
+  model the client's wire reaches natively is sent both unchanged.
 - **Claude Code's structured output**: Claude Code sends `output_config.format` in side
   requests unless `CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS=1` is set, and every translated
   route, Bedrock's included, refuses it `translation-unsupported`. So the `GET /` block of a

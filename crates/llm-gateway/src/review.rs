@@ -2,7 +2,7 @@
 //!
 //! A gateway whose `ingress_auth` is `ServiceAccountToken` admits a model call whose bearer is
 //! the owner's, as `Bearer` does, or one that an injected [`CallerReview`] admits as a named
-//! [`Principal`]. The embedding implements the review (the binary asks the cluster's TokenReview
+//! [`Principal`]. The embedding implements the review (the binary asks the cluster's `TokenReview`
 //! API); this crate holds only the port, so it opens no connection and reads no file for it.
 //! A review that cannot be made is [`Review::Unavailable`], refused
 //! `credential-review-unavailable`; a gateway composed without a review refuses every caller but

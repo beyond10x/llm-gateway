@@ -646,6 +646,16 @@ impl Provocation {
     }
 }
 
+/// A model call under `ServiceAccountToken` presenting a bearer that is not the owner's, to a
+/// gateway composed with no review.
+fn unreviewed(path: &str) -> Provocation {
+    Provocation {
+        ingress: IngressAuth::ServiceAccountToken,
+        ..relayed(path, "{\"model\":\"none\"}")
+    }
+    .with_bearer(OTHER_SECRET)
+}
+
 fn plain(raw: &str) -> Provocation {
     owned(raw.to_string())
 }
@@ -708,11 +718,7 @@ fn provoke(code: RefusalCode) -> Provocation {
         },
         // A relay under `ServiceAccountToken` composed with no review: a bearer that is not the
         // owner's cannot be reviewed.
-        RefusalCode::CredentialReviewUnavailable => Provocation {
-            ingress: IngressAuth::ServiceAccountToken,
-            ..relayed(chat, "{\"model\":\"none\"}")
-        }
-        .with_bearer(OTHER_SECRET),
+        RefusalCode::CredentialReviewUnavailable => unreviewed(chat),
         RefusalCode::CredentialAbsent => plain("GET /v1/routes HTTP/1.1\r\nhost: h\r\n\r\n"),
         RefusalCode::CredentialRejected => owned(format!(
             "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OTHER_SECRET}\r\n\r\n"

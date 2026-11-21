@@ -1,5 +1,5 @@
 //! The binary's caller review (story:gateway-sa-token-ingress): a Kubernetes service-account
-//! token checked with the cluster's TokenReview API, for a document with
+//! token checked with the cluster's `TokenReview` API, for a document with
 //! `ingress_auth = "service-account-token"` (`spec/domains/deployment.yaml`,
 //! `TokenReviewDeclaration`).
 //!
@@ -37,10 +37,10 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-/// The path of the TokenReview API, `authentication.k8s.io/v1`.
+/// The path of the `TokenReview` API, `authentication.k8s.io/v1`.
 pub const TOKEN_REVIEW_PATH: &str = "/apis/authentication.k8s.io/v1/tokenreviews";
 
-/// The largest answer read from the TokenReview API; a longer one is malformed.
+/// The largest answer read from the `TokenReview` API; a longer one is malformed.
 const MAX_ANSWER_BYTES: usize = 64 * 1024;
 
 /// The bounds of the review. [`ReviewBounds::default`] is what the binary serves with and what
@@ -112,14 +112,14 @@ impl Failure {
     }
 }
 
-/// What the TokenReview API answered, read.
+/// What the `TokenReview` API answered, read.
 struct Answered {
     authenticated: bool,
     username: Option<String>,
     audiences: Vec<String>,
 }
 
-/// Reviews a caller's token with the cluster's TokenReview API.
+/// Reviews a caller's token with the cluster's `TokenReview` API.
 pub struct TokenReviewer {
     authority: String,
     audience: String,
@@ -291,7 +291,7 @@ impl TokenReviewer {
             return Err(("unauthenticated", None));
         }
         let username = answered.username;
-        if !answered.audiences.iter().any(|aud| *aud == self.audience) {
+        if !answered.audiences.contains(&self.audience) {
             return Err(("audience-not-admitted", username));
         }
         let Some(principal) = username
@@ -314,9 +314,13 @@ impl CallerReview for TokenReviewer {
         let now = (self.clock)();
         // A projected service-account token is a JWT; anything else is refused on its face. Its
         // `exp` is read unverified, only ever to refuse or to shorten a window, never to admit.
-        let Some(expires_ms) = expiry_ms(token) else {
-            refused("not-a-service-account-token", None);
-            return Review::Rejected;
+        let expires_ms = match expiry_ms(token) {
+            Expiry::NotAJwt => {
+                refused("not-a-service-account-token", None);
+                return Review::Rejected;
+            }
+            Expiry::Unstated => None,
+            Expiry::At(expires) => Some(expires),
         };
         if expires_ms.is_some_and(|expires| expires <= now) {
             refused("expired", None);
@@ -375,9 +379,27 @@ fn refused(reason: &'static str, principal: Option<&str>) {
     );
 }
 
-/// `Some(exp)` in milliseconds for a token of three non-empty base64url segments whose middle
-/// one is a JSON object (`Some(None)` when it has no numeric `exp`); `None` for anything else.
-fn expiry_ms(token: &[u8]) -> Option<Option<u64>> {
+/// What a token says of its own expiry, read unverified.
+#[derive(Debug, PartialEq, Eq)]
+enum Expiry {
+    /// Not three non-empty base64url segments whose middle one is a JSON object.
+    NotAJwt,
+    /// A JWT with no numeric `exp`.
+    Unstated,
+    /// A JWT whose `exp` is this many milliseconds since the epoch.
+    At(u64),
+}
+
+/// The expiry of a token of three non-empty base64url segments whose middle one is a JSON object.
+fn expiry_ms(token: &[u8]) -> Expiry {
+    claims_expiry(token).map_or(Expiry::NotAJwt, |exp| {
+        exp.map_or(Expiry::Unstated, Expiry::At)
+    })
+}
+
+/// `None` for a token that is not a JWT; `Some` with its `exp` in milliseconds when it has one.
+#[allow(clippy::option_option)]
+fn claims_expiry(token: &[u8]) -> Option<Option<u64>> {
     let mut segments = token.split(|byte| *byte == b'.');
     let (Some(header), Some(claims), Some(signature), None) = (
         segments.next(),
@@ -548,17 +570,20 @@ pub fn token_reviewer(deployment: &Deployment) -> Result<Option<TokenReviewer>, 
 
 #[cfg(test)]
 mod tests {
-    use super::{answered, certificates, expiry_ms};
+    use super::{Expiry, answered, certificates, expiry_ms};
 
     #[test]
     fn a_token_is_read_for_its_expiry_only_when_it_is_shaped_as_a_jwt() {
         // {"exp":1800000000}
         assert_eq!(
             expiry_ms(b"aGVhZGVy.eyJleHAiOjE4MDAwMDAwMDB9.c2ln"),
-            Some(Some(1_800_000_000_000))
+            Expiry::At(1_800_000_000_000)
         );
         // {"sub":"x"}
-        assert_eq!(expiry_ms(b"aGVhZGVy.eyJzdWIiOiJ4In0.c2ln"), Some(None));
+        assert_eq!(
+            expiry_ms(b"aGVhZGVy.eyJzdWIiOiJ4In0.c2ln"),
+            Expiry::Unstated
+        );
         for refused in [
             &b"opaque-token"[..],
             b"a.b",
@@ -569,7 +594,7 @@ mod tests {
         ] {
             assert_eq!(
                 expiry_ms(refused),
-                None,
+                Expiry::NotAJwt,
                 "{}",
                 String::from_utf8_lossy(refused)
             );

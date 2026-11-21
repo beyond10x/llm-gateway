@@ -115,7 +115,7 @@ impl ProxyConnector {
     }
 
     /// A connector trusting exactly `roots` (DER certificates) and nothing compiled in, each host
-    /// resolved and connected at its own port: the TokenReview client, which trusts the cluster's
+    /// resolved and connected at its own port: the `TokenReview` client, which trusts the cluster's
     /// CA from `token_review.ca_file`.
     ///
     /// # Errors

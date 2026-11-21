@@ -1,5 +1,5 @@
 //! The binary's service-account ingress (story:gateway-sa-token-ingress): the `[token_review]`
-//! keys of the closed document, the TokenReview call against a fake TokenReview API served over
+//! keys of the closed document, the `TokenReview` call against a fake `TokenReview` API served over
 //! TLS on loopback with a test root, every way it fails closed, the review cache's bounds, and the
 //! shipped binary admitting a reviewed token, recording its principal and logging no token.
 //! Nothing leaves the loopback interface and no cluster is reached.
@@ -15,7 +15,7 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
-    process::{Command, Stdio},
+    process::{Child, Command, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
@@ -29,7 +29,7 @@ use support::{Fixture, OWNER_SECRET, tls_pod::TestRoot};
 const AUDIENCE: &str = "llm-gateway";
 const AGENT: &str = "system:serviceaccount:agents:coding-agent";
 const OTHER_AGENT: &str = "system:serviceaccount:agents:other-agent";
-/// The gateway's own service-account token, which it presents to the TokenReview API.
+/// The gateway's own service-account token, which it presents to the `TokenReview` API.
 const OWN_TOKEN: &str = "gateway-own-token-not-a-secret-0123456789";
 const WAIT: Duration = Duration::from_secs(10);
 const LISTENING: &str = "b10x-llm-gateway: listening on ";
@@ -55,14 +55,14 @@ fn jwt(tag: &str, exp: Option<u64>) -> String {
     format!("{header}.{claims}.{signature}")
 }
 
-fn later() -> Option<u64> {
-    Some(now_seconds() + 3600)
+fn later() -> u64 {
+    now_seconds() + 3600
 }
 
-/// What the fake TokenReview API answers for one token.
+/// What the fake `TokenReview` API answers for one token.
 #[derive(Clone)]
 enum Answer {
-    /// A `201` TokenReview.
+    /// A `201` `TokenReview`.
     Review {
         authenticated: bool,
         username: &'static str,
@@ -70,7 +70,7 @@ enum Answer {
     },
     /// This status with an empty JSON object.
     Status(u16),
-    /// A `201` whose body is not a TokenReview.
+    /// A `201` whose body is not a `TokenReview`.
     Garbage,
     /// Nothing, for this long.
     Hang(Duration),
@@ -92,7 +92,7 @@ struct Asked {
     body: serde_json::Value,
 }
 
-/// A fake TokenReview API over TLS on loopback, with a certificate for `localhost` from a test
+/// A fake `TokenReview` API over TLS on loopback, with a certificate for `localhost` from a test
 /// root. It answers each review as `answers` says for its `spec.token`, and records each.
 struct FakeApi {
     address: SocketAddr,
@@ -332,7 +332,7 @@ fn advance(clock: &AtomicU64, by: Duration) {
 #[test]
 fn sa_an_allow_listed_account_for_the_audience_is_admitted_by_one_review() {
     let api = FakeApi::start();
-    let agent = jwt("agent", later());
+    let agent = jwt("agent", Some(later()));
     api.answer(&agent, admits(AGENT));
     let (reviewer, _) = reviewer("sa-admitted", &api, &[AGENT]);
     assert_eq!(reviewer.review(&token(&agent)), admitted(AGENT));
@@ -424,7 +424,7 @@ fn sa_every_failure_of_the_review_refuses_and_none_admits() {
         ),
     ];
     for (case, answer, expected, reviews) in cases {
-        let presented = jwt(case, later());
+        let presented = jwt(case, Some(later()));
         if let Some(answer) = answer {
             api.answer(&presented, answer);
         }
@@ -472,7 +472,7 @@ fn sa_an_unreachable_api_is_unavailable() {
         .unwrap()
         .unwrap();
     assert_eq!(
-        reviewer.review(&token(&jwt("agent", later()))),
+        reviewer.review(&token(&jwt("agent", Some(later())))),
         Review::Unavailable
     );
 }
@@ -493,7 +493,7 @@ fn sa_a_certificate_the_ca_did_not_issue_is_unavailable_and_sends_no_token() {
     let reviewer = token_reviewer(&llm_gateway_cli::parse(&text).unwrap())
         .unwrap()
         .unwrap();
-    let agent = jwt("agent", later());
+    let agent = jwt("agent", Some(later()));
     api.answer(&agent, admits(AGENT));
     assert_eq!(reviewer.review(&token(&agent)), Review::Unavailable);
     assert_eq!(
@@ -508,7 +508,7 @@ fn sa_a_certificate_the_ca_did_not_issue_is_unavailable_and_sends_no_token() {
 #[test]
 fn sa_an_admission_is_kept_sixty_seconds_and_then_reviewed_again() {
     let api = FakeApi::start();
-    let agent = jwt("agent", later());
+    let agent = jwt("agent", Some(later()));
     api.answer(&agent, admits(AGENT));
     let (reviewer, clock) = reviewer("sa-cache-window", &api, &[AGENT]);
     assert_eq!(reviewer.review(&token(&agent)), admitted(AGENT));
@@ -545,8 +545,8 @@ fn sa_an_admission_never_outlives_the_tokens_own_expiry() {
 #[test]
 fn sa_a_rejection_is_kept_three_seconds_at_most_and_an_unavailable_answer_not_at_all() {
     let api = FakeApi::start();
-    let refused = jwt("refused", later());
-    let failing = jwt("failing", later());
+    let refused = jwt("refused", Some(later()));
+    let failing = jwt("failing", Some(later()));
     api.answer(&refused, admits(OTHER_AGENT));
     api.answer(&failing, Answer::Status(503));
     let (reviewer, clock) = reviewer("sa-cache-rejection", &api, &[AGENT]);
@@ -566,7 +566,7 @@ fn sa_a_rejection_is_kept_three_seconds_at_most_and_an_unavailable_answer_not_at
 fn sa_the_cache_holds_its_entry_bound_and_lets_the_soonest_to_end_go_first() {
     let api = FakeApi::start();
     let tokens: Vec<String> = (0..3)
-        .map(|n| jwt(&format!("agent-{n}"), later()))
+        .map(|n| jwt(&format!("agent-{n}"), Some(later())))
         .collect();
     for presented in &tokens {
         api.answer(presented, admits(AGENT));
@@ -591,8 +591,8 @@ fn sa_the_cache_holds_its_entry_bound_and_lets_the_soonest_to_end_go_first() {
 #[test]
 fn sa_reviews_past_the_concurrency_bound_are_unavailable_at_once() {
     let api = FakeApi::start();
-    let slow = jwt("slow", later());
-    let quick = jwt("quick", later());
+    let slow = jwt("slow", Some(later()));
+    let quick = jwt("quick", Some(later()));
     api.answer(&slow, Answer::Hang(Duration::from_secs(3)));
     api.answer(&quick, admits(AGENT));
     let (reviewer, _) = reviewer("sa-concurrency", &api, &[AGENT]);
@@ -962,28 +962,9 @@ fn chat(address: SocketAddr, bearer: &str) -> (u16, String) {
     (status, code)
 }
 
-/// The shipped binary, under `service-account-token` with an owner secret: a reviewed token
-/// and the owner's bearer each reach the model, an account off the list is refused, the usage
-/// record names the admitted principal, and no line it writes holds a token, a part of one, its
-/// own token or a review body.
-#[test]
-fn sa_the_binary_admits_a_reviewed_token_records_its_principal_and_logs_no_token() {
-    let api = FakeApi::start();
-    let fixture = Fixture::new("sa-binary");
-    let (ca, own) = mounted(&fixture, &api);
-    let owner = fixture.owner_secret();
-    let (base_url, heads) = endpoint();
-    let config = fixture.config(&document(
-        "127.0.0.1:0",
-        Some(&owner),
-        &base_url,
-        &token_review_table(&api.api(), &ca, &own, &[AGENT]),
-    ));
-    let agent = jwt("agent", later());
-    let other = jwt("other", later());
-    api.answer(&agent, admits(AGENT));
-    api.answer(&other, admits(OTHER_AGENT));
-
+/// The shipped binary serving `config` with `RUST_LOG=debug`: the child, its standard error line
+/// by line, the lines read until it listened, and the address it listens on.
+fn serve(config: &std::path::Path) -> (Child, mpsc::Receiver<String>, Vec<String>, SocketAddr) {
     let mut child = Command::new(env!("CARGO_BIN_EXE_b10x-llm-gateway"))
         .args(["--config", config.to_str().unwrap()])
         .env("RUST_LOG", "debug")
@@ -1013,6 +994,32 @@ fn sa_the_binary_admits_a_reviewed_token_records_its_principal_and_logs_no_token
             break address.parse().unwrap();
         }
     };
+    (child, lines, written, address)
+}
+
+/// The shipped binary, under `service-account-token` with an owner secret: a reviewed token
+/// and the owner's bearer each reach the model, an account off the list is refused, the usage
+/// record names the admitted principal, and no line it writes holds a token, a part of one, its
+/// own token or a review body.
+#[test]
+fn sa_the_binary_admits_a_reviewed_token_records_its_principal_and_logs_no_token() {
+    let api = FakeApi::start();
+    let fixture = Fixture::new("sa-binary");
+    let (ca, own) = mounted(&fixture, &api);
+    let owner = fixture.owner_secret();
+    let (base_url, heads) = endpoint();
+    let config = fixture.config(&document(
+        "127.0.0.1:0",
+        Some(&owner),
+        &base_url,
+        &token_review_table(&api.api(), &ca, &own, &[AGENT]),
+    ));
+    let agent = jwt("agent", Some(later()));
+    let other = jwt("other", Some(later()));
+    api.answer(&agent, admits(AGENT));
+    api.answer(&other, admits(OTHER_AGENT));
+
+    let (mut child, lines, mut written, address) = serve(&config);
     let results = [
         chat(address, &agent),
         chat(address, &agent),

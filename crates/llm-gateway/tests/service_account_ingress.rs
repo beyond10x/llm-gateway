@@ -10,6 +10,7 @@ use llm_gateway::{
     UsageRecords, Wire,
 };
 use std::{
+    fmt::Write as _,
     io::{self, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     sync::{
@@ -217,13 +218,14 @@ impl Served {
     fn ask(&self, method: &str, path: &str, bearer: Option<&str>, body: &str) -> (u16, String) {
         let mut raw = format!("{method} {path} HTTP/1.1\r\nhost: gateway\r\n");
         if let Some(bearer) = bearer {
-            raw.push_str(&format!("authorization: Bearer {bearer}\r\n"));
+            let _ = write!(raw, "authorization: Bearer {bearer}\r\n");
         }
         if !body.is_empty() {
-            raw.push_str(&format!(
+            let _ = write!(
+                raw,
                 "content-type: application/json\r\ncontent-length: {}\r\n",
                 body.len()
-            ));
+            );
         }
         raw.push_str("\r\n");
         raw.push_str(body);

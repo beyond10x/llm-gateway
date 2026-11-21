@@ -101,7 +101,7 @@ pub(crate) const CONTAINER_TOKEN: Policy = Policy {
 };
 
 /// The gateway's own service-account token a `[token_review]` table names
-/// (`token_review.credential_file`), presented to the TokenReview API. A kubelet mounts it behind
+/// (`token_review.credential_file`), presented to the `TokenReview` API. A kubelet mounts it behind
 /// symbolic links into a `..data` directory it replaces on rotation, readable by the group or by
 /// everyone, so its rules are the container token's: the links resolved at every read, the file
 /// inside the path's directory, refused only when group- or world-writable, at most 16 KiB.

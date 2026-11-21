@@ -888,7 +888,9 @@ outcome: `200` with `content-type: text/event-stream` and chunked framing for a 
 `cache-control: no-store` and `connection: close`. Each server-sent event is the one llm's
 encoder writes: `event: <type>` and `data: <json>` on responses and messages, `data: <json>` on
 chat, which ends `data: [DONE]`. Identifiers (`chatcmpl-`, `resp_`, `msg_`) and `created` are
-the gateway's own. The upstream's reported counters are carried and an unreported one stays
+the gateway's own. A messages answer names the alias the client asked for as its `model`, in
+`message_start` and in the non-streamed `message`, never the model the target reported or the
+name it was sent; an alias that is not a Messages model name is named nowhere. The upstream's reported counters are carried and an unreported one stays
 unreported; on a messages client the input total is sent only when the upstream reports both
 cache counters, which only a messages upstream does. Reasoning text is relayed where the
 client's wire has a place for it (chat `reasoning_content`, a responses reasoning summary) and
@@ -1096,7 +1098,11 @@ llmgw_request_duration_seconds_count{model="code"} 5
 ### Call outcomes
 
 A relayed answer is `ok`, whatever its status: a 4xx or a 500 the target answered reached the
-client. A refusal is counted by its code. `upstream-failed` is `timeout` when the target's read
+client. A refusal is counted by its code. A translated answer whose head was written and which
+the translator ended with its wire's terminal error (an upstream failure after output, an answer
+past a bound, or one the client's wire cannot carry) is counted by that code, `upstream_error`,
+though its client was answered `200`: its record stays `Relayed` with that status and no refusal
+(`TranslatedAnswer::failed`). `upstream-failed` is `timeout` when the target's read
 timeout passed before its answer head arrived, and `upstream_error` otherwise (an unreachable
 target, a connection closed without an answer, a malformed head, or a 502, 503 or 504 from the
 target). A translated request's transport timeout is reported by the translator as an upstream

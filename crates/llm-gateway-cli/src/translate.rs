@@ -1088,7 +1088,7 @@ impl Translation for Prepared {
         let keeps_thinking = self.keeps_thinking();
         let encoder = Encoder::new(
             self.ingress,
-            &id,
+            (&id, &self.alias),
             created,
             self.decoded.include_usage,
             keeps_thinking,
@@ -1170,6 +1170,10 @@ enum Encoder {
         /// A messages client of a Bedrock `InvokeModel` target is handed the signed thinking
         /// the target made, streamed and in the outcome.
         relays_thinking: bool,
+        /// The model the answer names, `message_start` and the non-streamed `message` alike: the
+        /// alias the client asked for. `None` for an alias that is not a Messages model name,
+        /// whose answer names no model.
+        model: Option<Id>,
     },
 }
 
@@ -1206,7 +1210,7 @@ impl Encoder {
 
     fn new(
         ingress: Wire,
-        id: &str,
+        (id, alias): (&str, &str),
         created: u64,
         include_usage: bool,
         relays_thinking: bool,
@@ -1224,16 +1228,41 @@ impl Encoder {
             },
             // Only a Bedrock InvokeModel target answers a messages client with thinking it
             // signed; every other translated answer's reasoning could not be signed.
-            Wire::Messages => Self::Messages {
-                stream: if relays_thinking {
-                    llm_messages::IngressStream::new(id, None)?
-                } else {
-                    llm_messages::IngressStream::new(id, None)?.without_reasoning_relay()
-                },
-                id: id.to_owned(),
-                relays_thinking,
-            },
+            Wire::Messages => {
+                // `message_start` names the model, as the Messages wire's message object does;
+                // the client is told the alias it asked for, never the target's own name.
+                let named = Id::new(alias).ok().and_then(|model| {
+                    llm_messages::IngressStream::new(id, Some(model.as_str()))
+                        .ok()
+                        .map(|stream| (stream, Some(model)))
+                });
+                let (stream, model) = match named {
+                    Some(named) => named,
+                    None => (llm_messages::IngressStream::new(id, None)?, None),
+                };
+                Self::Messages {
+                    stream: if relays_thinking {
+                        stream
+                    } else {
+                        stream.without_reasoning_relay()
+                    },
+                    id: id.to_owned(),
+                    relays_thinking,
+                    model,
+                }
+            }
         })
+    }
+
+    /// Names in `outcome` the model this answer announces, so the answer that ends it names the
+    /// same one. Only a messages answer announces one.
+    fn name_model(&self, outcome: &mut TurnOutcome) {
+        if let Self::Messages {
+            model: Some(model), ..
+        } = self
+        {
+            outcome.observation.upstream_model = Some(model.clone());
+        }
     }
 
     /// The bytes one event is written as; empty when the wire carries nothing for it.
@@ -1500,6 +1529,7 @@ impl ClientSink<'_> {
                         .items
                         .retain(|item| !matches!(item, Item::Opaque { .. })),
                 }
+                self.encoder.name_model(&mut outcome);
                 self.answered(&outcome)
             }
             Err(error) if self.started => {
@@ -1510,6 +1540,7 @@ impl ClientSink<'_> {
                 };
                 let bytes = self.encoder.fail(code, &error);
                 self.write(&bytes);
+                self.answer.failed(code);
                 Ok(())
             }
             Err(error) => Err(before_output(&error)),
@@ -1540,6 +1571,7 @@ impl ClientSink<'_> {
                     .encoder
                     .fail(RefusalCode::TranslationUnrepresentable, &refused);
                 self.write(&bytes);
+                self.answer.failed(RefusalCode::TranslationUnrepresentable);
                 Ok(())
             }
             Err(_) => Err(unrepresentable),

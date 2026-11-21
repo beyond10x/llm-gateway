@@ -128,4 +128,10 @@ pub trait TranslatedAnswer: Send {
     /// failed, is recorded with it as its target status, as the byte relay records the status
     /// it read (story:translated-refusal-target-status). Ignored by default.
     fn target_status(&mut self, _status: u16) {}
+
+    /// Tells the relay that the answer, its head already written, ended in its wire's terminal
+    /// error under `code` (`upstream-failed`, `translation-too-large` or
+    /// `translation-unrepresentable`): the call is recorded with that code's outcome, not `ok`,
+    /// though the client was answered `200`. Ignored by default.
+    fn failed(&mut self, _code: RefusalCode) {}
 }

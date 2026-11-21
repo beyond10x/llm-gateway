@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "cbc54ac21b03f634f4c3a4e2a6aa58f28c2d7791341f06c189220d3cfb801777",
-    "contract_digest": "slice-sha256/2:146df71c2e9c2d078095f44bcc8435438ccb9b6d1811889607fa0ec49f80340b",
+    "source_digest": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
+    "contract_digest": "slice-sha256/2:06b458f3bec79918570c7d6375fbd3f50e10690eb3f67b615fe3de44987e4e38",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -67,6 +67,15 @@
         "ContainerTokenTooLarge",
         "ContainerTokenNotUtf8",
         "ContainerTokenNotAToken",
+        "TokenReviewUnreadable",
+        "TokenReviewSymlink",
+        "TokenReviewNotRegular",
+        "TokenReviewUntrustedOwner",
+        "TokenReviewUnsafeMode",
+        "TokenReviewTooLarge",
+        "TokenReviewNotUtf8",
+        "TokenReviewNotAToken",
+        "TokenReviewCa",
         "ListenBind",
         "SignalInstall"
       ]

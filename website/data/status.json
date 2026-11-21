@@ -256,6 +256,13 @@
     },
     {
       "area": "Binary",
+      "detail": "ingress_auth = \"service-account-token\" admits a model call with the owner secret or with a service-account token the cluster's TokenReview API reports authenticated for [token_review] audience and naming a service account on principals; the principal is written into the usage record. A rejected token is credential-rejected and an unanswered review credential-review-unavailable. Tested against a fake TokenReview API on loopback TLS, not against a cluster.",
+      "href": "/docs/guides/admit-service-account-tokens",
+      "label": "Kubernetes service-account tokens on the model calls",
+      "status": "shipped"
+    },
+    {
+      "area": "Binary",
       "detail": "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",
       "href": "/docs/reference/deployment-document",
       "label": "One closed TOML deployment document",

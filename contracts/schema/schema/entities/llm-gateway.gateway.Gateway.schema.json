@@ -48,8 +48,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "cbc54ac21b03f634f4c3a4e2a6aa58f28c2d7791341f06c189220d3cfb801777",
-    "contract_digest": "slice-sha256/2:dbb355746628987c9c7e44b9adf6cff1f97680492bf5fdb243d0f82903cd9235",
+    "source_digest": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
+    "contract_digest": "slice-sha256/2:abe5dc8663d7ebfc942393973f63290fe80175c01232ba946b30365da92bf1ee",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -69,7 +69,8 @@
       "type": "string",
       "enum": [
         "Bearer",
-        "None"
+        "None",
+        "ServiceAccountToken"
       ]
     }
   }

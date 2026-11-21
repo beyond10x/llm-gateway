@@ -1,0 +1,35 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: sa-token-a-reviewed-token-and-the-owners-bearer-are-admitted-and-the-record-names-the-principal
+summary: a reviewed token and the owner bearer are relayed, only the reviewed record names a principal, and neither token reaches the target
+timeline:
+- at: '2026-11-21T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ingress_auth":"service-account-token","reviews":{"projected-token-of-the-coding-agent":"system:serviceaccount:agents:coding-agent"},"models":[{"alias":"code","upstream_model":"served-code","wires":["chat","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"msg-1\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[]}","credential":false,"headers":["authorization: Bearer projected-token-of-the-coding-agent"]},{"step":"request","path":"/v1/messages","body":"{\"model\":\"code\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '200 relayed'
+    records:
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=15 duration_ms=bounded tokens=absent principal=system:serviceaccount:agents:coding-agent
+    - model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=14 duration_ms=bounded tokens=absent
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code","messages":[]}'
+    - 'pod-1 POST /v1/messages {"model":"served-code","messages":[]}'
+    authorizations:
+    - 'absent'
+    - 'absent'
+    secret_upstream: false
+    acquired: 2
+    released: 2

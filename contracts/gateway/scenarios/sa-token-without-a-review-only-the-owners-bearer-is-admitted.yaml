@@ -1,0 +1,27 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: sa-token-without-a-review-only-the-owners-bearer-is-admitted
+summary: with ingress_auth service-account-token and no review composed every bearer but the owner's is credential-review-unavailable, never admitted
+timeline:
+- at: '2026-11-21T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ingress_auth":"service-account-token","models":[{"alias":"code","upstream_model":"served-code","wires":["chat"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[]}","credential":false,"headers":["authorization: Bearer projected-token-of-the-coding-agent"]},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '503 credential-review-unavailable'
+    - '200 relayed'
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-code","messages":[]}'
+    acquired: 1
+    released: 1

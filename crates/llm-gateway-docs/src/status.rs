@@ -327,6 +327,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Binary",
+        "Kubernetes service-account tokens on the model calls",
+        "ingress_auth = \"service-account-token\" admits a model call with the owner secret or with a service-account token the cluster's TokenReview API reports authenticated for [token_review] audience and naming a service account on principals; the principal is written into the usage record. A rejected token is credential-rejected and an unanswered review credential-review-unavailable. Tested against a fake TokenReview API on loopback TLS, not against a cluster.",
+        "crates/llm-gateway-cli/tests/token_review.rs::sa_the_binary_admits_a_reviewed_token_records_its_principal_and_logs_no_token",
+        Some("/docs/guides/admit-service-account-tokens"),
+    ),
+    shipped(
+        "Binary",
         "One closed TOML deployment document",
         "b10x-llm-gateway --config <file>: an unknown key at any level is refused as config:schema, naming its line and the keys allowed there.",
         "crates/llm-gateway-cli/tests/config.rs::k29_every_key_outside_the_closed_document_is_refused",

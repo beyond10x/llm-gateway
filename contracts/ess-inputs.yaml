@@ -253,6 +253,11 @@ scenarios:
 - gateway/scenarios/ingress-none-a-model-call-without-a-credential-is-relayed.yaml
 - gateway/scenarios/ingress-none-without-an-owner-secret-the-owner-surface-stays-refused.yaml
 - gateway/scenarios/ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret.yaml
+- gateway/scenarios/sa-token-a-reviewed-token-and-the-owners-bearer-are-admitted-and-the-record-names-the-principal.yaml
+- gateway/scenarios/sa-token-each-token-the-review-does-not-admit-is-refused-and-relays-nothing.yaml
+- gateway/scenarios/sa-token-a-reviewed-token-opens-no-owner-path.yaml
+- gateway/scenarios/sa-token-without-a-review-only-the-owners-bearer-is-admitted.yaml
+- gateway/scenarios/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted.yaml
 - gateway/scenarios/translate-a-chat-client-reaches-chat-responses-and-messages-upstreams.yaml
 - gateway/scenarios/translate-a-responses-client-reaches-chat-responses-and-messages-upstreams.yaml
 - gateway/scenarios/translate-a-messages-client-reaches-chat-responses-and-messages-upstreams.yaml

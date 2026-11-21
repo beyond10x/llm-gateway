@@ -2351,3 +2351,75 @@ fn bedrock_a_request_without_a_mark_keeps_the_automatic_breakpoints() {
         "{sent}"
     );
 }
+
+// --- Criterion: llm's new stream events reach a messages client in place ----------------------
+
+/// An `InvokeModel` stream answering with a redacted thinking block, then two text blocks.
+fn invoke_redacted_thinking_then_two_texts() -> Vec<u8> {
+    let mut events = vec![
+        message_start(),
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"redacted_thinking",
+            "data":"cmVkYWN0ZWQtdGhpbmtpbmc="}}),
+        json!({"type":"content_block_stop","index":0}),
+        json!({"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}),
+        json!({"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":ANSWER_MARKER}}),
+        json!({"type":"content_block_stop","index":1}),
+        json!({"type":"content_block_start","index":2,"content_block":{"type":"text","text":""}}),
+        json!({"type":"content_block_delta","index":2,"delta":{"type":"text_delta","text":"Bye"}}),
+        json!({"type":"content_block_stop","index":2}),
+    ];
+    events.extend(message_end("end_turn", 9));
+    events.iter().flat_map(chunk).collect()
+}
+
+/// llm's `OpaqueItem` and `MessageBoundary` events reach a messages client through llm's own
+/// encoder, neither dropped: the redacted thinking block at index 0 with its data, then each text
+/// block in its own block, no `error` event, and the call is `ok`. llm 0.20.0 placed the redacted
+/// block after the text and joined the two texts into one block.
+#[test]
+fn bedrock_redacted_thinking_and_a_second_text_block_reach_a_messages_client_in_place() {
+    let (answer, log, _) = haiku_messages(
+        "bedrock-messages-new-events",
+        invoke_redacted_thinking_then_two_texts(),
+        true,
+        None,
+    );
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert!(!answer.contains("event: error"), "{answer}");
+    let payloads = sse_payloads(&answer);
+    let starts: Vec<(Value, Value)> = payloads
+        .iter()
+        .filter(|payload| payload["type"] == "content_block_start")
+        .map(|payload| {
+            (
+                payload["index"].clone(),
+                payload["content_block"]["type"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        starts,
+        [
+            (json!(0), json!("redacted_thinking")),
+            (json!(1), json!("text")),
+            (json!(2), json!("text"))
+        ],
+        "{answer}"
+    );
+    assert!(
+        payloads.iter().any(|payload| payload["index"] == 0
+            && payload["content_block"]["data"] == "cmVkYWN0ZWQtdGhpbmtpbmc="),
+        "{answer}"
+    );
+    let texts: Vec<(Value, Value)> = payloads
+        .iter()
+        .filter(|payload| payload["delta"]["type"] == "text_delta")
+        .map(|payload| (payload["index"].clone(), payload["delta"]["text"].clone()))
+        .collect();
+    assert_eq!(
+        texts,
+        [(json!(1), json!(ANSWER_MARKER)), (json!(2), json!("Bye"))],
+        "{answer}"
+    );
+    assert!(usage_line(&log).contains("outcome=ok"), "{log:?}");
+}

@@ -7,12 +7,16 @@
 mod support;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
-use llm_gateway::{CallerReview, CallerToken, Principal, Review};
+use llm_gateway::{
+    CallerReview, CallerToken, Gateway, GatewayConfig, GatewayHandle, IngressAuth, Label,
+    OwnerToken, Principal, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, Review,
+    RouteInventory, SharedSecretVerifier, TargetRefusal, Wire,
+};
 use llm_gateway_cli::{ReviewBounds, TokenReviewer, token_reviewer};
 use rustls::{ServerConnection, StreamOwned};
 use std::{
     io::{Read, Write},
-    net::{SocketAddr, TcpListener},
+    net::{SocketAddr, TcpListener, TcpStream},
     path::PathBuf,
     sync::{
         Arc, Mutex,
@@ -326,74 +330,273 @@ fn conformance_one_review_ends_within_the_published_timeout() {
     );
 }
 
-// --- Denial of the reviewed mode by unauthenticated callers --------------------------------------
+// --- A flood of forged tokens naming the audience: the documented bound -------------------------
 
-/// A caller that holds no valid token sends JWT-shaped garbage, each token distinct so that no
-/// rejection is kept for it, while the API server answers each in 300 ms. A listed caller whose
-/// admission is not kept arrives meanwhile. The guide promises the listed caller is relayed; with
-/// `concurrent-reviews` shared by every source, it is `credential-review-unavailable`.
+const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const CHAT_BODY: &str = r#"{"model":"open","messages":[]}"#;
+
+/// A loopback model answering every request `200 {}`.
+fn model_pod() -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+    let authority = listener.local_addr().unwrap().to_string();
+    thread::spawn(move || {
+        for connection in listener.incoming() {
+            let Ok(mut connection) = connection else {
+                return;
+            };
+            connection.set_read_timeout(Some(WAIT)).unwrap();
+            let mut raw = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            while !raw.windows(4).any(|window| window == b"\r\n\r\n")
+                || raw.len()
+                    < raw.windows(4).position(|w| w == b"\r\n\r\n").unwrap() + 4 + CHAT_BODY.len()
+            {
+                match connection.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => raw.extend_from_slice(&chunk[..read]),
+                }
+            }
+            drop(connection.write_all(
+                b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}",
+            ));
+        }
+    });
+    authority
+}
+
+struct PodSource(String);
+
+struct PodTarget(String);
+
+impl RelayTarget for PodTarget {
+    fn authority(&self) -> &str {
+        &self.0
+    }
+
+    fn connect(&self) -> std::io::Result<Box<dyn RelayStream>> {
+        let stream = TcpStream::connect(&self.0)?;
+        stream.set_read_timeout(Some(WAIT))?;
+        stream.set_write_timeout(Some(WAIT))?;
+        Ok(Box::new(stream))
+    }
+}
+
+impl RelayTargets for PodSource {
+    fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        Ok(Box::new(PodTarget(self.0.clone())))
+    }
+
+    fn invalidate(&self, _alias: &str, _authority: &str) {}
+}
+
+/// The reviewer as the gateway is composed with it, counting every time it is shown the owner's
+/// bearer.
+#[derive(Debug)]
+struct Watched {
+    reviewer: Arc<TokenReviewer>,
+    shown_the_owner: AtomicUsize,
+}
+
+impl CallerReview for Watched {
+    fn review(&self, presented: &CallerToken) -> Review {
+        if presented.expose() == OWNER.as_bytes() {
+            self.shown_the_owner.fetch_add(1, Ordering::SeqCst);
+        }
+        self.reviewer.review(presented)
+    }
+}
+
+/// A gateway under `service-account-token` with the owner secret, its relay composed with
+/// `review` and one model on a loopback pod.
+fn reviewed_gateway(review: Arc<Watched>) -> GatewayHandle {
+    let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
+    config.read_timeout = WAIT;
+    config.ingress_auth = IngressAuth::ServiceAccountToken;
+    let model = RelayModel::new(
+        Label::new("open").unwrap(),
+        Label::new("served-open").unwrap(),
+        vec![Wire::Chat],
+    )
+    .unwrap();
+    let relay = Relay::new(vec![model], Arc::new(PodSource(model_pod())))
+        .unwrap()
+        .with_caller_review(review as Arc<dyn CallerReview>);
+    let owner = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let handle = Gateway::bind_with_relay(
+        config,
+        owner,
+        RouteInventory::new(Vec::new()).unwrap(),
+        relay,
+    )
+    .unwrap();
+    handle.mark_ready();
+    handle
+}
+
+/// `(status, code)` of one chat call to `address` presenting `bearer`; `relayed` for a 200.
+fn chat(address: SocketAddr, bearer: &str) -> (u16, String) {
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    let request = format!(
+        "POST /v1/chat/completions HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {bearer}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{CHAT_BODY}",
+        CHAT_BODY.len()
+    );
+    stream.write_all(request.as_bytes()).unwrap();
+    let mut answer = Vec::new();
+    drop(stream.read_to_end(&mut answer));
+    let text = String::from_utf8_lossy(&answer).into_owned();
+    let status = text
+        .split(' ')
+        .nth(1)
+        .and_then(|status| status.parse().ok())
+        .unwrap_or(0);
+    let code = text
+        .split("\"code\":\"")
+        .nth(1)
+        .and_then(|rest| rest.split('"').next())
+        .unwrap_or("relayed")
+        .to_owned();
+    (status, code)
+}
+
+/// The behaviour the security review found (a caller with no valid token who knows the audience
+/// can fill `concurrent-reviews`) is accepted behind the guide's `NetworkPolicy`, and this pins its
+/// documented bound. The review's scenario: twelve workers send distinct JWT-shaped tokens naming
+/// the audience, which the API server holds and then rejects. Meanwhile (a) no more than 8
+/// reviews are ever in flight at the API server; (b) a listed caller whose admission is cached is
+/// relayed without a review; (c) a listed caller with no cached admission is `503
+/// credential-review-unavailable`, never relayed and never `credential-rejected`, and is relayed
+/// as soon as a slot is free; (d) the owner's bearer is relayed throughout and never reviewed.
 #[test]
-fn conformance_a_flood_of_distinct_unauthenticated_tokens_does_not_refuse_a_listed_caller() {
+#[allow(clippy::too_many_lines)]
+fn conformance_a_flood_naming_the_audience_holds_eight_reviews_and_refuses_only_uncached_callers_with_503()
+ {
+    let cached = jwt("cached");
     let listed = jwt("listed");
-    let listed_answer = listed.clone();
+    let in_flight = Arc::new(AtomicUsize::new(0));
+    let most_in_flight = Arc::new(AtomicUsize::new(0));
+    let (admitting, counting, most) = (
+        [cached.clone(), listed.clone()],
+        Arc::clone(&in_flight),
+        Arc::clone(&most_in_flight),
+    );
     let script: Scripter = Arc::new(move |presented| {
-        if presented == listed_answer {
-            now_answer(http(
+        if admitting.iter().any(|token| token == presented) {
+            return now_answer(http(
                 201,
                 &review_body(&serde_json::json!({
                     "authenticated": true,
                     "user": {"username": AGENT},
                     "audiences": [AUDIENCE],
                 })),
-            ))
-        } else {
-            Script {
-                before_answer: Duration::from_millis(300),
-                answer: http(
-                    201,
-                    &review_body(&serde_json::json!({"authenticated": false, "error": "invalid"})),
-                ),
-            }
+            ));
         }
+        // A forged token: held at the API server, then rejected.
+        let now = counting.fetch_add(1, Ordering::SeqCst) + 1;
+        most.fetch_max(now, Ordering::SeqCst);
+        thread::sleep(Duration::from_millis(1500));
+        counting.fetch_sub(1, Ordering::SeqCst);
+        now_answer(http(
+            201,
+            &review_body(&serde_json::json!({"authenticated": false, "error": "invalid"})),
+        ))
     });
     let api = ScriptedApi::start(Duration::ZERO, script);
     let mounted = Mounted::new("conformance-flood", &api);
     let reviewer = Arc::new(reviewer_at(&api, &mounted, &[AGENT]));
+    let watched = Arc::new(Watched {
+        reviewer: Arc::clone(&reviewer),
+        shown_the_owner: AtomicUsize::new(0),
+    });
+    let gateway = reviewed_gateway(Arc::clone(&watched));
+    let address = gateway.local_addr();
+    assert_eq!(chat(address, &cached), (200, "relayed".to_owned()));
+
     let flooding = Arc::new(AtomicBool::new(true));
-    let sent = Arc::new(AtomicUsize::new(0));
     let floods: Vec<_> = (0..12)
         .map(|worker| {
-            let (reviewer, flooding, sent) = (
-                Arc::clone(&reviewer),
-                Arc::clone(&flooding),
-                Arc::clone(&sent),
-            );
+            let (reviewer, flooding) = (Arc::clone(&reviewer), Arc::clone(&flooding));
             thread::spawn(move || {
                 let mut n = 0_u64;
                 while flooding.load(Ordering::SeqCst) {
-                    drop(reviewer.review(&token(&jwt(&format!("flood-{worker}-{n}")))));
-                    sent.fetch_add(1, Ordering::SeqCst);
+                    let decided = reviewer.review(&token(&jwt(&format!("flood-{worker}-{n}"))));
+                    if decided == Review::Unavailable {
+                        thread::sleep(Duration::from_millis(1));
+                    }
                     n += 1;
                 }
             })
         })
         .collect();
     let deadline = Instant::now() + WAIT;
-    while api.asked().len() < 8 {
-        assert!(Instant::now() < deadline, "the flood never reached the API");
+    while in_flight.load(Ordering::SeqCst) < 8 {
+        assert!(
+            Instant::now() < deadline,
+            "the flood never filled the review slots"
+        );
         thread::sleep(Duration::from_millis(10));
     }
-    let decided = reviewer.review(&token(&listed));
+
+    // (b) and (d) while every slot is taken.
+    assert_eq!(
+        chat(address, &cached),
+        (200, "relayed".to_owned()),
+        "(b) cached caller"
+    );
+    assert_eq!(
+        chat(address, OWNER),
+        (200, "relayed".to_owned()),
+        "(d) owner"
+    );
+    // (c) an uncached listed caller while every slot is taken.
+    assert_eq!(
+        chat(address, &listed),
+        (503, "credential-review-unavailable".to_owned()),
+        "(c) uncached caller during the flood"
+    );
+
     flooding.store(false, Ordering::SeqCst);
+    // (c) relayed as soon as a slot is free; until then only ever 503.
+    let deadline = Instant::now() + WAIT;
+    loop {
+        match chat(address, &listed) {
+            (200, _) => break,
+            (503, code) if code == "credential-review-unavailable" => {
+                assert!(Instant::now() < deadline, "(c) no slot came free");
+                thread::sleep(Duration::from_millis(20));
+            }
+            other => panic!("(c) an uncached listed caller was answered {other:?}"),
+        }
+    }
+    assert_eq!(
+        chat(address, OWNER),
+        (200, "relayed".to_owned()),
+        "(d) owner after"
+    );
     for flood in floods {
         flood.join().unwrap();
     }
+
+    // (a) never more than 8 at the API server, and the flood did reach 8.
     assert_eq!(
-        decided,
-        admitted(AGENT),
-        "a listed caller was refused while {} unauthenticated reviews were asked",
-        sent.load(Ordering::SeqCst)
+        most_in_flight.load(Ordering::SeqCst),
+        8,
+        "(a) reviews in flight"
     );
+    let asked = api.asked();
+    assert_eq!(
+        asked.iter().filter(|asked| asked.token == cached).count(),
+        1,
+        "(b) the cached caller was reviewed again"
+    );
+    assert_eq!(
+        watched.shown_the_owner.load(Ordering::SeqCst),
+        0,
+        "(d) the owner's bearer was shown to the review"
+    );
+    drop(gateway);
 }
 
 // --- What the change enforces (probes that hold) ------------------------------------------------

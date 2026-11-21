@@ -927,6 +927,24 @@ pub struct Deployment {
     pub launch_codex: LaunchCodex,
     /// `[watchdog]` when declared: `serve` then writes the heartbeat, and `watchdog` runs.
     pub watchdog: Option<WatchdogConfig>,
+    /// `[token_review]`: present exactly when `gateway.ingress_auth` is `ServiceAccountToken`.
+    pub token_review: Option<TokenReviewConfig>,
+}
+
+/// `[token_review]` (`llm-gateway.deployment.TokenReviewDeclaration`): how a caller's
+/// service-account token is reviewed under `ingress_auth = "service-account-token"`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TokenReviewConfig {
+    /// The audience the token must have been issued for.
+    pub audience: String,
+    /// The service accounts admitted, in the order written; none twice.
+    pub principals: Vec<llm_gateway::Principal>,
+    /// The API server, `https://<host>[:<port>]`.
+    pub api: String,
+    /// The CA bundle the API server's certificate is verified against.
+    pub ca_file: PathBuf,
+    /// The gateway's own service-account token, which it reviews with.
+    pub credential_file: PathBuf,
 }
 
 impl Deployment {
@@ -1120,6 +1138,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         routes_file: document.routes,
         routes: Routes::default(),
         digest,
+        token_review: None,
     })
 }
 

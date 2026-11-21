@@ -11,7 +11,9 @@
 //!   [`OwnerVerifier`] has accepted it, and every inspection entry point demands an
 //!   [`Authenticated`] that only an accepted verdict can produce. The one exception is opt-in: a
 //!   [`GatewayConfig`] whose [`IngressAuth`] is `None` relays model calls without a credential,
-//!   and still authenticates everything else.
+//!   and still authenticates everything else. One whose [`IngressAuth`] is
+//!   `ServiceAccountToken` admits a model call that the owner's bearer or an injected
+//!   [`CallerReview`] admits ([`Relay::with_caller_review`]), and nothing else.
 //! - **Inspect, read-only.** [`RouteInventory`] is an immutable snapshot with no field for an
 //!   endpoint URL, a secret reference or credential material, and no callback, so serving it
 //!   cannot provision anything. It renders exactly the identifier bytes the composer supplied
@@ -50,6 +52,7 @@ mod json;
 mod listing;
 mod metrics;
 mod relay;
+mod review;
 mod server;
 mod translate;
 mod usage;
@@ -63,8 +66,8 @@ pub use dashboard::{
     typescript as dashboard_typescript,
 };
 pub use error::{
-    BasePathError, CredentialHeaderError, InventoryError, LabelError, RefusalCode, RelayError,
-    StaticHeaderError, TargetRefusal, TokenError, VerifierError,
+    BasePathError, CredentialHeaderError, InventoryError, LabelError, PrincipalError, RefusalCode,
+    RelayError, StaticHeaderError, TargetRefusal, TokenError, VerifierError,
 };
 pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
@@ -77,6 +80,7 @@ pub use relay::{
     RelayModel, RelayStream, RelayTarget, RelayTargets, StaticHeader, TargetBearer, TargetScheme,
     ToolCalling, UNFORWARDED_HEADERS, Wire, read_within_timeout,
 };
+pub use review::{CallerReview, CallerToken, MAX_PRINCIPAL_BYTES, Principal, Review};
 pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};
 pub use translate::{
     AnswerFraming, TranslatedAnswer, Translation, TranslationFailure, TranslationRequest,

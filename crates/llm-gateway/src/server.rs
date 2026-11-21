@@ -94,6 +94,12 @@ pub enum IngressAuth {
     /// No credential: `authorization` is not read for a model call, so a missing, malformed or
     /// wrong one is no refusal. For a gateway behind something that authenticates already.
     None,
+    /// The owner's bearer, or a bearer the relay's [`crate::CallerReview`]
+    /// ([`crate::Relay::with_caller_review`]) admits as a [`crate::Principal`]: a model call
+    /// whose bearer is neither is `credential-rejected`, and one the review cannot answer
+    /// `credential-review-unavailable`. Every other path takes the owner's bearer alone, as with
+    /// `Bearer`, and the review is never asked for it.
+    ServiceAccountToken,
 }
 
 impl GatewayConfig {
@@ -640,6 +646,7 @@ fn record(
         response_bytes,
         duration_ms,
         profile: call.profile,
+        principal: None,
     };
     relay.observe(&record);
     // The in-flight entry goes only once the call is recorded as finished.

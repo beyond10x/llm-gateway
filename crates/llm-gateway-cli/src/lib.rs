@@ -27,6 +27,7 @@ mod routes;
 mod seal;
 pub(crate) mod serve;
 mod tls;
+mod token_review;
 mod translate;
 mod trusted;
 mod vllm_stats;
@@ -34,7 +35,7 @@ mod watchdog;
 
 pub use config::{
     Bedrock, Deployment, Hosted, LaunchClaude, LaunchCodex, Model, Provider, ProviderKind,
-    WatchdogConfig, Wire, load, parse,
+    TokenReviewConfig, WatchdogConfig, Wire, load, parse,
 };
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,
@@ -63,6 +64,7 @@ pub use serve::{
     owner_verifier, start, start_with,
 };
 pub use tls::ProxyConnector;
+pub use token_review::{Clock, ReviewBounds, TOKEN_REVIEW_PATH, TokenReviewer, token_reviewer};
 pub use translate::{
     DEFAULT_CONTEXT_WINDOW, LlmTranslator, MESSAGES_DEFAULT_OUTPUT_TOKENS, NO_REASONING_EFFORT,
     REASONING_EFFORTS, TRANSLATION_CONNECT_TIMEOUT, TRANSLATION_READ_TIMEOUT,

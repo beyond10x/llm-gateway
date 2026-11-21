@@ -18,6 +18,7 @@ use crate::{
     },
     inventory::Label,
     metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
+    review::{CallerReview, CallerToken, Review},
     translate::{
         AnswerFraming, TranslatedAnswer, TranslationFailure, TranslationRequest, Translator,
     },
@@ -1094,6 +1095,9 @@ pub struct Relay {
     newest: Mutex<BTreeMap<String, (String, Instant)>>,
     /// Decodes a copy of a content-encoded passthrough answer for its usage and error body.
     decoder: Option<Arc<dyn BodyDecoder>>,
+    /// Who reviews a caller under `IngressAuth::ServiceAccountToken`; without one every caller
+    /// but the owner is `credential-review-unavailable`.
+    caller_review: Option<Arc<dyn CallerReview>>,
 }
 
 impl Relay {
@@ -1124,6 +1128,7 @@ impl Relay {
             admitted: BTreeMap::new(),
             newest: Mutex::default(),
             decoder: None,
+            caller_review: None,
         };
         relay.register();
         Ok(relay)
@@ -1195,6 +1200,22 @@ impl Relay {
 
     pub(crate) fn decoder(&self) -> Option<Arc<dyn BodyDecoder>> {
         self.decoder.clone()
+    }
+
+    /// Admits a model call whose bearer `review` admits, beside the owner's, when the gateway's
+    /// `ingress_auth` is `IngressAuth::ServiceAccountToken`; under every other mode it is never
+    /// asked.
+    #[must_use]
+    pub fn with_caller_review(mut self, review: Arc<dyn CallerReview>) -> Self {
+        self.caller_review = Some(review);
+        self
+    }
+
+    /// The review of `token`: [`Review::Unavailable`] when none was composed.
+    pub(crate) fn review(&self, token: &CallerToken) -> Review {
+        self.caller_review
+            .as_ref()
+            .map_or(Review::Unavailable, |review| review.review(token))
     }
 
     /// Hands every [`UsageRecord`] to `records` (row O3: the binary logs each).

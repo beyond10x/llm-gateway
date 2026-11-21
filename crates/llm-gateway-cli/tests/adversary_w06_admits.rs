@@ -153,9 +153,9 @@ impl Server {
         thread::spawn(move || {
             for line in BufReader::new(stderr).lines() {
                 let Ok(line) = line else { break };
-                if sender.send(line).is_err() {
-                    break;
-                }
+                // Keep reading after the start: a closed pipe would fail the binary's next log
+                // line, and with it the request that writes it.
+                drop(sender.send(line));
             }
         });
         let deadline = Instant::now() + STARTUP;

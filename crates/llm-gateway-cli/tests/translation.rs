@@ -472,6 +472,21 @@ fn messages_refusal(body: &serde_json::Value) -> (llm_core::ErrorCode, String) {
     (error.code, error.message)
 }
 
+/// llm's messages decoder's refusal of `body`, or `None` when it reads it.
+fn messages_refusal_or_none(body: &serde_json::Value) -> Option<String> {
+    let origin = llm_core::Provenance {
+        protocol: llm_core::Protocol::Messages,
+        provider: llm_core::Id::new("client").unwrap(),
+        account: llm_core::Id::new("client").unwrap(),
+        endpoint: llm_core::Id::new("ingress").unwrap(),
+        model: llm_core::Id::new("code").unwrap(),
+        binding_revision: llm_core::Id::new("ingress").unwrap(),
+    };
+    llm_messages::decode_request(body.to_string().as_bytes(), &origin)
+        .err()
+        .map(|error| error.message)
+}
+
 /// Claude Code's first turn is carried to a chat and a responses upstream: `thinking`
 /// adaptive, a `system` of two text blocks, `cache_control` on a block and effort `max`, which
 /// reaches either wire as `xhigh`. Through the binary, the chat upstream is sent the system
@@ -1145,19 +1160,15 @@ fn translation_no_log_line_carries_a_seal_or_the_upstream_state() {
     assert_eq!(upstream.seen().len(), 2);
 }
 
-/// What llm 0.13.0 still refuses, it refuses by name, and the gateway answers each
-/// `translation-unsupported` before asking for a target: Claude Code's structured-output turn
-/// (`output_config.format`), `thinking.display`, `context_management` and `safeguards`, and a
-/// message of a role outside the subset (`tool`; llm 0.20.0 reads `system`); on Responses,
-/// `text.format` and a hosted tool.
+/// What llm 0.24.0 still refuses, it refuses by name, and the gateway answers each
+/// `translation-unsupported` before asking for a target: `thinking.display`,
+/// `context_management` and `safeguards`, and a message of a role outside the subset (`tool`;
+/// llm reads `system`); on Responses, `text.format` (refused by the gateway's capabilities, see
+/// below) and a hosted tool.
 #[test]
 fn translation_fields_llm_still_refuses_are_refused_by_name() {
     let base: serde_json::Value =
         serde_json::from_str(&fixture_body(CLAUDE_CODE_FIRST_TURN)).unwrap();
-    let structured: serde_json::Value = serde_json::from_str(&fixture_body(include_str!(
-        "../../llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt"
-    )))
-    .unwrap();
     let mut display = base.clone();
     display["thinking"]["display"] = serde_json::json!("summarized");
     let mut context = base.clone();
@@ -1171,7 +1182,6 @@ fn translation_fields_llm_still_refuses_are_refused_by_name() {
         .unwrap()
         .push(serde_json::json!({"role": "tool", "content": "Be brief."}));
     for (name, body) in [
-        ("output_config.format", &structured),
         ("display", &display),
         ("context_management", &context),
         ("safeguards", &safeguards),
@@ -1200,6 +1210,50 @@ fn translation_fields_llm_still_refuses_are_refused_by_name() {
         for upstream in [Wire::Chat, Wire::Messages] {
             assert_eq!(
                 prepared(Wire::Responses, upstream, body.to_string().as_bytes()),
+                Some(RefusalCode::TranslationUnsupported),
+                "{name} to {upstream:?}"
+            );
+        }
+    }
+}
+
+/// llm reads structured output (since 0.21.0) and a user image (since 0.22.0) on every client
+/// wire, but no translated path carries either: the gateway declares both `false` in the
+/// capabilities it translates under, and llm refuses them `translation-unsupported` before any
+/// target is asked for, whatever the upstream wire. Claude Code's structured-output turn,
+/// Responses `text.format`, Chat `response_format` and a Messages image block.
+#[test]
+fn translation_structured_output_and_images_are_refused_on_every_translated_path() {
+    let structured = fixture_body(include_str!(
+        "../../llm-gateway/tests/fixtures/claude-code/3-structured-output.request.txt"
+    ));
+    let messages: serde_json::Value = serde_json::from_str(&structured).unwrap();
+    assert!(
+        messages_refusal_or_none(&messages).is_none(),
+        "llm's decoder reads output_config.format"
+    );
+    let mut format: serde_json::Value = serde_json::from_str(CODEX_FIRST_TURN).unwrap();
+    format["text"] = serde_json::json!({"format": {"type": "json_schema", "name": "answer",
+        "schema": {"type": "object"}, "strict": true}});
+    let chat = serde_json::json!({"model": "code", "messages": [{"role": "user", "content": "Hi"}],
+        "response_format": {"type": "json_schema", "json_schema": {"name": "answer",
+            "schema": {"type": "object"}, "strict": true}}});
+    let image = serde_json::json!({"model": "code", "max_tokens": 64, "messages": [{"role": "user",
+        "content": [{"type": "text", "text": "What is this?"}, {"type": "image", "source":
+            {"type": "base64", "media_type": "image/png", "data": "iVBORw0KGgo="}}]}]});
+    assert!(
+        messages_refusal_or_none(&image).is_none(),
+        "llm's decoder reads an image block"
+    );
+    for (name, ingress, body) in [
+        ("output_config.format", Wire::Messages, messages),
+        ("text.format", Wire::Responses, format),
+        ("response_format", Wire::Chat, chat),
+        ("image", Wire::Messages, image),
+    ] {
+        for upstream in [Wire::Chat, Wire::Responses, Wire::Messages] {
+            assert_eq!(
+                prepared(ingress, upstream, body.to_string().as_bytes()),
                 Some(RefusalCode::TranslationUnsupported),
                 "{name} to {upstream:?}"
             );
@@ -1564,8 +1618,9 @@ fn marked_responses() -> serde_json::Value {
     })
 }
 
-/// story:translation-refusal-names-path, responses: `text.format`, a role and a value of the
-/// wrong kind are each refused as before and logged once by path or field, never by value.
+/// story:translation-refusal-names-path, responses: structured output (`text.format`), a role and a
+/// value of the wrong kind are each refused as before and logged once by path, field or llm's
+/// literal, never by value.
 #[test]
 fn translation_a_responses_refusal_names_the_refused_path_in_one_log_line() {
     let base = marked_responses();
@@ -1575,9 +1630,9 @@ fn translation_a_responses_refusal_names_the_refused_path_in_one_log_line() {
             &base,
             "",
             "text",
-            serde_json::json!({"format": {"type": "json_schema", "name": LOG_MARKER, "schema": {"type": "object"}}}),
+            serde_json::json!({"format": {"type": "json_schema", "name": LOG_MARKER, "schema": {"type": "object"}, "strict": true}}),
             unsupported,
-            "text.format",
+            "refused=\"binding does not take structured output\"",
         ),
         refused_with(
             &base,
@@ -1730,8 +1785,8 @@ fn translation_a_chat_refusal_writes_a_clients_key_as_a_question_mark() {
 }
 
 /// story:refusal-log-masks-client-keys, responses: a secret-shaped key at the root, in `text`
-/// and in a content part is logged as `?` at its location; `text.format`, a name the contract
-/// publishes as refused by name, is still named.
+/// and in a content part is logged as `?` at its location; structured output (`text.format`), which
+/// the gateway's capabilities refuse, is logged as llm's literal.
 #[test]
 fn translation_a_responses_refusal_writes_a_clients_key_as_a_question_mark() {
     let base = marked_responses();
@@ -1765,9 +1820,9 @@ fn translation_a_responses_refusal_writes_a_clients_key_as_a_question_mark() {
             &base,
             "",
             "text",
-            serde_json::json!({"format": {"type": "json_schema", "name": "answer", "schema": {"type": "object"}}}),
+            serde_json::json!({"format": {"type": "json_schema", "name": "answer", "schema": {"type": "object"}, "strict": true}}),
             unsupported,
-            "refused=\"request body carries a field outside the pinned subset: text.format\"",
+            "refused=\"binding does not take structured output\"",
         ),
     ];
     assert_each_refusal_names_its_path("refusal-mask-responses", Wire::Responses, "chat", &cases);

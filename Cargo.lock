@@ -135,11 +135,11 @@ checksum = "f2032f911046de80f0a198e0901378627c33f59ea0ac00e363d481118bd70a53"
 
 [[package]]
 name = "b10x-llm-gateway"
-version = "0.23.0"
+version = "0.24.0"
 
 [[package]]
 name = "b10x-llm-gateway-cli"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -179,7 +179,7 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-gateway-conformance"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -197,15 +197,15 @@ dependencies = [
 
 [[package]]
 name = "b10x-llm-modal"
-version = "0.23.0"
+version = "0.24.0"
 
 [[package]]
 name = "b10x-llm-provision"
-version = "0.23.0"
+version = "0.24.0"
 
 [[package]]
 name = "b10x-llm-runpod"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "b10x-llm-provision",
  "llm-providers",
@@ -963,8 +963,8 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
 name = "llm-bedrock"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "base64 0.22.1",
  "http",
@@ -983,8 +983,8 @@ dependencies = [
 
 [[package]]
 name = "llm-blocking"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "llm-core",
  "tokio",
@@ -992,8 +992,8 @@ dependencies = [
 
 [[package]]
 name = "llm-chat"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "http",
  "llm-core",
@@ -1007,9 +1007,10 @@ dependencies = [
 
 [[package]]
 name = "llm-core"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
+ "base64 0.22.1",
  "serde",
  "serde_json",
  "thiserror",
@@ -1018,8 +1019,8 @@ dependencies = [
 
 [[package]]
 name = "llm-cost"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "llm-core",
  "serde",
@@ -1031,8 +1032,8 @@ dependencies = [
 
 [[package]]
 name = "llm-credentials"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "llm-core",
  "serde",
@@ -1043,7 +1044,7 @@ dependencies = [
 
 [[package]]
 name = "llm-gateway-docs"
-version = "0.23.0"
+version = "0.24.0"
 dependencies = [
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
@@ -1053,8 +1054,8 @@ dependencies = [
 
 [[package]]
 name = "llm-http"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "bytes",
  "httpdate",
@@ -1068,8 +1069,8 @@ dependencies = [
 
 [[package]]
 name = "llm-messages"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "http",
  "llm-core",
@@ -1083,8 +1084,8 @@ dependencies = [
 
 [[package]]
 name = "llm-models"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "llm-bedrock",
  "llm-chat",
@@ -1106,8 +1107,8 @@ dependencies = [
 
 [[package]]
 name = "llm-providers"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "http",
  "llm-core",
@@ -1123,8 +1124,8 @@ dependencies = [
 
 [[package]]
 name = "llm-responses"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "llm-core",
  "llm-credentials",
@@ -1136,8 +1137,8 @@ dependencies = [
 
 [[package]]
 name = "llm-routing"
-version = "0.20.0"
-source = "git+https://github.com/beyond10x/llm?tag=0.20.0#541a831e6bfe6fd075c050956bf72d885af0b6d6"
+version = "0.24.0"
+source = "git+https://github.com/beyond10x/llm?tag=0.24.0#08289a72fd69939bb3f0518474a213348f366377"
 dependencies = [
  "llm-core",
  "llm-providers",

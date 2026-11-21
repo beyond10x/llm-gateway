@@ -1,5 +1,5 @@
 //! The binary's translator (story:gateway-translation): `llm_gateway`'s [`Translator`] port over
-//! llm 0.20.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
+//! llm 0.24.0's ingress decoders, protocol clients (llm-bedrock's among them) and ingress encoders,
 //! and a tokio runtime the binary owns.
 //!
 //! [`Translator::prepare`] runs on the gateway's worker thread before any target is asked for:
@@ -74,6 +74,16 @@ pub const REASONING_EFFORTS: [&str; 5] = ["minimal", "low", "medium", "high", "x
 /// The effort a chat or responses upstream receives for disabled thinking, admitted there beside
 /// [`REASONING_EFFORTS`]; a messages upstream has no such effort.
 pub const NO_REASONING_EFFORT: &str = "none";
+
+/// `capabilities` with structured output and image input declared `false`. llm reads both on
+/// every client wire since 0.21.0 and 0.22.0, but no translated path of the gateway carries
+/// either: a declared `false` has llm refuse them before any I/O (`unsupported`, so
+/// `translation-unsupported`), as llm 0.20.0's decoders refused them by path.
+pub(crate) const fn translated(capabilities: Capabilities) -> Capabilities {
+    capabilities
+        .with_structured_output(false)
+        .with_image_input(false)
+}
 /// The name the binding's account gives the target's credential; only the resolver below
 /// answers it.
 const SECRET_REFERENCE: &str = "target-credential";
@@ -246,29 +256,27 @@ impl LlmTranslator {
     /// The capabilities `model` is translated under for `upstream`: an override, else tools and
     /// tool choice when it parses tool calls, temperature and `top_p`, [`REASONING_EFFORTS`]
     /// (and [`NO_REASONING_EFFORT`] for a chat or responses upstream), and a context window and
-    /// output limit of its window, else [`DEFAULT_CONTEXT_WINDOW`].
+    /// output limit of its window, else [`DEFAULT_CONTEXT_WINDOW`]. Either way structured output
+    /// and image input are declared `false` ([`translated`]).
     fn capabilities(&self, model: &RelayModel, upstream: Wire) -> Capabilities {
         if let Some(declared) = self.capabilities.get(model.alias().as_str()) {
-            return declared.clone();
+            return translated(declared.clone());
         }
         let window = model.window().unwrap_or(DEFAULT_CONTEXT_WINDOW);
         let tools = model.tool_calling() == ToolCalling::Parsed;
-        Capabilities {
-            tools,
-            tool_choice: tools,
-            temperature: true,
-            top_p: true,
-            reasoning_efforts: REASONING_EFFORTS
-                .iter()
-                .copied()
-                .chain((upstream != Wire::Messages).then_some(NO_REASONING_EFFORT))
-                .map(ToOwned::to_owned)
-                .collect(),
-            context_window: window,
-            max_output_tokens: window,
-            output_streaming: true,
-            input_during_output: false,
-        }
+        translated(
+            Capabilities::text(window, window)
+                .with_tools(tools)
+                .with_tool_choice(tools)
+                .with_temperature(true)
+                .with_top_p(true)
+                .with_reasoning_efforts(
+                    REASONING_EFFORTS
+                        .iter()
+                        .copied()
+                        .chain((upstream != Wire::Messages).then_some(NO_REASONING_EFFORT)),
+                ),
+        )
     }
 }
 
@@ -375,7 +383,7 @@ const fn refusal(error: &Error) -> RefusalCode {
     }
 }
 
-/// The diagnostics of llm 0.20.0 that end in a path whose last segment is a key the client
+/// The diagnostics of llm 0.24.0 that end in a path whose last segment is a key the client
 /// chose: chat's `closed_object` (`llm-chat/src/ingress.rs`), responses' `outside`
 /// (`llm-responses/src/request.rs`), both through `llm_core::field_path`, and messages'
 /// `fields` (`llm-messages/src/lib.rs`, through its `path`). Every other diagnostic a refused
@@ -388,11 +396,10 @@ const KEY_DIAGNOSTICS: [&str; 3] = [
 
 /// Paths behind a [`KEY_DIAGNOSTICS`] prefix that are logged as written: llm's own
 /// `messages[].content[].type`, and the fields `docs/gateway.md` lists as still refused by name.
-/// A client key equal to one is that public name, not a secret.
-const NAMED_PATHS: [&str; 5] = [
+/// A client key equal to one is that public name, not a secret. `text.format` and
+/// `output_config.format` left the list with llm 0.21.0, whose decoders read them.
+const NAMED_PATHS: [&str; 3] = [
     "messages[].content[].type",
-    "text.format",
-    "output_config.format",
     "thinking.display",
     "context_management",
 ];
@@ -1622,20 +1629,10 @@ mod tests {
 
     /// A messages client for `base_url`, sent `session`.
     fn client(base_url: &str, session: Option<Id>) -> llm_messages::MessagesClient {
-        let capabilities = Capabilities {
-            tools: false,
-            tool_choice: false,
-            temperature: true,
-            top_p: true,
-            reasoning_efforts: REASONING_EFFORTS
-                .iter()
-                .map(|&effort| effort.to_owned())
-                .collect(),
-            context_window: 8192,
-            max_output_tokens: 8192,
-            output_streaming: true,
-            input_during_output: false,
-        };
+        let capabilities = Capabilities::text(8192, 8192)
+            .with_temperature(true)
+            .with_top_p(true)
+            .with_reasoning_efforts(REASONING_EFFORTS);
         let reach = Reach {
             base_url: base_url.to_owned(),
             credential: Credential::None,
@@ -1740,7 +1737,7 @@ mod tests {
     }
 }
 
-/// story:refusal-log-masks-client-keys: each diagnostic is the one llm 0.20.0's decoder makes
+/// story:refusal-log-masks-client-keys: each diagnostic is the one llm 0.24.0's decoder makes
 /// for the body, so a change of llm's wording on an upgrade fails here before a key is logged.
 #[cfg(test)]
 mod mask_tests {
@@ -1852,13 +1849,6 @@ mod mask_tests {
             ),
             format!("{prefix}input[].content[].?")
         );
-        assert_eq!(
-            logged(
-                Wire::Responses,
-                &responses(&[("text", json!({"format": {"type": "text"}}))], &part)
-            ),
-            format!("{prefix}text.format")
-        );
     }
 
     #[test]
@@ -1900,10 +1890,6 @@ mod mask_tests {
             (
                 ("context_management", json!({"edits": []})),
                 "context_management",
-            ),
-            (
-                ("output_config", json!({"format": {"type": "json_schema"}})),
-                "output_config.format",
             ),
         ] {
             assert_eq!(

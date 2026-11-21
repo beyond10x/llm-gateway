@@ -1,8 +1,10 @@
 {
   "format": "ess-diff-acknowledgements/1",
-  "before": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
-  "after": "cbc54ac21b03f634f4c3a4e2a6aa58f28c2d7791341f06c189220d3cfb801777",
+  "before": "cbc54ac21b03f634f4c3a4e2a6aa58f28c2d7791341f06c189220d3cfb801777",
+  "after": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
   "acknowledged": [
-    "type/llm-gateway.deployment.HostedDeclaration/field-added/reasoning_efforts"
+    "entity/llm-gateway.telemetry.UsageRecord/field-added/principal",
+    "system/llm-gateway/unclassified-changed",
+    "type/llm-gateway.deployment.DeploymentConfiguration/field-added/token_review"
   ]
 }

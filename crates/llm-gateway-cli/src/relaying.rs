@@ -1113,6 +1113,8 @@ struct Parts {
     models: Vec<RelayModel>,
     /// The metrics listener's scrape token, when `metrics_bearer_file` names one.
     metrics_bearer: Option<OwnerToken>,
+    /// The caller review of a document with `ingress_auth = "service-account-token"`.
+    reviewer: Option<crate::token_review::TokenReviewer>,
 }
 
 impl Parts {
@@ -1123,6 +1125,7 @@ impl Parts {
         Ok(Self {
             verifier: owner_verifier(deployment)?,
             metrics_bearer: crate::serve::metrics_bearer(deployment)?,
+            reviewer: crate::token_review::token_reviewer(deployment)?,
             vllm_keys: crate::keys::vllm_keys(deployment)?,
             hosted: hosted_endpoints(deployment)?,
             bedrock: crate::bedrock::routes(deployment)?,
@@ -1300,6 +1303,7 @@ fn compose(
         metrics,
         models,
         metrics_bearer,
+        reviewer,
     } = parts;
     // Every composition serves its hosted models from their endpoints, whatever serves the rest.
     let targets: Arc<dyn RelayTargets> = Arc::new(HostedTargets::new(hosted, tls, targets));
@@ -1320,6 +1324,10 @@ fn compose(
         .with_metrics(Arc::clone(&metrics))
         .with_decoder(Arc::new(crate::decode::Decoder))
         .with_records(Arc::new(crate::logging::TracingRecords));
+    let relay = match reviewer {
+        Some(reviewer) => relay.with_caller_review(Arc::new(reviewer)),
+        None => relay,
+    };
     let signals = Running::install_signals()?;
     let bind = deployment.gateway.bind;
     let mut handle =

@@ -100,6 +100,25 @@ pub(crate) const CONTAINER_TOKEN: Policy = Policy {
     resolve_links: true,
 };
 
+/// The gateway's own service-account token a `[token_review]` table names
+/// (`token_review.credential_file`), presented to the `TokenReview` API. A kubelet mounts it behind
+/// symbolic links into a `..data` directory it replaces on rotation, readable by the group or by
+/// everyone, so its rules are the container token's: the links resolved at every read, the file
+/// inside the path's directory, refused only when group- or world-writable, at most 16 KiB.
+pub(crate) const TOKEN_REVIEW_CREDENTIAL: Policy = Policy {
+    source: Source::TokenReview,
+    ..CONTAINER_TOKEN
+};
+
+/// The CA bundle a `[token_review]` table names (`token_review.ca_file`): public certificates,
+/// mounted as the token is, at most 256 KiB.
+pub(crate) const TOKEN_REVIEW_CA: Policy = Policy {
+    source: Source::TokenReview,
+    limit: 256 * 1024,
+    unsafe_mode: 0o022,
+    resolve_links: true,
+};
+
 /// The refusal of `rule` for `policy`'s source. Its message is `detail` alone: no refusal quotes
 /// the path it was given or the file a link resolves to, because a secret written by mistake as
 /// a path would be printed and logged with it. The code names the source, and a caller that

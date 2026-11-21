@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.TokenReviewDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "source_digest": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
+    "contract_digest": "slice-sha256/2:2120656694a9188a4710a1ea3e440c11bb75ed8635037461bfc00861d350da39",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.TokenReviewDeclaration": {
+      "title": "TokenReviewDeclaration",
+      "x-ess-name": "llm-gateway.deployment.TokenReviewDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "principals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "api": {
+          "type": "string"
+        },
+        "ca_file": {
+          "type": "string"
+        },
+        "credential_file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "audience",
+        "principals",
+        "api",
+        "ca_file",
+        "credential_file"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

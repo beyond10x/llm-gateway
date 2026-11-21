@@ -1814,6 +1814,7 @@ mod tests {
             response_bytes: 10,
             duration_ms,
             profile: None,
+            principal: None,
         }
     }
 

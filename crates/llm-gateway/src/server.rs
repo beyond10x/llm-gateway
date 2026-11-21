@@ -10,6 +10,7 @@ use crate::{
     listing::{self, InstructionAnswer},
     metrics::{self, Disposition, Metrics, UsageRecord},
     relay::{self, Admitted, Call, ModelStatus, Relay, Wire},
+    review::{CallerToken, Principal, Review},
 };
 use std::{
     io::{self, Read, Write},
@@ -94,6 +95,12 @@ pub enum IngressAuth {
     /// No credential: `authorization` is not read for a model call, so a missing, malformed or
     /// wrong one is no refusal. For a gateway behind something that authenticates already.
     None,
+    /// The owner's bearer, or a bearer the relay's [`crate::CallerReview`]
+    /// ([`crate::Relay::with_caller_review`]) admits as a [`crate::Principal`]: a model call
+    /// whose bearer is neither is `credential-rejected`, and one the review cannot answer
+    /// `credential-review-unavailable`. Every other path takes the owner's bearer alone, as with
+    /// `Bearer`, and the review is never asked for it.
+    ServiceAccountToken,
 }
 
 impl GatewayConfig {
@@ -555,7 +562,13 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
             let leftover = leftover.into_bytes();
             match relay::serve(&mut stream, leftover, &admitted, relay, &limits, &mut call) {
                 Ok(()) => {
-                    record(shared, decision.recorded, call, None, (begun, observed));
+                    record(
+                        shared,
+                        (decision.recorded, decision.principal),
+                        call,
+                        None,
+                        (begun, observed),
+                    );
                     drop(stream.shutdown(Shutdown::Both));
                     return;
                 }
@@ -581,7 +594,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
         // the end can count on the record having been made.
         record(
             shared,
-            decision.recorded,
+            (decision.recorded, decision.principal),
             call,
             Some(code),
             (begun, observed),
@@ -597,10 +610,11 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
 /// Makes the usage record of an admitted request to a relayed wire (rows O1, O2; authenticated,
 /// or needing no credential under `IngressAuth::None`): `wire`
 /// is `None` for every other request, which makes no record. `refusal` is what the client was
-/// answered instead of a relayed answer.
+/// answered instead of a relayed answer. `principal` is the service account a reviewed bearer
+/// named (`IngressAuth::ServiceAccountToken`), `None` for the owner and for no credential.
 fn record(
     shared: &Shared,
-    wire: Option<Wire>,
+    (wire, principal): (Option<Wire>, Option<Principal>),
     call: Call,
     refusal: Option<RefusalCode>,
     (begun, observed): (Instant, Observed),
@@ -640,6 +654,7 @@ fn record(
         response_bytes,
         duration_ms,
         profile: call.profile,
+        principal: principal.map(|principal| principal.as_str().to_owned()),
     };
     relay.observe(&record);
     // The in-flight entry goes only once the call is recorded as finished.
@@ -1143,6 +1158,8 @@ struct Decision {
     /// credential under `IngressAuth::None`), which makes a usage
     /// record whatever answers it.
     recorded: Option<Wire>,
+    /// The service account a reviewed bearer named, which that record carries.
+    principal: Option<Principal>,
 }
 
 impl Decision {
@@ -1152,6 +1169,7 @@ impl Decision {
             head_only: false,
             linger: false,
             recorded: None,
+            principal: None,
         }
     }
 }
@@ -1317,17 +1335,24 @@ fn dispatch(head: &str, shared: &Shared) -> Decision {
     // A wake is a `POST` too, and may still be sending a body it is refused for.
     let linger = shared.relay.is_some()
         && (relayed(request.path).is_some() || Lifecycle::of(request.path).is_some());
-    let (outcome, recorded) = decide(&request, shared);
+    let mut principal = None;
+    let (outcome, recorded) = decide(&request, shared, &mut principal);
     Decision {
         outcome,
         head_only,
         linger,
         recorded,
+        principal,
     }
 }
 
-/// The outcome, and the wire when the request is an authenticated one to a relayed wire path.
-fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
+/// The outcome, and the wire when the request is an authenticated one to a relayed wire path;
+/// `principal` is set to the service account a reviewed bearer named.
+fn decide(
+    request: &Request<'_>,
+    shared: &Shared,
+    principal: &mut Option<Principal>,
+) -> (Outcome, Option<Wire>) {
     // The probes: two literal paths with two literal methods, matched before load is shed.
     if request.is_read() {
         match request.path {
@@ -1365,6 +1390,20 @@ fn decide(request: &Request<'_>, shared: &Shared) -> (Outcome, Option<Wire>) {
         && let Some((wire, count)) = relayed(request.path)
     {
         return (admit(request, shared, wire, count), Some(wire));
+    }
+    // A model call under `IngressAuth::ServiceAccountToken` takes the owner's bearer or one the
+    // relay's review admits (story:gateway-sa-token-ingress); every other path authenticates the
+    // owner below, and its bearer is never shown to the review.
+    if shared.config.ingress_auth == IngressAuth::ServiceAccountToken
+        && let (Some((wire, count)), Some(relay)) = (relayed(request.path), &shared.relay)
+    {
+        return match review(request, shared, relay) {
+            Ok(reviewed) => {
+                *principal = reviewed;
+                (admit(request, shared, wire, count), Some(wire))
+            }
+            Err(code) => (Outcome::Refused(code), None),
+        };
     }
     // Everything else establishes the authenticated context before decoding anything further.
     // Open locally, the machine's own user is the owner and presents nothing.
@@ -1622,6 +1661,12 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire, count_tokens: bool)
 /// The bearer token `authorization` presents: `credential-absent` without one,
 /// `credential-malformed` when it is not one bearer token.
 fn bearer(request: &Request<'_>) -> Result<OwnerToken, RefusalCode> {
+    OwnerToken::new(bearer_material(request)?.as_bytes().to_vec())
+        .map_err(|_| RefusalCode::CredentialMalformed)
+}
+
+/// The material of the one bearer token `authorization` presents, under [`bearer`]'s refusals.
+fn bearer_material<'a>(request: &Request<'a>) -> Result<&'a str, RefusalCode> {
     let presented = request
         .header("authorization")
         .ok_or(RefusalCode::CredentialAbsent)?;
@@ -1631,8 +1676,31 @@ fn bearer(request: &Request<'_>) -> Result<OwnerToken, RefusalCode> {
     if !scheme.eq_ignore_ascii_case("Bearer") {
         return Err(RefusalCode::CredentialMalformed);
     }
-    OwnerToken::new(material.trim().as_bytes().to_vec())
-        .map_err(|_| RefusalCode::CredentialMalformed)
+    Ok(material.trim())
+}
+
+/// A model call's caller under `IngressAuth::ServiceAccountToken`: the owner (`None`) when its
+/// bearer is the owner's, else the principal the relay's review admits. A bearer the review
+/// rejects is `credential-rejected`, one it cannot review `credential-review-unavailable`.
+fn review(
+    request: &Request<'_>,
+    shared: &Shared,
+    relay: &Relay,
+) -> Result<Option<Principal>, RefusalCode> {
+    let material = bearer_material(request)?;
+    let owner = OwnerToken::new(material.as_bytes().to_vec())
+        .map_err(|_| RefusalCode::CredentialMalformed)?;
+    if shared.verifier.verify(&owner) == Verdict::Owner {
+        return Ok(None);
+    }
+    drop(owner);
+    let token = CallerToken::new(material.as_bytes().to_vec())
+        .map_err(|_| RefusalCode::CredentialMalformed)?;
+    match relay.review(&token) {
+        Review::Admitted(principal) => Ok(Some(principal)),
+        Review::Rejected => Err(RefusalCode::CredentialRejected),
+        Review::Unavailable => Err(RefusalCode::CredentialReviewUnavailable),
+    }
 }
 
 fn authenticate(request: &Request<'_>, shared: &Shared) -> Result<Authenticated, RefusalCode> {

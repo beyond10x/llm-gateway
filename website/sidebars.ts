@@ -26,6 +26,7 @@ const sidebars: SidebarsConfig = {
         'guides/scrape-the-counters',
         'guides/run-on-kubernetes',
         'guides/run-in-a-credential-namespace',
+        'guides/admit-service-account-tokens',
         'guides/run-the-checks',
         'guides/store-an-upstream-key',
       ],

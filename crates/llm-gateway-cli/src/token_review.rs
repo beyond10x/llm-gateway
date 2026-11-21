@@ -115,6 +115,8 @@ impl Failure {
 /// What the `TokenReview` API answered, read.
 struct Answered {
     authenticated: bool,
+    /// `status.error` is present and not empty.
+    error: bool,
     username: Option<String>,
     audiences: Vec<String>,
 }
@@ -179,7 +181,9 @@ impl TokenReviewer {
     }
 
     /// Keeps `principal` (an admission, or a rejection with `None`) for `key` until `until_ms`,
-    /// within the entry bound: expired entries go first, then the one whose window ends soonest.
+    /// within the entry bound: expired entries go first, then the rejection whose window ends
+    /// soonest, then, for an admission only, the admission whose window ends soonest. A rejection
+    /// never evicts an admission: with every entry an admission, a new rejection is not kept.
     fn keep(&self, key: [u8; 32], until_ms: u64, principal: Option<Principal>, now: u64) {
         if self.bounds.entries == 0 || until_ms <= now {
             return;
@@ -189,15 +193,20 @@ impl TokenReviewer {
         };
         if kept.len() >= self.bounds.entries && !kept.contains_key(&key) {
             kept.retain(|_, entry| entry.until_ms > now);
+            let admission = principal.is_some();
             while kept.len() >= self.bounds.entries {
-                let Some(soonest) = kept
-                    .iter()
-                    .min_by_key(|(_, entry)| entry.until_ms)
-                    .map(|(key, _)| *key)
-                else {
-                    break;
+                let soonest = |rejections_only: bool| {
+                    kept.iter()
+                        .filter(|(_, entry)| !rejections_only || entry.principal.is_none())
+                        .min_by_key(|(_, entry)| entry.until_ms)
+                        .map(|(key, _)| *key)
                 };
-                kept.remove(&soonest);
+                let Some(evicted) =
+                    soonest(true).or_else(|| admission.then(|| soonest(false)).flatten())
+                else {
+                    return;
+                };
+                kept.remove(&evicted);
             }
         }
         kept.insert(
@@ -220,6 +229,8 @@ impl TokenReviewer {
         answered
     }
 
+    /// One review's exchange. Connect, handshake, write and every read are given only what is left
+    /// of the one deadline set as it starts, so the whole exchange ends within `timeout`.
     fn exchange(&self, token: &[u8]) -> Result<Answered, Failure> {
         let deadline = Instant::now() + self.bounds.timeout;
         let own = own_token(&self.credential_file).map_err(|refusal| {
@@ -235,7 +246,7 @@ impl TokenReviewer {
         drop(own);
         let mut stream = self
             .connector
-            .connect_probe(&self.authority, self.bounds.timeout)
+            .connect_probe(&self.authority, left(deadline)?)
             .map_err(|error| {
                 if error.kind() == std::io::ErrorKind::TimedOut {
                     Failure::Timeout
@@ -243,19 +254,35 @@ impl TokenReviewer {
                     Failure::Unreachable
                 }
             })?;
-        if Instant::now() >= deadline {
-            return Err(Failure::Timeout);
-        }
-        stream
-            .write_all(request.as_slice())
-            .map_err(|_| Failure::Unreachable)?;
+        let socket = stream.shutdown_handle();
+        let bound = |read: bool| -> Result<(), Failure> {
+            let left = left(deadline)?;
+            if let Some(socket) = &socket {
+                let set = if read {
+                    socket.set_read_timeout(Some(left))
+                } else {
+                    socket.set_write_timeout(Some(left))
+                };
+                set.map_err(|_| Failure::Unreachable)?;
+            }
+            Ok(())
+        };
+        bound(false)?;
+        stream.write_all(request.as_slice()).map_err(|error| {
+            if matches!(
+                error.kind(),
+                std::io::ErrorKind::TimedOut | std::io::ErrorKind::WouldBlock
+            ) {
+                Failure::Timeout
+            } else {
+                Failure::Unreachable
+            }
+        })?;
         drop(request);
         let mut answer = Vec::new();
         let mut piece = [0_u8; 8 << 10];
         loop {
-            if Instant::now() >= deadline {
-                return Err(Failure::Timeout);
-            }
+            bound(true)?;
             match stream.read(&mut piece) {
                 Ok(0) => break,
                 Ok(read) => {
@@ -287,6 +314,11 @@ impl TokenReviewer {
 
     /// The decision on an answer, with the reason a refusal is logged with.
     fn decide(&self, answered: Answered) -> Result<Principal, (&'static str, Option<String>)> {
+        // An authenticator that reports an error has not vouched for the token, whatever
+        // `authenticated` says: a rejection, kept as one.
+        if answered.error {
+            return Err(("review-error", None));
+        }
         if !answered.authenticated {
             return Err(("unauthenticated", None));
         }
@@ -312,18 +344,20 @@ impl CallerReview for TokenReviewer {
     fn review(&self, presented: &CallerToken) -> Review {
         let token = presented.expose();
         let now = (self.clock)();
-        // A projected service-account token is a JWT; anything else is refused on its face. Its
-        // `exp` is read unverified, only ever to refuse or to shorten a window, never to admit.
-        let expires_ms = match expiry_ms(token) {
-            Expiry::NotAJwt => {
-                refused("not-a-service-account-token", None);
-                return Review::Rejected;
-            }
-            Expiry::Unstated => None,
-            Expiry::At(expires) => Some(expires),
+        // The pre-filter: a projected service-account token is a JWT naming its audience and
+        // expiry. Its claims are read unverified, only ever to refuse without taking a review slot
+        // or to shorten a window, never to admit, to name a principal or to key anything.
+        let Some(claims) = unverified_claims(token) else {
+            refused("not-a-service-account-token", None);
+            return Review::Rejected;
         };
+        let expires_ms = claims.expires_ms;
         if expires_ms.is_some_and(|expires| expires <= now) {
             refused("expired", None);
+            return Review::Rejected;
+        }
+        if !claims.audiences.contains(&self.audience) {
+            refused("audience-not-claimed", None);
             return Review::Rejected;
         }
         let key: [u8; 32] = Sha256::digest(token).into();
@@ -379,27 +413,19 @@ fn refused(reason: &'static str, principal: Option<&str>) {
     );
 }
 
-/// What a token says of its own expiry, read unverified.
+/// What a token says of itself, read without verifying its signature: only ever a reason to
+/// refuse it before a review, or to shorten how long an admission is kept.
 #[derive(Debug, PartialEq, Eq)]
-enum Expiry {
-    /// Not three non-empty base64url segments whose middle one is a JSON object.
-    NotAJwt,
-    /// A JWT with no numeric `exp`.
-    Unstated,
-    /// A JWT whose `exp` is this many milliseconds since the epoch.
-    At(u64),
+struct Unverified {
+    /// `exp` in milliseconds since the epoch, when the token states one.
+    expires_ms: Option<u64>,
+    /// `aud`, a string or an array of strings; empty when absent.
+    audiences: Vec<String>,
 }
 
-/// The expiry of a token of three non-empty base64url segments whose middle one is a JSON object.
-fn expiry_ms(token: &[u8]) -> Expiry {
-    claims_expiry(token).map_or(Expiry::NotAJwt, |exp| {
-        exp.map_or(Expiry::Unstated, Expiry::At)
-    })
-}
-
-/// `None` for a token that is not a JWT; `Some` with its `exp` in milliseconds when it has one.
-#[allow(clippy::option_option)]
-fn claims_expiry(token: &[u8]) -> Option<Option<u64>> {
+/// The claims of a token of three non-empty base64url segments whose middle one is a JSON
+/// object; `None` for anything else.
+fn unverified_claims(token: &[u8]) -> Option<Unverified> {
     let mut segments = token.split(|byte| *byte == b'.');
     let (Some(header), Some(claims), Some(signature), None) = (
         segments.next(),
@@ -415,12 +441,32 @@ fn claims_expiry(token: &[u8]) -> Option<Option<u64>> {
     let decoded = Wiped::adopt(URL_SAFE_NO_PAD.decode(claims).ok()?);
     let claims: serde_json::Value = serde_json::from_slice(decoded.as_slice()).ok()?;
     let claims = claims.as_object()?;
-    Some(
-        claims
+    let audiences = match claims.get("aud") {
+        Some(serde_json::Value::String(audience)) => vec![audience.clone()],
+        Some(serde_json::Value::Array(audiences)) => audiences
+            .iter()
+            .filter_map(serde_json::Value::as_str)
+            .map(str::to_owned)
+            .collect(),
+        _ => Vec::new(),
+    };
+    Some(Unverified {
+        expires_ms: claims
             .get("exp")
             .and_then(serde_json::Value::as_u64)
             .map(|exp| exp.saturating_mul(1000)),
-    )
+        audiences,
+    })
+}
+
+/// What is left of `deadline`; a timeout once it has passed.
+fn left(deadline: Instant) -> Result<Duration, Failure> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        Err(Failure::Timeout)
+    } else {
+        Ok(left)
+    }
 }
 
 /// The request of one review: its head and its `TokenReview` body, in bytes that are overwritten
@@ -463,7 +509,12 @@ fn answered(body: &[u8]) -> Option<Answered> {
         .and_then(|user| user.get("username"))
         .and_then(serde_json::Value::as_str)
         .map(str::to_owned);
-    if authenticated && username.is_none() {
+    let error = match status.get("error") {
+        None | Some(serde_json::Value::Null) => false,
+        Some(serde_json::Value::String(text)) => !text.is_empty(),
+        Some(_) => true,
+    };
+    if authenticated && username.is_none() && !error {
         return None;
     }
     let audiences = status
@@ -479,6 +530,7 @@ fn answered(body: &[u8]) -> Option<Answered> {
         .unwrap_or_default();
     Some(Answered {
         authenticated,
+        error,
         username,
         audiences,
     })
@@ -570,19 +622,36 @@ pub fn token_reviewer(deployment: &Deployment) -> Result<Option<TokenReviewer>, 
 
 #[cfg(test)]
 mod tests {
-    use super::{Expiry, answered, certificates, expiry_ms};
+    use super::{Unverified, answered, certificates, unverified_claims};
 
     #[test]
-    fn a_token_is_read_for_its_expiry_only_when_it_is_shaped_as_a_jwt() {
-        // {"exp":1800000000}
+    fn a_token_is_read_for_its_claims_only_when_it_is_shaped_as_a_jwt() {
+        let token = |claims: &str| {
+            format!(
+                "aGVhZGVy.{}.c2ln",
+                base64::Engine::encode(&super::URL_SAFE_NO_PAD, claims)
+            )
+        };
         assert_eq!(
-            expiry_ms(b"aGVhZGVy.eyJleHAiOjE4MDAwMDAwMDB9.c2ln"),
-            Expiry::At(1_800_000_000_000)
+            unverified_claims(token(r#"{"exp":1800000000,"aud":["a","b"]}"#).as_bytes()),
+            Some(Unverified {
+                expires_ms: Some(1_800_000_000_000),
+                audiences: vec!["a".to_owned(), "b".to_owned()],
+            })
         );
-        // {"sub":"x"}
         assert_eq!(
-            expiry_ms(b"aGVhZGVy.eyJzdWIiOiJ4In0.c2ln"),
-            Expiry::Unstated
+            unverified_claims(token(r#"{"aud":"a"}"#).as_bytes()),
+            Some(Unverified {
+                expires_ms: None,
+                audiences: vec!["a".to_owned()],
+            })
+        );
+        assert_eq!(
+            unverified_claims(token(r#"{"sub":"x","aud":7}"#).as_bytes()),
+            Some(Unverified {
+                expires_ms: None,
+                audiences: Vec::new(),
+            })
         );
         for refused in [
             &b"opaque-token"[..],
@@ -593,8 +662,8 @@ mod tests {
             b"aGVhZGVy.bm90LWpzb24.c2ln",
         ] {
             assert_eq!(
-                expiry_ms(refused),
-                Expiry::NotAJwt,
+                unverified_claims(refused),
+                None,
                 "{}",
                 String::from_utf8_lossy(refused)
             );
@@ -612,6 +681,18 @@ mod tests {
         assert_eq!(admitted.audiences, vec!["a".to_owned()]);
         let refused = answered(br#"{"status":{}}"#).unwrap();
         assert!(!refused.authenticated);
+        assert!(!admitted.error);
+        let erred = answered(
+            br#"{"status":{"authenticated":true,"user":{"username":"u"},"audiences":["a"],"error":"x"}}"#,
+        )
+        .unwrap();
+        assert!(erred.error);
+        assert!(
+            answered(br#"{"status":{"authenticated":false,"error":""}}"#).is_some_and(|a| !a.error)
+        );
+        assert!(
+            answered(br#"{"status":{"authenticated":true,"error":"x"}}"#).is_some_and(|a| a.error)
+        );
         for malformed in [
             &br#"{"kind":"Status","status":{"authenticated":true}}"#[..],
             br#"{"status":{"authenticated":true}}"#,

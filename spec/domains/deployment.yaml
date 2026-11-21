@@ -892,7 +892,11 @@ types:
   # Any other key is `config:schema`; a value outside its rule `config:value` naming
   # `token_review.<key>`. The files are read at start (StartupRefusal `token-review:*`). The
   # review's bounds (timeout, concurrency, the SHA-256-keyed cache of admissions and rejections)
-  # are the binary's, published in docs/gateway.md. The mode works on a plain listener: the
+  # are the binary's, published in docs/gateway.md. Before a review the token's claims are read
+  # unverified, only to refuse (`credential-rejected`, no API server call): not a JWT, an `exp`
+  # passed, or an `aud` without `audience`; nothing so read admits, names the principal or keys
+  # the cache. An answer that sets `status.error` is a rejection. `ca_file` is read once at start,
+  # `credential_file` at every review. The mode works on a plain listener: the
   # bearer crosses the pod network in clear unless a mesh or a sidecar relay on loopback carries
   # it, and the guide says to admit the hop with a NetworkPolicy. Proved by
   # crates/llm-gateway-cli/tests/token_review.rs against a fake TokenReview API on loopback TLS.

@@ -1380,13 +1380,31 @@ The bounds of the binary's TokenReview call (`crates/llm-gateway-cli/src/token_r
 | `rejection-cache-seconds` | `ReviewBounds::rejection` | 3 |
 
 One review, connection, handshake, request and answer, ends within `review-timeout-ms` or is
-`credential-review-unavailable`. A review asked while `concurrent-reviews` are under way is
-`credential-review-unavailable` at once and sends nothing. Answers are kept by the SHA-256 of
-the token, never the token: an admission for `admission-cache-seconds` and never past the
-token's own `exp`, a rejection for `rejection-cache-seconds`, and an unavailable answer not at
-all. Past `review-cache-entries` the entry whose window ends soonest goes first. A token whose
-`exp` has passed, or one that is not three base64url segments, is `credential-rejected` without
-a review.
+`credential-review-unavailable`: each of those steps is given only what is left of the one
+deadline the review starts with. A review asked while `concurrent-reviews` are under way is
+`credential-review-unavailable` at once and sends nothing. An answer that sets `status.error` is
+`credential-rejected`, whatever its `authenticated` says. Answers are kept by the SHA-256 of the
+token, never the token: an admission for `admission-cache-seconds` and never past the token's
+own `exp`, a rejection for `rejection-cache-seconds`, and an unavailable answer not at all. Past
+`review-cache-entries` expired entries go first, then the rejection whose window ends soonest; a
+rejection never evicts an admission (with every entry an admission, a new rejection is not
+kept), and an admission evicts the admission whose window ends soonest only when no rejection
+is left.
+
+The pre-filter: before a review slot is taken, the token's claims are read without verifying
+its signature. A token that is not three base64url segments around a JSON object, whose `exp`
+has passed, or whose `aud` does not contain the configured audience is `credential-rejected`
+without a review and without a call to the API server. The pre-filter can only refuse: a token
+that passes it is still reviewed, and nothing read from its unverified claims admits it, names
+its principal or keys the cache. What remains: a caller that knows the audience (it is in the
+deployment document and in every agent's pod) can send distinct JWT-shaped tokens naming it and
+a future `exp`. Each takes a review slot and an API server call, and while `concurrent-reviews`
+are taken by them a listed caller whose admission is not kept is
+`credential-review-unavailable`. The mode belongs behind a NetworkPolicy that admits only the
+agents' pods.
+
+`token_review.ca_file` is read once, at start: a rotated cluster CA takes a restart.
+`token_review.credential_file` is read again at every review.
 
 ## Bounds of the translated path
 

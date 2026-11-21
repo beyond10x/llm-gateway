@@ -40,8 +40,13 @@ fn later() -> u64 {
 /// A token shaped as a projected service-account token, distinct per `tag`.
 fn jwt(tag: &str) -> String {
     let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","kid":"test"}"#);
-    let claims = URL_SAFE_NO_PAD
-        .encode(format!(r#"{{"aud":["{AUDIENCE}"],"exp":{},"sub":"{tag}"}}"#, later()).as_bytes());
+    let claims = URL_SAFE_NO_PAD.encode(
+        format!(
+            r#"{{"aud":["{AUDIENCE}"],"exp":{},"sub":"{tag}"}}"#,
+            later()
+        )
+        .as_bytes(),
+    );
     let signature = URL_SAFE_NO_PAD.encode(format!("signature-of-{tag}").as_bytes());
     format!("{header}.{claims}.{signature}")
 }
@@ -106,8 +111,11 @@ impl ScriptedApi {
         thread::spawn(move || {
             for connection in listener.incoming() {
                 let Ok(connection) = connection else { return };
-                let (config, recording, script) =
-                    (Arc::clone(&config), Arc::clone(&recording), Arc::clone(&script));
+                let (config, recording, script) = (
+                    Arc::clone(&config),
+                    Arc::clone(&recording),
+                    Arc::clone(&script),
+                );
                 thread::spawn(move || {
                     thread::sleep(before_handshake);
                     connection.set_read_timeout(Some(WAIT)).unwrap();
@@ -225,7 +233,11 @@ impl Mounted {
 }
 
 fn reviewer_at(api: &ScriptedApi, mounted: &Mounted, principals: &[&str]) -> TokenReviewer {
-    reviewer_for(&format!("https://localhost:{}", api.address.port()), mounted, principals)
+    reviewer_for(
+        &format!("https://localhost:{}", api.address.port()),
+        mounted,
+        principals,
+    )
 }
 
 fn reviewer_for(api: &str, mounted: &Mounted, principals: &[&str]) -> TokenReviewer {
@@ -351,8 +363,11 @@ fn conformance_a_flood_of_distinct_unauthenticated_tokens_does_not_refuse_a_list
     let sent = Arc::new(AtomicUsize::new(0));
     let floods: Vec<_> = (0..12)
         .map(|worker| {
-            let (reviewer, flooding, sent) =
-                (Arc::clone(&reviewer), Arc::clone(&flooding), Arc::clone(&sent));
+            let (reviewer, flooding, sent) = (
+                Arc::clone(&reviewer),
+                Arc::clone(&flooding),
+                Arc::clone(&sent),
+            );
             thread::spawn(move || {
                 let mut n = 0_u64;
                 while flooding.load(Ordering::SeqCst) {
@@ -531,7 +546,11 @@ fn conformance_no_odd_answer_admits() {
             "{case}: {decided:?}"
         );
     }
-    assert_eq!(api.asked().len(), 17, "a redirect was followed or a review was skipped");
+    assert_eq!(
+        api.asked().len(),
+        17,
+        "a redirect was followed or a review was skipped"
+    );
 }
 
 /// `token_review.credential_file` is read at every review: once the kubelet swings `..data` to
@@ -554,8 +573,11 @@ fn conformance_a_rotated_own_token_is_presented_from_the_next_review_on() {
     assert_eq!(reviewer.review(&token(&jwt("before"))), admitted(AGENT));
     mounted.publish("..2026_11_21_02", &api.ca_pem(), ROTATED_TOKEN);
     assert_eq!(reviewer.review(&token(&jwt("after"))), admitted(AGENT));
-    let presented: Vec<Option<String>> =
-        api.asked().into_iter().map(|asked| asked.authorization).collect();
+    let presented: Vec<Option<String>> = api
+        .asked()
+        .into_iter()
+        .map(|asked| asked.authorization)
+        .collect();
     assert_eq!(
         presented,
         vec![
@@ -586,6 +608,12 @@ fn conformance_the_api_host_name_is_verified() {
         &mounted,
         &[AGENT],
     );
-    assert_eq!(reviewer.review(&token(&jwt("by-address"))), Review::Unavailable);
-    assert!(api.asked().is_empty(), "a review reached a host its certificate does not name");
+    assert_eq!(
+        reviewer.review(&token(&jwt("by-address"))),
+        Review::Unavailable
+    );
+    assert!(
+        api.asked().is_empty(),
+        "a review reached a host its certificate does not name"
+    );
 }

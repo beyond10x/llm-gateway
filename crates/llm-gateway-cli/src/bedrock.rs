@@ -12,6 +12,7 @@
 use crate::{
     config::{Bedrock, Deployment, hex_digest},
     refusal::{Refusal, StartupRefusal},
+    translate::translated,
     trusted,
 };
 use llm_bedrock::{Api, BedrockTarget, ContainerCredentials, CredentialSource};
@@ -115,7 +116,8 @@ fn provenance(alias: &str, model: &Bedrock) -> Result<Provenance, Error> {
 /// What a Bedrock model is translated under: tools when it parses tool calls, temperature and
 /// `top_p`, no reasoning effort (an `anthropic-invoke` model's `reasoning_efforts` are set on
 /// it in [`routes`]), its window or [`DEFAULT_CONTEXT_WINDOW`], its declared output limit or
-/// else the window, and streamed output.
+/// else the window, and streamed output; structured output and image input declared `false`
+/// ([`translated`]).
 pub(crate) fn capabilities(
     window: Option<u32>,
     max_output: Option<u32>,
@@ -123,17 +125,13 @@ pub(crate) fn capabilities(
 ) -> Capabilities {
     let window = u64::from(window.unwrap_or(DEFAULT_CONTEXT_WINDOW));
     let tools = tool_calling == ToolCalling::Parsed;
-    Capabilities {
-        tools,
-        tool_choice: tools,
-        temperature: true,
-        top_p: true,
-        reasoning_efforts: Vec::new(),
-        context_window: window,
-        max_output_tokens: max_output.map_or(window, u64::from),
-        output_streaming: true,
-        input_during_output: false,
-    }
+    translated(
+        Capabilities::text(window, max_output.map_or(window, u64::from))
+            .with_tools(tools)
+            .with_tool_choice(tools)
+            .with_temperature(true)
+            .with_top_p(true),
+    )
 }
 
 /// A target holding every value llm admits but the one under test, so each key's refusal names

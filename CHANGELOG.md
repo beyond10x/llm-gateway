@@ -16,6 +16,12 @@ Nothing in any release is deployed or qualified against a live client.
 
 - A translated Messages answer names the alias the client asked for as its `model`, in `message_start` (absent before) and in the non-streamed `message` (the target's reported model before).
 - A translated answer that ends in its wire's `error` event after its head is recorded `upstream_error` in the usage record and `llmgw_requests_total`, not `ok`; it stays `Relayed`, status 200.
+- A Messages client's `cache_control` marks reach a Bedrock `anthropic-invoke` model on the blocks and tools it marked, with their lifetime, and no breakpoint is added. Before, a rolling breakpoint was added on the last message's last block even when the client marked only its system block. A request without a mark keeps llm's two breakpoints, the system block and the last message's last block.
+- Signed thinking without text, which Claude Haiku 5.5 streams through `InvokeModel` at a low effort, reaches a Messages client as a thinking block before the answer; before, the answer ended in an `error` event after its text.
+
+### Changed
+
+- llm 0.24.0 (was 0.20.0) for every llm client crate. `Capabilities` is built with `Capabilities::text` and its `with_*` setters. llm's decoders now read structured output (`response_format`, `text.format`, `output_config.format`) and a user image; the gateway declares both `false` in the capabilities it translates under, a Bedrock model's included, so a translated path still refuses them `translation-unsupported` before any target is asked for, now logged as `binding does not take structured output` or `binding does not take image input`. `text.format` and `output_config.format` leave the list of paths the `translation refused` line names as written. llm's new stream events (`MessageBoundary`, `OpaqueItem`) reach llm's own encoder for the client's wire, as every event does. `docs/gateway.md` "The request".
 
 ## 0.23.0 (2026-11-21)
 

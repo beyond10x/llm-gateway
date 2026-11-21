@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-21T06:08:50Z",
+  "actor": "human:timo",
+  "artifact": "story:bedrock-client-cache-marks",
+  "kind": "story",
+  "revision": 18,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "local gate on wave/2026-11-21-w04 (Rust 1.98.0, llm 0.24.0): docs generate; task check exit 0: cargo test --workspace 1212 passed, 0 failed, 1 ignored; fmt; clippy -D warnings; docs generate --check; ess 0.86.0 validate; spec-diff passed (0 acknowledged); conformance 401 of 401, three runs; aep validate. Red on llm 0.20.0 at d55ebbb2 (bedrock 3 of 37, translation 3 of 27 failed, exit 101) and 6ac2769f (bedrock 4 of 38 failed, exit 101).",
+    "reference": "wave/2026-11-21-w04@93225ef0"
+  }
+}

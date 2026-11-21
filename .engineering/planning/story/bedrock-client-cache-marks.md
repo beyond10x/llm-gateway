@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:bedrock-client-cache-marks
 kind: story
-status: active
+status: implemented
 title: llm 0.24.0, and a messages client's cache marks reach InvokeModel as the client placed them
 summary: the llm pin moves to 0.24.0; the client's cache_control marks arrive at the same blocks and none is added to a request that carries its own
 relations:
@@ -35,10 +35,11 @@ scope:
   path: docs/gateway.md
 - confidence: cited
   path: website/docs/guides/translate-between-wires.md
-revision: 18
+revision: 19
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-21T05:50:04Z", actor: "human:timo", revision: 17}
 - {from: "proposed", to: "active", at: "2026-11-21T05:50:04Z", actor: "human:timo", revision: 18}
+- {from: "active", to: "implemented", at: "2026-11-21T06:08:50Z", actor: "human:timo", revision: 19, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Source
 

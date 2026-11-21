@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:translated-answer-model-and-outcome
 kind: story
-status: active
+status: implemented
 title: A translated Messages answer names its alias, and an answer ending in an error is recorded as failed
 summary: message_start and the message name the alias the client asked for; an error after the head is upstream_error in the record and counters
 relations:
@@ -25,10 +25,11 @@ scope:
   path: docs/gateway.md
 - confidence: cited
   path: spec/domains/telemetry.yaml
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-21T04:45:29Z", actor: "human:timo", revision: 3}
 - {from: "proposed", to: "active", at: "2026-11-21T04:45:29Z", actor: "human:timo", revision: 4}
+- {from: "active", to: "implemented", at: "2026-11-21T05:16:38Z", actor: "human:timo", revision: 5, decided_on: {"recorded":{"test_result":1}}}
 ---
 ## Source
 

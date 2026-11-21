@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-21T05:16:38Z",
+  "actor": "human:timo",
+  "artifact": "story:translated-answer-model-and-outcome",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "local gate on wave/2026-11-21-w03 (Rust 1.98.0, each step alone): cargo test --workspace 1206 passed 0 failed 2 ignored, fmt, clippy -D warnings, docs generate --check, ess 0.86.0 validate, spec-diff exit 0, conformance 401/401 three times, aep validate; red at d96eef2b: bedrock 3 of 3 new cases failed (exit 101); green bedrock 33 passed 1 ignored, observability 4, translation 26; the ignored case passes against llm 0.20.0 plus story:empty-signed-reasoning through a local cargo patch (34 of 34) and fails on the pinned llm 0.20.0",
+    "reference": "wave/2026-11-21-w03@f5c6ad72"
+  }
+}

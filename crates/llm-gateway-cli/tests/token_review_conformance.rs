@@ -401,6 +401,7 @@ fn conformance_a_flood_of_distinct_unauthenticated_tokens_does_not_refuse_a_list
 /// Every answer below is one an API server, a proxy in front of it or an old API server could
 /// give; none of them may admit, and none that is not a review may be kept.
 #[test]
+#[allow(clippy::too_many_lines)]
 fn conformance_no_odd_answer_admits() {
     let huge = format!(
         r#"{{"kind":"TokenReview","status":{{"authenticated":true,"user":{{"username":"{AGENT}"}},"audiences":["{AUDIENCE}"]}},"pad":"{}"}}"#,

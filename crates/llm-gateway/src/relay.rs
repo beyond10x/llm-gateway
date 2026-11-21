@@ -1816,6 +1816,9 @@ pub(crate) struct Call {
     pub(crate) usage_note: Option<String>,
     /// The call's entry in the dashboard's in-flight registry, removed when dropped.
     pub(crate) progress: Option<Progress>,
+    /// The code under which a translated answer, its head already written, ended in its wire's
+    /// terminal error ([`TranslatedAnswer::failed`]): the call's outcome is that code's.
+    pub(crate) failed_after_head: Option<RefusalCode>,
 }
 
 impl Call {
@@ -2057,6 +2060,12 @@ impl TranslatedAnswer for ClientAnswer<'_> {
 
     fn target_status(&mut self, status: u16) {
         self.target = Some(status);
+    }
+
+    fn failed(&mut self, code: RefusalCode) {
+        if self.framing.is_some() {
+            self.call.failed_after_head = Some(code);
+        }
     }
 
     fn body(&mut self, bytes: &[u8]) -> bool {

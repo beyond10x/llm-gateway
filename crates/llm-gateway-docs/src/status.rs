@@ -270,6 +270,20 @@ pub const CAPABILITIES: &[Capability] = &[
         BEDROCK,
     ),
     shipped(
+        "Clients",
+        "A translated Messages answer names its alias",
+        "A translated Messages answer names the alias the client asked for as its model, in message_start and in the non-streamed message, never the model the target reported or the name it was sent. Tested against a fixture Bedrock Runtime, not against AWS.",
+        "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_a_streamed_messages_answer_names_the_alias_in_message_start",
+        BEDROCK,
+    ),
+    shipped(
+        "Observability",
+        "A translated answer that ends in an error counts as failed",
+        "A translated answer whose head was written and which ends in its wire's error event is recorded upstream_error in the usage record and llmgw_requests_total, though its client was answered 200. Tested against a fixture Bedrock Runtime, not against AWS.",
+        "crates/llm-gateway-cli/tests/bedrock.rs::bedrock_a_streamed_answer_ending_in_an_error_event_is_recorded_as_failed",
+        BEDROCK,
+    ),
+    shipped(
         "Relay",
         "Translation between wires within llm's subset",
         "A request on a wire the model's upstream does not speak is decoded with llm 0.20.0, checked and projected before any target is asked for, sent with llm's client for the model's first declared wire, and answered on the client's wire, streamed event by event with the upstream's usage. A field outside the subset, carried reasoning state and an unrepresentable answer are refused by name. Tested against loopback fixture upstreams, not a vendor API.",

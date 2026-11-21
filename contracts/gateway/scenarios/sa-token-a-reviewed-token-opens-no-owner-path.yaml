@@ -1,0 +1,26 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: sa-token-a-reviewed-token-opens-no-owner-path
+summary: with ingress_auth service-account-token a token the review admits is credential-rejected on the counters and the routes, which take the owner's bearer alone
+timeline:
+- at: '2026-11-21T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ingress_auth":"service-account-token","reviews":{"projected-token-of-the-coding-agent":"system:serviceaccount:agents:coding-agent"},"models":[{"alias":"code","upstream_model":"served-code","wires":["chat"]}],"pods":[[]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/metrics","method":"GET","body":"","credential":false,"headers":["authorization: Bearer projected-token-of-the-coding-agent"]},{"step":"request","path":"/v1/routes","method":"GET","body":"","credential":false,"headers":["authorization: Bearer projected-token-of-the-coding-agent"]},{"step":"request","path":"/v1/routes","method":"GET","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '401 credential-rejected'
+    - '401 credential-rejected'
+    - '200 answered'
+    upstream: []
+    acquired: 0

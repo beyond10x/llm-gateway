@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "cbc54ac21b03f634f4c3a4e2a6aa58f28c2d7791341f06c189220d3cfb801777",
-    "contract_digest": "slice-sha256/2:63f9f73ad90947567bb520defba1c7d72afca7bd6d4077c74adfcdba89c0eb27",
+    "source_digest": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
+    "contract_digest": "slice-sha256/2:26db836d3936426752c5ead8c2feb8c389a7f2df37393c379dd44f41db08bb32",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -106,6 +106,9 @@
         },
         "watchdog": {
           "$ref": "#/$defs/llm-gateway.deployment.WatchdogDeclaration"
+        },
+        "token_review": {
+          "$ref": "#/$defs/llm-gateway.deployment.TokenReviewDeclaration"
         },
         "launch": {
           "$ref": "#/$defs/llm-gateway.deployment.LaunchDeclaration"
@@ -246,7 +249,8 @@
       "type": "string",
       "enum": [
         "Bearer",
-        "None"
+        "None",
+        "ServiceAccountToken"
       ]
     },
     "llm-gateway.deployment.LaunchDeclaration": {
@@ -499,6 +503,40 @@
         "On",
         "Off"
       ]
+    },
+    "llm-gateway.deployment.TokenReviewDeclaration": {
+      "title": "TokenReviewDeclaration",
+      "x-ess-name": "llm-gateway.deployment.TokenReviewDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "audience": {
+          "type": "string"
+        },
+        "principals": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "api": {
+          "type": "string"
+        },
+        "ca_file": {
+          "type": "string"
+        },
+        "credential_file": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "audience",
+        "principals",
+        "api",
+        "ca_file",
+        "credential_file"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.WatchdogDeclaration": {
       "title": "WatchdogDeclaration",

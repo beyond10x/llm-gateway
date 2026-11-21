@@ -7,6 +7,10 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Added
+
+- `ingress_auth = "service-account-token"` and `[token_review]`: a model call is admitted with the owner secret, compared first, or with a Kubernetes service-account token the cluster's TokenReview API reports authenticated for the configured `audience` and naming a service account on `principals`. `api`, `ca_file` and `credential_file` default to the in-cluster API server and the pod's mounted service-account files. A rejected token is `credential-rejected`; a review with no answer is the new `credential-review-unavailable` (503); neither admits. Reviews are kept by the SHA-256 of the token, admissions for at most 60 s and never past the token's expiry, rejections for 3 s; at most 8 run at once, each within 5 s. The admitted service account is the `principal` of the usage record and of the `usage` event; no token or review body is logged. Before a review the token's own claims are read unverified, only to refuse: not a JWT, expired, or an `aud` without the configured audience is `credential-rejected` with no API server call. An answer that sets `status.error` is a rejection. One deadline bounds the whole review. A rejection never evicts a kept admission. `ca_file` is read once at start, `credential_file` at every review. Startup refusals `token-review:<rule>`. `bearer` and `none` are unchanged. Guide: admit service-account tokens.
+
 ## 0.23.0 (2026-11-21)
 
 ### Added

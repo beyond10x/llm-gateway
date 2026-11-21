@@ -164,6 +164,7 @@ types:
       - {name: CredentialAbsent, attributes: {code: credential-absent, status: 401, message: "no owner credential was presented"}}
       - {name: CredentialMalformed, attributes: {code: credential-malformed, status: 401, message: "the owner credential is not a bearer token"}}
       - {name: CredentialRejected, attributes: {code: credential-rejected, status: 401, message: "the presented owner credential was rejected"}}
+      - {name: CredentialReviewUnavailable, attributes: {code: credential-review-unavailable, status: 503, message: "the presented credential could not be reviewed; ask again"}}
       - {name: MethodNotAllowed, attributes: {code: method-not-allowed, status: 405, message: "this path does not accept that method"}}
       - {name: ModelAbsent, attributes: {code: model-absent, status: 400, message: "the request body names no model"}}
       - {name: ModelColdStart, attributes: {code: model-cold-start, status: 503, message: "the model is still starting; ask again after the retry-after delay"}}
@@ -203,9 +204,26 @@ types:
   # ingress-none-without-an-owner-secret-the-owner-surface-stays-refused,
   # ingress-none-with-an-owner-secret-the-owner-surface-takes-that-secret).
   # DECIDED 2026-10-16 (story:ingress-auth-optional).
+  # `ServiceAccountToken` admits a model call (a wire path or the token count of a gateway
+  # composed with a relay) whose bearer is the owner's, compared first and never shown to the
+  # review, or one the relay's `CallerReview` (`Relay::with_caller_review`) admits as a
+  # Principal, `system:serviceaccount:<namespace>:<name>` of at most 128 bytes. The review answers
+  # `Admitted(principal)`, `Rejected` (`credential-rejected`) or `Unavailable`
+  # (`credential-review-unavailable`, 503); a relay composed with no review answers `Unavailable`
+  # to every caller but the owner. No `authorization` is `credential-absent` and one that is not a
+  # single bearer token `credential-malformed`, as with `Bearer`. Every other path takes the
+  # owner's bearer alone and never asks the review. The principal comes from the review alone,
+  # never from a request header, and the call's usage record carries it
+  # (llm-gateway.telemetry.UsageRecord `principal`). Under `Bearer` and `None` a composed review
+  # is never asked. The review is the embedding's, behind the port: the binary asks the cluster's
+  # TokenReview API (llm-gateway.deployment.TokenReviewDeclaration). DECIDED 2026-11-21
+  # (story:gateway-sa-token-ingress): the owner's bearer and a reviewed token are admitted side by
+  # side, not one mode each, because a deployment has both callers, a backend holding the owner
+  # secret and boundary agents holding projected tokens, and the owner comparison runs before any
+  # review at no cost to `Bearer` (scenarios sa-token-*).
   - name: llm-gateway.gateway.IngressAuth
     kind: enum
-    variants: [Bearer, None]
+    variants: [Bearer, None, ServiceAccountToken]
   - name: llm-gateway.gateway.Wire
     kind: enum
     variants: [Chat, Responses, Messages]
@@ -969,7 +987,7 @@ entities:
       # `model=<alias|absent> wire=<wire> disposition=<Relayed|Refused|UpstreamFailed>
       # refusal=<code|absent> status=<n> target_status=<n|absent>
       # response_bytes=<n> duration_ms=<check>
-      # tokens=<check>`. `duration_ms` is `bounded` when the record's value is at most the
+      # tokens=<check>`, then ` principal=<principal>` when the record names one. `duration_ms` is `bounded` when the record's value is at most the
       # time the client took from sending the request to reading its last byte, and the value
       # otherwise; `tokens` is `absent` when all five token counters are absent, and
       # `reported` otherwise.

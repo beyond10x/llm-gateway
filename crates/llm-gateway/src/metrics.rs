@@ -111,6 +111,9 @@ pub struct UsageRecord {
     /// The profile of the pod that served the call. `None` for a hosted endpoint, a target
     /// that names no profile, and a call no target served.
     pub profile: Option<String>,
+    /// The service account a reviewed bearer named (`IngressAuth::ServiceAccountToken`). `None`
+    /// for the owner and for a call that took no credential.
+    pub principal: Option<String>,
 }
 
 /// Where the gateway hands each [`UsageRecord`]. The embedding implements it; it is called on
@@ -517,6 +520,7 @@ mod tests {
             response_bytes: 0,
             duration_ms,
             profile: None,
+            principal: None,
         }
     }
 
@@ -673,6 +677,7 @@ mod tests {
             response_bytes: 0,
             duration_ms: 1,
             profile: None,
+            principal: None,
         });
         let text = metrics.render();
         assert!(text.contains("\nllmgw_inference_requests_total 1\n"));

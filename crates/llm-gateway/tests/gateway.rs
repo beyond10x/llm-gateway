@@ -5,10 +5,11 @@
 
 use llm_gateway::{
     AuthKind, BasePath, BillingKind, Caller, CredentialHeader, Gateway, GatewayConfig,
-    GatewayHandle, Label, OwnerToken, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, RouteInventory, RouteSummary, SharedSecretVerifier, ShutdownReport, StaticHeader,
-    TargetLimits, TargetProvenance, TargetRefusal, TargetSummary, TranslatedAnswer, Translation,
-    TranslationFailure, TranslationRequest, Translator, Verdict, Wire,
+    GatewayHandle, IngressAuth, Label, OwnerToken, Principal, RefusalCode, Relay, RelayModel,
+    RelayStream, RelayTarget, RelayTargets, RouteInventory, RouteSummary, SharedSecretVerifier,
+    ShutdownReport, StaticHeader, TargetLimits, TargetProvenance, TargetRefusal, TargetSummary,
+    TranslatedAnswer, Translation, TranslationFailure, TranslationRequest, Translator, Verdict,
+    Wire,
 };
 use std::{
     collections::BTreeSet,
@@ -38,6 +39,7 @@ const SOURCES: &[&str] = &[
     include_str!("../src/metrics.rs"),
     include_str!("../src/relay.rs"),
     include_str!("../src/relay/passthrough.rs"),
+    include_str!("../src/review.rs"),
     include_str!("../src/guide.rs"),
     include_str!("../src/server.rs"),
     include_str!("../src/translate.rs"),
@@ -482,6 +484,8 @@ struct Provocation {
     relayed: bool,
     /// Whether that relay also has the [`ProvokingTranslator`].
     translated: bool,
+    /// The gateway's `ingress_auth`; `Bearer` unless the provocation needs another.
+    ingress: IngressAuth,
 }
 
 /// A target nothing can connect to.
@@ -630,7 +634,26 @@ fn owned(raw: String) -> Provocation {
         raw,
         relayed: false,
         translated: false,
+        ingress: IngressAuth::Bearer,
     }
+}
+
+impl Provocation {
+    /// The same request presenting `bearer` in place of the owner's.
+    fn with_bearer(mut self, bearer: &str) -> Self {
+        self.raw = self.raw.replace(OWNER_SECRET, bearer);
+        self
+    }
+}
+
+/// A model call under `ServiceAccountToken` presenting a bearer that is not the owner's, to a
+/// gateway composed with no review.
+fn unreviewed(path: &str) -> Provocation {
+    Provocation {
+        ingress: IngressAuth::ServiceAccountToken,
+        ..relayed(path, "{\"model\":\"none\"}")
+    }
+    .with_bearer(OTHER_SECRET)
 }
 
 fn plain(raw: &str) -> Provocation {
@@ -693,6 +716,9 @@ fn provoke(code: RefusalCode) -> Provocation {
                 &format!("{{\"model\":\"down\",\"fail\":\"{}\"}}", code.wire()),
             )
         },
+        // A relay under `ServiceAccountToken` composed with no review: a bearer that is not the
+        // owner's cannot be reviewed.
+        RefusalCode::CredentialReviewUnavailable => unreviewed(chat),
         RefusalCode::CredentialAbsent => plain("GET /v1/routes HTTP/1.1\r\nhost: h\r\n\r\n"),
         RefusalCode::CredentialRejected => owned(format!(
             "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OTHER_SECRET}\r\n\r\n"
@@ -723,6 +749,7 @@ fn provoke(code: RefusalCode) -> Provocation {
             ),
             relayed: false,
             translated: false,
+            ingress: IngressAuth::Bearer,
         },
         // A bound of zero makes every connection one too many: the overload path, without a race.
         RefusalCode::Overloaded => Provocation {
@@ -734,6 +761,7 @@ fn provoke(code: RefusalCode) -> Provocation {
             ),
             relayed: false,
             translated: false,
+            ingress: IngressAuth::Bearer,
         },
         RefusalCode::Unavailable => Provocation {
             ready: false,
@@ -744,6 +772,7 @@ fn provoke(code: RefusalCode) -> Provocation {
             ),
             relayed: false,
             translated: false,
+            ingress: IngressAuth::Bearer,
         },
     }
 }
@@ -763,6 +792,7 @@ fn every_refusal_code_has_a_request_that_provokes_it() {
         let gateway = Fixture::composed(provocation.ready, OWNER_SECRET, relay, |config| {
             config.max_head_bytes = provocation.max_head_bytes;
             config.max_concurrent_requests = provocation.max_concurrent_requests;
+            config.ingress_auth = provocation.ingress;
         });
         let response = gateway.send(&provocation.raw);
         assert_eq!(
@@ -982,6 +1012,11 @@ fn numeric_constants_in_the_source() -> Vec<(String, u64)> {
 /// Constants that are not bounds on anything a caller can observe. Naming one here is the only
 /// way to keep it out of the published table, and it has to carry a reason.
 const NOT_A_BOUND: &[(&str, &str)] = &[
+    (
+        "MAX_NAMESPACE_BYTES",
+        "part of a principal's shape, a DNS label: a longer namespace is not a service account \
+         (`not-a-service-account`), and the principal's own bound is `principal-bytes`",
+    ),
     (
         "READ_CHUNK",
         "the size of one internal read, not a limit on any request",
@@ -1268,6 +1303,16 @@ fn hosted_endpoint_bounds() -> Vec<Bound> {
             }),
         },
         // A longer session is not refused but dropped: the target is never told it.
+        Bound {
+            name: "principal-bytes",
+            value: 128,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| {
+                let prefix = "system:serviceaccount:agents:";
+                let name = "a".repeat(usize::try_from(n).unwrap() - prefix.len());
+                Principal::new(&format!("{prefix}{name}")).is_ok()
+            }),
+        },
         Bound {
             name: "caller-session-bytes",
             value: 256,

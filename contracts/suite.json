@@ -108,6 +108,11 @@
       "llm-gateway.gateway/authored/routes-a-route-named-like-a-model-composes-nothing",
       "llm-gateway.gateway/authored/routes-an-env-secret-composes-nothing",
       "llm-gateway.gateway/authored/routes-one-document-is-served-on-two-wires-relayed-and-translated",
+      "llm-gateway.gateway/authored/sa-token-a-reviewed-token-and-the-owners-bearer-are-admitted-and-the-record-names-the-principal",
+      "llm-gateway.gateway/authored/sa-token-a-reviewed-token-opens-no-owner-path",
+      "llm-gateway.gateway/authored/sa-token-each-token-the-review-does-not-admit-is-refused-and-relays-nothing",
+      "llm-gateway.gateway/authored/sa-token-without-a-review-only-the-owners-bearer-is-admitted",
+      "llm-gateway.gateway/authored/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted",
       "llm-gateway.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case",
       "llm-gateway.gateway/authored/the-concurrency-bound-admits-its-own-count",
       "llm-gateway.gateway/authored/the-owner-inspects-every-route-and-unreported-limits-stay-absent",
@@ -839,6 +844,31 @@
         "digest": "sha256:8440f752fda8ba58c2145d507e06ad10566147c7388d4854d2c39467f8c3451e",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/routes-one-document-is-served-on-two-wires-relayed-and-translated"
+      },
+      "gateway/scenarios/sa-token-a-reviewed-token-and-the-owners-bearer-are-admitted-and-the-record-names-the-principal.yaml": {
+        "digest": "sha256:35c287798a442e7d12141da5a4f50ceba54babc3d31f4cd27129de14946e7802",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/sa-token-a-reviewed-token-and-the-owners-bearer-are-admitted-and-the-record-names-the-principal"
+      },
+      "gateway/scenarios/sa-token-a-reviewed-token-opens-no-owner-path.yaml": {
+        "digest": "sha256:7b84567e7cb30035013db5b2fdb767cc9900b35b7cd1b82af347b4162e0d1604",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/sa-token-a-reviewed-token-opens-no-owner-path"
+      },
+      "gateway/scenarios/sa-token-each-token-the-review-does-not-admit-is-refused-and-relays-nothing.yaml": {
+        "digest": "sha256:9ceafa0db9bfa6f3bb80ca8000db0badd5c98ee5e5375c57ce5f86d8ecbd69d1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/sa-token-each-token-the-review-does-not-admit-is-refused-and-relays-nothing"
+      },
+      "gateway/scenarios/sa-token-without-a-review-only-the-owners-bearer-is-admitted.yaml": {
+        "digest": "sha256:5f58063084ec718dfbb6074580084f446908b48bce82cd7dc78fc0cef0eb6b6f",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/sa-token-without-a-review-only-the-owners-bearer-is-admitted"
+      },
+      "gateway/scenarios/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted.yaml": {
+        "digest": "sha256:04de2ec2310144eb9e7f602669400e1e4490bc7696d15daad278217fa77aa1d8",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted"
       },
       "gateway/scenarios/the-bearer-scheme-is-matched-without-regard-to-case.yaml": {
         "digest": "sha256:8874b79daa1859670eeb718758c3446e6205a1aeed1270c4b5afea55afde7ce7",
@@ -1817,7 +1847,7 @@
       }
     },
     "counts": {
-      "authored": 302,
+      "authored": 307,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -1932,9 +1962,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "3b0162804504256987ca852517fc6ce2d5c099a2b390348099e7cd7122fa7927",
+    "contract_digest": "2cf2c1e320adb14d4ca5368148b764359f6f2903722f0b564cad6e3b7e9b8438",
     "scenario_initial_state": "empty",
-    "spec_digest": "cbc54ac21b03f634f4c3a4e2a6aa58f28c2d7791341f06c189220d3cfb801777",
+    "spec_digest": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -13261,6 +13291,542 @@
                   "pod-2 POST /api/v1/chat/completions {\"model\":\"vendor/model-x\",\"messages\":[]}",
                   "pod-1 POST /anthropic/v1/messages {\"max_tokens\":16384,\"messages\":[{\"content\":[{\"cache_control\":{\"type\":\"ephemeral\"},\"text\":\"Hi\",\"type\":\"text\"}],\"role\":\"user\"}],\"model\":\"claude-opus-4-1\",\"stream\":true}",
                   "pod-2 POST /api/v1/chat/completions {\"max_completion_tokens\":64,\"messages\":[{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"vendor/model-x\",\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/sa-token-a-reviewed-token-and-the-owners-bearer-are-admitted-and-the-record-names-the-principal": {
+      "purpose": "a reviewed token and the owner bearer are relayed, only the reviewed record names a principal, and neither token reaches the target",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"service-account-token\",\"reviews\":{\"projected-token-of-the-coding-agent\":\"system:serviceaccount:agents:coding-agent\"},\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\",\"messages\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"msg-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer projected-token-of-the-coding-agent\"]},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=15 duration_ms=bounded tokens=absent principal=system:serviceaccount:agents:coding-agent",
+                  "model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=14 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"served-code\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/sa-token-a-reviewed-token-opens-no-owner-path": {
+      "purpose": "with ingress_auth service-account-token a token the review admits is credential-rejected on the counters and the routes, which take the owner's bearer alone",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"service-account-token\",\"reviews\":{\"projected-token-of-the-coding-agent\":\"system:serviceaccount:agents:coding-agent\"},\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/metrics\",\"method\":\"GET\",\"body\":\"\",\"credential\":false,\"headers\":[\"authorization: Bearer projected-token-of-the-coding-agent\"]},{\"step\":\"request\",\"path\":\"/v1/routes\",\"method\":\"GET\",\"body\":\"\",\"credential\":false,\"headers\":[\"authorization: Bearer projected-token-of-the-coding-agent\"]},{\"step\":\"request\",\"path\":\"/v1/routes\",\"method\":\"GET\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "401 credential-rejected",
+                  "401 credential-rejected",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/sa-token-each-token-the-review-does-not-admit-is-refused-and-relays-nothing": {
+      "purpose": "rejected and unknown tokens are credential-rejected, an unanswered review credential-review-unavailable, and nothing is relayed or recorded",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"service-account-token\",\"reviews\":{\"token-of-another-audience\":\"rejected\",\"token-while-the-api-is-down\":\"unavailable\"},\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer token-of-another-audience\"]},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer token-the-review-never-heard-of\"]},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer token-while-the-api-is-down\"]},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Basic token-of-another-audience\"]}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "401 credential-rejected",
+                  "401 credential-rejected",
+                  "503 credential-review-unavailable",
+                  "401 credential-absent",
+                  "401 credential-malformed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/sa-token-without-a-review-only-the-owners-bearer-is-admitted": {
+      "purpose": "with ingress_auth service-account-token and no review composed every bearer but the owner's is credential-review-unavailable, never admitted",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"service-account-token\",\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer projected-token-of-the-coding-agent\"]},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "503 credential-review-unavailable",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted": {
+      "purpose": "with ingress_auth service-account-token and no owner secret a reviewed token is relayed, any other bearer is credential-rejected, and the owner surface has no owner",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"\",\"ingress_auth\":\"service-account-token\",\"reviews\":{\"projected-token-of-the-coding-agent\":\"system:serviceaccount:agents:coding-agent\"},\"models\":[{\"alias\":\"code\",\"upstream_model\":\"served-code\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer projected-token-of-the-coding-agent\"]},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"code\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer a-guess-0123456789abcdef0123456789abcdef\"]},{\"step\":\"request\",\"path\":\"/v1/routes\",\"method\":\"GET\",\"body\":\"\",\"credential\":false,\"headers\":[\"authorization: Bearer projected-token-of-the-coding-agent\"]}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=15 duration_ms=bounded tokens=absent principal=system:serviceaccount:agents:coding-agent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "401 credential-rejected",
+                  "401 credential-rejected"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-code\",\"messages\":[]}"
                 ]
               },
               "valid_program": {

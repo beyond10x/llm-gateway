@@ -27,8 +27,9 @@ why `runpod_api_key_file` above is refused ([keychain references](#keychain-refe
 | Key | Required | Rule |
 | --- | --- | --- |
 | `listen` | yes | A socket address, `127.0.0.1:8080`. An address that cannot be bound is refused as `listen:bind`. |
-| `ingress_auth` | no | `bearer`, the default: every model call takes the owner secret. `none`: model calls take no credential, and the binary says so on standard error before it listens ([model calls without a credential](../concepts/single-owner-gateway.md#model-calls-without-a-credential)). Any other value is `config:schema`. |
-| `owner_secret_file` | with `bearer` | The file holding the owner's secret. A relative path is read from the working directory. Required unless `ingress_auth` is `none` (`config:value`); without it, `/metrics` and `/v1/routes` refuse every request. |
+| `ingress_auth` | no | `bearer`, the default: every model call takes the owner secret. `none`: model calls take no credential, and the binary says so on standard error before it listens ([model calls without a credential](../concepts/single-owner-gateway.md#model-calls-without-a-credential)). `service-account-token`: a model call takes the owner secret or a Kubernetes service-account token the cluster's TokenReview API admits ([`[token_review]`](#token-review)). Any other value is `config:schema`. |
+| `owner_secret_file` | with `bearer` | The file holding the owner's secret. A relative path is read from the working directory. Required only with `bearer` (`config:value`); without it, `/metrics` and `/v1/routes` refuse every request. |
+| `[token_review]` | with `service-account-token` | How a caller's service-account token is reviewed ([below](#token-review)). Required with `ingress_auth = "service-account-token"` and refused with any other value (`config:value`). |
 | `metrics_listen` | no | A top-level key beside `listen`: a socket address for a second listener that answers `GET /metrics` with the same counters and nothing else: it takes no owner secret, every other method or path is `404 path-unknown`, and no model route is reachable on it ([scrape without the owner secret](../guides/scrape-the-counters.md#scrape-without-the-owner-secret)). Absent by default, which binds none. It must differ from `listen` (`config:value`); an address that cannot be bound is refused as `listen:bind`, naming `metrics_listen`. It stops with the gateway. |
 | `metrics_bearer_file` | no | The file holding the token a scrape of `metrics_listen` must send as `authorization: Bearer`; without it that listener is open, so bind it only on an address a network policy guards. Allowed only with `metrics_listen` (`config:value`). Read once at start by the [credential-file rules](#credential-files), refused as `metrics-bearer:<rule>`; a token under 32 bytes, the owner secret's floor, is refused as `metrics-bearer:not-a-token`. |
 | `[providers.<name>]` | no | Providers models name. A name is 1 to 64 of `a-z`, `0-9`, `-`, `_`, `.`, without a leading dash. |
@@ -255,6 +256,44 @@ auth_kind = "client"
 billing_kind = "subscription"
 tool_calling = "parsed"
 model_prefix = "claude-"
+```
+
+## `[token_review]` {#token-review}
+
+With `ingress_auth = "service-account-token"` a model call is admitted when its bearer is the
+owner secret, compared first and never sent anywhere, or when the cluster's TokenReview API
+says the bearer is an authenticated token for `audience` and names a service account on
+`principals`. Every other path (`/metrics`, `/v1/routes`, `/dashboard`) takes the owner secret
+alone. A [guide](../guides/admit-service-account-tokens.md) sets up the cluster side.
+
+| Key | Required | Rule |
+| --- | --- | --- |
+| `audience` | yes | The audience the callers' projected tokens carry and the only one the review asks for: 1 to 256 bytes of printable ASCII without a space. No default: a token minted for the API server, or for anything else, is refused. |
+| `principals` | yes | 1 to 64 service accounts, each `system:serviceaccount:<namespace>:<name>`, none twice. Exact names only; there is no namespace wildcard. |
+| `api` | no | `https://<host>[:<port>]`, default `https://kubernetes.default.svc`. |
+| `ca_file` | no | The CA bundle the API server's certificate must chain to, and the only roots trusted for the review. Read once at start: a rotated cluster CA takes a restart. Default `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`. |
+| `credential_file` | no | The gateway's own token, sent to the API server as `authorization: Bearer` and read again at every review, so a rotated token is used from the next review on. Default `/var/run/secrets/kubernetes.io/serviceaccount/token`. |
+
+Both files are read at start through the trusted-file reader as a kubelet mounts them: symbolic
+links are followed, and a file any group or other user can write is refused. A refusal is
+`token-review:<rule>` and names the setting, never the path; a CA file without a usable PEM
+certificate is `token-review:ca`. A token the review rejects (another audience, a principal off
+the list, expired, not a token) is `401 credential-rejected`; a review that gets no answer (the
+API server unreachable, a timeout, a non-2xx status, a malformed body, too many reviews at once)
+is `503 credential-review-unavailable`. Neither ever admits. A token whose own claims, read
+unverified, have expired or do not name `audience` is refused before any review, and an answer
+that sets `status.error` is a rejection. The admitted service account is the
+`principal` field of the call's usage record. The review's timeout, concurrency and cache are in
+[bounds of the service-account review](https://github.com/beyond10x/llm-gateway/blob/main/docs/gateway.md#bounds-of-the-service-account-review).
+
+```toml
+listen = "0.0.0.0:8080"
+ingress_auth = "service-account-token"
+owner_secret_file = "/etc/llm-gateway/owner-secret"
+
+[token_review]
+audience = "llm-gateway"
+principals = ["system:serviceaccount:agents:coding-agent"]
 ```
 
 ## `[launch]` {#launch}

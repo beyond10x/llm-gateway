@@ -66,6 +66,7 @@ impl UsageRecords for TracingRecords {
             response_bytes = record.response_bytes,
             duration_ms = record.duration_ms,
             profile = record.profile.as_deref(),
+            principal = record.principal.as_deref(),
             "usage record"
         );
     }

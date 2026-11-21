@@ -93,6 +93,12 @@ refusal_codes! {
     /// A well-formed bearer token that is not the owner's.
     CredentialRejected => "credential-rejected", 401,
         "the presented owner credential was rejected";
+    /// Under `IngressAuth::ServiceAccountToken`, a bearer that is not the owner's and that the
+    /// embedding's [`crate::CallerReview`] could not review: no review was composed, the review
+    /// could not be reached, timed out, answered other than with a review, or too many were
+    /// already under way. Never an admission.
+    CredentialReviewUnavailable => "credential-review-unavailable", 503,
+        "the presented credential could not be reviewed; ask again";
     /// A method the path does not take: a write on the read-only inspection surface, or
     /// anything but `POST` on a relayed wire. The `allow` header names what it takes.
     MethodNotAllowed => "method-not-allowed", 405,
@@ -214,6 +220,17 @@ closed_enum! {
         TooLarge => "an owner credential cannot exceed 4096 bytes";
         /// Holds a byte that is not printable US-ASCII.
         NotPrintableAscii => "an owner credential must be printable US-ASCII";
+    }
+}
+
+closed_enum! {
+    /// Why a [`crate::Principal`] cannot be built. The rejected text is never quoted.
+    PrincipalError {
+        /// Longer than 128 bytes.
+        TooLarge => "a principal cannot exceed 128 bytes";
+        /// Not `system:serviceaccount:<namespace>:<name>`, the namespace a DNS label and the
+        /// name a DNS subdomain.
+        NotAServiceAccount => "a principal must be system:serviceaccount:<namespace>:<name>";
     }
 }
 

@@ -133,7 +133,10 @@ calls without a credential, for a gateway behind something that authenticates al
 `owner_secret_file` is then optional, the counters and the route inventory still take the owner
 secret (and refuse everything without one), and the binary writes a warning line before it
 listens. `bearer`, the default, requires
-`owner_secret_file`.
+`owner_secret_file`. `ingress_auth = "service-account-token"` admits a model call with the owner
+secret or with a Kubernetes service-account token the cluster's TokenReview API admits for the
+`[token_review]` table's `audience` and `principals`; the admitted service account is the call's
+`principal` in its usage record, and every other path still takes the owner secret alone.
 `spec/domains/deployment.yaml` holds every key, default and range.
 
 Every file the binary reads goes through a trusted-file reader. It opens the file once, without

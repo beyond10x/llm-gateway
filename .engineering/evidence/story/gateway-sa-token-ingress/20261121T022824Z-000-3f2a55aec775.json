@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-21T02:28:24Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-sa-token-ingress",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "local gate on wave/2026-11-21-w02 (Rust 1.98.0, each step alone): cargo test --workspace 1193 passed, fmt, clippy -D warnings, docs generate --check, ess 0.86.0 validate, spec diff (3 acknowledged), conformance 401/401 x3; red at d8f9de2: gateway lib 1 of 74, gateway tests 4 of 24, service_account_ingress 3 of 6, cli token_review 14 of 14 failed; green 74, 24, 6, 14 passed; fake TokenReview API on loopback TLS, shipped binary: reviewed token and owner relayed, off-list refused, principal in two usage records, no token in the log",
+    "reference": "wave/2026-11-21-w02@57190e8"
+  }
+}

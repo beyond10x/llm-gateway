@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-21T03:33:36Z",
+  "actor": "human:timo",
+  "artifact": "story:gateway-sa-token-ingress",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "local gate on wave/2026-11-21-w02 after security review correction round 1 (Rust 1.98.0, each step alone, every exit 0): cargo test --workspace 1203 passed 0 failed, fmt, clippy -D warnings, docs generate --check, ess 0.86.0 validate, spec diff (3 acknowledged), conformance 401/401 x3; the review's 6 conformance cases green, the flood case pinned to the documented bound by coordinator decision",
+    "reference": "wave/2026-11-21-w02@8feea38"
+  }
+}

@@ -190,6 +190,13 @@ entities:
       # (`a_relayed_call_names_the_profile_of_the_pod_that_served` in
       # crates/llm-gateway-cli/tests/relaying.rs).
       - {name: profile, type: 'Optional<String>'}
+      # DECIDED 2026-11-21 (story:gateway-sa-token-ingress): the service account a reviewed bearer
+      # named under `ingress_auth = "service-account-token"` (llm-gateway.gateway IngressAuth),
+      # `system:serviceaccount:<namespace>:<name>`, taken from the review's answer and never from a
+      # request header. Absent for the owner and for a call that took no credential. The binary
+      # writes it as the `principal` field of the record's `usage` event; it is no metric label.
+      # PLANNED: a per-caller series and quota, in the planned llm-gateway.clients domain.
+      - {name: principal, type: 'Optional<String>'}
       - {name: input_tokens, type: 'Optional<Integer>'}
       - {name: output_tokens, type: 'Optional<Integer>'}
       - {name: cached_input_tokens, type: 'Optional<Integer>'}

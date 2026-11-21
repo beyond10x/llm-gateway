@@ -165,7 +165,7 @@ impl Fetch for Https {
 }
 
 /// The status and body of an HTTP/1.1 answer read to its end, chunked or not.
-fn split_answer(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
+pub(crate) fn split_answer(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
     let end = answer.windows(4).position(|window| window == b"\r\n\r\n")?;
     let head = std::str::from_utf8(&answer[..end]).ok()?;
     let status = head.split(' ').nth(1)?.parse().ok()?;

@@ -48,14 +48,14 @@ assert:
       export CLAUDE_CODE_MAX_CONTEXT_TOKENS='200000'
       # Reached by translation, which refuses structured outputs from Claude Code.
       export CLAUDE_CODE_DISABLE_STRUCTURED_OUTPUTS='1'
-    - "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_1\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
+    - "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_1\",\"model\":\"translated-up\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hello\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
     - "{\"error\":{\"code\":\"translation-unsupported\",\"message\":\"the request uses a field or value outside the subset the gateway translates\"}}"
     upstream:
     - "pod-2 POST /v1/chat/completions {\"max_completion_tokens\":16000,\"messages\":[{\"content\":\"Attribution.\\nBe brief.\",\"role\":\"system\"},{\"content\":\"Hi\",\"role\":\"user\"}],\"model\":\"served-chat\",\"reasoning_effort\":\"xhigh\",\"stream\":true,\"stream_options\":{\"include_usage\":true},\"tools\":[{\"function\":{\"description\":\"Find a city\",\"name\":\"lookup\",\"parameters\":{\"type\":\"object\"}},\"type\":\"function\"}]}"
     connections:
     - "pod-2 plain request"
     records:
-    - model=translated-up wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=615 duration_ms=bounded tokens=reported
+    - model=translated-up wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=639 duration_ms=bounded tokens=reported
     - model=refused-up wire=messages disposition=Refused refusal=translation-unsupported status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
     acquired: 1
     released: 1

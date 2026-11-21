@@ -145,7 +145,9 @@ types:
   # The table of every refusal code is published in docs/gateway.md, and
   # crates/llm-gateway/src/metrics.rs checks it against `RefusalCode::ALL`. A translated
   # request's transport timeout is reported by the translator as an upstream failure and is
-  # counted `upstream_error`.
+  # counted `upstream_error`. So is a translated answer whose head was written and which the
+  # translator ended with its wire's terminal error: its record stays `Relayed`, with the status
+  # the client received and no refusal.
   - name: llm-gateway.telemetry.Outcome
     kind: enum
     variants: [Ok, UpstreamError, Timeout, Refused]

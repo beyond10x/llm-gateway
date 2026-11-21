@@ -637,8 +637,11 @@ fn record(
     };
     let duration_ms = u64::try_from(begun.elapsed().as_millis()).unwrap_or(u64::MAX);
     let usage = call.usage;
+    // A relayed answer that ended in its wire's terminal error failed under that code, though
+    // its client was answered `200` and it stays relayed.
+    let ended_by = refusal.or(call.failed_after_head);
     let record = UsageRecord {
-        outcome: metrics::Outcome::of(refusal, call.timed_out),
+        outcome: metrics::Outcome::of(ended_by, call.timed_out),
         model: call.model,
         wire,
         target_status: call.target_status,

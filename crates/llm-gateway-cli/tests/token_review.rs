@@ -55,6 +55,16 @@ fn jwt(tag: &str, exp: Option<u64>) -> String {
     format!("{header}.{claims}.{signature}")
 }
 
+/// A token shaped as a JWT whose claims are exactly `claims`.
+fn jwt_claiming(claims: &str) -> String {
+    let header = URL_SAFE_NO_PAD.encode(br#"{"alg":"RS256","kid":"test"}"#);
+    let signature = URL_SAFE_NO_PAD.encode(b"forged-signature");
+    format!(
+        "{header}.{}.{signature}",
+        URL_SAFE_NO_PAD.encode(claims.as_bytes())
+    )
+}
+
 fn later() -> u64 {
     now_seconds() + 3600
 }
@@ -72,6 +82,8 @@ enum Answer {
     Status(u16),
     /// A `201` whose body is not a `TokenReview`.
     Garbage,
+    /// A `201` admission for this user and the audience that also sets `status.error`.
+    Erred(&'static str),
     /// Nothing, for this long.
     Hang(Duration),
 }
@@ -161,6 +173,18 @@ impl FakeApi {
                         }
                         Answer::Status(status) => (status, "{}".to_owned()),
                         Answer::Garbage => (201, "<html>not a review</html>".to_owned()),
+                        Answer::Erred(username) => {
+                            let review = serde_json::json!({
+                                "kind": "TokenReview",
+                                "status": {
+                                    "authenticated": true,
+                                    "user": {"username": username},
+                                    "audiences": [AUDIENCE],
+                                    "error": "an authenticator failed",
+                                },
+                            });
+                            (201, review.to_string())
+                        }
                         Answer::Hang(time) => {
                             thread::sleep(time);
                             return;
@@ -586,6 +610,117 @@ fn sa_the_cache_holds_its_entry_bound_and_lets_the_soonest_to_end_go_first() {
     assert_eq!(api.count(), 3);
     assert_eq!(reviewer.review(&token(&tokens[0])), admitted(AGENT));
     assert_eq!(api.count(), 4, "the cache kept more than its bound");
+}
+
+/// The pre-filter: a token whose unverified claims name another audience, no audience, or an
+/// `exp` that has passed is refused without a review slot or a call to the API server.
+#[test]
+fn sa_the_pre_filter_refuses_on_the_tokens_own_claims_without_a_review() {
+    let api = FakeApi::start();
+    let (reviewer, _clock) = reviewer("sa-pre-filter", &api, &[AGENT]);
+    let exp = later();
+    let past = now_seconds() - 60;
+    for (case, presented) in [
+        (
+            "another audience",
+            jwt_claiming(&format!(
+                r#"{{"aud":["kubernetes"],"exp":{exp},"sub":"{AGENT}"}}"#
+            )),
+        ),
+        (
+            "an audience as a prefix",
+            jwt_claiming(&format!(
+                r#"{{"aud":"{AUDIENCE}-x","exp":{exp},"sub":"{AGENT}"}}"#
+            )),
+        ),
+        (
+            "no audience",
+            jwt_claiming(&format!(r#"{{"exp":{exp},"sub":"{AGENT}"}}"#)),
+        ),
+        (
+            "an audience that is not text",
+            jwt_claiming(&format!(r#"{{"aud":7,"exp":{exp},"sub":"{AGENT}"}}"#)),
+        ),
+        (
+            "expired",
+            jwt_claiming(&format!(
+                r#"{{"aud":["{AUDIENCE}"],"exp":{past},"sub":"{AGENT}"}}"#
+            )),
+        ),
+        ("not a JWT", "opaque-bearer-0123456789".to_owned()),
+    ] {
+        api.answer(&presented, admits(AGENT));
+        assert_eq!(
+            reviewer.review(&token(&presented)),
+            Review::Rejected,
+            "{case}"
+        );
+    }
+    assert_eq!(
+        api.count(),
+        0,
+        "a pre-filtered token reached the API server"
+    );
+}
+
+/// The pre-filter only refuses: a forged token whose unverified claims name a listed account and
+/// the audience is still reviewed, and the review's rejection stands.
+#[test]
+fn sa_a_forged_token_naming_a_listed_account_and_the_audience_is_still_reviewed_and_refused() {
+    let api = FakeApi::start();
+    let (reviewer, _clock) = reviewer("sa-forged", &api, &[AGENT]);
+    let forged = jwt_claiming(&format!(
+        r#"{{"aud":["{AUDIENCE}"],"exp":{},"sub":"{AGENT}"}}"#,
+        later()
+    ));
+    assert_eq!(reviewer.review(&token(&forged)), Review::Rejected);
+    assert_eq!(
+        api.count(),
+        1,
+        "a token naming the audience was not reviewed"
+    );
+}
+
+/// An answer that sets `status.error` is a rejection, kept as one, even with `authenticated`.
+#[test]
+fn sa_an_answer_with_status_error_set_is_a_rejection() {
+    let api = FakeApi::start();
+    let presented = jwt("erred", Some(later()));
+    api.answer(&presented, Answer::Erred(AGENT));
+    let (reviewer, _clock) = reviewer("sa-status-error", &api, &[AGENT]);
+    assert_eq!(reviewer.review(&token(&presented)), Review::Rejected);
+    assert_eq!(reviewer.review(&token(&presented)), Review::Rejected);
+    assert_eq!(api.count(), 1, "the rejection was not kept");
+}
+
+/// A rejection never evicts an admission: with the cache full of admissions a new rejection is
+/// not kept, and every admission stays.
+#[test]
+fn sa_a_rejection_never_evicts_an_admission() {
+    let api = FakeApi::start();
+    let admitted_tokens: Vec<String> = (0..2)
+        .map(|n| jwt(&format!("kept-{n}"), Some(later())))
+        .collect();
+    for presented in &admitted_tokens {
+        api.answer(presented, admits(AGENT));
+    }
+    let (reviewer, _clock) = reviewer("sa-eviction-kind", &api, &[AGENT]);
+    let reviewer = reviewer.with_bounds(ReviewBounds {
+        entries: 2,
+        ..ReviewBounds::default()
+    });
+    for presented in &admitted_tokens {
+        assert_eq!(reviewer.review(&token(presented)), admitted(AGENT));
+    }
+    for n in 0..4 {
+        let refused = jwt(&format!("refused-{n}"), Some(later()));
+        assert_eq!(reviewer.review(&token(&refused)), Review::Rejected);
+    }
+    assert_eq!(api.count(), 6);
+    for presented in &admitted_tokens {
+        assert_eq!(reviewer.review(&token(presented)), admitted(AGENT));
+    }
+    assert_eq!(api.count(), 6, "a rejection evicted an admission");
 }
 
 #[test]

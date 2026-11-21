@@ -73,8 +73,7 @@ minute.
 ## The gateway's permission
 
 The gateway calls `POST /apis/authentication.k8s.io/v1/tokenreviews` with its own service-account
-token. Bind its service account to the built-in `system:auth-delegator` ClusterRole, or to a role
-that grants only `create` on `tokenreviews`:
+token. Bind its service account to a role that grants only `create` on `tokenreviews`:
 
 ```yaml
 apiVersion: rbac.authorization.k8s.io/v1
@@ -100,15 +99,25 @@ subjects:
     namespace: llm-gateway
 ```
 
+The built-in `system:auth-delegator` ClusterRole also works, but grants more: `create` on
+`subjectaccessreviews` as well, so the gateway could ask the API server whether any user may do
+anything. The gateway never asks that; prefer the role above.
+
+The gateway reads `ca_file` once, at start: after a cluster CA rotation, restart it.
+`credential_file` is read again at every review, so the kubelet's rotation of the gateway's own
+token needs nothing.
+
 The gateway pod needs its service-account token mounted (`automountServiceAccountToken` left on,
 or a projected token for the API server's audience at `credential_file`).
 
 ## The network
 
-The gateway listens on plain HTTP, and the token crosses the pod network as a bearer. A loom
-boundary relay runs beside the agent and talks to it over loopback; the hop from the agent's pod
-to the gateway is inside the cluster. Admit only that hop with a NetworkPolicy on the gateway's
-namespace, and use a mesh with mutual TLS where the pod network is not trusted:
+The gateway listens on plain HTTP, and the token crosses the pod network as a bearer. Whoever can
+read the traffic between an agent and the gateway can replay that agent's token against the
+gateway until the token expires. A loom boundary relay runs beside the agent and talks to it over
+loopback; the hop from the agent's pod to the gateway is inside the cluster. Admit only that hop
+with a NetworkPolicy on the gateway's namespace, and use a mesh with mutual TLS where the pod
+network is not trusted:
 
 ```yaml
 apiVersion: networking.k8s.io/v1
@@ -130,13 +139,20 @@ spec:
 
 The gateway also needs egress to the API server, if an egress policy applies to its namespace.
 
+The NetworkPolicy is also what keeps the review itself available. Before a review the gateway
+reads the token's own claims, unverified, and refuses one that is not a JWT, has expired or does
+not name the audience, without asking the API server. A caller that knows the audience can still
+send distinct tokens naming it: each costs an API server call, and while the gateway's 8 review
+slots are taken a listed agent whose admission is not cached gets `503
+credential-review-unavailable`. Only callers the NetworkPolicy admits can do that.
+
 ## What a caller sees
 
 | Case | Answer |
 | --- | --- |
 | The owner secret | relayed |
 | A token the review admits | relayed; the usage record names `principal` |
-| Another audience, a principal off the list, expired, not a token | `401 credential-rejected` |
+| Another audience, a principal off the list, expired, not a token, an answer with `status.error` | `401 credential-rejected` |
 | No answer from the API server: unreachable, a timeout, a non-2xx status, a malformed body, too many reviews at once | `503 credential-review-unavailable` |
 | No `authorization` | `401 credential-absent` |
 

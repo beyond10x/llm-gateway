@@ -271,7 +271,7 @@ alone. A [guide](../guides/admit-service-account-tokens.md) sets up the cluster 
 | `audience` | yes | The audience the callers' projected tokens carry and the only one the review asks for: 1 to 256 bytes of printable ASCII without a space. No default: a token minted for the API server, or for anything else, is refused. |
 | `principals` | yes | 1 to 64 service accounts, each `system:serviceaccount:<namespace>:<name>`, none twice. Exact names only; there is no namespace wildcard. |
 | `api` | no | `https://<host>[:<port>]`, default `https://kubernetes.default.svc`. |
-| `ca_file` | no | The CA bundle the API server's certificate must chain to, and the only roots trusted for the review. Default `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`. |
+| `ca_file` | no | The CA bundle the API server's certificate must chain to, and the only roots trusted for the review. Read once at start: a rotated cluster CA takes a restart. Default `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`. |
 | `credential_file` | no | The gateway's own token, sent to the API server as `authorization: Bearer` and read again at every review, so a rotated token is used from the next review on. Default `/var/run/secrets/kubernetes.io/serviceaccount/token`. |
 
 Both files are read at start through the trusted-file reader as a kubelet mounts them: symbolic
@@ -280,7 +280,9 @@ links are followed, and a file any group or other user can write is refused. A r
 certificate is `token-review:ca`. A token the review rejects (another audience, a principal off
 the list, expired, not a token) is `401 credential-rejected`; a review that gets no answer (the
 API server unreachable, a timeout, a non-2xx status, a malformed body, too many reviews at once)
-is `503 credential-review-unavailable`. Neither ever admits. The admitted service account is the
+is `503 credential-review-unavailable`. Neither ever admits. A token whose own claims, read
+unverified, have expired or do not name `audience` is refused before any review, and an answer
+that sets `status.error` is a rejection. The admitted service account is the
 `principal` field of the call's usage record. The review's timeout, concurrency and cache are in
 [bounds of the service-account review](https://github.com/beyond10x/llm-gateway/blob/main/docs/gateway.md#bounds-of-the-service-account-review).
 

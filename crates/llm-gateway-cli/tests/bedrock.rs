@@ -2195,10 +2195,9 @@ fn invoke_empty_signed_thinking_then_text() -> Vec<u8> {
 }
 
 /// The answer above reaches a messages client whole: the signed thinking block at index 0, the
-/// text at index 1, no `error` event, and the call is `ok`. llm 0.20.0 ends it with an `error`
-/// event after the text (its ingress encoder opens no block for reasoning without text).
+/// text at index 1, no `error` event, and the call is `ok`. llm 0.20.0 ended it with an `error`
+/// event after the text (its ingress encoder opened no block for reasoning without text).
 #[test]
-#[ignore = "needs the llm release with story:empty-signed-reasoning; the pin bump runs this case"]
 fn bedrock_signed_thinking_without_text_reaches_a_messages_client_in_place() {
     let (answer, log, _) = haiku_messages(
         "bedrock-messages-empty-thinking",
@@ -2231,4 +2230,124 @@ fn bedrock_signed_thinking_without_text_reaches_a_messages_client_in_place() {
     );
     assert!(answer.contains(ANSWER_MARKER), "{answer}");
     assert!(usage_line(&log).contains("outcome=ok"), "{log:?}");
+}
+
+// --- Criterion: a client's cache marks reach InvokeModel as it placed them ---------------------
+
+/// Posts the Messages `request` to a Bedrock alias `code` on `/v1/messages?beta=true`, and
+/// returns the body `InvokeModel` received.
+fn invoke_body(name: &str, request: &Value) -> Value {
+    let deployment = Deployment::new(name);
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![invoke_text()]);
+    let config = deployment.config(&bedrock_table("code", MODEL_ID, &bedrock, ""));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let answer = server.post("/v1/messages?beta=true", &request.to_string());
+    let log = server.log();
+    let seen = bedrock.seen();
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert!(!answer.contains("event: error"), "{answer}");
+    assert_eq!(seen.len(), 1, "{answer} {seen:?}");
+    assert_signed(&seen[0]);
+    assert_quiet(&log);
+    body(&seen[0])
+}
+
+/// Every `cache_control` in `body`: the JSON pointer of the object carrying it and the mark,
+/// sorted by pointer.
+fn cache_marks(body: &Value) -> Vec<(String, Value)> {
+    fn walk(value: &Value, pointer: &str, found: &mut Vec<(String, Value)>) {
+        match value {
+            Value::Object(fields) => {
+                for (key, child) in fields {
+                    if key == "cache_control" {
+                        found.push((pointer.to_owned(), child.clone()));
+                    } else {
+                        walk(child, &format!("{pointer}/{key}"), found);
+                    }
+                }
+            }
+            Value::Array(items) => {
+                for (index, child) in items.iter().enumerate() {
+                    walk(child, &format!("{pointer}/{index}"), found);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut found = Vec::new();
+    walk(body, "", &mut found);
+    found.sort_by(|left, right| left.0.cmp(&right.0));
+    found
+}
+
+/// A three-message conversation whose blocks carry no mark: user, assistant, user.
+fn unmarked_conversation() -> Value {
+    json!([
+        {"role": "user", "content": [{"type": "text", "text": PROMPT_MARKER}]},
+        {"role": "assistant", "content": [{"type": "text", "text": "Hello"}]},
+        {"role": "user", "content": [{"type": "text", "text": "Again"}]},
+    ])
+}
+
+/// A client whose one mark is on its system block: `InvokeModel` receives exactly that mark, on
+/// the system block, and none on the last message. llm 0.20.0 added a rolling breakpoint on the
+/// last block the client had not marked.
+#[test]
+fn bedrock_a_clients_only_mark_on_its_system_block_is_the_only_mark_invoke_receives() {
+    let request = json!({"model": "code", "max_tokens": 64, "stream": true,
+        "system": [{"type": "text", "text": "Be brief.", "cache_control": {"type": "ephemeral"}}],
+        "messages": unmarked_conversation()});
+    let sent = invoke_body("bedrock-cache-system-mark", &request);
+    assert_eq!(
+        cache_marks(&sent),
+        [("/system/0".to_owned(), json!({"type": "ephemeral"}))],
+        "{sent}"
+    );
+}
+
+/// A client's marks on a content block and on a tool, with the lifetime `1h`: `InvokeModel`
+/// receives them on the same block and the same tool with the same lifetime, and none on the
+/// system block or the last message.
+#[test]
+fn bedrock_a_clients_marks_on_a_block_and_a_tool_reach_invoke_in_place_with_their_ttl() {
+    let mut messages = unmarked_conversation();
+    messages[0]["content"][0]["cache_control"] = json!({"type": "ephemeral", "ttl": "1h"});
+    let request = json!({"model": "code", "max_tokens": 64, "stream": true,
+        "system": "Be brief.",
+        "tools": [{"name": "lookup", "description": "Find a city",
+            "input_schema": {"type": "object"},
+            "cache_control": {"type": "ephemeral", "ttl": "1h"}}],
+        "messages": messages});
+    let sent = invoke_body("bedrock-cache-block-marks", &request);
+    let hour = json!({"type": "ephemeral", "ttl": "1h"});
+    assert_eq!(
+        cache_marks(&sent),
+        [
+            ("/messages/0/content/0".to_owned(), hour.clone()),
+            ("/tools/0".to_owned(), hour),
+        ],
+        "{sent}"
+    );
+}
+
+/// A client that sends no mark: `InvokeModel` receives llm's two automatic breakpoints, one on
+/// the system block and a rolling one on the last message's last block.
+#[test]
+fn bedrock_a_request_without_a_mark_keeps_the_automatic_breakpoints() {
+    let request = json!({"model": "code", "max_tokens": 64, "stream": true,
+        "system": "Be brief.", "messages": unmarked_conversation()});
+    let sent = invoke_body("bedrock-cache-no-mark", &request);
+    let ephemeral = json!({"type": "ephemeral"});
+    assert_eq!(
+        cache_marks(&sent),
+        [
+            ("/messages/2/content/0".to_owned(), ephemeral.clone()),
+            ("/system/0".to_owned(), ephemeral),
+        ],
+        "{sent}"
+    );
 }

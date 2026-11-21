@@ -519,11 +519,12 @@ mod relay {
     use super::{Observed, label, token_code, unavailable, verifier_code};
     use ess_conformance::target::TargetError;
     use llm_gateway::{
-        BasePath, CredentialHeader, CredentialHeaderError, Disposition, Gateway, GatewayConfig,
-        GatewayHandle, IngressAuth, NoOwnerVerifier, OwnerToken, OwnerVerifier, ReasoningEffort,
-        Relay, RelayError, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory,
-        SharedSecretVerifier, StaticHeader, StaticHeaderError, TargetBearer, TargetRefusal,
-        ToolCalling, UsageRecord, UsageRecords, Wire,
+        BasePath, CallerReview, CallerToken, CredentialHeader, CredentialHeaderError, Disposition,
+        Gateway, GatewayConfig, GatewayHandle, IngressAuth, NoOwnerVerifier, OwnerToken,
+        OwnerVerifier, Principal, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
+        RelayTarget, RelayTargets, Review, RouteInventory, SharedSecretVerifier, StaticHeader,
+        StaticHeaderError, TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords,
+        Wire,
     };
     use llm_gateway::{ModelPhase, ModelStatus};
     use llm_gateway_cli::{
@@ -589,9 +590,14 @@ mod relay {
         #[serde(default)]
         cold_starts: usize,
         steps: Vec<Step>,
-        /// `bearer`, the default, or `none`: the Gateway's `ingress_auth`.
+        /// `bearer`, the default, `none` or `service-account-token`: the Gateway's `ingress_auth`.
         #[serde(default)]
         ingress_auth: Option<String>,
+        /// The caller review the relay is composed with, absent for none: each presented bearer
+        /// it knows answers the principal named (admitted), `rejected` or `unavailable`; any
+        /// other bearer is rejected. Only `service-account-token` ever asks it.
+        #[serde(default)]
+        reviews: Option<BTreeMap<String, String>>,
         /// `off`, the default, or `on`: the relay is composed with the binary's translator.
         #[serde(default)]
         translation: Option<String>,
@@ -1399,8 +1405,12 @@ mod relay {
             Disposition::Refused => "Refused",
             Disposition::UpstreamFailed => "UpstreamFailed",
         };
+        let principal = record
+            .principal
+            .as_deref()
+            .map_or_else(String::new, |principal| format!(" principal={principal}"));
         format!(
-            "model={} wire={} disposition={disposition} refusal={} status={} target_status={} response_bytes={} duration_ms={duration} tokens={tokens}",
+            "model={} wire={} disposition={disposition} refusal={} status={} target_status={} response_bytes={} duration_ms={duration} tokens={tokens}{principal}",
             record.model.as_deref().unwrap_or("absent"),
             record.wire.label(),
             record.refusal.map_or("absent", |code| code.wire()),
@@ -1410,6 +1420,36 @@ mod relay {
                 .map_or_else(|| "absent".to_owned(), |status| status.to_string()),
             record.response_bytes,
         )
+    }
+
+    /// The program's caller review: a table of presented bearers and their answers.
+    #[derive(Debug)]
+    struct Reviews(BTreeMap<Vec<u8>, Review>);
+
+    impl Reviews {
+        fn new(table: &BTreeMap<String, String>) -> Result<Self, String> {
+            let mut answers = BTreeMap::new();
+            for (token, answer) in table {
+                let review = match answer.as_str() {
+                    "rejected" => Review::Rejected,
+                    "unavailable" => Review::Unavailable,
+                    principal => Review::Admitted(
+                        Principal::new(principal).map_err(|_| "fixture:principal".to_owned())?,
+                    ),
+                };
+                answers.insert(token.as_bytes().to_vec(), review);
+            }
+            Ok(Self(answers))
+        }
+    }
+
+    impl CallerReview for Reviews {
+        fn review(&self, token: &CallerToken) -> Review {
+            self.0
+                .get(token.expose())
+                .cloned()
+                .unwrap_or(Review::Rejected)
+        }
     }
 
     /// A pod as the source knows it: its name, its authority and its script.
@@ -1869,11 +1909,12 @@ mod relay {
         let ingress_auth = match program.ingress_auth.as_deref() {
             None | Some("bearer") => IngressAuth::Bearer,
             Some("none") => IngressAuth::None,
+            Some("service-account-token") => IngressAuth::ServiceAccountToken,
             Some(_) => return Err("fixture:unknown-ingress-auth".to_owned()),
         };
-        // With ingress auth off and no secret the gateway has no owner at all.
+        // With ingress auth off, or reviewed, and no secret the gateway has no owner at all.
         let verifier: Arc<dyn OwnerVerifier> =
-            if ingress_auth == IngressAuth::None && program.secret.is_empty() {
+            if ingress_auth != IngressAuth::Bearer && program.secret.is_empty() {
                 Arc::new(NoOwnerVerifier)
             } else {
                 let token = OwnerToken::new(program.secret.as_bytes().to_vec())
@@ -1935,6 +1976,10 @@ mod relay {
             None | Some("off") => relay,
             Some("on") => relay.with_translator(Arc::new(translator(&routes))),
             Some(_) => return Err("fixture:unknown-translation".to_owned()),
+        };
+        let relay = match &program.reviews {
+            Some(reviews) => relay.with_caller_review(Arc::new(Reviews::new(reviews)?)),
+            None => relay,
         };
         let inventory =
             RouteInventory::new(Vec::new()).map_err(|_| "fixture:inventory".to_owned())?;
@@ -2193,7 +2238,7 @@ mod relay {
         endpoints_agree
             && matches!(
                 program.ingress_auth.as_deref(),
-                None | Some("bearer" | "none")
+                None | Some("bearer" | "none" | "service-account-token")
             )
             && matches!(program.translation.as_deref(), None | Some("off" | "on"))
             && efforts_known

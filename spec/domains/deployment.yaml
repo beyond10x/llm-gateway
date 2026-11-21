@@ -299,17 +299,26 @@ types:
   # removed:
   #   `container-token:too-large`    a token over 16384 bytes
   #   `container-token:not-a-token`  empty, or a byte that is neither printable ASCII nor a space
+  # `token-review` is the CA file and the gateway's own token a `[token_review]` table names
+  # (TokenReviewDeclaration). Both are read as `container-token` is: links resolved, refused
+  # group- or world-writable (mode & 0o022), messages starting `token_review.ca_file:` or
+  # `token_review.credential_file:`, never the path.
+  #   `token-review:<rule>`         a trusted-file rule above, for either file; the token file
+  #                                 is bounded at 16384 bytes, the CA file at 262144
+  #   `token-review:not-a-token`    the own token is empty or not one printable ASCII token
+  #   `token-review:ca`             the CA file holds no usable PEM certificate
   # Process rules:
   #   `listen:bind`     the listen address, or the `metrics_listen` address, cannot be bound; the
   #                     message names which
   #   `signal:install`  SIGINT and SIGTERM handlers cannot be installed
   - name: llm-gateway.deployment.StartupRefusal
     kind: enum
-    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, MetricsBearerUnreadable, MetricsBearerSymlink, MetricsBearerNotRegular, MetricsBearerUntrustedOwner, MetricsBearerUnsafeMode, MetricsBearerTooLarge, MetricsBearerNotUtf8, MetricsBearerNotAToken, ContainerCredentialsUnset, ContainerCredentialsUri, ContainerTokenUnreadable, ContainerTokenSymlink, ContainerTokenNotRegular, ContainerTokenUntrustedOwner, ContainerTokenUnsafeMode, ContainerTokenTooLarge, ContainerTokenNotUtf8, ContainerTokenNotAToken, ListenBind, SignalInstall]
-  # `ingress_auth`: `bearer` (default) or `none`; maps onto llm-gateway.gateway.IngressAuth.
+    variants: [ConfigUnreadable, ConfigSymlink, ConfigNotRegular, ConfigUntrustedOwner, ConfigUnsafeMode, ConfigTooLarge, ConfigNotUtf8, ConfigSchema, ConfigValue, OwnerSecretUnreadable, OwnerSecretSymlink, OwnerSecretNotRegular, OwnerSecretUntrustedOwner, OwnerSecretUnsafeMode, OwnerSecretTooLarge, OwnerSecretNotUtf8, OwnerSecretNotAToken, OwnerSecretTooShort, VllmApiKeyUnreadable, VllmApiKeySymlink, VllmApiKeyNotRegular, VllmApiKeyUntrustedOwner, VllmApiKeyUnsafeMode, VllmApiKeyTooLarge, VllmApiKeyNotUtf8, VllmApiKeyNotAToken, EndpointCredentialUnreadable, EndpointCredentialSymlink, EndpointCredentialNotRegular, EndpointCredentialUntrustedOwner, EndpointCredentialUnsafeMode, EndpointCredentialTooLarge, EndpointCredentialNotUtf8, EndpointCredentialNotAToken, MetricsBearerUnreadable, MetricsBearerSymlink, MetricsBearerNotRegular, MetricsBearerUntrustedOwner, MetricsBearerUnsafeMode, MetricsBearerTooLarge, MetricsBearerNotUtf8, MetricsBearerNotAToken, ContainerCredentialsUnset, ContainerCredentialsUri, ContainerTokenUnreadable, ContainerTokenSymlink, ContainerTokenNotRegular, ContainerTokenUntrustedOwner, ContainerTokenUnsafeMode, ContainerTokenTooLarge, ContainerTokenNotUtf8, ContainerTokenNotAToken, TokenReviewUnreadable, TokenReviewSymlink, TokenReviewNotRegular, TokenReviewUntrustedOwner, TokenReviewUnsafeMode, TokenReviewTooLarge, TokenReviewNotUtf8, TokenReviewNotAToken, TokenReviewCa, ListenBind, SignalInstall]
+  # `ingress_auth`: `bearer` (default), `none` or `service-account-token`; maps onto
+  # llm-gateway.gateway.IngressAuth.
   - name: llm-gateway.deployment.IngressAuth
     kind: enum
-    variants: [Bearer, None]
+    variants: [Bearer, None, ServiceAccountToken]
   # The signal that ended a served process.
   - name: llm-gateway.deployment.StopSignal
     kind: enum
@@ -821,6 +830,7 @@ types:
       - {name: hosted, type: 'Map<String, llm-gateway.deployment.HostedDeclaration>'}
       - {name: routes, type: 'Optional<String>'}
       - {name: watchdog, type: 'Optional<llm-gateway.deployment.WatchdogDeclaration>'}
+      - {name: token_review, type: 'Optional<llm-gateway.deployment.TokenReviewDeclaration>'}
       - {name: launch, type: 'Optional<llm-gateway.deployment.LaunchDeclaration>'}
   # DECIDED 2026-11-04 (story:live-dashboard): `[launch]`, optional, what `b10x-llm-gateway
   # claude` and `b10x-llm-gateway codex` start their agent with. Both read the running gateway's
@@ -856,6 +866,44 @@ types:
   # (`llm-gateway.watchdog/1`) on standard error. A value outside its range is `config:value`
   # naming `watchdog.<key>`. Proved by `watchdog::tests` and `heartbeat::tests` in
   # crates/llm-gateway-cli/src.
+  # DECIDED 2026-11-21 (story:gateway-sa-token-ingress): `[token_review]`, required with
+  # `ingress_auth = "service-account-token"` and refused with any other value (`config:value`
+  # naming `token_review`). Under that value `owner_secret_file` is optional: with it the owner's
+  # bearer admits a model call beside a reviewed token, without it only a reviewed token does,
+  # and the owner-only surface has no owner, as under `none`. Any other bearer on a model call
+  # is sent to the cluster's TokenReview API (`POST /apis/authentication.k8s.io/v1/tokenreviews`
+  # at `api`, trusting exactly the certificates of `ca_file`, authorised with the token
+  # `credential_file` holds, read again at every review) with `spec.audiences` exactly
+  # `[audience]`. It is admitted only when the answer is `authenticated`, lists `audience`, and
+  # names a user on `principals`; that user is the call's principal
+  # (llm-gateway.telemetry.UsageRecord `principal`). A rejection is `credential-rejected`; no
+  # answer (unreachable, timed out, a non-2xx status, a malformed body, too many reviews at
+  # once) is `credential-review-unavailable`. Keys:
+  #   `audience`         required, 1..=256 bytes of printable ASCII without a space; no default,
+  #                      so a deployment names the audience its callers' projected tokens carry
+  #                      and a token minted for the API server (or anything else) is refused
+  #   `principals`       required, 1..=64 entries `system:serviceaccount:<namespace>:<name>`,
+  #                      none twice; exact names only, no namespace wildcard, so admitting a
+  #                      service account is one reviewed line and a new account in a namespace
+  #                      is admitted by nobody's default
+  #   `api`              default `https://kubernetes.default.svc`; `https://<host>[:<port>]`
+  #   `ca_file`          default `/var/run/secrets/kubernetes.io/serviceaccount/ca.crt`
+  #   `credential_file`  default `/var/run/secrets/kubernetes.io/serviceaccount/token`
+  # Any other key is `config:schema`; a value outside its rule `config:value` naming
+  # `token_review.<key>`. The files are read at start (StartupRefusal `token-review:*`). The
+  # review's bounds (timeout, concurrency, the SHA-256-keyed cache of admissions and rejections)
+  # are the binary's, published in docs/gateway.md. The mode works on a plain listener: the
+  # bearer crosses the pod network in clear unless a mesh or a sidecar relay on loopback carries
+  # it, and the guide says to admit the hop with a NetworkPolicy. Proved by
+  # crates/llm-gateway-cli/tests/token_review.rs against a fake TokenReview API on loopback TLS.
+  - name: llm-gateway.deployment.TokenReviewDeclaration
+    kind: struct
+    fields:
+      - {name: audience, type: String}
+      - {name: principals, type: 'List<String>'}
+      - {name: api, type: String}
+      - {name: ca_file, type: String}
+      - {name: credential_file, type: String}
   - name: llm-gateway.deployment.WatchdogDeclaration
     kind: struct
     fields:

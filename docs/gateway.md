@@ -109,9 +109,9 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
 | `POST` | `/v1/models/{alias}/wake` | owner | Starts the model's pod and answers `202` at once with its status ([the lifecycle routes](#the-lifecycle-routes)). |
 | `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase and profile; starts nothing. |
-| `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None` | The `chat` wire, relayed ([the relay](#the-relay)). |
-| `POST` | `/v1/responses` | owner, or none under `IngressAuth::None` | The `responses` wire, relayed. |
-| `POST` | `/v1/messages` | owner, or none under `IngressAuth::None` | The `messages` wire, relayed. |
+| `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `chat` wire, relayed ([the relay](#the-relay)). |
+| `POST` | `/v1/responses` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `responses` wire, relayed. |
+| `POST` | `/v1/messages` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `messages` wire, relayed. |
 
 An embedding may bind a second, metrics-only listener beside this surface
 ([scraping the counters](#scraping-the-counters)); nothing in this table is reachable on it.
@@ -270,6 +270,34 @@ profile fallback are a request's, and the pod it starts, a spend refusal or a fa
 counted as a request's would be (`docs/hosting.md`, "Waking a model and reading its phase").
 Its status is `RunpodPool::status`, read from the hosting state machine with no provider call.
 
+## Service-account tokens
+
+`GatewayConfig::ingress_auth = IngressAuth::ServiceAccountToken` admits a model call (a wire
+path or the token count of a gateway composed with a relay) whose bearer is the owner's, as
+`Bearer` does, or one the relay's `CallerReview` admits (`Relay::with_caller_review`). The
+owner's bearer is compared first and is never shown to the review. Any other bearer is handed
+to the review as a `CallerToken` (redacted in `Debug`, overwritten on drop, 1..=4096 bytes of
+printable US-ASCII), which answers one of three things:
+
+- `Review::Admitted(principal)`: the call goes on to the relay order below, and its usage
+  record carries the principal, `system:serviceaccount:<namespace>:<name>` of at most
+  `principal-bytes` (`Principal::new` refuses anything else).
+- `Review::Rejected`: `credential-rejected` (401), as a wrong owner bearer is.
+- `Review::Unavailable`: `credential-review-unavailable` (503). A gateway composed with no
+  review answers this to every caller but the owner.
+
+No `authorization` is `credential-absent`, and one that is not a single bearer token
+`credential-malformed`, as under `Bearer`. A refused call makes no usage record. Every other
+path, `/metrics`, `/v1/routes`, `/dashboard`, the lifecycle routes and an unknown path
+included, takes the owner's bearer alone and never asks the review, so a reviewed token opens
+nothing but the model calls. The principal comes from the review and from nothing the request
+carries: no header names it. Under `Bearer` and `None` a composed review is never asked.
+
+The review is the embedding's, behind the port, so this crate opens no connection for it. The
+binary's review asks the cluster's TokenReview API; its keys are the deployment document's
+`[token_review]`, and its own bounds are in
+[bounds of the service-account review](#bounds-of-the-service-account-review).
+
 ## The relay
 
 `Gateway::bind_with_relay` composes the gateway with a `Relay`: the relayed models and an injected
@@ -302,7 +330,10 @@ A request to a wire path is decided in this order:
    `credential-absent` without one and `credential-rejected` with a bearer token (anything else
    is `credential-malformed`, as with a secret). The binary does exactly
    this for `ingress_auth = "none"` without an `owner_secret_file`, and says so on standard
-   error before it listens.
+   error before it listens. Under `IngressAuth::ServiceAccountToken` a wire path of a gateway
+   composed with a relay takes the owner's bearer, or a bearer the relay's `CallerReview`
+   admits ([service-account tokens](#service-account-tokens)); every other path takes the
+   owner's bearer alone.
 2. `POST` only (`method-not-allowed`, `allow: POST`), and `unavailable` before `mark_ready`.
 3. The body: `content-length` or `transfer-encoding: chunked`, nothing else
    (`request-malformed`). A declared length over `request-body-bytes` is `body-too-large` before a
@@ -1082,6 +1113,7 @@ every code the gateway can emit.
 | `credential-absent` | `refused` |
 | `credential-malformed` | `refused` |
 | `credential-rejected` | `refused` |
+| `credential-review-unavailable` | `refused` |
 | `method-not-allowed` | `refused` |
 | `model-absent` | `refused` |
 | `model-cold-start` | `timeout` |
@@ -1203,6 +1235,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `credential-absent` | 401 | no owner credential was presented |
 | `credential-malformed` | 401 | the owner credential is not a bearer token |
 | `credential-rejected` | 401 | the presented owner credential was rejected |
+| `credential-review-unavailable` | 503 | the presented credential could not be reviewed; ask again |
 | `body-not-json` | 400 | the request body is not one JSON object |
 | `body-too-large` | 413 | the request body exceeds its byte bound |
 | `context-exceeded` | 400 | prompt is too long: the input leaves no room for output in the model context window |
@@ -1285,6 +1318,7 @@ list written by hand.
 | `base-path-segments` | `MAX_BASE_PATH_SEGMENTS` | 32 |
 | `static-header-value-bytes` | `MAX_STATIC_HEADER_VALUE_BYTES` | 1024 |
 | `caller-session-bytes` | `MAX_CALLER_SESSION_BYTES` | 256 |
+| `principal-bytes` | `MAX_PRINCIPAL_BYTES` | 128 |
 | `targets-per-route` | `MAX_TARGETS_PER_ROUTE` | 64 |
 | `routes` | `MAX_ROUTES` | 4096 |
 | `digest-characters` | `DIGEST_CHARACTERS` | 64 |
@@ -1303,7 +1337,8 @@ not a bound has to be named in the exemption list in `tests/gateway.rs` with a r
 than being invisible.
 
 `owner-credential-bytes`, `label-bytes`, `credential-header-bytes`, `base-path-bytes`,
-`base-path-segments`, `static-header-value-bytes`, `caller-session-bytes`, `targets-per-route`,
+`base-path-segments`, `static-header-value-bytes`, `caller-session-bytes`, `principal-bytes`,
+`targets-per-route`,
 `routes`, `request-head-bytes`, `concurrent-requests` and `request-body-bytes` are maxima; `shared-secret-bytes` is a minimum;
 `digest-characters` is an exact length. `request-head-bytes` and `concurrent-requests` are
 `GatewayConfig` defaults an embedding may override; they and `request-body-bytes` (32 MiB, as
@@ -1328,6 +1363,30 @@ is a hint to the client rather than a limit the gateway enforces, so it is not i
 either; `w6_a_model_still_starting_past_its_hold_budget_is_model_cold_start_with_retry_after_30`
 in `tests/wire_relay.rs` measures the header, and
 `every_refusal_code_has_a_request_that_provokes_it` checks that no other refusal carries one.
+
+## Bounds of the service-account review
+
+The bounds of the binary's TokenReview call (`crates/llm-gateway-cli/src/token_review.rs`,
+`ReviewBounds::default`); the gateway crate holds none of them, so they are not in
+[Bounds](#bounds). `sa_the_published_review_bounds_are_the_defaults` in
+`crates/llm-gateway-cli/tests/token_review.rs` reads this table.
+
+| Bound | Constant | Value |
+| --- | --- | --- |
+| `review-timeout-ms` | `ReviewBounds::timeout` | 5000 |
+| `concurrent-reviews` | `ReviewBounds::concurrent` | 8 |
+| `review-cache-entries` | `ReviewBounds::entries` | 1024 |
+| `admission-cache-seconds` | `ReviewBounds::admission` | 60 |
+| `rejection-cache-seconds` | `ReviewBounds::rejection` | 3 |
+
+One review, connection, handshake, request and answer, ends within `review-timeout-ms` or is
+`credential-review-unavailable`. A review asked while `concurrent-reviews` are under way is
+`credential-review-unavailable` at once and sends nothing. Answers are kept by the SHA-256 of
+the token, never the token: an admission for `admission-cache-seconds` and never past the
+token's own `exp`, a rejection for `rejection-cache-seconds`, and an unavailable answer not at
+all. Past `review-cache-entries` the entry whose window ends soonest goes first. A token whose
+`exp` has passed, or one that is not three base64url segments, is `credential-rejected` without
+a review.
 
 ## Bounds of the translated path
 

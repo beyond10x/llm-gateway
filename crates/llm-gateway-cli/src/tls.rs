@@ -114,6 +114,29 @@ impl ProxyConnector {
         })
     }
 
+    /// A connector trusting exactly `roots` (DER certificates) and nothing compiled in, each host
+    /// resolved and connected at its own port: the TokenReview client, which trusts the cluster's
+    /// CA from `token_review.ca_file`.
+    ///
+    /// # Errors
+    /// `InvalidInput` for no root, or a root that is not a usable DER certificate.
+    pub(crate) fn trusting(roots: &[Vec<u8>]) -> io::Result<Self> {
+        if roots.is_empty() {
+            return Err(invalid("no certificate to trust"));
+        }
+        let mut store = RootCertStore::empty();
+        for root in roots {
+            store
+                .add(CertificateDer::from(root.clone()))
+                .map_err(|error| invalid(&format!("a certificate is not usable: {error}")))?;
+        }
+        Ok(Self {
+            config: config(store),
+            loopback: None,
+            seam: false,
+        })
+    }
+
     /// Opens one TLS connection to `authority` (`host[:port]`) and completes its handshake,
     /// certificate verification included, before returning: nothing else is written to the pod
     /// before this returns. `connect` is one deadline over the whole opening, the TCP connection

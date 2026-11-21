@@ -84,6 +84,105 @@ struct Document {
     /// (story:pod-watchdog).
     #[serde(default)]
     watchdog: Option<WatchdogDocument>,
+    /// `[token_review]`: how a caller's service-account token is reviewed
+    /// (story:gateway-sa-token-ingress).
+    #[serde(default)]
+    token_review: Option<TokenReviewDocument>,
+}
+
+/// `[token_review]` (`llm-gateway.deployment.TokenReviewDeclaration`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct TokenReviewDocument {
+    audience: String,
+    principals: Vec<String>,
+    #[serde(default = "default_token_review_api")]
+    api: String,
+    #[serde(default = "default_token_review_ca_file")]
+    ca_file: PathBuf,
+    #[serde(default = "default_token_review_credential_file")]
+    credential_file: PathBuf,
+}
+
+/// The API server as a pod reaches it by its cluster's DNS.
+fn default_token_review_api() -> String {
+    "https://kubernetes.default.svc".to_owned()
+}
+
+/// The cluster CA a pod's service-account volume mounts.
+fn default_token_review_ca_file() -> PathBuf {
+    PathBuf::from("/var/run/secrets/kubernetes.io/serviceaccount/ca.crt")
+}
+
+/// The token a pod's service-account volume mounts.
+fn default_token_review_credential_file() -> PathBuf {
+    PathBuf::from("/var/run/secrets/kubernetes.io/serviceaccount/token")
+}
+
+/// The most service accounts `token_review.principals` admits.
+pub(crate) const MAX_PRINCIPALS: usize = 64;
+/// The longest `token_review.audience`, in bytes.
+pub(crate) const MAX_AUDIENCE_BYTES: usize = 256;
+
+/// `[token_review]`, checked: the audience is 1..=256 bytes of printable ASCII without a space;
+/// the principals 1..=64 service accounts, none twice; the API `https://<host>[:<port>]` with no
+/// path; both files absolute paths.
+fn validate_token_review(declared: TokenReviewDocument) -> Result<TokenReviewConfig, Refusal> {
+    ensure(
+        !declared.audience.is_empty()
+            && declared.audience.len() <= MAX_AUDIENCE_BYTES
+            && declared
+                .audience
+                .bytes()
+                .all(|byte| byte.is_ascii_graphic()),
+        "token_review.audience",
+        "must be 1..=256 bytes of printable ASCII without a space",
+    )?;
+    ensure(
+        !declared.principals.is_empty(),
+        "token_review.principals",
+        "must name at least one service account",
+    )?;
+    ensure(
+        declared.principals.len() <= MAX_PRINCIPALS,
+        "token_review.principals",
+        "names at most 64 service accounts",
+    )?;
+    let mut principals: Vec<llm_gateway::Principal> = Vec::with_capacity(declared.principals.len());
+    for text in &declared.principals {
+        let principal = llm_gateway::Principal::new(text).map_err(|error| {
+            value(
+                "token_review.principals",
+                &format!("holds an entry that is not one: {error}"),
+            )
+        })?;
+        ensure(
+            !principals.contains(&principal),
+            "token_review.principals",
+            "names one service account twice",
+        )?;
+        principals.push(principal);
+    }
+    let authority = declared
+        .api
+        .strip_prefix("https://")
+        .map(|rest| rest.strip_suffix('/').unwrap_or(rest));
+    ensure(
+        authority.is_some_and(|authority| {
+            crate::tls::split(authority, crate::tls::HTTPS_PORT).is_some()
+        }),
+        "token_review.api",
+        "must be https://<host>[:<port>] with no path",
+    )?;
+    absolute_path("token_review.ca_file", &declared.ca_file)?;
+    absolute_path("token_review.credential_file", &declared.credential_file)?;
+    Ok(TokenReviewConfig {
+        audience: declared.audience,
+        principals,
+        api: declared.api,
+        ca_file: declared.ca_file,
+        credential_file: declared.credential_file,
+    })
 }
 
 /// `[watchdog]` (`llm-gateway.deployment.WatchdogDeclaration`).
@@ -613,9 +712,12 @@ enum IngressAuthDocument {
     #[default]
     Bearer,
     None,
+    ServiceAccountToken,
 }
 
-from_string_only!(IngressAuthDocument { "bearer" => Bearer, "none" => None });
+from_string_only!(IngressAuthDocument {
+    "bearer" => Bearer, "none" => None, "service-account-token" => ServiceAccountToken
+});
 
 #[derive(Default)]
 enum ThinkingDocument {
@@ -1101,13 +1203,26 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
     let ingress_auth = match document.ingress_auth {
         IngressAuthDocument::Bearer => IngressAuth::Bearer,
         IngressAuthDocument::None => IngressAuth::None,
+        IngressAuthDocument::ServiceAccountToken => IngressAuth::ServiceAccountToken,
     };
+    // Under `service-account-token` the owner secret is optional: with it the owner's bearer
+    // admits a model call beside a reviewed token, without it only a reviewed token does. The
+    // message is the one `bearer` has always had, since only `bearer` reaches it.
     ensure(
-        ingress_auth == IngressAuth::None || document.owner_secret_file.is_some(),
+        ingress_auth != IngressAuth::Bearer || document.owner_secret_file.is_some(),
         "owner_secret_file",
         "is required unless ingress_auth is none",
     )?;
     check_client_routes(&hosted, ingress_auth)?;
+    ensure(
+        (ingress_auth == IngressAuth::ServiceAccountToken) == document.token_review.is_some(),
+        "token_review",
+        "is required with ingress_auth = \"service-account-token\" and allowed with no other",
+    )?;
+    let token_review = document
+        .token_review
+        .map(validate_token_review)
+        .transpose()?;
     ensure(
         document.metrics_listen != Some(document.listen),
         "metrics_listen",
@@ -1138,7 +1253,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         routes_file: document.routes,
         routes: Routes::default(),
         digest,
-        token_review: None,
+        token_review,
     })
 }
 

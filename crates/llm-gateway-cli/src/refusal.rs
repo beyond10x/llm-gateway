@@ -17,6 +17,8 @@ pub enum Source {
     /// The container authorization token file `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` names,
     /// for a Bedrock model.
     ContainerToken,
+    /// The CA file or the gateway's own token a `[token_review]` table names.
+    TokenReview,
 }
 
 macro_rules! refusals {
@@ -103,6 +105,15 @@ refusals! {
     ContainerTokenTooLarge => "container-token:too-large",
     ContainerTokenNotUtf8 => "container-token:not-utf8",
     ContainerTokenNotAToken => "container-token:not-a-token",
+    TokenReviewUnreadable => "token-review:unreadable",
+    TokenReviewSymlink => "token-review:symlink",
+    TokenReviewNotRegular => "token-review:not-regular",
+    TokenReviewUntrustedOwner => "token-review:untrusted-owner",
+    TokenReviewUnsafeMode => "token-review:unsafe-mode",
+    TokenReviewTooLarge => "token-review:too-large",
+    TokenReviewNotUtf8 => "token-review:not-utf8",
+    TokenReviewNotAToken => "token-review:not-a-token",
+    TokenReviewCa => "token-review:ca",
     ListenBind => "listen:bind",
     SignalInstall => "signal:install",
     }
@@ -207,6 +218,15 @@ impl FileRule {
             (Source::ContainerToken, Self::UnsafeMode) => StartupRefusal::ContainerTokenUnsafeMode,
             (Source::ContainerToken, Self::TooLarge) => StartupRefusal::ContainerTokenTooLarge,
             (Source::ContainerToken, Self::NotUtf8) => StartupRefusal::ContainerTokenNotUtf8,
+            (Source::TokenReview, Self::Unreadable) => StartupRefusal::TokenReviewUnreadable,
+            (Source::TokenReview, Self::Symlink) => StartupRefusal::TokenReviewSymlink,
+            (Source::TokenReview, Self::NotRegular) => StartupRefusal::TokenReviewNotRegular,
+            (Source::TokenReview, Self::UntrustedOwner) => {
+                StartupRefusal::TokenReviewUntrustedOwner
+            }
+            (Source::TokenReview, Self::UnsafeMode) => StartupRefusal::TokenReviewUnsafeMode,
+            (Source::TokenReview, Self::TooLarge) => StartupRefusal::TokenReviewTooLarge,
+            (Source::TokenReview, Self::NotUtf8) => StartupRefusal::TokenReviewNotUtf8,
         }
     }
 }
@@ -302,6 +322,7 @@ mod tests {
                     "metrics-bearer",
                     "container-credentials",
                     "container-token",
+                    "token-review",
                     "listen",
                     "signal"
                 ]
@@ -330,6 +351,7 @@ mod tests {
             (Source::EndpointCredential, "endpoint-credential:"),
             (Source::MetricsBearer, "metrics-bearer:"),
             (Source::ContainerToken, "container-token:"),
+            (Source::TokenReview, "token-review:"),
         ] {
             let codes: BTreeSet<&str> = rules.iter().map(|r| r.refusal(source).code()).collect();
             assert_eq!(codes.len(), rules.len());

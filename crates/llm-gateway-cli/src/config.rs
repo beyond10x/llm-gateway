@@ -364,6 +364,10 @@ struct HostedDocument {
     /// endpoint and on a Converse model.
     #[serde(default)]
     anthropic_beta: Option<Vec<String>>,
+    /// The reasoning efforts an `InvokeModel` model takes, refused on an endpoint and on a
+    /// Converse model (story:bedrock-invoke-effort).
+    #[serde(default)]
+    reasoning_efforts: Option<Vec<String>>,
     /// `absent` by default for an endpoint, `parsed` for a Bedrock model.
     #[serde(default)]
     tool_calling: Option<ToolCallingDocument>,
@@ -884,6 +888,10 @@ pub struct Bedrock {
     /// the document's order: each `llm_core::anthropic_beta_name`, distinct, at most
     /// `llm_core::MAX_ANTHROPIC_BETAS`. Empty unless declared, and always empty for `converse`.
     pub anthropic_beta: Vec<String>,
+    /// The reasoning efforts the model takes in `output_config.effort`: the declared list, else
+    /// every name of [`BEDROCK_REASONING_EFFORTS`] for `anthropic-invoke`; always empty for
+    /// `converse`.
+    pub reasoning_efforts: Vec<String>,
 }
 
 /// A loaded and validated deployment document.
@@ -1193,6 +1201,7 @@ fn refuse_bedrock_keys(at: &str, declared: &HostedDocument) -> Result<(), Refusa
         ("credential_source", declared.credential_source.is_some()),
         ("api", declared.api.is_some()),
         ("endpoint", declared.endpoint.is_some()),
+        ("reasoning_efforts", declared.reasoning_efforts.is_some()),
     ] {
         ensure(
             !present,
@@ -1582,6 +1591,49 @@ fn validate_betas(
     Ok(betas)
 }
 
+/// The reasoning efforts the Anthropic Messages body carries in `output_config.effort`: the
+/// names an `anthropic-invoke` model's `reasoning_efforts` may hold, and every one of them when
+/// it declares none.
+pub const BEDROCK_REASONING_EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
+
+/// `[hosted.<alias>] reasoning_efforts`, checked (story:bedrock-invoke-effort):
+/// [`BEDROCK_REASONING_EFFORTS`] when undeclared on an `anthropic-invoke` model, empty on a
+/// `converse` model; a declared list is an `anthropic-invoke` model's, each name one of
+/// [`BEDROCK_REASONING_EFFORTS`], once. An empty list declares a model that takes no effort.
+fn validate_efforts(
+    at: &str,
+    api: llm_bedrock::Api,
+    declared: Option<Vec<String>>,
+) -> Result<Vec<String>, Refusal> {
+    let Some(efforts) = declared else {
+        return Ok(if api == llm_bedrock::Api::AnthropicInvoke {
+            BEDROCK_REASONING_EFFORTS.map(str::to_owned).to_vec()
+        } else {
+            Vec::new()
+        });
+    };
+    let at = format!("{at}.reasoning_efforts");
+    ensure(
+        api == llm_bedrock::Api::AnthropicInvoke,
+        &at,
+        "is a key of api = \"anthropic-invoke\" only: Converse carries no reasoning effort",
+    )?;
+    ensure(
+        efforts
+            .iter()
+            .all(|effort| BEDROCK_REASONING_EFFORTS.contains(&effort.as_str())),
+        &at,
+        "names only low, medium, high, xhigh and max",
+    )?;
+    let distinct: std::collections::BTreeSet<&String> = efforts.iter().collect();
+    ensure(
+        distinct.len() == efforts.len(),
+        &at,
+        "names each effort once",
+    )?;
+    Ok(efforts)
+}
+
 /// `[hosted.<alias>] kind = "bedrock"`, checked (`llm-gateway.deployment.HostedDeclaration`,
 /// story:bedrock-hosted-target). The region, the model id and the endpoint are each checked by
 /// the rule llm's Bedrock client applies, and a refusal names the key and never the value.
@@ -1604,7 +1656,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
             !present,
             &key(name),
             "is not a key of kind = \"bedrock\": Bedrock is reached by region and model_id and \
-             signed with the container credentials, and takes no reasoning effort",
+             signed with the container credentials, and is given no default effort",
         )?;
     }
     let required = |name: &str, given: Option<String>| {
@@ -1658,6 +1710,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         within(at, "max_output_tokens", &output, &(1..=window))?;
     }
     let anthropic_beta = validate_betas(at, api, declared.anthropic_beta)?;
+    let reasoning_efforts = validate_efforts(at, api, declared.reasoning_efforts)?;
     Ok(Bedrock {
         region,
         model_id,
@@ -1668,6 +1721,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         max_output_tokens: declared.max_output_tokens,
         tool_calling: tool_calling(declared.tool_calling.unwrap_or(ToolCallingDocument::Parsed)),
         anthropic_beta,
+        reasoning_efforts,
     })
 }
 

@@ -4,8 +4,8 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "source_digest": "5ecae0c3b88107db8f892324c1206784ae11c8f9ad50af77847268fc4fb96477",
-    "contract_digest": "slice-sha256/2:aca65c034eeed5714feffd4d83328939b37eda70e2c8f090908bf851fb671143",
+    "source_digest": "cbc54ac21b03f634f4c3a4e2a6aa58f28c2d7791341f06c189220d3cfb801777",
+    "contract_digest": "slice-sha256/2:63f9f73ad90947567bb520defba1c7d72afca7bd6d4077c74adfcdba89c0eb27",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -160,6 +160,12 @@
           "type": "integer"
         },
         "anthropic_beta": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "reasoning_efforts": {
           "type": "array",
           "items": {
             "type": "string"

@@ -148,6 +148,7 @@ scenarios:
 - gateway/scenarios/authentication-comes-before-the-path-is-decided.yaml
 - gateway/scenarios/bedrock-a-bedrock-model-naming-a-credential-file-composes-nothing.yaml
 - gateway/scenarios/bedrock-a-converse-model-naming-anthropic-beta-composes-nothing.yaml
+- gateway/scenarios/bedrock-a-converse-model-naming-reasoning-efforts-composes-nothing.yaml
 - gateway/scenarios/bedrock-an-endpoint-naming-a-region-composes-nothing.yaml
 - gateway/scenarios/bedrock-an-endpoint-naming-anthropic-beta-composes-nothing.yaml
 - gateway/scenarios/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id.yaml

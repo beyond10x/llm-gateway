@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-20T23:56:45Z",
+  "actor": "agent:ai-agent-platform",
+  "artifact": "story:bedrock-invoke-effort",
+  "kind": "story",
+  "revision": 4,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "local gate on wave/2026-11-21-w01 (Rust 1.98.0): cargo test --workspace 1167 passed, fmt, clippy -D warnings, docs generate --check, ess 0.86.0 validate, conformance 396/396 x3, aep validate; bedrock red 5 of 30 failed at 2c3e456, green 30 of 30; loopback llm-flux real_gateway client against the branch binary: output_config.effort low reached InvokeModel",
+    "reference": "wave/2026-11-21-w01@a58fa6b"
+  }
+}

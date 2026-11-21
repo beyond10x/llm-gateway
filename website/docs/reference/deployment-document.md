@@ -221,7 +221,10 @@ optionally `api`, `endpoint`, `billing_kind`, `context_window`, `max_output_toke
 window, which it is when undeclared; it bounds the output a turn naming none is given),
 `anthropic_beta` (default empty: the `anthropic-beta` names a Messages client's header may carry
 into an `anthropic-invoke` model's InvokeModel body, at most 32 distinct names by llm's beta name
-rule; refused on a `converse` model, an empty list too) and `tool_calling` (default `parsed`). Every request to it is translated and signed with the container credentials named by
+rule; refused on a `converse` model, an empty list too), `reasoning_efforts` (default `low`,
+`medium`, `high`, `xhigh` and `max`: the efforts an `anthropic-invoke` model takes as
+`output_config.effort`, `[]` for none; an effort outside it is `translation-unsupported`;
+refused on a `converse` model) and `tool_calling` (default `parsed`). Every request to it is translated and signed with the container credentials named by
 `AWS_CONTAINER_CREDENTIALS_FULL_URI` and `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`. An
 endpoint's keys are refused on it, and its keys on an endpoint, each as `config:value` naming the
 key. [Serve a Bedrock model](../guides/serve-a-bedrock-model.md) has every rule.

@@ -2037,3 +2037,198 @@ fn bedrock_a_misdeclared_reasoning_efforts_list_is_refused_by_its_key() {
         assert!(!stderr.contains(CONTAINER_TOKEN), "{case}: {stderr}");
     }
 }
+
+// --- Criterion: what a messages answer names, and an answer that ends in an error ---------------
+
+/// The weather tool on the messages wire.
+fn messages_tools() -> Value {
+    json!([{"name":"get_weather","description":"Weather by city",
+        "input_schema":{"type":"object","properties":{"city":{"type":"string"}},"required":["city"]}}])
+}
+
+/// Posts a messages request for the alias `haiku`, streamed or not and offering `tools`, to an
+/// `InvokeModel` fixture answering `answer`; returns the answer and the log.
+fn haiku_messages(
+    name: &str,
+    answer: Vec<u8>,
+    stream: bool,
+    tools: Option<Value>,
+) -> (String, Vec<String>, String) {
+    let deployment = Deployment::new(name);
+    let credentials = Recorder::credentials(4);
+    let bedrock = Recorder::start(EVENT_STREAM, vec![answer]);
+    let config = deployment.config(&bedrock_table("haiku", MODEL_ID, &bedrock, ""));
+    let server = Server::start(
+        &config,
+        &Environment::container(&credentials, &deployment.token),
+    );
+    let mut request = json!({"model": "haiku", "max_tokens": 64, "stream": stream,
+        "messages": [{"role": "user", "content": PROMPT_MARKER}]});
+    if let Some(tools) = tools {
+        request["tools"] = tools;
+    }
+    let answer = server.post("/v1/messages", &request.to_string());
+    let metrics = server.get("/metrics");
+    let log = server.log();
+    let seen = bedrock.seen();
+    assert_eq!(seen.len(), 1, "{answer} {seen:?}");
+    assert_signed(&seen[0]);
+    assert_quiet(&log);
+    (answer, log, metrics)
+}
+
+/// The payload of each server-sent event of an answer, in order.
+fn sse_payloads(answer: &str) -> Vec<Value> {
+    answer
+        .lines()
+        .filter_map(|line| line.strip_prefix("data: "))
+        .filter_map(|data| serde_json::from_str(data).ok())
+        .collect()
+}
+
+/// The usage record the binary logged for the one call.
+fn usage_line(log: &[String]) -> String {
+    let lines: Vec<&String> = log
+        .iter()
+        .filter(|line| line.contains("disposition="))
+        .collect();
+    assert_eq!(lines.len(), 1, "{log:?}");
+    lines[0].clone()
+}
+
+/// The Messages wire names the model in `message_start`; a streamed messages answer names the
+/// alias the client asked for, never the model Bedrock reported or the model id it was sent to.
+#[test]
+fn bedrock_a_streamed_messages_answer_names_the_alias_in_message_start() {
+    let (answer, log, _) =
+        haiku_messages("bedrock-messages-model-stream", invoke_text(), true, None);
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let payloads = sse_payloads(&answer);
+    assert_eq!(payloads[0]["type"], "message_start", "{answer}");
+    assert_eq!(payloads[0]["message"]["model"], "haiku", "{answer}");
+    assert_eq!(
+        payloads.last().map(|payload| payload["type"].clone()),
+        Some(json!("message_stop")),
+        "{answer}"
+    );
+    assert!(!answer.contains("claude-fixture"), "{answer}");
+    assert!(!answer.contains(MODEL_ID), "{answer}");
+    assert!(usage_line(&log).contains("outcome=ok"), "{log:?}");
+}
+
+/// The non-streamed message names the same alias.
+#[test]
+fn bedrock_a_whole_messages_answer_names_the_alias() {
+    let (answer, log, _) =
+        haiku_messages("bedrock-messages-model-whole", invoke_text(), false, None);
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let message: Value = serde_json::from_str(answer.split_once("\r\n\r\n").unwrap().1).unwrap();
+    assert_eq!(message["type"], "message", "{answer}");
+    assert_eq!(message["model"], "haiku", "{answer}");
+    assert!(usage_line(&log).contains("outcome=ok"), "{log:?}");
+}
+
+/// An `InvokeModel` stream whose tool call is cut off by `max_tokens` in the middle of its
+/// arguments, as Claude ends one when the output limit is reached.
+fn invoke_call_cut_by_max_tokens() -> Vec<u8> {
+    let mut events = vec![
+        message_start(),
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"tool_use",
+            "id":"toolu_fixture_1","name":"get_weather","input":{}}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"input_json_delta",
+            "partial_json":"{\"city\":"}}),
+        json!({"type":"content_block_stop","index":0}),
+    ];
+    events.extend(message_end("max_tokens", 64));
+    events.iter().flat_map(chunk).collect()
+}
+
+/// A streamed answer that ends in the wire's `error` event after its head was written is a
+/// failed call: the usage record and `llmgw_requests_total` count it `upstream_error`, though
+/// the client was answered `200` and it stays relayed.
+#[test]
+fn bedrock_a_streamed_answer_ending_in_an_error_event_is_recorded_as_failed() {
+    let (answer, log, metrics) = haiku_messages(
+        "bedrock-messages-error-outcome",
+        invoke_call_cut_by_max_tokens(),
+        true,
+        Some(messages_tools()),
+    );
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    let payloads = sse_payloads(&answer);
+    assert_eq!(
+        payloads.last().map(|payload| payload["type"].clone()),
+        Some(json!("error")),
+        "{answer}"
+    );
+    let usage = usage_line(&log);
+    assert!(usage.contains("outcome=upstream_error"), "{usage}");
+    assert!(usage.contains("disposition=Relayed"), "{usage}");
+    assert!(usage.contains(" status=200"), "{usage}");
+    assert!(!usage.contains("refusal="), "{usage}");
+    assert!(
+        metrics.contains("llmgw_requests_total{model=\"haiku\",outcome=\"upstream_error\"} 1\n"),
+        "{metrics}"
+    );
+    assert!(
+        metrics.contains("llmgw_requests_total{model=\"haiku\",outcome=\"ok\"} 0\n"),
+        "{metrics}"
+    );
+}
+
+/// What Claude Haiku 5.5 streams through `InvokeModel` at a low effort with no `thinking` field:
+/// a signed `thinking` block whose text is empty, then its answer.
+fn invoke_empty_signed_thinking_then_text() -> Vec<u8> {
+    let mut events = vec![
+        message_start(),
+        json!({"type":"content_block_start","index":0,"content_block":{"type":"thinking",
+            "thinking":"","signature":""}}),
+        json!({"type":"content_block_delta","index":0,"delta":{"type":"signature_delta",
+            "signature":"c2lnbmVkLWVtcHR5LXRoaW5raW5n"}}),
+        json!({"type":"content_block_stop","index":0}),
+        json!({"type":"content_block_start","index":1,"content_block":{"type":"text","text":""}}),
+        json!({"type":"content_block_delta","index":1,"delta":{"type":"text_delta","text":ANSWER_MARKER}}),
+        json!({"type":"content_block_stop","index":1}),
+    ];
+    events.extend(message_end("end_turn", 9));
+    events.iter().flat_map(chunk).collect()
+}
+
+/// The answer above reaches a messages client whole: the signed thinking block at index 0, the
+/// text at index 1, no `error` event, and the call is `ok`. llm 0.20.0 ends it with an `error`
+/// event after the text (its ingress encoder opens no block for reasoning without text).
+#[test]
+#[ignore = "needs the llm release with story:empty-signed-reasoning; the pin bump runs this case"]
+fn bedrock_signed_thinking_without_text_reaches_a_messages_client_in_place() {
+    let (answer, log, _) = haiku_messages(
+        "bedrock-messages-empty-thinking",
+        invoke_empty_signed_thinking_then_text(),
+        true,
+        None,
+    );
+    assert!(answer.starts_with("HTTP/1.1 200 OK\r\n"), "{answer}");
+    assert!(!answer.contains("event: error"), "{answer}");
+    let payloads = sse_payloads(&answer);
+    let starts: Vec<(Value, Value)> = payloads
+        .iter()
+        .filter(|payload| payload["type"] == "content_block_start")
+        .map(|payload| {
+            (
+                payload["index"].clone(),
+                payload["content_block"]["type"].clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        starts,
+        [(json!(0), json!("thinking")), (json!(1), json!("text"))],
+        "{answer}"
+    );
+    assert!(
+        payloads.iter().any(|payload| payload["index"] == 0
+            && payload["delta"]["signature"] == "c2lnbmVkLWVtcHR5LXRoaW5raW5n"),
+        "{answer}"
+    );
+    assert!(answer.contains(ANSWER_MARKER), "{answer}");
+    assert!(usage_line(&log).contains("outcome=ok"), "{log:?}");
+}

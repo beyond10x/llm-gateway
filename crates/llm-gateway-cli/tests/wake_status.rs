@@ -1905,3 +1905,169 @@ fn ollama_each_wire_is_relayed_and_its_usage_record_carries_the_servers_tokens()
     );
     assert!(ollama.storing().is_empty());
 }
+
+mod adversary_ollama_route {
+    //! Adversarial pass 1 over story:ollama-route. Every server here is a fake on loopback at
+    //! port 0; no case reaches a real Ollama, starts one, or pulls or loads a model.
+
+    use super::*;
+
+    /// The binary's composition with the Ollama model `local` (`upstream_model = "qwen2.5:1.5b"`)
+    /// declaring `model_prefix = "llama"`, a key the deployment reference keeps for this kind
+    /// ("every other endpoint key keeps its rule above"); one chat call naming `client_model`.
+    fn call_prefixed(ollama: &FakeOllama, fixture: &str, client_model: &str) -> String {
+        let fixture = Fixture::new(fixture);
+        let deployment = deployment(&fixture, |text| {
+            format!(
+                "{text}\n[hosted.local]\nkind = \"ollama\"\nbase_url = \"{}\"\n\
+                 upstream_model = \"qwen2.5:1.5b\"\nmodel_prefix = \"llama\"\n",
+                ollama.base_url()
+            )
+        });
+        let pod = Pod::start(0, "{}");
+        let runpod = EmulatedRunpod::new();
+        let running = start_relaying(
+            &deployment,
+            runpod.clone(),
+            Arc::new(Loopback(pod.address)),
+            Arc::new(ManualClock::new(1_000)),
+        )
+        .unwrap();
+        let answer = send(
+            running.local_addr(),
+            "POST",
+            "/v1/chat/completions",
+            &format!(
+                "{{\"model\":\"{client_model}\",\"messages\":[{{\"role\":\"user\",\"content\":\"hi\"}}]}}"
+            ),
+        );
+        running.shutdown();
+        assert_eq!(runpod.create_calls(), 0);
+        answer
+    }
+
+    /// Acceptance 4 ("a call to a model that is not pulled is refused") read the other way, and
+    /// the deployment reference's `model_prefix` ("every model name starting with it is served
+    /// by this model too, relayed as the client sent it"): a prefixed name the server lists as
+    /// pulled is relayed, not refused `model-not-pulled`. The refusal must say what the server
+    /// answered; here the server listed the very model the call names.
+    #[test]
+    fn adv_ollama_a_prefixed_name_the_server_lists_is_relayed_not_refused() {
+        let ollama = FakeOllama::start(&["llama3.2:latest"], &[]);
+        let answer = call_prefixed(&ollama, "adv-ollama-prefix-listed", "llama3.2:latest");
+        assert!(
+            answer.starts_with("HTTP/1.1 200 "),
+            "the server lists llama3.2:latest, the call names it, and the gateway answered: \
+             {answer}\nrequest lines the server saw: {:?}",
+            ollama.lines()
+        );
+        assert!(ollama.storing().is_empty());
+    }
+
+    /// Acceptance 4: "A call to a model that is not pulled is refused `503` with a code of its
+    /// own, `model-not-pulled`". With a `model_prefix` the call is sent under the name the client
+    /// wrote, which the server does not list; the gateway must refuse it before any wire call
+    /// reaches the server, not relay it into Ollama's own 404.
+    #[test]
+    fn adv_ollama_a_prefixed_name_the_server_does_not_list_is_refused_model_not_pulled() {
+        let ollama = FakeOllama::start(&["qwen2.5:1.5b"], &[]);
+        let answer = call_prefixed(&ollama, "adv-ollama-prefix-unlisted", "llama3.2");
+        let relayed: Vec<String> = ollama
+            .lines()
+            .into_iter()
+            .filter(|line| line.starts_with("POST "))
+            .collect();
+        assert!(
+            answer.starts_with("HTTP/1.1 503 ") && answer.contains("\"code\":\"model-not-pulled\""),
+            "the server does not list llama3.2 and the gateway answered: {answer}\n\
+             wire calls the server received: {relayed:?}"
+        );
+        assert!(relayed.is_empty(), "{relayed:?}");
+    }
+
+    /// A loopback server answering its connections, in order, with `answers`, each after the
+    /// request head has been read.
+    fn list_server(answers: Vec<Vec<u8>>) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        thread::spawn(move || {
+            for answer in answers {
+                let Ok((mut connection, _)) = listener.accept() else {
+                    return;
+                };
+                connection.set_read_timeout(Some(WAIT)).unwrap();
+                let mut seen = Vec::new();
+                let mut chunk = [0_u8; 1024];
+                while !seen.windows(4).any(|window| window == b"\r\n\r\n") {
+                    match connection.read(&mut chunk) {
+                        Ok(0) | Err(_) => break,
+                        Ok(read) => seen.extend_from_slice(&chunk[..read]),
+                    }
+                }
+                drop(connection.write_all(&answer));
+            }
+        });
+        address
+    }
+
+    /// A `GET /api/tags` body listing `qwen2.5:1.5b`, padded with JSON whitespace to exactly
+    /// `size` bytes.
+    fn tags_of_size(size: usize) -> Vec<u8> {
+        let mut list = ollama_list(&["qwen2.5:1.5b".to_owned()]).into_bytes();
+        assert!(list.len() < size);
+        list.resize(size, b' ');
+        list
+    }
+
+    /// `docs/gateway.md` "Bounds of the status probe": each list's body, framed by
+    /// `content-length`, chunked or read to the end of the connection, is at most
+    /// `ollama-list-max-bytes` (1048576); a longer one is `no-answer`. AGENTS.md: every bound
+    /// flips at exactly the published number. The implementor's only check of this bound is a
+    /// constant pin (`route_status_the_published_probe_bounds_are_the_defaults`).
+    #[test]
+    fn adv_ollama_the_list_bound_flips_at_exactly_the_published_number_in_every_framing() {
+        const PUBLISHED: usize = 1_048_576;
+        let ps = ollama_json("200 OK", "{\"models\":[]}").into_bytes();
+        let framed = |framing: &str, body: Vec<u8>| -> Vec<u8> {
+            let mut answer = match framing {
+                "content-length" => format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n",
+                    body.len()
+                )
+                .into_bytes(),
+                "chunked" => format!(
+                    "HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n{:x}\r\n",
+                    body.len()
+                )
+                .into_bytes(),
+                _ => b"HTTP/1.1 200 OK\r\ncontent-type: application/json; charset=utf-8\r\nconnection: close\r\n\r\n".to_vec(),
+            };
+            answer.extend_from_slice(&body);
+            if framing == "chunked" {
+                answer.extend_from_slice(b"\r\n0\r\n\r\n");
+            }
+            answer
+        };
+        for framing in ["content-length", "chunked", "to-the-close"] {
+            for (size, expected) in [
+                (PUBLISHED, phase(ModelPhase::Stopped, Some("not-loaded"))),
+                (
+                    PUBLISHED + 1,
+                    phase(ModelPhase::Unreachable, Some("no-answer")),
+                ),
+            ] {
+                let address = list_server(vec![framed(framing, tags_of_size(size)), ps.clone()]);
+                let targets = ollama_targets(
+                    &format!("http://{address}"),
+                    "qwen2.5:1.5b",
+                    every_read(WAIT),
+                );
+                assert_eq!(
+                    targets.status("local"),
+                    Some(expected),
+                    "{framing}, a tags body of {size} bytes"
+                );
+            }
+        }
+    }
+}

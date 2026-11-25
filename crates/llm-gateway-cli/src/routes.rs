@@ -308,7 +308,7 @@ impl Routes {
 
     /// Every route as the relay serves it: under its name, on its endpoint's wire, relayed under
     /// its model id, its tool calling `parsed` exactly when its capabilities say `tools`, and
-    /// listing its capabilities' context window.
+    /// listing its capabilities' context window, of kind `route` in `GET /v1/status`.
     ///
     /// # Errors
     /// `config:value` for a route that cannot be relayed.
@@ -329,7 +329,8 @@ impl Routes {
                     } else {
                         ToolCalling::Absent
                     })
-                    .with_context_window(route.capabilities.context_window))
+                    .with_context_window(route.capabilities.context_window)
+                    .with_kind(llm_gateway::ModelKind::Route))
             })
             .collect()
     }
@@ -821,5 +822,15 @@ mod tests {
             &llm_models::routes::default_capabilities()
         );
         assert_eq!(routes.digest().len(), 64);
+    }
+
+    /// story:route-status-for-every-model: every route is relayed as a model of kind `route`.
+    #[test]
+    fn route_status_every_route_is_relayed_as_a_route() {
+        let models = Routes::parse(DOCUMENT).unwrap().relay_models().unwrap();
+        assert!(!models.is_empty());
+        for model in models {
+            assert_eq!(model.kind(), llm_gateway::ModelKind::Route, "{model:?}");
+        }
     }
 }

@@ -115,7 +115,12 @@ held. Two proven model declarations are in
 A model served by a hosted endpoint: any server that speaks the model's wires, a vendor API or an
 OpenAI-compatible server somebody else runs. Nothing is started or stopped for it. A request goes
 to the endpoint's base path joined to the wire path (below), and the route inventory lists each
-of its targets with its `auth_kind` and `billing_kind`, never its URL or credential.
+of its targets with its `auth_kind` and `billing_kind`, never its URL or credential. Its status
+(`GET /v1/models/{alias}/status` and `GET /v1/status`) is a probe of the endpoint, sent only
+when a status is read: `GET <base path>/models` with its credential, `ready` on a 2xx answer
+(and on 401 or 403 for a `client` endpoint, probed without a credential), otherwise
+`unreachable` with `no-answer`, `credential-refused` or `status-<code>`. A probe ends within
+5 s and its result is reused for 10 s. Its wake stays `path-unknown`.
 
 | Key | Default | Rule |
 | --- | --- | --- |
@@ -381,7 +386,9 @@ output tokens. The route inventory lists one route per route name: one target
 `binding_revision` the SHA-256 of the routes file, the endpoint's `auth_kind`, and
 `billing_kind` `self-hosted` for an `anonymous` endpoint, `metered` otherwise. A direct
 `<endpoint>/<model-id>` name, which llm also resolves, is not a route and is answered
-`model-unknown`.
+`model-unknown`. A route's status is its endpoint's probe, as a
+[`[hosted.<alias>]`](#hosted-models) model's is, and `GET /v1/status` lists it with `kind`
+`route`.
 
 ## The files it reads
 

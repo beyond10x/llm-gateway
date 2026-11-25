@@ -1273,7 +1273,8 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                 format!("hosted.{alias}: {error}"),
             )
         })?
-        .with_tool_calling(hosted.tool_calling);
+        .with_tool_calling(hosted.tool_calling)
+        .with_kind(llm_gateway::ModelKind::Hosted);
         let relayed = match hosted.reasoning_effort {
             Some(effort) => relayed.with_reasoning_effort(effort),
             None => relayed,
@@ -1313,7 +1314,8 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
             )
         })?
         .with_translated_only()
-        .with_tool_calling(model.tool_calling);
+        .with_tool_calling(model.tool_calling)
+        .with_kind(llm_gateway::ModelKind::Bedrock);
         models.push(match model.context_window {
             Some(window) => relayed.with_context_window(u64::from(window)),
             None => relayed,
@@ -1511,5 +1513,36 @@ mod tests {
         assert_eq!(idle_timeout_ms(1), 60_000);
         assert_eq!(idle_timeout_ms(30), 1_800_000);
         assert_eq!(idle_timeout_ms(1_440), 86_400_000);
+    }
+
+    /// story:route-status-for-every-model: each relayed model names what serves it, which the
+    /// status list renders as its `kind`.
+    #[test]
+    fn route_status_each_relayed_model_names_its_kind() {
+        use llm_gateway::ModelKind;
+        let deployment = crate::parse(
+            "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\n\n\
+             [models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\n\
+             hf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\n\
+             gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n\n\
+             [hosted.remote]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\n\
+             upstream_model = \"vendor-remote\"\nauth_kind = \"anonymous\"\n\n\
+             [hosted.claude]\nkind = \"bedrock\"\nregion = \"eu-central-1\"\n\
+             model_id = \"anthropic.claude-test-v1:0\"\ncredential_source = \"container\"\n",
+        )
+        .unwrap();
+        let kinds: Vec<(String, ModelKind)> = super::relay_models(&deployment)
+            .unwrap()
+            .iter()
+            .map(|model| (model.alias().as_str().to_owned(), model.kind()))
+            .collect();
+        assert_eq!(
+            kinds,
+            [
+                ("remote".to_owned(), ModelKind::Hosted),
+                ("claude".to_owned(), ModelKind::Bedrock),
+                ("small".to_owned(), ModelKind::Pod),
+            ]
+        );
     }
 }

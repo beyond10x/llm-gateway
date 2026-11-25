@@ -303,6 +303,10 @@ scenarios:
 - gateway/scenarios/wake-and-status-take-the-owner-credential-under-ingress-auth-none.yaml
 - gateway/scenarios/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown.yaml
 - gateway/scenarios/wake-the-target-source-refuses-is-answered-what-acquire-would-be.yaml
+- gateway/scenarios/status-a-hosted-model-and-a-route-are-ready-when-their-endpoint-answers-and-unreachable-saying-why.yaml
+- gateway/scenarios/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready.yaml
+- gateway/scenarios/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered.yaml
+- gateway/scenarios/status-the-list-takes-the-owner-credential-and-is-refused-before-any-status-is-asked.yaml
 - runpod/scenarios/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready.yaml
 - runpod/scenarios/a-wake-over-the-daily-ceiling-is-refused-before-any-create.yaml
 - runpod/scenarios/a-wake-without-capacity-starts-the-model-on-its-next-profile.yaml

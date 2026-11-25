@@ -139,7 +139,8 @@ impl std::fmt::Display for PoolError {
 impl std::error::Error for PoolError {}
 
 /// Where a model's pod is, named by what a request for it would meet
-/// (`llm-gateway.gateway.ModelPhase`; [`RunpodPool::status`]).
+/// (`llm-gateway.gateway.ModelPhase`; [`RunpodPool::status`]). Every declared phase but
+/// `unreachable`, which a pod never has: it is the phase of an endpoint that did not answer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelPhase {
     /// No live deployment: a request starts one.

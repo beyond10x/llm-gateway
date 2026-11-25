@@ -29,6 +29,7 @@ const SOURCES: &[&str] = &[
     include_str!("../src/lib.rs"),
     include_str!("../src/auth.rs"),
     include_str!("../src/body.rs"),
+    include_str!("../src/calls.rs"),
     include_str!("../src/dashboard.rs"),
     include_str!("../src/dashboard/kpi.rs"),
     include_str!("../src/dashboard/upstream.rs"),
@@ -741,6 +742,10 @@ fn provoke(code: RefusalCode) -> Provocation {
         RefusalCode::RouteUnknown => owned(format!(
             "GET /v1/routes/absent HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
         )),
+        // An id no call of this gateway was ever given.
+        RefusalCode::CallUnknown => owned(format!(
+            "GET /v1/calls/never-given HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+        )),
         RefusalCode::RequestMalformed => plain("not-a-request-line\r\n\r\n"),
         RefusalCode::RequestTooLarge => Provocation {
             ready: true,
@@ -1272,6 +1277,13 @@ fn enforced_bounds() -> Vec<Bound> {
             direction: Direction::Maximum,
             admits: Box::new(|n| a_relayed_body_of_exactly(usize::try_from(n).unwrap()).is_none()),
         },
+        // Over a real socket: `n` calls end, and the first is still held.
+        Bound {
+            name: "ended-calls-held",
+            value: 1024,
+            direction: Direction::Maximum,
+            admits: Box::new(|n| the_first_of_n_ended_calls_is_held(usize::try_from(n).unwrap())),
+        },
     ]
     .into_iter()
     .chain(hosted_endpoint_bounds())
@@ -1340,6 +1352,48 @@ fn a_relayed_body_of_exactly(total: usize) -> Option<String> {
         "{code:?}"
     );
     code.filter(|code| code == "body-too-large")
+}
+
+/// Ends `n` model calls on a fresh gateway, each refused `model-unknown` (no target is asked),
+/// the first alone and the rest from eight clients at once, and answers whether the first
+/// call's record is still held.
+fn the_first_of_n_ended_calls_is_held(n: usize) -> bool {
+    let gateway = Fixture::composed(true, OWNER_SECRET, Some(provoking_relay()), |_| {});
+    let addr = gateway.addr;
+    let call = move || {
+        let answered = exchange(
+            addr,
+            relay_request("/v1/chat/completions", "{\"model\":\"other\"}").as_bytes(),
+        );
+        assert_eq!(answered.status, 404, "{}", answered.raw);
+        answered
+            .header("x-llm-gateway-call")
+            .unwrap_or_else(|| panic!("no call id: {}", answered.raw))
+            .to_owned()
+    };
+    let first = call();
+    let rest = n - 1;
+    let clients = 8;
+    let workers: Vec<_> = (0..clients)
+        .map(|index| {
+            let share = rest / clients + usize::from(index < rest % clients);
+            std::thread::spawn(move || {
+                for _ in 0..share {
+                    call();
+                }
+            })
+        })
+        .collect();
+    for worker in workers {
+        worker.join().unwrap();
+    }
+    let read = gateway.get(&format!("/v1/calls/{first}"), Some(OWNER_SECRET));
+    assert!(
+        matches!(read.status, 200 | 404),
+        "the record of {first} is neither held nor call-unknown: {}",
+        read.raw
+    );
+    read.status == 200
 }
 
 /// Sends a request head of exactly `total` bytes to a default-configured gateway and returns the

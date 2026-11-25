@@ -48,6 +48,7 @@ impl Captured {
 
 fn record(disposition: Disposition, refusal: Option<RefusalCode>, status: u16) -> UsageRecord {
     UsageRecord {
+        call: "0123456789abcdef0123456789abcdef-1".to_owned(),
         model: Some("small".to_owned()),
         wire: Wire::Chat,
         disposition,
@@ -127,6 +128,65 @@ fn o3_each_usage_record_is_one_structured_info_event() {
     assert!(!lines[1].contains("target_status="), "{}", lines[1]);
 }
 
+/// story:call-id-and-usage-record: the event names the call and carries each token counter the
+/// record has, under the call record's key names; a counter the record does not carry is no
+/// field, never `0`.
+#[test]
+fn o3_the_usage_event_names_the_call_and_carries_the_token_counters_the_record_has() {
+    let mut reported = record(Disposition::Relayed, None, 200);
+    reported.input_tokens = Some(11);
+    reported.output_tokens = Some(0);
+    reported.cached_input_tokens = Some(3);
+    reported.reasoning_output_tokens = Some(5);
+    let mut cache_written = record(Disposition::Relayed, None, 200);
+    cache_written.cache_creation_input_tokens = Some(64);
+    let text = logged(
+        None,
+        &[
+            reported,
+            record(Disposition::Relayed, None, 200),
+            cache_written,
+        ],
+    );
+    let lines: Vec<&str> = text.lines().collect();
+    assert_eq!(lines.len(), 3, "{text}");
+    for line in &lines {
+        assert!(
+            line.contains(" call=0123456789abcdef0123456789abcdef-1"),
+            "{line}"
+        );
+    }
+    for (line, present, absent) in [
+        (
+            lines[0],
+            &["input_tokens=11", "output_tokens=0", "cache_read_tokens=3"][..],
+            &["cache_creation_tokens", "reasoning"][..],
+        ),
+        (
+            lines[1],
+            &[][..],
+            &[
+                "input_tokens",
+                "output_tokens",
+                "cache_read_tokens",
+                "cache_creation_tokens",
+            ][..],
+        ),
+        (
+            lines[2],
+            &["cache_creation_tokens=64"][..],
+            &["input_tokens", "output_tokens", "cache_read_tokens"][..],
+        ),
+    ] {
+        for field in present {
+            assert!(line.contains(field), "{field} is missing from {line}");
+        }
+        for field in absent {
+            assert!(!line.contains(field), "{field} is in {line}");
+        }
+    }
+}
+
 #[test]
 fn o3_the_level_comes_from_rust_log_and_defaults_to_info() {
     let one = [record(Disposition::Relayed, None, 200)];
@@ -149,6 +209,21 @@ fn o3_the_level_comes_from_rust_log_and_defaults_to_info() {
 /// `GET /metrics` as the owner, stops it with SIGTERM, and returns its exit status, every line
 /// it wrote to standard error and the scrape.
 fn serve_once(config: &Path, rust_log: Option<&str>) -> (Option<i32>, Vec<String>, String) {
+    serve_request(
+        config,
+        rust_log,
+        &format!(
+            "GET /metrics HTTP/1.1\r\nhost: g\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+        ),
+    )
+}
+
+/// As [`serve_once`], sending `request` in place of the scrape and returning its answer.
+fn serve_request(
+    config: &Path,
+    rust_log: Option<&str>,
+    request: &str,
+) -> (Option<i32>, Vec<String>, String) {
     let mut command = Command::new(binary());
     command
         .args(["--config", config.to_str().unwrap()])
@@ -177,11 +252,7 @@ fn serve_once(config: &Path, rust_log: Option<&str>) -> (Option<i32>, Vec<String
     };
     let mut stream = TcpStream::connect(address).unwrap();
     stream.set_read_timeout(Some(WAIT)).unwrap();
-    write!(
-        stream,
-        "GET /metrics HTTP/1.1\r\nhost: g\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
-    )
-    .unwrap();
+    stream.write_all(request.as_bytes()).unwrap();
     let mut scraped = String::new();
     drop(stream.read_to_string(&mut scraped));
     kill_process(Pid::from_child(&child), Signal::TERM).unwrap();
@@ -214,6 +285,39 @@ fn o3_the_binary_writes_debug_events_only_when_rust_log_asks_and_its_lines_stay_
         "{verbose:?}"
     );
     assert!(verbose.iter().any(|line| line.starts_with(LISTENING)));
+}
+
+/// story:call-id-and-usage-record: a model call the binary refuses at its head (`GET` on a wire
+/// path) carries an id, and its `usage` event names that id; a second process gives out ids
+/// whose per-process part is not the first's, so no id repeats after a restart.
+#[test]
+fn o3_each_process_gives_out_its_own_call_ids_and_the_usage_event_names_the_call() {
+    let fixture = Fixture::new("o3-call-ids");
+    let config = fixture.valid_config("127.0.0.1:0");
+    let request = format!(
+        "GET /v1/chat/completions HTTP/1.1\r\nhost: g\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+    );
+    let mut parts = Vec::new();
+    for _ in 0..2 {
+        let (status, lines, answered) = serve_request(&config, None, &request);
+        assert_eq!(status, Some(0), "{lines:?}");
+        assert!(answered.starts_with("HTTP/1.1 405 "), "{answered}");
+        let id = answered
+            .split("\r\n")
+            .find_map(|line| line.strip_prefix("x-llm-gateway-call: "))
+            .unwrap_or_else(|| panic!("no call id in {answered}"))
+            .to_owned();
+        assert!(
+            lines
+                .iter()
+                .any(|line| line.contains(" usage:") && line.contains(&format!(" call={id}"))),
+            "no usage event names {id}: {lines:?}"
+        );
+        let (part, counter) = id.rsplit_once('-').unwrap();
+        assert_eq!(counter, "1", "the first id a process gives out: {id}");
+        parts.push(part.to_owned());
+    }
+    assert_ne!(parts[0], parts[1], "two processes gave out the same ids");
 }
 
 #[test]

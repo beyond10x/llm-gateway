@@ -7,15 +7,19 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
-### Added
-
-- `GET /v1/status` (owner; `HEAD` too): one list, format `llm-gateway.status/1`, of every relayed model in alias order with its `kind` (`pod`, `hosted`, `route`, `bedrock`), `wires`, `phase`, `sub_phase`, `profile` and `callable`, whether a call for it is answered now (`true` for `ready`, `starting` and `stopped`, `false` for `stopping` and `unreachable`). A Bedrock model has neither `phase` nor `callable`. Every status is asked side by side. A status read starts, wakes and invalidates nothing and makes no usage record.
-- The phase `unreachable`, with `sub_phase` `no-answer`, `credential-refused` or `status-<code>`.
-- `ModelKind` and `RelayModel::with_kind`; `ProbeBounds`, `Resolver` and `HostedTargets::with_probe_bounds`/`with_probe_clock`/`with_resolver`.
-
 ### Changed
 
+- Breaking: a model call no longer starts a Runpod pod. A call to a model whose pod is stopped or stopping is refused at once with the new `model-stopped` (503, no `retry-after`, outcome `refused`): no pod is created and no spend is read. Only the owner's wake (`POST /v1/models/{alias}/wake`) starts the pod; a call after the wake is held on the starting pod and relayed once it serves, or `model-cold-start` when its hold passes, as before, and a pod that fails while a call is held starts no replacement. To restore the old behaviour for a model, set `start_on_request = true` in its `[models.<alias>]` table, `daily_cap_usd` on its provider, and `price_per_hour_usd` on every model the document declares under `[models]` (a declared cap requires it of each).
+- The `upstream-failed` message is now "the model target could not be reached or failed": it no longer says the next request asks for a replacement, which is not so for a model without `start_on_request`.
 - The status of a hosted model and of a route of the routes document is a probe of its endpoint (`GET <base path>/models` with its credential), sent only when a status is read, at most one per model at a time, within 5 s, its name lookup included, its result reused for 10 s: `ready` on a 2xx answer (and on 401 or 403 for a `client` endpoint, probed without a credential), otherwise `unreachable`. It was `path-unknown`. Wake stays `path-unknown` for both, and a Bedrock model's status stays `path-unknown`.
+
+### Added
+
+- `GET /v1/status` (owner; `HEAD` too): one list, format `llm-gateway.status/1`, of every relayed model in alias order with its `kind` (`pod`, `hosted`, `route`, `bedrock`), `wires`, `phase`, `sub_phase`, `profile` and `callable`, whether a call sent now is relayed, held on a pod that is starting or serving, or starts the pod (`true` for `ready` and `starting`, and for `stopped` where a call starts the pod: in the binary only a Runpod model with `start_on_request` under its own provider's enforced daily cap, so a model whose call is `model-stopped` is `false`; `false` for `unreachable`, and for `stopping` with or without `start_on_request`, where a call would be refused or wait on a stop still owed). A Bedrock model has neither `phase` nor `callable`. Every status is asked side by side. A status read starts, wakes and invalidates nothing and makes no usage record.
+- The phase `unreachable`, with `sub_phase` `no-answer`, `credential-refused` or `status-<code>`.
+- `ModelKind` and `RelayModel::with_kind`; `RelayModel::with_no_call_start`, which declares that a call does not start the model's target, so the status list calls it not callable while `stopped` (an undeclared model keeps `stopped` callable); `ProbeBounds`, `Resolver` and `HostedTargets::with_probe_bounds`/`with_probe_clock`/`with_resolver`.
+- `[models.<alias>] start_on_request` (`true` or `false`, default `false`): `true` lets a call start the model's pod as before. It is refused at start as `config:value`, naming the model and the missing cap, while the model's provider declares no `daily_cap_usd`.
+- The refusal code `model-stopped` (503): the model's pod is not running and a request does not start it; the owner wakes it.
 
 ## 0.24.0 (2026-11-21)
 

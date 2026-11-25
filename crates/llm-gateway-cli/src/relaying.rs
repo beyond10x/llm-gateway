@@ -13,7 +13,7 @@
 //! call it, with `EmulatedRunpod` and loopback pods.
 
 use crate::{
-    config::{Deployment, Model, Wire},
+    config::{Deployment, Model, Provider, Wire, may_start_on_request},
     hosted::{HostedEndpoint, HostedTargets, hosted_endpoints},
     keys::VllmKeys,
     refusal::{Refusal, StartupRefusal},
@@ -192,6 +192,36 @@ pub fn compute_authorization_for(deployment: &Deployment) -> Result<ComputeAutho
     })
 }
 
+/// The provider, by name, whose ceilings [`spend_policy`] gives the pool composed from
+/// `deployment`: the first, in name order, that one of `deployment`'s models runs on and that
+/// declares a daily or a total cap. `None` leaves the pool unmetered.
+fn enforced_ceiling(deployment: &Deployment) -> Option<(&String, &Provider)> {
+    let billed = |name: &String| {
+        deployment
+            .models
+            .values()
+            .any(|model| &model.provider == name)
+    };
+    deployment
+        .providers
+        .iter()
+        .filter(|(name, _)| billed(name))
+        .find(|(_, provider)| {
+            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
+        })
+}
+
+/// Whether a call may start `model`'s pod in the pool composed from `deployment`, the one place
+/// the relay decides it (story:a-call-starts-no-pod): the model may start on request under its
+/// own provider's daily cap ([`may_start_on_request`]), and that provider's ceilings are the
+/// ones the pool enforces ([`enforced_ceiling`]), so the start is checked against that daily
+/// cap. In any other composition, which only a `Deployment` built without the loader reaches,
+/// the model behaves as without the key.
+fn starts_on_request(deployment: &Deployment, model: &Model) -> bool {
+    may_start_on_request(model, &deployment.providers)
+        && enforced_ceiling(deployment).is_some_and(|(name, _)| name == &model.provider)
+}
+
 /// The spend ledger the pool built from `deployment` checks every create against: the ceilings
 /// of the one provider that declares any (the document allows at most one) when one of
 /// `deployment`'s models runs on it, and every model's declared price per hour. The pool bills
@@ -202,21 +232,7 @@ pub fn compute_authorization_for(deployment: &Deployment) -> Result<ComputeAutho
 /// A `config:value` [`Refusal`] for a model alias that is not an identifier.
 pub fn spend_policy(deployment: &Deployment) -> Result<SpendPolicy, Refusal> {
     let mut policy = SpendPolicy::default();
-    let billed = |name: &String| {
-        deployment
-            .models
-            .values()
-            .any(|model| &model.provider == name)
-    };
-    if let Some(provider) = deployment
-        .providers
-        .iter()
-        .filter(|(name, _)| billed(name))
-        .map(|(_, provider)| provider)
-        .find(|provider| {
-            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
-        })
-    {
+    if let Some((_, provider)) = enforced_ceiling(deployment) {
         policy.daily_cap_micro_usd = provider.daily_cap_micro_usd;
         policy.total_cap_micro_usd = provider.total_cap_micro_usd;
     }
@@ -346,6 +362,10 @@ struct Relayed {
     bearer: Arc<TargetBearer>,
     /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
     hold: Duration,
+    /// Whether a request may start the model's pod: its `start_on_request`, under a daily cap
+    /// on its provider ([`starts_on_request`]). Without it a request only uses or waits on a
+    /// pod the owner's wake started (story:a-call-starts-no-pod).
+    start_on_request: bool,
     /// Each profile's `max_model_len` by profile name: the window of a pod started on it.
     windows: BTreeMap<String, u64>,
 }
@@ -381,6 +401,9 @@ fn relayed_models(
                 alias: identifier(alias, &format!("models.{alias}"))?,
                 bearer: Arc::new(bearer),
                 hold: Duration::from_secs(model.request_hold_seconds),
+                // The cap rule holds where a start is decided, not only in the loader: a
+                // `Deployment` built without it gets no request start.
+                start_on_request: starts_on_request(deployment, model),
                 windows: profile_windows(model).collect(),
             },
         );
@@ -571,6 +594,13 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// `target-unavailable` too. Once the gateway starts to stop, a request may
     /// still use a pod that is ready now, but starts none and waits for none: without a ready
     /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
+    ///
+    /// Only a model with `start_on_request` under a daily cap asks with the compute
+    /// authorization ([`starts_on_request`]), so only its
+    /// request may start a pod. Any other asks `RunpodPool::ensure_held_running`, which never
+    /// submits a create (story:a-call-starts-no-pod): a pod the owner's wake started is held on
+    /// and relayed to as above, but with no pod running or starting (the model stopped, or its
+    /// pod stopping) the request is `model-stopped` at once, without waiting out its hold.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         let relayed = self.models.get(alias).ok_or(TargetRefusal::Unavailable)?;
         let deadline = Instant::now() + relayed.hold;
@@ -579,9 +609,11 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
             let stopping = self.stopping.load(Ordering::SeqCst);
             let asked = if stopping {
                 self.pool.ensure_running(&relayed.alias)
-            } else {
+            } else if relayed.start_on_request {
                 self.pool
                     .ensure_held(&relayed.alias, &self.authorization, &mut hold)
+            } else {
+                self.pool.ensure_held_running(&relayed.alias, &mut hold)
             };
             self.count_start(alias, &hold);
             if let Err(error) = &asked {
@@ -611,6 +643,11 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                     }));
                 }
                 Err(PoolError::Starting | PoolError::Stopping) if !stopping && !hold.lost() => {
+                    // An unbound hold found no pod starting: without `start_on_request` none
+                    // will start for this request, so it is not held.
+                    if !relayed.start_on_request && hold.deployment().is_none() {
+                        return Err(TargetRefusal::Stopped);
+                    }
                     if Instant::now() >= deadline {
                         // Only a request bound to a pod still starting is told to come back;
                         // one still waiting out a previous pod's unconfirmed stop had no pod
@@ -638,8 +675,9 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     }
 
     /// A request through the pod at `authority` failed (row W7): the pool stops that pod if it
-    /// is still the model's current one, so the next acquisition starts a replacement. A report
-    /// about a pod already replaced changes nothing.
+    /// is still the model's current one. For a model with `start_on_request` the next request
+    /// starts a replacement; for any other the next request is `model-stopped` until the owner
+    /// wakes the model. A report about a pod already replaced changes nothing.
     fn invalidate(&self, alias: &str, failed: &str) {
         if let Some(relayed) = self.models.get(alias) {
             let _stopped = self.pool.invalidate(&relayed.alias, |endpoint| {
@@ -886,6 +924,34 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     )?;
     let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
+}
+
+/// The binary's own pod target source for `deployment` over `transport`, with nothing else of
+/// the gateway composed: one `RunpodPool` on `clock`, each model's `keys` entry as its vLLM
+/// bearer, and every pod reached through `pods`. No file the document names is read and no
+/// cleanup pass runs. The shipped binary never calls this: it is the seam the conformance
+/// runner serves a scenario's models from over `EmulatedRunpod` (story:a-call-starts-no-pod).
+///
+/// # Errors
+/// As [`start_relaying`] for the pool and the keys: `config:value` for a model the pool cannot
+/// run or that has no entry in `keys`.
+pub fn pod_targets<T: RunpodTransport + Send + 'static>(
+    deployment: &Deployment,
+    keys: &BTreeMap<String, Vec<u8>>,
+    transport: T,
+    pods: Arc<dyn PodConnector>,
+    clock: Arc<dyn Clock>,
+) -> Result<Arc<dyn RelayTargets>, Refusal> {
+    let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
+    let targets = PoolTargets::new(
+        deployment,
+        &VllmKeys::given(keys),
+        pool,
+        pods,
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(Metrics::default()),
+    )?;
+    Ok(Arc::new(targets))
 }
 
 /// Targets for models no pool serves: every acquisition and every wake is
@@ -1259,24 +1325,28 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
         let wires = model.wires.iter().copied().map(relay_wire).collect();
         // The pod serves the model under its alias (`--served-model-name`), so the upstream
         // name is the alias too.
-        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires);
-        models.push(
-            relayed
-                .map_err(|error| {
-                    Refusal::new(
-                        StartupRefusal::ConfigValue,
-                        format!("models.{alias}: {error}"),
-                    )
-                })?
-                .with_tool_calling(model.tool_calling)
-                .with_max_model_len(
-                    profile_windows(model)
-                        .map(|(_, window)| window)
-                        .min()
-                        .unwrap_or(u64::from(model.vllm.max_model_len)),
+        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires)
+            .map_err(|error| {
+                Refusal::new(
+                    StartupRefusal::ConfigValue,
+                    format!("models.{alias}: {error}"),
                 )
-                .with_context_window(u64::from(model.context_window)),
-        );
+            })?
+            .with_tool_calling(model.tool_calling)
+            .with_max_model_len(
+                profile_windows(model)
+                    .map(|(_, window)| window)
+                    .min()
+                    .unwrap_or(u64::from(model.vllm.max_model_len)),
+            )
+            .with_context_window(u64::from(model.context_window));
+        // The status list says what `acquire` does, from the same decision
+        // (story:a-call-starts-no-pod).
+        models.push(if starts_on_request(deployment, model) {
+            relayed
+        } else {
+            relayed.with_no_call_start()
+        });
     }
     // Each route of the routes document, on its endpoint's wire (story:routes-document).
     models.extend(deployment.routes.relay_models()?);

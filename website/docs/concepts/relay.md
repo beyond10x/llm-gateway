@@ -114,8 +114,11 @@ Fallback to another target on the same request is planned, not built.
 The embedding holds a request while its target starts and owns the hold budget. The Runpod
 composition asks its pool every 500 ms for up to the model's `request_hold_seconds`, which
 defaults to `start_wait_seconds` (600). Past the budget the request is `model-cold-start`, the
-only refusal that carries `retry-after`. Requests held together wait on one pod. See
-[hosting](hosting.md).
+only refusal that carries `retry-after`. Requests held together wait on one pod. A request
+starts no pod unless its model sets `start_on_request = true`
+([the deployment document](../reference/deployment-document.md)): by default only the owner's
+wake starts it, and a request while the pod is stopped or stopping is `model-stopped` (503) at
+once. See [hosting](hosting.md).
 
 ## Each request is recorded
 

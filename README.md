@@ -208,6 +208,9 @@ The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/respons
 `connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` over
 TLS, with the pod's certificate verified against the Mozilla roots compiled into the binary before
 any request byte is sent; no document key or option adds a root or turns verification off. A
+model call starts no pod: while the pod is stopped it is answered `503` `model-stopped`, and the
+owner starts it with `POST /v1/models/<alias>/wake`, unless the model sets
+`start_on_request = true` under its provider's `daily_cap_usd`. A
 model whose provider declares no `connectors` is answered `503` `target-unavailable`.
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other

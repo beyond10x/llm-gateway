@@ -496,6 +496,9 @@ struct HostedDocument {
     /// The auto-compact window `b10x-llm-gateway claude` gives Claude Code for this model.
     #[serde(default)]
     compact_window: Option<u32>,
+    /// What the model's tokens cost (`TokenPriceDeclaration`), read by [`token_price`].
+    #[serde(default)]
+    token_price: Option<toml::Table>,
 }
 
 /// The key under which the toml crate presents a datetime to a visitor as a one-entry table.
@@ -795,6 +798,9 @@ struct ModelDocument {
     /// `true` (story:a-call-starts-no-pod).
     #[serde(default)]
     start_on_request: bool,
+    /// What the model's tokens cost (`TokenPriceDeclaration`), read by [`token_price`].
+    #[serde(default)]
+    token_price: Option<toml::Table>,
 }
 
 /// One `[[models.<alias>.profiles]]` entry, or the flat keys as the one profile `default`.
@@ -1492,7 +1498,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         tool_calling: tool_calling(declared.tool_calling.unwrap_or_default()),
         reasoning_effort,
         model_prefix: declared.model_prefix,
-        token_price: None,
+        token_price: token_price(at, declared.token_price)?,
     })
 }
 
@@ -1911,7 +1917,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         tool_calling: tool_calling(declared.tool_calling.unwrap_or(ToolCallingDocument::Parsed)),
         anthropic_beta,
         reasoning_efforts,
-        token_price: None,
+        token_price: token_price(at, declared.token_price)?,
     })
 }
 
@@ -1933,6 +1939,13 @@ fn static_headers(
 
 fn value(key: &str, rule: &str) -> Refusal {
     Refusal::new(StartupRefusal::ConfigValue, format!("{key} {rule}"))
+}
+
+/// `<at>.token_price`, when declared (story:cost-per-call).
+fn token_price(at: &str, table: Option<toml::Table>) -> Result<Option<TokenPrice>, Refusal> {
+    table
+        .map(|table| TokenPrice::from_toml(&format!("{at}.token_price"), table))
+        .transpose()
 }
 
 fn ensure(holds: bool, key: &str, rule: &str) -> Result<(), Refusal> {
@@ -2053,9 +2066,11 @@ fn validate_model(at: &str, mut model: ModelDocument) -> Result<Model, Refusal> 
         .as_deref()
         .map(|text| keychain_ref(&format!("{at}.vllm_api_key"), text))
         .transpose()?;
+    let token_price = token_price(at, model.token_price.take())?;
     Ok(Model {
         price_per_hour_micro_usd: price,
         vllm_api_key,
+        token_price,
         ..into_model(model, profiles)
     })
 }

@@ -245,12 +245,6 @@ impl Routes {
                 "is not served: the gateway serves a route under its own name only",
             ));
         }
-        if let Some(route) = parsed.routes().find(|route| route.price().is_some()) {
-            return Err(value(
-                &format!("routes.{}.price", route.name().as_str()),
-                "is not read: the gateway prices no routed call",
-            ));
-        }
         let mut endpoints = BTreeMap::new();
         for declaration in parsed.endpoints() {
             let name = declaration.name().as_str();
@@ -264,6 +258,10 @@ impl Routes {
         for route in parsed.routes() {
             let name = route.name().as_str().to_owned();
             route_name(&name)?;
+            let token_price = route
+                .price()
+                .map(|price| TokenPrice::from_route(&name, price))
+                .transpose()?;
             routes.insert(
                 name.clone(),
                 Route {
@@ -271,7 +269,7 @@ impl Routes {
                     endpoint: route.endpoint().as_str().to_owned(),
                     upstream_model: route.upstream_model().as_str().to_owned(),
                     capabilities: route.capabilities().clone(),
-                    token_price: None,
+                    token_price,
                 },
             );
         }
@@ -331,14 +329,18 @@ impl Routes {
                     vec![relay_wire(endpoint.wire)],
                 )
                 .map_err(|error| value(&at, &error.to_string()))?;
-                Ok(model
+                let model = model
                     .with_tool_calling(if route.capabilities.tools {
                         ToolCalling::Parsed
                     } else {
                         ToolCalling::Absent
                     })
                     .with_context_window(route.capabilities.context_window)
-                    .with_kind(llm_gateway::ModelKind::Route))
+                    .with_kind(llm_gateway::ModelKind::Route);
+                Ok(match &route.token_price {
+                    Some(price) => model.with_pricing(price.pricing()),
+                    None => model,
+                })
             })
             .collect()
     }

@@ -1,11 +1,21 @@
 //! A model's token price and what one call costs by it (story:cost-per-call;
 //! `spec/domains/deployment.yaml` `TokenPriceDeclaration` and `RoutePriceDeclaration`,
 //! `spec/domains/telemetry.yaml` `UsageRecord.cost_usd`).
+//!
+//! The gateway does no arithmetic on money: a declared price becomes one model of an llm
+//! `PriceBook`, and a call's four counters are quoted by `PriceBook::quote`, llm's own rule.
 
-use crate::refusal::Refusal;
-use llm_cost::Amount;
+use crate::refusal::{Refusal, StartupRefusal};
+use llm_core::{BillingKind, Dispatch, Id, Protocol, Provenance};
+use llm_cost::{
+    AccountingInput, Amount, AttemptUsage, Currency, ModelPrice, Observation, PriceBook,
+    PriceDocument, Rate,
+};
 use llm_gateway::{CallPricing, Usage, Wire};
 use std::{collections::BTreeMap, sync::Arc};
+
+/// The tokens a declared rate is per.
+const PER_MILLION: u64 = 1_000_000;
 
 /// What a model's tokens cost in USD per 1000000 tokens, per class: `[<table>.<alias>.token_price]`
 /// of the deployment document, or a route's `price` in the routes document. A class without a
@@ -26,30 +36,180 @@ impl TokenPrice {
     /// (`hosted.<alias>.token_price`).
     ///
     /// # Errors
-    /// `config:value` naming `<at>.<key>`.
+    /// `config:value` naming `<at>.<key>`, quoting no value: for a key that is none of
+    /// [`Self::KEYS`], a value llm's `Amount::parse` refuses (a sign, an exponent, a leading
+    /// zero, a space, more than nine decimal places) and a missing `input` or `output`.
     pub fn from_table(at: &str, table: &BTreeMap<String, String>) -> Result<Self, Refusal> {
-        let _ = (at, table);
+        if let Some(key) = table.keys().find(|key| !Self::KEYS.contains(&key.as_str())) {
+            return Err(unknown(at, key));
+        }
+        let rate = |key: &str| {
+            table
+                .get(key)
+                .map(|value| Amount::parse(value).map_err(|_| not_an_amount(at, key)))
+                .transpose()
+        };
+        let required = |key: &str| {
+            rate(key)?.map_or_else(
+                || Err(config_value(format!("{at}.{key} is required"))),
+                |amount| Ok(Some(amount)),
+            )
+        };
         Ok(Self {
-            input: None,
-            output: None,
-            cache_read: None,
-            cache_creation: None,
+            input: required("input")?,
+            output: required("output")?,
+            cache_read: rate("cache_read")?,
+            cache_creation: rate("cache_creation")?,
+        })
+    }
+
+    /// Reads a `token_price` table of the deployment document: every value a string.
+    pub(crate) fn from_toml(at: &str, table: toml::Table) -> Result<Self, Refusal> {
+        let mut strings = BTreeMap::new();
+        for (key, value) in table {
+            if !Self::KEYS.contains(&key.as_str()) {
+                return Err(unknown(at, &key));
+            }
+            let toml::Value::String(value) = value else {
+                return Err(not_an_amount(at, &key));
+            };
+            strings.insert(key, value);
+        }
+        Self::from_table(at, &strings)
+    }
+
+    /// A route's `price` as llm reads it: `input` onto `input`, `cached_input` onto
+    /// `cache_read`, `cache_creation_input` onto `cache_creation`, `output` onto `output`.
+    ///
+    /// # Errors
+    /// `config:value` naming `routes.<route>.price.currency` for a currency other than USD,
+    /// quoting no value.
+    pub(crate) fn from_route(
+        route: &str,
+        price: &llm_models::routes::RoutePrice,
+    ) -> Result<Self, Refusal> {
+        if price.currency().as_str() != "USD" {
+            return Err(config_value(format!(
+                "routes.{route}.price.currency must be USD: a call's cost is recorded in USD"
+            )));
+        }
+        Ok(Self {
+            input: price.input(),
+            output: price.output(),
+            cache_read: price.cached_input(),
+            cache_creation: price.cache_creation_input(),
         })
     }
 
     /// The pricing a relayed model declaring this price is composed with
-    /// (`llm_gateway::RelayModel::with_pricing`).
+    /// (`llm_gateway::RelayModel::with_pricing`): this price as the one model of an llm
+    /// `PriceBook`, which quotes each call.
+    ///
+    /// # Panics
+    /// Never: the book's identifiers are constants llm accepts and every rate's denominator is
+    /// 1000000.
     pub fn pricing(&self) -> Arc<dyn CallPricing> {
-        Arc::new(Unpriced)
+        let rate = |amount: Option<Amount>| {
+            amount.map(|amount| Rate {
+                amount,
+                per_units: PER_MILLION,
+            })
+        };
+        let document = PriceDocument::new(
+            id(),
+            "llm-gateway token_price",
+            0,
+            Currency::new("USD").expect("USD is a currency"),
+            vec![ModelPrice {
+                id: id(),
+                serving_model_id: id(),
+                binding_revision: id(),
+                upstream_model: id(),
+                input: rate(self.input),
+                cached_input: rate(self.cache_read),
+                cache_creation_input: rate(self.cache_creation),
+                output: rate(self.output),
+            }],
+        );
+        let book = PriceBook::from_document(document).expect("one model, every rate per 1000000");
+        Arc::new(Priced(book))
     }
 }
 
-struct Unpriced;
+/// The one identifier of a price book holding one model's price.
+fn id() -> Id {
+    Id::new("token-price").expect("a printable identifier")
+}
 
-impl CallPricing for Unpriced {
-    fn cost_usd(&self, _wire: Wire, _usage: Usage) -> Option<String> {
-        None
+fn config_value(message: String) -> Refusal {
+    Refusal::new(StartupRefusal::ConfigValue, message)
+}
+
+fn unknown(at: &str, key: &str) -> Refusal {
+    config_value(format!(
+        "{at}.{key} is not a token price key: input, output, cache_read and cache_creation are"
+    ))
+}
+
+fn not_an_amount(at: &str, key: &str) -> Refusal {
+    config_value(format!(
+        "{at}.{key} must be a non-negative decimal amount of USD per 1000000 tokens, written \
+         as a string, with at most nine decimal places"
+    ))
+}
+
+/// A declared price as llm's price book.
+struct Priced(PriceBook);
+
+impl CallPricing for Priced {
+    fn cost_usd(&self, wire: Wire, usage: Usage) -> Option<String> {
+        let attempt = AttemptUsage {
+            id: id(),
+            usage_record_id: id(),
+            request_id: id(),
+            route_target_id: id(),
+            serving_model_id: id(),
+            price_id: id(),
+            binding: Provenance {
+                protocol: Protocol::ChatCompletions,
+                provider: id(),
+                account: id(),
+                endpoint: id(),
+                model: id(),
+                binding_revision: id(),
+            },
+            upstream_model: Some(id()),
+            billing: BillingKind::Metered,
+            dispatch: Dispatch::Accepted,
+            failed: false,
+            final_usage: true,
+            usage: reported(wire, usage)?,
+        };
+        let input = AccountingInput::new(vec![Observation::Attempt(attempt)]);
+        let report = self.0.quote(&input).ok()?;
+        let total = report.records.first()?.total.complete_total?;
+        Some(total.to_string())
     }
+}
+
+/// A call's counters as llm counts them: its prompt tokens with the cache reads and writes
+/// inside them. The messages wire reports `input_tokens` beside the cache classes, chat and
+/// responses inside them. A cache class the answer did not report counts no tokens; input and
+/// output stay unknown when unreported, and llm prices no unknown count.
+fn reported(wire: Wire, usage: Usage) -> Option<llm_core::Usage> {
+    let read = usage.cache_read_tokens.unwrap_or(0);
+    let created = usage.cache_creation_tokens.unwrap_or(0);
+    let input = match (wire, usage.input_tokens) {
+        (Wire::Messages, Some(input)) => Some(input.checked_add(read)?.checked_add(created)?),
+        (_, input) => input,
+    };
+    Some(llm_core::Usage {
+        input_tokens: input,
+        output_tokens: usage.output_tokens,
+        cached_input_tokens: Some(read),
+        cache_creation_input_tokens: Some(created),
+        reasoning_output_tokens: None,
+    })
 }
 
 #[cfg(test)]

@@ -16,6 +16,7 @@ use crate::{
     config::{Deployment, Model, Provider, Wire, may_start_on_request},
     hosted::{HostedEndpoint, HostedTargets, hosted_endpoints},
     keys::VllmKeys,
+    pricing::TokenPrice,
     refusal::{Refusal, StartupRefusal},
     serve::{Running, Stopped, inventory, owner_verifier},
     translate::LlmTranslator,
@@ -1294,6 +1295,7 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
             })?,
             None => relayed,
         };
+        let relayed = priced(relayed, hosted.token_price.as_ref());
         models.push(match hosted.context_window {
             Some(window) => relayed.with_context_window(u64::from(window)),
             None => relayed,
@@ -1316,6 +1318,7 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
         .with_translated_only()
         .with_tool_calling(model.tool_calling)
         .with_kind(llm_gateway::ModelKind::Bedrock);
+        let relayed = priced(relayed, model.token_price.as_ref());
         models.push(match model.context_window {
             Some(window) => relayed.with_context_window(u64::from(window)),
             None => relayed,
@@ -1340,6 +1343,7 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                     .unwrap_or(u64::from(model.vllm.max_model_len)),
             )
             .with_context_window(u64::from(model.context_window));
+        let relayed = priced(relayed, model.token_price.as_ref());
         // The status list says what `acquire` does, from the same decision
         // (story:a-call-starts-no-pod).
         models.push(if starts_on_request(deployment, model) {
@@ -1351,6 +1355,14 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
     // Each route of the routes document, on its endpoint's wire (story:routes-document).
     models.extend(deployment.routes.relay_models()?);
     Ok(models)
+}
+
+/// `relayed`, priced by its declared token price (story:cost-per-call).
+fn priced(relayed: RelayModel, price: Option<&TokenPrice>) -> RelayModel {
+    match price {
+        Some(price) => relayed.with_pricing(price.pricing()),
+        None => relayed,
+    }
 }
 
 /// One cleanup pass of a pool, counting what it stopped.

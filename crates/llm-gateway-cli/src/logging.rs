@@ -67,6 +67,7 @@ impl UsageRecords for TracingRecords {
             duration_ms = record.duration_ms,
             profile = record.profile.as_deref(),
             principal = record.principal.as_deref(),
+            cost_usd = record.cost_usd.as_deref(),
             "usage record"
         );
     }

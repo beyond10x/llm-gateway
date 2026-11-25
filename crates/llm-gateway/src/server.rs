@@ -644,6 +644,14 @@ fn record(
     // A relayed answer that ended in its wire's terminal error failed under that code, though
     // its client was answered `200` and it stays relayed.
     let ended_by = refusal.or(call.failed_after_head);
+    // Only a relayed answer that ended as written has final counters to price
+    // (story:cost-per-call).
+    let priced = refusal.is_none() && call.failed_after_head.is_none() && !call.client_disconnected;
+    let cost_usd = call
+        .model
+        .as_deref()
+        .filter(|_| priced)
+        .and_then(|alias| relay.cost_usd(alias, wire, usage));
     let record = UsageRecord {
         outcome: metrics::Outcome::of(ended_by, call.timed_out),
         model: call.model,
@@ -658,7 +666,7 @@ fn record(
         cached_input_tokens: usage.cache_read_tokens,
         cache_creation_input_tokens: usage.cache_creation_tokens,
         reasoning_output_tokens: None,
-        cost_usd: None,
+        cost_usd,
         response_bytes,
         duration_ms,
         profile: call.profile,

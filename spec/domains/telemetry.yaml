@@ -239,10 +239,13 @@ entities:
   # earlier calls (`a1_a_gateway_composed_again_gives_out_no_earlier_id_and_holds_none` in
   # crates/llm-gateway/tests/observability/calls.rs).
   # PLANNED (story:cost-per-call): `cost_usd`, after the token keys.
+  # ESS-LIMIT: an entity's lifecycle takes the wire name `state`, so the field that the record
+  # writes as its key `state` is declared `call_state` here; the record is observed, never moved
+  # by a command, and its lifecycle is that of an observation.
   - name: llm-gateway.telemetry.CallRecord
     identity: {name: id, type: String}
     fields:
-      - {name: state, type: llm-gateway.telemetry.CallState}
+      - {name: call_state, type: llm-gateway.telemetry.CallState}
       - {name: model, type: 'Optional<String>'}
       - {name: wire, type: llm-gateway.gateway.Wire}
       - {name: disposition, type: 'Optional<llm-gateway.telemetry.Disposition>'}
@@ -258,9 +261,4 @@ entities:
       - {name: duration_ms, type: 'Optional<Integer>'}
       - {name: profile, type: 'Optional<String>'}
       - {name: principal, type: 'Optional<String>'}
-    lifecycle:
-      initial: InFlight
-      states: [InFlight, Ended]
-      terminal: [Ended]
-      transitions:
-        - {name: end, from: [InFlight], to: Ended}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}

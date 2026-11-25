@@ -46,7 +46,7 @@ assert:
     - '{"error":{"code":"model-unknown","message":"no such model"}}'
     - '{"format":"llm-gateway.call/1","id":"<call>","state":"ended","wire":"chat","disposition":"refused","outcome":"refused","refusal":"model-unknown","status":404,"response_bytes":0,"duration_ms":"<bounded>"}'
     headers:
-    - 'content-type=application/json cache-control=absent allow=absent'
+    - 'content-type=application/json cache-control=no-store allow=absent'
     - 'content-type=application/json cache-control=no-store allow=absent'
     - 'content-type=application/json cache-control=no-store allow=absent'
     - 'content-type=application/json cache-control=no-store allow=absent'

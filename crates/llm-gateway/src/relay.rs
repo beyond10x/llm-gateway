@@ -1938,9 +1938,20 @@ pub(crate) struct Call {
     /// The code under which a translated answer, its head already written, ended in its wire's
     /// terminal error ([`TranslatedAnswer::failed`]): the call's outcome is that code's.
     pub(crate) failed_after_head: Option<RefusalCode>,
+    /// The call's id and its `in-flight` record (story:call-id-and-usage-record); `None` for a
+    /// request that makes no usage record.
+    pub(crate) ticket: Option<crate::calls::Ticket>,
 }
 
 impl Call {
+    /// The `x-llm-gateway-call` line every answer head written to this call carries, with its
+    /// CRLF; empty for a request given no id.
+    pub(crate) fn id_line(&self) -> String {
+        self.ticket.as_ref().map_or_else(String::new, |ticket| {
+            format!("{}: {}\r\n", crate::calls::HEADER, ticket.id())
+        })
+    }
+
     /// Milliseconds since `begun`.
     fn since_begun(&self) -> Option<u64> {
         self.begun
@@ -1989,6 +2000,9 @@ fn served_model<'r>(
     call.model = Some(model.alias.as_str().to_string());
     if let Some(progress) = &call.progress {
         progress.route(model.alias.as_str());
+    }
+    if let Some(ticket) = &call.ticket {
+        ticket.model(model.alias.as_str());
     }
     let translator = if model.wires.contains(&wire) && !model.translated_only {
         None
@@ -2162,7 +2176,8 @@ impl TranslatedAnswer for ClientAnswer<'_> {
             AnswerFraming::Stream => String::new(),
         };
         let head = format!(
-            "HTTP/1.1 {status} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n"
+            "HTTP/1.1 {status} {phrase}\r\n{id}{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+            id = self.call.id_line(),
         );
         self.write(head.as_bytes())
     }
@@ -2883,8 +2898,9 @@ fn relay_pieces(
         ""
     };
     let start = format!(
-        "HTTP/1.1 {} {phrase}\r\n{content_type}{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+        "HTTP/1.1 {} {phrase}\r\n{id}{content_type}{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
         head.status,
+        id = call.id_line(),
         relayed = head.relayed,
     );
     let mut written: u64 = 0;

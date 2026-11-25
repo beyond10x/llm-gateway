@@ -133,7 +133,7 @@ fn answer(connection: &mut TcpStream, reply: Option<Reply>) {
         }) => {
             drop(connection.write_all(first.as_bytes()));
             drop(connection.flush());
-            drop(release.recv_timeout(WAIT));
+            let _released = release.recv_timeout(WAIT);
             drop(connection.write_all(rest.as_bytes()));
         }
     }

@@ -10,7 +10,7 @@ use llm_gateway_cli::{TracingRecords, log_filter};
 use rustix::process::{Pid, Signal, kill_process};
 use std::{
     io::{self, BufRead, BufReader, Read, Write},
-    net::{SocketAddr, TcpStream},
+    net::{Shutdown, SocketAddr, TcpStream},
     path::{Path, PathBuf},
     process::{Command, Stdio},
     sync::{Arc, Mutex},
@@ -253,6 +253,8 @@ fn serve_request(
     let mut stream = TcpStream::connect(address).unwrap();
     stream.set_read_timeout(Some(WAIT)).unwrap();
     stream.write_all(request.as_bytes()).unwrap();
+    // The request is whole: a refusal the gateway lingers after ends at once.
+    stream.shutdown(Shutdown::Write).unwrap();
     let mut scraped = String::new();
     drop(stream.read_to_string(&mut scraped));
     kill_process(Pid::from_child(&child), Signal::TERM).unwrap();

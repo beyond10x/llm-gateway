@@ -324,6 +324,18 @@ fn send(addr: SocketAddr, path: &str, body: &str) -> String {
     String::from_utf8(raw).unwrap()
 }
 
+/// `raw` without the call id line that follows its status line (story:call-id-and-usage-record),
+/// which must be there.
+fn without_call_id(raw: &str) -> String {
+    let (status, rest) = raw.split_once("\r\n").unwrap();
+    let (line, rest) = rest.split_once("\r\n").unwrap();
+    assert!(
+        line.starts_with("x-llm-gateway-call: "),
+        "no call id after the status line: {raw}"
+    );
+    format!("{status}\r\n{rest}")
+}
+
 fn get(addr: SocketAddr, path: &str) -> String {
     let mut stream = TcpStream::connect(addr).unwrap();
     stream.set_read_timeout(Some(WAIT)).unwrap();
@@ -403,6 +415,7 @@ fn translate_a_prepared_translation_streams_its_answer_and_releases_the_target()
             "/v1/responses",
             "{\"model\":\"chat-only\"}",
         );
+        let raw = without_call_id(&raw);
         let (head, body) = raw.split_once("\r\n\r\n").unwrap();
         assert_eq!(
             head,
@@ -448,7 +461,7 @@ fn translate_a_whole_answer_is_written_with_its_content_length() {
         "{\"model\":\"chat-only\"}",
     );
     assert_eq!(
-        raw,
+        without_call_id(&raw),
         "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncache-control: no-store\r\nconnection: close\r\ncontent-length: 11\r\n\r\n{\"a\":\"bcd\"}"
     );
 }

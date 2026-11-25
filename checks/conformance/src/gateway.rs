@@ -2948,7 +2948,7 @@ mod relay {
 
     /// The header every answer to a model call carries (llm-gateway.gateway.CallHeader).
     const CALL_HEADER: &str = "x-llm-gateway-call";
-    /// The longest id CallHeader allows.
+    /// The longest id `CallHeader` allows.
     const CALL_ID_CHARACTERS: usize = 64;
     /// The format a call's record names (llm-gateway.telemetry.CallRecord).
     const CALL_RECORD_FORMAT: &str = "\"format\":\"llm-gateway.call/1\"";
@@ -3032,6 +3032,7 @@ mod relay {
         /// mistaken for the start of a longer one, and in a call's record a `duration_ms` of
         /// at most `elapsed` written `"<bounded>"`.
         fn redact(&self, text: &str, elapsed: Duration) -> String {
+            const KEY: &str = "\"duration_ms\":";
             let mut ids: Vec<&String> = self.seen.iter().collect();
             ids.sort_by_key(|id| std::cmp::Reverse(id.len()));
             let mut text = ids.into_iter().fold(text.to_owned(), |text, id| {
@@ -3040,7 +3041,6 @@ mod relay {
             if !text.contains(CALL_RECORD_FORMAT) {
                 return text;
             }
-            const KEY: &str = "\"duration_ms\":";
             if let Some(start) = text.find(KEY).map(|at| at + KEY.len()) {
                 let digits = text[start..].bytes().take_while(u8::is_ascii_digit).count();
                 let bounded = text[start..start + digits]

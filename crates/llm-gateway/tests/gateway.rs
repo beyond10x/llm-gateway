@@ -743,9 +743,7 @@ fn provoke(code: RefusalCode) -> Provocation {
             "GET /v1/routes/absent HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
         )),
         // An id no call of this gateway was ever given.
-        RefusalCode::CallUnknown => owned(format!(
-            "GET /v1/calls/never-given HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
-        )),
+        RefusalCode::CallUnknown => call_unknown(),
         RefusalCode::RequestMalformed => plain("not-a-request-line\r\n\r\n"),
         RefusalCode::RequestTooLarge => Provocation {
             ready: true,
@@ -1277,17 +1275,17 @@ fn enforced_bounds() -> Vec<Bound> {
             direction: Direction::Maximum,
             admits: Box::new(|n| a_relayed_body_of_exactly(usize::try_from(n).unwrap()).is_none()),
         },
-        // Over a real socket: `n` calls end, and the first is still held.
-        Bound {
-            name: "ended-calls-held",
-            value: 1024,
-            direction: Direction::Maximum,
-            admits: Box::new(|n| the_first_of_n_ended_calls_is_held(usize::try_from(n).unwrap())),
-        },
     ]
     .into_iter()
-    .chain(hosted_endpoint_bounds())
+    .chain(bounds_of_their_own())
     .collect()
+}
+
+/// The bounds measured by functions of their own.
+fn bounds_of_their_own() -> Vec<Bound> {
+    let mut bounds = hosted_endpoint_bounds();
+    bounds.extend(call_store_bounds());
+    bounds
 }
 
 /// The bounds of a `BasePath` (story:hosted-base-path) and a `StaticHeader`
@@ -1352,6 +1350,24 @@ fn a_relayed_body_of_exactly(total: usize) -> Option<String> {
         "{code:?}"
     );
     code.filter(|code| code == "body-too-large")
+}
+
+/// The bound of the call store (story:call-id-and-usage-record), over a real socket: `n` calls
+/// end, and the first is still held.
+fn call_store_bounds() -> Vec<Bound> {
+    vec![Bound {
+        name: "ended-calls-held",
+        value: 1024,
+        direction: Direction::Maximum,
+        admits: Box::new(|n| the_first_of_n_ended_calls_is_held(usize::try_from(n).unwrap())),
+    }]
+}
+
+/// `call-unknown`: the owner reads the record of an id never given out.
+fn call_unknown() -> Provocation {
+    owned(format!(
+        "GET /v1/calls/never-given HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+    ))
 }
 
 /// Ends `n` model calls on a fresh gateway, each refused `model-unknown` (no target is asked),

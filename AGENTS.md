@@ -115,7 +115,7 @@ Never edit these by hand; change `spec/` or the scenarios and regenerate:
 | File | Command |
 | --- | --- |
 | `contracts/suite.json` | `ess verify conform synthesize --path spec --suite-format 5 --target ir --scenarios contracts --out contracts/suite.json` |
-| `contracts/schema/schema/` | `ess generate --path spec --kind schema --out contracts/schema` |
+| `contracts/schema/schema/` | `ess generate --path spec --kind schema --out target/schema`, into a directory that does not exist yet, then replace `contracts/schema/schema/` with its `schema/` directory (`ess` refuses to write into a directory it holds no ledger for: "unowned output destination") |
 | `website/docs/reference/cli.md`, `website/docs/reference/crates.md`, `website/docs/reference/refusals.md`, `website/docs/status.mdx`, `website/data/status.json`, `dashboard/src/generated/snapshot.ts` | `cargo run --locked -p llm-gateway-docs -- generate` |
 | `crates/llm-gateway/src/dashboard.html` | `pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard build` |
 
@@ -125,11 +125,15 @@ The CLI reference comes from `llm_gateway_cli::cli::Cli`, `ServeCli`, `WatchdogC
 `crates/llm-gateway-docs/src/status.rs`, where each `shipped` item names its test as
 `path::function`. A capability that ships, or a story that lands, changes that list.
 
-`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.86.0 release asset, checked
+`ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.99.4 release asset, checked
 against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
-`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.86.0`. Move
+`checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.99.4`. Move
 all three together, to the newest ESS release (workspace rule), and regenerate both files in the
-same commit.
+same commit. An `ess` on `PATH` that writes other bytes than the pinned release fails
+`task conformance` with "suite drift" or "schema drift" before any scenario runs: do not
+regenerate with it, install the pinned release. Compared on 2026-11-25: `ess` 0.99.2 writes the
+same suite and the same 141 schema files as 0.99.4; 0.86.0 wrote a `source_digest` line into each
+schema file that 0.99 does not.
 
 A new scenario goes into `contracts/ess-inputs.yaml` as well as onto disk. The run fails when the
 answered or total count falls below its floor in `contracts/baseline.json`, or skipped rises above

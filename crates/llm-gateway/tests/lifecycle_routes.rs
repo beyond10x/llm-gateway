@@ -7,16 +7,17 @@
 //! so no connection leaves the gateway at all.
 
 use llm_gateway::{
-    Gateway, GatewayConfig, GatewayHandle, IngressAuth, Label, ModelPhase, ModelStatus, OwnerToken,
-    RefusalCode, Relay, RelayModel, RelayTarget, RelayTargets, RouteInventory,
-    SharedSecretVerifier, TargetRefusal, Wire,
+    Gateway, GatewayConfig, GatewayHandle, IngressAuth, Label, Metrics, ModelKind, ModelPhase,
+    ModelStatus, OwnerToken, RefusalCode, Relay, RelayModel, RelayTarget, RelayTargets,
+    RouteInventory, SharedSecretVerifier, TargetRefusal, UsageRecord, UsageRecords, Wire,
 };
 use std::{
-    collections::VecDeque,
+    collections::{BTreeMap, VecDeque},
     io::{Read, Write},
     net::{SocketAddr, TcpStream},
     sync::{Arc, Mutex},
-    time::Duration,
+    thread,
+    time::{Duration, Instant},
 };
 
 const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -459,7 +460,373 @@ fn every_phase_and_both_routes_are_declared_and_published() {
     for row in [
         "| `POST` | `/v1/models/{alias}/wake` | owner |",
         "| `GET`, `HEAD` | `/v1/models/{alias}/status` | owner |",
+        "| `GET`, `HEAD` | `/v1/status` | owner |",
     ] {
         assert!(CONTRACT.contains(row), "docs/gateway.md has no row {row}");
     }
+}
+
+// --- The status list (story:route-status-for-every-model) ----------------------------------
+
+/// A source that answers each model's status from a table, after `delay`, and records every ask
+/// of every kind.
+struct Table {
+    statuses: BTreeMap<String, Option<ModelStatus>>,
+    delay: Duration,
+    asks: Mutex<Vec<String>>,
+}
+
+impl Table {
+    fn new(statuses: &[(&str, Option<ModelStatus>)], delay: Duration) -> Arc<Self> {
+        Arc::new(Self {
+            statuses: statuses
+                .iter()
+                .map(|(alias, status)| ((*alias).to_owned(), status.clone()))
+                .collect(),
+            delay,
+            asks: Mutex::new(Vec::new()),
+        })
+    }
+
+    fn asks(&self) -> Vec<String> {
+        let mut asks = self.asks.lock().unwrap().clone();
+        asks.sort();
+        asks
+    }
+}
+
+impl RelayTargets for Table {
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        self.asks.lock().unwrap().push(format!("acquire {alias}"));
+        Err(TargetRefusal::Unavailable)
+    }
+
+    fn invalidate(&self, alias: &str, _authority: &str) {
+        self.asks
+            .lock()
+            .unwrap()
+            .push(format!("invalidate {alias}"));
+    }
+
+    fn wake(&self, alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+        self.asks.lock().unwrap().push(format!("wake {alias}"));
+        None
+    }
+
+    fn status(&self, alias: &str) -> Option<ModelStatus> {
+        self.asks.lock().unwrap().push(format!("status {alias}"));
+        thread::sleep(self.delay);
+        self.statuses.get(alias).cloned().flatten()
+    }
+}
+
+/// Every usage record the relay hands out.
+#[derive(Default)]
+struct Records(Mutex<Vec<String>>);
+
+impl UsageRecords for Records {
+    fn record(&self, record: &UsageRecord) {
+        self.0.lock().unwrap().push(format!("{record:?}"));
+    }
+}
+
+fn kinded(alias: &str, kind: ModelKind, wires: Vec<Wire>) -> RelayModel {
+    RelayModel::new(
+        Label::new(alias).unwrap(),
+        Label::new(alias).unwrap(),
+        wires,
+    )
+    .unwrap()
+    .with_kind(kind)
+}
+
+fn status(phase: ModelPhase, sub_phase: Option<&str>, profile: Option<&str>) -> ModelStatus {
+    ModelStatus {
+        phase,
+        sub_phase: sub_phase.map(str::to_owned),
+        profile: profile.map(str::to_owned),
+    }
+}
+
+/// A gateway relaying `models` to `source`, ready, counting into `metrics` and recording into
+/// `records`.
+fn listing(
+    models: Vec<RelayModel>,
+    source: Arc<Table>,
+    metrics: &Arc<Metrics>,
+    records: &Arc<Records>,
+    edit: impl FnOnce(&mut GatewayConfig),
+) -> GatewayHandle {
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let relay = Relay::new(models, source)
+        .unwrap()
+        .with_metrics(Arc::clone(metrics))
+        .with_records(Arc::clone(records) as Arc<dyn UsageRecords>);
+    let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
+    edit(&mut config);
+    Gateway::bind_with_relay(
+        config,
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+        relay,
+    )
+    .unwrap()
+}
+
+/// Every kind, every phase and a model without a status, in one list: alias order, the keys in
+/// their published order, `callable` true for `ready`, `starting` and `stopped` and false for
+/// `stopping` and `unreachable`, and neither `phase` nor `callable` without a status.
+#[test]
+fn route_status_the_list_names_every_model_in_alias_order_with_kind_wires_status_and_callable() {
+    let source = Table::new(
+        &[
+            ("a-stopped", Some(status(ModelPhase::Stopped, None, None))),
+            (
+                "b-starting",
+                Some(status(
+                    ModelPhase::Starting,
+                    Some("pending"),
+                    Some("l40s-32k"),
+                )),
+            ),
+            (
+                "c-ready",
+                Some(status(ModelPhase::Ready, None, Some("h100-64k"))),
+            ),
+            ("d-stopping", Some(status(ModelPhase::Stopping, None, None))),
+            ("e-hosted", Some(status(ModelPhase::Ready, None, None))),
+            (
+                "f-route",
+                Some(status(
+                    ModelPhase::Unreachable,
+                    Some("credential-refused"),
+                    None,
+                )),
+            ),
+            ("g-bedrock", None),
+        ],
+        Duration::ZERO,
+    );
+    // Declared out of alias order, so the list's order is the gateway's own.
+    let models = vec![
+        kinded("g-bedrock", ModelKind::Bedrock, vec![Wire::Messages]),
+        kinded("f-route", ModelKind::Route, vec![Wire::Chat]),
+        kinded(
+            "e-hosted",
+            ModelKind::Hosted,
+            vec![Wire::Responses, Wire::Chat],
+        ),
+        model("d-stopping"),
+        model("c-ready"),
+        model("b-starting"),
+        RelayModel::new(
+            Label::new("a-stopped").unwrap(),
+            Label::new("a-stopped").unwrap(),
+            vec![Wire::Chat, Wire::Responses],
+        )
+        .unwrap(),
+    ];
+    let (metrics, records) = (Arc::new(Metrics::default()), Arc::new(Records::default()));
+    let handle = listing(models, Arc::clone(&source), &metrics, &records, |_| {});
+    handle.mark_ready();
+    let list = send(handle.local_addr(), "GET", "/v1/status", true, "");
+    handle.shutdown();
+    assert_eq!(list.status, 200, "{}", list.body);
+    assert_eq!(list.header("content-type"), Some("application/json"));
+    assert_eq!(list.header("cache-control"), Some("no-store"));
+    assert_eq!(
+        list.body,
+        concat!(
+            "{\"format\":\"llm-gateway.status/1\",\"models\":[",
+            "{\"model\":\"a-stopped\",\"kind\":\"pod\",\"wires\":[\"chat\",\"responses\"],\"phase\":\"stopped\",\"callable\":true},",
+            "{\"model\":\"b-starting\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"starting\",\"sub_phase\":\"pending\",\"profile\":\"l40s-32k\",\"callable\":true},",
+            "{\"model\":\"c-ready\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"ready\",\"profile\":\"h100-64k\",\"callable\":true},",
+            "{\"model\":\"d-stopping\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"stopping\",\"callable\":false},",
+            "{\"model\":\"e-hosted\",\"kind\":\"hosted\",\"wires\":[\"responses\",\"chat\"],\"phase\":\"ready\",\"callable\":true},",
+            "{\"model\":\"f-route\",\"kind\":\"route\",\"wires\":[\"chat\"],\"phase\":\"unreachable\",\"sub_phase\":\"credential-refused\",\"callable\":false},",
+            "{\"model\":\"g-bedrock\",\"kind\":\"bedrock\",\"wires\":[\"messages\"]}",
+            "]}"
+        )
+    );
+}
+
+/// What `callable` says for each phase, and that a model's kind is `pod` unless declared.
+#[test]
+fn route_status_callable_is_true_exactly_where_a_call_is_relayed_or_held() {
+    let callable: Vec<(&str, bool)> = ModelPhase::ALL
+        .iter()
+        .map(|phase| (phase.code(), phase.callable()))
+        .collect();
+    assert_eq!(
+        callable,
+        [
+            ("stopped", true),
+            ("starting", true),
+            ("ready", true),
+            ("stopping", false),
+            ("unreachable", false),
+        ]
+    );
+    assert_eq!(model("small").kind(), ModelKind::Pod);
+    let codes: Vec<&str> = ModelKind::ALL.iter().map(|kind| kind.code()).collect();
+    assert_eq!(codes, ["pod", "hosted", "route", "bedrock"]);
+}
+
+/// The statuses are asked side by side: three models whose status takes 800 ms each are listed
+/// in well under twice that, not in 2.4 s.
+#[test]
+fn route_status_the_list_asks_every_status_side_by_side() {
+    let slow = Duration::from_millis(800);
+    let source = Table::new(
+        &[
+            ("one", Some(status(ModelPhase::Ready, None, None))),
+            ("two", Some(status(ModelPhase::Ready, None, None))),
+            ("three", Some(status(ModelPhase::Ready, None, None))),
+        ],
+        slow,
+    );
+    let models = ["one", "two", "three"]
+        .into_iter()
+        .map(|alias| kinded(alias, ModelKind::Hosted, vec![Wire::Chat]))
+        .collect();
+    let (metrics, records) = (Arc::new(Metrics::default()), Arc::new(Records::default()));
+    let handle = listing(models, Arc::clone(&source), &metrics, &records, |_| {});
+    handle.mark_ready();
+    let started = Instant::now();
+    let list = send(handle.local_addr(), "GET", "/v1/status", true, "");
+    let took = started.elapsed();
+    handle.shutdown();
+    assert_eq!(list.status, 200, "{}", list.body);
+    assert!(took >= slow, "{took:?}");
+    assert!(
+        took < slow * 2,
+        "the statuses were asked one after another: {took:?}"
+    );
+    assert_eq!(source.asks(), ["status one", "status three", "status two"]);
+}
+
+/// A status read, one model's or the list, asks the source for statuses and nothing else, makes
+/// no usage record and moves no counter.
+#[test]
+fn route_status_a_status_read_acquires_wakes_and_invalidates_nothing_and_records_nothing() {
+    let source = Table::new(
+        &[
+            ("hosted", Some(status(ModelPhase::Ready, None, None))),
+            ("pod", Some(status(ModelPhase::Stopped, None, None))),
+        ],
+        Duration::ZERO,
+    );
+    let models = vec![
+        kinded("hosted", ModelKind::Hosted, vec![Wire::Chat]),
+        model("pod"),
+    ];
+    let (metrics, records) = (Arc::new(Metrics::default()), Arc::new(Records::default()));
+    let handle = listing(models, Arc::clone(&source), &metrics, &records, |_| {});
+    handle.mark_ready();
+    let before = metrics.render();
+    let address = handle.local_addr();
+    let list = send(address, "GET", "/v1/status", true, "");
+    let head = send(address, "HEAD", "/v1/status", true, "");
+    let one = send(address, "GET", "/v1/models/hosted/status", true, "");
+    let after = metrics.render();
+    handle.shutdown();
+    assert_eq!(list.status, 200, "{}", list.body);
+    assert_eq!(head.status, 200);
+    assert_eq!(head.body, "");
+    assert_eq!(one.body, "{\"model\":\"hosted\",\"phase\":\"ready\"}");
+    assert_eq!(
+        source.asks(),
+        [
+            "status hosted",
+            "status hosted",
+            "status hosted",
+            "status pod",
+            "status pod"
+        ]
+    );
+    assert!(
+        records.0.lock().unwrap().is_empty(),
+        "a status read made a record"
+    );
+    assert_eq!(before, after, "a status read moved a counter");
+}
+
+/// The list takes the owner credential under `IngressAuth::None` too, and its method, a body
+/// and readiness are decided before the source is asked anything. A gateway without a relay
+/// lists no model.
+#[test]
+fn route_status_the_list_takes_the_owner_and_is_refused_before_the_source_is_asked() {
+    let source = Table::new(&[("small", None)], Duration::ZERO);
+    let (metrics, records) = (Arc::new(Metrics::default()), Arc::new(Records::default()));
+    let handle = listing(
+        vec![model("small")],
+        Arc::clone(&source),
+        &metrics,
+        &records,
+        |config| {
+            config.ingress_auth = IngressAuth::None;
+            config.bind = "0.0.0.0:0".parse().unwrap();
+        },
+    );
+    let address = SocketAddr::from(([127, 0, 0, 1], handle.local_addr().port()));
+    let unready = send(address, "GET", "/v1/status", true, "");
+    handle.mark_ready();
+    let anonymous = send(address, "GET", "/v1/status", false, "");
+    let post = send(address, "POST", "/v1/status", true, "");
+    let with_body = send(address, "GET", "/v1/status", true, "{}");
+    assert!(source.asks().is_empty(), "{:?}", source.asks());
+    let served = send(address, "GET", "/v1/status", true, "");
+    handle.shutdown();
+    assert_eq!(unready.code().as_deref(), Some("unavailable"));
+    assert_eq!(anonymous.code().as_deref(), Some("credential-absent"));
+    assert_eq!(anonymous.header("www-authenticate"), Some("Bearer"));
+    assert_eq!(post.code().as_deref(), Some("method-not-allowed"));
+    assert_eq!(post.header("allow"), Some("GET, HEAD"));
+    assert_eq!(with_body.code().as_deref(), Some("body-not-allowed"));
+    assert_eq!(
+        served.body,
+        "{\"format\":\"llm-gateway.status/1\",\"models\":[{\"model\":\"small\",\"kind\":\"pod\",\"wires\":[\"chat\"]}]}"
+    );
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let bare = Gateway::bind(
+        GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+    )
+    .unwrap();
+    bare.mark_ready();
+    let empty = send(bare.local_addr(), "GET", "/v1/status", true, "");
+    bare.shutdown();
+    assert_eq!(
+        empty.body,
+        "{\"format\":\"llm-gateway.status/1\",\"models\":[]}"
+    );
+}
+
+/// `ModelKind`'s codes are `llm-gateway.gateway.ModelKind`'s, in order, and the list's format
+/// and path are `llm-gateway.gateway.StatusRoute`'s.
+#[test]
+fn route_status_every_kind_and_the_list_are_declared() {
+    let start = SPEC
+        .find("  - name: llm-gateway.gateway.ModelKind\n")
+        .expect("spec/domains/gateway.yaml declares no ModelKind");
+    let rest = &SPEC[start + 1..];
+    let declaration = &rest[..rest.find("\n  - name: ").unwrap_or(rest.len())];
+    let declared: Vec<&str> = declaration
+        .lines()
+        .filter_map(|line| line.split_once("code: ").map(|(_, code)| code))
+        .map(|code| code.trim_end_matches("}}"))
+        .collect();
+    let codes: Vec<&str> = ModelKind::ALL.iter().map(|kind| kind.code()).collect();
+    assert_eq!(declared, codes);
+    assert!(
+        SPEC.contains(
+            "{name: List, attributes: {path: /v1/status, methods: \"GET, HEAD\", format: llm-gateway.status/1}}"
+        ),
+        "spec/domains/gateway.yaml declares no StatusRoute List"
+    );
 }

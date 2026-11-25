@@ -822,4 +822,14 @@ mod tests {
         );
         assert_eq!(routes.digest().len(), 64);
     }
+
+    /// story:route-status-for-every-model: every route is relayed as a model of kind `route`.
+    #[test]
+    fn route_status_every_route_is_relayed_as_a_route() {
+        let models = Routes::parse(DOCUMENT).unwrap().relay_models().unwrap();
+        assert!(!models.is_empty());
+        for model in models {
+            assert_eq!(model.kind(), llm_gateway::ModelKind::Route, "{model:?}");
+        }
+    }
 }

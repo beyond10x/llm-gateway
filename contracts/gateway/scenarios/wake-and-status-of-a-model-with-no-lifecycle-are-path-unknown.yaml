@@ -1,12 +1,12 @@
 type: ess-scenario/1
 domain: llm-gateway.gateway
 scenario: wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown
-summary: a hosted endpoint, and a model whose target source starts no pod, have no lifecycle routes and are answered path-unknown without any connection
+summary: a hosted endpoint has no wake, and a model whose target source starts no pod and reports no status has neither lifecycle route; each is answered path-unknown without any connection
 timeline:
 - at: '2026-10-17T12:00:00Z'
   command: llm-gateway.gateway.Relay
   input:
-    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"routed","upstream_model":"vendor-routed","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous"}},{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/models/routed/wake","body":""},{"step":"request","path":"/v1/models/routed/status","body":"","method":"GET"},{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"request","path":"/v1/models/small/status","body":"","method":"GET"}]}'
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"routed","upstream_model":"vendor-routed","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous"}},{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/models/routed/wake","body":""},{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"request","path":"/v1/models/small/status","body":"","method":"GET"}]}'
   outcome: observed
 assert:
 - view: llm-gateway.gateway.LastRelay
@@ -21,10 +21,8 @@ assert:
     - 404 path-unknown
     - 404 path-unknown
     - 404 path-unknown
-    - 404 path-unknown
     lifecycle_asks:
     - wake routed
-    - status routed
     - wake small
     - status small
     acquired: 0

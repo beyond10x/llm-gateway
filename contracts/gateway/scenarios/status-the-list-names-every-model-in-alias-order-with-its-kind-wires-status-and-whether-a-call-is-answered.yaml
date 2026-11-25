@@ -1,0 +1,34 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered
+summary: GET /v1/status lists every model in alias order with kind, wires, status and callable; a stopped pod is callable, a stopping pod and an unreachable endpoint are not
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","translation":"on","models":[{"alias":"a-pod","upstream_model":"a-pod","wires":["chat","responses"]},{"alias":"b-hosted","upstream_model":"vendor-b","wires":["chat","messages"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"bearer","credential":"endpoint-bearer-0123456789abcdef"}},{"alias":"c-hosted","upstream_model":"vendor-c","wires":["responses"],"endpoint":{"pod":"pod-2","scheme":"http","auth_kind":"anonymous"}}],"routes_document":"format: llm.routes/1\nendpoints:\n  anthropic: {base_url: \"http://pod-3/anthropic/v1\", protocol: messages, auth: {kind: api-key, header: x-api-key, secret: \"file:/run/keys/anthropic\"}}\nroutes:\n  d-route: anthropic/claude-opus-4-1\n","route_credentials":{"anthropic":"endpoint-api-key-0123456789abcdef"},"lifecycle":{"status":[{"phase":"stopped"},{"phase":"stopping"}]},"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"data\":[]}"]}],[{"transport":"closed"}],[{"status":401}]],"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/v1/status","body":""},{"step":"request","method":"GET","path":"/v1/status","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 answered
+    - 200 answered
+    bodies:
+    - '{"format":"llm-gateway.status/1","models":[{"model":"a-pod","kind":"pod","wires":["chat","responses"],"phase":"stopped","callable":true},{"model":"b-hosted","kind":"hosted","wires":["chat","messages"],"phase":"ready","callable":true},{"model":"c-hosted","kind":"hosted","wires":["responses"],"phase":"unreachable","sub_phase":"no-answer","callable":false},{"model":"d-route","kind":"route","wires":["messages"],"phase":"unreachable","sub_phase":"credential-refused","callable":false}]}'
+    - '{"format":"llm-gateway.status/1","models":[{"model":"a-pod","kind":"pod","wires":["chat","responses"],"phase":"stopping","callable":false},{"model":"b-hosted","kind":"hosted","wires":["chat","messages"],"phase":"ready","callable":true},{"model":"c-hosted","kind":"hosted","wires":["responses"],"phase":"unreachable","sub_phase":"no-answer","callable":false},{"model":"d-route","kind":"route","wires":["messages"],"phase":"unreachable","sub_phase":"credential-refused","callable":false}]}'
+    headers:
+    - content-type=application/json cache-control=no-store allow=absent
+    - content-type=application/json cache-control=no-store allow=absent
+    secret_upstream: false
+    acquired: 0
+    released: 0
+    invalidated: []
+    records: []

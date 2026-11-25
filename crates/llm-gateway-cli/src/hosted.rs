@@ -1102,4 +1102,431 @@ mod tests {
             );
         }
     }
+
+    // --- The status probe (story:route-status-for-every-model) -----------------------------
+
+    use super::{HostedTargets, ProbeBounds};
+    use llm_gateway::{ModelPhase, ModelStatus, RelayTarget, RelayTargets, TargetRefusal};
+    use std::{
+        collections::BTreeMap,
+        net::SocketAddr,
+        sync::{
+            Mutex,
+            atomic::{AtomicU64, AtomicUsize, Ordering},
+        },
+        thread::JoinHandle,
+    };
+
+    /// The rest of the composition: records every ask and answers none.
+    #[derive(Default)]
+    struct Rest(Mutex<Vec<String>>);
+
+    impl RelayTargets for Rest {
+        fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+            self.0.lock().unwrap().push(format!("acquire {alias}"));
+            Err(TargetRefusal::Unavailable)
+        }
+
+        fn invalidate(&self, alias: &str, _authority: &str) {
+            self.0.lock().unwrap().push(format!("invalidate {alias}"));
+        }
+
+        fn wake(&self, alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+            self.0.lock().unwrap().push(format!("wake {alias}"));
+            None
+        }
+
+        fn status(&self, alias: &str) -> Option<ModelStatus> {
+            self.0.lock().unwrap().push(format!("status {alias}"));
+            Some(ModelStatus::new(ModelPhase::Stopped))
+        }
+    }
+
+    /// A loopback endpoint that reads one request head, waits `delay`, then writes `answer` (or
+    /// closes without one) and hands back the head it read.
+    fn endpoint_once(
+        answer: Option<&'static str>,
+        delay: Duration,
+    ) -> (SocketAddr, JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let thread = thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            connection
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let mut head = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !head.ends_with(b"\r\n\r\n") {
+                match connection.read(&mut byte) {
+                    Ok(1) => head.push(byte[0]),
+                    _ => break,
+                }
+            }
+            thread::sleep(delay);
+            if let Some(answer) = answer {
+                drop(connection.write_all(answer.as_bytes()));
+            }
+            String::from_utf8_lossy(&head).into_owned()
+        });
+        (address, thread)
+    }
+
+    fn targets(alias: &str, endpoint: HostedEndpoint, bounds: ProbeBounds) -> HostedTargets {
+        HostedTargets::new(
+            BTreeMap::from([(alias.to_owned(), endpoint)]),
+            Arc::new(NoTls),
+            Arc::new(Rest::default()),
+        )
+        .with_probe_bounds(bounds)
+    }
+
+    /// Bounds that reuse nothing, so every read probes.
+    fn fresh(timeout: Duration) -> ProbeBounds {
+        ProbeBounds {
+            timeout,
+            reuse: Duration::ZERO,
+        }
+    }
+
+    fn unreachable(why: &str) -> ModelStatus {
+        ModelStatus {
+            phase: ModelPhase::Unreachable,
+            sub_phase: Some(why.to_owned()),
+            profile: None,
+        }
+    }
+
+    fn bearer() -> EndpointCredential {
+        EndpointCredential::Bearer(TargetBearer::new(b"sk-status-0123456789".to_vec()).unwrap())
+    }
+
+    /// Acceptance 1 and 2: the probe's status decides the phase, and only a `client` endpoint
+    /// reads 401 and 403 as an endpoint that answered.
+    #[test]
+    fn route_status_a_hosted_status_is_ready_on_2xx_and_unreachable_saying_why_otherwise() {
+        let ready = ModelStatus::new(ModelPhase::Ready);
+        let cases: [(bool, Option<&'static str>, ModelStatus); 15] = [
+            (
+                false,
+                Some("HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n"),
+                ready.clone(),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 204 No Content\r\n\r\n"),
+                ready.clone(),
+            ),
+            (false, Some("HTTP/1.0 299 Odd\r\n\r\n"), ready.clone()),
+            (
+                false,
+                Some("HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\n\r\n"),
+                ready.clone(),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 301 Moved\r\n\r\n"),
+                unreachable("status-301"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 401 Unauthorized\r\n\r\n"),
+                unreachable("credential-refused"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 403 Forbidden\r\n\r\n"),
+                unreachable("credential-refused"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 404 Not Found\r\n\r\n"),
+                unreachable("status-404"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 503 Busy\r\n\r\n"),
+                unreachable("status-503"),
+            ),
+            (
+                false,
+                Some("not http at all\r\n\r\n"),
+                unreachable("no-answer"),
+            ),
+            (false, None, unreachable("no-answer")),
+            (
+                true,
+                Some("HTTP/1.1 401 Unauthorized\r\n\r\n"),
+                ready.clone(),
+            ),
+            (true, Some("HTTP/1.1 403 Forbidden\r\n\r\n"), ready.clone()),
+            (true, Some("HTTP/1.1 200 OK\r\n\r\n"), ready.clone()),
+            (
+                true,
+                Some("HTTP/1.1 429 Slow Down\r\n\r\n"),
+                unreachable("status-429"),
+            ),
+        ];
+        for (client, answer, expected) in cases {
+            let (address, server) = endpoint_once(answer, Duration::ZERO);
+            let credential = if client {
+                EndpointCredential::Client
+            } else {
+                bearer()
+            };
+            let endpoint =
+                HostedEndpoint::new(&format!("http://{address}/v1"), credential).unwrap();
+            let targets = targets("m", endpoint, fresh(Duration::from_secs(5)));
+            assert_eq!(targets.status("m"), Some(expected), "{client} {answer:?}");
+            drop(server.join());
+        }
+        // Nothing listens: no connection is no answer.
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = closed.local_addr().unwrap();
+        drop(closed);
+        let endpoint = HostedEndpoint::new(&format!("http://{address}"), bearer()).unwrap();
+        let targets = targets("m", endpoint, fresh(Duration::from_secs(5)));
+        assert_eq!(targets.status("m"), Some(unreachable("no-answer")));
+    }
+
+    /// Acceptance 3: the probe is `GET <base path>/models` with the model's own static headers
+    /// and credential as its `auth_kind` sends it, and nothing else; a `client` endpoint's
+    /// carries no credential.
+    #[test]
+    fn route_status_the_probe_carries_the_models_credential_and_headers_and_nothing_else() {
+        let key = || TargetBearer::new(b"sk-status-0123456789".to_vec()).unwrap();
+        let header = StaticHeader::new("x-team", "blue").unwrap();
+        let cases = [
+            (
+                "/openai/v1",
+                EndpointCredential::Bearer(key()),
+                "GET /openai/v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\nauthorization: Bearer sk-status-0123456789\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+            (
+                "",
+                EndpointCredential::ApiKey {
+                    header: CredentialHeader::new("x-api-key").unwrap(),
+                    key: key(),
+                },
+                "GET /v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\nx-api-key: sk-status-0123456789\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+            (
+                "/v1",
+                EndpointCredential::Client,
+                "GET /v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+            (
+                "/v1",
+                EndpointCredential::Anonymous,
+                "GET /v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+        ];
+        for (base, credential, expected) in cases {
+            let (address, server) = endpoint_once(Some("HTTP/1.1 200 OK\r\n\r\n"), Duration::ZERO);
+            let endpoint = HostedEndpoint::new(&format!("http://{address}{base}"), credential)
+                .unwrap()
+                .with_headers(vec![header.clone()])
+                .unwrap();
+            let targets = targets("m", endpoint, fresh(Duration::from_secs(5)));
+            assert_eq!(
+                targets.status("m"),
+                Some(ModelStatus::new(ModelPhase::Ready))
+            );
+            assert_eq!(
+                server.join().unwrap(),
+                expected.replace("{authority}", &address.to_string())
+            );
+        }
+    }
+
+    /// Acceptance 3: a head that arrives inside the probe's deadline is read; one that does
+    /// not, or never arrives, is `no-answer` once the deadline has passed, and no later.
+    #[test]
+    fn route_status_a_probe_not_answered_inside_its_deadline_is_no_answer_at_the_deadline() {
+        let deadline = Duration::from_millis(600);
+        let ok = Some("HTTP/1.1 200 OK\r\n\r\n");
+        for (delay, expected) in [
+            (
+                Duration::from_millis(200),
+                ModelStatus::new(ModelPhase::Ready),
+            ),
+            (Duration::from_millis(1200), unreachable("no-answer")),
+        ] {
+            let (address, server) = endpoint_once(ok, delay);
+            let endpoint = HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap();
+            let targets = targets("m", endpoint, fresh(deadline));
+            let started = Instant::now();
+            assert_eq!(targets.status("m"), Some(expected), "{delay:?}");
+            let took = started.elapsed();
+            assert!(took < deadline + Duration::from_millis(500), "{took:?}");
+            if delay > deadline {
+                assert!(took >= deadline, "{took:?}");
+            }
+            drop(server.join());
+        }
+    }
+
+    /// Acceptance 3: a result is reused until `status-reuse-seconds` have passed since its probe
+    /// ended, at exactly the published number, on a clock the test moves.
+    #[test]
+    fn route_status_a_result_is_reused_until_the_published_reuse_time_has_passed() {
+        assert_eq!(ProbeBounds::default().reuse, Duration::from_secs(10));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&probes);
+        thread::spawn(move || {
+            for connection in listener.incoming() {
+                let Ok(mut connection) = connection else {
+                    return;
+                };
+                counted.fetch_add(1, Ordering::SeqCst);
+                let mut seen = [0_u8; 1024];
+                drop(connection.read(&mut seen));
+                drop(connection.write_all(b"HTTP/1.1 200 OK\r\n\r\n"));
+            }
+        });
+        let now = Arc::new(AtomicU64::new(1_000));
+        let clock = Arc::clone(&now);
+        let endpoint = HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap();
+        let targets = targets("m", endpoint, ProbeBounds::default())
+            .with_probe_clock(Arc::new(move || clock.load(Ordering::SeqCst)));
+        let ready = Some(ModelStatus::new(ModelPhase::Ready));
+        assert_eq!(targets.status("m"), ready);
+        assert_eq!(probes.load(Ordering::SeqCst), 1);
+        now.store(1_000 + 9_999, Ordering::SeqCst);
+        assert_eq!(targets.status("m"), ready);
+        assert_eq!(
+            probes.load(Ordering::SeqCst),
+            1,
+            "probed inside the reuse time"
+        );
+        now.store(1_000 + 10_000, Ordering::SeqCst);
+        assert_eq!(targets.status("m"), ready);
+        assert_eq!(
+            probes.load(Ordering::SeqCst),
+            2,
+            "not probed once the reuse time passed"
+        );
+    }
+
+    /// Acceptance 3: two reads of one model at once send one probe, and both read its result.
+    #[test]
+    fn route_status_two_reads_of_one_model_at_once_send_one_probe() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&probes);
+        thread::spawn(move || {
+            for connection in listener.incoming() {
+                let Ok(mut connection) = connection else {
+                    return;
+                };
+                counted.fetch_add(1, Ordering::SeqCst);
+                let mut seen = [0_u8; 1024];
+                drop(connection.read(&mut seen));
+                thread::sleep(Duration::from_millis(300));
+                drop(connection.write_all(b"HTTP/1.1 200 OK\r\n\r\n"));
+            }
+        });
+        let endpoint = HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap();
+        let targets = Arc::new(targets(
+            "m",
+            endpoint,
+            ProbeBounds {
+                timeout: Duration::from_secs(5),
+                reuse: Duration::from_secs(10),
+            },
+        ));
+        let readers: Vec<_> = (0..2)
+            .map(|_| {
+                let targets = Arc::clone(&targets);
+                thread::spawn(move || targets.status("m"))
+            })
+            .collect();
+        for reader in readers {
+            assert_eq!(
+                reader.join().unwrap(),
+                Some(ModelStatus::new(ModelPhase::Ready))
+            );
+        }
+        assert_eq!(probes.load(Ordering::SeqCst), 1);
+    }
+
+    /// Acceptance 3 and 4: a hosted model's status asks the rest of the composition nothing,
+    /// its wake stays `None`, and any other alias is still the rest's.
+    #[test]
+    fn route_status_a_hosted_status_asks_the_rest_nothing_and_its_wake_stays_none() {
+        let (address, server) = endpoint_once(Some("HTTP/1.1 200 OK\r\n\r\n"), Duration::ZERO);
+        let rest = Arc::new(Rest::default());
+        let targets = HostedTargets::new(
+            BTreeMap::from([(
+                "m".to_owned(),
+                HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap(),
+            )]),
+            Arc::new(NoTls),
+            Arc::clone(&rest) as Arc<dyn RelayTargets>,
+        );
+        assert_eq!(
+            targets.status("m"),
+            Some(ModelStatus::new(ModelPhase::Ready))
+        );
+        assert!(targets.wake("m").is_none());
+        assert!(rest.0.lock().unwrap().is_empty(), "{:?}", rest.0.lock());
+        assert_eq!(
+            targets.status("pod"),
+            Some(ModelStatus::new(ModelPhase::Stopped))
+        );
+        assert_eq!(*rest.0.lock().unwrap(), ["status pod"]);
+        drop(server.join());
+    }
+
+    /// The bounds `docs/gateway.md` publishes ("Bounds of the status probe") are the defaults
+    /// the binary serves with.
+    #[test]
+    fn route_status_the_published_probe_bounds_are_the_defaults() {
+        let contract = include_str!("../../../docs/gateway.md");
+        let section = contract
+            .split_once("\n## Bounds of the status probe\n")
+            .expect("docs/gateway.md has no section for the status probe's bounds")
+            .1
+            .split("\n## ")
+            .next()
+            .unwrap();
+        let rows: BTreeMap<String, (String, u64)> = section
+            .lines()
+            .filter(|line| line.starts_with("| `"))
+            .map(|line| {
+                let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+                (
+                    cells[0].trim_matches('`').to_owned(),
+                    (
+                        cells[1].trim_matches('`').to_owned(),
+                        cells[2].parse().unwrap(),
+                    ),
+                )
+            })
+            .collect();
+        let bounds = ProbeBounds::default();
+        let expected: BTreeMap<String, (String, u64)> = [
+            (
+                "status-probe-timeout-ms",
+                "ProbeBounds::timeout",
+                u64::try_from(bounds.timeout.as_millis()).unwrap(),
+            ),
+            (
+                "status-reuse-seconds",
+                "ProbeBounds::reuse",
+                bounds.reuse.as_secs(),
+            ),
+        ]
+        .into_iter()
+        .map(|(name, constant, value)| (name.to_owned(), (constant.to_owned(), value)))
+        .collect();
+        assert_eq!(rows, expected);
+        assert_eq!(
+            (bounds.timeout, bounds.reuse),
+            (Duration::from_secs(5), Duration::from_secs(10))
+        );
+    }
 }

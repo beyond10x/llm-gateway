@@ -1987,7 +1987,7 @@ mod adversary_ollama_route {
     use super::*;
 
     /// Loads the document with the Ollama model `local` (`upstream_model = "qwen2.5:1.5b"`)
-    /// declaring `model_prefix = "llama"` on `ollama`, and checks that the start is refused:
+    /// declaring `model_prefix = "llama3"` on `ollama`, and checks that the start is refused:
     /// `config:value` naming `hosted.local.model_prefix`, quoting no value, and nothing sent to
     /// the server. An Ollama model's status and its `model-not-pulled` refusal are read for one
     /// name, `upstream_model`; a prefix would send names the status does not describe.
@@ -1997,7 +1997,7 @@ mod adversary_ollama_route {
         let key = fixture.vllm_key();
         let text = format!(
             "{}\n[hosted.local]\nkind = \"ollama\"\nbase_url = \"{}\"\n\
-             upstream_model = \"qwen2.5:1.5b\"\nmodel_prefix = \"llama\"\n",
+             upstream_model = \"qwen2.5:1.5b\"\nmodel_prefix = \"llama3\"\n",
             with_vllm_key(&document("127.0.0.1:0", &secret), &key),
             ollama.base_url()
         );
@@ -2009,7 +2009,7 @@ mod adversary_ollama_route {
             refusal.message()
         );
         assert!(
-            !refusal.message().contains("llama"),
+            !refusal.message().contains("llama3"),
             "{}",
             refusal.message()
         );

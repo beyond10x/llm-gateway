@@ -1467,14 +1467,20 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
 /// `[hosted.<alias>] kind = "ollama"`, checked (story:ollama-route): an endpoint's table whose
 /// `base_url` is the server's root, `http://127.0.0.1:11434` when undeclared, served on every
 /// wire unless `wires` names fewer, sent no credential and billed `self-hosted` unless it says
-/// otherwise. `auth_kind` may only be `anonymous`; a credential key is refused, naming the key and
-/// quoting nothing. Every other key is checked as an endpoint's.
+/// otherwise. `auth_kind` may only be `anonymous`; a credential key and `model_prefix` are
+/// refused, naming the key and quoting nothing. Every other key is checked as an endpoint's.
 fn validate_ollama(at: &str, alias: &str, mut declared: HostedDocument) -> Result<Hosted, Refusal> {
     let key = |name: &str| format!("{at}.{name}");
     ensure(
         matches!(declared.auth_kind, None | Some(AuthKindDocument::Anonymous)),
         &key("auth_kind"),
         "must be anonymous for kind = \"ollama\": an Ollama server is sent no credential",
+    )?;
+    ensure(
+        declared.model_prefix.is_none(),
+        &key("model_prefix"),
+        "is not a key of kind = \"ollama\": the model's status and model-not-pulled are read \
+         for upstream_model alone",
     )?;
     for (name, present) in [
         ("credential_file", declared.credential_file.is_some()),

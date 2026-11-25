@@ -14,7 +14,9 @@ use std::{
     thread::{self, JoinHandle},
     time::Duration,
 };
-use support::{Fixture, OWNER_SECRET, document, mutate, with_vllm_key};
+use support::{
+    Fixture, OWNER_SECRET, document, mutate, no_spend, starts_on_request, with_vllm_key,
+};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -146,9 +148,11 @@ fn adv_profiles_a_call_served_by_a_fallback_profile_is_clamped_to_that_profiles_
     let text = format!(
         "{text}\n[[models.small.profiles]]\nname = \"h100-2k\"\ngpu_types = [\"NVIDIA H100 NVL\"]\nmax_model_len = 2048\n\n[[models.small.profiles]]\nname = \"l40s-1k\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n"
     );
-    let deployment = load(&fixture.config(&text)).unwrap();
+    // The call starts the pod (`start_on_request`).
+    let deployment = load(&fixture.config(&starts_on_request(&text))).unwrap();
     let pod = Pod::start(2, COUNT);
     let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
     runpod.no_capacity_gpu("NVIDIA H100 NVL");
     let running = start_relaying(
         &deployment,

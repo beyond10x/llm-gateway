@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:513dca0119803aab468e6e4ae5e7e8f5788ad6401e9cff7867675c06d5707c99",
+    "contract_digest": "slice-sha256/2:5fa18b4e1b5dd5b897022378447662fea62188919aa9c464ba2dd9553786e4a3",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -26,6 +26,7 @@
         "MethodNotAllowed",
         "ModelAbsent",
         "ModelColdStart",
+        "ModelStopped",
         "ModelUnknown",
         "Overloaded",
         "PathUnknown",
@@ -64,6 +65,7 @@
             "MethodNotAllowed": "method-not-allowed",
             "ModelAbsent": "model-absent",
             "ModelColdStart": "model-cold-start",
+            "ModelStopped": "model-stopped",
             "ModelUnknown": "model-unknown",
             "Overloaded": "overloaded",
             "PathUnknown": "path-unknown",
@@ -102,6 +104,7 @@
             "MethodNotAllowed": 405,
             "ModelAbsent": 400,
             "ModelColdStart": 503,
+            "ModelStopped": 503,
             "ModelUnknown": 404,
             "Overloaded": 503,
             "PathUnknown": 404,
@@ -140,6 +143,7 @@
             "MethodNotAllowed": "this path does not accept that method",
             "ModelAbsent": "the request body names no model",
             "ModelColdStart": "the model is still starting; ask again after the retry-after delay",
+            "ModelStopped": "the model's pod is not running and a request does not start it; the owner wakes it",
             "ModelUnknown": "no such model",
             "Overloaded": "the gateway is already serving its maximum concurrent requests",
             "PathUnknown": "no such gateway resource",
@@ -156,7 +160,7 @@
             "TranslationUnrepresentable": "the model's answer cannot be written on this wire",
             "TranslationUnsupported": "the request uses a field or value outside the subset the gateway translates",
             "Unavailable": "the gateway is not ready to serve inspection",
-            "UpstreamFailed": "the model target could not be reached or failed; the next request asks for a replacement",
+            "UpstreamFailed": "the model target could not be reached or failed",
             "UpstreamRefused": "the model target refused the translated request",
             "WireNotServed": "the model is not served on this wire"
           }

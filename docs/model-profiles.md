@@ -18,6 +18,13 @@ kind = "runpod-vllm"
 `crates/llm-gateway-cli/tests/profiles.rs` loads every block below through the binary's own
 loader, so this file cannot hold a block the binary refuses.
 
+None of the blocks sets `start_on_request`, so a model call never starts the pod: a call while it
+is stopped is refused `model-stopped` (503) at once, and the owner starts it with
+`POST /v1/models/{alias}/wake`; calls made after the wake are held while the pod starts, for up to
+`request_hold_seconds`. To let a call start the pod, add `start_on_request = true` to the table
+and declare `daily_cap_usd` (and every model's `price_per_hour_usd`) on the provider
+(`docs/hosting.md`, "Spend ceilings").
+
 ## Default: broad availability, 32k context
 
 Rents whichever of three widely available 48 GB cards has capacity, which keeps cold starts from

@@ -15,7 +15,9 @@ use std::{
     thread,
     time::Duration,
 };
-use support::{Fixture, OWNER_SECRET, document, mutate, with_vllm_key};
+use support::{
+    Fixture, OWNER_SECRET, document, mutate, no_spend, starts_on_request, with_vllm_key,
+};
 
 const WAIT: Duration = Duration::from_secs(20);
 const CHAT: &str = "/v1/chat/completions";
@@ -30,7 +32,8 @@ fn deployment(fixture: &Fixture, lines: &str) -> Deployment {
         "max_model_len = 1024\n",
         &format!("max_model_len = 1024\n{lines}"),
     );
-    load(&fixture.config(&text)).unwrap()
+    // The request starts its pod (`start_on_request`), as the case holds it on one it started.
+    load(&fixture.config(&starts_on_request(&text))).unwrap()
 }
 
 struct Nowhere(SocketAddr);
@@ -94,6 +97,7 @@ fn adv2_w6_a_request_that_waits_out_its_hold_on_an_unconfirmed_stop_is_not_model
         "start_wait_seconds = 10\nrequest_hold_seconds = 2\n",
     );
     let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
     runpod.ready_after(u32::MAX);
     let clock = ManualClock::new(1_000);
     let running = start_relaying(

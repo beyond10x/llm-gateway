@@ -1316,6 +1316,103 @@ fn d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one() {
     assert_eq!(stack.runpod.create_calls(), 1);
 }
 
+// --- story:a-call-starts-no-pod: a held ask that never starts a pod -----------------------------
+
+/// With no live pod, `ensure_held_running` answers `starting`, submits nothing and leaves its
+/// hold unbound: the caller reads that as a model with no pod. Asked again it still starts
+/// nothing, and reads no spend.
+#[test]
+fn ensure_held_running_with_no_live_pod_submits_nothing_and_leaves_the_hold_unbound() {
+    let stack = stack();
+    let mut hold = Hold::default();
+    for _ in 0..3 {
+        assert_eq!(
+            stack.pool.ensure_held_running(&id(ALIAS), &mut hold).err(),
+            Some(PoolError::Starting)
+        );
+        assert!(hold.deployment().is_none(), "bound to a pod nobody started");
+        assert!(!hold.lost());
+    }
+    assert_eq!(stack.runpod.create_calls(), 0, "a pod was started");
+    assert_eq!(stack.runpod.spend_reads(), 0);
+}
+
+/// A pod an `ensure` started (the owner's wake) is waited on: the hold binds to it while it
+/// starts, and the ready pod is handed out, with no second create.
+#[test]
+fn ensure_held_running_binds_to_a_pod_another_ask_started_and_hands_it_out_once_ready() {
+    let stack = stack();
+    stack.runpod.ready_after(2);
+    assert_eq!(
+        stack.pool.ensure(&id(ALIAS), &authorization()).err(),
+        Some(PoolError::Starting)
+    );
+    let mut hold = Hold::default();
+    let mut lease = None;
+    for _ in 0..10 {
+        match stack.pool.ensure_held_running(&id(ALIAS), &mut hold) {
+            Ok(ready) => {
+                lease = Some(ready);
+                break;
+            }
+            Err(PoolError::Starting) => {
+                assert!(hold.deployment().is_some(), "not bound to the starting pod");
+                stack.clock.advance(1_000);
+            }
+            Err(other) => panic!("refused while starting: {}", other.code()),
+        }
+    }
+    let lease = lease.expect("the started pod never served");
+    assert!(lease.endpoint().is_some());
+    assert!(
+        hold.deployment().is_some(),
+        "served without waiting on the pod"
+    );
+    assert_eq!(stack.runpod.create_calls(), 1);
+}
+
+/// A pod that fails while the hold waits on it loses the hold, and neither that ask nor any
+/// later one through the hold, nor a fresh hold, starts a replacement.
+#[test]
+fn ensure_held_running_on_a_pod_that_fails_while_held_is_lost_and_starts_no_replacement() {
+    let stack = stack();
+    stack.runpod.ready_after(u32::MAX);
+    assert_eq!(
+        stack.pool.ensure(&id(ALIAS), &authorization()).err(),
+        Some(PoolError::Starting)
+    );
+    let mut hold = Hold::default();
+    assert_eq!(
+        stack.pool.ensure_held_running(&id(ALIAS), &mut hold).err(),
+        Some(PoolError::Starting)
+    );
+    assert!(hold.deployment().is_some());
+    stack.clock.advance(600_001);
+    assert_eq!(
+        stack.pool.ensure_held_running(&id(ALIAS), &mut hold).err(),
+        Some(PoolError::StartupDeadline)
+    );
+    assert!(hold.lost());
+    assert_eq!(
+        stack.pool.ensure_held_running(&id(ALIAS), &mut hold).err(),
+        Some(PoolError::Stopping)
+    );
+    let mut fresh = Hold::default();
+    for _ in 0..3 {
+        assert!(
+            stack
+                .pool
+                .ensure_held_running(&id(ALIAS), &mut fresh)
+                .is_err()
+        );
+        assert!(
+            fresh.deployment().is_none(),
+            "bound to a pod nobody started"
+        );
+    }
+    assert_eq!(stack.runpod.create_calls(), 1, "a replacement was started");
+}
+
 // --- L6, W6: callers held on one starting pod --------------------------------------------------
 
 /// Two holds bound to one pod that misses its startup deadline: the first caller's step retires

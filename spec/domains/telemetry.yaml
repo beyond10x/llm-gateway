@@ -140,8 +140,8 @@ types:
   #   `timeout`         the target's read timeout passed before its answer head
   #                     (`upstream-failed`), or a start deadline passed (`model-cold-start`)
   #   `refused`         the gateway refused the call before reaching a target: every other
-  #                     refusal code (`spend-ceiling`, `target-unavailable`, `context-exceeded`,
-  #                     a body or model refusal, …)
+  #                     refusal code (`spend-ceiling`, `model-stopped`, `target-unavailable`,
+  #                     `context-exceeded`, a body or model refusal, …)
   # The table of every refusal code is published in docs/gateway.md, and
   # crates/llm-gateway/src/metrics.rs checks it against `RefusalCode::ALL`. A translated
   # request's transport timeout is reported by the translator as an upstream failure and is

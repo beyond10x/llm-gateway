@@ -116,6 +116,49 @@ pub fn with_vllm_key(text: &str, key: &Path) -> String {
     )
 }
 
+/// `text` (a [`document`]) whose `[models.small]` call starts its pod, as every call did before
+/// `start_on_request` existed: the key, with the `daily_cap_usd` of 10 USD on `[providers.runpod]`
+/// it needs and the model's `price_per_hour_usd` of 2 USD the cap needs. A pool over the emulator
+/// then reads the account's spend before each create: [`no_spend`] admits it.
+pub fn starts_on_request(text: &str) -> String {
+    let text = mutate(
+        text,
+        "kind = \"runpod-vllm\"\n",
+        "kind = \"runpod-vllm\"\ndaily_cap_usd = 10\n",
+    );
+    mutate(
+        &text,
+        "[models.small]\n",
+        "[models.small]\nprice_per_hour_usd = 2\nstart_on_request = true\n",
+    )
+}
+
+/// `text` with `start_on_request = true` in its `[models.small]` table and nothing else, for a
+/// document that already declares a `daily_cap_usd` and the model's price.
+pub fn with_start_on_request(text: &str) -> String {
+    mutate(
+        text,
+        "[models.small]\n",
+        "[models.small]\nstart_on_request = true\n",
+    )
+}
+
+/// The emulated account reports no spend today and none in all, so a capped start passes.
+pub fn no_spend(runpod: &llm_runpod::EmulatedRunpod) {
+    runpod.set_account_spend(Some(llm_runpod::AccountSpend {
+        daily_micro_usd: 0,
+        total_micro_usd: 0,
+    }));
+}
+
+/// The `connectors` fixture's answer to one `billing.pods` read: nothing billed.
+pub fn nothing_billed() -> serde_json::Value {
+    serde_json::json!({"stdout": {
+        "connector": "runpod", "instance": "gpu", "operation": "billing.pods", "revision": "revision-7",
+        "result": {"status": 200, "body": []},
+    }})
+}
+
 /// `text` with `find` replaced once. Panics when `find` is absent, so a case whose mutation
 /// silently stopped applying fails instead of passing on the unmutated document.
 pub fn mutate(text: &str, find: &str, replace: &str) -> String {

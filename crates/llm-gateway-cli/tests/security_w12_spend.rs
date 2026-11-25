@@ -18,7 +18,9 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use support::{Connectors, Fixture, OWNER_SECRET, connected_document, listed, mutate};
+use support::{
+    Connectors, Fixture, OWNER_SECRET, connected_document, listed, mutate, with_start_on_request,
+};
 
 /// Opens no connection to any pod, probe or relay: no test here reaches past loopback.
 struct NoPod;
@@ -77,7 +79,8 @@ fn sec_the_shipped_composition_checks_the_ceiling_before_any_create() {
         "max_model_len = 1024\n",
         "max_model_len = 1024\nprice_per_hour_usd = 2\n",
     );
-    let deployment = load(&fixture.config(&text)).unwrap();
+    // The call starts the pod (`start_on_request`), so its start meets the ceiling.
+    let deployment = load(&fixture.config(&with_start_on_request(&text))).unwrap();
     let relaying = start_connected(&deployment, |transport| transport, Arc::new(NoPod)).unwrap();
     let answer = post_chat(relaying.local_addr());
     relaying.shutdown();

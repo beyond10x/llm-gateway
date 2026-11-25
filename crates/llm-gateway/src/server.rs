@@ -1642,7 +1642,8 @@ fn status_list(request: &Request<'_>, shared: &Shared) -> Outcome {
 
 /// `{"format":"llm-gateway.status/1","models":[…]}`, one entry per relayed model in alias order:
 /// `model`, `kind`, `wires` (the declared ones, in their order), then the keys of its status
-/// and `callable` when its source reports one (`llm-gateway.gateway.StatusEntry`).
+/// and `callable` when its source reports one (`RelayModel::callable`,
+/// `llm-gateway.gateway.StatusEntry`).
 fn status_list_body(relay: Option<&Relay>) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
@@ -1665,7 +1666,7 @@ fn status_list_body(relay: Option<&Relay>) -> String {
         if let Some(status) = status {
             status_keys(&mut writer, &status);
             writer.key("callable");
-            writer.boolean(status.phase.callable());
+            writer.boolean(model.callable(status.phase));
         }
         writer.end_object();
     }

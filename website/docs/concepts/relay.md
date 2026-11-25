@@ -103,7 +103,9 @@ of step 7 asks only the target step 6 handed out.
 
 A connection that fails, an answer head that never arrives or is malformed, and a `502`, `503` or
 `504` each tell `invalidate` which endpoint served the request and answer `upstream-failed`
-(`502`); the next request asks for a replacement. A hosted endpoint has no replacement, so it is
+(`502`). The Runpod pod is stopped: the next request starts a replacement when the model sets
+`start_on_request = true`, and is otherwise `model-stopped` until the owner wakes the model. A
+hosted endpoint has no replacement, so it is
 kept and the next request asks it again. Any other status, a `500` or a `4xx` included, is the
 model's own answer and is relayed with its body.
 
@@ -114,8 +116,11 @@ Fallback to another target on the same request is planned, not built.
 The embedding holds a request while its target starts and owns the hold budget. The Runpod
 composition asks its pool every 500 ms for up to the model's `request_hold_seconds`, which
 defaults to `start_wait_seconds` (600). Past the budget the request is `model-cold-start`, the
-only refusal that carries `retry-after`. Requests held together wait on one pod. See
-[hosting](hosting.md).
+only refusal that carries `retry-after`. Requests held together wait on one pod. A request
+starts no pod unless its model sets `start_on_request = true`
+([the deployment document](../reference/deployment-document.md)): by default only the owner's
+wake starts it, and a request while the pod is stopped or stopping is `model-stopped` (503) at
+once. See [hosting](hosting.md).
 
 ## Each request is recorded
 

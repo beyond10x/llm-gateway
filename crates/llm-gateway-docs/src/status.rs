@@ -481,6 +481,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Observability",
+        "The cost of a call",
+        "A Runpod model, every hosted model and a route of the routes document may declare a price per 1000000 tokens for input, output, cache reads and cache writes; each call's usage record and usage event then name what the call cost in USD, priced by llm's own pricing code. A call without a declared price, without reported tokens or with a counted class that has no rate names no cost. Tested against a loopback upstream, not against a vendor's bill.",
+        "crates/llm-gateway-cli/tests/observability.rs::cost_the_binary_logs_the_cost_of_a_priced_call_and_none_for_an_unpriced_one",
+        None,
+    ),
+    shipped(
+        "Observability",
         "Dashboard",
         "GET /dashboard shows calls with every attempt, sessions, routes, tokens per second, cache hit rates, subscription limits, the Runpod account and a vLLM server's prefix cache.",
         "crates/llm-gateway/tests/adversary_local_open.rs::adv_dashboard_counts_tokens_per_session_and_keeps_no_header_value",

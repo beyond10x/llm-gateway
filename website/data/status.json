@@ -408,6 +408,12 @@
     },
     {
       "area": "Observability",
+      "detail": "A Runpod model, every hosted model and a route of the routes document may declare a price per 1000000 tokens for input, output, cache reads and cache writes; each call's usage record and usage event then name what the call cost in USD, priced by llm's own pricing code. A call without a declared price, without reported tokens or with a counted class that has no rate names no cost. Tested against a loopback upstream, not against a vendor's bill.",
+      "label": "The cost of a call",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
       "detail": "GET /dashboard shows calls with every attempt, sessions, routes, tokens per second, cache hit rates, subscription limits, the Runpod account and a vLLM server's prefix cache.",
       "href": "/docs/guides/local-gateway-for-claude-code",
       "label": "Dashboard",

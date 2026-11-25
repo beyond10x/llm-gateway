@@ -1115,7 +1115,8 @@ body named (absent when it named none), the wire, its `Disposition` (`Relayed`, 
 status the target answered with (absent when no target answered), the decoded body bytes of a relayed answer (0 for a refusal) and the milliseconds from the end of the
 request head to the last byte written, and its `Outcome` ([call outcomes](#call-outcomes)). The input, output, cache read and cache creation token counters come from the usage the answer
 carried (decoded when it is content-encoded) and stay absent when it reported none; the model the
-target reported and the reasoning counter are always absent for now. A request, relayed or translated, whose client went away before any
+target reported and the reasoning counter are always absent for now. `cost_usd` is what the call
+cost when its model declares a token price ([the cost of a call](#the-cost-of-a-call)). A request, relayed or translated, whose client went away before any
 answer was written (a non-streamed client that closed while it waited) is recorded `Relayed`
 with status 0,
 no target status and 0 response bytes: status 0 means no answer was written because the client
@@ -1157,6 +1158,42 @@ only. A gateway composed without a relay serves the process-wide series alone. A
 that counts pod events shares one `Metrics` with the relay
 (`Relay::with_metrics`). The upstream and status series count as llmgw does (llmgw
 `src/lib.rs:598-629` at `048ebd8`). The specification is `spec/domains/telemetry.yaml`.
+
+### The cost of a call
+
+A model may declare what its tokens cost, in USD per 1000000 tokens: a Runpod model as
+`[models.<alias>.token_price]`, a hosted model of every kind as `[hosted.<alias>.token_price]`
+(keys `input` and `output`, required, `cache_read` and `cache_creation`, each a quoted decimal
+string), and a route of the routes document as its `price`, read as llm writes it (`currency`
+`USD`; `input`, `cached_input`, `cache_creation_input` and `output` become `input`,
+`cache_read`, `cache_creation` and `output`). A value llm's `Amount::parse` refuses, a negative
+one, a missing `input` or `output`, an unknown key and a route priced in another currency are
+refused `config:value` naming the key and quoting no value. `price_per_hour_usd` is a pod's price
+per hour and has nothing to do with it.
+
+The gateway does no arithmetic on money. The embedding gives a priced model a `CallPricing`
+(`RelayModel::with_pricing`); the binary's is the declared price as the one model of an llm
+`PriceBook` (crate `llm-cost`), and `PriceBook::quote` prices the call: each class's count at
+its rate, each line rounded up once to a nanodollar, the lines summed. The record's `cost_usd`
+is that total as llm writes an `Amount` (`0.00756`, `3`).
+
+The counters are read as llm counts them. On the messages wire `input_tokens` excludes the cache
+reads and writes; on chat and responses the prompt tokens include them, and the uncached input is
+what remains. A cache class the answer did not report counts no tokens.
+
+`cost_usd` is present only when all of these hold, and absent otherwise, never `0` and never an
+estimate:
+
+- the call was relayed and its answer ended as written: no refusal, no `upstream-failed`, no
+  terminal error after the head, no client that went away;
+- its model declares a price;
+- the answer reported its input and its output tokens;
+- every class with a count above 0 has a rate: cache reads reported against a price without
+  `cache_read` leave the call without a cost, while a count of 0 in a class without a rate costs
+  nothing;
+- the counters agree with each other (no more cache tokens than prompt tokens).
+
+The binary writes it as the `cost_usd` field of its `usage` event.
 
 ### Latency and outcomes per model
 

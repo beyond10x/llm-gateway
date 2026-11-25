@@ -1956,3 +1956,102 @@ fn start_on_request_without_a_daily_cap_in_a_built_deployment_lets_no_call_start
     );
     assert_eq!(runpod.spend_reads(), 0);
 }
+
+// --- adversary pass 2, story:a-call-starts-no-pod ----------------------------------------------
+
+/// [`deployment`] whose `small` sets the key under `runpod`'s daily cap of 10 USD
+/// ([`starts_on_request`]) and holds a call for no time, so the first ask answers at once.
+fn adv2_capped(fixture: &Fixture) -> Deployment {
+    deployment(fixture, |text| {
+        starts_on_request(&model_lines(&text, "request_hold_seconds = 0\n"))
+    })
+}
+
+/// One acquisition of `small` through the binary's own pod target source over `runpod`, each of
+/// `aliases` given the vLLM key; the refusal, if any.
+fn adv2_acquire(
+    deployment: &Deployment,
+    aliases: &[&str],
+    runpod: &EmulatedRunpod,
+) -> Option<llm_gateway::TargetRefusal> {
+    let pod = Pod::start(0, "{}");
+    let keys: std::collections::BTreeMap<String, Vec<u8>> = aliases
+        .iter()
+        .map(|alias| ((*alias).to_owned(), VLLM_KEY.as_bytes().to_vec()))
+        .collect();
+    let targets = llm_gateway_cli::pod_targets(
+        deployment,
+        &keys,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    llm_gateway::RelayTargets::acquire(targets.as_ref(), "small").err()
+}
+
+/// Correction decision 8: a request start needs the key and a daily cap on the model's *own*
+/// provider, at the place that decides the start. A library caller's deployment that moves the
+/// daily cap to another provider, with the key still on, gets no request start. Kills a mutant
+/// of `relayed_models` that reads the daily cap of any provider (the loader's test of the same
+/// rule cannot see a mutant confined to the relay).
+#[test]
+fn adv2_w02_a_built_deployment_with_the_daily_cap_on_another_provider_lets_no_call_start_a_pod() {
+    let fixture = Fixture::new("adv2-built-other-cap");
+    let mut deployment = adv2_capped(&fixture);
+    assert!(deployment.models["small"].start_on_request);
+    let mut other = deployment.providers["runpod"].clone();
+    deployment
+        .providers
+        .get_mut("runpod")
+        .unwrap()
+        .daily_cap_micro_usd = None;
+    other.daily_cap_micro_usd = Some(10_000_000);
+    deployment.providers.insert("other".to_owned(), other);
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
+    let refused = adv2_acquire(&deployment, &["small"], &runpod);
+    assert_eq!(
+        runpod.create_calls(),
+        0,
+        "a call started a pod under another provider's daily cap"
+    );
+    assert_eq!(refused, Some(llm_gateway::TargetRefusal::Stopped));
+    assert_eq!(runpod.spend_reads(), 0);
+}
+
+/// `may_start_on_request` lets a call start `small`'s pod because its provider `runpod` declares
+/// a daily cap (10 USD). Its doc comment: "so a call starts a billed pod only under a daily cap
+/// of the account that pays for it"; the story's Outcome: "A model call never starts a billed
+/// pod unless the deployment document says so and names a daily spend cap". The cap the pool
+/// then checks the start against is `spend_policy`'s: the first provider, in name order, that a
+/// model runs on and that declares any ceiling. A library caller's deployment (the loader admits
+/// a ceiling on one provider only) with a second provider `other`, named before `runpod`, with a
+/// total cap only and a model of its own: the pool binds `other`'s total cap, not `runpod`'s
+/// daily one, and a call starts `small`'s pod with 50 USD spent today against a 10 USD daily cap.
+#[test]
+fn adv2_w02_a_call_that_may_start_a_pod_is_checked_against_its_own_providers_daily_cap() {
+    let fixture = Fixture::new("adv2-built-unbound-cap");
+    let mut deployment = adv2_capped(&fixture);
+    let mut other = deployment.providers["runpod"].clone();
+    other.daily_cap_micro_usd = None;
+    other.total_cap_micro_usd = Some(1_000_000_000_000);
+    deployment.providers.insert("other".to_owned(), other);
+    let mut spare = deployment.models["small"].clone();
+    spare.provider = "other".to_owned();
+    spare.start_on_request = false;
+    deployment.models.insert("spare".to_owned(), spare);
+    let runpod = EmulatedRunpod::new();
+    runpod.set_account_spend(Some(llm_runpod::AccountSpend {
+        daily_micro_usd: 50_000_000,
+        total_micro_usd: 50_000_000,
+    }));
+    let refused = adv2_acquire(&deployment, &["small", "spare"], &runpod);
+    assert_eq!(
+        runpod.create_calls(),
+        0,
+        "a call started a pod with 50 USD spent today under its provider's 10 USD daily cap \
+         ({refused:?})"
+    );
+    assert_eq!(refused, Some(llm_gateway::TargetRefusal::SpendCeiling));
+}

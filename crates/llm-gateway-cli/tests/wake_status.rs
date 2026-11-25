@@ -837,3 +837,257 @@ fn route_status_the_launcher_starts_claude_without_a_probe_of_its_routes() {
         "the launch probed the endpoint; stderr: {stderr}"
     );
 }
+
+// --- An opening left running past the probe deadline (story:route-status-for-every-model,
+// correction 2) -------------------------------------------------------------------------------
+
+mod opening_left_running {
+    //! Adversarial pass 2 over story:route-status-for-every-model: the status probe's opening on its
+    //! own thread (`HostedTargets`, correction 1). An `https` opening goes through the connector, so
+    //! a connector of this file stands in for a TLS handshake that ends after the probe's deadline.
+    //! Every endpoint is a loopback listener on port 0; nothing leaves the loopback interface.
+
+    use llm_gateway::{
+        ModelPhase, ModelStatus, RelayStream, RelayTarget, RelayTargets, TargetRefusal,
+    };
+    use llm_gateway_cli::{
+        EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProbeBounds,
+    };
+    use std::{
+        collections::BTreeMap,
+        io::{self, Read, Write},
+        net::{SocketAddr, TcpListener, TcpStream},
+        sync::{
+            Arc, Mutex,
+            atomic::{AtomicUsize, Ordering},
+            mpsc,
+        },
+        thread,
+        time::{Duration, Instant},
+    };
+
+    const DEADLINE: Duration = Duration::from_millis(300);
+
+    /// What a loopback endpoint saw of one connection.
+    #[derive(Debug, PartialEq, Eq)]
+    enum Seen {
+        Accepted,
+        /// The gateway closed the connection without sending a request.
+        ClosedIdle,
+        /// A request head arrived and was answered.
+        Answered,
+    }
+
+    /// A loopback endpoint answering each request head with `answer`, reporting what it saw of
+    /// each connection on the returned channel.
+    fn endpoint(answer: &'static str) -> (SocketAddr, mpsc::Receiver<Seen>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let (sender, seen) = mpsc::channel();
+        thread::spawn(move || {
+            for connection in listener.incoming() {
+                let Ok(mut connection) = connection else {
+                    return;
+                };
+                let sender = sender.clone();
+                drop(sender.send(Seen::Accepted));
+                thread::spawn(move || {
+                    connection
+                        .set_read_timeout(Some(Duration::from_secs(20)))
+                        .unwrap();
+                    let mut head = Vec::new();
+                    let mut chunk = [0_u8; 1024];
+                    loop {
+                        match connection.read(&mut chunk) {
+                            Ok(0) => {
+                                if head.is_empty() {
+                                    drop(sender.send(Seen::ClosedIdle));
+                                }
+                                return;
+                            }
+                            Ok(read) => {
+                                head.extend_from_slice(&chunk[..read]);
+                                if head.windows(4).any(|window| window == b"\r\n\r\n") {
+                                    drop(connection.write_all(answer.as_bytes()));
+                                    drop(sender.send(Seen::Answered));
+                                    return;
+                                }
+                            }
+                            Err(_) => return,
+                        }
+                    }
+                });
+            }
+        });
+        (address, seen)
+    }
+
+    /// The connector of an `https` endpoint whose first probe opening does not end until the test
+    /// releases it, and then connects to `late`; every later opening connects to `fresh` at once.
+    struct SlowFirstOpening {
+        late: SocketAddr,
+        fresh: SocketAddr,
+        calls: AtomicUsize,
+        released: Mutex<mpsc::Receiver<()>>,
+    }
+
+    impl PodConnector for SlowFirstOpening {
+        fn connect(&self, _authority: &str) -> io::Result<Box<dyn RelayStream>> {
+            Err(io::Error::other("no relay connection in this test"))
+        }
+
+        fn connect_probe(
+            &self,
+            _authority: &str,
+            timeout: Duration,
+        ) -> io::Result<Box<dyn RelayStream>> {
+            let to = if self.calls.fetch_add(1, Ordering::SeqCst) == 0 {
+                // A handshake still running at the probe's deadline.
+                let _released = self.released.lock().unwrap().recv();
+                self.late
+            } else {
+                self.fresh
+            };
+            let stream = TcpStream::connect(to)?;
+            stream.set_read_timeout(Some(timeout))?;
+            stream.set_write_timeout(Some(timeout))?;
+            Ok(Box::new(stream))
+        }
+    }
+
+    struct Nothing;
+
+    impl RelayTargets for Nothing {
+        fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+            Err(TargetRefusal::Unavailable)
+        }
+
+        fn invalidate(&self, _alias: &str, _authority: &str) {}
+    }
+
+    fn targets(connector: Arc<SlowFirstOpening>) -> HostedTargets {
+        let mut endpoints = BTreeMap::new();
+        endpoints.insert(
+            "m".to_owned(),
+            HostedEndpoint::new("https://endpoint.invalid/v1", EndpointCredential::Anonymous)
+                .unwrap(),
+        );
+        HostedTargets::new(endpoints, connector, Arc::new(Nothing)).with_probe_bounds(ProbeBounds {
+            timeout: DEADLINE,
+            reuse: Duration::ZERO,
+        })
+    }
+
+    fn no_answer() -> ModelStatus {
+        ModelStatus {
+            phase: ModelPhase::Unreachable,
+            sub_phase: Some("no-answer".to_owned()),
+            profile: None,
+        }
+    }
+
+    fn status_503() -> ModelStatus {
+        ModelStatus {
+            phase: ModelPhase::Unreachable,
+            sub_phase: Some("status-503".to_owned()),
+            profile: None,
+        }
+    }
+
+    /// docs/gateway.md, "Bounds of the status probe": an opening left running at the deadline is
+    /// left to end on its own, and "once it has ended, what it found is dropped". An `https` opening
+    /// whose handshake ends after the deadline has opened a connection to the endpoint; once that
+    /// opening has ended, the connection is closed, not held open until some later status read.
+    #[test]
+    fn route_status_adv2_a_connection_an_opening_made_after_the_deadline_is_not_held_open() {
+        let (late, late_seen) = endpoint("HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n");
+        let (fresh, _fresh_seen) = endpoint("HTTP/1.1 503 Busy\r\ncontent-length: 0\r\n\r\n");
+        let (release, released) = mpsc::channel();
+        let connector = Arc::new(SlowFirstOpening {
+            late,
+            fresh,
+            calls: AtomicUsize::new(0),
+            released: Mutex::new(released),
+        });
+        let targets = targets(Arc::clone(&connector));
+        assert_eq!(targets.status("m"), Some(no_answer()));
+        release.send(()).unwrap();
+        assert_eq!(
+            late_seen.recv_timeout(Duration::from_secs(5)),
+            Ok(Seen::Accepted),
+            "the opening left running never connected"
+        );
+        // The opening has ended: it connected and handed its connection over. Nothing reads it.
+        let after = late_seen.recv_timeout(Duration::from_secs(2));
+        assert_eq!(
+            after,
+            Ok(Seen::ClosedIdle),
+            "the connection opened after the deadline is still held open 2 s after its opening ended"
+        );
+        drop(targets);
+    }
+
+    /// docs/gateway.md, "Bounds of the status probe": once an opening left running has ended, what
+    /// it found is dropped and the next probe opens afresh. The next status read answers from a
+    /// fresh connection (503 here), never from the late one (whose endpoint would answer 200).
+    #[test]
+    fn route_status_adv2_the_next_probe_never_uses_a_late_opening() {
+        let (late, late_seen) = endpoint("HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n");
+        let (fresh, fresh_seen) = endpoint("HTTP/1.1 503 Busy\r\ncontent-length: 0\r\n\r\n");
+        let (release, released) = mpsc::channel();
+        let connector = Arc::new(SlowFirstOpening {
+            late,
+            fresh,
+            calls: AtomicUsize::new(0),
+            released: Mutex::new(released),
+        });
+        let targets = targets(Arc::clone(&connector));
+        assert_eq!(targets.status("m"), Some(no_answer()));
+        release.send(()).unwrap();
+        assert_eq!(
+            late_seen.recv_timeout(Duration::from_secs(5)),
+            Ok(Seen::Accepted)
+        );
+        assert_eq!(targets.status("m"), Some(status_503()));
+        assert_eq!(connector.calls.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            fresh_seen.recv_timeout(Duration::from_secs(1)),
+            Ok(Seen::Accepted)
+        );
+        assert_eq!(
+            late_seen.recv_timeout(Duration::from_secs(1)),
+            Ok(Seen::ClosedIdle),
+            "the late connection was sent the request"
+        );
+        drop(targets);
+    }
+
+    /// docs/gateway.md, "Bounds of the status probe": an `https` opening that does not end is
+    /// `no-answer` at the deadline, and while it runs the next read starts no second one and is
+    /// `no-answer` at its own deadline.
+    #[test]
+    fn route_status_adv2_an_https_opening_that_never_ends_is_no_answer_at_each_deadline() {
+        let (late, _late_seen) = endpoint("HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n");
+        let (release, released) = mpsc::channel::<()>();
+        let connector = Arc::new(SlowFirstOpening {
+            late,
+            fresh: late,
+            calls: AtomicUsize::new(0),
+            released: Mutex::new(released),
+        });
+        let targets = targets(Arc::clone(&connector));
+        for read in 0..2 {
+            let started = Instant::now();
+            assert_eq!(targets.status("m"), Some(no_answer()), "{read}");
+            let took = started.elapsed();
+            assert!(took >= DEADLINE, "read {read} took {took:?}");
+            assert!(
+                took < DEADLINE + Duration::from_millis(500),
+                "read {read} took {took:?}"
+            );
+        }
+        assert_eq!(connector.calls.load(Ordering::SeqCst), 1);
+        drop(release);
+        drop(targets);
+    }
+}

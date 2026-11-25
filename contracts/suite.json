@@ -89,9 +89,11 @@
       "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route",
       "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure",
       "llm-gateway.gateway/authored/ollama-a-call-to-a-model-not-pulled-is-refused-503-naming-its-alias-and-nothing-is-pulled",
+      "llm-gateway.gateway/authored/ollama-a-model-prefix-on-an-ollama-model-composes-nothing",
       "llm-gateway.gateway/authored/ollama-a-wire-the-model-does-not-declare-is-translated-onto-a-declared-one",
       "llm-gateway.gateway/authored/ollama-each-declared-wire-is-relayed-to-the-servers-own-path-and-its-tokens-reach-the-usage-record",
       "llm-gateway.gateway/authored/ollama-status-is-read-from-tags-then-ps-and-names-a-model-ready-not-loaded-not-pulled-or-without-answer",
+      "llm-gateway.gateway/authored/ollama-the-same-table-without-a-model-prefix-composes",
       "llm-gateway.gateway/authored/owner-material-that-is-empty-or-not-printable-is-refused",
       "llm-gateway.gateway/authored/owner-material-with-a-space-is-refused",
       "llm-gateway.gateway/authored/r1-a-model-without-the-clients-wire-or-tool-calling-gets-no-profile",
@@ -758,6 +760,11 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/ollama-a-call-to-a-model-not-pulled-is-refused-503-naming-its-alias-and-nothing-is-pulled"
       },
+      "gateway/scenarios/ollama-a-model-prefix-on-an-ollama-model-composes-nothing.yaml": {
+        "digest": "sha256:66f968d1285d5d4872626f04b6565b83d7d23035cfb73b9de3b27d43eafab2e7",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/ollama-a-model-prefix-on-an-ollama-model-composes-nothing"
+      },
       "gateway/scenarios/ollama-a-wire-the-model-does-not-declare-is-translated-onto-a-declared-one.yaml": {
         "digest": "sha256:5bfd85c886283649fe46925e5724eb34c9752724f47fab4fce813f5652adec62",
         "disposition": "accepted",
@@ -772,6 +779,11 @@
         "digest": "sha256:da843d2145f7ebfe2b5d1adb677a729d272498fa68cac746eb94ae1799d87f3f",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/ollama-status-is-read-from-tags-then-ps-and-names-a-model-ready-not-loaded-not-pulled-or-without-answer"
+      },
+      "gateway/scenarios/ollama-the-same-table-without-a-model-prefix-composes.yaml": {
+        "digest": "sha256:1d9348eebde54337dca4fd49704e7a59bb5849a5a249b753a12b928877efe0d9",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/ollama-the-same-table-without-a-model-prefix-composes"
       },
       "gateway/scenarios/owner-material-that-is-empty-or-not-printable-is-refused.yaml": {
         "digest": "sha256:35a641a821cc9f90f4d7bd860026630b13aabdec7c817d8cf1d96b6f517fa51f",
@@ -1895,7 +1907,7 @@
       }
     },
     "counts": {
-      "authored": 315,
+      "authored": 317,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -11310,6 +11322,98 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/ollama-a-model-prefix-on-an-ollama-model-composes-nothing": {
+      "purpose": "the binary refuses model_prefix on a kind = \"ollama\" table as config:value, since its status is read for upstream_model alone, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.local]\\nkind = \\\"ollama\\\"\\nbase_url = \\\"http://10.0.0.7:8000\\\"\\nupstream_model = \\\"qwen2.5:1.5b\\\"\\nmodel_prefix = \\\"llama3\\\"\\n\",\"withheld\":[\"10.0.0.7\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "secret_on_wire": {
+                "kind": "literal",
+                "value": null
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              },
+              "withheld_on_wire": {
+                "kind": "literal",
+                "value": null
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/ollama-a-wire-the-model-does-not-declare-is-translated-onto-a-declared-one": {
       "purpose": "a model declaring only chat is served on messages translated onto the server chat path after the same status read",
       "source": [
@@ -11723,6 +11827,92 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/ollama-the-same-table-without-a-model-prefix-composes": {
+      "purpose": "the binary composes the kind = \"ollama\" table of the model_prefix refusal once model_prefix is left out, so that refusal is the key's alone",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/credentials/owner\\\"\\n\\n[hosted.local]\\nkind = \\\"ollama\\\"\\nbase_url = \\\"http://10.0.0.7:8000\\\"\\nupstream_model = \\\"qwen2.5:1.5b\\\"\\n\",\"withheld\":[\"10.0.0.7\"],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
         }
       ]
     },

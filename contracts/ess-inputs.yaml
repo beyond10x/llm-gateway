@@ -311,6 +311,8 @@ scenarios:
 - gateway/scenarios/ollama-a-call-to-a-model-not-pulled-is-refused-503-naming-its-alias-and-nothing-is-pulled.yaml
 - gateway/scenarios/ollama-each-declared-wire-is-relayed-to-the-servers-own-path-and-its-tokens-reach-the-usage-record.yaml
 - gateway/scenarios/ollama-a-wire-the-model-does-not-declare-is-translated-onto-a-declared-one.yaml
+- gateway/scenarios/ollama-a-model-prefix-on-an-ollama-model-composes-nothing.yaml
+- gateway/scenarios/ollama-the-same-table-without-a-model-prefix-composes.yaml
 - runpod/scenarios/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready.yaml
 - runpod/scenarios/a-wake-over-the-daily-ceiling-is-refused-before-any-create.yaml
 - runpod/scenarios/a-wake-without-capacity-starts-the-model-on-its-next-profile.yaml

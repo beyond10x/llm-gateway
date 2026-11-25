@@ -45,6 +45,9 @@
       "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing",
       "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-anthropic-beta-composes-nothing",
       "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id",
+      "llm-gateway.gateway/authored/calls-an-id-the-gateway-does-not-hold-is-call-unknown",
+      "llm-gateway.gateway/authored/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id",
+      "llm-gateway.gateway/authored/calls-the-owner-reads-an-ended-calls-record-by-its-id",
       "llm-gateway.gateway/authored/clamp-a-count-that-fails-relays-the-request-unchanged",
       "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted",
       "llm-gateway.gateway/authored/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged",
@@ -519,6 +522,21 @@
         "digest": "sha256:788beeb53e9cfa1592c2249dc5afc365f4307541b6f3792ec37afd01d8daa5b5",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id"
+      },
+      "gateway/scenarios/calls-an-id-the-gateway-does-not-hold-is-call-unknown.yaml": {
+        "digest": "sha256:ab4d3e3c01ba76e4348e1f583dd76a9e1061b82ccc6b2d5c167e2e5b93dbf1fe",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/calls-an-id-the-gateway-does-not-hold-is-call-unknown"
+      },
+      "gateway/scenarios/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id.yaml": {
+        "digest": "sha256:b5e36a848d61928e53973dfa7ed439b143e0f276e28f745a232765ee41dc1fa4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id"
+      },
+      "gateway/scenarios/calls-the-owner-reads-an-ended-calls-record-by-its-id.yaml": {
+        "digest": "sha256:ce194b944d988362023e0881bf6109777d0444a2d3939af0b4de8cfdf870b609",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/calls-the-owner-reads-an-ended-calls-record-by-its-id"
       },
       "gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml": {
         "digest": "sha256:953c6cd8092373e7d84ca5431f057b84b5dfa07be47e89495719baef007a045d",
@@ -1907,7 +1925,7 @@
       }
     },
     "counts": {
-      "authored": 317,
+      "authored": 320,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -2022,9 +2040,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "d43f2caffd4c4b41abeb9a9e5488f801fc5d71c2d64003d2c3e91094a3719790",
+    "contract_digest": "f42ebdd196d9042686d28ae67369fde71655a4e40badf1c08c63dd541e645377",
     "scenario_initial_state": "empty",
-    "spec_digest": "3a93be29e547c0c83852d02a3be5ada2895834be3852ab9d65ceb7f8295dde0c",
+    "spec_digest": "72765dfa5aebede3f567884c223580edfa8107f9619a7eeebb29a89c8e23de30",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -5972,6 +5990,381 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/calls-an-id-the-gateway-does-not-hold-is-call-unknown": {
+      "purpose": "an id of another form, an id never given out, an empty id and an id an earlier gateway gave out are each call-unknown with one answer that does not say which",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>x\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/a.b\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>/more\",\"body\":\"\",\"call_from\":1},{\"step\":\"restart\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"chat-1\"}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}"
+                ]
+              },
+              "calls": {
+                "kind": "literal",
+                "value": [
+                  "new",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=small wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=15 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "404 call-unknown",
+                  "404 call-unknown",
+                  "404 call-unknown",
+                  "404 call-unknown",
+                  "ok",
+                  "ok",
+                  "404 call-unknown"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id": {
+      "purpose": "a relayed answer, a refusal and a wrong method on a wire path each carry one new call id, also after a restart, while a request that fails authentication and an answer off the wire paths carry none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\",\"responses\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-2\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"other\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/responses\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer not-the-owner-0123456789abcdef0123456789\"]},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"\"},{\"step\":\"restart\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "calls": {
+                "kind": "literal",
+                "value": [
+                  "new",
+                  "new",
+                  "new",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "new"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "404 model-unknown",
+                  "405 method-not-allowed",
+                  "401 credential-absent",
+                  "401 credential-rejected",
+                  "200 answered",
+                  "ok",
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-small\",\"messages\":[]}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-small\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/calls-the-owner-reads-an-ended-calls-record-by-its-id": {
+      "purpose": "the owner reads a relayed call's and a refused call's record by the id their answers carried, keys in the published order and an absent value absent, with GET and HEAD only, and nobody else reads it",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\",\"responses\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\",\\\"usage\\\":{\\\"prompt_tokens\\\":11,\\\"completion_tokens\\\":7,\\\"prompt_tokens_details\\\":{\\\"cached_tokens\\\":3}}}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"HEAD\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1,\"credential\":false},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"{}\",\"call_from\":1},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"other\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":7}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"chat-1\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"prompt_tokens_details\":{\"cached_tokens\":3}}}",
+                  "{\"format\":\"llm-gateway.call/1\",\"id\":\"<call>\",\"state\":\"ended\",\"model\":\"small\",\"wire\":\"chat\",\"disposition\":\"relayed\",\"outcome\":\"ok\",\"status\":200,\"target_status\":200,\"input_tokens\":11,\"output_tokens\":7,\"cache_read_tokens\":3,\"response_bytes\":110,\"duration_ms\":\"<bounded>\"}",
+                  "",
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "{\"error\":{\"code\":\"method-not-allowed\",\"message\":\"this path does not accept that method\"}}",
+                  "{\"error\":{\"code\":\"body-not-allowed\",\"message\":\"the inspection surface accepts no request body\"}}",
+                  "{\"error\":{\"code\":\"model-unknown\",\"message\":\"no such model\"}}",
+                  "{\"format\":\"llm-gateway.call/1\",\"id\":\"<call>\",\"state\":\"ended\",\"wire\":\"chat\",\"disposition\":\"refused\",\"outcome\":\"refused\",\"refusal\":\"model-unknown\",\"status\":404,\"response_bytes\":0,\"duration_ms\":\"<bounded>\"}"
+                ]
+              },
+              "calls": {
+                "kind": "literal",
+                "value": [
+                  "new",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "new",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=GET, HEAD",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 answered",
+                  "200 answered",
+                  "401 credential-absent",
+                  "405 method-not-allowed",
+                  "400 body-not-allowed",
+                  "404 model-unknown",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-small\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },

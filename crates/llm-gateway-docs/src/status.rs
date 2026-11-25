@@ -440,7 +440,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Observability",
         "One usage record per authenticated wire request",
-        "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
+        "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info, naming the call's id.",
         "crates/llm-gateway/tests/observability.rs::o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record",
         Some("/docs/guides/scrape-the-counters"),
     ),
@@ -477,6 +477,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "Token counts in usage records",
         "Each usage record carries the input, output, cache read and cache creation tokens the answer reported, read from a decoded copy when it is content-encoded; a count it did not report stays absent.",
         "crates/llm-gateway-cli/tests/passthrough_encoded.rs::a_gzip_streamed_answer_reaches_the_client_unchanged_and_its_tokens_are_recorded",
+        None,
+    ),
+    shipped(
+        "Observability",
+        "Call ids and call records",
+        "Every answer to an authenticated model call carries x-llm-gateway-call with the call's id, and the owner reads that call's record, in flight or ended, at GET /v1/calls/<id>: its outcome, statuses, token counts, bytes and duration, an absent value left out. The gateway holds the last 1024 ended calls.",
+        "crates/llm-gateway/tests/observability/calls.rs::a2_the_owner_reads_an_ended_calls_record_by_its_id_with_its_keys_in_order",
         None,
     ),
     shipped(

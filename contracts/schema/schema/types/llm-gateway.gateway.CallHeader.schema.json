@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.CallHeader",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:734601543804b448be4213d5b3478548060a43f11dfb555ab510fb63253b8b96",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.CallHeader": {
+      "title": "CallHeader",
+      "x-ess-name": "llm-gateway.gateway.CallHeader",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Call"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "name",
+          "type": "String",
+          "values": {
+            "Call": "x-llm-gateway-call"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "alphabet",
+          "type": "String",
+          "values": {
+            "Call": "A-Z a-z 0-9 -"
+          }
+        },
+        {
+          "kind": "integer",
+          "name": "max_length",
+          "type": "Integer",
+          "values": {
+            "Call": 64
+          }
+        }
+      ]
+    }
+  }
+}

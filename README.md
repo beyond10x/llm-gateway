@@ -219,7 +219,10 @@ argument is refused with exit status 2.
 
 `RUST_LOG` sets the level of the structured log events the process writes to standard error
 beside the lines below (default `info`). At the default level those events are one `usage` event
-per authenticated model call; `RUST_LOG=warn` leaves only the lines below.
+per authenticated model call, whose field `call` is the id its answer carried in
+`x-llm-gateway-call`; `GET /v1/calls/<id>` with the owner secret reads that call's record
+([`docs/gateway.md`](docs/gateway.md#call-ids-and-call-records)). `RUST_LOG=warn` leaves only the
+lines below.
 
 | Event | Line on standard error | Exit status |
 | --- | --- | --- |

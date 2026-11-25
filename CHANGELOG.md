@@ -12,6 +12,8 @@ Nothing in any release is deployed or qualified against a live client.
 - Breaking: a model call no longer starts a Runpod pod. A call to a model whose pod is stopped or stopping is refused at once with the new `model-stopped` (503, no `retry-after`, outcome `refused`): no pod is created and no spend is read. Only the owner's wake (`POST /v1/models/{alias}/wake`) starts the pod; a call after the wake is held on the starting pod and relayed once it serves, or `model-cold-start` when its hold passes, as before, and a pod that fails while a call is held starts no replacement. To restore the old behaviour for a model, set `start_on_request = true` in its `[models.<alias>]` table, `daily_cap_usd` on its provider, and `price_per_hour_usd` on every model the document declares under `[models]` (a declared cap requires it of each).
 - The `upstream-failed` message is now "the model target could not be reached or failed": it no longer says the next request asks for a replacement, which is not so for a model without `start_on_request`.
 - The status of a hosted model and of a route of the routes document is a probe of its endpoint (`GET <base path>/models` with its credential), sent only when a status is read, at most one per model at a time, within 5 s, its name lookup included, its result reused for 10 s: `ready` on a 2xx answer (and on 401 or 403 for a `client` endpoint, probed without a credential), otherwise `unreachable`. It was `path-unknown`. Wake stays `path-unknown` for both, and a Bedrock model's status stays `path-unknown`.
+- Breaking for library callers: `UsageRecord` has a new field `call`, the call's id; code that builds a `UsageRecord` with a struct literal must set it.
+- The binary's `usage` event names the call in its field `call`, and carries the token counters the record has as `input_tokens`, `output_tokens`, `cache_read_tokens` and `cache_creation_tokens`; a counter the record does not carry is no field.
 
 ### Added
 
@@ -20,6 +22,9 @@ Nothing in any release is deployed or qualified against a live client.
 - `ModelKind` and `RelayModel::with_kind`; `RelayModel::with_no_call_start`, which declares that a call does not start the model's target, so the status list calls it not callable while `stopped` (an undeclared model keeps `stopped` callable); `ProbeBounds`, `Resolver` and `HostedTargets::with_probe_bounds`/`with_probe_clock`/`with_resolver`.
 - `[models.<alias>] start_on_request` (`true` or `false`, default `false`): `true` lets a call start the model's pod as before. It is refused at start as `config:value`, naming the model and the missing cap, while the model's provider declares no `daily_cap_usd`.
 - The refusal code `model-stopped` (503): the model's pod is not running and a request does not start it; the owner wakes it.
+- Every answer to a model call that passed authentication, or needed none, carries `x-llm-gateway-call: <id>`: a relayed answer, a translated one, a passthrough answer and a refusal. An id is 1 to 64 characters of `A-Z a-z 0-9 -` and does not repeat after a restart. A shed request and one that fails authentication get none.
+- `GET /v1/calls/{id}` (the credential `GET /v1/launch` takes; `HEAD` too): the call's record, format `llm-gateway.call/1`, `in-flight` while its answer is written and `ended` with the usage record's values after its last byte. A value the usage record does not carry is an absent key. The gateway holds every call in flight and the last 1024 ended calls (bound `ended-calls-held`).
+- The refusal code `call-unknown` (404): the gateway holds no call with that id, whether it is of another form, never given out or no longer held.
 
 ## 0.24.0 (2026-11-21)
 

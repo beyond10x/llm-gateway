@@ -1,0 +1,305 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CallRecord",
+  "x-ess-name": "llm-gateway.telemetry.CallRecord",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "id": {
+      "type": "string"
+    },
+    "call_state": {
+      "$ref": "#/$defs/llm-gateway.telemetry.CallState"
+    },
+    "model": {
+      "type": "string"
+    },
+    "wire": {
+      "$ref": "#/$defs/llm-gateway.gateway.Wire"
+    },
+    "disposition": {
+      "$ref": "#/$defs/llm-gateway.telemetry.Disposition"
+    },
+    "outcome": {
+      "$ref": "#/$defs/llm-gateway.telemetry.Outcome"
+    },
+    "refusal": {
+      "$ref": "#/$defs/llm-gateway.gateway.Refusal"
+    },
+    "status": {
+      "type": "integer"
+    },
+    "target_status": {
+      "type": "integer"
+    },
+    "input_tokens": {
+      "type": "integer"
+    },
+    "output_tokens": {
+      "type": "integer"
+    },
+    "cache_read_tokens": {
+      "type": "integer"
+    },
+    "cache_creation_tokens": {
+      "type": "integer"
+    },
+    "response_bytes": {
+      "type": "integer"
+    },
+    "duration_ms": {
+      "type": "integer"
+    },
+    "profile": {
+      "type": "string"
+    },
+    "principal": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.telemetry.CallRecord.State"
+    }
+  },
+  "required": [
+    "id",
+    "call_state",
+    "wire",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:919e956774fd0404b2f132f0df258a3e781756ee55c9ecfe6ff570c1a4572066",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.Refusal": {
+      "title": "Refusal",
+      "x-ess-name": "llm-gateway.gateway.Refusal",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "BodyIncomplete",
+        "BodyNotAllowed",
+        "BodyNotJson",
+        "BodyTooLarge",
+        "CallUnknown",
+        "ContextExceeded",
+        "CredentialAbsent",
+        "CredentialMalformed",
+        "CredentialRejected",
+        "CredentialReviewUnavailable",
+        "MethodNotAllowed",
+        "ModelAbsent",
+        "ModelColdStart",
+        "ModelStopped",
+        "ModelUnknown",
+        "Overloaded",
+        "PathUnknown",
+        "RequestMalformed",
+        "RequestTooLarge",
+        "RouteUnknown",
+        "SpendCeiling",
+        "TargetUnavailable",
+        "ToolsNotServed",
+        "ServerToolNotServed",
+        "TranslationInvalid",
+        "TranslationOpaqueState",
+        "TranslationTooLarge",
+        "TranslationUnrepresentable",
+        "TranslationUnsupported",
+        "Unavailable",
+        "UpstreamFailed",
+        "UpstreamRefused",
+        "WireNotServed"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "BodyIncomplete": "body-incomplete",
+            "BodyNotAllowed": "body-not-allowed",
+            "BodyNotJson": "body-not-json",
+            "BodyTooLarge": "body-too-large",
+            "CallUnknown": "call-unknown",
+            "ContextExceeded": "context-exceeded",
+            "CredentialAbsent": "credential-absent",
+            "CredentialMalformed": "credential-malformed",
+            "CredentialRejected": "credential-rejected",
+            "CredentialReviewUnavailable": "credential-review-unavailable",
+            "MethodNotAllowed": "method-not-allowed",
+            "ModelAbsent": "model-absent",
+            "ModelColdStart": "model-cold-start",
+            "ModelStopped": "model-stopped",
+            "ModelUnknown": "model-unknown",
+            "Overloaded": "overloaded",
+            "PathUnknown": "path-unknown",
+            "RequestMalformed": "request-malformed",
+            "RequestTooLarge": "request-too-large",
+            "RouteUnknown": "route-unknown",
+            "ServerToolNotServed": "server-tool-not-served",
+            "SpendCeiling": "spend-ceiling",
+            "TargetUnavailable": "target-unavailable",
+            "ToolsNotServed": "tools-not-served",
+            "TranslationInvalid": "translation-invalid",
+            "TranslationOpaqueState": "translation-opaque-state",
+            "TranslationTooLarge": "translation-too-large",
+            "TranslationUnrepresentable": "translation-unrepresentable",
+            "TranslationUnsupported": "translation-unsupported",
+            "Unavailable": "unavailable",
+            "UpstreamFailed": "upstream-failed",
+            "UpstreamRefused": "upstream-refused",
+            "WireNotServed": "wire-not-served"
+          }
+        },
+        {
+          "kind": "integer",
+          "name": "status",
+          "type": "Integer",
+          "values": {
+            "BodyIncomplete": 400,
+            "BodyNotAllowed": 400,
+            "BodyNotJson": 400,
+            "BodyTooLarge": 413,
+            "CallUnknown": 404,
+            "ContextExceeded": 400,
+            "CredentialAbsent": 401,
+            "CredentialMalformed": 401,
+            "CredentialRejected": 401,
+            "CredentialReviewUnavailable": 503,
+            "MethodNotAllowed": 405,
+            "ModelAbsent": 400,
+            "ModelColdStart": 503,
+            "ModelStopped": 503,
+            "ModelUnknown": 404,
+            "Overloaded": 503,
+            "PathUnknown": 404,
+            "RequestMalformed": 400,
+            "RequestTooLarge": 431,
+            "RouteUnknown": 404,
+            "ServerToolNotServed": 400,
+            "SpendCeiling": 503,
+            "TargetUnavailable": 503,
+            "ToolsNotServed": 400,
+            "TranslationInvalid": 400,
+            "TranslationOpaqueState": 400,
+            "TranslationTooLarge": 502,
+            "TranslationUnrepresentable": 502,
+            "TranslationUnsupported": 400,
+            "Unavailable": 503,
+            "UpstreamFailed": 502,
+            "UpstreamRefused": 502,
+            "WireNotServed": 400
+          }
+        },
+        {
+          "kind": "string",
+          "name": "message",
+          "type": "String",
+          "values": {
+            "BodyIncomplete": "the request body ended or stalled before it was complete",
+            "BodyNotAllowed": "the inspection surface accepts no request body",
+            "BodyNotJson": "the request body is not one JSON object",
+            "BodyTooLarge": "the request body exceeds its byte bound",
+            "CallUnknown": "the gateway holds no call with that id",
+            "ContextExceeded": "prompt is too long: the input leaves no room for output in the model context window",
+            "CredentialAbsent": "no owner credential was presented",
+            "CredentialMalformed": "the owner credential is not a bearer token",
+            "CredentialRejected": "the presented owner credential was rejected",
+            "CredentialReviewUnavailable": "the presented credential could not be reviewed; ask again",
+            "MethodNotAllowed": "this path does not accept that method",
+            "ModelAbsent": "the request body names no model",
+            "ModelColdStart": "the model is still starting; ask again after the retry-after delay",
+            "ModelStopped": "the model's pod is not running and a request does not start it; the owner wakes it",
+            "ModelUnknown": "no such model",
+            "Overloaded": "the gateway is already serving its maximum concurrent requests",
+            "PathUnknown": "no such gateway resource",
+            "RequestMalformed": "the request is not well-formed HTTP",
+            "RequestTooLarge": "the request head exceeds its byte bound",
+            "RouteUnknown": "no such route alias",
+            "ServerToolNotServed": "this route is not Anthropic's: it serves no Anthropic server tool (web search, web fetch, code execution) and no tool without input_schema; send such a request to a claude model",
+            "SpendCeiling": "the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown",
+            "TargetUnavailable": "no model target is available",
+            "ToolsNotServed": "the model does not serve tool calls",
+            "TranslationInvalid": "the request breaks a rule of the subset the gateway translates",
+            "TranslationOpaqueState": "the request carries reasoning state the gateway did not seal for this route",
+            "TranslationTooLarge": "the model's answer passed a bound of the translated path, published in the gateway contract",
+            "TranslationUnrepresentable": "the model's answer cannot be written on this wire",
+            "TranslationUnsupported": "the request uses a field or value outside the subset the gateway translates",
+            "Unavailable": "the gateway is not ready to serve inspection",
+            "UpstreamFailed": "the model target could not be reached or failed",
+            "UpstreamRefused": "the model target refused the translated request",
+            "WireNotServed": "the model is not served on this wire"
+          }
+        }
+      ]
+    },
+    "llm-gateway.gateway.Wire": {
+      "title": "Wire",
+      "x-ess-name": "llm-gateway.gateway.Wire",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Chat",
+        "Responses",
+        "Messages"
+      ]
+    },
+    "llm-gateway.telemetry.CallRecord.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.telemetry.CallRecord.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    },
+    "llm-gateway.telemetry.CallState": {
+      "title": "CallState",
+      "x-ess-name": "llm-gateway.telemetry.CallState",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "InFlight",
+        "Ended"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "label",
+          "type": "String",
+          "values": {
+            "Ended": "ended",
+            "InFlight": "in-flight"
+          }
+        }
+      ]
+    },
+    "llm-gateway.telemetry.Disposition": {
+      "title": "Disposition",
+      "x-ess-name": "llm-gateway.telemetry.Disposition",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Relayed",
+        "Refused",
+        "UpstreamFailed"
+      ]
+    },
+    "llm-gateway.telemetry.Outcome": {
+      "title": "Outcome",
+      "x-ess-name": "llm-gateway.telemetry.Outcome",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Ok",
+        "UpstreamError",
+        "Timeout",
+        "Refused"
+      ]
+    }
+  }
+}

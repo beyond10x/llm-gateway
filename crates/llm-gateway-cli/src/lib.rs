@@ -44,7 +44,7 @@ pub use decode::Decoder;
 pub use hosted::{
     BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
     HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, ProbeBounds, ProbeClock,
-    Scheme, check_headers,
+    Resolver, Scheme, check_headers,
 };
 pub use keychain::{
     EntryValue, KEYCHAIN_PREFIX, KeychainRef, LookupFailure, MAX_KEYCHAIN_NAME_BYTES, OsKeychain,

@@ -12,8 +12,8 @@ use llm_gateway::{
     RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetRefusal, Wire,
 };
 use llm_gateway_cli::{
-    Deployment, EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProbeBounds, load,
-    start_relaying,
+    Deployment, EndpointCredential, HostedEndpoint, HostedTargets, PodConnector, ProbeBounds,
+    Resolver, load, start_relaying,
 };
 use llm_runpod::{AccountSpend, EmulatedRunpod, ManualClock};
 use std::{
@@ -528,4 +528,302 @@ fn route_status_three_endpoints_that_never_answer_are_listed_within_one_deadline
         took < deadline + Duration::from_secs(1),
         "three silent endpoints took {took:?}"
     );
+}
+
+/// A resolver whose lookup never returns, counting its calls.
+fn stuck_resolver(calls: &Arc<AtomicUsize>) -> Resolver {
+    let calls = Arc::clone(calls);
+    Arc::new(move |_host: &str, _port: u16| {
+        calls.fetch_add(1, Ordering::SeqCst);
+        loop {
+            thread::park();
+        }
+    })
+}
+
+/// The name lookup is inside the probe's deadline: a model whose lookup never returns is
+/// `unreachable` `no-answer` at the deadline, and the list with it beside a silent endpoint keeps
+/// its bound of one deadline and a second. A second list read starts no second lookup.
+#[test]
+fn route_status_a_lookup_that_never_returns_is_no_answer_and_the_list_keeps_its_bound() {
+    let deadline = Duration::from_secs(1);
+    let calls = Arc::new(AtomicUsize::new(0));
+    let mut endpoints = BTreeMap::new();
+    let mut models = Vec::new();
+    for (alias, address) in [
+        ("lost", "127.0.0.1:9".to_owned()),
+        ("silent", silent_endpoint().to_string()),
+    ] {
+        endpoints.insert(
+            alias.to_owned(),
+            HostedEndpoint::new(
+                &format!("http://{address}/v1"),
+                EndpointCredential::Anonymous,
+            )
+            .unwrap(),
+        );
+        models.push(
+            RelayModel::new(
+                Label::new(alias).unwrap(),
+                Label::new(alias).unwrap(),
+                vec![Wire::Chat],
+            )
+            .unwrap()
+            .with_kind(ModelKind::Hosted),
+        );
+    }
+    let targets = HostedTargets::new(
+        endpoints,
+        Arc::new(Loopback(silent_endpoint())),
+        Arc::new(Nothing),
+    )
+    .with_probe_bounds(ProbeBounds {
+        timeout: deadline,
+        reuse: Duration::ZERO,
+    })
+    .with_resolver(stuck_resolver(&calls));
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER_SECRET.as_bytes().to_vec()).unwrap())
+            .unwrap(),
+    );
+    let handle = Gateway::bind_with_relay(
+        GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+        Relay::new(models, Arc::new(targets)).unwrap(),
+    )
+    .unwrap();
+    handle.mark_ready();
+    let mut took = Vec::new();
+    let mut lists = Vec::new();
+    for _ in 0..2 {
+        let started = Instant::now();
+        lists.push(send(handle.local_addr(), "GET", "/v1/status", ""));
+        took.push(started.elapsed());
+    }
+    handle.shutdown();
+    let entry = |alias: &str| {
+        format!(
+            "{{\"model\":\"{alias}\",\"kind\":\"hosted\",\"wires\":[\"chat\"],\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\",\"callable\":false}}"
+        )
+    };
+    for (list, took) in lists.iter().zip(&took) {
+        assert!(list.starts_with("HTTP/1.1 200 "), "{list}");
+        assert_eq!(
+            body(list),
+            format!(
+                "{{\"format\":\"llm-gateway.status/1\",\"models\":[{},{}]}}",
+                entry("lost"),
+                entry("silent")
+            )
+        );
+        assert!(
+            *took < deadline + Duration::from_secs(1),
+            "a lookup that never returns held the list {took:?}"
+        );
+    }
+    assert_eq!(
+        calls.load(Ordering::SeqCst),
+        1,
+        "a second lookup started while the first still ran"
+    );
+}
+
+// --- The launch route asks no endpoint (story:route-status-for-every-model, correction 1) -----
+
+const LISTENING: &str = "b10x-llm-gateway: listening on ";
+const STARTUP: Duration = Duration::from_secs(20);
+
+/// A loopback endpoint that accepts every connection, counts it, holds it open and never
+/// answers.
+struct Silent {
+    address: SocketAddr,
+    accepted: Arc<AtomicUsize>,
+}
+
+impl Silent {
+    fn start() -> Self {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let accepted = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&accepted);
+        thread::spawn(move || {
+            let mut held = Vec::new();
+            for connection in listener.incoming() {
+                let Ok(connection) = connection else { return };
+                counted.fetch_add(1, Ordering::SeqCst);
+                held.push(connection);
+            }
+        });
+        Self { address, accepted }
+    }
+
+    fn accepted(&self) -> usize {
+        self.accepted.load(Ordering::SeqCst)
+    }
+}
+
+fn launch_directory(name: &str) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let dir = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!("launch-{name}"));
+    drop(std::fs::remove_dir_all(&dir));
+    std::fs::create_dir_all(dir.join("out")).unwrap();
+    std::fs::create_dir_all(dir.join("runtime")).unwrap();
+    for path in [dir.clone(), dir.join("runtime")] {
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o700)).unwrap();
+    }
+    dir
+}
+
+/// An open loopback deployment listening on `listen`, serving the hosted model `qwen` (the
+/// launcher's default implementer route) from `endpoint`.
+fn launch_config(
+    dir: &std::path::Path,
+    name: &str,
+    listen: &str,
+    endpoint: SocketAddr,
+) -> std::path::PathBuf {
+    use std::os::unix::fs::PermissionsExt as _;
+    let path = dir.join(name);
+    std::fs::write(
+        &path,
+        format!(
+            "listen = \"{listen}\"\ningress_auth = \"none\"\n\n[hosted.qwen]\nwires = [\"chat\", \"messages\"]\n\
+             base_url = \"http://{endpoint}/v1\"\nupstream_model = \"vendor-qwen\"\n\
+             auth_kind = \"anonymous\"\ntool_calling = \"parsed\"\n"
+        ),
+    )
+    .unwrap();
+    std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+    path
+}
+
+/// The shipped binary serving `config`; killed when dropped.
+struct Served {
+    child: std::process::Child,
+    address: SocketAddr,
+    _lines: std::sync::mpsc::Receiver<String>,
+}
+
+impl Served {
+    fn start(config: &std::path::Path) -> Self {
+        use std::io::BufRead as _;
+        let mut child = std::process::Command::new(env!("CARGO_BIN_EXE_b10x-llm-gateway"))
+            .args(["--config", config.to_str().unwrap()])
+            .stdin(std::process::Stdio::null())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+        let stderr = child.stderr.take().unwrap();
+        let (sender, lines) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            for line in io::BufReader::new(stderr).lines() {
+                let Ok(line) = line else { break };
+                if sender.send(line).is_err() {
+                    break;
+                }
+            }
+        });
+        let deadline = Instant::now() + STARTUP;
+        let mut written = Vec::new();
+        let address = loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            let Ok(line) = lines.recv_timeout(left) else {
+                drop(child.kill());
+                drop(child.wait());
+                panic!("the gateway never reported {LISTENING:?}; stderr: {written:?}");
+            };
+            written.push(line.clone());
+            if let Some(address) = line.strip_prefix(LISTENING) {
+                break address.parse().unwrap();
+            }
+        };
+        Self {
+            child,
+            address,
+            _lines: lines,
+        }
+    }
+}
+
+impl Drop for Served {
+    fn drop(&mut self) {
+        drop(self.child.kill());
+        drop(self.child.wait());
+    }
+}
+
+/// `GET /v1/launch` asks no endpoint: with one hosted model whose endpoint accepts and never
+/// answers, the launch route is answered 200 and the endpoint has accepted no connection when the
+/// answer has arrived.
+#[test]
+fn route_status_the_launch_route_asks_no_endpoint() {
+    let dir = launch_directory("route-asks-no-endpoint");
+    let endpoint = Silent::start();
+    let server = Served::start(&launch_config(
+        &dir,
+        "gateway.toml",
+        "127.0.0.1:0",
+        endpoint.address,
+    ));
+    let mut stream = TcpStream::connect(server.address).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    write!(
+        stream,
+        "GET /v1/launch HTTP/1.0\r\nhost: {}\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+        server.address
+    )
+    .unwrap();
+    let mut answer = String::new();
+    drop(stream.read_to_string(&mut answer));
+    let accepted = endpoint.accepted();
+    drop(server);
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(answer.contains("\"alias\":\"qwen\""), "{answer}");
+    assert_eq!(accepted, 0, "the launch route probed the endpoint: {answer}");
+}
+
+/// The launcher starts Claude Code (`tests/fixture/claude.rs`) against a gateway whose
+/// implementer route's endpoint never answers, exits 0, and no connection reached the endpoint.
+#[test]
+fn route_status_the_launcher_starts_claude_without_a_probe_of_its_routes() {
+    let dir = launch_directory("launcher-no-probe");
+    let endpoint = Silent::start();
+    let server = Served::start(&launch_config(
+        &dir,
+        "gateway.toml",
+        "127.0.0.1:0",
+        endpoint.address,
+    ));
+    let launcher_config = launch_config(
+        &dir,
+        "launcher.toml",
+        &server.address.to_string(),
+        endpoint.address,
+    );
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_b10x-llm-gateway"))
+        .arg("claude")
+        .arg("--config")
+        .arg(&launcher_config)
+        .env(
+            "B10X_LLM_GATEWAY_CLAUDE_BIN",
+            env!("CARGO_BIN_EXE_claude-fixture"),
+        )
+        .env("FAKE_CLAUDE_OUT", dir.join("out"))
+        .env("FAKE_CLAUDE_EXIT", "0")
+        .env("XDG_RUNTIME_DIR", dir.join("runtime"))
+        .env_remove("ANTHROPIC_BASE_URL")
+        .env_remove("ANTHROPIC_AUTH_TOKEN")
+        .env_remove("ANTHROPIC_API_KEY")
+        .env_remove("CLAUDE_CODE_SUBAGENT_MODEL")
+        .env_remove("ANTHROPIC_DEFAULT_HAIKU_MODEL")
+        .env_remove("CLAUDE_CODE_MAX_CONTEXT_TOKENS")
+        .output()
+        .unwrap();
+    let accepted = endpoint.accepted();
+    drop(server);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert_eq!(output.status.code(), Some(0), "{stderr}");
+    assert_eq!(accepted, 0, "the launch probed the endpoint; stderr: {stderr}");
 }

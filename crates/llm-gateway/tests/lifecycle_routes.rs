@@ -753,6 +753,46 @@ fn route_status_a_status_read_acquires_wakes_and_invalidates_nothing_and_records
     assert_eq!(before, after, "a status read moved a counter");
 }
 
+/// `GET /v1/launch` asks the status of a pod model only: a hosted model's, a route's and a
+/// Bedrock model's status would be a probe of an endpoint (or nothing), and the launch route asks
+/// no endpoint. Their `phase` is absent, as before the status list existed.
+#[test]
+fn route_status_the_launch_route_asks_the_status_of_a_pod_model_only() {
+    let source = Table::new(
+        &[
+            ("a-pod", Some(status(ModelPhase::Stopped, None, None))),
+            ("b-hosted", Some(status(ModelPhase::Ready, None, None))),
+            ("c-route", Some(status(ModelPhase::Ready, None, None))),
+            ("d-bedrock", None),
+        ],
+        Duration::ZERO,
+    );
+    let models = vec![
+        model("a-pod"),
+        kinded("b-hosted", ModelKind::Hosted, vec![Wire::Chat]),
+        kinded("c-route", ModelKind::Route, vec![Wire::Chat]),
+        kinded("d-bedrock", ModelKind::Bedrock, vec![Wire::Messages]),
+    ];
+    let (metrics, records) = (Arc::new(Metrics::default()), Arc::new(Records::default()));
+    let handle = listing(models, Arc::clone(&source), &metrics, &records, |_| {});
+    handle.mark_ready();
+    let launch = send(handle.local_addr(), "GET", "/v1/launch", true, "");
+    handle.shutdown();
+    assert_eq!(launch.status, 200, "{}", launch.body);
+    assert_eq!(source.asks(), ["status a-pod"]);
+    assert_eq!(
+        launch.body.matches("\"phase\":null").count(),
+        3,
+        "{}",
+        launch.body
+    );
+    assert!(
+        launch.body.contains("\"phase\":\"stopped\""),
+        "{}",
+        launch.body
+    );
+}
+
 /// The list takes the owner credential under `IngressAuth::None` too, and its method, a body
 /// and readiness are decided before the source is asked anything. A gateway without a relay
 /// lists no model.

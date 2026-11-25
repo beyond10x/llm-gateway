@@ -45,7 +45,7 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Write as _},
     io::{self, Write as _},
-    net::IpAddr,
+    net::{IpAddr, SocketAddr, ToSocketAddrs as _},
     sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
@@ -550,6 +550,9 @@ impl Default for ProbeBounds {
 /// The clock a probe's result is aged by, in milliseconds from any fixed start.
 pub type ProbeClock = Arc<dyn Fn() -> u64 + Send + Sync>;
 
+/// The name lookup of a status probe: the addresses of `host` at `port`.
+pub type Resolver = Arc<dyn Fn(&str, u16) -> io::Result<Vec<SocketAddr>> + Send + Sync>;
+
 /// One hosted model's endpoint and the result of its last status probe, with when the probe
 /// ended on the [`ProbeClock`]. The lock is held for the whole probe, so one model is probed by
 /// one probe at a time and a read that arrives meanwhile reads that probe's result.
@@ -566,6 +569,7 @@ pub struct HostedTargets {
     rest: Arc<dyn RelayTargets>,
     bounds: ProbeBounds,
     clock: ProbeClock,
+    resolver: Resolver,
 }
 
 impl HostedTargets {
@@ -591,7 +595,18 @@ impl HostedTargets {
             rest,
             bounds: ProbeBounds::default(),
             clock: Arc::new(move || u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)),
+            resolver: Arc::new(|host: &str, port: u16| {
+                (host, port).to_socket_addrs().map(Iterator::collect)
+            }),
         }
+    }
+
+    /// The same source looking endpoint names up with `resolver`. A test seam: the binary uses
+    /// the system's lookup.
+    #[must_use]
+    pub fn with_resolver(mut self, resolver: Resolver) -> Self {
+        self.resolver = resolver;
+        self
     }
 
     /// The same source probing within `bounds`. A test seam: the binary serves the defaults.
@@ -1512,6 +1527,52 @@ mod tests {
             2,
             "not probed once the reuse time passed"
         );
+    }
+
+    /// The name lookup is inside the probe's deadline. A lookup that has not returned by then is
+    /// `no-answer` at the deadline and is left running on its own: the next read starts none of
+    /// its own while it runs and answers at its own deadline, and once it has ended the next read
+    /// looks the name up afresh and probes.
+    #[test]
+    fn route_status_a_lookup_past_the_deadline_is_no_answer_and_only_one_is_left_running() {
+        let timeout = Duration::from_millis(300);
+        let (answering, endpoint_thread) =
+            endpoint_once(Some("HTTP/1.1 200 OK\r\n\r\n"), Duration::ZERO);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released = Mutex::new(released);
+        let counted = Arc::clone(&calls);
+        let resolver: super::Resolver = Arc::new(move |host: &str, port: u16| {
+            assert_eq!((host, port), ("localhost", 8080));
+            if counted.fetch_add(1, Ordering::SeqCst) == 0 {
+                // The first lookup does not return until the test lets it.
+                drop(released.lock().unwrap().recv());
+            }
+            Ok(vec![answering])
+        });
+        let endpoint =
+            HostedEndpoint::new("http://localhost:8080/v1", EndpointCredential::Anonymous)
+                .unwrap();
+        let targets = targets("m", endpoint, fresh(timeout)).with_resolver(resolver);
+        for read in 0..2 {
+            let started = Instant::now();
+            assert_eq!(targets.status("m"), Some(unreachable("no-answer")), "{read}");
+            let took = started.elapsed();
+            assert!(took >= timeout, "read {read} took {took:?}");
+            assert!(
+                took < timeout + Duration::from_millis(500),
+                "read {read} took {took:?}"
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "a second lookup started");
+        release.send(()).unwrap();
+        // The released lookup ends at once; its late answer is not used, the next read's is.
+        assert_eq!(
+            targets.status("m"),
+            Some(ModelStatus::new(ModelPhase::Ready))
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert!(endpoint_thread.join().unwrap().starts_with("GET /v1/models "));
     }
 
     /// Acceptance 3: two reads of one model at once send one probe, and both read its result.

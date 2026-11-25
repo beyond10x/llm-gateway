@@ -211,7 +211,8 @@ any request byte is sent; no document key or option adds a root or turns verific
 model call starts no pod: while the pod is stopped it is answered `503` `model-stopped`, and the
 owner starts it with `POST /v1/models/<alias>/wake`, unless the model sets
 `start_on_request = true` under its provider's `daily_cap_usd`, which needs
-`price_per_hour_usd` on every model of that provider. A model whose provider declares no `connectors` is answered `503` `target-unavailable`.
+`price_per_hour_usd` on every model the document declares under `[models]`. A model whose provider
+declares no `connectors` is answered `503` `target-unavailable`.
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other
 argument is refused with exit status 2.

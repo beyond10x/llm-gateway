@@ -607,7 +607,8 @@ fn adv_r6_the_owner_credential_and_client_headers_never_reach_the_target() {
 }
 
 /// Hop-by-hop and every other target header stay at the target; the client sees the target's
-/// content type, `cache-control: no-store`, `connection: close` and the gateway's own framing.
+/// content type, `cache-control: no-store`, `connection: close`, the gateway's own framing and
+/// the gateway's call id (story:call-id-and-usage-record).
 #[test]
 fn adv_w5_target_headers_other_than_content_type_never_reach_the_client() {
     let _serial = serial();
@@ -626,7 +627,8 @@ fn adv_w5_target_headers_other_than_content_type_never_reach_the_client() {
             "cache-control",
             "connection",
             "content-type",
-            "transfer-encoding"
+            "transfer-encoding",
+            "x-llm-gateway-call"
         ]
     );
     assert_eq!(relayed.header("connection").as_deref(), Some("close"));

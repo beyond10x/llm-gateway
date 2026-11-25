@@ -34,7 +34,9 @@ pub fn page() -> String {
          The gateway's tests check the same set against the contract \
          [`docs/gateway.md`]({GITHUB}/blob/main/docs/gateway.md#refusals) and provoke every code \
          with a request. Every `401` carries `www-authenticate: Bearer`, every `405` an `allow` \
-         header, and only `model-cold-start` carries `retry-after` (30 seconds).\n\n\
+         header, and only `model-cold-start` carries `retry-after` (30 seconds). One message \
+         carries more than its fixed text: `model-not-pulled` is the text below, `: ` and the \
+         alias of the model the call was for.\n\n\
          | Code | Status | Message |\n| --- | --- | --- |\n"
     );
     for code in codes {

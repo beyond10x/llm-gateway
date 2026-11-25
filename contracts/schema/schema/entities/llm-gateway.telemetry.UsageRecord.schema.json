@@ -8,6 +8,9 @@
     "record_id": {
       "type": "string"
     },
+    "call": {
+      "type": "string"
+    },
     "model": {
       "type": "string"
     },
@@ -70,6 +73,7 @@
   },
   "required": [
     "record_id",
+    "call",
     "wire",
     "disposition",
     "outcome",
@@ -82,7 +86,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:8897f0ee116cab494798dcf6dddd95101401c6cc582d09e35a0f76ed57d6dfac",
+    "contract_digest": "slice-sha256/2:86fb389c80f2a521d78490a9546b45d12339ebafc81e003a059af8401b593a68",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -96,6 +100,7 @@
         "BodyNotAllowed",
         "BodyNotJson",
         "BodyTooLarge",
+        "CallUnknown",
         "ContextExceeded",
         "CredentialAbsent",
         "CredentialMalformed",
@@ -104,6 +109,7 @@
         "MethodNotAllowed",
         "ModelAbsent",
         "ModelColdStart",
+        "ModelNotPulled",
         "ModelStopped",
         "ModelUnknown",
         "Overloaded",
@@ -135,6 +141,7 @@
             "BodyNotAllowed": "body-not-allowed",
             "BodyNotJson": "body-not-json",
             "BodyTooLarge": "body-too-large",
+            "CallUnknown": "call-unknown",
             "ContextExceeded": "context-exceeded",
             "CredentialAbsent": "credential-absent",
             "CredentialMalformed": "credential-malformed",
@@ -143,6 +150,7 @@
             "MethodNotAllowed": "method-not-allowed",
             "ModelAbsent": "model-absent",
             "ModelColdStart": "model-cold-start",
+            "ModelNotPulled": "model-not-pulled",
             "ModelStopped": "model-stopped",
             "ModelUnknown": "model-unknown",
             "Overloaded": "overloaded",
@@ -174,6 +182,7 @@
             "BodyNotAllowed": 400,
             "BodyNotJson": 400,
             "BodyTooLarge": 413,
+            "CallUnknown": 404,
             "ContextExceeded": 400,
             "CredentialAbsent": 401,
             "CredentialMalformed": 401,
@@ -182,6 +191,7 @@
             "MethodNotAllowed": 405,
             "ModelAbsent": 400,
             "ModelColdStart": 503,
+            "ModelNotPulled": 503,
             "ModelStopped": 503,
             "ModelUnknown": 404,
             "Overloaded": 503,
@@ -213,6 +223,7 @@
             "BodyNotAllowed": "the inspection surface accepts no request body",
             "BodyNotJson": "the request body is not one JSON object",
             "BodyTooLarge": "the request body exceeds its byte bound",
+            "CallUnknown": "the gateway holds no call with that id",
             "ContextExceeded": "prompt is too long: the input leaves no room for output in the model context window",
             "CredentialAbsent": "no owner credential was presented",
             "CredentialMalformed": "the owner credential is not a bearer token",
@@ -221,6 +232,7 @@
             "MethodNotAllowed": "this path does not accept that method",
             "ModelAbsent": "the request body names no model",
             "ModelColdStart": "the model is still starting; ask again after the retry-after delay",
+            "ModelNotPulled": "the model is not pulled on its Ollama server, and the gateway pulls no model",
             "ModelStopped": "the model's pod is not running and a request does not start it; the owner wakes it",
             "ModelUnknown": "no such model",
             "Overloaded": "the gateway is already serving its maximum concurrent requests",

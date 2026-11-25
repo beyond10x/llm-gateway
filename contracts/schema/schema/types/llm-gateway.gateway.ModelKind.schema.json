@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:72a8c56ca67a2d087170682d55dad62571f679db2475592297390922d6e738d3",
+    "contract_digest": "slice-sha256/2:7558c88f3c0bd40d96f08110209df8ecfd8f0ca8bb7ee6adec6e10112e4c8f18",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -17,7 +17,8 @@
         "Pod",
         "Hosted",
         "Route",
-        "Bedrock"
+        "Bedrock",
+        "Ollama"
       ],
       "x-ess-attributes": [
         {
@@ -27,6 +28,7 @@
           "values": {
             "Bedrock": "bedrock",
             "Hosted": "hosted",
+            "Ollama": "ollama",
             "Pod": "pod",
             "Route": "route"
           }

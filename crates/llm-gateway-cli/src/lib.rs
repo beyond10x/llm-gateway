@@ -35,8 +35,9 @@ mod vllm_stats;
 mod watchdog;
 
 pub use config::{
-    Bedrock, Deployment, Hosted, LaunchClaude, LaunchCodex, Model, Provider, ProviderKind,
-    TokenReviewConfig, WatchdogConfig, Wire, load, parse,
+    Bedrock, Deployment, Hosted, HostedKind, LaunchClaude, LaunchCodex, Model,
+    OLLAMA_DEFAULT_BASE_URL, Provider, ProviderKind, TokenReviewConfig, WatchdogConfig, Wire, load,
+    parse,
 };
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,
@@ -44,8 +45,8 @@ pub use credential::{
 pub use decode::Decoder;
 pub use hosted::{
     BaseUrlError, ENDPOINT_CONNECT_TIMEOUT, ENDPOINT_IO_TIMEOUT, EndpointCredential,
-    HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, ProbeBounds, ProbeClock,
-    Resolver, Scheme, check_headers,
+    HeaderSetError, HostedEndpoint, HostedTargets, MAX_STATIC_HEADERS, OLLAMA_LIST_MAX_BYTES,
+    ProbeBounds, ProbeClock, Resolver, Scheme, check_headers,
 };
 pub use keychain::{
     EntryValue, KEYCHAIN_PREFIX, KeychainRef, LookupFailure, MAX_KEYCHAIN_NAME_BYTES, OsKeychain,

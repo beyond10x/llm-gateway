@@ -23,6 +23,7 @@ const sidebars: SidebarsConfig = {
         'guides/local-gateway-for-claude-code',
         'guides/translate-between-wires',
         'guides/serve-a-bedrock-model',
+        'guides/serve-a-local-ollama-model',
         'guides/scrape-the-counters',
         'guides/run-on-kubernetes',
         'guides/run-in-a-credential-namespace',

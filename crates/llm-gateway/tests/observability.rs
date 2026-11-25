@@ -20,6 +20,11 @@ use std::{
     time::{Duration, Instant},
 };
 
+/// Call ids and call records (story:call-id-and-usage-record), in this binary rather than one of
+/// their own.
+#[path = "observability/calls.rs"]
+mod calls;
+
 const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const WAIT: Duration = Duration::from_secs(10);
 const PROMETHEUS: &str = "text/plain; version=0.0.4; charset=utf-8";

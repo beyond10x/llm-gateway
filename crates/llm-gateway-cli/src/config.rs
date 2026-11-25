@@ -420,7 +420,8 @@ fn launch_claude(document: Option<LaunchClaudeDocument>) -> Result<LaunchClaude,
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
 struct HostedDocument {
-    /// `endpoint`, the default, or `bedrock` (story:bedrock-hosted-target).
+    /// `endpoint`, the default, `bedrock` (story:bedrock-hosted-target) or `ollama`
+    /// (story:ollama-route).
     #[serde(default)]
     kind: HostedKindDocument,
     /// Required for an endpoint, refused on a Bedrock model; the loader names a missing one as
@@ -451,8 +452,9 @@ struct HostedDocument {
     credential: Option<String>,
     #[serde(default)]
     credential_header: Option<String>,
+    /// `metered` by default, `self-hosted` for an Ollama model.
     #[serde(default)]
-    billing_kind: BillingKindDocument,
+    billing_kind: Option<BillingKindDocument>,
     #[serde(default)]
     upstream_model: Option<String>,
     #[serde(default)]
@@ -641,9 +643,12 @@ enum HostedKindDocument {
     #[default]
     Endpoint,
     Bedrock,
+    Ollama,
 }
 
-from_string_only!(HostedKindDocument { "endpoint" => Endpoint, "bedrock" => Bedrock });
+from_string_only!(HostedKindDocument {
+    "endpoint" => Endpoint, "bedrock" => Bedrock, "ollama" => Ollama
+});
 
 enum AuthKindDocument {
     Anonymous,
@@ -944,8 +949,22 @@ pub struct Model {
 
 /// `[hosted.<alias>]`, with every default applied and every rule checked: a model a hosted
 /// endpoint serves (`llm-gateway.upstream.HostedEndpoint`).
+/// What serves a `[hosted.<alias>]` model that is not a Bedrock model.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HostedKind {
+    /// An endpoint that speaks the model's wires, `kind = "endpoint"`.
+    Endpoint,
+    /// An Ollama server, `kind = "ollama"` (story:ollama-route): sent no credential, its status
+    /// read from its own list of pulled and loaded models.
+    Ollama,
+}
+
+/// The base URL of an Ollama model that declares none: the server's own default address.
+pub const OLLAMA_DEFAULT_BASE_URL: &str = "http://127.0.0.1:11434";
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct Hosted {
+    pub kind: HostedKind,
     pub wires: Vec<Wire>,
     /// `http://` or `https://`, an authority and an optional base path, as written. Never
     /// rendered by the route inventory.
@@ -1173,6 +1192,39 @@ fn schema_refusal(text: &str, error: &toml::de::Error) -> Refusal {
     }
 }
 
+/// The checked `[hosted.<alias>]` tables: the endpoints and Ollama models, then the Bedrock models.
+type HostedTables = (BTreeMap<String, Hosted>, BTreeMap<String, Bedrock>);
+
+/// The `[hosted.<alias>]` tables, checked by their kind: the endpoints and Ollama models, and the
+/// Bedrock models. An alias `models` already declares is refused.
+fn hosted_tables(
+    declared: BTreeMap<String, HostedDocument>,
+    models: &BTreeMap<String, Model>,
+) -> Result<HostedTables, Refusal> {
+    let mut hosted = BTreeMap::new();
+    let mut bedrock = BTreeMap::new();
+    for (alias, declared) in declared {
+        let at = format!("hosted.{alias}");
+        closed_name(&at, &alias)?;
+        ensure(
+            !models.contains_key(&alias),
+            &at,
+            "names an alias models already declares",
+        )?;
+        if declared.kind == HostedKindDocument::Bedrock {
+            let loaded = validate_bedrock(&at, declared)?;
+            bedrock.insert(alias, loaded);
+        } else if declared.kind == HostedKindDocument::Ollama {
+            let loaded = validate_ollama(&at, &alias, declared)?;
+            hosted.insert(alias, loaded);
+        } else {
+            let loaded = validate_hosted(&at, &alias, declared)?;
+            hosted.insert(alias, loaded);
+        }
+    }
+    Ok((hosted, bedrock))
+}
+
 /// Loads the closed document from its text, as [`load`] does once the trusted-file reader has
 /// read it. No file the document names is read.
 ///
@@ -1208,24 +1260,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         start_on_request_capped(&at, &model, &providers)?;
         models.insert(alias, model);
     }
-    let mut hosted = BTreeMap::new();
-    let mut bedrock = BTreeMap::new();
-    for (alias, declared) in document.hosted {
-        let at = format!("hosted.{alias}");
-        closed_name(&at, &alias)?;
-        ensure(
-            !models.contains_key(&alias),
-            &at,
-            "names an alias models already declares",
-        )?;
-        if declared.kind == HostedKindDocument::Bedrock {
-            let loaded = validate_bedrock(&at, declared)?;
-            bedrock.insert(alias, loaded);
-        } else {
-            let loaded = validate_hosted(&at, &alias, declared)?;
-            hosted.insert(alias, loaded);
-        }
-    }
+    let (hosted, bedrock) = hosted_tables(document.hosted, &models)?;
     let ingress_auth = match document.ingress_auth {
         IngressAuthDocument::Bearer => IngressAuth::Bearer,
         IngressAuthDocument::None => IngressAuth::None,
@@ -1480,6 +1515,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         declared.newest,
     )?;
     Ok(Hosted {
+        kind: HostedKind::Endpoint,
         max_tokens_cap: declared.max_output_tokens,
         retry,
         compact_window,
@@ -1492,7 +1528,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         credential_file: declared.credential_file,
         credential_keychain,
         credential_header,
-        billing_kind: billing_kind(&declared.billing_kind),
+        billing_kind: billing_kind(&declared.billing_kind.unwrap_or_default()),
         upstream_model,
         context_window: declared.context_window,
         tool_calling: tool_calling(declared.tool_calling.unwrap_or_default()),
@@ -1500,6 +1536,58 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         model_prefix: declared.model_prefix,
         token_price: token_price(at, declared.token_price)?,
     })
+}
+
+/// `[hosted.<alias>] kind = "ollama"`, checked (story:ollama-route): an endpoint's table whose
+/// `base_url` is the server's root, `http://127.0.0.1:11434` when undeclared, served on every
+/// wire unless `wires` names fewer, sent no credential and billed `self-hosted` unless it says
+/// otherwise. `auth_kind` may only be `anonymous`; a credential key and `model_prefix` are
+/// refused, naming the key and quoting nothing. Every other key is checked as an endpoint's.
+fn validate_ollama(at: &str, alias: &str, mut declared: HostedDocument) -> Result<Hosted, Refusal> {
+    let key = |name: &str| format!("{at}.{name}");
+    ensure(
+        matches!(declared.auth_kind, None | Some(AuthKindDocument::Anonymous)),
+        &key("auth_kind"),
+        "must be anonymous for kind = \"ollama\": an Ollama server is sent no credential",
+    )?;
+    ensure(
+        declared.model_prefix.is_none(),
+        &key("model_prefix"),
+        "is not a key of kind = \"ollama\": the model's status and model-not-pulled are read \
+         for upstream_model alone",
+    )?;
+    for (name, present) in [
+        ("credential_file", declared.credential_file.is_some()),
+        ("credential", declared.credential.is_some()),
+        ("credential_header", declared.credential_header.is_some()),
+    ] {
+        ensure(
+            !present,
+            &key(name),
+            "is not a key of kind = \"ollama\": an Ollama server is sent no credential",
+        )?;
+    }
+    declared.auth_kind = Some(AuthKindDocument::Anonymous);
+    declared
+        .wires
+        .get_or_insert_with(|| vec![Wire::Chat, Wire::Responses, Wire::Messages]);
+    declared
+        .billing_kind
+        .get_or_insert(BillingKindDocument::SelfHosted);
+    let base_url = declared
+        .base_url
+        .get_or_insert_with(|| OLLAMA_DEFAULT_BASE_URL.to_owned());
+    if let Ok((_, _, Some(_))) = crate::hosted::HostedEndpoint::check(base_url, AuthKind::Anonymous)
+    {
+        return Err(value(
+            &key("base_url"),
+            "must be the Ollama server's root, http:// or https:// and a host[:port] with no \
+             path: the gateway adds /v1 and /api itself",
+        ));
+    }
+    let mut hosted = validate_hosted(at, alias, declared)?;
+    hosted.kind = HostedKind::Ollama;
+    Ok(hosted)
 }
 
 /// An endpoint's `base_url` at `key`, checked by [`crate::hosted::HostedEndpoint::check`].
@@ -1911,7 +1999,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         model_id,
         api,
         endpoint,
-        billing_kind: billing_kind(&declared.billing_kind),
+        billing_kind: billing_kind(&declared.billing_kind.unwrap_or_default()),
         context_window: declared.context_window,
         max_output_tokens: declared.max_output_tokens,
         tool_calling: tool_calling(declared.tool_calling.unwrap_or(ToolCallingDocument::Parsed)),

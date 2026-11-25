@@ -224,7 +224,8 @@ upstream_model = "vendor-large-2"
 
 ### `kind = "bedrock"` {#bedrock-models}
 
-`kind` is `endpoint` by default. A table with `kind = "bedrock"` declares a model Amazon Bedrock
+`kind` is `endpoint` by default, or `bedrock` or [`ollama`](#ollama-models). A table with
+`kind = "bedrock"` declares a model Amazon Bedrock
 serves instead: it takes `region`, `model_id` and `credential_source = "container"`, and
 optionally `api`, `endpoint`, `billing_kind`, `context_window`, `max_output_tokens` (1 to the
 window, which it is when undeclared; it bounds the output a turn naming none is given),
@@ -247,6 +248,37 @@ credential_source = "container"
 ```
 
 The model id above is an example and is unverified.
+
+### `kind = "ollama"` {#ollama-models}
+
+A table with `kind = "ollama"` declares a model on an Ollama server. It is a hosted endpoint
+with these keys and defaults; every other endpoint key keeps its rule above, and a Bedrock key is
+refused as on an endpoint.
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `base_url` | `http://127.0.0.1:11434` | The server's root: `http://` or `https://` and a `host[:port]`, on any host, with no path. A path, `/v1` included, is `config:value`: the gateway adds `/v1` and `/api` itself. |
+| `wires` | all three | Each named wire is relayed to Ollama's own path: `/v1/chat/completions`, `/v1/responses`, `/v1/messages`. A wire left out is translated onto the first one named. |
+| `upstream_model` | the alias | The Ollama model name, such as `qwen2.5:1.5b`. A name without a tag is `<name>:latest`. |
+| `auth_kind` | `anonymous` | `anonymous` only: an Ollama server is sent no credential. |
+| `credential_file`, `credential`, `credential_header` | absent | Refused. |
+| `model_prefix` | absent | Refused: the model's status is read for `upstream_model` alone, so the model serves its alias alone. |
+| `billing_kind` | `self-hosted` | As for an endpoint. |
+
+Every refusal is `config:value` naming the key, and quotes no value. The model's status is read
+from the server's own lists, never `/v1/models`: `GET /api/tags`, then `GET /api/ps` when the
+tags list the model. It is `ready` when the running models list it, `stopped` `not-loaded` when
+only the tags do (a call loads it), `unreachable` `model-not-pulled` when the tags do not, and
+`unreachable` `no-answer` when the server does not answer. A call to a model that is not pulled is
+refused `503 model-not-pulled`, its message naming the alias. The gateway never asks the server to
+pull, create, copy, delete or push a model. [Serve a local Ollama
+model](../guides/serve-a-local-ollama-model.md) walks through it.
+
+```toml
+[hosted.local]
+kind = "ollama"
+upstream_model = "qwen2.5:1.5b"
+```
 
 ### The client's own credential {#client-routes}
 

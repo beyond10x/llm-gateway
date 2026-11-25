@@ -44,7 +44,7 @@ use sha2::{Digest as _, Sha256};
 use std::{
     collections::BTreeMap,
     fmt::{self, Write as _},
-    io::{self, Write as _},
+    io,
     net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs as _},
     sync::{Arc, Mutex, OnceLock, mpsc},
     time::{Duration, Instant},
@@ -185,6 +185,9 @@ pub struct HostedEndpoint {
     headers: Vec<StaticHeader>,
     /// Whether the base URL is `OpenCode` Go, which is sent a session per caller.
     opencode_go: bool,
+    /// The model name an Ollama server lists, when the endpoint is an Ollama server's
+    /// (story:ollama-route): its status is read from the server's lists, not from `/v1/models`.
+    ollama: Option<String>,
 }
 
 /// What a checked base URL names: how the endpoint is reached, its authority, and the base path
@@ -256,6 +259,7 @@ impl HostedEndpoint {
             credential,
             headers: Vec::new(),
             opencode_go,
+            ollama: None,
         })
     }
 
@@ -271,6 +275,15 @@ impl HostedEndpoint {
         check_headers(&headers, credential_header)?;
         self.headers = headers;
         Ok(self)
+    }
+
+    /// The endpoint, an Ollama server's serving `model` (story:ollama-route): its status is
+    /// read from `GET /api/tags` and `GET /api/ps` ([`HostedTargets`]), and a call to a model
+    /// the server answered without listing is refused `model-not-pulled`.
+    #[must_use]
+    pub fn with_ollama(mut self, model: &str) -> Self {
+        self.ollama = Some(model.to_owned());
+        self
     }
 
     /// The `host[:port]` requests are sent to and named by.
@@ -365,6 +378,31 @@ impl HostedEndpoint {
         }
     }
 
+    /// One list of an Ollama server over `stream` by `deadline` (story:ollama-route): `GET
+    /// <path>` sent `host`, the static headers, `accept: application/json` and `connection:
+    /// close`, and no credential. Returns the first final status and, for a 2xx, the body, read
+    /// to its end within [`OLLAMA_LIST_MAX_BYTES`].
+    fn exchange_list(
+        &self,
+        stream: Box<dyn RelayStream>,
+        path: &str,
+        deadline: Instant,
+    ) -> io::Result<(u16, Vec<u8>)> {
+        let mut start = format!("GET {path} HTTP/1.1\r\nhost: {}\r\n", self.authority);
+        for header in &self.headers {
+            let _written = write!(start, "{}: {}\r\n", header.name(), header.value());
+        }
+        start.push_str("accept: application/json\r\nconnection: close\r\n\r\n");
+        let mut request = Wiped::with_capacity(start.len());
+        request.extend(start.as_bytes());
+        let (sender, receiver) = std::sync::mpsc::channel();
+        std::thread::spawn(move || drop(sender.send(exchange_list(stream, request, deadline))));
+        match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(answer) => answer,
+            Err(_) => Err(probe_timed_out()),
+        }
+    }
+
     /// The probe's request, which carries the endpoint's credential. It is written into one
     /// allocation of exactly its length, taken before the credential is written into it, so it
     /// never reallocates and leaves no copy of the key in freed memory, and it is overwritten
@@ -432,6 +470,116 @@ fn system_lookup(host: &str, port: u16) -> io::Result<Vec<SocketAddr>> {
 /// Sends `request`, overwritten once sent, and reads the first final status.
 fn exchange(
     mut stream: Box<dyn RelayStream>,
+    request: Wiped,
+    deadline: Instant,
+) -> io::Result<u16> {
+    final_status(&mut *stream, request, deadline)
+}
+
+/// Sends an Ollama list's `request` and reads the first final status, then for a 2xx its
+/// headers and its body, `content-length`, chunked or to the end of the stream, at most
+/// [`OLLAMA_LIST_MAX_BYTES`] of it (story:ollama-route).
+fn exchange_list(
+    mut stream: Box<dyn RelayStream>,
+    request: Wiped,
+    deadline: Instant,
+) -> io::Result<(u16, Vec<u8>)> {
+    let stream = &mut *stream;
+    let status = final_status(stream, request, deadline)?;
+    if !(200..=299).contains(&status) {
+        return Ok((status, Vec::new()));
+    }
+    let malformed = || io::Error::new(io::ErrorKind::InvalidData, "not an Ollama list answer");
+    let (mut length, mut chunked, mut head) = (None, false, 0);
+    loop {
+        let line = read_line(stream, MAX_STATUS_LINE_BYTES, deadline)?;
+        if !line.ends_with(b"\r\n") {
+            return Err(malformed());
+        }
+        if line == b"\r\n" {
+            break;
+        }
+        head += line.len();
+        if head > MAX_INTERIM_HEADER_BYTES {
+            return Err(malformed());
+        }
+        let text = std::str::from_utf8(&line).map_err(|_| malformed())?;
+        if let Some((name, value)) = text.split_once(':') {
+            let (name, value) = (name.trim(), value.trim());
+            if name.eq_ignore_ascii_case("content-length") {
+                length = Some(value.parse::<usize>().map_err(|_| malformed())?);
+            } else if name.eq_ignore_ascii_case("transfer-encoding") {
+                chunked = value.eq_ignore_ascii_case("chunked");
+            }
+        }
+    }
+    let mut body = Vec::new();
+    if chunked {
+        loop {
+            let line = read_line(stream, MAX_STATUS_LINE_BYTES, deadline)?;
+            let size = std::str::from_utf8(&line)
+                .ok()
+                .and_then(|line| line.strip_suffix("\r\n"))
+                .and_then(|line| line.split(';').next())
+                .and_then(|size| usize::from_str_radix(size.trim(), 16).ok())
+                .ok_or_else(malformed)?;
+            if size == 0 {
+                break;
+            }
+            if body.len().saturating_add(size) > OLLAMA_LIST_MAX_BYTES {
+                return Err(malformed());
+            }
+            read_by(stream, &mut body, Some(size), deadline)?;
+            if read_line(stream, 2, deadline)? != b"\r\n" {
+                return Err(malformed());
+            }
+        }
+    } else {
+        if length.is_some_and(|length| length > OLLAMA_LIST_MAX_BYTES) {
+            return Err(malformed());
+        }
+        read_by(stream, &mut body, length, deadline)?;
+    }
+    Ok((status, body))
+}
+
+/// Reads `wanted` more bytes of `stream` into `body`, or with `None` every byte to the end of the
+/// stream, by `deadline` and within [`OLLAMA_LIST_MAX_BYTES`] in all.
+fn read_by(
+    stream: &mut dyn RelayStream,
+    body: &mut Vec<u8>,
+    wanted: Option<usize>,
+    deadline: Instant,
+) -> io::Result<()> {
+    let end = wanted.map(|wanted| body.len() + wanted);
+    let mut chunk = [0_u8; 8192];
+    while end.is_none_or(|end| body.len() < end) {
+        if Instant::now() >= deadline {
+            return Err(probe_timed_out());
+        }
+        let room = end.map_or(chunk.len(), |end| (end - body.len()).min(chunk.len()));
+        let read = stream.read(&mut chunk[..room])?;
+        if read == 0 {
+            return match end {
+                Some(_) => Err(io::ErrorKind::UnexpectedEof.into()),
+                None => Ok(()),
+            };
+        }
+        body.extend_from_slice(&chunk[..read]);
+        if body.len() > OLLAMA_LIST_MAX_BYTES {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "an Ollama list larger than its bound",
+            ));
+        }
+    }
+    Ok(())
+}
+
+/// Sends `request`, overwritten once sent, and reads the first final status, nothing past its
+/// line.
+fn final_status(
+    stream: &mut dyn RelayStream,
     request: Wiped,
     deadline: Instant,
 ) -> io::Result<u16> {
@@ -503,6 +651,56 @@ const MAX_INTERIM_ANSWERS: usize = 16;
 const MAX_INTERIM_HEADER_BYTES: usize = 8192;
 /// The longest status line the probe reads.
 const MAX_STATUS_LINE_BYTES: usize = 1024;
+
+/// The most bytes of one Ollama list's body a status read takes (story:ollama-route); a longer
+/// list is no answer. Published in `docs/gateway.md` "Bounds of the status probe".
+pub const OLLAMA_LIST_MAX_BYTES: usize = 1_048_576;
+/// The Ollama list of the models a server has pulled.
+const OLLAMA_TAGS_PATH: &str = "/api/tags";
+/// The Ollama list of the models a server has loaded.
+const OLLAMA_PS_PATH: &str = "/api/ps";
+/// The sub-phase of an Ollama model its server does not list as pulled.
+const OLLAMA_NOT_PULLED: &str = "model-not-pulled";
+/// The sub-phase of an Ollama model pulled and not loaded.
+const OLLAMA_NOT_LOADED: &str = "not-loaded";
+/// The sub-phase of a model whose server gave no answer that could be read.
+const OLLAMA_NO_ANSWER: &str = "no-answer";
+
+/// An Ollama list, `GET /api/tags` or `GET /api/ps`: every entry's names, every other key
+/// ignored.
+#[derive(serde::Deserialize)]
+struct OllamaList {
+    models: Vec<OllamaEntry>,
+}
+
+#[derive(serde::Deserialize)]
+struct OllamaEntry {
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    model: Option<String>,
+}
+
+impl OllamaList {
+    /// Whether an entry names `model`, by its `name` or its `model`: a name whose last segment
+    /// (after the last `/`) carries a tag matches itself only, and one without a tag matches
+    /// `<name>:latest`, as Ollama lists every model with its tag.
+    fn names(&self, model: &str) -> bool {
+        let tagged = model
+            .rsplit('/')
+            .next()
+            .is_some_and(|last| last.contains(':'));
+        let wanted = if tagged {
+            model.to_owned()
+        } else {
+            format!("{model}:latest")
+        };
+        self.models.iter().any(|entry| {
+            entry.name.as_deref() == Some(wanted.as_str())
+                || entry.model.as_deref() == Some(wanted.as_str())
+        })
+    }
+}
 
 /// Whether `host`, as [`split`] returns it (an IPv6 literal without its brackets), names this
 /// machine without a lookup: an address in `127.0.0.0/8`, `::1`, or the name `localhost`.
@@ -690,12 +888,55 @@ impl HostedTargets {
         }
         let client = matches!(served.endpoint.credential, EndpointCredential::Client);
         let deadline = Instant::now() + self.bounds.timeout;
-        let answer = self
-            .opened(served, deadline)
-            .and_then(|stream| served.endpoint.exchange_probe(stream, deadline));
-        let status = probed_status(&answer, client);
+        let status = if let Some(model) = &served.endpoint.ollama {
+            self.ollama_status(served, model, deadline)
+        } else {
+            let answer = self
+                .opened(served, deadline)
+                .and_then(|stream| served.endpoint.exchange_probe(stream, deadline));
+            probed_status(&answer, client)
+        };
         *last = Some(((self.clock)(), status.clone()));
         status
+    }
+
+    /// The status of `model` on the Ollama server `served`, read by `deadline`
+    /// (story:ollama-route): `GET /api/tags`, then, only when it lists the model, `GET /api/ps`.
+    /// Not listed by the tags is `unreachable` `model-not-pulled`; listed by the running models
+    /// `ready`, else `stopped` `not-loaded`. A list answered with a status outside 2xx is
+    /// `unreachable` `status-<code>`; no answer by the deadline, or a 2xx whose body is not one
+    /// list of at most [`OLLAMA_LIST_MAX_BYTES`], `unreachable` `no-answer`.
+    fn ollama_status(&self, served: &Served, model: &str, deadline: Instant) -> ModelStatus {
+        let listed = |path: &str| -> Result<bool, String> {
+            let answer = self
+                .opened(served, deadline)
+                .and_then(|stream| served.endpoint.exchange_list(stream, path, deadline));
+            match answer {
+                Ok((200..=299, body)) => serde_json::from_slice::<OllamaList>(&body)
+                    .map(|list| list.names(model))
+                    .map_err(|_| OLLAMA_NO_ANSWER.to_owned()),
+                Ok((code, _)) => Err(format!("status-{code:03}")),
+                Err(_) => Err(OLLAMA_NO_ANSWER.to_owned()),
+            }
+        };
+        let unreachable = |why: String| ModelStatus {
+            phase: ModelPhase::Unreachable,
+            sub_phase: Some(why),
+            profile: None,
+        };
+        match listed(OLLAMA_TAGS_PATH) {
+            Err(why) => unreachable(why),
+            Ok(false) => unreachable(OLLAMA_NOT_PULLED.to_owned()),
+            Ok(true) => match listed(OLLAMA_PS_PATH) {
+                Err(why) => unreachable(why),
+                Ok(true) => ModelStatus::new(ModelPhase::Ready),
+                Ok(false) => ModelStatus {
+                    phase: ModelPhase::Stopped,
+                    sub_phase: Some(OLLAMA_NOT_LOADED.to_owned()),
+                    profile: None,
+                },
+            },
+        }
     }
 
     /// The probe's connection to `served`, opened by `deadline`. The opening (the name lookup
@@ -778,9 +1019,19 @@ fn probed_status(answer: &io::Result<u16>, client: bool) -> ModelStatus {
 }
 
 impl RelayTargets for HostedTargets {
-    /// A hosted model's endpoint, at once; any other alias is `rest`'s.
+    /// A hosted model's endpoint, at once; any other alias is `rest`'s. An Ollama model is first
+    /// read as its status is, reused within [`ProbeBounds::reuse`], and refused
+    /// [`TargetRefusal::NotPulled`] when its server answered its list without it
+    /// (story:ollama-route); every other status hands it out, so a model not loaded is loaded by
+    /// the call and a server that did not answer is asked by it.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         match self.endpoints.get(alias) {
+            Some(served)
+                if served.endpoint.ollama.is_some()
+                    && self.probed(served).sub_phase.as_deref() == Some(OLLAMA_NOT_PULLED) =>
+            {
+                Err(TargetRefusal::NotPulled)
+            }
             Some(served) => Ok(Box::new(HostedTarget {
                 endpoint: Arc::clone(&served.endpoint),
                 tls: Arc::clone(&self.tls),
@@ -965,6 +1216,11 @@ pub(crate) fn hosted_endpoints(
             .map_err(|error| invalid(&format!("base_url: {error}")))?
             .with_headers(hosted.headers.clone())
             .map_err(|error| invalid(&format!("headers {error}")))?;
+        // An Ollama model's status is read from its server's lists (story:ollama-route).
+        let endpoint = match hosted.kind {
+            crate::config::HostedKind::Endpoint => endpoint,
+            crate::config::HostedKind::Ollama => endpoint.with_ollama(&hosted.upstream_model),
+        };
         endpoints.insert(alias.clone(), endpoint);
     }
     // Each route's endpoint (story:routes-document), its `file:` secret read once per endpoint,
@@ -1014,6 +1270,11 @@ fn targets(
     alias: &str,
     hosted: &Hosted,
 ) -> Result<Vec<TargetSummary>, Refusal> {
+    // An Ollama model is listed under provider `ollama`, account `local` (story:ollama-route).
+    let (provider, account) = match hosted.kind {
+        crate::config::HostedKind::Endpoint => ("hosted", "hosted"),
+        crate::config::HostedKind::Ollama => ("ollama", "local"),
+    };
     hosted
         .wires
         .iter()
@@ -1024,8 +1285,8 @@ fn targets(
                 position,
                 provenance: TargetProvenance {
                     protocol: label(wire.label())?,
-                    provider: label("hosted")?,
-                    account: label("hosted")?,
+                    provider: label(provider)?,
+                    account: label(account)?,
                     endpoint: label(alias)?,
                     model: label(&hosted.upstream_model)?,
                     binding_revision: label(&deployment.digest)?,
@@ -1804,6 +2065,11 @@ mod tests {
                 "status-reuse-seconds",
                 "ProbeBounds::reuse",
                 bounds.reuse.as_secs(),
+            ),
+            (
+                "ollama-list-max-bytes",
+                "OLLAMA_LIST_MAX_BYTES",
+                u64::try_from(super::OLLAMA_LIST_MAX_BYTES).unwrap(),
             ),
         ]
         .into_iter()

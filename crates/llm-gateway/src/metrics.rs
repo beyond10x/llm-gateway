@@ -81,6 +81,9 @@ impl Outcome {
 /// refusal is written.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UsageRecord {
+    /// The id the call was given: every answer to it carried it as `x-llm-gateway-call`, and
+    /// the owner reads the call's record by it at `GET /v1/calls/{id}`.
+    pub call: String,
     /// The relayed model's alias the body named. `None` when it named no relayed model.
     pub model: Option<String>,
     pub wire: Wire,
@@ -98,12 +101,14 @@ pub struct UsageRecord {
     pub target_status: Option<u16>,
     /// The model name the target reported. Not read yet (story:usage-records): always `None`.
     pub reported_model: Option<String>,
-    /// Token counters the answer reported, read as it streamed; `None` for a counter it did not
-    /// report. The reasoning counter is not read yet: always `None`.
+    /// Token counters the answer reported, read as it was relayed; `None` when it reported
+    /// none. The record `GET /v1/calls/{id}` answers names `cached_input_tokens`
+    /// `cache_read_tokens` and `cache_creation_input_tokens` `cache_creation_tokens`.
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cached_input_tokens: Option<u64>,
     pub cache_creation_input_tokens: Option<u64>,
+    /// Not read yet (story:usage-records): always `None`.
     pub reasoning_output_tokens: Option<u64>,
     /// What the call cost in USD, as a decimal string, by the [`CallPricing`] its model
     /// declares ([`crate::RelayModel::with_pricing`]). `None` for a call that was refused, cut
@@ -516,6 +521,7 @@ mod tests {
 
     fn record(model: &str, refusal: Option<RefusalCode>, duration_ms: u64) -> UsageRecord {
         UsageRecord {
+            call: "call-1".to_owned(),
             model: Some(model.to_owned()),
             wire: Wire::Chat,
             disposition: if refusal.is_some() {
@@ -678,6 +684,7 @@ mod tests {
     fn a_record_on_an_unregistered_route_feeds_the_process_wide_series_only() {
         let metrics = Metrics::default();
         metrics.record(&UsageRecord {
+            call: "call-1".to_owned(),
             model: Some("elsewhere".to_owned()),
             wire: Wire::Messages,
             disposition: Disposition::UpstreamFailed,

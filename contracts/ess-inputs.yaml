@@ -307,6 +307,12 @@ scenarios:
 - gateway/scenarios/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready.yaml
 - gateway/scenarios/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered.yaml
 - gateway/scenarios/status-the-list-takes-the-owner-credential-and-is-refused-before-any-status-is-asked.yaml
+- gateway/scenarios/ollama-status-is-read-from-tags-then-ps-and-names-a-model-ready-not-loaded-not-pulled-or-without-answer.yaml
+- gateway/scenarios/ollama-a-call-to-a-model-not-pulled-is-refused-503-naming-its-alias-and-nothing-is-pulled.yaml
+- gateway/scenarios/ollama-each-declared-wire-is-relayed-to-the-servers-own-path-and-its-tokens-reach-the-usage-record.yaml
+- gateway/scenarios/ollama-a-wire-the-model-does-not-declare-is-translated-onto-a-declared-one.yaml
+- gateway/scenarios/ollama-a-model-prefix-on-an-ollama-model-composes-nothing.yaml
+- gateway/scenarios/ollama-the-same-table-without-a-model-prefix-composes.yaml
 - runpod/scenarios/a-wake-starts-the-pod-once-and-is-idempotent-while-starting-and-ready.yaml
 - runpod/scenarios/a-wake-over-the-daily-ceiling-is-refused-before-any-create.yaml
 - runpod/scenarios/a-wake-without-capacity-starts-the-model-on-its-next-profile.yaml
@@ -327,3 +333,6 @@ scenarios:
 - gateway/scenarios/cost-a-token-price-written-as-a-number-composes-nothing.yaml
 - gateway/scenarios/cost-a-token-price-without-its-output-composes-nothing.yaml
 - gateway/scenarios/cost-an-unknown-token-price-key-composes-nothing.yaml
+- gateway/scenarios/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id.yaml
+- gateway/scenarios/calls-the-owner-reads-an-ended-calls-record-by-its-id.yaml
+- gateway/scenarios/calls-an-id-the-gateway-does-not-hold-is-call-unknown.yaml

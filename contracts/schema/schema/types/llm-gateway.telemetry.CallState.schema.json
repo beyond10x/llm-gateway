@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.CallState",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:a4ea99be51bb3f2299516a54ec545154cab6f3a7e5e59b26aeec6f06a60d96bf",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.CallState": {
+      "title": "CallState",
+      "x-ess-name": "llm-gateway.telemetry.CallState",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "InFlight",
+        "Ended"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "label",
+          "type": "String",
+          "values": {
+            "Ended": "ended",
+            "InFlight": "in-flight"
+          }
+        }
+      ]
+    }
+  }
+}

@@ -428,6 +428,40 @@ pub(crate) fn redact(text: &str) -> String {
     out
 }
 
+/// [`pass_answer`]'s head: the status line, the gateway's call id, every line of the target's
+/// but the hop-by-hop ones, its own line of the call id's name, and `content-length` unless it
+/// framed its body by length, then the framing the gateway writes.
+fn answer_head(head: &Head, call: &Call, rechunk: bool) -> Vec<u8> {
+    let connection = connection_names(value(head, "connection").as_deref());
+    let by_length = matches!(head.framing, Answer::Length(_));
+    let mut out = format!(
+        "HTTP/1.1 {} {}\r\n{}",
+        head.status,
+        head.reason,
+        call.id_line()
+    )
+    .into_bytes();
+    for (name, line) in &head.lines {
+        // The client reads the gateway's call id, never a target's line of that name.
+        let kept = if name == crate::calls::HEADER {
+            false
+        } else if name == "content-length" {
+            by_length
+        } else {
+            !hop_by_hop(name, &connection)
+        };
+        if kept {
+            out.extend_from_slice(line);
+            out.extend_from_slice(b"\r\n");
+        }
+    }
+    if rechunk {
+        out.extend_from_slice(b"transfer-encoding: chunked\r\n");
+    }
+    out.extend_from_slice(b"connection: close\r\n\r\n");
+    out
+}
+
 /// Writes the target's answer to the client as it came: the status line, every line but the
 /// hop-by-hop ones (and `content-length` unless the target framed its body by length), then
 /// the body, re-chunked for an HTTP/1.1 client when the target chunked it. Fills `call` as
@@ -442,26 +476,9 @@ fn pass_answer(
     call: &mut Call,
     error: bool,
 ) -> Option<String> {
-    let connection = connection_names(value(head, "connection").as_deref());
     let encoded = coding(head);
-    let by_length = matches!(head.framing, Answer::Length(_));
     let rechunk = matches!(head.framing, Answer::Chunked { .. }) && chunked_client;
-    let mut out = format!("HTTP/1.1 {} {}\r\n", head.status, head.reason).into_bytes();
-    for (name, line) in &head.lines {
-        let kept = if name == "content-length" {
-            by_length
-        } else {
-            !hop_by_hop(name, &connection)
-        };
-        if kept {
-            out.extend_from_slice(line);
-            out.extend_from_slice(b"\r\n");
-        }
-    }
-    if rechunk {
-        out.extend_from_slice(b"transfer-encoding: chunked\r\n");
-    }
-    out.extend_from_slice(b"connection: close\r\n\r\n");
+    let out = answer_head(head, call, rechunk);
     let deadline = || Instant::now() + limits.timeout;
     if !crate::server::write_by(stream, &out, deadline()) {
         call.client_disconnected = true;

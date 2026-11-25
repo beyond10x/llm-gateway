@@ -821,6 +821,10 @@ mod relay {
         /// Static header names to values.
         #[serde(default)]
         headers: BTreeMap<String, String>,
+        /// `endpoint`, the default, or `ollama`: the pod is a fake Ollama server
+        /// (story:ollama-route).
+        #[serde(default)]
+        kind: Option<String>,
     }
 
     impl EndpointInput {
@@ -835,6 +839,26 @@ mod relay {
             (self.scheme == "https").then(|| self.certificate.as_deref() != Some("untrusted"))
         }
 
+        /// Whether the endpoint is an Ollama server's (story:ollama-route).
+        fn ollama(&self) -> bool {
+            self.kind.as_deref() == Some("ollama")
+        }
+
+        /// An endpoint's `kind` is `endpoint` or `ollama`; an Ollama endpoint is `http`,
+        /// `anonymous`, at the server's root and without a certificate, as the binary admits one.
+        fn ollama_valid(&self) -> bool {
+            match self.kind.as_deref() {
+                None | Some("endpoint") => true,
+                Some("ollama") => {
+                    self.scheme == "http"
+                        && self.auth_kind == "anonymous"
+                        && self.base_path.is_none()
+                        && self.certificate.is_none()
+                }
+                Some(_) => false,
+            }
+        }
+
         fn valid(&self, pods: usize) -> bool {
             let credential = match self.auth_kind.as_str() {
                 "anonymous" | "client" => {
@@ -845,6 +869,7 @@ mod relay {
                 _ => false,
             };
             credential
+                && self.ollama_valid()
                 && self.pod_index(pods).is_some()
                 && matches!(self.scheme.as_str(), "http" | "https")
                 && match self.certificate.as_deref() {
@@ -931,6 +956,10 @@ mod relay {
             /// With `sealed_from`, the first character of the seal's state part is replaced.
             #[serde(default)]
             alter_seal: Option<bool>,
+            /// The index of an earlier request step: every `<call>` in `path` is replaced by the
+            /// call id that step's answer carried.
+            #[serde(default)]
+            call_from: Option<usize>,
         },
         /// The gateway is stopped and composed again from the same program: a new translator,
         /// so a new seal key, over the same target source and pods.
@@ -1902,7 +1931,10 @@ mod relay {
                 .map_err(|_| "endpoint:base-url".to_owned())?
                 .with_headers(headers)
                 .map_err(|_| "endpoint:headers".to_owned())?;
-            endpoints.insert(model.alias.clone(), hosted);
+            endpoints.insert(
+                model.alias.clone(),
+                ollama_endpoint(model, endpoint, hosted),
+            );
         }
         Ok(endpoints)
     }
@@ -1961,6 +1993,29 @@ mod relay {
         Ok(routes)
     }
 
+    /// An Ollama endpoint asks its server for the model's `upstream_model`, as the binary's
+    /// `kind = "ollama"` table does (story:ollama-route); any other endpoint is as built.
+    fn ollama_endpoint(
+        model: &ModelInput,
+        endpoint: &EndpointInput,
+        hosted: HostedEndpoint,
+    ) -> HostedEndpoint {
+        if endpoint.ollama() {
+            hosted.with_ollama(&model.upstream_model)
+        } else {
+            hosted
+        }
+    }
+
+    /// The kind of a model a hosted endpoint serves: `ollama` for an Ollama server's.
+    fn hosted_kind(endpoint: &EndpointInput) -> ModelKind {
+        if endpoint.ollama() {
+            ModelKind::Ollama
+        } else {
+            ModelKind::Hosted
+        }
+    }
+
     /// The relayed model a program's model declares.
     fn relay_model(model: &ModelInput) -> Result<RelayModel, String> {
         let wires = model
@@ -1991,7 +2046,7 @@ mod relay {
         // A model served by a hosted endpoint is the binary's `hosted` kind, and one whose
         // endpoint takes the client's own credential forwards it, as the binary composes both.
         if let Some(endpoint) = &model.endpoint {
-            relayed = relayed.with_kind(ModelKind::Hosted);
+            relayed = relayed.with_kind(hosted_kind(endpoint));
             if endpoint.auth_kind == "client" {
                 relayed = relayed.with_client_credentials();
             }
@@ -2406,6 +2461,7 @@ mod relay {
                         headers,
                         sealed_from,
                         alter_seal,
+                        call_from,
                         ..
                     } => {
                         pad_to_bytes.is_none_or(|bytes| bytes <= MAX_PAD_BYTES)
@@ -2414,6 +2470,7 @@ mod relay {
                                 from < index && matches!(program.steps[from], Step::Request { .. })
                             })
                             && (alter_seal.is_none() || sealed_from.is_some())
+                            && call_from_valid(program, index, *call_from)
                     }
                 })
     }
@@ -2511,7 +2568,7 @@ mod relay {
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
             "scrapes": [], "connections": [], "received_heads": [], "upstream_ends": [],
-            "lifecycle_asks": [], "pod_creates": 0
+            "lifecycle_asks": [], "pod_creates": 0, "calls": []
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -2823,9 +2880,11 @@ mod relay {
         let (mut recorded, mut scrapes, mut scrape_number) = (Vec::new(), Vec::new(), 0);
         // Per step, the body its answer carried, before any seal in it was redacted.
         let mut answered: Vec<Option<String>> = Vec::new();
+        let mut calls = Calls::default();
         let run_started = Instant::now();
         for step in &program.steps {
             answered.push(None);
+            calls.step();
             if matches!(step, Step::Restart) {
                 if let Some(serving) = handle.take() {
                     serving.handle.shutdown();
@@ -2877,6 +2936,7 @@ mod relay {
             let started = Instant::now();
             let (close_after, half_close, seal) = request_options(step, &answered);
             let received = request_bytes(&program.secret, step, seal.as_deref())
+                .map(|raw| calls.with_call(step, raw))
                 .and_then(|raw| exchange(addr, &raw, &progress, close_after, half_close));
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
@@ -2894,7 +2954,8 @@ mod relay {
             let probed = matches!(step, Step::Request { path, .. } if path.ends_with("/status"));
             results.push(summary(&received, &progress, probed));
             let body = String::from_utf8_lossy(&received.body).into_owned();
-            bodies.push(page_fact(&redact_seals(&body)));
+            calls.observe(&received);
+            bodies.push(calls.redact(&page_fact(&redact_seals(&body)), run_started.elapsed()));
             if let Some(slot) = answered.last_mut() {
                 *slot = Some(body);
             }
@@ -2914,6 +2975,7 @@ mod relay {
         facts["arrivals"] = json!(arrivals);
         facts["records"] = json!(recorded);
         facts["scrapes"] = json!(scrapes);
+        facts["calls"] = json!(calls.fact);
         handle
     }
 
@@ -2958,6 +3020,114 @@ mod relay {
             (false, _) => "none",
             (true, false) => "streamed",
             (true, true) => "held",
+        }
+    }
+
+    /// The header every answer to a model call carries (llm-gateway.gateway.CallHeader).
+    const CALL_HEADER: &str = "x-llm-gateway-call";
+    /// The longest id `CallHeader` allows.
+    const CALL_ID_CHARACTERS: usize = 64;
+    /// The format a call's record names (llm-gateway.telemetry.CallRecord).
+    const CALL_RECORD_FORMAT: &str = "\"format\":\"llm-gateway.call/1\"";
+
+    /// Whether a step's `call_from` names an earlier request step, or is absent.
+    fn call_from_valid(program: &Program, index: usize, call_from: Option<usize>) -> bool {
+        call_from
+            .is_none_or(|from| from < index && matches!(program.steps[from], Step::Request { .. }))
+    }
+
+    /// The call ids a run's answers carried (story:call-id-and-usage-record): per step the id
+    /// its answer carried, every id seen, and the `calls` fact.
+    #[derive(Default)]
+    struct Calls {
+        given: Vec<Option<String>>,
+        seen: Vec<String>,
+        fact: Vec<String>,
+    }
+
+    impl Calls {
+        /// Starts the next step, which carries no id until its answer is observed.
+        fn step(&mut self) {
+            self.given.push(None);
+        }
+
+        /// `raw` with every `<call>` in its request line replaced by the id the step named in
+        /// `call_from` carried; unchanged when it names none or that answer carried none.
+        fn with_call(&self, step: &Step, raw: Vec<u8>) -> Vec<u8> {
+            let Step::Request {
+                call_from: Some(from),
+                ..
+            } = step
+            else {
+                return raw;
+            };
+            let Some(Some(id)) = self.given.get(*from) else {
+                return raw;
+            };
+            let Some(end) = raw.windows(2).position(|pair| pair == b"\r\n") else {
+                return raw;
+            };
+            let line = String::from_utf8_lossy(&raw[..end]).replace("<call>", id);
+            [line.as_bytes(), &raw[end..]].concat()
+        }
+
+        /// Adds the `calls` fact of one answer: `absent`, `malformed` (not of the published
+        /// form, or more than one such line), `new` or `repeated`.
+        fn observe(&mut self, received: &Received) {
+            let values: Vec<&str> = received
+                .headers
+                .iter()
+                .filter(|(name, _)| name == CALL_HEADER)
+                .map(|(_, value)| value.as_str())
+                .collect();
+            let fact = match values.as_slice() {
+                [] => "absent",
+                [id] if Self::of_the_form(id) => {
+                    if let Some(slot) = self.given.last_mut() {
+                        *slot = Some((*id).to_owned());
+                    }
+                    if self.seen.iter().any(|seen| seen == id) {
+                        "repeated"
+                    } else {
+                        self.seen.push((*id).to_owned());
+                        "new"
+                    }
+                }
+                _ => "malformed",
+            };
+            self.fact.push(fact.to_owned());
+        }
+
+        fn of_the_form(id: &str) -> bool {
+            (1..=CALL_ID_CHARACTERS).contains(&id.len())
+                && id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+        }
+
+        /// `text` with every id seen written `<call>`, the longest first so that no id is
+        /// mistaken for the start of a longer one, and in a call's record a `duration_ms` of
+        /// at most `elapsed` written `"<bounded>"`.
+        fn redact(&self, text: &str, elapsed: Duration) -> String {
+            const KEY: &str = "\"duration_ms\":";
+            let mut ids: Vec<&String> = self.seen.iter().collect();
+            ids.sort_by_key(|id| std::cmp::Reverse(id.len()));
+            let mut text = ids.into_iter().fold(text.to_owned(), |text, id| {
+                text.replace(id.as_str(), "<call>")
+            });
+            if !text.contains(CALL_RECORD_FORMAT) {
+                return text;
+            }
+            if let Some(start) = text.find(KEY).map(|at| at + KEY.len()) {
+                let digits = text[start..].bytes().take_while(u8::is_ascii_digit).count();
+                let bounded = text[start..start + digits]
+                    .parse::<u128>()
+                    .is_ok_and(|ms| ms <= elapsed.as_millis());
+                if bounded {
+                    text.replace_range(start..start + digits, "\"<bounded>\"");
+                }
+            }
+            text
         }
     }
 

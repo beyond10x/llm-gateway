@@ -172,7 +172,7 @@ refusal_codes! {
     /// on a translated request, also a transport failure before output: unreachable, a 408 or
     /// 5xx, timed out, or a connection reset or ended inside a frame.
     UpstreamFailed => "upstream-failed", 502,
-        "the model target could not be reached or failed; the next request asks for a replacement";
+        "the model target could not be reached or failed";
     /// The target refused a translated request before any output: its answer's status (a 4xx
     /// other than 408, an authentication or a rate-limit refusal), or an answer that broke its
     /// wire (a stream ended cleanly before its terminal event, a call to a tool not offered).

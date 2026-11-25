@@ -1266,11 +1266,21 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
     })
 }
 
-/// `[providers.<name>]`, checked: the providers, and how many of them declare a spend ceiling
-/// (at most one).
-/// A call may start a billed pod only under a daily cap of the account that pays for it
-/// (story:a-call-starts-no-pod): `start_on_request = true` needs `daily_cap_usd` on the model's
-/// own provider; a total cap alone, or a cap on another provider, is not one.
+/// Whether a call may start `model`'s pod (story:a-call-starts-no-pod): its `start_on_request`
+/// is `true` and its own provider in `providers` declares `daily_cap_usd`, so a call starts a
+/// billed pod only under a daily cap of the account that pays for it. A total cap alone, or a
+/// cap on another provider, is not one. The loader refuses the key without the cap
+/// ([`start_on_request_capped`]); the relay asks this again of every `Deployment` it composes,
+/// which a library caller may build without the loader.
+pub(crate) fn may_start_on_request(model: &Model, providers: &BTreeMap<String, Provider>) -> bool {
+    model.start_on_request
+        && providers
+            .get(&model.provider)
+            .is_some_and(|provider| provider.daily_cap_micro_usd.is_some())
+}
+
+/// The loader's side of [`may_start_on_request`]: `start_on_request = true` needs
+/// `daily_cap_usd` on the model's own provider.
 ///
 /// # Errors
 /// `config:value` naming the model's key and the missing cap, quoting no value.
@@ -1280,10 +1290,7 @@ fn start_on_request_capped(
     providers: &BTreeMap<String, Provider>,
 ) -> Result<(), Refusal> {
     ensure(
-        !model.start_on_request
-            || providers
-                .get(&model.provider)
-                .is_some_and(|provider| provider.daily_cap_micro_usd.is_some()),
+        !model.start_on_request || may_start_on_request(model, providers),
         &format!("{at}.start_on_request"),
         &format!(
             "needs providers.{}.daily_cap_usd: a model call starts a pod only under a daily spend cap",
@@ -1292,6 +1299,8 @@ fn start_on_request_capped(
     )
 }
 
+/// `[providers.<name>]`, checked: the providers, and how many of them declare a spend ceiling
+/// (at most one).
 fn providers(
     declared: BTreeMap<String, ProviderDocument>,
 ) -> Result<(BTreeMap<String, Provider>, usize), Refusal> {

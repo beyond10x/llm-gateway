@@ -13,7 +13,7 @@
 //! call it, with `EmulatedRunpod` and loopback pods.
 
 use crate::{
-    config::{Deployment, Model, Wire},
+    config::{Deployment, Model, Wire, may_start_on_request},
     hosted::{HostedEndpoint, HostedTargets, hosted_endpoints},
     keys::VllmKeys,
     refusal::{Refusal, StartupRefusal},
@@ -346,8 +346,9 @@ struct Relayed {
     bearer: Arc<TargetBearer>,
     /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
     hold: Duration,
-    /// `start_on_request`: whether a request may start the model's pod. Without it a request
-    /// only uses or waits on a pod the owner's wake started (story:a-call-starts-no-pod).
+    /// Whether a request may start the model's pod: its `start_on_request`, under a daily cap
+    /// on its provider ([`may_start_on_request`]). Without it a request only uses or waits on a
+    /// pod the owner's wake started (story:a-call-starts-no-pod).
     start_on_request: bool,
     /// Each profile's `max_model_len` by profile name: the window of a pod started on it.
     windows: BTreeMap<String, u64>,
@@ -384,7 +385,9 @@ fn relayed_models(
                 alias: identifier(alias, &format!("models.{alias}"))?,
                 bearer: Arc::new(bearer),
                 hold: Duration::from_secs(model.request_hold_seconds),
-                start_on_request: model.start_on_request,
+                // The cap rule holds where a start is decided, not only in the loader: a
+                // `Deployment` built without it gets no request start.
+                start_on_request: may_start_on_request(model, &deployment.providers),
                 windows: profile_windows(model).collect(),
             },
         );
@@ -576,7 +579,8 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// still use a pod that is ready now, but starts none and waits for none: without a ready
     /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
     ///
-    /// Only a model with `start_on_request` asks with the compute authorization, so only its
+    /// Only a model with `start_on_request` under a daily cap asks with the compute
+    /// authorization ([`may_start_on_request`]), so only its
     /// request may start a pod. Any other asks `RunpodPool::ensure_held_running`, which never
     /// submits a create (story:a-call-starts-no-pod): a pod the owner's wake started is held on
     /// and relayed to as above, but with no pod running or starting (the model stopped, or its
@@ -655,8 +659,9 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     }
 
     /// A request through the pod at `authority` failed (row W7): the pool stops that pod if it
-    /// is still the model's current one, so the next acquisition starts a replacement. A report
-    /// about a pod already replaced changes nothing.
+    /// is still the model's current one. For a model with `start_on_request` the next request
+    /// starts a replacement; for any other the next request is `model-stopped` until the owner
+    /// wakes the model. A report about a pod already replaced changes nothing.
     fn invalidate(&self, alias: &str, failed: &str) {
         if let Some(relayed) = self.models.get(alias) {
             let _stopped = self.pool.invalidate(&relayed.alias, |endpoint| {

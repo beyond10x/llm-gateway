@@ -1007,7 +1007,7 @@
         "scenario": "llm-gateway.gateway/authored/translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event"
       },
       "gateway/scenarios/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused.yaml": {
-        "digest": "sha256:ee3853b9103c2de5b1d7e45447a32326bcf2a8a1d3eb32061cdc0001466d4a7a",
+        "digest": "sha256:25d562cda5d85a94a146fdf87ea9a14d3b426a258efe1bc399abe2c5bbebdd41",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused"
       },
@@ -1122,7 +1122,7 @@
         "scenario": "llm-gateway.gateway/authored/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint"
       },
       "gateway/scenarios/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502.yaml": {
-        "digest": "sha256:cc732f554825fd7dd8285b2d7f640079788fd01d9752fa6c293f140f96a9e940",
+        "digest": "sha256:dd22aacc2852e35822eb7fd089f9f272336138366525295c357a19c92edd9a7b",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502"
       },
@@ -1998,9 +1998,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "477f829140b1b707205182885c7d4b0cc0b2256a0c4978b018a8a6de3a4fe1c4",
+    "contract_digest": "dff94266b380394a22c47b121068460b397fce92d314004d4edb352ab66789bd",
     "scenario_initial_state": "empty",
-    "spec_digest": "090d3569102d87f561830a1121c2381d415e0b50580423ad70fffc76d4a48c36",
+    "spec_digest": "92d92596d5c900c7d9c959bf74c870ed238d674aa6d7c12fba466f4b65b3b3bc",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -16823,7 +16823,7 @@
               "bodies": {
                 "kind": "literal",
                 "value": [
-                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed\"}}",
                   "{\"error\":{\"code\":\"upstream-refused\",\"message\":\"the model target refused the translated request\"}}",
                   "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_3\",\"model\":\"small\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
                 ]
@@ -19240,8 +19240,8 @@
               "bodies": {
                 "kind": "literal",
                 "value": [
-                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
-                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed\"}}",
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed\"}}",
                   "{\"id\":\"replacement\"}"
                 ]
               },

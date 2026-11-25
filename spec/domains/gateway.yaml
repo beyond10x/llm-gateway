@@ -185,7 +185,7 @@ types:
       - {name: TranslationUnrepresentable, attributes: {code: translation-unrepresentable, status: 502, message: "the model's answer cannot be written on this wire"}}
       - {name: TranslationUnsupported, attributes: {code: translation-unsupported, status: 400, message: "the request uses a field or value outside the subset the gateway translates"}}
       - {name: Unavailable, attributes: {code: unavailable, status: 503, message: "the gateway is not ready to serve inspection"}}
-      - {name: UpstreamFailed, attributes: {code: upstream-failed, status: 502, message: "the model target could not be reached or failed; the next request asks for a replacement"}}
+      - {name: UpstreamFailed, attributes: {code: upstream-failed, status: 502, message: "the model target could not be reached or failed"}}
       - {name: UpstreamRefused, attributes: {code: upstream-refused, status: 502, message: "the model target refused the translated request"}}
       - {name: WireNotServed, attributes: {code: wire-not-served, status: 400, message: "the model is not served on this wire"}}
   # A wire the gateway relays, each on its own path, to the same path at the target, joined to a

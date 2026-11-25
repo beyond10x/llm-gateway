@@ -1270,8 +1270,9 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
 /// is `true` and its own provider in `providers` declares `daily_cap_usd`, so a call starts a
 /// billed pod only under a daily cap of the account that pays for it. A total cap alone, or a
 /// cap on another provider, is not one. The loader refuses the key without the cap
-/// ([`start_on_request_capped`]); the relay asks this again of every `Deployment` it composes,
-/// which a library caller may build without the loader.
+/// ([`start_on_request_capped`]). The relay asks this again of every `Deployment` it composes,
+/// which a library caller may build without the loader, and also requires that the pool
+/// enforces that provider's ceilings (`starts_on_request` in `relaying.rs`).
 pub(crate) fn may_start_on_request(model: &Model, providers: &BTreeMap<String, Provider>) -> bool {
     model.start_on_request
         && providers

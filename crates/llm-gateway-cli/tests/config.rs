@@ -2056,9 +2056,9 @@ fn start_on_request_the_restore_instruction_names_every_key_a_pre_change_documen
 
 /// Adversary pass 2, story:a-call-starts-no-pod. CHANGELOG `### Changed` and the README tell
 /// the owner that restoring a call that starts the pod takes `start_on_request = true`,
-/// `daily_cap_usd` on the model's provider and `price_per_hour_usd` on every model of that
-/// provider. The loader asks a price of every model of every provider once any provider declares
-/// a ceiling. A document that loaded before the change, with a second provider and a model on it
+/// `daily_cap_usd` on the model's provider and `price_per_hour_usd` on every model the document
+/// declares under `[models]`: the loader asks a price of every model of every provider once any
+/// provider declares a ceiling. A document that loaded before the change, with a second provider and a model on it
 /// (answered `target-unavailable` without a connection, as the README says), is to load once
 /// exactly the keys the instruction names are added.
 #[test]
@@ -2073,11 +2073,15 @@ fn adv2_w02_the_restore_instruction_loads_a_pre_change_document_with_a_second_pr
         load(&fixture.config(&before)).is_ok(),
         "the document did not load before"
     );
-    // Exactly what the instruction names: the key on `small`, the daily cap on its provider
-    // `runpod`, and a price on every model of `runpod` (`small` is its only one).
+    // Exactly what the corrected instruction names: the key on `small`, the daily cap on its
+    // provider `runpod`, and a price on every `[models.<alias>]` table, `spare` included.
     let restored = with_model_keys(
         &with_provider_keys(&before, "daily_cap_usd = 25\n"),
         "start_on_request = true\nprice_per_hour_usd = 2\n",
+    )
+    .replace(
+        "max_model_len = 2048\n",
+        "max_model_len = 2048\nprice_per_hour_usd = 3\n",
     );
     match load(&fixture.config(&restored)) {
         Ok(deployment) => assert!(deployment.models["small"].start_on_request),

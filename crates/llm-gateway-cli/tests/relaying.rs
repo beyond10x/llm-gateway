@@ -2028,7 +2028,8 @@ fn adv2_w02_a_built_deployment_with_the_daily_cap_on_another_provider_lets_no_ca
 /// model runs on and that declares any ceiling. A library caller's deployment (the loader admits
 /// a ceiling on one provider only) with a second provider `other`, named before `runpod`, with a
 /// total cap only and a model of its own: the pool binds `other`'s total cap, not `runpod`'s
-/// daily one, and a call starts `small`'s pod with 50 USD spent today against a 10 USD daily cap.
+/// daily one, so a start of `small`'s pod would not be checked against its 10 USD daily cap
+/// (50 USD spent today). A call to `small` therefore starts nothing and is `model-stopped`.
 #[test]
 fn adv2_w02_a_call_that_may_start_a_pod_is_checked_against_its_own_providers_daily_cap() {
     let fixture = Fixture::new("adv2-built-unbound-cap");
@@ -2053,5 +2054,9 @@ fn adv2_w02_a_call_that_may_start_a_pod_is_checked_against_its_own_providers_dai
         "a call started a pod with 50 USD spent today under its provider's 10 USD daily cap \
          ({refused:?})"
     );
-    assert_eq!(refused, Some(llm_gateway::TargetRefusal::SpendCeiling));
+    // Decided in correction round 2: the key counts only when the pool enforces the model's own
+    // provider's daily cap. Here it enforces `other`'s total cap, so `small` behaves as without
+    // the key.
+    assert_eq!(refused, Some(llm_gateway::TargetRefusal::Stopped));
+    assert_eq!(runpod.spend_reads(), 0);
 }

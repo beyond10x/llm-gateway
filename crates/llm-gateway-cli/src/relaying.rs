@@ -13,7 +13,7 @@
 //! call it, with `EmulatedRunpod` and loopback pods.
 
 use crate::{
-    config::{Deployment, Model, Wire, may_start_on_request},
+    config::{Deployment, Model, Provider, Wire, may_start_on_request},
     hosted::{HostedEndpoint, HostedTargets, hosted_endpoints},
     keys::VllmKeys,
     refusal::{Refusal, StartupRefusal},
@@ -192,6 +192,36 @@ pub fn compute_authorization_for(deployment: &Deployment) -> Result<ComputeAutho
     })
 }
 
+/// The provider, by name, whose ceilings [`spend_policy`] gives the pool composed from
+/// `deployment`: the first, in name order, that one of `deployment`'s models runs on and that
+/// declares a daily or a total cap. `None` leaves the pool unmetered.
+fn enforced_ceiling(deployment: &Deployment) -> Option<(&String, &Provider)> {
+    let billed = |name: &String| {
+        deployment
+            .models
+            .values()
+            .any(|model| &model.provider == name)
+    };
+    deployment
+        .providers
+        .iter()
+        .filter(|(name, _)| billed(name))
+        .find(|(_, provider)| {
+            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
+        })
+}
+
+/// Whether a call may start `model`'s pod in the pool composed from `deployment`, the one place
+/// the relay decides it (story:a-call-starts-no-pod): the model may start on request under its
+/// own provider's daily cap ([`may_start_on_request`]), and that provider's ceilings are the
+/// ones the pool enforces ([`enforced_ceiling`]), so the start is checked against that daily
+/// cap. In any other composition, which only a `Deployment` built without the loader reaches,
+/// the model behaves as without the key.
+fn starts_on_request(deployment: &Deployment, model: &Model) -> bool {
+    may_start_on_request(model, &deployment.providers)
+        && enforced_ceiling(deployment).is_some_and(|(name, _)| name == &model.provider)
+}
+
 /// The spend ledger the pool built from `deployment` checks every create against: the ceilings
 /// of the one provider that declares any (the document allows at most one) when one of
 /// `deployment`'s models runs on it, and every model's declared price per hour. The pool bills
@@ -202,21 +232,7 @@ pub fn compute_authorization_for(deployment: &Deployment) -> Result<ComputeAutho
 /// A `config:value` [`Refusal`] for a model alias that is not an identifier.
 pub fn spend_policy(deployment: &Deployment) -> Result<SpendPolicy, Refusal> {
     let mut policy = SpendPolicy::default();
-    let billed = |name: &String| {
-        deployment
-            .models
-            .values()
-            .any(|model| &model.provider == name)
-    };
-    if let Some(provider) = deployment
-        .providers
-        .iter()
-        .filter(|(name, _)| billed(name))
-        .map(|(_, provider)| provider)
-        .find(|provider| {
-            provider.daily_cap_micro_usd.is_some() || provider.total_cap_micro_usd.is_some()
-        })
-    {
+    if let Some((_, provider)) = enforced_ceiling(deployment) {
         policy.daily_cap_micro_usd = provider.daily_cap_micro_usd;
         policy.total_cap_micro_usd = provider.total_cap_micro_usd;
     }
@@ -347,7 +363,7 @@ struct Relayed {
     /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
     hold: Duration,
     /// Whether a request may start the model's pod: its `start_on_request`, under a daily cap
-    /// on its provider ([`may_start_on_request`]). Without it a request only uses or waits on a
+    /// on its provider ([`starts_on_request`]). Without it a request only uses or waits on a
     /// pod the owner's wake started (story:a-call-starts-no-pod).
     start_on_request: bool,
     /// Each profile's `max_model_len` by profile name: the window of a pod started on it.
@@ -387,7 +403,7 @@ fn relayed_models(
                 hold: Duration::from_secs(model.request_hold_seconds),
                 // The cap rule holds where a start is decided, not only in the loader: a
                 // `Deployment` built without it gets no request start.
-                start_on_request: may_start_on_request(model, &deployment.providers),
+                start_on_request: starts_on_request(deployment, model),
                 windows: profile_windows(model).collect(),
             },
         );
@@ -580,7 +596,7 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
     ///
     /// Only a model with `start_on_request` under a daily cap asks with the compute
-    /// authorization ([`may_start_on_request`]), so only its
+    /// authorization ([`starts_on_request`]), so only its
     /// request may start a pod. Any other asks `RunpodPool::ensure_held_running`, which never
     /// submits a create (story:a-call-starts-no-pod): a pod the owner's wake started is held on
     /// and relayed to as above, but with no pod running or starting (the model stopped, or its

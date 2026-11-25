@@ -566,6 +566,30 @@ impl<T: RunpodTransport> RunpodPool<T> {
         self.hand_out(alias, Some(authorization), Some(hold))
     }
 
+    /// [`Self::ensure_held`] that never submits a create: for a caller that may wait on a pod
+    /// another ask started (the owner's wake) but must start none itself
+    /// (story:a-call-starts-no-pod).
+    ///
+    /// With no live pod it answers [`PoolError::Starting`] and leaves an unbound hold unbound,
+    /// so a caller reads an unbound hold after a `starting` answer as a model with no pod; while
+    /// the slot owes a stop it answers [`PoolError::Stopping`], unbound too. Otherwise it binds,
+    /// waits and is lost exactly as [`Self::ensure_held`] does, and a lost hold starts nothing.
+    ///
+    /// # Errors
+    ///
+    /// As [`Self::ensure_held`]; never a spend refusal or a create's failure, since it creates
+    /// nothing.
+    pub fn ensure_held_running(
+        &self,
+        alias: &Identifier,
+        hold: &mut Hold,
+    ) -> Result<StreamLease, PoolError> {
+        if hold.lost {
+            return Err(PoolError::Stopping);
+        }
+        self.hand_out(alias, None, Some(hold))
+    }
+
     /// [`Self::ensure`] when `authorization` is given; without it, nothing is started. With a
     /// `hold`, as [`Self::ensure_held`].
     fn hand_out(

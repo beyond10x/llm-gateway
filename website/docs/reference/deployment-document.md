@@ -13,7 +13,7 @@ any level is refused as `config:schema`, naming the line and the keys allowed th
 outside its rule is refused as `config:value`. Either refusal exits 1 before anything is bound.
 
 ```text
-b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `profiles`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `tool_calling`, `price_per_hour_usd`
+b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `profiles`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `vllm_api_key`, `tool_calling`, `price_per_hour_usd`, `start_on_request`
 ```
 
 The document holds no Runpod API key: with a `connectors` table that key stays in the connectors
@@ -91,6 +91,7 @@ a provider that declares a ceiling starts no pod and every start is refused `spe
 | `vllm_api_key_file` | absent | The file holding the key the model's vLLM server expects. |
 | `vllm_api_key` | absent | A [`keychain:<service>/<account>`](#keychain-references) reference to that key, in place of the file: refused beside `vllm_api_key_file`, and as `vllm-api-key:<rule>` when the entry cannot be read. |
 | `price_per_hour_usd` | absent | Above 0, at most 1000: the most the model's pod costs per hour on any of its GPU types, which the spend check prices it by. Required once a provider declares a spend ceiling. |
+| `start_on_request` | `false` | `true` or `false`. `false`: a model call never starts the model's pod; a call while the pod is stopped or stopping is refused `model-stopped` (503) at once, and only the owner's wake starts it. `true`: a call starts the pod as a wake would and is held while it starts. `true` is refused `config:value`, naming the model and the missing cap, unless the model's provider declares `daily_cap_usd`. |
 
 Without `profiles`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` and
 `extra_vllm_args` are the model's one profile, named `default`. With it, each

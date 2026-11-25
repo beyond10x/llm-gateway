@@ -531,6 +531,7 @@ mod relay {
         EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, PodConnector,
         ProxyConnector, Routes,
     };
+    use llm_runpod::{AccountSpend, EmulatedRunpod, ManualClock};
     use rcgen::{
         BasicConstraints, CertificateParams, DnType, ExtendedKeyUsagePurpose, IsCa, Issuer,
         KeyPair, KeyUsagePurpose,
@@ -617,6 +618,80 @@ mod relay {
         /// does for a deployment's `metrics_listen` (llm-gateway.telemetry).
         #[serde(default)]
         metrics_listen: Option<MetricsListenInput>,
+        /// The document's models are served by the binary's own pod target source over the
+        /// emulator, in place of [`Source`] (story:a-call-starts-no-pod).
+        #[serde(default)]
+        runpod: Option<RunpodInput>,
+    }
+
+    /// A deployment document whose models the binary's pool serves over `EmulatedRunpod`, and
+    /// how each pod the emulator creates behaves.
+    #[derive(Deserialize)]
+    #[serde(deny_unknown_fields)]
+    struct RunpodInput {
+        document: String,
+        /// Readiness probes each created pod answers `not ready` first.
+        #[serde(default)]
+        ready_after: u32,
+        /// The container uptimes the emulator reports, one per poll.
+        #[serde(default)]
+        uptimes: Vec<u64>,
+    }
+
+    /// The bound on `ready_after` and on the number of `uptimes`.
+    const MAX_RUNPOD_SCRIPT: usize = 64;
+
+    /// Every pod the emulator creates is reached at the run's first fixture pod, whatever
+    /// authority its endpoint names.
+    struct FirstPod(String);
+
+    impl PodConnector for FirstPod {
+        fn connect(&self, _authority: &str) -> io::Result<Box<dyn RelayStream>> {
+            let stream = TcpStream::connect(&self.0)?;
+            stream.set_read_timeout(Some(WAIT))?;
+            stream.set_write_timeout(Some(WAIT))?;
+            Ok(Box::new(stream))
+        }
+    }
+
+    /// The emulator a `runpod` program's pool runs on, and the binary's targets over it.
+    type PodSource = (Option<EmulatedRunpod>, Option<Arc<dyn RelayTargets>>);
+
+    /// The binary's pod target source for `input`'s document over a fresh emulator: the
+    /// emulator, to count its creates, and the targets; both `None` without `input`.
+    ///
+    /// # Errors
+    /// The refusal's `<source>:<rule>` for a document the binary refuses.
+    fn runpod_targets(input: Option<&RunpodInput>, pods: &[Pod]) -> Result<PodSource, String> {
+        let Some(input) = input else {
+            return Ok((None, None));
+        };
+        let code = |refusal: llm_gateway_cli::Refusal| refusal.code().to_owned();
+        let deployment = llm_gateway_cli::parse(&input.document).map_err(code)?;
+        let runpod = EmulatedRunpod::new();
+        runpod.ready_after(input.ready_after);
+        runpod.uptimes(input.uptimes.clone());
+        runpod.set_account_spend(Some(AccountSpend {
+            daily_micro_usd: 0,
+            total_micro_usd: 0,
+        }));
+        let keys = deployment
+            .models
+            .keys()
+            .map(|alias| (alias.clone(), format!("key-{alias}").into_bytes()))
+            .collect();
+        let first = pods
+            .first()
+            .map_or_else(String::new, |pod| pod.authority.clone());
+        let targets = llm_gateway_cli::pod_targets(
+            &deployment,
+            &keys,
+            runpod.clone(),
+            Arc::new(FirstPod(first)),
+            Arc::new(ManualClock::new(1_000)),
+        )
+        .map_err(code)?;
+        Ok((Some(runpod), Some(targets)))
     }
 
     /// The metrics-only listener: open, or taking `bearer` as its scrape token.
@@ -1902,6 +1977,7 @@ mod relay {
     fn compose(
         program: &Program,
         source: Arc<Source>,
+        pod_source: Option<Arc<dyn RelayTargets>>,
         counting: &mut Option<Arc<Counting>>,
         records: Arc<Records>,
         tls_root: Option<&[u8]>,
@@ -1959,8 +2035,13 @@ mod relay {
             ),
             None => Arc::new(ProxyConnector::shipped()),
         };
+        // With `runpod` every alias no hosted endpoint serves goes to the binary's pool.
+        let rest: Arc<dyn RelayTargets> = match pod_source {
+            Some(pods) => pods,
+            None => source,
+        };
         let targets = Arc::new(Counting {
-            inner: Arc::new(HostedTargets::new(endpoints, tls, source)),
+            inner: Arc::new(HostedTargets::new(endpoints, tls, rest)),
             names,
             acquired: AtomicUsize::new(0),
             released: Arc::new(AtomicUsize::new(0)),
@@ -2248,6 +2329,10 @@ mod relay {
                     && lifecycle.wake.iter().all(|answer| answer.valid(true))
                     && lifecycle.status.iter().all(|answer| answer.valid(false))
             })
+            && program.runpod.as_ref().is_none_or(|runpod| {
+                usize::try_from(runpod.ready_after).is_ok_and(|after| after <= MAX_RUNPOD_SCRIPT)
+                    && runpod.uptimes.len() <= MAX_RUNPOD_SCRIPT
+            })
             && program.steps.len() <= MAX_STEPS
             && program.cold_starts <= MAX_STEPS
             && pods <= MAX_PODS
@@ -2386,7 +2471,7 @@ mod relay {
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
             "scrapes": [], "connections": [], "received_heads": [], "upstream_ends": [],
-            "lifecycle_asks": []
+            "lifecycle_asks": [], "pod_creates": 0
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -2428,6 +2513,15 @@ mod relay {
             pods.push(pod);
         }
         let source = Arc::new(source(&program, &pods));
+        // One pool for the whole run: a `restart` step composes another gateway over it.
+        let (emulator, pod_source) = match runpod_targets(program.runpod.as_ref(), &pods) {
+            Ok(composed) => composed,
+            Err(code) => {
+                facts["error_code"] = json!(code);
+                stop(&shared, pods);
+                return facts;
+            }
+        };
         let records = Arc::new(Records::default());
         let root = certificates
             .as_ref()
@@ -2439,6 +2533,7 @@ mod relay {
             let composed = compose(
                 &program,
                 Arc::clone(&source),
+                pod_source.clone(),
                 &mut counting,
                 Arc::clone(&records),
                 root,
@@ -2465,6 +2560,9 @@ mod relay {
         }
         stop(&shared, pods);
         upstream_facts(&shared, &countings, &mut facts);
+        if let Some(emulator) = emulator {
+            facts["pod_creates"] = json!(emulator.create_calls());
+        }
         facts
     }
 

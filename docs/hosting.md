@@ -609,6 +609,22 @@ starts a replacement; the next request does. A record whose create answer was lo
 0 asks once, starting the pod if none is live, and answers `model-cold-start` at once. `l6_*`, `w6_*` and `k28_*` in
 `crates/llm-gateway-cli/tests/relaying.rs` prove it.
 
+**A request starts a pod only when its model says so** (story:a-call-starts-no-pod). What the
+paragraph above describes is a model whose `[models.<alias>]` table sets `start_on_request = true`,
+which the document accepts only while the model's provider declares `daily_cap_usd`
+(`config:value` otherwise, naming the model and the missing cap): only then is a billed pod
+started by whoever can reach the gateway. Without it (`false`, the default) only the owner's wake
+starts the pod, and the relay asks the pool through `RunpodPool::ensure_held_running`, the same
+held ask with no authorization, which never submits a create. A request to a model whose pod is
+stopped, or stopping, is answered `model-stopped` (503, no `retry-after`) at once: no create is
+sent, no spend is read, and its usage record's outcome is `refused`. A request to a pod the wake
+started is held on it and relayed once it serves, or answered `model-cold-start` when its hold
+passes, as above; a pod that fails while it is held answers the held request
+`target-unavailable` and starts no replacement, and the next request is `model-stopped`. The
+`start_on_request_*` tests in `crates/llm-gateway-cli/tests/relaying.rs` and `config.rs`, the
+`ensure_held_running_*` tests in `crates/llm-runpod/tests/runpod.rs` and the scenarios
+`contracts/gateway/scenarios/start-on-request-*` prove it.
+
 ### Waking a model and reading its phase
 
 The owner's lifecycle routes (`docs/gateway.md`, "The lifecycle routes") drive the pool through
@@ -626,7 +642,8 @@ pod's GPU type names, as a lease reports it. `ready` is the pool's last observat
 the last step (a request, a wake, or the cleanup pass every 60 seconds), not a fresh probe.
 
 `RunpodPool::wake` is one `ensure`, the first ask of a held request, with a ready lease dropped
-at once, then `status`. A wake therefore starts a pod exactly as a request would: through the
+at once, then `status`. A wake starts a pod whatever the model's `start_on_request` says, and
+exactly as a request of a model with `start_on_request = true` would: through the
 spend check before each create and the profile fallback, answering `starting` once its create is
 submitted. While a start is in progress or the pod is ready it creates nothing. A wake that
 finds the pod ready is a use of it, as a request's ask is, so its idle window starts again; a
@@ -648,7 +665,9 @@ A `[providers.<name>]` table may declare `daily_cap_usd` and `total_cap_usd`, th
 ceilings in USD (each finite, above 0, at most 1000000 and at least 0.000001; `config:value`
 otherwise). At most one provider declares one, and once one does every `[models.<alias>]`
 declares `price_per_hour_usd` (above 0, at most 1000): the most its pod costs per hour on any of
-its GPU types. Amounts are held as integer micro-USD, so a ceiling compares exactly.
+its GPU types. Amounts are held as integer micro-USD, so a ceiling compares exactly. A model
+whose `start_on_request` is `true` needs `daily_cap_usd` on its own provider: a `total_cap_usd`
+alone, or a cap on another provider, is `config:value`.
 
 A ceiling binds only the account of the provider that declares it. The pool is built for one
 provider, the one whose models it runs (in the shipped binary, the provider that declares the
@@ -721,8 +740,10 @@ has passed after that step.
 
 A request through the relay that fails drops its pod (row W7): the gateway reports the failed
 authority to `invalidate`, and `RunpodPool::invalidate` stops the model's current pod if its
-endpoint is that authority's, so the next request starts a replacement. A report about a pod
-already replaced stops nothing.
+endpoint is that authority's. For a model with `start_on_request = true` the next request then
+starts a replacement; for any other the next request is `model-stopped` and starts nothing, and
+the owner wakes the model (story:a-call-starts-no-pod). A report about a pod already replaced
+stops nothing.
 
 During the stop a request may still use a pod that is ready now (`RunpodPool::ensure_running`),
 but starts no pod and waits for none: with no ready pod for its model, or still waiting for one

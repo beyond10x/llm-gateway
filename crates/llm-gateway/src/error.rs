@@ -163,11 +163,16 @@ refusal_codes! {
     /// without a `retry-after`; the message names neither the ceiling nor the amount.
     SpendCeiling => "spend-ceiling", 503,
         "the model's pod was not started: it would pass a spend ceiling of its provider account, or that account's spend is unknown";
+    /// The embedding does not start the model's pod for a request, and the pod is not running:
+    /// stopped, or owing a stop. Answered at once, without a `retry-after`; the message says the
+    /// owner wakes the model, and names no amount and no pod (story:a-call-starts-no-pod).
+    ModelStopped => "model-stopped", 503,
+        "the model's pod is not running and a request does not start it; the owner wakes it";
     /// The target could not be reached, closed without an answer, or answered 502, 503 or 504;
     /// on a translated request, also a transport failure before output: unreachable, a 408 or
     /// 5xx, timed out, or a connection reset or ended inside a frame.
     UpstreamFailed => "upstream-failed", 502,
-        "the model target could not be reached or failed; the next request asks for a replacement";
+        "the model target could not be reached or failed";
     /// The target refused a translated request before any output: its answer's status (a 4xx
     /// other than 408, an authentication or a rate-limit refusal), or an answer that broke its
     /// wire (a stream ended cleanly before its terminal event, a call to a tool not offered).
@@ -333,7 +338,7 @@ closed_enum! {
 
 closed_enum! {
     /// Why [`crate::RelayTargets::acquire`] handed out no target. Each is answered with its own
-    /// refusal: `target-unavailable`, `model-cold-start` or `spend-ceiling`.
+    /// refusal: `target-unavailable`, `model-cold-start`, `spend-ceiling` or `model-stopped`.
     TargetRefusal {
         /// No target can be had: the model is down, failed to start, or the embedding is
         /// stopping.
@@ -344,6 +349,9 @@ closed_enum! {
         /// Starting the model's pod would pass a spend ceiling of its provider account, or that
         /// account's spend is unknown. The pod was not started; the request is not held.
         SpendCeiling => "the model's pod was not started for a spend ceiling";
+        /// The model's pod is not running, and the embedding starts none for a request: only
+        /// the owner's wake does. The request is not held.
+        Stopped => "the model's pod is not running and a request does not start it";
     }
 }
 
@@ -354,6 +362,7 @@ impl TargetRefusal {
             Self::Unavailable => RefusalCode::TargetUnavailable,
             Self::ColdStart => RefusalCode::ModelColdStart,
             Self::SpendCeiling => RefusalCode::SpendCeiling,
+            Self::Stopped => RefusalCode::ModelStopped,
         }
     }
 }

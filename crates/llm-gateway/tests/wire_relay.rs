@@ -34,7 +34,7 @@ const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const BODY_BOUND: usize = 33_554_432;
 /// How long any side of a test waits for the other before it gives up.
 const WAIT: Duration = Duration::from_secs(10);
-const UPSTREAM_FAILED: &str = "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}";
+const UPSTREAM_FAILED: &str = "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed\"}}";
 
 fn label(value: &str) -> Label {
     Label::new(value).unwrap()

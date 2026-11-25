@@ -1,0 +1,31 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: start-on-request-a-pod-that-fails-while-a-call-is-held-starts-no-replacement
+summary: with start_on_request absent, a woken pod that crash-loops while a call is held on it loses the hold, the call is target-unavailable, no replacement starts, and the next call is model-stopped
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[]],"runpod":{"document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\n\n[models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\nrequest_hold_seconds = 8\n","ready_after":64,"uptimes":[30,5,40,2,50,1]},"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\"}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 202 answered
+    - 503 target-unavailable
+    - 503 model-stopped
+    retry_after:
+    - absent
+    - absent
+    - absent
+    acquired: 2
+    upstream: []
+    pod_creates: 1

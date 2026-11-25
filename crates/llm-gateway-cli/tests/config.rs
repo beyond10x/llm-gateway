@@ -1917,6 +1917,80 @@ fn spend_a_ceiling_written_as_text_is_a_schema_refusal() {
     );
 }
 
+// ---- story:a-call-starts-no-pod: `[models.<alias>] start_on_request` ----
+
+/// `start_on_request` is `true` or `false`; `true` loads beside a `daily_cap_usd` on the model's
+/// provider, and `false` loads with no cap at all.
+#[test]
+fn start_on_request_true_loads_beside_a_daily_cap_and_false_needs_none() {
+    let fixture = Fixture::new("start-on-request-loads");
+    let capped = with_model_keys(
+        &with_provider_keys(&base(&fixture), "daily_cap_usd = 25\n"),
+        "price_per_hour_usd = 2\nstart_on_request = true\n",
+    );
+    assert!(load(&fixture.config(&capped)).is_ok());
+    let off = with_model_keys(&base(&fixture), "start_on_request = false\n");
+    assert!(load(&fixture.config(&off)).is_ok());
+}
+
+/// `true` whose provider declares no `daily_cap_usd` (none at all, or only a total cap) is
+/// refused at start as `config:value`, naming the model's key and the missing cap and quoting
+/// no value.
+#[test]
+fn start_on_request_true_without_a_daily_cap_on_the_models_provider_is_a_value_refusal() {
+    let fixture = Fixture::new("start-on-request-uncapped");
+    for (case, provider, model) in [
+        ("no cap", "", "start_on_request = true\n"),
+        (
+            "only a total cap",
+            "total_cap_usd = 40\n",
+            "price_per_hour_usd = 2\nstart_on_request = true\n",
+        ),
+    ] {
+        let text = with_model_keys(&with_provider_keys(&base(&fixture), provider), model);
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}");
+        let message = refusal.to_string();
+        assert!(
+            message.contains("models.small.start_on_request"),
+            "{case}: {message}"
+        );
+        assert!(message.contains("daily_cap_usd"), "{case}: {message}");
+        assert!(!message.contains("40"), "{case}: quotes a value: {message}");
+        assert!(!message.contains("true"), "{case}: quotes a value: {message}");
+    }
+}
+
+/// A daily cap on another provider does not count: the cap must be on the model's own.
+#[test]
+fn start_on_request_true_with_a_daily_cap_only_on_another_provider_is_a_value_refusal() {
+    let fixture = Fixture::new("start-on-request-other");
+    let text = format!(
+        "{}\n[providers.other]\nkind = \"runpod-vllm\"\ndaily_cap_usd = 5\n",
+        with_model_keys(
+            &base(&fixture),
+            "price_per_hour_usd = 2\nstart_on_request = true\n"
+        )
+    );
+    let refusal = load(&fixture.config(&text)).unwrap_err();
+    assert_eq!(refusal.code(), "config:value");
+    assert!(
+        refusal.to_string().contains("models.small.start_on_request"),
+        "{refusal}"
+    );
+}
+
+/// A value that is not a boolean is `config:schema`, as every typed key is.
+#[test]
+fn start_on_request_written_as_text_is_a_schema_refusal() {
+    let fixture = Fixture::new("start-on-request-schema");
+    let text = with_model_keys(&base(&fixture), "start_on_request = \"yes\"\n");
+    assert_eq!(
+        load(&fixture.config(&text)).unwrap_err().code(),
+        "config:schema"
+    );
+}
+
 // ---- story:model-profile-fallback: `[[models.<alias>.profiles]]` ----
 
 const FLAT_PLACEMENT: &str = "gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n";

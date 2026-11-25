@@ -463,6 +463,26 @@ types:
   #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
   #   tool_calling          `parsed` or `absent` (llm-gateway.clients.ToolCalling), default
   #                         `absent`; any other value is `config:schema`
+  #   start_on_request      `true` or `false`, default `false`: whether a model call may start
+  #                         the model's pod. `true` needs `daily_cap_usd` on the model's
+  #                         provider (ProviderDeclaration); without it the document is
+  #                         `config:value` naming `models.<alias>.start_on_request` and the
+  #                         missing cap, quoting no value
+  # DECIDED 2026-11-25 (story:a-call-starts-no-pod): a model call starts no billed pod unless the
+  # document says so and names a daily spend cap. With `start_on_request = false`, the default, a
+  # pod is started by the owner's wake (llm-gateway.gateway LifecycleRoute) and by nothing else: a
+  # call to a model whose pod is `stopped` or `stopping` is refused `model-stopped` (503, without
+  # `retry-after`) at once, and the pool is asked for no start (`RunpodPool::ensure_held_running`,
+  # which never submits a create); a call to a model whose pod is `starting` is held as below, and
+  # `model-cold-start` after the hold; a call to a `ready` model is relayed; a pod that fails while
+  # a call is held starts no replacement, and the next call is `model-stopped`. The owner's wake
+  # starts the pod whatever the key says, under the spend check. With `start_on_request = true`
+  # and the provider's `daily_cap_usd`, a call starts the pod as it did before the key existed
+  # (rows L6, W6, K28 below). A model whose provider the binary does not run (no `connectors`
+  # connection or `api_key`, or one unreachable at start) is `target-unavailable` either way: no
+  # wake can start it. Proved by `start_on_request_*` in crates/llm-gateway-cli/tests/config.rs
+  # and crates/llm-gateway-cli/tests/relaying.rs, and the `start-on-request-*` scenarios of
+  # llm-gateway.gateway.
   # DECIDED 2026-10-16 (story:model-profile-fallback): a model may declare `[[models.<alias>.profiles]]`;
   # the flat declaration is the one-profile case and keeps its meaning. Proved by `profiles_*`
   # in crates/llm-gateway-cli/tests/config.rs.
@@ -507,6 +527,7 @@ types:
       - {name: vllm_api_key, type: 'Optional<String>'}
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: price_per_hour_usd, type: 'Optional<Decimal>'}
+      - {name: start_on_request, type: Boolean}
   # One `[[models.<alias>.profiles]]` entry (story:model-profile-fallback): the
   # llm-gateway.runpod.ModelProfile it becomes. Every rule is `config:value`, a missing
   # required key or an unknown key `config:schema`.

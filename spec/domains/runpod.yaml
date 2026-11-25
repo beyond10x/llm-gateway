@@ -453,7 +453,12 @@ entities:
   # (`w7_invalidating_the_current_endpoint_stops_its_pod_and_the_next_ensure_starts_a_replacement`,
   # `w7_a_report_about_an_endpoint_that_is_not_current_stops_nothing`); `ensure_running` hands out
   # only a pod that is ready now and starts none
-  # (`d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one`). Dropping a pool stops no
+  # (`d2_ensure_running_hands_out_a_ready_pod_and_never_starts_one`); `ensure_held_running`
+  # (story:a-call-starts-no-pod) is `ensure_held` that never submits a create: with no live pod
+  # it answers `starting` and leaves its `Hold` unbound, so a caller reads an unbound hold after
+  # a `starting` answer as a model with no pod; it binds to a pod it finds starting and is lost
+  # as `ensure_held`'s hold is, and a lost hold starts nothing
+  # (`ensure_held_running_*` in tests/runpod.rs). Dropping a pool stops no
   # pod: pods outlive the process, and a pool started with no records sweeps every pod its
   # controller created as an orphan in its first cleanup pass (`the-orphan-sweep-terminates-only-this-controllers-unrecorded-pods`).
   # DECIDED 2026-10-17 (story:model-wake-and-status): the owner's lifecycle routes

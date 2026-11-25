@@ -1,0 +1,40 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: start-on-request-true-with-a-daily-cap-a-call-starts-the-pod-and-is-held-as-before
+summary: with start_on_request = true and a daily_cap_usd on its provider, a call to a stopped model starts its pod under the spend check and is held until it serves, as before the key existed
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"started\"}"]}]],"runpod":{"document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\ndaily_cap_usd = 10\n\n[models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\nprice_per_hour_usd = 2\nstart_on_request = true\n","ready_after":2},"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/v1/models/small/status","body":""},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\"}"},{"step":"request","method":"GET","path":"/v1/models/small/status","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 answered
+    - 200 relayed
+    - 200 answered
+    bodies:
+    - '{"model":"small","phase":"stopped"}'
+    - '{"id":"started"}'
+    - '{"model":"small","phase":"ready","profile":"default"}'
+    upstream:
+    - pod-1 POST /v1/chat/completions {"model":"small"}
+    authorizations:
+    - Bearer key-small
+    records:
+    - model=small wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=16 duration_ms=bounded tokens=absent
+    acquired: 1
+    released: 1
+    lifecycle_asks:
+    - status small
+    - status small
+    pod_creates: 1

@@ -168,6 +168,7 @@ types:
       - {name: MethodNotAllowed, attributes: {code: method-not-allowed, status: 405, message: "this path does not accept that method"}}
       - {name: ModelAbsent, attributes: {code: model-absent, status: 400, message: "the request body names no model"}}
       - {name: ModelColdStart, attributes: {code: model-cold-start, status: 503, message: "the model is still starting; ask again after the retry-after delay"}}
+      - {name: ModelStopped, attributes: {code: model-stopped, status: 503, message: "the model's pod is not running and a request does not start it; the owner wakes it"}}
       - {name: ModelUnknown, attributes: {code: model-unknown, status: 404, message: "no such model"}}
       - {name: Overloaded, attributes: {code: overloaded, status: 503, message: "the gateway is already serving its maximum concurrent requests"}}
       - {name: PathUnknown, attributes: {code: path-unknown, status: 404, message: "no such gateway resource"}}
@@ -814,7 +815,13 @@ entities:
   #      with `retry-after: 30`, so the client asks again later rather than treating the model
   #      as down; starting its pod would pass a spend ceiling of its provider account, or that
   #      account's spend is unknown, is `spend-ceiling` (503, story:spend-caps,
-  #      `TargetRefusal::SpendCeiling`), without `retry-after`. How long a request is held for its target, and what a stop does to a held
+  #      `TargetRefusal::SpendCeiling`), without `retry-after`; the model's pod is not running
+  #      and a request does not start it is `model-stopped` (503, story:a-call-starts-no-pod,
+  #      `TargetRefusal::Stopped`), answered at once and without `retry-after`, its message
+  #      saying that the owner wakes the model and naming no amount and no pod. The binary
+  #      answers it for a `[models.<alias>]` model whose `start_on_request` is `false`, the
+  #      default, while its pod is `stopped` or `stopping` (llm-gateway.deployment
+  #      ModelDeclaration; scenarios start-on-request-*). How long a request is held for its target, and what a stop does to a held
   #      request, are the embedding's (llm-gateway.deployment, rows L6 and K28); the gateway
   #      holds nothing itself. The request goes to the same path at the target, with `host` set
   #      to the target's authority and a `content-length` (`r6_*`, `r7_*` and `r8_*` in
@@ -1010,6 +1017,9 @@ entities:
       # or `status <alias>` (LifecycleRoute): a request refused before the source is asked
       # adds none.
       - {name: lifecycle_asks, type: 'List<String>'}
+      # With `runpod`, how many pod creates the binary's pool sent the emulator when the run
+      # ended, each counted whatever it answered; 0 without `runpod`.
+      - {name: pod_creates, type: Integer}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   # A request outside the relay, in the order the gateway decides (docs/gateway.md, "The HTTP
@@ -1175,6 +1185,20 @@ commands:
       #           list is answered `target-unavailable` (wake) or `stopped` (status). Without
       #           `lifecycle` the source starts no pod for any model, and a model served by a
       #           hosted endpoint never has one, both as `None`
+      #   runpod  optional, `{document, ready_after, uptimes}`: the models the deployment document
+      #           `document` declares under `[models.<alias>]` are served by the binary's own
+      #           Runpod target source (`llm_gateway_cli::pod_targets`) over a pool on the
+      #           crate's `EmulatedRunpod` and a clock that stands still, in place of the
+      #           scripted source above (`cold_starts` and `lifecycle` then answer nothing);
+      #           `models` still names how the relay serves each alias. Every pod the emulator
+      #           creates is reached at `pod-1`, each model's vLLM key is `key-<alias>` (no file
+      #           the document names is read), the account's reported spend is 0 USD, and each
+      #           created pod answers `ready_after` (default 0, at most 64) readiness probes
+      #           `not ready` first and reports the container uptimes `uptimes` (default none,
+      #           at most 64 values, as the llm-gateway.runpod `uptimes` step takes them), one
+      #           per poll, so a falling uptime is a restart
+      #           (llm-gateway.runpod crash loop). A document the binary refuses composes
+      #           nothing, its `error_code` the refusal's `<source>:<rule>`
       #   metrics_listen  optional, `{bearer}`: the gateway also serves the metrics-only
       #           listener (llm-gateway.telemetry, the deployment's `metrics_listen`) on a
       #           loopback port, as `GatewayHandle::serve_metrics`, taking `bearer` as its scrape

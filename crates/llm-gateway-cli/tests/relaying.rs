@@ -1388,3 +1388,294 @@ fn a_relayed_call_names_the_profile_of_the_pod_that_served() {
     assert_eq!(records.len(), 1, "{text}");
     assert!(records[0].contains("profile=\"h100-2k\""), "{}", records[0]);
 }
+
+// --- story:a-call-starts-no-pod: `start_on_request` --------------------------------------------
+
+/// The fixed message of `model-stopped`, as the client reads it.
+const MODEL_STOPPED: &str = "{\"error\":{\"code\":\"model-stopped\",\"message\":\"the model's pod is not running and a request does not start it; the owner wakes it\"}}";
+
+/// The owner's wake of `small`: `POST /v1/models/small/wake` with no body.
+fn wake(address: SocketAddr) -> String {
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    write!(
+        stream,
+        "POST /v1/models/small/wake HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+    )
+    .unwrap();
+    let mut answer = String::new();
+    drop(stream.read_to_string(&mut answer));
+    answer
+}
+
+/// The emulator, except that every terminate is refused, so a stopped pod stays `stopping`.
+#[derive(Clone)]
+struct TerminateRefused(EmulatedRunpod);
+
+impl llm_runpod::RunpodTransport for TerminateRefused {
+    fn list_pods(&mut self) -> Result<llm_runpod::PodListing, ()> {
+        self.0.list_pods()
+    }
+    fn create_pod(&mut self, request: &llm_runpod::PodRequest) -> llm_runpod::CreateAnswer {
+        self.0.create_pod(request)
+    }
+    fn terminate_pod(&mut self, _pod_id: &str) -> llm_runpod::TerminateAnswer {
+        llm_runpod::TerminateAnswer::Refused
+    }
+    fn probe_ready(&mut self, target: &llm_runpod::ProbeTarget<'_>) -> llm_runpod::Probe {
+        self.0.probe_ready(target)
+    }
+    fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
+        self.0.container_started_at(pod_id)
+    }
+    fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
+        self.0.pod_placement(pod_id)
+    }
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<llm_runpod::AccountSpend> {
+        self.0.account_spend(day_start_ms)
+    }
+}
+
+/// The document of [`deployment`] with `start_on_request = true`, a daily cap of 10 USD on its
+/// provider and a price of 2 USD an hour on `small`, and `lines` added to `[models.small]`.
+fn starting_on_request(fixture: &Fixture, lines: &str) -> Deployment {
+    deployment(fixture, |text| {
+        let text = mutate(
+            &text,
+            "kind = \"runpod-vllm\"\n",
+            "kind = \"runpod-vllm\"\ndaily_cap_usd = 10\n",
+        );
+        mutate(
+            &text,
+            "max_model_len = 1024\n",
+            &format!(
+                "max_model_len = 1024\nprice_per_hour_usd = 2\nstart_on_request = true\n{lines}"
+            ),
+        )
+    })
+}
+
+/// Acceptance 2: without the key, a call to a model whose pod is stopped is `model-stopped` at
+/// once on every wire, without `retry-after`; no pod is created, no spend is read, no byte
+/// reaches a pod (the messages call's output clamp counts nothing), and each call is counted
+/// `refused` and held on no route.
+#[test]
+fn start_on_request_off_a_call_to_a_stopped_model_is_model_stopped_at_once_and_creates_nothing() {
+    let fixture = Fixture::new("sor-stopped");
+    let deployment = deployment(&fixture, |text| text);
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let started = Instant::now();
+    let answers: Vec<(&str, String)> = [
+        (CHAT, SMALL_CHAT),
+        ("/v1/responses", "{\"model\":\"small\",\"input\":\"hi\"}"),
+        (
+            "/v1/messages",
+            "{\"model\":\"small\",\"max_tokens\":5,\"messages\":[]}",
+        ),
+    ]
+    .into_iter()
+    .map(|(path, body)| (path, post(address, path, OWNER_SECRET, body)))
+    .collect();
+    let took = started.elapsed();
+    let after = scrape(address);
+    running.shutdown();
+    for (path, answer) in &answers {
+        assert!(answer.starts_with("HTTP/1.1 503 "), "{path}: {answer}");
+        assert!(answer.ends_with(MODEL_STOPPED), "{path}: {answer}");
+        assert_eq!(header(answer, "retry-after"), None, "{path}: {answer}");
+    }
+    assert!(took < Duration::from_secs(2), "the calls were held {took:?}");
+    assert_eq!(runpod.create_calls(), 0, "a call started a pod");
+    assert_eq!(runpod.spend_reads(), 0);
+    assert!(pod.received().is_empty());
+    assert_eq!(after["llmgw_pod_starts_total"], "0");
+    assert_eq!(
+        after["llmgw_requests_total{model=\"small\",outcome=\"refused\"}"],
+        "3"
+    );
+    assert_eq!(
+        after["llmgw_route_cold_start_holds_total{model=\"small\",wire=\"chat\"}"],
+        "0"
+    );
+}
+
+/// Acceptance 3 and 4: without the key the owner's wake starts the pod, and a call while it
+/// starts is held on that pod and relayed once it serves, with no second create.
+#[test]
+fn start_on_request_off_a_call_after_the_owners_wake_is_held_on_the_starting_pod_and_relayed() {
+    let fixture = Fixture::new("sor-woken");
+    let deployment = deployment(&fixture, |text| text);
+    let mut pod = Pod::start(1, "{\"id\":\"woken\"}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(3);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let woken = wake(address);
+    let (answer, held) = timed_chat(address);
+    let after = scrape(address);
+    running.shutdown();
+    assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
+    assert!(woken.contains("\"phase\":\"starting\""), "{woken}");
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(answer.contains("{\"id\":\"woken\"}"), "{answer}");
+    assert!(
+        held >= Duration::from_millis(500),
+        "answered after {held:?}: the call was not held while the pod started"
+    );
+    assert_eq!(runpod.create_calls(), 1, "the call started a second pod");
+    assert_eq!(pod.received().len(), 1);
+    assert_eq!(after["llmgw_pod_starts_total"], "1");
+    assert_eq!(
+        after["llmgw_route_cold_start_holds_total{model=\"small\",wire=\"chat\"}"],
+        "1"
+    );
+}
+
+/// Acceptance 3: without the key, a call held on a pod the wake started that is still starting
+/// when its hold passes is `model-cold-start` with `retry-after: 30`, as today.
+#[test]
+fn start_on_request_off_a_call_held_past_its_hold_after_the_wake_is_model_cold_start() {
+    let fixture = Fixture::new("sor-cold");
+    let deployment = with_model_lines(&fixture, "request_hold_seconds = 1\n");
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(u32::MAX);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let woken = wake(address);
+    let (answer, held) = timed_chat(address);
+    running.shutdown();
+    assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
+    assert!(answer.starts_with("HTTP/1.1 503 "), "{answer}");
+    assert!(answer.contains("\"code\":\"model-cold-start\""), "{answer}");
+    assert_eq!(header(&answer, "retry-after"), Some("30"), "{answer}");
+    assert!(
+        held >= Duration::from_secs(1) && held < Duration::from_secs(4),
+        "answered after {held:?}, not after its 1 s hold"
+    );
+    assert_eq!(runpod.create_calls(), 1);
+    assert!(pod.received().is_empty());
+}
+
+/// Acceptance 3: without the key, a pod that fails while a call is held on it (a crash loop)
+/// loses the hold: that call is `target-unavailable`, as a lost hold is today, and starts no
+/// replacement; the next call is `model-stopped` at once, and still nothing is created.
+#[test]
+fn start_on_request_off_a_pod_that_fails_while_a_call_is_held_starts_no_replacement() {
+    let fixture = Fixture::new("sor-failed");
+    let deployment = with_model_lines(&fixture, "request_hold_seconds = 8\n");
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(u32::MAX);
+    runpod.uptimes(vec![30, 5, 40, 2, 50, 1]);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let woken = wake(address);
+    let (held_call, _) = timed_chat(address);
+    let (next, took) = timed_chat(address);
+    running.shutdown();
+    assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
+    assert!(held_call.starts_with("HTTP/1.1 503 "), "{held_call}");
+    assert!(
+        held_call.contains("\"code\":\"target-unavailable\""),
+        "{held_call}"
+    );
+    assert!(next.ends_with(MODEL_STOPPED), "{next}");
+    assert!(
+        took < Duration::from_secs(2),
+        "the next call was held {took:?}"
+    );
+    assert_eq!(runpod.create_calls(), 1, "a replacement was started");
+    assert_eq!(runpod.terminations(), ["pod1"]);
+    assert!(pod.received().is_empty());
+}
+
+/// Acceptance 2: without the key, a call to a model whose pod owes a stop that is not confirmed
+/// (`stopping`) is `model-stopped` at once and starts nothing.
+#[test]
+fn start_on_request_off_a_call_to_a_stopping_model_is_model_stopped_at_once() {
+    let fixture = Fixture::new("sor-stopping");
+    let deployment = with_model_lines(&fixture, "request_hold_seconds = 2\n");
+    // The pod accepts no connection: the first call through it fails and stops it.
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    let running = start_relaying(
+        &deployment,
+        TerminateRefused(runpod.clone()),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let woken = wake(address);
+    let (failed, _) = timed_chat(address);
+    let (next, took) = timed_chat(address);
+    running.shutdown();
+    assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
+    assert!(failed.contains("\"code\":\"upstream-failed\""), "{failed}");
+    assert!(next.starts_with("HTTP/1.1 503 "), "{next}");
+    assert!(next.ends_with(MODEL_STOPPED), "{next}");
+    assert_eq!(header(&next, "retry-after"), None, "{next}");
+    assert!(took < Duration::from_secs(1), "the call was held {took:?}");
+    assert_eq!(runpod.create_calls(), 1);
+    assert!(pod.received().is_empty());
+}
+
+/// Acceptance 5: with the key and a daily cap, a call to a stopped model starts its pod and is
+/// held until it serves, call for call as before the key existed.
+#[test]
+fn start_on_request_on_with_a_cap_a_call_starts_the_pod_and_is_held_as_before() {
+    let fixture = Fixture::new("sor-on");
+    let deployment = starting_on_request(&fixture, "");
+    let mut pod = Pod::start(1, "{\"id\":\"started\"}");
+    let runpod = EmulatedRunpod::new();
+    spent(&runpod, 0);
+    runpod.ready_after(3);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let (answer, held) = timed_chat(running.local_addr());
+    let after = scrape(running.local_addr());
+    running.shutdown();
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert!(answer.contains("{\"id\":\"started\"}"), "{answer}");
+    assert!(
+        held >= Duration::from_secs(1),
+        "answered after {held:?}: the call was not held while its pod started"
+    );
+    assert_eq!(runpod.create_calls(), 1);
+    assert_eq!(runpod.spend_reads(), 1);
+    assert_eq!(pod.received().len(), 1);
+    assert_eq!(after["llmgw_pod_starts_total"], "1");
+}

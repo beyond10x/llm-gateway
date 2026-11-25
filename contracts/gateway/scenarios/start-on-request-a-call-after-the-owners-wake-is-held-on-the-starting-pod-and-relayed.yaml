@@ -1,0 +1,44 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: start-on-request-a-call-after-the-owners-wake-is-held-on-the-starting-pod-and-relayed
+summary: with start_on_request absent, the owner's wake starts the pod, and a call while it starts is held on that pod and relayed once it serves, with one pod created
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"small","wires":["chat"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"woken\"}"]}]],"runpod":{"document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\n\n[models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n","ready_after":2},"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/models/small/wake","body":""},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\"}"},{"step":"request","method":"GET","path":"/v1/models/small/status","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 202 answered
+    - 200 relayed
+    - 200 answered
+    bodies:
+    - '{"model":"small","phase":"starting","sub_phase":"running","profile":"default"}'
+    - '{"id":"woken"}'
+    - '{"model":"small","phase":"ready","profile":"default"}'
+    retry_after:
+    - absent
+    - absent
+    - absent
+    upstream:
+    - pod-1 POST /v1/chat/completions {"model":"small"}
+    authorizations:
+    - Bearer key-small
+    records:
+    - model=small wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=14 duration_ms=bounded tokens=absent
+    acquired: 1
+    released: 1
+    lifecycle_asks:
+    - wake small
+    - status small
+    pod_creates: 1

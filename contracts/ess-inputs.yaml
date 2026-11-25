@@ -308,3 +308,9 @@ scenarios:
 - runpod/scenarios/a-wake-without-capacity-starts-the-model-on-its-next-profile.yaml
 - runpod/scenarios/status-reads-the-phase-and-contacts-nobody.yaml
 - runpod/scenarios/status-names-a-pod-that-owes-an-unconfirmed-stop-stopping.yaml
+- gateway/scenarios/start-on-request-a-call-to-a-stopped-model-is-model-stopped-and-starts-no-pod.yaml
+- gateway/scenarios/start-on-request-a-call-after-the-owners-wake-is-held-on-the-starting-pod-and-relayed.yaml
+- gateway/scenarios/start-on-request-a-call-held-past-its-hold-after-the-wake-is-model-cold-start.yaml
+- gateway/scenarios/start-on-request-a-pod-that-fails-while-a-call-is-held-starts-no-replacement.yaml
+- gateway/scenarios/start-on-request-true-with-a-daily-cap-a-call-starts-the-pod-and-is-held-as-before.yaml
+- gateway/scenarios/start-on-request-true-without-a-daily-cap-composes-nothing.yaml

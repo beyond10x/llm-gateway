@@ -1996,6 +1996,64 @@ fn start_on_request_written_as_text_is_a_schema_refusal() {
     );
 }
 
+/// The first paragraph of `text` that names `start_on_request = true`, its lines joined.
+fn restore_paragraph(file: &str, text: &str) -> String {
+    text.split("\n\n")
+        .find(|paragraph| paragraph.contains("start_on_request = true"))
+        .unwrap_or_else(|| panic!("{file} names no `start_on_request = true`"))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// What CHANGELOG `### Changed` and the README tell an owner to add to restore a call that
+/// starts the pod is everything the loader then needs: the key, `daily_cap_usd` on the provider
+/// and `price_per_hour_usd` on every model of it. A document that loaded before
+/// story:a-call-starts-no-pod, with two models on its provider, loads with the key on once
+/// exactly those keys are added.
+#[test]
+fn start_on_request_the_restore_instruction_names_every_key_a_pre_change_document_needs() {
+    for (file, text) in [
+        ("CHANGELOG.md", include_str!("../../../CHANGELOG.md")),
+        ("README.md", include_str!("../../../README.md")),
+    ] {
+        let paragraph = restore_paragraph(file, text);
+        for key in [
+            "`start_on_request = true`",
+            "`daily_cap_usd`",
+            "`price_per_hour_usd`",
+        ] {
+            assert!(paragraph.contains(key), "{file} omits {key}: {paragraph}");
+        }
+    }
+    let fixture = Fixture::new("start-on-request-restore");
+    let second = "\n[models.large]\nprovider = \"runpod\"\nwires = [\"chat\"]\n\
+                  context_window = 65536\nhf_model = \"example/large-model\"\n\
+                  image = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\n\
+                  max_model_len = 2048\n";
+    let before = format!("{}{second}", base(&fixture));
+    assert!(
+        load(&fixture.config(&before)).is_ok(),
+        "the document did not load before"
+    );
+    let restored = with_provider_keys(&before, "daily_cap_usd = 25\n")
+        .replace(
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nstart_on_request = true\nprice_per_hour_usd = 2\n",
+        )
+        .replace(
+            "max_model_len = 2048\n",
+            "max_model_len = 2048\nstart_on_request = true\nprice_per_hour_usd = 3\n",
+        );
+    let deployment = load(&fixture.config(&restored)).unwrap();
+    assert!(
+        deployment
+            .models
+            .values()
+            .all(|model| model.start_on_request)
+    );
+}
+
 // ---- story:model-profile-fallback: `[[models.<alias>.profiles]]` ----
 
 const FLAT_PLACEMENT: &str = "gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n";

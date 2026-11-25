@@ -1916,42 +1916,43 @@ fn adv_w02_the_shipped_composition_without_the_key_sends_no_create_on_a_call_and
     );
 }
 
-/// `adversary_w12p2_another_providers_ceiling_does_not_bind_the_connected_account`
-/// (`adversary_w12_spend_pass2.rs`) asserts that its call reads no spend and is not
-/// `spend-ceiling`. Since this story its call starts no pod at all (`model-stopped`), so it
-/// passes whatever the composition does with the other provider's ceiling. The same contract
-/// (`docs/hosting.md`, "Spend ceilings": "A ceiling declared on another provider does not bind
-/// the pool ... when the connected provider declares none, the pool reads no spend") driven
-/// through the start that still exists without the key, the owner's wake: it sends one create
-/// and reads no spend.
+// --- story:a-call-starts-no-pod: the cap rule where a start is decided --------------------------
+
+/// The loader refuses `start_on_request = true` without a daily cap, but `Model` and `Provider`
+/// are public and `pod_targets` composes from any `Deployment`. A library caller's deployment
+/// with the key on and no daily cap on the model's provider gets no request start: a call to
+/// the stopped model is `model-stopped`, with no create and no spend read.
 #[test]
-fn adv_w02_another_providers_ceiling_does_not_bind_the_owners_wake_on_the_connected_account() {
-    let fixture = Fixture::new("adv-w02-foreign-ceiling-wake");
-    let connectors = support::Connectors::new(&fixture);
-    connectors.script(&adv_connectors_script());
-    let text = support::connected_document(&fixture, "127.0.0.1:0", &connectors, 1);
-    let text = mutate(
-        &text,
-        "\n[models.small]\n",
-        "\n[providers.reserve]\nkind = \"runpod-vllm\"\ndaily_cap_usd = 1\n\n[models.small]\n",
-    );
-    let text = model_lines(&text, "price_per_hour_usd = 2\n");
-    let deployment = load(&fixture.config(&text)).unwrap();
-    let relaying =
-        llm_gateway_cli::start_connected(&deployment, |transport| transport, Arc::new(AdvNoPod))
-            .unwrap();
-    let address = relaying.local_addr();
-    let (call, _) = timed_chat(address);
-    let woken = wake(address);
-    relaying.shutdown();
-    // The old case's call no longer reaches a start: this is why it cannot fail any more.
-    assert!(call.ends_with(MODEL_STOPPED), "{call}");
-    assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
-    assert!(!woken.contains("spend-ceiling"), "{woken}");
+fn start_on_request_without_a_daily_cap_in_a_built_deployment_lets_no_call_start_a_pod() {
+    let fixture = Fixture::new("sor-built-uncapped");
+    let mut deployment = deployment(&fixture, |text| {
+        starts_on_request(&model_lines(&text, "request_hold_seconds = 0\n"))
+    });
+    assert!(deployment.models["small"].start_on_request);
+    deployment
+        .providers
+        .get_mut("runpod")
+        .unwrap()
+        .daily_cap_micro_usd = None;
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
+    let pod = Pod::start(0, "{}");
+    let keys =
+        std::collections::BTreeMap::from([("small".to_owned(), VLLM_KEY.as_bytes().to_vec())]);
+    let targets = llm_gateway_cli::pod_targets(
+        &deployment,
+        &keys,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let acquired = llm_gateway::RelayTargets::acquire(targets.as_ref(), "small");
+    assert_eq!(acquired.err(), Some(llm_gateway::TargetRefusal::Stopped));
     assert_eq!(
-        connectors.calls_of("invoke billing.pods").len(),
+        runpod.create_calls(),
         0,
-        "another provider's ceiling was checked against the connected account"
+        "a call started a pod without a daily cap"
     );
-    assert_eq!(connectors.calls_of("invoke pod.create").len(), 1);
+    assert_eq!(runpod.spend_reads(), 0);
 }

@@ -166,6 +166,7 @@ types:
       - {name: BodyNotAllowed, attributes: {code: body-not-allowed, status: 400, message: "the inspection surface accepts no request body"}}
       - {name: BodyNotJson, attributes: {code: body-not-json, status: 400, message: "the request body is not one JSON object"}}
       - {name: BodyTooLarge, attributes: {code: body-too-large, status: 413, message: "the request body exceeds its byte bound"}}
+      - {name: CallUnknown, attributes: {code: call-unknown, status: 404, message: "the gateway holds no call with that id"}}
       - {name: ContextExceeded, attributes: {code: context-exceeded, status: 400, message: "prompt is too long: the input leaves no room for output in the model context window"}}
       - {name: CredentialAbsent, attributes: {code: credential-absent, status: 401, message: "no owner credential was presented"}}
       - {name: CredentialMalformed, attributes: {code: credential-malformed, status: 401, message: "the owner credential is not a bearer token"}}
@@ -175,6 +176,7 @@ types:
       - {name: ModelAbsent, attributes: {code: model-absent, status: 400, message: "the request body names no model"}}
       - {name: ModelColdStart, attributes: {code: model-cold-start, status: 503, message: "the model is still starting; ask again after the retry-after delay"}}
       - {name: ModelNotPulled, attributes: {code: model-not-pulled, status: 503, message: "the model is not pulled on its Ollama server, and the gateway pulls no model"}}
+      - {name: ModelStopped, attributes: {code: model-stopped, status: 503, message: "the model's pod is not running and a request does not start it; the owner wakes it"}}
       - {name: ModelUnknown, attributes: {code: model-unknown, status: 404, message: "no such model"}}
       - {name: Overloaded, attributes: {code: overloaded, status: 503, message: "the gateway is already serving its maximum concurrent requests"}}
       - {name: PathUnknown, attributes: {code: path-unknown, status: 404, message: "no such gateway resource"}}
@@ -191,7 +193,7 @@ types:
       - {name: TranslationUnrepresentable, attributes: {code: translation-unrepresentable, status: 502, message: "the model's answer cannot be written on this wire"}}
       - {name: TranslationUnsupported, attributes: {code: translation-unsupported, status: 400, message: "the request uses a field or value outside the subset the gateway translates"}}
       - {name: Unavailable, attributes: {code: unavailable, status: 503, message: "the gateway is not ready to serve inspection"}}
-      - {name: UpstreamFailed, attributes: {code: upstream-failed, status: 502, message: "the model target could not be reached or failed; the next request asks for a replacement"}}
+      - {name: UpstreamFailed, attributes: {code: upstream-failed, status: 502, message: "the model target could not be reached or failed"}}
       - {name: UpstreamRefused, attributes: {code: upstream-refused, status: 502, message: "the model target refused the translated request"}}
       - {name: WireNotServed, attributes: {code: wire-not-served, status: 400, message: "the model is not served on this wire"}}
   # A wire the gateway relays, each on its own path, to the same path at the target, joined to a
@@ -470,6 +472,59 @@ types:
       - {name: format, type: String}
     variants:
       - {name: List, attributes: {path: /v1/status, methods: "GET, HEAD", format: llm-gateway.status/1}}
+  # The id of one model call (story:call-id-and-usage-record). Every request to a wire path that
+  # makes a llm-gateway.telemetry.UsageRecord (Relay step 10: it passed authentication, or
+  # needed none under IngressAuth `None`) is given one id when its head is decided, and every
+  # answer the gateway writes to it carries the id as the header `name`: a relayed answer, a
+  # translated one, a passthrough answer of a client-credential route (a target's own line of
+  # that name is not passed on, so the client reads one) and a refusal. A request that is shed
+  # (`overloaded`), fails authentication or its review, or goes to any other path gets none,
+  # and makes no record. The id is 1 to `max_length` characters of `alphabet`; it names one call
+  # of one gateway process and is not repeated after a restart. It is no secret and grants
+  # nothing: reading the call's record takes the owner credential (CallRoute).
+  # DECIDED 2026-11-25 (story:call-id-and-usage-record): the binary's id is
+  # `<32 lowercase hexadecimal digits>-<counter in lowercase hexadecimal>`: the digits are drawn
+  # once per process from a hash keyed by the standard library's per-process random keys, which
+  # it seeds from the operating system's random source (`std::hash::RandomState`), with the
+  # start time hashed in; the counter starts at 1 and counts every id the process gives out, a
+  # gateway composed again in the same process included. So an id never given out (`…-0`) is
+  # still of the form. No dependency is added for it.
+  # ESS-LIMIT: that an id differs from every id another process gave out is no ESS construct;
+  # the Relay observation's `calls` fact names every id `new` or `repeated` within one run, a
+  # `restart` step included, and
+  # `o3_each_process_gives_out_its_own_call_ids_and_the_usage_event_names_the_call` in
+  # crates/llm-gateway-cli/tests/observability.rs starts the binary twice and holds the
+  # per-process part.
+  - name: llm-gateway.gateway.CallHeader
+    kind: enum
+    attributes:
+      - {name: name, type: String}
+      - {name: alphabet, type: String}
+      - {name: max_length, type: Integer}
+    variants:
+      - {name: Call, attributes: {name: x-llm-gateway-call, alphabet: "A-Z a-z 0-9 -", max_length: 64}}
+  # The owner's record of one call (story:call-id-and-usage-record): `GET /v1/calls/{id}`, and
+  # `HEAD` without a body, answered `200` `application/json` with the
+  # llm-gateway.telemetry.CallRecord of the call whose CallHeader carried `{id}`. It is no wire
+  # path and no public route: it takes the credential `GET /v1/launch` takes, the owner's
+  # whatever the IngressAuth (none on a gateway open on loopback), and it is served with or
+  # without a relay, before `mark_ready` and while draining, as the dashboard is. A method other
+  # than `GET` or `HEAD` is `method-not-allowed` with `allow: GET, HEAD` and a declared body is
+  # `body-not-allowed`. An id the gateway does not hold is `call-unknown` (404), whether it is
+  # of another form, was never given out, was given out by an earlier process, or belonged to
+  # an ended call no longer held: the answer does not say which. The gateway holds every call
+  # in flight and the last `ended-calls-held` (1024, docs/gateway.md "Bounds") ended ones, the
+  # oldest ended one dropped first. Reading a record asks the target source nothing, makes no
+  # usage record and counts no series; a call's store is never locked while an answer is
+  # written or a target read.
+  - name: llm-gateway.gateway.CallRoute
+    kind: enum
+    attributes:
+      - {name: path, type: String}
+      - {name: methods, type: String}
+      - {name: format, type: String}
+    variants:
+      - {name: Record, attributes: {path: "/v1/calls/{id}", methods: "GET, HEAD", format: llm-gateway.call/1}}
   # The answer `GET /` chooses, from the request's `user-agent` lowercased, by the first rule
   # that holds, in the order declared (llmgw src/lib.rs:231-245 at 048ebd8). No `user-agent` is
   # `Plain`. Each renders, per relayed model, the llm-gateway.clients.ClientProfile of its
@@ -671,11 +726,16 @@ entities:
   # alias, `kind` its ModelKind, `wires` the wires the model declares (its upstream's, in their
   # declared order: `upstream_wires` of a ListedModel when the relay translates), then the keys
   # of its ModelStatus as LifecycleRoute renders them, and `callable`: whether a call sent now
-  # would be relayed or held (`true` for `ready` and `starting`, and for `stopped`, where a call
-  # starts the model's pod) or refused (`false` for `stopping` and `unreachable`). A model whose
-  # source reports no status (a Bedrock model) carries neither `phase` nor `callable`. An Ollama
-  # model is `callable` by its phase alone: `ready` and `stopped` `not-loaded` (a call loads
-  # the model) are `true`, `unreachable` is `false`.
+  # is relayed, held on a pod that is starting or serving, or starts the pod (`true` for `ready`
+  # and `starting`, and for `stopped` where a call starts the pod; `false` for `stopped` of a
+  # model whose call starts nothing, in the binary a Runpod model a call would refuse
+  # `model-stopped`). `false` for `unreachable`, and for `stopping` with or without
+  # `start_on_request`: the call would be refused, or would wait on a stop still owed, with no
+  # promise of an answer from the model. A model whose source reports no status (a Bedrock
+  # model) carries neither `phase` nor `callable`. An Ollama model is never a pod model, so
+  # `start_on_request` and `with_no_call_start` do not apply to it: it is `callable` by its
+  # phase alone, `ready` and `stopped` `not-loaded` (a call loads the model) are `true`,
+  # `unreachable` is `false`.
   - name: llm-gateway.gateway.StatusEntry
     identity: {name: model, type: String}
     fields:
@@ -921,13 +981,19 @@ entities:
   #      with `retry-after: 30`, so the client asks again later rather than treating the model
   #      as down; starting its pod would pass a spend ceiling of its provider account, or that
   #      account's spend is unknown, is `spend-ceiling` (503, story:spend-caps,
-  #      `TargetRefusal::SpendCeiling`), without `retry-after`; the model's Ollama server
-  #      answered its list and does not name the model is `model-not-pulled` (503,
-  #      story:ollama-route, `TargetRefusal::NotPulled`), without `retry-after`, its message
-  #      naming the alias (Refusal). The binary's source decides it from the Ollama model's
-  #      status read (LifecycleRoute), the same bounded and reused read: a server that does not
-  #      answer is no refusal of its own, and the call goes on to the endpoint as a hosted
-  #      endpoint's does. How long a request is held for its target, and what a stop does to a held
+  #      `TargetRefusal::SpendCeiling`), without `retry-after`; the model's pod is not running
+  #      and a request does not start it is `model-stopped` (503, story:a-call-starts-no-pod,
+  #      `TargetRefusal::Stopped`), answered at once and without `retry-after`, its message
+  #      saying that the owner wakes the model and naming no amount and no pod. The binary
+  #      answers it for a `[models.<alias>]` model whose `start_on_request` is `false`, the
+  #      default, while its pod is `stopped` or `stopping` (llm-gateway.deployment
+  #      ModelDeclaration; scenarios start-on-request-*). The model's Ollama server answered
+  #      its list and does not name the model is `model-not-pulled` (503, story:ollama-route,
+  #      `TargetRefusal::NotPulled`), without `retry-after`, its message naming the alias
+  #      (Refusal). The binary's source decides it from the Ollama model's status read
+  #      (LifecycleRoute), the same bounded and reused read: a server that does not answer is
+  #      no refusal of its own, and the call goes on to the endpoint as a hosted endpoint's
+  #      does. How long a request is held for its target, and what a stop does to a held
   #      request, are the embedding's (llm-gateway.deployment, rows L6 and K28); the gateway
   #      holds nothing itself. The request goes to the same path at the target, with `host` set
   #      to the target's authority and a `content-length` (`r6_*`, `r7_*` and `r8_*` in
@@ -1027,6 +1093,12 @@ entities:
   #      translated call refused after its target answered carries the status the target
   #      answered with. A model's route series are those of the wires it declares, translator
   #      or not: a translated request on another wire feeds the process-wide series only.
+  #  11. Every request that makes a record is given its id (CallHeader) when its head is
+  #      decided, before its body is read, and its llm-gateway.telemetry.CallRecord exists from
+  #      then: `in-flight` with its `wire` and `principal`, and its `model` once the body named
+  #      one, until the record above is made, then `ended` with the record's values. Every
+  #      answer head the gateway writes to the request carries `x-llm-gateway-call: <id>`
+  #      after its status line (CallRoute reads the record).
   # A refused relay is closed gracefully: the refusal is written, the write side closed, and
   # what the client still sends is read and discarded, up to 33554432 bytes and within one
   # `read_timeout_ms`, so a reset cannot destroy the refusal before the client reads it
@@ -1051,7 +1123,8 @@ entities:
       # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer,
       # `<status> translated` for a 2xx answer a pod replied to that reached the client in
       # other bytes, and `<status> answered` for an answer to a public route, a lifecycle
-      # route (LifecycleRoute) or the status list (StatusRoute), and for a scrape
+      # route (LifecycleRoute), the status list (StatusRoute) or a call's record (CallRoute),
+      # and for a scrape
       # `<status> scraped` when served or `<status> <refusal code>`. A request whose client
       # closed early (`close_after_bytes`) is `<status> closed`.
       - {name: results, type: 'List<String>'}
@@ -1124,6 +1197,17 @@ entities:
       # in the order its side-by-side asks reached the source, which is not fixed): a request
       # refused before the source is asked adds none.
       - {name: lifecycle_asks, type: 'List<String>'}
+      # With `runpod`, how many pod creates the binary's pool sent the emulator when the run
+      # ended, each counted whatever it answered; 0 without `runpod`.
+      - {name: pod_creates, type: Integer}
+      # Per request answered, as `bodies`, the CallHeader its answer carried: `absent` when it
+      # carried none, `malformed` when it carried more than one or its value is not 1 to 64
+      # characters of `A-Z a-z 0-9 -`, else `new` when
+      # no earlier answer of the run carried that id and `repeated` when one did. An id differs
+      # on every run, so the `bodies` fact writes each id an answer of the run carried as
+      # `<call>`, and a CallRecord's `duration_ms` as `"<bounded>"` when it is at most the time
+      # the run has taken (story:call-id-and-usage-record).
+      - {name: calls, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
   # A request outside the relay, in the order the gateway decides (docs/gateway.md, "The HTTP
@@ -1177,7 +1261,7 @@ commands:
   #      lifecycle path of one (`/v1/models/{alias}/wake` and `/v1/models/{alias}/status`) is
   #      answered as LifecycleRoute says. Without a relay a lifecycle path is a path the gateway
   #      does not serve (step 8). Exactly `/v1/status`, with or without a relay, is answered
-  #      as StatusRoute says.
+  #      as StatusRoute says, and every path under `/v1/calls/` as CallRoute says.
   #   7. `/metrics`, R4 (see RelayObservation).
   #   8. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
   #      `allow: GET, HEAD`, the two public routes included; a declared body is
@@ -1303,6 +1387,20 @@ commands:
       #           with the binary's bounds; the probe's request is one the pod receives, so it
       #           takes one answer of the pod's script and appears in `upstream`,
       #           `authorizations`, `received_heads` and `connections` like a relayed request
+      #   runpod  optional, `{document, ready_after, uptimes}`: the models the deployment document
+      #           `document` declares under `[models.<alias>]` are served by the binary's own
+      #           Runpod target source (`llm_gateway_cli::pod_targets`) over a pool on the
+      #           crate's `EmulatedRunpod` and a clock that stands still, in place of the
+      #           scripted source above (`cold_starts` and `lifecycle` then answer nothing);
+      #           `models` still names how the relay serves each alias. Every pod the emulator
+      #           creates is reached at `pod-1`, each model's vLLM key is `key-<alias>` (no file
+      #           the document names is read), the account's reported spend is 0 USD, and each
+      #           created pod answers `ready_after` (default 0, at most 64) readiness probes
+      #           `not ready` first and reports the container uptimes `uptimes` (default none,
+      #           at most 64 values, as the llm-gateway.runpod `uptimes` step takes them), one
+      #           per poll, so a falling uptime is a restart
+      #           (llm-gateway.runpod crash loop). A document the binary refuses composes
+      #           nothing, its `error_code` the refusal's `<source>:<rule>`
       #   metrics_listen  optional, `{bearer}`: the gateway also serves the metrics-only
       #           listener (llm-gateway.telemetry, the deployment's `metrics_listen`) on a
       #           loopback port, as `GatewayHandle::serve_metrics`, taking `bearer` as its scrape
@@ -1334,7 +1432,12 @@ commands:
       #           step's answer; a program naming a step that is not an earlier request makes
       #           the program invalid, and a step whose answer carried no seal sends `<sealed>`
       #           as it is) and `alter_seal` (default false: with `sealed_from`, the first
-      #           character of the seal's state part is replaced by another before it is sent).
+      #           character of the seal's state part is replaced by another before it is sent),
+      #           and `call_from` (the index, from 0, of an earlier request step: every
+      #           `<call>` in this step's `path` is replaced by the id that step's answer
+      #           carried in its CallHeader; a program naming a step that is not an earlier
+      #           request makes the program invalid, and a step whose answer carried none
+      #           sends `<call>` as it is).
       #           Every request carries `host: gateway`. `{step: restart}` stops the gateway and
       #           composes it again from the same program: a new translator, and so a new seal
       #           key, over the same target source and pods; it is unready until the next

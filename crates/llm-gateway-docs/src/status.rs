@@ -203,8 +203,15 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Wake a model and read its phase",
-        "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model, a route and a Bedrock model have no wake. Tested over the emulator.",
+        "POST /v1/models/<alias>/wake starts a Runpod model's pod, whatever its start_on_request, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model, a route and a Bedrock model have no wake. Tested over the emulator.",
         "crates/llm-gateway-cli/tests/wake_status.rs::wake_starts_the_pod_once_at_once_status_reads_it_without_a_call_and_a_request_reuses_it",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
+        "A model call starts no pod",
+        "A call to a Runpod model whose pod is stopped or stopping is refused model-stopped (503, no retry-after) at once, with no create and no spend read; only the owner's wake starts the pod, a call after it is held on the starting pod, and a pod that fails while a call is held starts no replacement. start_on_request = true, accepted only under the provider's daily_cap_usd, restores a call that starts the pod. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/relaying.rs::start_on_request_off_a_call_to_a_stopped_model_is_model_stopped_at_once_and_creates_nothing",
         RELAY,
     ),
     shipped(
@@ -441,7 +448,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Observability",
         "One usage record per authenticated wire request",
-        "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
+        "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info, naming the call's id.",
         "crates/llm-gateway/tests/observability.rs::o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record",
         Some("/docs/guides/scrape-the-counters"),
     ),
@@ -478,6 +485,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "Token counts in usage records",
         "Each usage record carries the input, output, cache read and cache creation tokens the answer reported, read from a decoded copy when it is content-encoded; a count it did not report stays absent.",
         "crates/llm-gateway-cli/tests/passthrough_encoded.rs::a_gzip_streamed_answer_reaches_the_client_unchanged_and_its_tokens_are_recorded",
+        None,
+    ),
+    shipped(
+        "Observability",
+        "Call ids and call records",
+        "Every answer to an authenticated model call carries x-llm-gateway-call with the call's id, and the owner reads that call's record, in flight or ended, at GET /v1/calls/<id>: its outcome, statuses, token counts, bytes and duration, an absent value left out. The gateway holds the last 1024 ended calls.",
+        "crates/llm-gateway/tests/observability/calls.rs::a2_the_owner_reads_an_ended_calls_record_by_its_id_with_its_keys_in_order",
         None,
     ),
     shipped(

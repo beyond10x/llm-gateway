@@ -45,6 +45,9 @@
       "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-a-region-composes-nothing",
       "llm-gateway.gateway/authored/bedrock-an-endpoint-naming-anthropic-beta-composes-nothing",
       "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id",
+      "llm-gateway.gateway/authored/calls-an-id-the-gateway-does-not-hold-is-call-unknown",
+      "llm-gateway.gateway/authored/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id",
+      "llm-gateway.gateway/authored/calls-the-owner-reads-an-ended-calls-record-by-its-id",
       "llm-gateway.gateway/authored/clamp-a-count-that-fails-relays-the-request-unchanged",
       "llm-gateway.gateway/authored/clamp-a-hosted-model-is-clamped-to-its-context-window-and-one-declaring-none-is-not-counted",
       "llm-gateway.gateway/authored/clamp-a-max-tokens-above-the-room-left-is-lowered-to-it-and-one-at-or-below-is-unchanged",
@@ -119,6 +122,12 @@
       "llm-gateway.gateway/authored/sa-token-each-token-the-review-does-not-admit-is-refused-and-relays-nothing",
       "llm-gateway.gateway/authored/sa-token-without-a-review-only-the-owners-bearer-is-admitted",
       "llm-gateway.gateway/authored/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted",
+      "llm-gateway.gateway/authored/start-on-request-a-call-after-the-owners-wake-is-held-on-the-starting-pod-and-relayed",
+      "llm-gateway.gateway/authored/start-on-request-a-call-held-past-its-hold-after-the-wake-is-model-cold-start",
+      "llm-gateway.gateway/authored/start-on-request-a-call-to-a-stopped-model-is-model-stopped-and-starts-no-pod",
+      "llm-gateway.gateway/authored/start-on-request-a-pod-that-fails-while-a-call-is-held-starts-no-replacement",
+      "llm-gateway.gateway/authored/start-on-request-true-with-a-daily-cap-a-call-starts-the-pod-and-is-held-as-before",
+      "llm-gateway.gateway/authored/start-on-request-true-without-a-daily-cap-composes-nothing",
       "llm-gateway.gateway/authored/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready",
       "llm-gateway.gateway/authored/status-a-hosted-model-and-a-route-are-ready-when-their-endpoint-answers-and-unreachable-saying-why",
       "llm-gateway.gateway/authored/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered",
@@ -520,6 +529,21 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/bedrock-the-inventory-names-each-bedrock-target-as-aws-sigv4-and-never-its-region-or-model-id"
       },
+      "gateway/scenarios/calls-an-id-the-gateway-does-not-hold-is-call-unknown.yaml": {
+        "digest": "sha256:ab4d3e3c01ba76e4348e1f583dd76a9e1061b82ccc6b2d5c167e2e5b93dbf1fe",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/calls-an-id-the-gateway-does-not-hold-is-call-unknown"
+      },
+      "gateway/scenarios/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id.yaml": {
+        "digest": "sha256:b5e36a848d61928e53973dfa7ed439b143e0f276e28f745a232765ee41dc1fa4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id"
+      },
+      "gateway/scenarios/calls-the-owner-reads-an-ended-calls-record-by-its-id.yaml": {
+        "digest": "sha256:ce194b944d988362023e0881bf6109777d0444a2d3939af0b4de8cfdf870b609",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/calls-the-owner-reads-an-ended-calls-record-by-its-id"
+      },
       "gateway/scenarios/clamp-a-count-that-fails-relays-the-request-unchanged.yaml": {
         "digest": "sha256:953c6cd8092373e7d84ca5431f057b84b5dfa07be47e89495719baef007a045d",
         "disposition": "accepted",
@@ -910,6 +934,36 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted"
       },
+      "gateway/scenarios/start-on-request-a-call-after-the-owners-wake-is-held-on-the-starting-pod-and-relayed.yaml": {
+        "digest": "sha256:ccf6d0c90f6a58e88e27dae2ac6c2ac20d94a902bacbcfdbfe546f65110387fc",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/start-on-request-a-call-after-the-owners-wake-is-held-on-the-starting-pod-and-relayed"
+      },
+      "gateway/scenarios/start-on-request-a-call-held-past-its-hold-after-the-wake-is-model-cold-start.yaml": {
+        "digest": "sha256:3dfad07bf9addb977d3a237ac4eaef7da42821da13f0a943fba92c57d5d9c270",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/start-on-request-a-call-held-past-its-hold-after-the-wake-is-model-cold-start"
+      },
+      "gateway/scenarios/start-on-request-a-call-to-a-stopped-model-is-model-stopped-and-starts-no-pod.yaml": {
+        "digest": "sha256:bfed09a492756c5fca83ebdb857255e434893b781a3fe9ef1763a04b52b69eff",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/start-on-request-a-call-to-a-stopped-model-is-model-stopped-and-starts-no-pod"
+      },
+      "gateway/scenarios/start-on-request-a-pod-that-fails-while-a-call-is-held-starts-no-replacement.yaml": {
+        "digest": "sha256:3c3bd07e80674d1ea8a85959a395670968455a4e4af9f7f43283ea971bfde2d1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/start-on-request-a-pod-that-fails-while-a-call-is-held-starts-no-replacement"
+      },
+      "gateway/scenarios/start-on-request-true-with-a-daily-cap-a-call-starts-the-pod-and-is-held-as-before.yaml": {
+        "digest": "sha256:817aee7e3ef000b56006872af1fbe7d8b36269b9c30aaa1d067af02166975880",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/start-on-request-true-with-a-daily-cap-a-call-starts-the-pod-and-is-held-as-before"
+      },
+      "gateway/scenarios/start-on-request-true-without-a-daily-cap-composes-nothing.yaml": {
+        "digest": "sha256:66fcf2374f1c33183ce6fb81c514595aeabe8e74ec41dee26b7c458715a2bd68",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/start-on-request-true-without-a-daily-cap-composes-nothing"
+      },
       "gateway/scenarios/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready.yaml": {
         "digest": "sha256:17ec895061384be883b111e57134f18be6c2cb8c55740173da9f93cbbef29366",
         "disposition": "accepted",
@@ -1031,7 +1085,7 @@
         "scenario": "llm-gateway.gateway/authored/translate-an-answer-the-encoder-refuses-ends-in-a-terminal-error-event"
       },
       "gateway/scenarios/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused.yaml": {
-        "digest": "sha256:ee3853b9103c2de5b1d7e45447a32326bcf2a8a1d3eb32061cdc0001466d4a7a",
+        "digest": "sha256:25d562cda5d85a94a146fdf87ea9a14d3b426a258efe1bc399abe2c5bbebdd41",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/translate-an-upstream-failure-before-output-is-upstream-failed-or-upstream-refused"
       },
@@ -1146,7 +1200,7 @@
         "scenario": "llm-gateway.gateway/authored/w7-a-model-error-from-the-target-is-relayed-and-keeps-the-endpoint"
       },
       "gateway/scenarios/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502.yaml": {
-        "digest": "sha256:cc732f554825fd7dd8285b2d7f640079788fd01d9752fa6c293f140f96a9e940",
+        "digest": "sha256:dd22aacc2852e35822eb7fd089f9f272336138366525295c357a19c92edd9a7b",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/w7-a-pod-that-refuses-or-drops-the-connection-is-dropped-and-answered-502"
       },
@@ -1907,7 +1961,7 @@
       }
     },
     "counts": {
-      "authored": 317,
+      "authored": 326,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -2022,9 +2076,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "8cad5124273ff834d0e04ac69013646427195df2e090301b50c033a357e5b023",
+    "contract_digest": "3c725f6f990923a70873df9b7e6f1f601fc06a35ea920039f56a7eac2dd6c5df",
     "scenario_initial_state": "empty",
-    "spec_digest": "77ec172f73bd750db71f3044a1263a9b47b365ebfb97763e2a39f69cd58cd0f4",
+    "spec_digest": "e501786a1ca9303bd16350a9148e9488987da999e0c4067807d76ab473a12017",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -5972,6 +6026,381 @@
           },
           "step": "expect_view",
           "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/calls-an-id-the-gateway-does-not-hold-is-call-unknown": {
+      "purpose": "an id of another form, an id never given out, an empty id and an id an earlier gateway gave out are each call-unknown with one answer that does not say which",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>x\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/a.b\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>/more\",\"body\":\"\",\"call_from\":1},{\"step\":\"restart\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"chat-1\"}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}",
+                  "{\"error\":{\"code\":\"call-unknown\",\"message\":\"the gateway holds no call with that id\"}}"
+                ]
+              },
+              "calls": {
+                "kind": "literal",
+                "value": [
+                  "new",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=small wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=15 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "404 call-unknown",
+                  "404 call-unknown",
+                  "404 call-unknown",
+                  "404 call-unknown",
+                  "ok",
+                  "ok",
+                  "404 call-unknown"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id": {
+      "purpose": "a relayed answer, a refusal and a wrong method on a wire path each carry one new call id, also after a restart, while a request that fails authentication and an answer off the wire paths carry none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\",\"responses\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-2\\\"}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"other\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/responses\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\",\"credential\":false},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\",\"credential\":false,\"headers\":[\"authorization: Bearer not-the-owner-0123456789abcdef0123456789\"]},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"\"},{\"step\":\"restart\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "calls": {
+                "kind": "literal",
+                "value": [
+                  "new",
+                  "new",
+                  "new",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "new"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "404 model-unknown",
+                  "405 method-not-allowed",
+                  "401 credential-absent",
+                  "401 credential-rejected",
+                  "200 answered",
+                  "ok",
+                  "ok",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-small\",\"messages\":[]}",
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-small\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/calls-the-owner-reads-an-ended-calls-record-by-its-id": {
+      "purpose": "the owner reads a relayed call's and a refused call's record by the id their answers carried, keys in the published order and an absent value absent, with GET and HEAD only, and nobody else reads it",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"served-small\",\"wires\":[\"chat\",\"responses\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"chat-1\\\",\\\"usage\\\":{\\\"prompt_tokens\\\":11,\\\"completion_tokens\\\":7,\\\"prompt_tokens_details\\\":{\\\"cached_tokens\\\":3}}}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"HEAD\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1,\"credential\":false},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":1},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"{}\",\"call_from\":1},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"other\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/calls/<call>\",\"body\":\"\",\"call_from\":7}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"id\":\"chat-1\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"prompt_tokens_details\":{\"cached_tokens\":3}}}",
+                  "{\"format\":\"llm-gateway.call/1\",\"id\":\"<call>\",\"state\":\"ended\",\"model\":\"small\",\"wire\":\"chat\",\"disposition\":\"relayed\",\"outcome\":\"ok\",\"status\":200,\"target_status\":200,\"input_tokens\":11,\"output_tokens\":7,\"cache_read_tokens\":3,\"response_bytes\":110,\"duration_ms\":\"<bounded>\"}",
+                  "",
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "{\"error\":{\"code\":\"method-not-allowed\",\"message\":\"this path does not accept that method\"}}",
+                  "{\"error\":{\"code\":\"body-not-allowed\",\"message\":\"the inspection surface accepts no request body\"}}",
+                  "{\"error\":{\"code\":\"model-unknown\",\"message\":\"no such model\"}}",
+                  "{\"format\":\"llm-gateway.call/1\",\"id\":\"<call>\",\"state\":\"ended\",\"wire\":\"chat\",\"disposition\":\"refused\",\"outcome\":\"refused\",\"refusal\":\"model-unknown\",\"status\":404,\"response_bytes\":0,\"duration_ms\":\"<bounded>\"}"
+                ]
+              },
+              "calls": {
+                "kind": "literal",
+                "value": [
+                  "new",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "new",
+                  "absent"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=GET, HEAD",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 answered",
+                  "200 answered",
+                  "401 credential-absent",
+                  "405 method-not-allowed",
+                  "400 body-not-allowed",
+                  "404 model-unknown",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"served-small\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
         }
       ]
     },
@@ -14634,6 +15063,732 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/start-on-request-a-call-after-the-owners-wake-is-held-on-the-starting-pod-and-relayed": {
+      "purpose": "with start_on_request absent, the owner's wake starts the pod, and a call while it starts is held on that pod and relayed once it serves, with one pod created",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"woken\\\"}\"]}]],\"runpod\":{\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\n\",\"ready_after\":2},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\"}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/small/status\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "Bearer key-small"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"model\":\"small\",\"phase\":\"starting\",\"sub_phase\":\"running\",\"profile\":\"default\"}",
+                  "{\"id\":\"woken\"}",
+                  "{\"model\":\"small\",\"phase\":\"ready\",\"profile\":\"default\"}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "wake small",
+                  "status small"
+                ]
+              },
+              "pod_creates": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=small wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=14 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "202 answered",
+                  "200 relayed",
+                  "200 answered"
+                ]
+              },
+              "retry_after": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"small\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/start-on-request-a-call-held-past-its-hold-after-the-wake-is-model-cold-start": {
+      "purpose": "with start_on_request absent, a call held on the pod the owner's wake started that still starts when its one-second hold passes is model-cold-start with retry-after 30, and no second pod is created",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"runpod\":{\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\nrequest_hold_seconds = 1\\n\",\"ready_after\":64},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "wake small"
+                ]
+              },
+              "pod_creates": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=small wire=chat disposition=Refused refusal=model-cold-start status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "202 answered",
+                  "503 model-cold-start"
+                ]
+              },
+              "retry_after": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "30"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/start-on-request-a-call-to-a-stopped-model-is-model-stopped-and-starts-no-pod": {
+      "purpose": "with start_on_request absent, a call to a model whose pod is stopped is model-stopped at once on every wire, without retry-after, the output clamp counts nothing and no pod is created",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\",\"messages\"],\"max_model_len\":1024}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"never\\\"}\"]}]],\"runpod\":{\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\", \\\"messages\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\n\"},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"max_tokens\\\":5}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/small/status\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"model-stopped\",\"message\":\"the model's pod is not running and a request does not start it; the owner wakes it\"}}",
+                  "{\"error\":{\"code\":\"model-stopped\",\"message\":\"the model's pod is not running and a request does not start it; the owner wakes it\"}}",
+                  "{\"model\":\"small\",\"phase\":\"stopped\"}"
+                ]
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "status small"
+                ]
+              },
+              "pod_creates": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=small wire=chat disposition=Refused refusal=model-stopped status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent",
+                  "model=small wire=messages disposition=Refused refusal=model-stopped status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "503 model-stopped",
+                  "503 model-stopped",
+                  "200 answered"
+                ]
+              },
+              "retry_after": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/start-on-request-a-pod-that-fails-while-a-call-is-held-starts-no-replacement": {
+      "purpose": "with start_on_request absent, a woken pod that crash-loops while a call is held on it loses the hold, the call is target-unavailable, no replacement starts, and the next call is model-stopped",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"runpod\":{\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\nrequest_hold_seconds = 8\\n\",\"ready_after\":64,\"uptimes\":[30,5,40,2,50,1]},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\"}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\"}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 2.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "pod_creates": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "202 answered",
+                  "503 target-unavailable",
+                  "503 model-stopped"
+                ]
+              },
+              "retry_after": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/start-on-request-true-with-a-daily-cap-a-call-starts-the-pod-and-is-held-as-before": {
+      "purpose": "with start_on_request = true and a daily_cap_usd on its provider, a call to a stopped model starts its pod under the spend check and is held until it serves, as before the key existed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"started\\\"}\"]}]],\"runpod\":{\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\ndaily_cap_usd = 10\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\nprice_per_hour_usd = 2\\nstart_on_request = true\\n\",\"ready_after\":2},\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/small/status\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"small\\\"}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/small/status\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "Bearer key-small"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"model\":\"small\",\"phase\":\"stopped\"}",
+                  "{\"id\":\"started\"}",
+                  "{\"model\":\"small\",\"phase\":\"ready\",\"profile\":\"default\"}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "status small",
+                  "status small"
+                ]
+              },
+              "pod_creates": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=small wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=16 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "released": {
+                "kind": "literal",
+                "value": 1.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 relayed",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/chat/completions {\"model\":\"small\"}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/start-on-request-true-without-a-daily-cap-composes-nothing": {
+      "purpose": "the binary refuses a document whose model names start_on_request = true while its provider declares no daily_cap_usd as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\ntotal_cap_usd = 40\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\nprice_per_hour_usd = 2\\nstart_on_request = true\\n\",\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready": {
       "purpose": "an auth_kind client endpoint is probed with no credential and nothing of the caller's, and a 401 or 403 answer is ready; any other status outside 2xx is still unreachable",
       "source": [
@@ -17431,7 +18586,7 @@
               "bodies": {
                 "kind": "literal",
                 "value": [
-                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed\"}}",
                   "{\"error\":{\"code\":\"upstream-refused\",\"message\":\"the model target refused the translated request\"}}",
                   "event: message_start\ndata: {\"message\":{\"content\":[],\"id\":\"msg_1800000000_3\",\"model\":\"small\",\"role\":\"assistant\",\"type\":\"message\"},\"type\":\"message_start\"}\n\nevent: content_block_start\ndata: {\"content_block\":{\"text\":\"\",\"type\":\"text\"},\"index\":0,\"type\":\"content_block_start\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"Hel\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_delta\ndata: {\"delta\":{\"text\":\"lo\",\"type\":\"text_delta\"},\"index\":0,\"type\":\"content_block_delta\"}\n\nevent: content_block_stop\ndata: {\"index\":0,\"type\":\"content_block_stop\"}\n\nevent: message_delta\ndata: {\"delta\":{\"stop_reason\":\"end_turn\"},\"type\":\"message_delta\",\"usage\":{\"output_tokens\":2}}\n\nevent: message_stop\ndata: {\"type\":\"message_stop\"}\n\n"
                 ]
@@ -19848,8 +21003,8 @@
               "bodies": {
                 "kind": "literal",
                 "value": [
-                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
-                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed; the next request asks for a replacement\"}}",
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed\"}}",
+                  "{\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target could not be reached or failed\"}}",
                   "{\"id\":\"replacement\"}"
                 ]
               },

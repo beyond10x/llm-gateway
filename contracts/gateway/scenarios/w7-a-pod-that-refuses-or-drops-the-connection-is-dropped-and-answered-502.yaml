@@ -22,8 +22,8 @@ assert:
     - 502 upstream-failed
     - 200 relayed
     bodies:
-    - '{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed; the next request asks for a replacement"}}'
-    - '{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed; the next request asks for a replacement"}}'
+    - '{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed"}}'
+    - '{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed"}}'
     - '{"id":"replacement"}'
     upstream:
     - 'pod-2 POST /v1/chat/completions {"model":"served-code"}'

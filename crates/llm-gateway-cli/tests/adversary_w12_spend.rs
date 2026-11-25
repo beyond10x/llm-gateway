@@ -10,7 +10,9 @@ use std::{
     sync::Arc,
     time::Duration,
 };
-use support::{Connectors, Fixture, OWNER_SECRET, connected_document, listed, mutate};
+use support::{
+    Connectors, Fixture, OWNER_SECRET, connected_document, listed, mutate, with_start_on_request,
+};
 
 fn post_chat(address: SocketAddr) -> String {
     let body = r#"{"model":"small","messages":[{"role":"user","content":"hi"}]}"#;
@@ -58,7 +60,14 @@ fn adversary_w12_the_shipped_composition_refuses_a_start_past_the_ceiling() {
         "max_model_len = 1024\n",
         "max_model_len = 1024\nprice_per_hour_usd = 2\n",
     );
-    let deployment = load(&fixture.config(&text)).unwrap();
+    // The call starts the pod (`start_on_request`), which needs a daily cap: one far above the
+    // nothing billed today, so the total ceiling is the one passed.
+    let text = mutate(
+        &text,
+        "total_cap_usd = 10\n",
+        "total_cap_usd = 10\ndaily_cap_usd = 1000\n",
+    );
+    let deployment = load(&fixture.config(&with_start_on_request(&text))).unwrap();
     let relaying = start_connected(
         &deployment,
         |transport| transport,

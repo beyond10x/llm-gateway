@@ -470,8 +470,15 @@ fn adv_pt_the_answer_reaches_the_client_as_the_target_sent_it() {
     let (head, answered_body) = answered.split_once("\r\n\r\n").unwrap();
     let head: Vec<&str> = head.split("\r\n").collect();
     let long_line = format!("x-long: {long}");
+    // The gateway's call id follows the status line (story:call-id-and-usage-record).
+    let id_line = head
+        .get(1)
+        .copied()
+        .filter(|line| line.starts_with("x-llm-gateway-call: "))
+        .unwrap_or_else(|| panic!("no call id after the status line: {head:?}"));
     let expected = [
         "HTTP/1.1 429 Too Many Requests",
+        id_line,
         "content-type: application/json",
         "retry-after: 17",
         "x-should-retry: false",

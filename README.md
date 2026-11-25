@@ -211,14 +211,21 @@ The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/respons
 `connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` over
 TLS, with the pod's certificate verified against the Mozilla roots compiled into the binary before
 any request byte is sent; no document key or option adds a root or turns verification off. A
-model whose provider declares no `connectors` is answered `503` `target-unavailable`.
+model call starts no pod: while the pod is stopped it is answered `503` `model-stopped`, and the
+owner starts it with `POST /v1/models/<alias>/wake`, unless the model sets
+`start_on_request = true` under its provider's `daily_cap_usd`, which needs
+`price_per_hour_usd` on every model the document declares under `[models]`. A model whose provider
+declares no `connectors` is answered `503` `target-unavailable`.
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other
 argument is refused with exit status 2.
 
 `RUST_LOG` sets the level of the structured log events the process writes to standard error
 beside the lines below (default `info`). At the default level those events are one `usage` event
-per authenticated model call; `RUST_LOG=warn` leaves only the lines below.
+per authenticated model call, whose field `call` is the id its answer carried in
+`x-llm-gateway-call`; `GET /v1/calls/<id>` with the owner secret reads that call's record
+([`docs/gateway.md`](docs/gateway.md#call-ids-and-call-records)). `RUST_LOG=warn` leaves only the
+lines below.
 
 | Event | Line on standard error | Exit status |
 | --- | --- | --- |

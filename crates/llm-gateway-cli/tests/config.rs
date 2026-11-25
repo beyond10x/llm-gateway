@@ -1917,6 +1917,181 @@ fn spend_a_ceiling_written_as_text_is_a_schema_refusal() {
     );
 }
 
+// ---- story:a-call-starts-no-pod: `[models.<alias>] start_on_request` ----
+
+/// `start_on_request` is `true` or `false`; `true` loads beside a `daily_cap_usd` on the model's
+/// provider, and `false` loads with no cap at all.
+#[test]
+fn start_on_request_true_loads_beside_a_daily_cap_and_false_needs_none() {
+    let fixture = Fixture::new("start-on-request-loads");
+    let capped = with_model_keys(
+        &with_provider_keys(&base(&fixture), "daily_cap_usd = 25\n"),
+        "price_per_hour_usd = 2\nstart_on_request = true\n",
+    );
+    assert!(load(&fixture.config(&capped)).is_ok());
+    let off = with_model_keys(&base(&fixture), "start_on_request = false\n");
+    assert!(load(&fixture.config(&off)).is_ok());
+}
+
+/// `true` whose provider declares no `daily_cap_usd` (none at all, or only a total cap) is
+/// refused at start as `config:value`, naming the model's key and the missing cap and quoting
+/// no value.
+#[test]
+fn start_on_request_true_without_a_daily_cap_on_the_models_provider_is_a_value_refusal() {
+    let fixture = Fixture::new("start-on-request-uncapped");
+    for (case, provider, model) in [
+        ("no cap", "", "start_on_request = true\n"),
+        (
+            "only a total cap",
+            "total_cap_usd = 40\n",
+            "price_per_hour_usd = 2\nstart_on_request = true\n",
+        ),
+    ] {
+        let text = with_model_keys(&with_provider_keys(&base(&fixture), provider), model);
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}");
+        let message = refusal.to_string();
+        assert!(
+            message.contains("models.small.start_on_request"),
+            "{case}: {message}"
+        );
+        assert!(message.contains("daily_cap_usd"), "{case}: {message}");
+        assert!(!message.contains("40"), "{case}: quotes a value: {message}");
+        assert!(
+            !message.contains("true"),
+            "{case}: quotes a value: {message}"
+        );
+    }
+}
+
+/// A daily cap on another provider does not count: the cap must be on the model's own.
+#[test]
+fn start_on_request_true_with_a_daily_cap_only_on_another_provider_is_a_value_refusal() {
+    let fixture = Fixture::new("start-on-request-other");
+    let text = format!(
+        "{}\n[providers.other]\nkind = \"runpod-vllm\"\ndaily_cap_usd = 5\n",
+        with_model_keys(
+            &base(&fixture),
+            "price_per_hour_usd = 2\nstart_on_request = true\n"
+        )
+    );
+    let refusal = load(&fixture.config(&text)).unwrap_err();
+    assert_eq!(refusal.code(), "config:value");
+    assert!(
+        refusal
+            .to_string()
+            .contains("models.small.start_on_request"),
+        "{refusal}"
+    );
+}
+
+/// A value that is not a boolean is `config:schema`, as every typed key is.
+#[test]
+fn start_on_request_written_as_text_is_a_schema_refusal() {
+    let fixture = Fixture::new("start-on-request-schema");
+    let text = with_model_keys(&base(&fixture), "start_on_request = \"yes\"\n");
+    assert_eq!(
+        load(&fixture.config(&text)).unwrap_err().code(),
+        "config:schema"
+    );
+}
+
+/// The first paragraph of `text` that names `start_on_request = true`, its lines joined.
+fn restore_paragraph(file: &str, text: &str) -> String {
+    text.split("\n\n")
+        .find(|paragraph| paragraph.contains("start_on_request = true"))
+        .unwrap_or_else(|| panic!("{file} names no `start_on_request = true`"))
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+/// What CHANGELOG `### Changed` and the README tell an owner to add to restore a call that
+/// starts the pod is everything the loader then needs: the key, `daily_cap_usd` on the provider
+/// and `price_per_hour_usd` on every model of it. A document that loaded before
+/// story:a-call-starts-no-pod, with two models on its provider, loads with the key on once
+/// exactly those keys are added.
+#[test]
+fn start_on_request_the_restore_instruction_names_every_key_a_pre_change_document_needs() {
+    for (file, text) in [
+        ("CHANGELOG.md", include_str!("../../../CHANGELOG.md")),
+        ("README.md", include_str!("../../../README.md")),
+    ] {
+        let paragraph = restore_paragraph(file, text);
+        for key in [
+            "`start_on_request = true`",
+            "`daily_cap_usd`",
+            "`price_per_hour_usd`",
+        ] {
+            assert!(paragraph.contains(key), "{file} omits {key}: {paragraph}");
+        }
+    }
+    let fixture = Fixture::new("start-on-request-restore");
+    let second = "\n[models.large]\nprovider = \"runpod\"\nwires = [\"chat\"]\n\
+                  context_window = 65536\nhf_model = \"example/large-model\"\n\
+                  image = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\n\
+                  max_model_len = 2048\n";
+    let before = format!("{}{second}", base(&fixture));
+    assert!(
+        load(&fixture.config(&before)).is_ok(),
+        "the document did not load before"
+    );
+    let restored = with_provider_keys(&before, "daily_cap_usd = 25\n")
+        .replace(
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nstart_on_request = true\nprice_per_hour_usd = 2\n",
+        )
+        .replace(
+            "max_model_len = 2048\n",
+            "max_model_len = 2048\nstart_on_request = true\nprice_per_hour_usd = 3\n",
+        );
+    let deployment = load(&fixture.config(&restored)).unwrap();
+    assert!(
+        deployment
+            .models
+            .values()
+            .all(|model| model.start_on_request)
+    );
+}
+
+/// Adversary pass 2, story:a-call-starts-no-pod. CHANGELOG `### Changed` and the README tell
+/// the owner that restoring a call that starts the pod takes `start_on_request = true`,
+/// `daily_cap_usd` on the model's provider and `price_per_hour_usd` on every model the document
+/// declares under `[models]`: the loader asks a price of every model of every provider once any
+/// provider declares a ceiling. A document that loaded before the change, with a second provider and a model on it
+/// (answered `target-unavailable` without a connection, as the README says), is to load once
+/// exactly the keys the instruction names are added.
+#[test]
+fn adv2_w02_the_restore_instruction_loads_a_pre_change_document_with_a_second_provider() {
+    let fixture = Fixture::new("adv2-restore-two-providers");
+    let second = "\n[providers.reserve]\nkind = \"runpod-vllm\"\n\n[models.spare]\n\
+                  provider = \"reserve\"\nwires = [\"chat\"]\ncontext_window = 65536\n\
+                  hf_model = \"example/spare-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\n\
+                  gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 2048\n";
+    let before = format!("{}{second}", base(&fixture));
+    assert!(
+        load(&fixture.config(&before)).is_ok(),
+        "the document did not load before"
+    );
+    // Exactly what the corrected instruction names: the key on `small`, the daily cap on its
+    // provider `runpod`, and a price on every `[models.<alias>]` table, `spare` included.
+    let restored = with_model_keys(
+        &with_provider_keys(&before, "daily_cap_usd = 25\n"),
+        "start_on_request = true\nprice_per_hour_usd = 2\n",
+    )
+    .replace(
+        "max_model_len = 2048\n",
+        "max_model_len = 2048\nprice_per_hour_usd = 3\n",
+    );
+    match load(&fixture.config(&restored)) {
+        Ok(deployment) => assert!(deployment.models["small"].start_on_request),
+        Err(refusal) => panic!(
+            "the restore instruction of CHANGELOG.md and README.md was followed and the \
+             document is refused: {refusal}"
+        ),
+    }
+}
+
 // ---- story:model-profile-fallback: `[[models.<alias>.profiles]]` ----
 
 const FLAT_PLACEMENT: &str = "gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n";

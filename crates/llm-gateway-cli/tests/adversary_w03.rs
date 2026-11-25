@@ -15,7 +15,9 @@ use std::{
     thread,
     time::{Duration, Instant},
 };
-use support::{Fixture, OWNER_SECRET, document, mutate, with_vllm_key};
+use support::{
+    Fixture, OWNER_SECRET, document, mutate, no_spend, starts_on_request, with_vllm_key,
+};
 
 /// The support document with the model's vLLM key file, and `edit` applied.
 fn deployment(fixture: &Fixture, edit: impl Fn(String) -> String) -> Deployment {
@@ -139,8 +141,10 @@ fn adv_k27_an_idle_timeout_of_zero_never_stops_the_pod_a_waiting_request_started
 #[test]
 fn adv_w7_after_a_failed_connection_the_next_request_reaches_a_replacement() {
     let fixture = Fixture::new("adv-w03-w7");
-    let deployment = deployment(&fixture, |text| text);
+    // Each request may start a pod, so the second reaches a replacement (`start_on_request`).
+    let deployment = deployment(&fixture, |text| starts_on_request(&text));
     let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
     let connector = Arc::new(Refusing::default());
     let running = start_relaying(
         &deployment,

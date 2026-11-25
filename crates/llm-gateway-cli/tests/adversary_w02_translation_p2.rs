@@ -275,7 +275,7 @@ fn adv_p2_a_messages_upstream_of_a_model_without_a_window_is_asked_for_at_most_1
 /// that was unreachable, timed out, or cut or garbled its answer, the cases
 /// `RefusalCode::UpstreamFailed` and `docs/gateway.md` name. Answered before any output (a
 /// non-streamed request), it is `UpstreamFailed`, so the relay invalidates a healthy target and
-/// tells the client "the next request asks for a replacement": a pod is replaced because its
+/// tells the client its target failed (`upstream-failed`): a pod is replaced because its
 /// model hallucinated a tool name. Reached by a small open model on a vLLM pod with parsed tool
 /// calling, from any non-streamed chat or messages client offering tools.
 #[test]

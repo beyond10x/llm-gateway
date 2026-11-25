@@ -44,7 +44,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:683c17228784b5c1e04e80b87fead293682b680eae91c391893c92a2b9ad4520",
+    "contract_digest": "slice-sha256/2:0c04b3ab359e38e514f677c2253142aa88ec860d57474e0407b1978add3d6304",
     "regenerate": "ess generate"
   },
   "$defs": {

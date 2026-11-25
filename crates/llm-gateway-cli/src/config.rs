@@ -795,6 +795,10 @@ struct ModelDocument {
     tool_calling: ToolCallingDocument,
     #[serde(default)]
     price_per_hour_usd: Option<f64>,
+    /// Whether a model call may start the model's pod; `false` unless the document says
+    /// `true` (story:a-call-starts-no-pod).
+    #[serde(default)]
+    start_on_request: bool,
 }
 
 /// One `[[models.<alias>.profiles]]` entry, or the flat keys as the one profile `default`.
@@ -926,6 +930,10 @@ pub struct Model {
     /// (`price_per_hour_usd`), which the spend check prices its pods by. Required once a
     /// provider declares a spend ceiling.
     pub price_per_hour_micro_usd: Option<u64>,
+    /// Whether a model call may start the model's pod (`start_on_request`, default `false`).
+    /// `false` leaves the owner's wake as the only start; `true` is accepted only beside a
+    /// `daily_cap_usd` on the model's provider (story:a-call-starts-no-pod).
+    pub start_on_request: bool,
 }
 
 /// `[hosted.<alias>]`, with every default applied and every rule checked: a model a hosted
@@ -1199,6 +1207,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
             &format!("{at}.price_per_hour_usd"),
             "is required once a provider declares a spend ceiling",
         )?;
+        start_on_request_capped(&at, &model, &providers)?;
         models.insert(alias, model);
     }
     let mut hosted = BTreeMap::new();
@@ -1277,6 +1286,40 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         digest,
         token_review,
     })
+}
+
+/// Whether a call may start `model`'s pod (story:a-call-starts-no-pod): its `start_on_request`
+/// is `true` and its own provider in `providers` declares `daily_cap_usd`, so a call starts a
+/// billed pod only under a daily cap of the account that pays for it. A total cap alone, or a
+/// cap on another provider, is not one. The loader refuses the key without the cap
+/// ([`start_on_request_capped`]). The relay asks this again of every `Deployment` it composes,
+/// which a library caller may build without the loader, and also requires that the pool
+/// enforces that provider's ceilings (`starts_on_request` in `relaying.rs`).
+pub(crate) fn may_start_on_request(model: &Model, providers: &BTreeMap<String, Provider>) -> bool {
+    model.start_on_request
+        && providers
+            .get(&model.provider)
+            .is_some_and(|provider| provider.daily_cap_micro_usd.is_some())
+}
+
+/// The loader's side of [`may_start_on_request`]: `start_on_request = true` needs
+/// `daily_cap_usd` on the model's own provider.
+///
+/// # Errors
+/// `config:value` naming the model's key and the missing cap, quoting no value.
+fn start_on_request_capped(
+    at: &str,
+    model: &Model,
+    providers: &BTreeMap<String, Provider>,
+) -> Result<(), Refusal> {
+    ensure(
+        !model.start_on_request || may_start_on_request(model, providers),
+        &format!("{at}.start_on_request"),
+        &format!(
+            "needs providers.{}.daily_cap_usd: a model call starts a pod only under a daily spend cap",
+            model.provider
+        ),
+    )
 }
 
 /// `[providers.<name>]`, checked: the providers, and how many of them declare a spend ceiling
@@ -2383,5 +2426,6 @@ fn into_model(model: ModelDocument, profiles: Vec<(String, ProfileDocument)>) ->
             ToolCallingDocument::Absent => ToolCalling::Absent,
         },
         price_per_hour_micro_usd: None,
+        start_on_request: model.start_on_request,
     }
 }

@@ -1,0 +1,42 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: start-on-request-a-call-to-a-stopped-model-is-model-stopped-and-starts-no-pod
+summary: with start_on_request absent, a call to a model whose pod is stopped is model-stopped at once on every wire, without retry-after, the output clamp counts nothing and no pod is created
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"small","wires":["chat","messages"],"max_model_len":1024}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"never\"}"]}]],"runpod":{"document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\n\n[models.small]\nprovider = \"runpod\"\nwires = [\"chat\", \"messages\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n"},"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"small\",\"max_tokens\":5}"},{"step":"request","method":"GET","path":"/v1/models/small/status","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 503 model-stopped
+    - 503 model-stopped
+    - 200 answered
+    bodies:
+    - '{"error":{"code":"model-stopped","message":"the model''s pod is not running and a request does not start it; the owner wakes it"}}'
+    - '{"error":{"code":"model-stopped","message":"the model''s pod is not running and a request does not start it; the owner wakes it"}}'
+    - '{"model":"small","phase":"stopped"}'
+    retry_after:
+    - absent
+    - absent
+    - absent
+    records:
+    - model=small wire=chat disposition=Refused refusal=model-stopped status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    - model=small wire=messages disposition=Refused refusal=model-stopped status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    acquired: 2
+    released: 0
+    upstream: []
+    connections: []
+    lifecycle_asks:
+    - status small
+    pod_creates: 0

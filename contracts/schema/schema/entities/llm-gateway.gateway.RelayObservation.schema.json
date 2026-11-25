@@ -107,6 +107,15 @@
         "type": "string"
       }
     },
+    "pod_creates": {
+      "type": "integer"
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
     "state": {
       "$ref": "#/$defs/llm-gateway.gateway.RelayObservation.State"
     }
@@ -131,13 +140,15 @@
     "scrapes",
     "upstream_ends",
     "lifecycle_asks",
+    "pod_creates",
+    "calls",
     "state"
   ],
   "additionalProperties": false,
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:012a26eaddddfc814b5d785177d4262239fc565d7777ae3ca7eb7b901bb1ab90",
+    "contract_digest": "slice-sha256/2:9dd7afd7bc8df775f83ef41ffd61c15f4514d4e87cddb7e84334189be2e2b5bb",
     "regenerate": "ess generate"
   },
   "$defs": {

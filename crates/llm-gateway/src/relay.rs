@@ -770,9 +770,12 @@ impl ModelPhase {
         }
     }
 
-    /// Whether a call sent now would be relayed or held: `true` for `ready` and `starting`, and
-    /// for `stopped`, where a call starts the model's target; `false` for `stopping` and
-    /// `unreachable`, where it would be refused or fail (`callable` in `GET /v1/status`).
+    /// Whether a call sent now is relayed, held on a target that is starting or serving, or
+    /// starts the target: `true` for `ready` and `starting`, and for `stopped`, where a call
+    /// starts the model's target unless the model is declared with
+    /// [`RelayModel::with_no_call_start`]; `false` for `stopping` and `unreachable`, where the
+    /// call would be refused or fail, or would wait on a stop still owed, with no promise of an
+    /// answer from the model (`callable` in `GET /v1/status`).
     pub const fn callable(self) -> bool {
         matches!(self, Self::Stopped | Self::Starting | Self::Ready)
     }
@@ -902,6 +905,7 @@ pub struct RelayModel {
     retry: Retry,
     compact_window: Option<u64>,
     kind: ModelKind,
+    no_call_start: bool,
 }
 
 impl RelayModel {
@@ -936,6 +940,7 @@ impl RelayModel {
             retry: Retry::default(),
             compact_window: None,
             kind: ModelKind::default(),
+            no_call_start: false,
         })
     }
 
@@ -949,6 +954,24 @@ impl RelayModel {
 
     pub fn kind(&self) -> ModelKind {
         self.kind
+    }
+
+    /// Declares that a call does not start the model's target: while it is
+    /// [`ModelPhase::Stopped`] a call is refused (`model-stopped` in the binary) and only the
+    /// owner's wake starts it, so `GET /v1/status` lists it `callable: false` in that phase
+    /// (story:a-call-starts-no-pod). Its target source still decides what a call does; this only
+    /// states it. Until declared, a call to a stopped model is taken to start its target.
+    #[must_use]
+    pub fn with_no_call_start(mut self) -> Self {
+        self.no_call_start = true;
+        self
+    }
+
+    /// Whether a call sent now, with the model in `phase`, is relayed, held on a target that is
+    /// starting or serving, or starts the target: [`ModelPhase::callable`], except that a
+    /// stopped model declared with [`Self::with_no_call_start`] is not callable.
+    pub(crate) fn callable(&self, phase: ModelPhase) -> bool {
+        phase.callable() && !(self.no_call_start && phase == ModelPhase::Stopped)
     }
 
     /// Declares that the model's target takes no client wire verbatim: every request is decoded
@@ -1924,9 +1947,20 @@ pub(crate) struct Call {
     /// The code under which a translated answer, its head already written, ended in its wire's
     /// terminal error ([`TranslatedAnswer::failed`]): the call's outcome is that code's.
     pub(crate) failed_after_head: Option<RefusalCode>,
+    /// The call's id and its `in-flight` record (story:call-id-and-usage-record); `None` for a
+    /// request that makes no usage record.
+    pub(crate) ticket: Option<crate::calls::Ticket>,
 }
 
 impl Call {
+    /// The `x-llm-gateway-call` line every answer head written to this call carries, with its
+    /// CRLF; empty for a request given no id.
+    pub(crate) fn id_line(&self) -> String {
+        self.ticket.as_ref().map_or_else(String::new, |ticket| {
+            format!("{}: {}\r\n", crate::calls::HEADER, ticket.id())
+        })
+    }
+
     /// Milliseconds since `begun`.
     fn since_begun(&self) -> Option<u64> {
         self.begun
@@ -1975,6 +2009,9 @@ fn served_model<'r>(
     call.model = Some(model.alias.as_str().to_string());
     if let Some(progress) = &call.progress {
         progress.route(model.alias.as_str());
+    }
+    if let Some(ticket) = &call.ticket {
+        ticket.model(model.alias.as_str());
     }
     let translator = if model.wires.contains(&wire) && !model.translated_only {
         None
@@ -2148,7 +2185,8 @@ impl TranslatedAnswer for ClientAnswer<'_> {
             AnswerFraming::Stream => String::new(),
         };
         let head = format!(
-            "HTTP/1.1 {status} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n"
+            "HTTP/1.1 {status} {phrase}\r\n{id}{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+            id = self.call.id_line(),
         );
         self.write(head.as_bytes())
     }
@@ -2869,8 +2907,9 @@ fn relay_pieces(
         ""
     };
     let start = format!(
-        "HTTP/1.1 {} {phrase}\r\n{content_type}{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+        "HTTP/1.1 {} {phrase}\r\n{id}{content_type}{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
         head.status,
+        id = call.id_line(),
         relayed = head.relayed,
     );
     let mut written: u64 = 0;
@@ -2944,6 +2983,7 @@ mod tests {
                 TargetRefusal::ColdStart => RefusalCode::ModelColdStart,
                 TargetRefusal::SpendCeiling => RefusalCode::SpendCeiling,
                 TargetRefusal::NotPulled => RefusalCode::ModelNotPulled,
+                TargetRefusal::Stopped => RefusalCode::ModelStopped,
             };
             assert_eq!(refusal.refusal(), expected);
             assert_eq!(expected.status(), 503);

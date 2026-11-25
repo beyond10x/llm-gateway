@@ -90,8 +90,8 @@ curl -s http://127.0.0.1:8080/v1/chat/completions -H "$token" \
 ```
 
 ```json
-{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed; the next request asks for a replacement"}}
-{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed; the next request asks for a replacement"}}
+{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed"}}
+{"error":{"code":"upstream-failed","message":"the model target could not be reached or failed"}}
 ```
 
 ## Serve the models of a routes document

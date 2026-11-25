@@ -27,7 +27,7 @@ use std::{
 };
 use support::{
     Connectors, Fixture, OWNER_SECRET, VLLM_KEY, connected_document, created, listed, mutate,
-    running_small_pod,
+    nothing_billed, running_small_pod, starts_on_request,
 };
 
 const WAIT: Duration = Duration::from_secs(10);
@@ -67,6 +67,10 @@ impl<T: RunpodTransport> RunpodTransport for LoopbackProbe<T> {
     }
     fn pod_placement(&mut self, pod_id: &str) -> Option<llm_runpod::PodPlacement> {
         self.inner.pod_placement(pod_id)
+    }
+
+    fn account_spend(&mut self, day_start_ms: u64) -> Option<llm_runpod::AccountSpend> {
+        self.inner.account_spend(day_start_ms)
     }
 }
 
@@ -175,13 +179,15 @@ fn live_the_pod_receives_the_probe_with_the_vllm_key_and_then_the_relayed_reques
         "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pods.list machine": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pod.create": [created(&running_small_pod())],
+        "invoke billing.pods": [nothing_billed()],
     }));
-    let deployment = load(&fixture.config(&connected_document(
+    // The request starts the pod (`start_on_request`, under a daily cap nothing billed passes).
+    let deployment = load(&fixture.config(&starts_on_request(&connected_document(
         &fixture,
         "127.0.0.1:0",
         &connectors,
         25,
-    )))
+    ))))
     .unwrap();
     let (pod, received) = loopback_pod();
     let endpoint = format!("http://{pod}/v1/");

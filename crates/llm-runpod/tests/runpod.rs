@@ -1364,7 +1364,10 @@ fn ensure_held_running_binds_to_a_pod_another_ask_started_and_hands_it_out_once_
     }
     let lease = lease.expect("the started pod never served");
     assert!(lease.endpoint().is_some());
-    assert!(hold.deployment().is_some(), "served without waiting on the pod");
+    assert!(
+        hold.deployment().is_some(),
+        "served without waiting on the pod"
+    );
     assert_eq!(stack.runpod.create_calls(), 1);
 }
 
@@ -1402,7 +1405,10 @@ fn ensure_held_running_on_a_pod_that_fails_while_held_is_lost_and_starts_no_repl
                 .ensure_held_running(&id(ALIAS), &mut fresh)
                 .is_err()
         );
-        assert!(fresh.deployment().is_none(), "bound to a pod nobody started");
+        assert!(
+            fresh.deployment().is_none(),
+            "bound to a pod nobody started"
+        );
     }
     assert_eq!(stack.runpod.create_calls(), 1, "a replacement was started");
 }

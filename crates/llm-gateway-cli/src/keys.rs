@@ -53,6 +53,16 @@ impl VllmKeys {
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
+
+    /// Keys given as bytes by alias, read from no file: the seam [`crate::pod_targets`] composes
+    /// a test's pool with.
+    pub(crate) fn given(keys: &BTreeMap<String, Vec<u8>>) -> Self {
+        Self(
+            keys.iter()
+                .map(|(alias, key)| (alias.clone(), VllmKey(key.clone())))
+                .collect(),
+        )
+    }
 }
 
 impl fmt::Debug for VllmKeys {

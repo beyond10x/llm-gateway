@@ -153,7 +153,9 @@ domain: llm-gateway.deployment
 #                         `connectors` connection). A ceiling declared on any other provider does
 #                         not bind it, and the document is still accepted; with none on its own
 #                         provider the pool reads no spend. ESS-LIMIT: no scenario command
-#                         composes a pool from a document; the crate test
+#                         composes the connected pool (`start_connected`) from a document (the
+#                         Relay program's `runpod` input composes one over the emulator, for no
+#                         connection, through `pod_targets`); the crate test
 #                         `adversary_w12p2_another_providers_ceiling_does_not_bind_the_connected_account`
 #                         in crates/llm-gateway-cli/tests proves it.
 #                         A start it refuses is answered `spend-ceiling` (503,

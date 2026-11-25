@@ -14,7 +14,7 @@ use std::{
     thread,
     time::Duration,
 };
-use support::{Fixture, OWNER_SECRET, document, with_vllm_key};
+use support::{Fixture, OWNER_SECRET, document, no_spend, starts_on_request, with_vllm_key};
 
 const WAIT: Duration = Duration::from_secs(20);
 const BODY: &str = "{\"model\":\"small\",\"messages\":[]}";
@@ -94,10 +94,13 @@ fn finish(mut stream: TcpStream) -> String {
 #[test]
 fn adv2_d2_a_request_accepted_before_the_stop_is_relayed_to_its_ready_pod() {
     let fixture = Fixture::new("adv-w03-2-inflight");
-    let deployment = deployment(&fixture, |text| text);
+    // The first request starts the pod (`start_on_request`).
+    let deployment = deployment(&fixture, |text| starts_on_request(&text));
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
     let running = start_relaying(
         &deployment,
-        EmulatedRunpod::new(),
+        runpod,
         Arc::new(Loopback(pod())),
         Arc::new(ManualClock::new(1_000)),
     )
@@ -125,8 +128,10 @@ fn adv2_d2_a_request_accepted_before_the_stop_is_relayed_to_its_ready_pod() {
 #[test]
 fn adv2_d2_a_request_waiting_for_its_pod_is_answered_target_unavailable_at_the_stop() {
     let fixture = Fixture::new("adv-w03-2-waiting");
-    let deployment = deployment(&fixture, |text| text);
+    // The request starts the pod and waits on it (`start_on_request`).
+    let deployment = deployment(&fixture, |text| starts_on_request(&text));
     let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
     runpod.ready_after(u32::MAX);
     let running = start_relaying(
         &deployment,

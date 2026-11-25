@@ -790,6 +790,10 @@ struct ModelDocument {
     tool_calling: ToolCallingDocument,
     #[serde(default)]
     price_per_hour_usd: Option<f64>,
+    /// Whether a model call may start the model's pod; `false` unless the document says
+    /// `true` (story:a-call-starts-no-pod).
+    #[serde(default)]
+    start_on_request: bool,
 }
 
 /// One `[[models.<alias>.profiles]]` entry, or the flat keys as the one profile `default`.
@@ -921,6 +925,10 @@ pub struct Model {
     /// (`price_per_hour_usd`), which the spend check prices its pods by. Required once a
     /// provider declares a spend ceiling.
     pub price_per_hour_micro_usd: Option<u64>,
+    /// Whether a model call may start the model's pod (`start_on_request`, default `false`).
+    /// `false` leaves the owner's wake as the only start; `true` is accepted only beside a
+    /// `daily_cap_usd` on the model's provider (story:a-call-starts-no-pod).
+    pub start_on_request: bool,
 }
 
 /// `[hosted.<alias>]`, with every default applied and every rule checked: a model a hosted
@@ -1180,6 +1188,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
             &format!("{at}.price_per_hour_usd"),
             "is required once a provider declares a spend ceiling",
         )?;
+        start_on_request_capped(&at, &model, &providers)?;
         models.insert(alias, model);
     }
     let mut hosted = BTreeMap::new();
@@ -1259,6 +1268,30 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
 
 /// `[providers.<name>]`, checked: the providers, and how many of them declare a spend ceiling
 /// (at most one).
+/// A call may start a billed pod only under a daily cap of the account that pays for it
+/// (story:a-call-starts-no-pod): `start_on_request = true` needs `daily_cap_usd` on the model's
+/// own provider; a total cap alone, or a cap on another provider, is not one.
+///
+/// # Errors
+/// `config:value` naming the model's key and the missing cap, quoting no value.
+fn start_on_request_capped(
+    at: &str,
+    model: &Model,
+    providers: &BTreeMap<String, Provider>,
+) -> Result<(), Refusal> {
+    ensure(
+        !model.start_on_request
+            || providers
+                .get(&model.provider)
+                .is_some_and(|provider| provider.daily_cap_micro_usd.is_some()),
+        &format!("{at}.start_on_request"),
+        &format!(
+            "needs providers.{}.daily_cap_usd: a model call starts a pod only under a daily spend cap",
+            model.provider
+        ),
+    )
+}
+
 fn providers(
     declared: BTreeMap<String, ProviderDocument>,
 ) -> Result<(BTreeMap<String, Provider>, usize), Refusal> {
@@ -2308,5 +2341,6 @@ fn into_model(model: ModelDocument, profiles: Vec<(String, ProfileDocument)>) ->
             ToolCallingDocument::Absent => ToolCalling::Absent,
         },
         price_per_hour_micro_usd: None,
+        start_on_request: model.start_on_request,
     }
 }

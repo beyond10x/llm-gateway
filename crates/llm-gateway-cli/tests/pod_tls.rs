@@ -23,7 +23,7 @@ use std::{
 };
 use support::{
     Connectors, Fixture, OWNER_SECRET, VLLM_KEY, connected_document, created, listed,
-    running_small_pod,
+    nothing_billed, running_small_pod, starts_on_request,
     tls_pod::{POD_CHAT_ANSWER, POD_HOST, Seen, Switch, TestRoot, TlsPod},
 };
 
@@ -240,13 +240,15 @@ fn tls_the_binary_relays_a_chat_request_to_the_https_pod_through_connectors() {
         "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pods.list machine": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pod.create": [created(&running_small_pod())],
+        "invoke billing.pods": [nothing_billed()],
     }));
-    let config = fixture.config(&connected_document(
+    // The request starts the pod (`start_on_request`, under a daily cap nothing billed passes).
+    let config = fixture.config(&starts_on_request(&connected_document(
         &fixture,
         "127.0.0.1:0",
         &connectors,
         25,
-    ));
+    )));
     let root = TestRoot::new("pod-tls test root");
     let root_file = fixture.write("test-root.der", &root.der, 0o600);
     let pod = TlsPod::start(root.server(POD_HOST), None);
@@ -306,13 +308,15 @@ fn tls_an_untrusted_pod_certificate_is_upstream_failed_and_the_pod_reads_nothing
         "invoke pods.list": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pods.list machine": [listed(&serde_json::json!([running_small_pod()]))],
         "invoke pod.create": [created(&running_small_pod())],
+        "invoke billing.pods": [nothing_billed()],
     }));
-    let config = fixture.config(&connected_document(
+    // The request starts the pod (`start_on_request`, under a daily cap nothing billed passes).
+    let config = fixture.config(&starts_on_request(&connected_document(
         &fixture,
         "127.0.0.1:0",
         &connectors,
         25,
-    ));
+    )));
     let root = TestRoot::new("pod-tls test root");
     let stranger = TestRoot::new("pod-tls untrusted root");
     let root_file = fixture.write("test-root.der", &root.der, 0o600);

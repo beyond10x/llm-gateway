@@ -1957,7 +1957,10 @@ fn start_on_request_true_without_a_daily_cap_on_the_models_provider_is_a_value_r
         );
         assert!(message.contains("daily_cap_usd"), "{case}: {message}");
         assert!(!message.contains("40"), "{case}: quotes a value: {message}");
-        assert!(!message.contains("true"), "{case}: quotes a value: {message}");
+        assert!(
+            !message.contains("true"),
+            "{case}: quotes a value: {message}"
+        );
     }
 }
 
@@ -1975,7 +1978,9 @@ fn start_on_request_true_with_a_daily_cap_only_on_another_provider_is_a_value_re
     let refusal = load(&fixture.config(&text)).unwrap_err();
     assert_eq!(refusal.code(), "config:value");
     assert!(
-        refusal.to_string().contains("models.small.start_on_request"),
+        refusal
+            .to_string()
+            .contains("models.small.start_on_request"),
         "{refusal}"
     );
 }

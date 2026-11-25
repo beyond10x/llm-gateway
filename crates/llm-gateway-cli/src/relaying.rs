@@ -346,6 +346,9 @@ struct Relayed {
     bearer: Arc<TargetBearer>,
     /// How long a request waits for the model's pod: `request_hold_seconds` (row K28).
     hold: Duration,
+    /// `start_on_request`: whether a request may start the model's pod. Without it a request
+    /// only uses or waits on a pod the owner's wake started (story:a-call-starts-no-pod).
+    start_on_request: bool,
     /// Each profile's `max_model_len` by profile name: the window of a pod started on it.
     windows: BTreeMap<String, u64>,
 }
@@ -381,6 +384,7 @@ fn relayed_models(
                 alias: identifier(alias, &format!("models.{alias}"))?,
                 bearer: Arc::new(bearer),
                 hold: Duration::from_secs(model.request_hold_seconds),
+                start_on_request: model.start_on_request,
                 windows: profile_windows(model).collect(),
             },
         );
@@ -571,6 +575,12 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
     /// `target-unavailable` too. Once the gateway starts to stop, a request may
     /// still use a pod that is ready now, but starts none and waits for none: without a ready
     /// pod it gives up at once (`target-unavailable`), so it cannot hold the graceful stop.
+    ///
+    /// Only a model with `start_on_request` asks with the compute authorization, so only its
+    /// request may start a pod. Any other asks `RunpodPool::ensure_held_running`, which never
+    /// submits a create (story:a-call-starts-no-pod): a pod the owner's wake started is held on
+    /// and relayed to as above, but with no pod running or starting (the model stopped, or its
+    /// pod stopping) the request is `model-stopped` at once, without waiting out its hold.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         let relayed = self.models.get(alias).ok_or(TargetRefusal::Unavailable)?;
         let deadline = Instant::now() + relayed.hold;
@@ -579,9 +589,11 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
             let stopping = self.stopping.load(Ordering::SeqCst);
             let asked = if stopping {
                 self.pool.ensure_running(&relayed.alias)
-            } else {
+            } else if relayed.start_on_request {
                 self.pool
                     .ensure_held(&relayed.alias, &self.authorization, &mut hold)
+            } else {
+                self.pool.ensure_held_running(&relayed.alias, &mut hold)
             };
             self.count_start(alias, &hold);
             if let Err(error) = &asked {
@@ -611,6 +623,11 @@ impl<T: RunpodTransport + Send + 'static> RelayTargets for PoolTargets<T> {
                     }));
                 }
                 Err(PoolError::Starting | PoolError::Stopping) if !stopping && !hold.lost() => {
+                    // An unbound hold found no pod starting: without `start_on_request` none
+                    // will start for this request, so it is not held.
+                    if !relayed.start_on_request && hold.deployment().is_none() {
+                        return Err(TargetRefusal::Stopped);
+                    }
                     if Instant::now() >= deadline {
                         // Only a request bound to a pod still starting is told to come back;
                         // one still waiting out a previous pod's unconfirmed stop had no pod
@@ -886,6 +903,34 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     )?;
     let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
+}
+
+/// The binary's own pod target source for `deployment` over `transport`, with nothing else of
+/// the gateway composed: one `RunpodPool` on `clock`, each model's `keys` entry as its vLLM
+/// bearer, and every pod reached through `pods`. No file the document names is read and no
+/// cleanup pass runs. The shipped binary never calls this: it is the seam the conformance
+/// runner serves a scenario's models from over `EmulatedRunpod` (story:a-call-starts-no-pod).
+///
+/// # Errors
+/// As [`start_relaying`] for the pool and the keys: `config:value` for a model the pool cannot
+/// run or that has no entry in `keys`.
+pub fn pod_targets<T: RunpodTransport + Send + 'static>(
+    deployment: &Deployment,
+    keys: &BTreeMap<String, Vec<u8>>,
+    transport: T,
+    pods: Arc<dyn PodConnector>,
+    clock: Arc<dyn Clock>,
+) -> Result<Arc<dyn RelayTargets>, Refusal> {
+    let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
+    let targets = PoolTargets::new(
+        deployment,
+        &VllmKeys::given(keys),
+        pool,
+        pods,
+        Arc::new(AtomicBool::new(false)),
+        Arc::new(Metrics::default()),
+    )?;
+    Ok(Arc::new(targets))
 }
 
 /// Targets for models no pool serves: every acquisition and every wake is

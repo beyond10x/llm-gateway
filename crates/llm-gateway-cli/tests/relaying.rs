@@ -18,7 +18,10 @@ use std::{
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
-use support::{Fixture, OWNER_SECRET, VLLM_KEY, document, hosted_table, mutate, with_vllm_key};
+use support::{
+    Fixture, OWNER_SECRET, VLLM_KEY, document, hosted_table, mutate, no_spend, starts_on_request,
+    with_start_on_request, with_vllm_key,
+};
 
 const WAIT: Duration = Duration::from_secs(10);
 
@@ -125,6 +128,18 @@ fn deployment(fixture: &Fixture, edit: impl Fn(String) -> String) -> Deployment 
     load(&fixture.config(&edit(text))).unwrap()
 }
 
+/// [`deployment`] whose call starts the pod ([`starts_on_request`]), and an emulator whose
+/// account reports no spend: the composition every call started a pod in before
+/// `start_on_request` existed.
+fn starting(fixture: &Fixture, edit: impl Fn(String) -> String) -> (Deployment, EmulatedRunpod) {
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
+    (
+        deployment(fixture, |text| starts_on_request(&edit(text))),
+        runpod,
+    )
+}
+
 /// One request to the gateway; the whole answer, read to the close.
 fn post(address: SocketAddr, path: &str, bearer: &str, body: &str) -> String {
     let mut stream = TcpStream::connect(address).unwrap();
@@ -156,13 +171,12 @@ fn header<'a>(raw: &'a str, name: &str) -> Option<&'a str> {
 #[test]
 fn b8_a_chat_request_reaches_the_pod_with_the_models_vllm_key_and_its_answer_reaches_the_client() {
     let fixture = Fixture::new("b8-relay");
-    let deployment = deployment(&fixture, |text| text);
+    let (deployment, runpod) = starting(&fixture, |text| text);
     let mut pod = Pod::start(1, "{\"id\":\"chat-1\",\"object\":\"chat.completion\"}");
     let loopback = Arc::new(Loopback {
         pod: pod.address,
         asked: Mutex::new(Vec::new()),
     });
-    let runpod = EmulatedRunpod::new();
     let running = start_relaying(
         &deployment,
         runpod.clone(),
@@ -220,11 +234,11 @@ fn b8_a_chat_request_reaches_the_pod_with_the_models_vllm_key_and_its_answer_rea
 #[test]
 fn b8_the_owner_credential_reaches_no_byte_the_pod_receives() {
     let fixture = Fixture::new("b8-owner");
-    let deployment = deployment(&fixture, |text| text);
+    let (deployment, runpod) = starting(&fixture, |text| text);
     let mut pod = Pod::start(3, "{\"id\":\"any\"}");
     let running = start_relaying(
         &deployment,
-        EmulatedRunpod::new(),
+        runpod,
         Arc::new(Loopback {
             pod: pod.address,
             asked: Mutex::new(Vec::new()),
@@ -518,13 +532,16 @@ fn loopback(pod: &Pod) -> Arc<dyn PodConnector> {
 
 /// The deployment with `lines` added to its `[models.small]` table.
 fn with_model_lines(fixture: &Fixture, lines: &str) -> Deployment {
-    deployment(fixture, |text| {
-        mutate(
-            &text,
-            "max_model_len = 1024\n",
-            &format!("max_model_len = 1024\n{lines}"),
-        )
-    })
+    deployment(fixture, |text| model_lines(&text, lines))
+}
+
+/// `text` with `lines` added to its `[models.small]` table.
+fn model_lines(text: &str, lines: &str) -> String {
+    mutate(
+        text,
+        "max_model_len = 1024\n",
+        &format!("max_model_len = 1024\n{lines}"),
+    )
 }
 
 /// Posts one chat request and measures how long the answer took.
@@ -537,9 +554,8 @@ fn timed_chat(address: SocketAddr) -> (String, Duration) {
 #[test]
 fn l6_a_request_for_a_pod_still_starting_is_held_until_the_pod_serves() {
     let fixture = Fixture::new("l6-held");
-    let deployment = deployment(&fixture, |text| text);
+    let (deployment, runpod) = starting(&fixture, |text| text);
     let mut pod = Pod::start(1, "{\"id\":\"held\"}");
-    let runpod = EmulatedRunpod::new();
     // Three probes answer "not ready": the pod takes at least three of the relay's asks to
     // serve, each 500 ms apart.
     runpod.ready_after(3);
@@ -569,9 +585,8 @@ fn l6_a_request_for_a_pod_still_starting_is_held_until_the_pod_serves() {
 #[test]
 fn l6_requests_held_together_wait_on_one_pod() {
     let fixture = Fixture::new("l6-together");
-    let deployment = deployment(&fixture, |text| text);
+    let (deployment, runpod) = starting(&fixture, |text| text);
     let mut pod = Pod::start(3, "{\"id\":\"shared\"}");
-    let runpod = EmulatedRunpod::new();
     runpod.ready_after(3);
     let running = start_relaying(
         &deployment,
@@ -603,9 +618,10 @@ fn l6_requests_held_together_wait_on_one_pod() {
 #[test]
 fn w6_a_pod_still_starting_past_the_hold_budget_is_model_cold_start_with_retry_after_30() {
     let fixture = Fixture::new("w6-cold");
-    let deployment = with_model_lines(&fixture, "request_hold_seconds = 1\n");
+    let (deployment, runpod) = starting(&fixture, |text| {
+        model_lines(&text, "request_hold_seconds = 1\n")
+    });
     let mut pod = Pod::start(0, "{}");
-    let runpod = EmulatedRunpod::new();
     // The pod never serves within this test.
     runpod.ready_after(u32::MAX);
     let running = start_relaying(
@@ -684,9 +700,10 @@ fn k28_the_request_hold_is_within_zero_and_the_startup_deadline() {
 #[test]
 fn k28_a_hold_of_zero_answers_model_cold_start_at_once_and_still_starts_the_pod() {
     let fixture = Fixture::new("k28-zero");
-    let deployment = with_model_lines(&fixture, "request_hold_seconds = 0\n");
+    let (deployment, runpod) = starting(&fixture, |text| {
+        model_lines(&text, "request_hold_seconds = 0\n")
+    });
     let mut pod = Pod::start(0, "{}");
-    let runpod = EmulatedRunpod::new();
     runpod.ready_after(u32::MAX);
     let running = start_relaying(
         &deployment,
@@ -716,8 +733,7 @@ fn k28_a_hold_of_zero_answers_model_cold_start_at_once_and_still_starts_the_pod(
 #[test]
 fn l15_the_startup_sweep_terminates_a_previous_runs_pod_before_serving() {
     let fixture = Fixture::new("l15-sweep");
-    let deployment = deployment(&fixture, |text| text);
-    let runpod = EmulatedRunpod::new();
+    let (deployment, runpod) = starting(&fixture, |text| text);
     // A previous run of this controller starts a pod and stops; the pod outlives it.
     let mut pod = Pod::start(1, "{\"id\":\"first-run\"}");
     let first = start_relaying(
@@ -786,9 +802,8 @@ fn scrape(address: SocketAddr) -> std::collections::BTreeMap<String, String> {
 #[test]
 fn o1_o2_a_pod_start_and_the_request_held_on_it_are_counted() {
     let fixture = Fixture::new("o1-start");
-    let deployment = deployment(&fixture, |text| text);
+    let (deployment, runpod) = starting(&fixture, |text| text);
     let mut pod = Pod::start(1, "{\"id\":\"held\"}");
-    let runpod = EmulatedRunpod::new();
     runpod.ready_after(3);
     let running = start_relaying(
         &deployment,
@@ -832,9 +847,8 @@ fn o1_o2_a_pod_start_and_the_request_held_on_it_are_counted() {
 #[test]
 fn o1_a_pod_start_refused_for_capacity_is_a_pod_start_failure() {
     let fixture = Fixture::new("o1-capacity");
-    let deployment = deployment(&fixture, |text| text);
+    let (deployment, runpod) = starting(&fixture, |text| text);
     let mut pod = Pod::start(0, "{}");
-    let runpod = EmulatedRunpod::new();
     runpod.refuse_gpu("NVIDIA L40S");
     let running = start_relaying(
         &deployment,
@@ -862,8 +876,7 @@ fn o1_a_pod_start_refused_for_capacity_is_a_pod_start_failure() {
 #[test]
 fn o1_the_startup_sweep_counts_each_pod_it_stops_as_a_reap() {
     let fixture = Fixture::new("o1-reap");
-    let deployment = deployment(&fixture, |text| text);
-    let runpod = EmulatedRunpod::new();
+    let (deployment, runpod) = starting(&fixture, |text| text);
     let mut pod = Pod::start(1, "{\"id\":\"first-run\"}");
     let first = start_relaying(
         &deployment,
@@ -897,7 +910,7 @@ fn o1_the_startup_sweep_counts_each_pod_it_stops_as_a_reap() {
 fn tools_a_tool_request_is_refused_for_the_absent_model_and_reaches_the_pod_for_the_parsed_one() {
     let fixture = Fixture::new("tools-relay");
     let key = fixture.vllm_key();
-    let deployment = deployment(&fixture, |text| {
+    let (deployment, runpod) = starting(&fixture, |text| {
         let text = mutate(
             &text,
             "max_model_len = 1024\n",
@@ -907,12 +920,12 @@ fn tools_a_tool_request_is_refused_for_the_absent_model_and_reaches_the_pod_for_
             "{text}\n[models.text]\nprovider = \"runpod\"\nwires = [\"chat\"]\n\
              context_window = 65536\nhf_model = \"example/text-model\"\n\
              image = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\n\
-             max_model_len = 1024\nvllm_api_key_file = \"{}\"\ntool_calling = \"absent\"\n",
+             max_model_len = 1024\nvllm_api_key_file = \"{}\"\ntool_calling = \"absent\"\n\
+             price_per_hour_usd = 2\nstart_on_request = true\n",
             key.display()
         )
     });
     let mut pod = Pod::start(1, "{\"id\":\"tool\"}");
-    let runpod = EmulatedRunpod::new();
     let running = start_relaying(
         &deployment,
         runpod.clone(),
@@ -1050,7 +1063,7 @@ fn effort_a_hosted_model_gives_its_declared_effort_and_a_runpod_model_never_does
     let fixture = Fixture::new("effort-default");
     let mut endpoint = Pod::start(3, "{\"id\":\"hosted-1\"}");
     let base_url = format!("http://{}", endpoint.address);
-    let deployment = deployment(&fixture, |text| {
+    let (deployment, runpod) = starting(&fixture, |text| {
         let text = mutate(
             &text,
             "max_model_len = 1024\n",
@@ -1072,7 +1085,7 @@ fn effort_a_hosted_model_gives_its_declared_effort_and_a_runpod_model_never_does
     });
     let running = start_relaying(
         &deployment,
-        EmulatedRunpod::new(),
+        runpod,
         Arc::clone(&loopback) as Arc<dyn PodConnector>,
         Arc::new(ManualClock::new(1_000)),
     )
@@ -1157,7 +1170,7 @@ fn clamp_a_runpod_model_is_clamped_to_its_max_model_len_a_hosted_one_to_its_cont
         format!("http://{}", open.address),
         format!("http://{}", bare.address),
     );
-    let deployment = deployment(&fixture, |text| {
+    let (deployment, runpod) = starting(&fixture, |text| {
         format!(
             "{text}\n{}\n{}",
             hosted_table(
@@ -1171,7 +1184,7 @@ fn clamp_a_runpod_model_is_clamped_to_its_max_model_len_a_hosted_one_to_its_cont
     let pod = Pod::start(2, COUNT);
     let running = start_relaying(
         &deployment,
-        EmulatedRunpod::new(),
+        runpod,
         loopback(&pod),
         Arc::new(ManualClock::new(1_000)),
     )
@@ -1226,6 +1239,22 @@ fn capped(fixture: &Fixture) -> Deployment {
     })
 }
 
+/// [`capped`] whose call starts the pod ([`with_start_on_request`]).
+fn capped_on_request(fixture: &Fixture) -> Deployment {
+    deployment(fixture, |text| {
+        let text = mutate(
+            &text,
+            "kind = \"runpod-vllm\"\n",
+            "kind = \"runpod-vllm\"\ndaily_cap_usd = 10\n",
+        );
+        with_start_on_request(&mutate(
+            &text,
+            "max_model_len = 1024\n",
+            "max_model_len = 1024\nprice_per_hour_usd = 2\n",
+        ))
+    })
+}
+
 fn spent(runpod: &EmulatedRunpod, daily_micro_usd: u64) {
     runpod.set_account_spend(Some(llm_runpod::AccountSpend {
         daily_micro_usd,
@@ -1236,7 +1265,7 @@ fn spent(runpod: &EmulatedRunpod, daily_micro_usd: u64) {
 #[test]
 fn spend_a_start_past_the_ceiling_is_spend_ceiling_at_once_with_no_create_and_is_counted() {
     let fixture = Fixture::new("spend-over");
-    let deployment = capped(&fixture);
+    let deployment = capped_on_request(&fixture);
     let mut pod = Pod::start(0, "{}");
     let runpod = EmulatedRunpod::new();
     spent(&runpod, 9_666_667);
@@ -1269,7 +1298,7 @@ fn spend_a_start_past_the_ceiling_is_spend_ceiling_at_once_with_no_create_and_is
 #[test]
 fn spend_a_start_at_the_ceiling_is_created_and_served() {
     let fixture = Fixture::new("spend-at");
-    let deployment = capped(&fixture);
+    let deployment = capped_on_request(&fixture);
     let mut pod = Pod::start(1, "{\"id\":\"served\"}");
     let runpod = EmulatedRunpod::new();
     spent(&runpod, 9_666_666);
@@ -1345,7 +1374,11 @@ fn usage_log() -> &'static Captured {
 fn a_relayed_call_names_the_profile_of_the_pod_that_served() {
     let log = usage_log();
     let fixture = Fixture::new("profile-record");
+    // The call starts the pod: `starts_on_request` edits `[models.small]` before it is renamed.
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
     let deployment = deployment(&fixture, |text| {
+        let text = starts_on_request(&text);
         let text = mutate(&text, "[models.small]", "[models.profiled]");
         let text = mutate(
             &text,
@@ -1357,7 +1390,6 @@ fn a_relayed_call_names_the_profile_of_the_pod_that_served() {
         )
     });
     let pod = Pod::start(1, "{\"id\":\"chat-1\",\"object\":\"chat.completion\"}");
-    let runpod = EmulatedRunpod::new();
     runpod.no_capacity_gpu("NVIDIA L40S");
     let running = start_relaying(
         &deployment,
@@ -1493,7 +1525,10 @@ fn start_on_request_off_a_call_to_a_stopped_model_is_model_stopped_at_once_and_c
         assert!(answer.ends_with(MODEL_STOPPED), "{path}: {answer}");
         assert_eq!(header(answer, "retry-after"), None, "{path}: {answer}");
     }
-    assert!(took < Duration::from_secs(2), "the calls were held {took:?}");
+    assert!(
+        took < Duration::from_secs(2),
+        "the calls were held {took:?}"
+    );
     assert_eq!(runpod.create_calls(), 0, "a call started a pod");
     assert_eq!(runpod.spend_reads(), 0);
     assert!(pod.received().is_empty());

@@ -598,8 +598,9 @@ pub type ProbeClock = Arc<dyn Fn() -> u64 + Send + Sync>;
 /// The name lookup of a status probe: the addresses of `host` at `port`.
 pub type Resolver = Arc<dyn Fn(&str, u16) -> io::Result<Vec<SocketAddr>> + Send + Sync>;
 
-/// The opening of a status probe's connection, running on its own thread: what it opened, or why
-/// it opened nothing, arrives here.
+/// The opening of a status probe's connection, running on its own thread: what it opened before
+/// the probe's deadline, or why it opened nothing, arrives here. An opening that ends at or after
+/// the deadline closes what it opened itself and sends only that it has ended.
 type Opening = mpsc::Receiver<io::Result<Box<dyn RelayStream>>>;
 
 /// One hosted model's endpoint and the result of its last status probe, with when the probe
@@ -702,7 +703,8 @@ impl HostedTargets {
     /// handshake) runs on its own thread, so a lookup that does not return still ends the probe
     /// at its deadline. An opening still running then is left to end on its own and kept: the
     /// next probe of the model starts no second one while it runs, waits for it until its own
-    /// deadline, and once it has ended drops what it opened and opens afresh.
+    /// deadline, and once it has ended opens afresh. What a late opening opened is closed by the
+    /// opening itself, the moment it ends.
     fn opened(&self, served: &Served, deadline: Instant) -> io::Result<Box<dyn RelayStream>> {
         let mut left_running = served
             .left_running
@@ -719,16 +721,35 @@ impl HostedTargets {
         let endpoint = Arc::clone(&served.endpoint);
         let tls = Arc::clone(&self.tls);
         let resolver = Arc::clone(&self.resolver);
+        // The hand-over: the opening checks the deadline and sends under it, and the probe
+        // that stops waiting takes what was sent under it, so a connection either reaches the
+        // probe in time or is closed when its opening ends, never kept in the channel.
+        let handover = Arc::new(Mutex::new(()));
+        let opening_handover = Arc::clone(&handover);
         std::thread::Builder::new()
             .name("llmgw-probe-open".to_owned())
             .spawn(move || {
                 let opened = endpoint.open_probe(tls.as_ref(), resolver.as_ref(), deadline);
-                drop(sender.send(opened));
+                let _held = opening_handover
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if Instant::now() >= deadline {
+                    drop(opened);
+                    drop(sender.send(Err(probe_timed_out())));
+                } else {
+                    drop(sender.send(opened));
+                }
             })?;
         match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
             Ok(opened) => opened,
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                *left_running = Some(receiver);
+                let _held = handover
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                // Sent in the instant the wait ended: too late, and closed here.
+                if let Err(mpsc::TryRecvError::Empty) = receiver.try_recv() {
+                    *left_running = Some(receiver);
+                }
                 Err(probe_timed_out())
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => Err(io::Error::other(

@@ -2060,3 +2060,181 @@ fn adv2_w02_a_call_that_may_start_a_pod_is_checked_against_its_own_providers_dai
     assert_eq!(refused, Some(llm_gateway::TargetRefusal::Stopped));
     assert_eq!(runpod.spend_reads(), 0);
 }
+
+// --- story:a-call-starts-no-pod, Acceptance 6: the status list's `callable` --------------------
+
+/// `small`'s entry of `GET /v1/status`, read with the owner credential, and the creates and spend
+/// reads the emulator counted across the read, which must both be 0.
+fn small_listed(address: SocketAddr, runpod: &EmulatedRunpod) -> String {
+    let (creates, reads) = (runpod.create_calls(), runpod.spend_reads());
+    let mut stream = TcpStream::connect(address).unwrap();
+    stream.set_read_timeout(Some(WAIT)).unwrap();
+    write!(
+        stream,
+        "GET /v1/status HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
+    )
+    .unwrap();
+    let mut answer = String::new();
+    drop(stream.read_to_string(&mut answer));
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert_eq!(
+        (runpod.create_calls(), runpod.spend_reads()),
+        (creates, reads),
+        "reading the status list created a pod or read the spend"
+    );
+    let start = answer
+        .find("{\"model\":\"small\",")
+        .unwrap_or_else(|| panic!("small is not listed: {answer}"));
+    let entry = &answer[start..];
+    entry[..=entry.find('}').unwrap()].to_owned()
+}
+
+/// Acceptance 6, case 1: without the key, a stopped pod model is listed `callable: false`, and
+/// a call for it is `model-stopped`. After the owner's wake it is `callable: true` while its pod
+/// starts and once it serves.
+#[test]
+fn callable_a_stopped_model_without_the_key_is_not_callable_until_the_owners_wake() {
+    let fixture = Fixture::new("callable-off");
+    let deployment = deployment(&fixture, |text| text);
+    let mut pod = Pod::start(1, "{\"id\":\"woken\"}");
+    let runpod = EmulatedRunpod::new();
+    runpod.ready_after(2);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let stopped = small_listed(address, &runpod);
+    let (refused, _) = timed_chat(address);
+    let woken = wake(address);
+    let starting = small_listed(address, &runpod);
+    let (relayed, _) = timed_chat(address);
+    let ready = small_listed(address, &runpod);
+    running.shutdown();
+    assert!(stopped.contains("\"phase\":\"stopped\""), "{stopped}");
+    assert!(stopped.ends_with("\"callable\":false}"), "{stopped}");
+    assert!(refused.ends_with(MODEL_STOPPED), "{refused}");
+    assert!(woken.starts_with("HTTP/1.1 202 "), "{woken}");
+    assert!(starting.contains("\"phase\":\"starting\""), "{starting}");
+    assert!(starting.ends_with("\"callable\":true}"), "{starting}");
+    assert!(relayed.contains("{\"id\":\"woken\"}"), "{relayed}");
+    assert!(ready.contains("\"phase\":\"ready\""), "{ready}");
+    assert!(ready.ends_with("\"callable\":true}"), "{ready}");
+    assert_eq!(runpod.create_calls(), 1);
+    assert_eq!(pod.received().len(), 1);
+}
+
+/// Acceptance 6, case 2: with the key under its own provider's daily cap, a stopped pod model is
+/// listed `callable: true`, and a call for it starts the pod and is relayed.
+#[test]
+fn callable_a_stopped_model_with_the_key_under_its_own_daily_cap_is_callable() {
+    let fixture = Fixture::new("callable-on");
+    let deployment = starting_on_request(&fixture, "");
+    let mut pod = Pod::start(1, "{\"id\":\"started\"}");
+    let runpod = EmulatedRunpod::new();
+    spent(&runpod, 0);
+    runpod.ready_after(1);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let stopped = small_listed(address, &runpod);
+    let (relayed, _) = timed_chat(address);
+    running.shutdown();
+    assert!(stopped.contains("\"phase\":\"stopped\""), "{stopped}");
+    assert!(stopped.ends_with("\"callable\":true}"), "{stopped}");
+    assert!(relayed.contains("{\"id\":\"started\"}"), "{relayed}");
+    assert_eq!(runpod.create_calls(), 1, "the call did not start the pod");
+    assert_eq!(pod.received().len(), 1);
+}
+
+/// Acceptance 6, case 3: a `Deployment` built without the loader whose daily cap is on another
+/// provider (the fixture of
+/// `adv2_w02_a_built_deployment_with_the_daily_cap_on_another_provider_lets_no_call_start_a_pod`)
+/// lists its stopped model `callable: false`, as a call for it is `model-stopped`.
+#[test]
+fn callable_a_built_deployment_with_the_daily_cap_on_another_provider_is_not_callable() {
+    let fixture = Fixture::new("callable-other-cap");
+    let mut deployment = adv2_capped(&fixture);
+    let mut other = deployment.providers["runpod"].clone();
+    deployment
+        .providers
+        .get_mut("runpod")
+        .unwrap()
+        .daily_cap_micro_usd = None;
+    other.daily_cap_micro_usd = Some(10_000_000);
+    deployment.providers.insert("other".to_owned(), other);
+    let mut pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        loopback(&pod),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let stopped = small_listed(address, &runpod);
+    let (refused, _) = timed_chat(address);
+    running.shutdown();
+    assert!(stopped.contains("\"phase\":\"stopped\""), "{stopped}");
+    assert!(stopped.ends_with("\"callable\":false}"), "{stopped}");
+    assert!(refused.ends_with(MODEL_STOPPED), "{refused}");
+    assert_eq!(runpod.create_calls(), 0);
+    assert_eq!(runpod.spend_reads(), 0);
+    assert!(pod.received().is_empty());
+}
+
+/// Acceptance 6, case 5 (correction 3): a pod model whose pod owes a stop that is not confirmed
+/// is listed `stopping`, `callable: false`, without the key and with it under its cap: the call
+/// would be refused, or would wait on the owed stop.
+#[test]
+fn callable_a_stopping_model_is_not_callable_with_or_without_the_key() {
+    let off = Fixture::new("callable-stopping-off");
+    let on = Fixture::new("callable-stopping-on");
+    for (name, deployment) in [
+        ("without the key", deployment(&off, |text| text)),
+        ("with the key", starting_on_request(&on, "")),
+    ] {
+        // The pod accepts no connection: the first call through it fails and stops it, and the
+        // refused terminate leaves the stop owed.
+        let mut pod = Pod::start(0, "{}");
+        let runpod = EmulatedRunpod::new();
+        spent(&runpod, 0);
+        let running = start_relaying(
+            &deployment,
+            TerminateRefused(runpod.clone()),
+            loopback(&pod),
+            Arc::new(ManualClock::new(1_000)),
+        )
+        .unwrap();
+        let address = running.local_addr();
+        let woken = wake(address);
+        let (failed, _) = timed_chat(address);
+        let stopping = small_listed(address, &runpod);
+        running.shutdown();
+        assert!(woken.starts_with("HTTP/1.1 202 "), "{name}: {woken}");
+        assert!(
+            failed.contains("\"code\":\"upstream-failed\""),
+            "{name}: {failed}"
+        );
+        assert!(
+            stopping.contains("\"phase\":\"stopping\""),
+            "{name}: {stopping}"
+        );
+        assert!(
+            stopping.ends_with("\"callable\":false}"),
+            "{name}: {stopping}"
+        );
+        assert_eq!(runpod.create_calls(), 1, "{name}");
+        assert!(pod.received().is_empty(), "{name}");
+    }
+}

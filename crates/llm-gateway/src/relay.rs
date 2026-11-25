@@ -770,9 +770,12 @@ impl ModelPhase {
         }
     }
 
-    /// Whether a call sent now would be relayed or held: `true` for `ready` and `starting`, and
-    /// for `stopped`, where a call starts the model's target; `false` for `stopping` and
-    /// `unreachable`, where it would be refused or fail (`callable` in `GET /v1/status`).
+    /// Whether a call sent now is relayed, held on a target that is starting or serving, or
+    /// starts the target: `true` for `ready` and `starting`, and for `stopped`, where a call
+    /// starts the model's target unless the model is declared with
+    /// [`RelayModel::with_no_call_start`]; `false` for `stopping` and `unreachable`, where the
+    /// call would be refused or fail, or would wait on a stop still owed, with no promise of an
+    /// answer from the model (`callable` in `GET /v1/status`).
     pub const fn callable(self) -> bool {
         matches!(self, Self::Stopped | Self::Starting | Self::Ready)
     }
@@ -893,6 +896,7 @@ pub struct RelayModel {
     retry: Retry,
     compact_window: Option<u64>,
     kind: ModelKind,
+    no_call_start: bool,
 }
 
 impl RelayModel {
@@ -927,6 +931,7 @@ impl RelayModel {
             retry: Retry::default(),
             compact_window: None,
             kind: ModelKind::default(),
+            no_call_start: false,
         })
     }
 
@@ -940,6 +945,24 @@ impl RelayModel {
 
     pub fn kind(&self) -> ModelKind {
         self.kind
+    }
+
+    /// Declares that a call does not start the model's target: while it is
+    /// [`ModelPhase::Stopped`] a call is refused (`model-stopped` in the binary) and only the
+    /// owner's wake starts it, so `GET /v1/status` lists it `callable: false` in that phase
+    /// (story:a-call-starts-no-pod). Its target source still decides what a call does; this only
+    /// states it. Until declared, a call to a stopped model is taken to start its target.
+    #[must_use]
+    pub fn with_no_call_start(mut self) -> Self {
+        self.no_call_start = true;
+        self
+    }
+
+    /// Whether a call sent now, with the model in `phase`, is relayed, held on a target that is
+    /// starting or serving, or starts the target: [`ModelPhase::callable`], except that a
+    /// stopped model declared with [`Self::with_no_call_start`] is not callable.
+    pub(crate) fn callable(&self, phase: ModelPhase) -> bool {
+        phase.callable() && !(self.no_call_start && phase == ModelPhase::Stopped)
     }
 
     /// Declares that the model's target takes no client wire verbatim: every request is decoded

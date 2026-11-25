@@ -1208,7 +1208,10 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
             )
         })?
         .with_tool_calling(hosted.tool_calling)
-        .with_kind(llm_gateway::ModelKind::Hosted);
+        .with_kind(match hosted.kind {
+            crate::config::HostedKind::Endpoint => llm_gateway::ModelKind::Hosted,
+            crate::config::HostedKind::Ollama => llm_gateway::ModelKind::Ollama,
+        });
         let relayed = match hosted.reasoning_effort {
             Some(effort) => relayed.with_reasoning_effort(effort),
             None => relayed,

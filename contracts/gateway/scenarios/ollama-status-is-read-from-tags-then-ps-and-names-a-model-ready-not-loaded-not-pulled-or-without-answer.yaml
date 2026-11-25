@@ -31,6 +31,7 @@ assert:
     - '{"model":"missing","phase":"unreachable","sub_phase":"model-not-pulled"}'
     - '{"model":"gone","phase":"unreachable","sub_phase":"no-answer"}'
     - '{"format":"llm-gateway.status/1","models":[{"model":"cold","kind":"ollama","wires":["chat","responses","messages"],"phase":"stopped","sub_phase":"not-loaded","callable":true},{"model":"gone","kind":"ollama","wires":["chat","responses","messages"],"phase":"unreachable","sub_phase":"no-answer","callable":false},{"model":"missing","kind":"ollama","wires":["chat","responses","messages"],"phase":"unreachable","sub_phase":"model-not-pulled","callable":false},{"model":"ready","kind":"ollama","wires":["chat","responses","messages"],"phase":"ready","callable":true}]}'
+    - '{"error":{"code":"path-unknown","message":"no such gateway resource"}}'
     upstream:
     - 'pod-1 GET /api/tags '
     - 'pod-1 GET /api/ps '

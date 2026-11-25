@@ -70,6 +70,7 @@ const RELAY: Option<&str> = Some("/docs/concepts/relay");
 const HOSTING: Option<&str> = Some("/docs/concepts/hosting");
 const DOCUMENT: Option<&str> = Some("/docs/reference/deployment-document");
 const BEDROCK: Option<&str> = Some("/docs/guides/serve-a-bedrock-model");
+const OLLAMA: Option<&str> = Some("/docs/guides/serve-a-local-ollama-model");
 
 /// Every capability the site claims, in the order the status table lists them.
 pub const CAPABILITIES: &[Capability] = &[
@@ -212,6 +213,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "GET /v1/models/<alias>/status of a hosted model or a route probes its endpoint only when read, at most once per model at a time, within 5 s, reused for 10 s: ready on a 2xx answer, otherwise unreachable with no-answer, credential-refused or status-<code>. GET /v1/status lists every model in alias order with its kind, wires, status and whether a call is answered now, asking all of them side by side. A Bedrock model has no status. Tested against loopback endpoints, not against a vendor API.",
         "crates/llm-gateway-cli/tests/wake_status.rs::route_status_the_binary_lists_a_pod_a_hosted_model_and_a_route_with_their_kinds",
         RELAY,
+    ),
+    shipped(
+        "Relay",
+        "A model on a local Ollama server",
+        "A [hosted.<alias>] table with kind = \"ollama\" is relayed to the Ollama server's own chat, responses and messages paths, sent no credential. Its status is read from GET /api/tags and GET /api/ps: ready, stopped not-loaded (a call loads it), unreachable model-not-pulled or no-answer. A call to a model that is not pulled is refused 503 model-not-pulled naming the alias, and the gateway never asks the server to pull, create, copy, delete or push. Tested against a fake Ollama on loopback, not against an Ollama server.",
+        "crates/llm-gateway-cli/tests/wake_status.rs::ollama_the_binary_sends_the_server_only_its_lists_and_the_wire_calls",
+        OLLAMA,
     ),
     shipped(
         "Relay",

@@ -1293,12 +1293,6 @@ fn ollama_answer(
         return;
     }
     thread::sleep(Duration::from_millis(delay));
-    let json = |status: &str, body: String| {
-        format!(
-            "HTTP/1.1 {status}\r\ncontent-type: application/json; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
-            body.len()
-        )
-    };
     let answer = match (method.as_str(), path.as_str()) {
         ("GET", "/api/tags") => {
             // Written chunked, as Go writes a body it did not size, in two chunks.
@@ -1310,48 +1304,57 @@ fn ollama_answer(
                 second.len()
             )
         }
-        ("GET", "/api/ps") => json("200 OK", ollama_list(&state.lock().unwrap().loaded)),
+        ("GET", "/api/ps") => ollama_json("200 OK", &ollama_list(&state.lock().unwrap().loaded)),
         ("POST", "/v1/chat/completions" | "/v1/responses" | "/v1/messages") => {
-            let model = named_model(&body);
-            let mut state = state.lock().unwrap();
-            if !state.pulled.contains(&model) {
-                json(
-                    "404 Not Found",
-                    format!(
-                        "{{\"error\":{{\"message\":\"model '{model}' not found\",\"type\":\"not_found_error\",\"param\":null,\"code\":null}}}}"
-                    ),
-                )
-            } else {
-                // A call loads the model.
-                if !state.loaded.contains(&model) {
-                    state.loaded.push(model.clone());
-                }
-                let (input, output) = ollama_usage(&path);
-                json(
-                    "200 OK",
-                    match path.as_str() {
-                        "/v1/chat/completions" => format!(
-                            "{{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1800000000,\"model\":\"{model}\",\"choices\":[{{\"index\":0,\"message\":{{\"role\":\"assistant\",\"content\":\"hi\"}},\"finish_reason\":\"stop\"}}],\"usage\":{{\"prompt_tokens\":{input},\"completion_tokens\":{output},\"total_tokens\":{}}}}}",
-                            input + output
-                        ),
-                        "/v1/responses" => format!(
-                            "{{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":1800000000,\"model\":\"{model}\",\"status\":\"completed\",\"output\":[{{\"type\":\"message\",\"id\":\"msg_1\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"hi\",\"annotations\":[]}}]}}],\"usage\":{{\"input_tokens\":{input},\"output_tokens\":{output},\"total_tokens\":{}}}}}",
-                            input + output
-                        ),
-                        _ => format!(
-                            "{{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"{model}\",\"content\":[{{\"type\":\"text\",\"text\":\"hi\"}}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{{\"input_tokens\":{input},\"output_tokens\":{output}}}}}"
-                        ),
-                    },
-                )
-            }
+            ollama_call(&path, &named_model(&body), &mut state.lock().unwrap())
         }
-        (_, path) if OLLAMA_STORING.contains(&path) => json(
+        (_, path) if OLLAMA_STORING.contains(&path) => ollama_json(
             "500 Internal Server Error",
-            "{\"error\":\"the fake Ollama changes nothing it stores\"}".to_owned(),
+            "{\"error\":\"the fake Ollama changes nothing it stores\"}",
         ),
         _ => "HTTP/1.1 404 Not Found\r\ncontent-type: text/plain\r\ncontent-length: 18\r\nconnection: close\r\n\r\n404 page not found".to_owned(),
     };
     drop(connection.write_all(answer.as_bytes()));
+}
+
+/// A JSON answer of `status`, sized, as Ollama writes one.
+fn ollama_json(status: &str, body: &str) -> String {
+    format!(
+        "HTTP/1.1 {status}\r\ncontent-type: application/json; charset=utf-8\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+        body.len()
+    )
+}
+
+/// The fake's answer to a call on the wire `path` for `model`: Ollama's 404 for a model it has
+/// not pulled, else the wire's answer with the tokens [`ollama_usage`] names. A call loads the
+/// model.
+fn ollama_call(path: &str, model: &str, state: &mut OllamaState) -> String {
+    if !state.pulled.iter().any(|pulled| pulled == model) {
+        return ollama_json(
+            "404 Not Found",
+            &format!(
+                "{{\"error\":{{\"message\":\"model '{model}' not found\",\"type\":\"not_found_error\",\"param\":null,\"code\":null}}}}"
+            ),
+        );
+    }
+    if !state.loaded.iter().any(|loaded| loaded == model) {
+        state.loaded.push(model.to_owned());
+    }
+    let (input, output) = ollama_usage(path);
+    let body = match path {
+        "/v1/chat/completions" => format!(
+            "{{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1800000000,\"model\":\"{model}\",\"choices\":[{{\"index\":0,\"message\":{{\"role\":\"assistant\",\"content\":\"hi\"}},\"finish_reason\":\"stop\"}}],\"usage\":{{\"prompt_tokens\":{input},\"completion_tokens\":{output},\"total_tokens\":{}}}}}",
+            input + output
+        ),
+        "/v1/responses" => format!(
+            "{{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":1800000000,\"model\":\"{model}\",\"status\":\"completed\",\"output\":[{{\"type\":\"message\",\"id\":\"msg_1\",\"status\":\"completed\",\"role\":\"assistant\",\"content\":[{{\"type\":\"output_text\",\"text\":\"hi\",\"annotations\":[]}}]}}],\"usage\":{{\"input_tokens\":{input},\"output_tokens\":{output},\"total_tokens\":{}}}}}",
+            input + output
+        ),
+        _ => format!(
+            "{{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"{model}\",\"content\":[{{\"type\":\"text\",\"text\":\"hi\"}}],\"stop_reason\":\"end_turn\",\"stop_sequence\":null,\"usage\":{{\"input_tokens\":{input},\"output_tokens\":{output}}}}}"
+        ),
+    };
+    ollama_json("200 OK", &body)
 }
 
 /// A source with one Ollama model `local` asking for `model` at `base_url`, within `bounds`.
@@ -1385,6 +1388,16 @@ fn phase(phase: ModelPhase, sub_phase: Option<&str>) -> ModelStatus {
     }
 }
 
+/// One case of a status read: the model asked for, the models pulled, the models loaded, the
+/// status, and the request lines the server sees.
+type OllamaCase = (
+    &'static str,
+    &'static [&'static str],
+    &'static [&'static str],
+    ModelStatus,
+    &'static [&'static str],
+);
+
 /// Acceptance 3: the status is `GET /api/tags`, then `GET /api/ps` only when the model is
 /// listed: not listed is `unreachable` `model-not-pulled`, listed and not loaded `stopped`
 /// `not-loaded`, loaded `ready`, and no server `unreachable` `no-answer`. A name without a tag
@@ -1392,7 +1405,7 @@ fn phase(phase: ModelPhase, sub_phase: Option<&str>) -> ModelStatus {
 /// `accept` and `connection: close` and no credential, and a read sends nothing else.
 #[test]
 fn ollama_status_is_read_from_tags_then_ps_and_sends_nothing_else() {
-    let cases: [(&str, &[&str], &[&str], ModelStatus, &[&str]); 7] = [
+    let cases: [OllamaCase; 7] = [
         (
             "qwen2.5:1.5b",
             &["llama3.2:latest"],

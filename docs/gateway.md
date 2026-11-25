@@ -243,8 +243,9 @@ source is asked anything:
 3. An alias no relayed model has is `model-unknown`.
 4. A model whose target source starts nothing for it is `path-unknown`: the route does not
    exist for it. `RelayTargets::wake` and `RelayTargets::status` answer `None` by default. The
-   binary's wake answers `None` for a hosted endpoint and a route of the routes document, which
-   are relayed upstreams with no lifecycle; its status answers `None` only for a Bedrock model.
+   binary's wake answers `None` for a hosted endpoint, an Ollama model and a route of the routes
+   document, which are relayed upstreams with no lifecycle; its status answers `None` only for a
+   Bedrock model.
 
 Then `POST /v1/models/{alias}/wake` asks the source to start the model's target as a request's
 first ask for it would (`RelayTargets::wake`) and answers `202` at once with the status the
@@ -269,7 +270,9 @@ confirmed; nothing starts meanwhile) and `unreachable` (the model's endpoint did
 probe as serving; a call fails until it does). `sub_phase` is the provider's own word for the
 pod while it starts, or for an `unreachable` model why: `no-answer` (no final status inside the
 probe's deadline: refused, closed, untrusted TLS or silent), `credential-refused` (401 or 403
-to the model's own credential) or `status-<code>` (any other non-2xx status, three digits).
+to the model's own credential), `status-<code>` (any other non-2xx status, three digits) or,
+for an Ollama model, `model-not-pulled` (its server does not list it); a `stopped` Ollama model
+is `not-loaded`.
 `profile` is the profile a pod was started on. Neither route makes a usage record or counts a
 series of its own, and a status read never asks the source to acquire, wake or invalidate
 anything. The specification is `llm-gateway.gateway.LifecycleRoute`; the scenarios are
@@ -290,6 +293,26 @@ per model at a time (a second read waits for the first and takes its result), an
 reused until the reuse time has passed since its probe ended ([bounds of the status
 probe](#bounds-of-the-status-probe)). Wake stays `path-unknown` for both.
 
+An Ollama model's status (`[hosted.<alias>] kind = "ollama"`, [an Ollama
+upstream](#an-ollama-upstream)) is read from its server's own lists instead, never from
+`/v1/models`: `GET /api/tags`, then, only when the tags list the model, `GET /api/ps`. Each
+carries `host`, the static headers, `accept: application/json` and `connection: close`, no
+credential and no body, and both end within the one probe deadline, under the same lock and
+reuse as a probe. An entry names the model by its `name` or its `model`; a model name without a
+tag (no `:` after its last `/`) is `<name>:latest`, one with a tag itself only.
+
+| The server answers | Status |
+| --- | --- |
+| no final status by the deadline, or a 2xx whose body is not one `{"models":[...]}` of at most `ollama-list-max-bytes` | `unreachable` `no-answer` |
+| a status outside 2xx to either list | `unreachable` `status-<code>` |
+| tags without the model | `unreachable` `model-not-pulled` |
+| tags with it, the running models without it | `stopped` `not-loaded` (callable: a call loads it) |
+| both with it | `ready` |
+
+A status read sends nothing else, and wake stays `path-unknown`: the gateway starts, loads or
+pulls nothing (`ollama_status_is_read_from_tags_then_ps_and_sends_nothing_else` in
+`crates/llm-gateway-cli/tests/wake_status.rs`, scenarios `contracts/gateway/scenarios/ollama-*`).
+
 ### The status list
 
 `GET /v1/status` answers one list of every relayed model, in alias order, as
@@ -305,10 +328,10 @@ any status is asked. A gateway composed without a relay answers an empty list.
 ```
 
 (Wrapped here; the answer is one line.) Each entry names `model`, `kind` (`pod`, `hosted`,
-`route` or `bedrock`), `wires` (the wires its upstream declares), the `ModelStatus` keys
-`phase`, `sub_phase` and `profile`, and `callable`: whether a call for it now is relayed or
+`route`, `bedrock` or `ollama`), `wires` (the wires its upstream declares), the `ModelStatus`
+keys `phase`, `sub_phase` and `profile`, and `callable`: whether a call for it now is relayed or
 held while its pod starts. `callable` is `true` for `ready`, `starting` and `stopped` (a call
-starts a pod) and `false` for `stopping` and `unreachable`. A model with no status (Bedrock)
+starts a pod, or loads an Ollama model) and `false` for `stopping` and `unreachable`. A model with no status (Bedrock)
 has neither `phase` nor `callable`. Every status is asked side by side, so the list is answered
 within one probe deadline and a second however many endpoints are silent.
 
@@ -942,6 +965,41 @@ model that declares `anthropic_beta = [..]` (at most 32 distinct names by llm's 
 route; a messages client of an `anthropic-invoke` model also receives its thinking blocks, which
 it sends back on the next turn.
 
+### An Ollama upstream
+
+DECIDED 2026-11-25 (story:ollama-route). A `[hosted.<alias>] kind = "ollama"` model is a hosted
+endpoint at an Ollama server's root (`http://127.0.0.1:11434` unless `base_url` names another),
+sent no credential, served on the wires it declares (all three unless `wires` names fewer), the
+alias replaced by `upstream_model`, the Ollama model name. It is kind `ollama` in
+[the status list](#the-status-list), and the route inventory lists its targets under provider
+`ollama`, account `local`. Ollama serves all three wires itself, so each declared wire is relayed
+byte for byte to Ollama's own path: chat to `POST /v1/chat/completions`, responses to
+`POST /v1/responses` and messages to `POST /v1/messages` (checked on Ollama 0.40.18). A wire the
+model does not declare is served as a hosted endpoint's is: translated onto its first declared
+wire, the translator's request going to that wire's path. The tokens the server reports reach the
+usage record as a hosted endpoint's do.
+
+The gateway sends an Ollama server only `GET /api/tags` and `GET /api/ps` (the status read of
+[the lifecycle routes](#the-lifecycle-routes)), `POST` to the three wire paths, and
+`POST /v1/messages/count_tokens`: the output clamp's count (relay step 7) when the model
+declares `context_window` and a messages call sets `max_tokens`, and a client's own count call.
+It sends no request that changes what the server stores: no `/api/pull`, `/api/create`,
+`/api/copy`, `/api/delete` or `/api/push`
+(`ollama_the_binary_sends_the_server_only_its_lists_and_the_wire_calls` and
+`ollama_the_gateway_never_asks_the_server_to_change_what_it_stores` in
+`crates/llm-gateway-cli/tests/wake_status.rs`). The operator pulls a model with Ollama's own
+command line.
+
+Each call's acquisition reads the model's status first, the same bounded read the status route
+sends, reused for `status-reuse-seconds`. A model the server answered its tags without is
+refused `model-not-pulled` (503, no `retry-after`, outcome `refused`), its message naming the
+alias. A model that is pulled and not loaded is relayed: the call loads it, and waits for the
+load under the bounds every hosted connection has, 10 s to connect (`ENDPOINT_CONNECT_TIMEOUT`)
+and 120 s for each read and write (`ENDPOINT_IO_TIMEOUT`), so a load that writes no answer byte
+for 120 s ends `upstream-failed`; a translated call waits under llm's transport, 120 s for the
+answer's head. No bound of its own is added. A server that does not answer is no refusal: the
+call goes on and fails as any hosted endpoint's call does.
+
 ### The answer
 
 The answer is written on the client's wire, its head once, on the first event or at the
@@ -1081,6 +1139,13 @@ Each statement about a carried or refused field is backed by a test in
   upstream), 32 MiB, a 1 MiB line or event, or a tool call of more than 64 KiB of arguments
   cannot be translated whole; see
   [Bounds of the translated path](#bounds-of-the-translated-path).
+- **An Ollama model deleted inside the reuse window.** A call's acquisition reuses the model's
+  last status read for `status-reuse-seconds` ([an Ollama upstream](#an-ollama-upstream)), so a
+  model deleted from its server inside that window is still relayed, and the client gets
+  Ollama's own 404 (`{"error":{"message":"model '<name>' not found",...}}` on chat and
+  responses, a `not_found_error` on messages) rather than `model-not-pulled`. The next read after
+  the window refuses it (`ollama_acquire_refuses_only_a_model_the_server_answered_without` in
+  `crates/llm-gateway-cli/tests/wake_status.rs`).
 
 ## Counters and usage records
 
@@ -1189,6 +1254,7 @@ every code the gateway can emit.
 | `method-not-allowed` | `refused` |
 | `model-absent` | `refused` |
 | `model-cold-start` | `timeout` |
+| `model-not-pulled` | `refused` |
 | `model-unknown` | `refused` |
 | `overloaded` | `refused` |
 | `path-unknown` | `refused` |
@@ -1300,6 +1366,15 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 {"error":{"code":"credential-absent","message":"no owner credential was presented"}}
 ```
 
+One code carries more than its message: `model-not-pulled` (an Ollama model its server does not
+list, [an Ollama upstream](#an-ollama-upstream)) is the message below, `: ` and the alias the
+call was matched to, the declaring alias for a name a `model_prefix` matched, never the name
+the caller sent.
+
+```json
+{"error":{"code":"model-not-pulled","message":"the model is not pulled on its Ollama server, and the gateway pulls no model: local"}}
+```
+
 | Code | Status | Message |
 | --- | --- | --- |
 | `body-incomplete` | 400 | the request body ended or stalled before it was complete |
@@ -1314,6 +1389,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `method-not-allowed` | 405 | this path does not accept that method |
 | `model-absent` | 400 | the request body names no model |
 | `model-cold-start` | 503 | the model is still starting; ask again after the retry-after delay |
+| `model-not-pulled` | 503 | the model is not pulled on its Ollama server, and the gateway pulls no model |
 | `model-unknown` | 404 | no such model |
 | `overloaded` | 503 | the gateway is already serving its maximum concurrent requests |
 | `path-unknown` | 404 | no such gateway resource |
@@ -1334,9 +1410,9 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `upstream-refused` | 502 | the model target refused the translated request |
 | `wire-not-served` | 400 | the model is not served on this wire |
 
-The lifecycle routes add no code of their own: a model with no lifecycle (a hosted endpoint or a
-route of the routes document) is `path-unknown`, an alias no relayed model has `model-unknown`,
-and a wake the target source refuses `target-unavailable`, `spend-ceiling` or
+The lifecycle routes add no code of their own: a model with no lifecycle (a hosted endpoint, an
+Ollama model or a route of the routes document) is `path-unknown`, an alias no relayed model has
+`model-unknown`, and a wake the target source refuses `target-unavailable`, `spend-ceiling` or
 `model-cold-start`, as its acquisition would be ([the lifecycle routes](#the-lifecycle-routes)).
 
 This table is the published contract, and it is checked rather than maintained by hand.
@@ -1489,6 +1565,7 @@ them, so they are not in [Bounds](#bounds).
 | --- | --- | --- |
 | `status-probe-timeout-ms` | `ProbeBounds::timeout` | 5000 |
 | `status-reuse-seconds` | `ProbeBounds::reuse` | 10 |
+| `ollama-list-max-bytes` | `OLLAMA_LIST_MAX_BYTES` | 1048576 |
 
 One probe, name lookup, connection, handshake, request and first final status, ends within
 `status-probe-timeout-ms` or is `unreachable`/`no-answer`. The lookup and the connection run on
@@ -1500,6 +1577,11 @@ A probe's result is reused for every
 status read of that model until `status-reuse-seconds` have passed since the probe ended; the
 next read after that probes again. `GET /v1/status` asks every model side by side, so it is
 answered within `status-probe-timeout-ms` and one second however many endpoints are silent.
+
+An Ollama model's status read, `GET /api/tags` and `GET /api/ps` on two connections, ends within
+one `status-probe-timeout-ms` for both, and is reused as a probe is. Each list's body, framed by
+`content-length`, chunked or read to the end of the connection, is at most
+`ollama-list-max-bytes`; a longer one is `no-answer`.
 
 ## Bounds of the translated path
 

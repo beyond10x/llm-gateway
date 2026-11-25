@@ -769,7 +769,7 @@
         "scenario": "llm-gateway.gateway/authored/ollama-each-declared-wire-is-relayed-to-the-servers-own-path-and-its-tokens-reach-the-usage-record"
       },
       "gateway/scenarios/ollama-status-is-read-from-tags-then-ps-and-names-a-model-ready-not-loaded-not-pulled-or-without-answer.yaml": {
-        "digest": "sha256:61dfcab87e6fa79c9b70d67ff72adc982032e1079cb87adea3083f8904ab7bc2",
+        "digest": "sha256:da843d2145f7ebfe2b5d1adb677a729d272498fa68cac746eb94ae1799d87f3f",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/ollama-status-is-read-from-tags-then-ps-and-names-a-model-ready-not-loaded-not-pulled-or-without-answer"
       },
@@ -11657,7 +11657,8 @@
                   "{\"model\":\"cold\",\"phase\":\"stopped\",\"sub_phase\":\"not-loaded\"}",
                   "{\"model\":\"missing\",\"phase\":\"unreachable\",\"sub_phase\":\"model-not-pulled\"}",
                   "{\"model\":\"gone\",\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\"}",
-                  "{\"format\":\"llm-gateway.status/1\",\"models\":[{\"model\":\"cold\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"stopped\",\"sub_phase\":\"not-loaded\",\"callable\":true},{\"model\":\"gone\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\",\"callable\":false},{\"model\":\"missing\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"unreachable\",\"sub_phase\":\"model-not-pulled\",\"callable\":false},{\"model\":\"ready\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"ready\",\"callable\":true}]}"
+                  "{\"format\":\"llm-gateway.status/1\",\"models\":[{\"model\":\"cold\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"stopped\",\"sub_phase\":\"not-loaded\",\"callable\":true},{\"model\":\"gone\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\",\"callable\":false},{\"model\":\"missing\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"unreachable\",\"sub_phase\":\"model-not-pulled\",\"callable\":false},{\"model\":\"ready\",\"kind\":\"ollama\",\"wires\":[\"chat\",\"responses\",\"messages\"],\"phase\":\"ready\",\"callable\":true}]}",
+                  "{\"error\":{\"code\":\"path-unknown\",\"message\":\"no such gateway resource\"}}"
                 ]
               },
               "error_code": {

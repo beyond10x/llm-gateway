@@ -144,6 +144,13 @@
     },
     {
       "area": "Relay",
+      "detail": "A [hosted.<alias>] table with kind = \"ollama\" is relayed to the Ollama server's own chat, responses and messages paths, sent no credential. Its status is read from GET /api/tags and GET /api/ps: ready, stopped not-loaded (a call loads it), unreachable model-not-pulled or no-answer. A call to a model that is not pulled is refused 503 model-not-pulled naming the alias, and the gateway never asks the server to pull, create, copy, delete or push. Tested against a fake Ollama on loopback, not against an Ollama server.",
+      "href": "/docs/guides/serve-a-local-ollama-model",
+      "label": "A model on a local Ollama server",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
       "href": "/docs/concepts/relay",
       "label": "Relay to a Runpod pod from the binary over verified TLS",

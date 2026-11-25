@@ -792,11 +792,19 @@ pub enum ModelKind {
     Route,
     /// A Bedrock model.
     Bedrock,
+    /// A model on an Ollama server, declared as a hosted model of `kind = "ollama"`.
+    Ollama,
 }
 
 impl ModelKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 4] = [Self::Pod, Self::Hosted, Self::Route, Self::Bedrock];
+    pub const ALL: [Self; 5] = [
+        Self::Pod,
+        Self::Hosted,
+        Self::Route,
+        Self::Bedrock,
+        Self::Ollama,
+    ];
 
     /// The code `GET /v1/status` answers.
     pub const fn code(self) -> &'static str {
@@ -805,6 +813,7 @@ impl ModelKind {
             Self::Hosted => "hosted",
             Self::Route => "route",
             Self::Bedrock => "bedrock",
+            Self::Ollama => "ollama",
         }
     }
 }

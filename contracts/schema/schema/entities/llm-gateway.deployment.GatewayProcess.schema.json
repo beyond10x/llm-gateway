@@ -41,7 +41,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:4e437c0dd1d2f70f43f51671ad7bf657b5488d489fa342f98a2c94a42c0045a5",
+    "contract_digest": "slice-sha256/2:378b821834157aed699ea3d0b31b677de9ebb8fba106461a845b164471bd2069",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -850,7 +850,8 @@
       "type": "string",
       "enum": [
         "Endpoint",
-        "Bedrock"
+        "Bedrock",
+        "Ollama"
       ]
     }
   }

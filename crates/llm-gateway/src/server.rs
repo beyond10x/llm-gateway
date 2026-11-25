@@ -444,7 +444,7 @@ fn serve_scrape(mut stream: TcpStream, scraper: &Scraper) {
     };
     write_outcome(
         &mut stream,
-        &outcome,
+        (&outcome, None),
         head_only,
         Instant::now() + config.read_timeout,
     );
@@ -584,7 +584,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
     };
     write_outcome(
         &mut stream,
-        &outcome,
+        (&outcome, call.model.as_deref()),
         decision.head_only,
         Instant::now() + timeout,
     );
@@ -1809,8 +1809,15 @@ fn status_body(status: &str) -> String {
     writer.finish()
 }
 
-fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, deadline: Instant) {
-    let refused = |code: RefusalCode| (code.status(), refusal_body(code), None);
+/// Writes `outcome`, the answer to a call on the relayed model `alias` when one is known: a
+/// `model-not-pulled` refusal names it (story:ollama-route).
+fn write_outcome(
+    stream: &mut TcpStream,
+    (outcome, alias): (&Outcome, Option<&str>),
+    head_only: bool,
+    deadline: Instant,
+) {
+    let refused = |code: RefusalCode| (code.status(), refusal_body(code, alias), None);
     let (status, body, allow) = match outcome {
         Outcome::Served(body) | Outcome::Metrics(body) | Outcome::Public(_, body) => {
             (200, body.clone(), None)
@@ -1821,7 +1828,7 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
         Outcome::Refused(code) => refused(*code),
         Outcome::NotAllowed(allow) => {
             let code = RefusalCode::MethodNotAllowed;
-            (code.status(), refusal_body(code), Some(*allow))
+            (code.status(), refusal_body(code, None), Some(*allow))
         }
         // `serve` relays an admitted request before anything is written; one that reaches
         // here had no relay to go to.
@@ -1885,7 +1892,10 @@ pub(crate) fn write_by(stream: &mut TcpStream, mut bytes: &[u8], deadline: Insta
     true
 }
 
-fn refusal_body(code: RefusalCode) -> String {
+/// The refusal body of `code`: its code and its fixed message. A `model-not-pulled` refusal of a
+/// call on `alias` names the alias after the fixed message, as `<message>: <alias>`; no other
+/// refusal carries more than its fixed message.
+fn refusal_body(code: RefusalCode, alias: Option<&str>) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
     writer.key("error");
@@ -1893,7 +1903,10 @@ fn refusal_body(code: RefusalCode) -> String {
     writer.key("code");
     writer.string(code.wire());
     writer.key("message");
-    writer.string(code.reason());
+    match alias.filter(|_| code == RefusalCode::ModelNotPulled) {
+        Some(alias) => writer.string(&format!("{}: {alias}", code.reason())),
+        None => writer.string(code.reason()),
+    }
     writer.end_object();
     writer.end_object();
     writer.finish()

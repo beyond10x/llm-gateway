@@ -103,7 +103,9 @@ of step 7 asks only the target step 6 handed out.
 
 A connection that fails, an answer head that never arrives or is malformed, and a `502`, `503` or
 `504` each tell `invalidate` which endpoint served the request and answer `upstream-failed`
-(`502`); the next request asks for a replacement. A hosted endpoint has no replacement, so it is
+(`502`). The Runpod pod is stopped: the next request starts a replacement when the model sets
+`start_on_request = true`, and is otherwise `model-stopped` until the owner wakes the model. A
+hosted endpoint has no replacement, so it is
 kept and the next request asks it again. Any other status, a `500` or a `4xx` included, is the
 model's own answer and is relayed with its body.
 

@@ -9,7 +9,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ### Changed
 
-- Breaking: a model call no longer starts a Runpod pod. A call to a model whose pod is stopped or stopping is refused at once with the new `model-stopped` (503, no `retry-after`, outcome `refused`): no pod is created and no spend is read. Only the owner's wake (`POST /v1/models/{alias}/wake`) starts the pod; a call after the wake is held on the starting pod and relayed once it serves, or `model-cold-start` when its hold passes, as before, and a pod that fails while a call is held starts no replacement. To restore the old behaviour for a model, set `start_on_request = true` in its `[models.<alias>]` table and `daily_cap_usd` on its provider.
+- Breaking: a model call no longer starts a Runpod pod. A call to a model whose pod is stopped or stopping is refused at once with the new `model-stopped` (503, no `retry-after`, outcome `refused`): no pod is created and no spend is read. Only the owner's wake (`POST /v1/models/{alias}/wake`) starts the pod; a call after the wake is held on the starting pod and relayed once it serves, or `model-cold-start` when its hold passes, as before, and a pod that fails while a call is held starts no replacement. To restore the old behaviour for a model, set `start_on_request = true` in its `[models.<alias>]` table, `daily_cap_usd` on its provider, and `price_per_hour_usd` on every model of that provider (a declared cap requires it).
+- The `upstream-failed` message is now "the model target could not be reached or failed": it no longer says the next request asks for a replacement, which is not so for a model without `start_on_request`.
 
 ### Added
 

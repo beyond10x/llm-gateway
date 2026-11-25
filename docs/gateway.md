@@ -395,10 +395,13 @@ A request to a wire path is decided in this order:
    The embedding holds the request while its target starts and owns the hold budget; the
    Runpod composition asks its pool every 500 ms for up to the model's `request_hold_seconds`
    (rows L6 and K28, `docs/hosting.md`). It starts a pod for a request only for a model whose
-   `start_on_request` is `true`; for any other model, the default, a request to a pod that is
-   stopped or stopping is `model-stopped` and starts nothing, a request to a pod the owner's
-   wake started is held on it as above, and a pod that fails while a request is held starts no
-   replacement (story:a-call-starts-no-pod). Then, on the messages wire only, the output clamp. The window `w` is the
+   `start_on_request` is `true` and whose provider declares `daily_cap_usd`; for any other
+   model, the default, a request to a pod that is stopped or stopping is `model-stopped` and
+   starts nothing, a request to a pod the owner's wake started is held on it as above, and a pod
+   that fails while a request is held, or fails a relay, starts no replacement: the next
+   request is `model-stopped` until the owner wakes the model (story:a-call-starts-no-pod).
+   Once the gateway starts to stop, a request starts and waits for nothing, with or without the
+   key: without a ready pod it is `target-unavailable`, not `model-stopped`. Then, on the messages wire only, the output clamp. The window `w` is the
    `max_model_len` the target handed out states (`RelayTarget::max_model_len`), else the model's
    `max_model_len`, else its `context_window`, else it has none: the binary declares a Runpod
    model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
@@ -1299,7 +1302,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `translation-unrepresentable` | 502 | the model's answer cannot be written on this wire |
 | `translation-unsupported` | 400 | the request uses a field or value outside the subset the gateway translates |
 | `unavailable` | 503 | the gateway is not ready to serve inspection |
-| `upstream-failed` | 502 | the model target could not be reached or failed; the next request asks for a replacement |
+| `upstream-failed` | 502 | the model target could not be reached or failed |
 | `upstream-refused` | 502 | the model target refused the translated request |
 | `wire-not-served` | 400 | the model is not served on this wire |
 

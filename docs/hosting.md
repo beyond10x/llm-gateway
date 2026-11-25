@@ -740,8 +740,10 @@ has passed after that step.
 
 A request through the relay that fails drops its pod (row W7): the gateway reports the failed
 authority to `invalidate`, and `RunpodPool::invalidate` stops the model's current pod if its
-endpoint is that authority's, so the next request starts a replacement. A report about a pod
-already replaced stops nothing.
+endpoint is that authority's. For a model with `start_on_request = true` the next request then
+starts a replacement; for any other the next request is `model-stopped` and starts nothing, and
+the owner wakes the model (story:a-call-starts-no-pod). A report about a pod already replaced
+stops nothing.
 
 During the stop a request may still use a pod that is ready now (`RunpodPool::ensure_running`),
 but starts no pod and waits for none: with no ready pod for its model, or still waiting for one

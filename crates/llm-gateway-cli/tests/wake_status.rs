@@ -1669,8 +1669,10 @@ struct Exercised {
     unpulled: String,
 }
 
-fn exercise(ollama: &FakeOllama) -> Exercised {
-    let fixture = Fixture::new("ollama-exercise");
+/// `name` names the fixture directory, one per test: two tests sharing one would remove each
+/// other's files.
+fn exercise(ollama: &FakeOllama, name: &str) -> Exercised {
+    let fixture = Fixture::new(name);
     let deployment = ollama_deployment(&fixture, ollama);
     let mut pod = Pod::start(0, "{}");
     let runpod = EmulatedRunpod::new();
@@ -1719,7 +1721,7 @@ fn exercise(ollama: &FakeOllama) -> Exercised {
 #[test]
 fn ollama_the_binary_sends_the_server_only_its_lists_and_the_wire_calls() {
     let ollama = FakeOllama::start(&["qwen2.5:1.5b"], &[]);
-    let exercised = exercise(&ollama);
+    let exercised = exercise(&ollama, "ollama-allowed-lines");
     assert!(
         exercised.status.starts_with("HTTP/1.1 200 "),
         "{}",
@@ -1804,7 +1806,7 @@ fn ollama_the_binary_sends_the_server_only_its_lists_and_the_wire_calls() {
 #[test]
 fn ollama_the_gateway_never_asks_the_server_to_change_what_it_stores() {
     let ollama = FakeOllama::start(&["qwen2.5:1.5b"], &[]);
-    let _exercised = exercise(&ollama);
+    let _exercised = exercise(&ollama, "ollama-never-storing");
     assert!(!ollama.lines().is_empty(), "the server was asked nothing");
     assert_eq!(ollama.storing(), Vec::<String>::new());
 }

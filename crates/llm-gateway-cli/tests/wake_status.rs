@@ -1820,6 +1820,34 @@ fn ollama_the_gateway_never_asks_the_server_to_change_what_it_stores() {
     assert_eq!(ollama.storing(), Vec::<String>::new());
 }
 
+/// The call id on an Ollama model's answers, as on any model call's: each relayed answer and
+/// the `model-not-pulled` refusal carry `x-llm-gateway-call`, each a different id.
+#[test]
+fn ollama_every_answer_to_a_call_carries_its_own_call_id() {
+    let ollama = FakeOllama::start(&["qwen2.5:1.5b"], &[]);
+    let exercised = exercise(&ollama, "ollama-call-ids");
+    let answers: Vec<&String> = exercised
+        .calls
+        .iter()
+        .chain([&exercised.unpulled])
+        .collect();
+    let ids: Vec<String> = answers
+        .iter()
+        .map(|answer| {
+            answer
+                .split("\r\n\r\n")
+                .next()
+                .unwrap_or_default()
+                .split("\r\n")
+                .find_map(|line| line.strip_prefix("x-llm-gateway-call: "))
+                .unwrap_or_else(|| panic!("no call id in {answer}"))
+                .to_owned()
+        })
+        .collect();
+    let distinct: std::collections::BTreeSet<&String> = ids.iter().collect();
+    assert_eq!(distinct.len(), ids.len(), "{ids:?}");
+}
+
 /// The output clamp on an Ollama model in the binary's composition: a messages call with
 /// `max_tokens` to a model declaring `context_window` makes the gateway send the server
 /// `POST /v1/messages/count_tokens` under the Ollama model name, read its count, and relay the
@@ -1973,6 +2001,12 @@ fn ollama_each_wire_is_relayed_and_its_usage_record_carries_the_servers_tokens()
         })
         .collect();
     assert_eq!(seen, expected);
+    let calls: std::collections::BTreeSet<&str> =
+        records.iter().map(|record| record.call.as_str()).collect();
+    assert!(
+        calls.len() == records.len() && !calls.contains(""),
+        "each usage record names its own call: {calls:?}"
+    );
     assert_eq!(
         targets.status("local"),
         Some(phase(ModelPhase::Ready, None)),

@@ -723,8 +723,10 @@ pub trait RelayTargets: Send + Sync {
         None
     }
 
-    /// Where `alias`'s target is (`GET /v1/models/{alias}/status`), read without starting
-    /// anything. `None`, the default, as for [`Self::wake`].
+    /// Where `alias`'s target is (`GET /v1/models/{alias}/status` and `GET /v1/status`), read
+    /// without starting anything: the gateway never asks for a target, a wake or an invalidation
+    /// to answer it. `None`, the default, is a model with no status, answered `path-unknown`. The
+    /// gateway may ask it for several models at once, each on its own thread.
     fn status(&self, _alias: &str) -> Option<ModelStatus> {
         None
     }
@@ -742,11 +744,20 @@ pub enum ModelPhase {
     Ready,
     /// A previous target owes a stop not yet confirmed; nothing starts meanwhile.
     Stopping,
+    /// The model's endpoint did not answer its probe as one that serves
+    /// (story:route-status-for-every-model): a request would fail or be refused.
+    Unreachable,
 }
 
 impl ModelPhase {
     /// Every phase, in declaration order.
-    pub const ALL: [Self; 4] = [Self::Stopped, Self::Starting, Self::Ready, Self::Stopping];
+    pub const ALL: [Self; 5] = [
+        Self::Stopped,
+        Self::Starting,
+        Self::Ready,
+        Self::Stopping,
+        Self::Unreachable,
+    ];
 
     /// The code a lifecycle route answers.
     pub const fn code(self) -> &'static str {
@@ -755,6 +766,44 @@ impl ModelPhase {
             Self::Starting => "starting",
             Self::Ready => "ready",
             Self::Stopping => "stopping",
+            Self::Unreachable => "unreachable",
+        }
+    }
+
+    /// Whether a call sent now would be relayed or held: `true` for `ready` and `starting`, and
+    /// for `stopped`, where a call starts the model's target; `false` for `stopping` and
+    /// `unreachable`, where it would be refused or fail (`callable` in `GET /v1/status`).
+    pub const fn callable(self) -> bool {
+        matches!(self, Self::Stopped | Self::Starting | Self::Ready)
+    }
+}
+
+/// What serves a relayed model (`llm-gateway.gateway.ModelKind`), which `GET /v1/status` names.
+/// The gateway decides nothing by it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModelKind {
+    /// A pod the embedding starts. The default.
+    #[default]
+    Pod,
+    /// An endpoint somebody else runs, declared as a hosted model.
+    Hosted,
+    /// A route of the routes document.
+    Route,
+    /// A Bedrock model.
+    Bedrock,
+}
+
+impl ModelKind {
+    /// Every kind, in declaration order.
+    pub const ALL: [Self; 4] = [Self::Pod, Self::Hosted, Self::Route, Self::Bedrock];
+
+    /// The code `GET /v1/status` answers.
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::Pod => "pod",
+            Self::Hosted => "hosted",
+            Self::Route => "route",
+            Self::Bedrock => "bedrock",
         }
     }
 }
@@ -842,6 +891,7 @@ pub struct RelayModel {
     anthropic_beta: Vec<String>,
     retry: Retry,
     compact_window: Option<u64>,
+    kind: ModelKind,
 }
 
 impl RelayModel {
@@ -875,7 +925,20 @@ impl RelayModel {
             anthropic_beta: Vec::new(),
             retry: Retry::default(),
             compact_window: None,
+            kind: ModelKind::default(),
         })
+    }
+
+    /// Declares what serves the model, which `GET /v1/status` names
+    /// (story:route-status-for-every-model). [`ModelKind::Pod`] until declared.
+    #[must_use]
+    pub fn with_kind(mut self, kind: ModelKind) -> Self {
+        self.kind = kind;
+        self
+    }
+
+    pub fn kind(&self) -> ModelKind {
+        self.kind
     }
 
     /// Declares that the model's target takes no client wire verbatim: every request is decoded
@@ -1261,6 +1324,38 @@ impl Relay {
             return Err(RefusalCode::ModelUnknown);
         }
         self.targets.status(alias).ok_or(RefusalCode::PathUnknown)
+    }
+
+    /// Every relayed model in alias order with the status its source reports, `None` for one
+    /// with none (`GET /v1/status`, `GET /v1/launch`; story:route-status-for-every-model). The
+    /// statuses are asked side by side, each on a thread of its own, so the slowest decides how
+    /// long the list takes, not their sum; a status whose thread cannot be started is asked on
+    /// the caller's, and one whose thread panicked is none.
+    pub(crate) fn statuses(&self) -> Vec<(&RelayModel, Option<ModelStatus>)> {
+        let targets = &self.targets;
+        thread::scope(|scope| {
+            let asked: Vec<_> = self
+                .models
+                .values()
+                .map(|model| {
+                    let alias = model.alias.as_str();
+                    let thread = thread::Builder::new()
+                        .name("llmgw-status".to_owned())
+                        .spawn_scoped(scope, move || targets.status(alias));
+                    (model, thread)
+                })
+                .collect();
+            asked
+                .into_iter()
+                .map(|(model, thread)| {
+                    let status = match thread {
+                        Ok(thread) => thread.join().ok().flatten(),
+                        Err(_) => targets.status(model.alias.as_str()),
+                    };
+                    (model, status)
+                })
+                .collect()
+        })
     }
 
     /// Feeds a record to the counters, then hands it to the embedding.

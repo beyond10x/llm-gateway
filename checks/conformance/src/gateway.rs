@@ -2196,7 +2196,9 @@ mod relay {
         decode(&raw)
     }
 
-    fn summary(received: &Received, progress: &Progress) -> String {
+    /// With `probed`, the request read a status: a pod's reply was the status probe's, never
+    /// the client's answer, so a 2xx the gateway wrote is `answered`.
+    fn summary(received: &Received, progress: &Progress, probed: bool) -> String {
         let Some(status) = received.status else {
             return "no-response".to_owned();
         };
@@ -2204,7 +2206,8 @@ mod relay {
             .replied
             .lock()
             .ok()
-            .and_then(|replied| replied.clone());
+            .and_then(|replied| replied.clone())
+            .filter(|_| !probed);
         if progress.is_closed() {
             return format!("{status} closed");
         }
@@ -2578,7 +2581,7 @@ mod relay {
             received.header("content-type")
         ));
         if status != 200 {
-            return summary(&received, &Progress::default());
+            return summary(&received, &Progress::default(), false);
         }
         let text = String::from_utf8_lossy(&received.body).into_owned();
         let samples: Vec<&str> = text.lines().filter(|line| !line.starts_with('#')).collect();
@@ -2764,7 +2767,8 @@ mod relay {
                 results.push("no-response".to_owned());
                 continue;
             };
-            results.push(summary(&received, &progress));
+            let probed = matches!(step, Step::Request { path, .. } if path.ends_with("/status"));
+            results.push(summary(&received, &progress, probed));
             let body = String::from_utf8_lossy(&received.body).into_owned();
             bodies.push(page_fact(&redact_seals(&body)));
             if let Some(slot) = answered.last_mut() {

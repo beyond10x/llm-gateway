@@ -183,7 +183,7 @@ pub(crate) const LAUNCH_FORMAT: &str = "llm-gateway.launch/1";
 /// The launch document: the gateway's origin and, per relayed model, its alias, prefix, whether
 /// it forwards the client's own credential, whether Claude Code reaches it on the messages wire
 /// and Codex on the responses wire, its context and auto-compact windows, its `/model` label and its phase where the source knows
-/// one. It reads each model's status, so it is never a public route.
+/// one. It reads each model's status, every one at once, so it is never a public route.
 pub(crate) fn launch(relay: Option<&Relay>, origin: &str) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
@@ -193,10 +193,15 @@ pub(crate) fn launch(relay: Option<&Relay>, origin: &str) -> String {
     writer.string(origin);
     writer.key("routes");
     writer.begin_array();
-    let models = relay
-        .iter()
-        .flat_map(|relay| relay.models().map(move |model| (*relay, model)));
-    for (relay, model) in models {
+    // Every status at once, side by side (story:route-status-for-every-model): a hosted model's
+    // is a probe of its endpoint, bounded by the probe's deadline.
+    let models = relay.into_iter().flat_map(|relay| {
+        relay
+            .statuses()
+            .into_iter()
+            .map(move |(model, status)| (relay, model, status))
+    });
+    for (relay, model, status) in models {
         let alias = model.alias().as_str();
         writer.begin_object();
         writer.key("alias");
@@ -224,8 +229,7 @@ pub(crate) fn launch(relay: Option<&Relay>, origin: &str) -> String {
         writer.key("label");
         writer.string(&label(model, true));
         writer.key("phase");
-        let phase = relay.status(alias).ok().map(|status| status.phase.code());
-        optional(&mut writer, phase);
+        optional(&mut writer, status.map(|status| status.phase.code()));
         writer.end_object();
     }
     writer.end_array();

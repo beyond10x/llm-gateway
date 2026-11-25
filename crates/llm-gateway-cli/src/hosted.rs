@@ -19,6 +19,11 @@
 //! URL a translator reaches it at) is sent one `x-opencode-session` per request, chosen in order:
 //! the caller's own, then one derived from the caller's peer address ([`derived_session`]),
 //! then the static one its `headers` declare, if any ([`HostedTarget::caller_header`]).
+//!
+//! A hosted model's status (story:route-status-for-every-model) is one probe of its endpoint,
+//! the request `credential set` sends ([`HostedEndpoint::probe_within`]), sent only when a
+//! status is asked, within [`ProbeBounds::timeout`], its result reused for
+//! [`ProbeBounds::reuse`] and never two at once for one model ([`HostedTargets`]).
 
 use crate::{
     config::{Deployment, Hosted, Wire},
@@ -29,9 +34,9 @@ use crate::{
     trusted::{self, Wiped},
 };
 use llm_gateway::{
-    AuthKind, BasePath, Caller, CredentialHeader, Label, ModelStatus, RelayStream, RelayTarget,
-    RelayTargets, RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance,
-    TargetRefusal, TargetScheme, TargetSummary,
+    AuthKind, BasePath, Caller, CredentialHeader, Label, ModelPhase, ModelStatus, RelayStream,
+    RelayTarget, RelayTargets, RouteSummary, StaticHeader, TargetBearer, TargetLimits,
+    TargetProvenance, TargetRefusal, TargetScheme, TargetSummary,
 };
 use ring::rand::{SecureRandom as _, SystemRandom};
 use rustls::pki_types::ServerName;
@@ -41,7 +46,7 @@ use std::{
     fmt::{self, Write as _},
     io::{self, Write as _},
     net::IpAddr,
-    sync::{Arc, OnceLock},
+    sync::{Arc, Mutex, OnceLock},
     time::{Duration, Instant},
 };
 
@@ -521,28 +526,126 @@ pub(crate) fn derived_session(peer: IpAddr) -> Option<String> {
     Some(session)
 }
 
+/// The bounds of a hosted model's status probe (story:route-status-for-every-model).
+/// [`ProbeBounds::default`] is what the binary serves with and what `docs/gateway.md` publishes
+/// ("Bounds of the status probe"); a test may shorten them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProbeBounds {
+    /// One probe, from opening the connection to its answer's status line; past it the model is
+    /// `unreachable` `no-answer`.
+    pub timeout: Duration,
+    /// How long a probe's result is reused, from when the probe ended.
+    pub reuse: Duration,
+}
+
+impl Default for ProbeBounds {
+    fn default() -> Self {
+        Self {
+            timeout: Duration::from_secs(5),
+            reuse: Duration::from_secs(10),
+        }
+    }
+}
+
+/// The clock a probe's result is aged by, in milliseconds from any fixed start.
+pub type ProbeClock = Arc<dyn Fn() -> u64 + Send + Sync>;
+
+/// One hosted model's endpoint and the result of its last status probe, with when the probe
+/// ended on the [`ProbeClock`]. The lock is held for the whole probe, so one model is probed by
+/// one probe at a time and a read that arrives meanwhile reads that probe's result.
+struct Served {
+    endpoint: Arc<HostedEndpoint>,
+    probed: Mutex<Option<(u64, ModelStatus)>>,
+}
+
 /// The binary's hosted target source: each hosted model's endpoint, by alias, and `rest` for
 /// every other alias (the Runpod pool, or none). An `https` endpoint is reached through `tls`.
 pub struct HostedTargets {
-    endpoints: BTreeMap<String, Arc<HostedEndpoint>>,
+    endpoints: BTreeMap<String, Served>,
     tls: Arc<dyn PodConnector>,
     rest: Arc<dyn RelayTargets>,
+    bounds: ProbeBounds,
+    clock: ProbeClock,
 }
 
 impl HostedTargets {
+    /// The source with the published [`ProbeBounds`], aging probe results on a monotonic clock.
     pub fn new(
         endpoints: BTreeMap<String, HostedEndpoint>,
         tls: Arc<dyn PodConnector>,
         rest: Arc<dyn RelayTargets>,
     ) -> Self {
+        let start = Instant::now();
         Self {
             endpoints: endpoints
                 .into_iter()
-                .map(|(alias, endpoint)| (alias, Arc::new(endpoint)))
+                .map(|(alias, endpoint)| {
+                    let served = Served {
+                        endpoint: Arc::new(endpoint),
+                        probed: Mutex::new(None),
+                    };
+                    (alias, served)
+                })
                 .collect(),
             tls,
             rest,
+            bounds: ProbeBounds::default(),
+            clock: Arc::new(move || u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)),
         }
+    }
+
+    /// The same source probing within `bounds`. A test seam: the binary serves the defaults.
+    #[must_use]
+    pub fn with_probe_bounds(mut self, bounds: ProbeBounds) -> Self {
+        self.bounds = bounds;
+        self
+    }
+
+    /// The same source aging probe results on `clock`. A test seam.
+    #[must_use]
+    pub fn with_probe_clock(mut self, clock: ProbeClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// The status of the hosted model `served`: the last probe's while it is younger than
+    /// [`ProbeBounds::reuse`], else a new probe's, sent while the model's lock is held.
+    fn probed(&self, served: &Served) -> ModelStatus {
+        let mut last = served
+            .probed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let reuse = u64::try_from(self.bounds.reuse.as_millis()).unwrap_or(u64::MAX);
+        if let Some((at, status)) = last.as_ref()
+            && (self.clock)().saturating_sub(*at) < reuse
+        {
+            return status.clone();
+        }
+        let client = matches!(served.endpoint.credential, EndpointCredential::Client);
+        let answer = served
+            .endpoint
+            .probe_within(self.tls.as_ref(), self.bounds.timeout);
+        let status = probed_status(&answer, client);
+        *last = Some(((self.clock)(), status.clone()));
+        status
+    }
+}
+
+/// What a probe's answer says of its model: a 2xx status is `ready`; 401 or 403
+/// `credential-refused`, but `ready` for a `client` endpoint, which holds no credential that
+/// could be refused; any other status `status-<code>`; and no status line at all `no-answer`.
+fn probed_status(answer: &io::Result<u16>, client: bool) -> ModelStatus {
+    let unreachable = |why: String| ModelStatus {
+        phase: ModelPhase::Unreachable,
+        sub_phase: Some(why),
+        profile: None,
+    };
+    match answer {
+        Ok(200..=299) => ModelStatus::new(ModelPhase::Ready),
+        Ok(401 | 403) if client => ModelStatus::new(ModelPhase::Ready),
+        Ok(401 | 403) => unreachable("credential-refused".to_owned()),
+        Ok(code) => unreachable(format!("status-{code:03}")),
+        Err(_) => unreachable("no-answer".to_owned()),
     }
 }
 
@@ -550,8 +653,8 @@ impl RelayTargets for HostedTargets {
     /// A hosted model's endpoint, at once; any other alias is `rest`'s.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         match self.endpoints.get(alias) {
-            Some(endpoint) => Ok(Box::new(HostedTarget {
-                endpoint: Arc::clone(endpoint),
+            Some(served) => Ok(Box::new(HostedTarget {
+                endpoint: Arc::clone(&served.endpoint),
                 tls: Arc::clone(&self.tls),
             })),
             None => self.rest.acquire(alias),
@@ -566,9 +669,8 @@ impl RelayTargets for HostedTargets {
         }
     }
 
-    /// A hosted model has no lifecycle: nothing here starts its endpoint, so its wake is
-    /// `None`, answered `path-unknown` (story:model-wake-and-status). Any other alias is
-    /// `rest`'s.
+    /// A hosted model has no wake: nothing here starts its endpoint, so its wake is `None`,
+    /// answered `path-unknown` (story:model-wake-and-status). Any other alias is `rest`'s.
     fn wake(&self, alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
         if self.endpoints.contains_key(alias) {
             return None;
@@ -576,12 +678,16 @@ impl RelayTargets for HostedTargets {
         self.rest.wake(alias)
     }
 
-    /// As [`Self::wake`]: `None` for a hosted model, `rest`'s for any other.
+    /// A hosted model's status is its endpoint's probe (story:route-status-for-every-model):
+    /// [`HostedEndpoint::probe_within`] the [`ProbeBounds::timeout`], the request `credential
+    /// set` sends, carrying the endpoint's own credential and static headers and nothing of any
+    /// caller's, its result reused for [`ProbeBounds::reuse`]. It asks `rest` nothing. Any other
+    /// alias is `rest`'s.
     fn status(&self, alias: &str) -> Option<ModelStatus> {
-        if self.endpoints.contains_key(alias) {
-            return None;
+        match self.endpoints.get(alias) {
+            Some(served) => Some(self.probed(served)),
+            None => self.rest.status(alias),
         }
-        self.rest.status(alias)
     }
 }
 
@@ -816,9 +922,7 @@ mod tests {
     use crate::trusted::ledger::{self, Entry};
     use llm_gateway::AuthKind;
     use llm_gateway::BasePath;
-    use llm_gateway::{
-        Caller, CredentialHeader, RelayStream, RelayTarget as _, StaticHeader, TargetBearer,
-    };
+    use llm_gateway::{Caller, CredentialHeader, RelayStream, StaticHeader, TargetBearer};
     use std::{
         io::{self, Read, Write},
         net::{IpAddr, TcpListener},

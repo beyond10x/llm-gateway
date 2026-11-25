@@ -1207,7 +1207,8 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
                 format!("hosted.{alias}: {error}"),
             )
         })?
-        .with_tool_calling(hosted.tool_calling);
+        .with_tool_calling(hosted.tool_calling)
+        .with_kind(llm_gateway::ModelKind::Hosted);
         let relayed = match hosted.reasoning_effort {
             Some(effort) => relayed.with_reasoning_effort(effort),
             None => relayed,
@@ -1247,7 +1248,8 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
             )
         })?
         .with_translated_only()
-        .with_tool_calling(model.tool_calling);
+        .with_tool_calling(model.tool_calling)
+        .with_kind(llm_gateway::ModelKind::Bedrock);
         models.push(match model.context_window {
             Some(window) => relayed.with_context_window(u64::from(window)),
             None => relayed,

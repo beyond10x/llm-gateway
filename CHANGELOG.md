@@ -7,6 +7,17 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Added
+
+- `GET /v1/status` (owner; `HEAD` too): one list, format `llm-gateway.status/1`, of every relayed model in alias order with its `kind` (`pod`, `hosted`, `route`, `bedrock`), `wires`, `phase`, `sub_phase`, `profile` and `callable`, whether a call for it is answered now (`true` for `ready`, `starting` and `stopped`, `false` for `stopping` and `unreachable`). A Bedrock model has neither `phase` nor `callable`. Every status is asked side by side. A status read starts, wakes and invalidates nothing and makes no usage record.
+- The phase `unreachable`, with `sub_phase` `no-answer`, `credential-refused` or `status-<code>`.
+- `ModelKind` and `RelayModel::with_kind`; `ProbeBounds` and `HostedTargets::with_probe_bounds`/`with_probe_clock`.
+
+### Changed
+
+- The status of a hosted model and of a route of the routes document is a probe of its endpoint (`GET <base path>/models` with its credential), sent only when a status is read, at most one per model at a time, within 5 s, its result reused for 10 s: `ready` on a 2xx answer (and on 401 or 403 for a `client` endpoint, probed without a credential), otherwise `unreachable`. It was `path-unknown`. Wake stays `path-unknown` for both, and a Bedrock model's status stays `path-unknown`.
+- `GET /v1/launch` names a hosted model's and a route's phase from its probe, asking every model side by side, and `b10x-llm-gateway claude` notes an `unreachable` implementer route as one whose calls fail until its endpoint answers.
+
 ## 0.24.0 (2026-11-21)
 
 ### Added

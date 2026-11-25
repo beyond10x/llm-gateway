@@ -152,8 +152,9 @@ types:
   # DECIDED 2026-11-25 (story:ollama-route): `model-not-pulled` is the one refusal whose
   # `message` names something beyond the fixed text: the fixed `message` below, `: ` and the
   # alias of the relayed model the call named, which is the deployment document's, never a
-  # caller byte (a call matched by a `model_prefix` names the declaring alias, not its own
-  # model name). Every other `message` is the fixed text alone.
+  # caller byte (a call the library matches by a `model_prefix` names the declaring alias, not
+  # its own model name; the binary refuses `model_prefix` on an Ollama model, deployment
+  # domain). Every other `message` is the fixed text alone.
   - name: llm-gateway.gateway.Refusal
     kind: enum
     attributes:

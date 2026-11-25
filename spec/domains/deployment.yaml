@@ -622,6 +622,9 @@ types:
   #                      `credential_header` are refused
   #   upstream_model     the Ollama model name the alias is sent as, default the alias; without
   #                      a tag it matches `<name>:latest` in the server's lists
+  #   model_prefix       refused (DECIDED 2026-11-25, correction of story:ollama-route): the
+  #                      model's status and `model-not-pulled` are read for `upstream_model`
+  #                      alone, and a prefix would send names that status does not describe
   #   billing_kind       default `self-hosted`
   #   each `bedrock` key is refused as on an endpoint
   # A `kind = "bedrock"` model (DECIDED 2026-10-23, story:bedrock-hosted-target): `wires`,

@@ -970,7 +970,12 @@ it sends back on the next turn.
 DECIDED 2026-11-25 (story:ollama-route). A `[hosted.<alias>] kind = "ollama"` model is a hosted
 endpoint at an Ollama server's root (`http://127.0.0.1:11434` unless `base_url` names another),
 sent no credential, served on the wires it declares (all three unless `wires` names fewer), the
-alias replaced by `upstream_model`, the Ollama model name. It is kind `ollama` in
+alias replaced by `upstream_model`, the Ollama model name. Its table takes no credential key and
+no `model_prefix`, each refused at start as `config:value` naming the key and quoting no value:
+the model's status and its `model-not-pulled` refusal are read for `upstream_model` alone, and a
+prefix would send other names that status does not describe
+(`adv_ollama_a_prefix_for_a_name_the_server_lists_is_refused_at_start` in
+`crates/llm-gateway-cli/tests/wake_status.rs`). It is kind `ollama` in
 [the status list](#the-status-list), and the route inventory lists its targets under provider
 `ollama`, account `local`. Ollama serves all three wires itself, so each declared wire is relayed
 byte for byte to Ollama's own path: chat to `POST /v1/chat/completions`, responses to
@@ -983,8 +988,12 @@ The gateway sends an Ollama server only `GET /api/tags` and `GET /api/ps` (the s
 [the lifecycle routes](#the-lifecycle-routes)), `POST` to the three wire paths, and
 `POST /v1/messages/count_tokens`: the output clamp's count (relay step 7) when the model
 declares `context_window` and a messages call sets `max_tokens`, and a client's own count call.
-It sends no request that changes what the server stores: no `/api/pull`, `/api/create`,
-`/api/copy`, `/api/delete` or `/api/push`
+The output clamp's count is sent under the Ollama model name and its `input_tokens` cuts
+`max_tokens` as on any target
+(`ollama_the_output_clamp_counts_on_the_server_under_the_ollama_model_name`), against a fake
+server only: that path was not checked against a running Ollama, and a count it does not answer
+with `input_tokens` leaves `max_tokens` as sent. It sends no request that changes what the
+server stores: no `/api/pull`, `/api/create`, `/api/copy`, `/api/delete` or `/api/push`
 (`ollama_the_binary_sends_the_server_only_its_lists_and_the_wire_calls` and
 `ollama_the_gateway_never_asks_the_server_to_change_what_it_stores` in
 `crates/llm-gateway-cli/tests/wake_status.rs`). The operator pulls a model with Ollama's own
@@ -1367,9 +1376,9 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 ```
 
 One code carries more than its message: `model-not-pulled` (an Ollama model its server does not
-list, [an Ollama upstream](#an-ollama-upstream)) is the message below, `: ` and the alias the
-call was matched to, the declaring alias for a name a `model_prefix` matched, never the name
-the caller sent.
+list, [an Ollama upstream](#an-ollama-upstream)) is the message below, `: ` and the alias of
+the relayed model the call was matched to, as its deployment declares it, never a byte copied
+from the request.
 
 ```json
 {"error":{"code":"model-not-pulled","message":"the model is not pulled on its Ollama server, and the gateway pulls no model: local"}}

@@ -259,6 +259,7 @@ refused as on an endpoint.
 | `upstream_model` | the alias | The Ollama model name, such as `qwen2.5:1.5b`. A name without a tag is `<name>:latest`. |
 | `auth_kind` | `anonymous` | `anonymous` only: an Ollama server is sent no credential. |
 | `credential_file`, `credential`, `credential_header` | absent | Refused. |
+| `model_prefix` | absent | Refused: the model's status is read for `upstream_model` alone, so the model serves its alias alone. |
 | `billing_kind` | `self-hosted` | As for an endpoint. |
 
 Every refusal is `config:value` naming the key, and quotes no value. The model's status is read

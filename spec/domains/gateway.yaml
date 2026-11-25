@@ -334,9 +334,10 @@ types:
   # source anything: a method the route does not take is `method-not-allowed` with `allow`
   # naming its `methods`; a declared body is `body-not-allowed`; before `mark_ready` it is
   # `unavailable`; an alias no relayed model has is `model-unknown`; a model whose target source
-  # starts no pod for it (a hosted endpoint, a route of the routes document: a plain relayed
-  # upstream, `RelayTargets::wake` and `RelayTargets::status` answering `None`) is
-  # `path-unknown`, because the route does not exist for that model. Then:
+  # starts no pod for it (a hosted endpoint, a route of the routes document, a Bedrock model:
+  # `RelayTargets::wake` answering `None`) is `path-unknown` to a wake, and a model whose source
+  # reports no status (a Bedrock model: `RelayTargets::status` answering `None`) is
+  # `path-unknown` to a status, because the route does not exist for that model. Then:
   #   Wake    `POST`: asks the target source to start the model's pod as a request's first ask
   #           for it would (`RelayTargets::wake`), and answers `202` at once with the ModelStatus
   #           the source reports after that ask; it never waits for the pod to serve. While a
@@ -346,6 +347,7 @@ types:
   #           `retry-after`) or `model-cold-start`.
   #   Status  `GET`, and `HEAD` without a body: asks the target source for the model's
   #           ModelStatus (`RelayTargets::status`), which starts nothing, and answers `200`.
+  #           It never asks the source to acquire, wake or invalidate anything.
   # Both answers are `application/json`, `cache-control: no-store`, the ModelStatus as
   # `{"model":<alias>,"phase":<code>,"sub_phase"?:<sub-phase>,"profile"?:<profile>}` with its
   # keys in that order, a value the source did not report absent, never empty. Neither makes a
@@ -364,6 +366,26 @@ types:
   # `202` with the status of a model starting or ready, and `target-unavailable` otherwise. Its
   # status is `RunpodPool::status`. A model of a provider whose `connectors` connection is
   # absent or unreachable is `target-unavailable` to a wake and `stopped` to a status.
+  # DECIDED 2026-11-25 (story:route-status-for-every-model): a hosted model and a route of the
+  # routes document have a status. The binary's hosted target source (`HostedTargets::status`)
+  # answers it by one probe of the endpoint, the probe `credential set` sends: `GET <base
+  # path>/models` (`/v1/models` without a base path) with `host`, the endpoint's static headers,
+  # its own credential as its `auth_kind` sends it (none for `anonymous` and `client`),
+  # `accept: application/json` and `connection: close`, and nothing of the caller's: no owner
+  # secret, no client credential. The probe's status decides: 2xx is `ready`; 401 or 403 is
+  # `unreachable` `credential-refused`, but `ready` for an `auth_kind = "client"` endpoint, which
+  # holds no credential that could be refused; any other status is `unreachable`
+  # `status-<code>`; no connection, a certificate that does not verify, or no status line
+  # inside the probe's deadline (`status-probe-timeout-ms`) is `unreachable` `no-answer`. A
+  # result is reused for `status-reuse-seconds` from when its probe ended, and one model is
+  # probed by one probe at a time: a second read waits for the first's result. The probe runs
+  # only when a status is asked, never on a timer, starts nothing, makes no usage record and
+  # counts no series. Its two bounds are published in docs/gateway.md ("Bounds of the status
+  # probe"); `route_status_*` in crates/llm-gateway-cli/src/hosted.rs and
+  # crates/llm-gateway-cli/tests/wake_status.rs hold them.
+  # ESS-LIMIT: a deadline and a reuse window are no ESS construct.
+  # The wake of a hosted model and of a route stays `path-unknown`, and a Bedrock model has
+  # neither route (scenarios status-*).
   - name: llm-gateway.gateway.LifecycleRoute
     kind: enum
     attributes:
@@ -376,8 +398,11 @@ types:
   # Where a model's pod is (`llm_gateway::ModelPhase`), named by what a request for the model
   # would meet: `stopped`, no pod is live and a request starts one; `starting`, a request is held
   # while the pod starts; `ready`, the pod was last observed serving and a request is relayed
-  # to it; `stopping`, a previous pod owes a stop not yet confirmed and nothing starts meanwhile.
-  # The binary reads it from the hosting state machine (llm-gateway.runpod.Pool `status`).
+  # to it; `stopping`, a previous pod owes a stop not yet confirmed and nothing starts meanwhile;
+  # `unreachable`, the model's endpoint did not answer its probe as one that serves (a hosted
+  # model or a route, story:route-status-for-every-model; for those `ready` means the endpoint
+  # answered the probe). The binary reads a pod's phase from the hosting state machine
+  # (llm-gateway.runpod.Pool `status`) and a hosted model's from its probe (LifecycleRoute).
   - name: llm-gateway.gateway.ModelPhase
     kind: enum
     attributes:
@@ -387,6 +412,39 @@ types:
       - {name: Starting, attributes: {code: starting}}
       - {name: Ready, attributes: {code: ready}}
       - {name: Stopping, attributes: {code: stopping}}
+      - {name: Unreachable, attributes: {code: unreachable}}
+  # What serves a relayed model (`llm_gateway::ModelKind`, `RelayModel::with_kind`): `pod`, a
+  # pod the gateway starts (the default); `hosted`, a `[hosted.<alias>]` endpoint; `route`, a
+  # route of the routes document; `bedrock`, a Bedrock model. The status list names it.
+  - name: llm-gateway.gateway.ModelKind
+    kind: enum
+    attributes:
+      - {name: code, type: String}
+    variants:
+      - {name: Pod, attributes: {code: pod}}
+      - {name: Hosted, attributes: {code: hosted}}
+      - {name: Route, attributes: {code: route}}
+      - {name: Bedrock, attributes: {code: bedrock}}
+  # The owner's status list (story:route-status-for-every-model): `GET /v1/status`, and `HEAD`
+  # without a body, answered `200` `application/json`
+  # `{"format":"llm-gateway.status/1","models":[StatusEntry…]}`, one entry per relayed model in
+  # alias order; a gateway composed without a relay lists none. It is no wire path and no public
+  # route: it takes the credential `GET /v1/launch` takes, the owner's whatever the
+  # IngressAuth (none on a gateway open on loopback). A method other than `GET` or `HEAD` is
+  # `method-not-allowed` with `allow: GET, HEAD`, a declared body is `body-not-allowed`, and
+  # before `mark_ready` it is `unavailable`, all before the target source is asked anything.
+  # Then it asks the source for every model's status at once, side by side, each as
+  # LifecycleRoute `Status` does: it never asks the source to acquire, wake or invalidate, makes
+  # no usage record and counts no series. So with hosted endpoints that accept a connection and
+  # never answer, it is answered within one probe deadline, not one per endpoint.
+  - name: llm-gateway.gateway.StatusRoute
+    kind: enum
+    attributes:
+      - {name: path, type: String}
+      - {name: methods, type: String}
+      - {name: format, type: String}
+    variants:
+      - {name: List, attributes: {path: /v1/status, methods: "GET, HEAD", format: llm-gateway.status/1}}
   # The answer `GET /` chooses, from the request's `user-agent` lowercased, by the first rule
   # that holds, in the order declared (llmgw src/lib.rs:231-245 at 048ebd8). No `user-agent` is
   # `Plain`. Each renders, per relayed model, the llm-gateway.clients.ClientProfile of its
@@ -571,13 +629,33 @@ entities:
   # provider reports one (`sub_phase`; the binary's are llm-gateway.hosting `ProviderState`
   # codes: `pending`, the pod is not running yet, and `running`, it runs and its server does not
   # answer ready yet), and the profile the pod was started on
-  # (llm-gateway.runpod.ModelProfile `name`), absent when unknown.
+  # (llm-gateway.runpod.ModelProfile `name`), absent when unknown. For a hosted model or a route
+  # whose phase is `unreachable`, `sub_phase` says why: `no-answer`, `credential-refused` or
+  # `status-<code>` with the three-digit status (LifecycleRoute); it has no profile.
   - name: llm-gateway.gateway.ModelStatus
     identity: {name: model, type: String}
     fields:
       - {name: phase, type: llm-gateway.gateway.ModelPhase}
       - {name: sub_phase, type: 'Optional<String>'}
       - {name: profile, type: 'Optional<String>'}
+    lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
+  # One entry of the status list (StatusRoute), keys in this order:
+  # `{"model","kind","wires","phase"?,"sub_phase"?,"profile"?,"callable"?}`. `model` is the
+  # alias, `kind` its ModelKind, `wires` the wires the model declares (its upstream's, in their
+  # declared order: `upstream_wires` of a ListedModel when the relay translates), then the keys
+  # of its ModelStatus as LifecycleRoute renders them, and `callable`: whether a call sent now
+  # would be relayed or held (`true` for `ready` and `starting`, and for `stopped`, where a call
+  # starts the model's pod) or refused (`false` for `stopping` and `unreachable`). A model whose
+  # source reports no status (a Bedrock model) carries neither `phase` nor `callable`.
+  - name: llm-gateway.gateway.StatusEntry
+    identity: {name: model, type: String}
+    fields:
+      - {name: kind, type: llm-gateway.gateway.ModelKind}
+      - {name: wires, type: 'List<llm-gateway.gateway.Wire>'}
+      - {name: phase, type: 'Optional<llm-gateway.gateway.ModelPhase>'}
+      - {name: sub_phase, type: 'Optional<String>'}
+      - {name: profile, type: 'Optional<String>'}
+      - {name: callable, type: 'Optional<Boolean>'}
     lifecycle: {initial: Declared, states: [Declared], terminal: [Declared]}
   - name: llm-gateway.gateway.ExchangeObservation
     identity: {name: observation_id, type: String}
@@ -937,8 +1015,8 @@ entities:
       # One entry per step, in order: `ok` for `mark_ready`, and for a request
       # `<status> <refusal code>` for a refusal, `<status> relayed` for a relayed answer,
       # `<status> translated` for a 2xx answer a pod replied to that reached the client in
-      # other bytes, and `<status> answered` for an answer to a public route or a lifecycle
-      # route (LifecycleRoute), and for a scrape
+      # other bytes, and `<status> answered` for an answer to a public route, a lifecycle
+      # route (LifecycleRoute) or the status list (StatusRoute), and for a scrape
       # `<status> scraped` when served or `<status> <refusal code>`. A request whose client
       # closed early (`close_after_bytes`) is `<status> closed`.
       - {name: results, type: 'List<String>'}
@@ -1007,8 +1085,9 @@ entities:
       # failed, or the gateway closed the connection while the pod waited to release a chunk.
       - {name: upstream_ends, type: 'List<String>'}
       # Every lifecycle ask the gateway made of its target source, in order, as `wake <alias>`
-      # or `status <alias>` (LifecycleRoute): a request refused before the source is asked
-      # adds none.
+      # or `status <alias>` (LifecycleRoute; the status list, StatusRoute, adds one per model,
+      # in the order its side-by-side asks reached the source, which is not fixed): a request
+      # refused before the source is asked adds none.
       - {name: lifecycle_asks, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
@@ -1062,7 +1141,8 @@ commands:
   #   6. A wire path of a gateway composed with a relay goes on to the `Relay` order below, and a
   #      lifecycle path of one (`/v1/models/{alias}/wake` and `/v1/models/{alias}/status`) is
   #      answered as LifecycleRoute says. Without a relay a lifecycle path is a path the gateway
-  #      does not serve (step 8).
+  #      does not serve (step 8). Exactly `/v1/status`, with or without a relay, is answered
+  #      as StatusRoute says.
   #   7. `/metrics`, R4 (see RelayObservation).
   #   8. Inspection: anything but `GET` or `HEAD` is `method-not-allowed` with
   #      `allow: GET, HEAD`, the two public routes included; a declared body is
@@ -1132,7 +1212,9 @@ commands:
       #           `trusted` (the default: a certificate for the pod's address from the run's
       #           test root, the only root the client trusts) or `untrusted` (one from a root it
       #           does not), and `auth_kind`, `credential` and `credential_header` are the
-      #           endpoint's (the credential's material, not a file). Such a model is served by
+      #           endpoint's (the credential's material, not a file; `auth_kind` `client` takes
+      #           neither and marks the model as forwarding the client's own credential,
+      #           `RelayModel::with_client_credentials`). Such a model is served by
       #           the binary's own hosted target source, `llm_gateway_cli::HostedTargets`, over
       #           the binary's TLS client with the test seam's root, and takes no `bearer`
       #   routes_document  optional, the text of an `llm.routes/1` document
@@ -1173,8 +1255,12 @@ commands:
       #           codes, the other two optional) or, for `wake` only, `{refusal}` naming
       #           `target-unavailable`, `model-cold-start` or `spend-ceiling`. An ask past its
       #           list is answered `target-unavailable` (wake) or `stopped` (status). Without
-      #           `lifecycle` the source starts no pod for any model, and a model served by a
-      #           hosted endpoint never has one, both as `None`
+      #           `lifecycle` the source starts no pod for any model, both as `None`. A model
+      #           served by a hosted endpoint, or a route of `routes_document`, has no wake
+      #           (`None`), and its status is `HostedTargets`' probe of its pod (LifecycleRoute),
+      #           with the binary's bounds; the probe's request is one the pod receives, so it
+      #           takes one answer of the pod's script and appears in `upstream`,
+      #           `authorizations`, `received_heads` and `connections` like a relayed request
       #   metrics_listen  optional, `{bearer}`: the gateway also serves the metrics-only
       #           listener (llm-gateway.telemetry, the deployment's `metrics_listen`) on a
       #           loopback port, as `GatewayHandle::serve_metrics`, taking `bearer` as its scrape

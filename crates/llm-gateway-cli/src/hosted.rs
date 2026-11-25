@@ -19,6 +19,11 @@
 //! URL a translator reaches it at) is sent one `x-opencode-session` per request, chosen in order:
 //! the caller's own, then one derived from the caller's peer address ([`derived_session`]),
 //! then the static one its `headers` declare, if any ([`HostedTarget::caller_header`]).
+//!
+//! A hosted model's status (story:route-status-for-every-model) is one probe of its endpoint,
+//! the request `credential set` sends ([`HostedEndpoint::probe_within`]), sent only when a
+//! status is asked, within [`ProbeBounds::timeout`], its result reused for
+//! [`ProbeBounds::reuse`] and never two at once for one model ([`HostedTargets`]).
 
 use crate::{
     config::{Deployment, Hosted, Wire},
@@ -29,9 +34,9 @@ use crate::{
     trusted::{self, Wiped},
 };
 use llm_gateway::{
-    AuthKind, BasePath, Caller, CredentialHeader, Label, ModelStatus, RelayStream, RelayTarget,
-    RelayTargets, RouteSummary, StaticHeader, TargetBearer, TargetLimits, TargetProvenance,
-    TargetRefusal, TargetScheme, TargetSummary,
+    AuthKind, BasePath, Caller, CredentialHeader, Label, ModelPhase, ModelStatus, RelayStream,
+    RelayTarget, RelayTargets, RouteSummary, StaticHeader, TargetBearer, TargetLimits,
+    TargetProvenance, TargetRefusal, TargetScheme, TargetSummary,
 };
 use ring::rand::{SecureRandom as _, SystemRandom};
 use rustls::pki_types::ServerName;
@@ -40,8 +45,8 @@ use std::{
     collections::BTreeMap,
     fmt::{self, Write as _},
     io::{self, Write as _},
-    net::IpAddr,
-    sync::{Arc, OnceLock},
+    net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs as _},
+    sync::{Arc, Mutex, OnceLock, mpsc},
     time::{Duration, Instant},
 };
 
@@ -300,26 +305,55 @@ impl HostedEndpoint {
     /// [`Self::probe`] with `total` as its overall bound.
     pub(crate) fn probe_within(&self, tls: &dyn PodConnector, total: Duration) -> io::Result<u16> {
         let deadline = Instant::now() + total;
-        let step = || -> io::Result<Duration> {
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() {
-                Err(probe_timed_out())
-            } else {
-                Ok(left.min(PROBE_TIMEOUT))
-            }
-        };
-        let stream: Box<dyn RelayStream> = match self.scheme {
-            Scheme::Https => tls.connect_probe(&self.authority, step()?)?,
+        let stream = self.open_probe(tls, &system_lookup, deadline)?;
+        self.exchange_probe(stream, deadline)
+    }
+
+    /// The probe's connection to the endpoint: for `http` the name looked up with `lookup` and
+    /// each address tried in turn until one connects, for `https` the connector's own opening,
+    /// its lookup and handshake included. Each step is bounded by what is left of `deadline` and
+    /// by [`PROBE_TIMEOUT`]; the lookup itself is bounded only by its caller.
+    fn open_probe(
+        &self,
+        tls: &dyn PodConnector,
+        lookup: &dyn Fn(&str, u16) -> io::Result<Vec<SocketAddr>>,
+        deadline: Instant,
+    ) -> io::Result<Box<dyn RelayStream>> {
+        let step = || probe_step(deadline);
+        match self.scheme {
+            Scheme::Https => tls.connect_probe(&self.authority, step()?),
             Scheme::Http => {
                 let (host, port) = split(&self.authority, HTTP_PORT).ok_or_else(|| {
                     io::Error::new(io::ErrorKind::InvalidInput, "not a host[:port] authority")
                 })?;
-                let socket = dial(host, port, Instant::now() + step()?)?;
-                socket.set_read_timeout(Some(step()?))?;
-                socket.set_write_timeout(Some(step()?))?;
-                Box::new(socket)
+                let addresses = lookup(host, port)?;
+                let connect_by = Instant::now() + step()?;
+                let mut last = io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "the endpoint's host has no address",
+                );
+                for address in addresses {
+                    let left = connect_by.saturating_duration_since(Instant::now());
+                    if left.is_zero() {
+                        return Err(probe_timed_out());
+                    }
+                    match TcpStream::connect_timeout(&address, left) {
+                        Ok(socket) => {
+                            socket.set_read_timeout(Some(step()?))?;
+                            socket.set_write_timeout(Some(step()?))?;
+                            return Ok(Box::new(socket));
+                        }
+                        Err(error) => last = error,
+                    }
+                }
+                Err(last)
             }
-        };
+        }
+    }
+
+    /// The probe's request over `stream` and the first final status of its answer, by
+    /// `deadline`.
+    fn exchange_probe(&self, stream: Box<dyn RelayStream>, deadline: Instant) -> io::Result<u16> {
         let request = self.probe_request();
         // The exchange runs on its own thread so that the total bound holds whatever the
         // stream's own timeouts are; the thread ends by `deadline` at the latest.
@@ -377,6 +411,22 @@ fn probe_timed_out() -> io::Error {
         io::ErrorKind::TimedOut,
         "the probe took longer than its total bound",
     )
+}
+
+/// What one step of a probe may wait: what is left of `deadline`, at most [`PROBE_TIMEOUT`];
+/// `TimedOut` once the deadline has passed.
+fn probe_step(deadline: Instant) -> io::Result<Duration> {
+    let left = deadline.saturating_duration_since(Instant::now());
+    if left.is_zero() {
+        Err(probe_timed_out())
+    } else {
+        Ok(left.min(PROBE_TIMEOUT))
+    }
+}
+
+/// The system's name lookup, the default [`Resolver`].
+fn system_lookup(host: &str, port: u16) -> io::Result<Vec<SocketAddr>> {
+    (host, port).to_socket_addrs().map(Iterator::collect)
 }
 
 /// Sends `request`, overwritten once sent, and reads the first final status.
@@ -521,28 +571,209 @@ pub(crate) fn derived_session(peer: IpAddr) -> Option<String> {
     Some(session)
 }
 
+/// The bounds of a hosted model's status probe (story:route-status-for-every-model).
+/// [`ProbeBounds::default`] is what the binary serves with and what `docs/gateway.md` publishes
+/// ("Bounds of the status probe"); a test may shorten them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ProbeBounds {
+    /// One probe, from opening the connection to its answer's status line; past it the model is
+    /// `unreachable` `no-answer`.
+    pub timeout: Duration,
+    /// How long a probe's result is reused, from when the probe ended.
+    pub reuse: Duration,
+}
+
+impl Default for ProbeBounds {
+    fn default() -> Self {
+        Self {
+            timeout: Duration::from_secs(5),
+            reuse: Duration::from_secs(10),
+        }
+    }
+}
+
+/// The clock a probe's result is aged by, in milliseconds from any fixed start.
+pub type ProbeClock = Arc<dyn Fn() -> u64 + Send + Sync>;
+
+/// The name lookup of a status probe: the addresses of `host` at `port`.
+pub type Resolver = Arc<dyn Fn(&str, u16) -> io::Result<Vec<SocketAddr>> + Send + Sync>;
+
+/// The opening of a status probe's connection, running on its own thread: what it opened before
+/// the probe's deadline, or why it opened nothing, arrives here. An opening that ends at or after
+/// the deadline closes what it opened itself and sends only that it has ended.
+type Opening = mpsc::Receiver<io::Result<Box<dyn RelayStream>>>;
+
+/// One hosted model's endpoint and the result of its last status probe, with when the probe
+/// ended on the [`ProbeClock`]. The lock is held for the whole probe, which ends by its deadline,
+/// so one model is probed by one probe at a time and a read that arrives meanwhile reads that
+/// probe's result.
+struct Served {
+    endpoint: Arc<HostedEndpoint>,
+    probed: Mutex<Option<(u64, ModelStatus)>>,
+    /// An opening (the name lookup and the connection) a probe left running at its deadline.
+    left_running: Mutex<Option<Opening>>,
+}
+
 /// The binary's hosted target source: each hosted model's endpoint, by alias, and `rest` for
 /// every other alias (the Runpod pool, or none). An `https` endpoint is reached through `tls`.
 pub struct HostedTargets {
-    endpoints: BTreeMap<String, Arc<HostedEndpoint>>,
+    endpoints: BTreeMap<String, Served>,
     tls: Arc<dyn PodConnector>,
     rest: Arc<dyn RelayTargets>,
+    bounds: ProbeBounds,
+    clock: ProbeClock,
+    resolver: Resolver,
 }
 
 impl HostedTargets {
+    /// The source with the published [`ProbeBounds`], aging probe results on a monotonic clock.
     pub fn new(
         endpoints: BTreeMap<String, HostedEndpoint>,
         tls: Arc<dyn PodConnector>,
         rest: Arc<dyn RelayTargets>,
     ) -> Self {
+        let start = Instant::now();
         Self {
             endpoints: endpoints
                 .into_iter()
-                .map(|(alias, endpoint)| (alias, Arc::new(endpoint)))
+                .map(|(alias, endpoint)| {
+                    let served = Served {
+                        endpoint: Arc::new(endpoint),
+                        probed: Mutex::new(None),
+                        left_running: Mutex::new(None),
+                    };
+                    (alias, served)
+                })
                 .collect(),
             tls,
             rest,
+            bounds: ProbeBounds::default(),
+            clock: Arc::new(move || u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX)),
+            resolver: Arc::new(system_lookup),
         }
+    }
+
+    /// The same source looking endpoint names up with `resolver`. A test seam: the binary uses
+    /// the system's lookup.
+    #[must_use]
+    pub fn with_resolver(mut self, resolver: Resolver) -> Self {
+        self.resolver = resolver;
+        self
+    }
+
+    /// The same source probing within `bounds`. A test seam: the binary serves the defaults.
+    #[must_use]
+    pub fn with_probe_bounds(mut self, bounds: ProbeBounds) -> Self {
+        self.bounds = bounds;
+        self
+    }
+
+    /// The same source aging probe results on `clock`. A test seam.
+    #[must_use]
+    pub fn with_probe_clock(mut self, clock: ProbeClock) -> Self {
+        self.clock = clock;
+        self
+    }
+
+    /// The status of the hosted model `served`: the last probe's while it is younger than
+    /// [`ProbeBounds::reuse`], else a new probe's, sent while the model's lock is held.
+    fn probed(&self, served: &Served) -> ModelStatus {
+        let mut last = served
+            .probed
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let reuse = u64::try_from(self.bounds.reuse.as_millis()).unwrap_or(u64::MAX);
+        if let Some((at, status)) = last.as_ref()
+            && (self.clock)().saturating_sub(*at) < reuse
+        {
+            return status.clone();
+        }
+        let client = matches!(served.endpoint.credential, EndpointCredential::Client);
+        let deadline = Instant::now() + self.bounds.timeout;
+        let answer = self
+            .opened(served, deadline)
+            .and_then(|stream| served.endpoint.exchange_probe(stream, deadline));
+        let status = probed_status(&answer, client);
+        *last = Some(((self.clock)(), status.clone()));
+        status
+    }
+
+    /// The probe's connection to `served`, opened by `deadline`. The opening (the name lookup
+    /// with the resolver, the connection, and for `https` the connector's own lookup and
+    /// handshake) runs on its own thread, so a lookup that does not return still ends the probe
+    /// at its deadline. An opening still running then is left to end on its own and kept: the
+    /// next probe of the model starts no second one while it runs, waits for it until its own
+    /// deadline, and once it has ended opens afresh. What a late opening opened is closed by the
+    /// opening itself, the moment it ends.
+    fn opened(&self, served: &Served, deadline: Instant) -> io::Result<Box<dyn RelayStream>> {
+        let mut left_running = served
+            .left_running
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(earlier) = left_running.take()
+            && let Err(mpsc::RecvTimeoutError::Timeout) =
+                earlier.recv_timeout(deadline.saturating_duration_since(Instant::now()))
+        {
+            *left_running = Some(earlier);
+            return Err(probe_timed_out());
+        }
+        let (sender, receiver) = mpsc::channel();
+        let endpoint = Arc::clone(&served.endpoint);
+        let tls = Arc::clone(&self.tls);
+        let resolver = Arc::clone(&self.resolver);
+        // The hand-over: the opening checks the deadline and sends under it, and the probe
+        // that stops waiting takes what was sent under it, so a connection either reaches the
+        // probe in time or is closed when its opening ends, never kept in the channel.
+        let handover = Arc::new(Mutex::new(()));
+        let opening_handover = Arc::clone(&handover);
+        std::thread::Builder::new()
+            .name("llmgw-probe-open".to_owned())
+            .spawn(move || {
+                let opened = endpoint.open_probe(tls.as_ref(), resolver.as_ref(), deadline);
+                let _held = opening_handover
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                if Instant::now() >= deadline {
+                    drop(opened);
+                    drop(sender.send(Err(probe_timed_out())));
+                } else {
+                    drop(sender.send(opened));
+                }
+            })?;
+        match receiver.recv_timeout(deadline.saturating_duration_since(Instant::now())) {
+            Ok(opened) => opened,
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                let _held = handover
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner);
+                // Sent in the instant the wait ended: too late, and closed here.
+                if let Err(mpsc::TryRecvError::Empty) = receiver.try_recv() {
+                    *left_running = Some(receiver);
+                }
+                Err(probe_timed_out())
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => Err(io::Error::other(
+                "the probe's opening ended without an answer",
+            )),
+        }
+    }
+}
+
+/// What a probe's answer says of its model: a 2xx status is `ready`; 401 or 403
+/// `credential-refused`, but `ready` for a `client` endpoint, which holds no credential that
+/// could be refused; any other status `status-<code>`; and no status line at all `no-answer`.
+fn probed_status(answer: &io::Result<u16>, client: bool) -> ModelStatus {
+    let unreachable = |why: String| ModelStatus {
+        phase: ModelPhase::Unreachable,
+        sub_phase: Some(why),
+        profile: None,
+    };
+    match answer {
+        Ok(200..=299) => ModelStatus::new(ModelPhase::Ready),
+        Ok(401 | 403) if client => ModelStatus::new(ModelPhase::Ready),
+        Ok(401 | 403) => unreachable("credential-refused".to_owned()),
+        Ok(code) => unreachable(format!("status-{code:03}")),
+        Err(_) => unreachable("no-answer".to_owned()),
     }
 }
 
@@ -550,8 +781,8 @@ impl RelayTargets for HostedTargets {
     /// A hosted model's endpoint, at once; any other alias is `rest`'s.
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         match self.endpoints.get(alias) {
-            Some(endpoint) => Ok(Box::new(HostedTarget {
-                endpoint: Arc::clone(endpoint),
+            Some(served) => Ok(Box::new(HostedTarget {
+                endpoint: Arc::clone(&served.endpoint),
                 tls: Arc::clone(&self.tls),
             })),
             None => self.rest.acquire(alias),
@@ -566,9 +797,8 @@ impl RelayTargets for HostedTargets {
         }
     }
 
-    /// A hosted model has no lifecycle: nothing here starts its endpoint, so its wake is
-    /// `None`, answered `path-unknown` (story:model-wake-and-status). Any other alias is
-    /// `rest`'s.
+    /// A hosted model has no wake: nothing here starts its endpoint, so its wake is `None`,
+    /// answered `path-unknown` (story:model-wake-and-status). Any other alias is `rest`'s.
     fn wake(&self, alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
         if self.endpoints.contains_key(alias) {
             return None;
@@ -576,12 +806,16 @@ impl RelayTargets for HostedTargets {
         self.rest.wake(alias)
     }
 
-    /// As [`Self::wake`]: `None` for a hosted model, `rest`'s for any other.
+    /// A hosted model's status is its endpoint's probe (story:route-status-for-every-model):
+    /// within the [`ProbeBounds::timeout`], name lookup included, the request `credential set`
+    /// sends ([`HostedEndpoint::probe_within`]), carrying the endpoint's own credential and static headers and nothing of any
+    /// caller's, its result reused for [`ProbeBounds::reuse`]. It asks `rest` nothing. Any other
+    /// alias is `rest`'s.
     fn status(&self, alias: &str) -> Option<ModelStatus> {
-        if self.endpoints.contains_key(alias) {
-            return None;
+        match self.endpoints.get(alias) {
+            Some(served) => Some(self.probed(served)),
+            None => self.rest.status(alias),
         }
-        self.rest.status(alias)
     }
 }
 
@@ -816,9 +1050,7 @@ mod tests {
     use crate::trusted::ledger::{self, Entry};
     use llm_gateway::AuthKind;
     use llm_gateway::BasePath;
-    use llm_gateway::{
-        Caller, CredentialHeader, RelayStream, RelayTarget as _, StaticHeader, TargetBearer,
-    };
+    use llm_gateway::{Caller, CredentialHeader, RelayStream, StaticHeader, TargetBearer};
     use std::{
         io::{self, Read, Write},
         net::{IpAddr, TcpListener},
@@ -1101,5 +1333,486 @@ mod tests {
                 "{line:?}"
             );
         }
+    }
+
+    // --- The status probe (story:route-status-for-every-model) -----------------------------
+
+    use super::{HostedTargets, ProbeBounds};
+    use llm_gateway::{ModelPhase, ModelStatus, RelayTarget, RelayTargets, TargetRefusal};
+    use std::{
+        collections::BTreeMap,
+        net::SocketAddr,
+        sync::{
+            Mutex,
+            atomic::{AtomicU64, AtomicUsize, Ordering},
+        },
+        thread::JoinHandle,
+    };
+
+    /// The rest of the composition: records every ask and answers none.
+    #[derive(Default)]
+    struct Rest(Mutex<Vec<String>>);
+
+    impl RelayTargets for Rest {
+        fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+            self.0.lock().unwrap().push(format!("acquire {alias}"));
+            Err(TargetRefusal::Unavailable)
+        }
+
+        fn invalidate(&self, alias: &str, _authority: &str) {
+            self.0.lock().unwrap().push(format!("invalidate {alias}"));
+        }
+
+        fn wake(&self, alias: &str) -> Option<Result<ModelStatus, TargetRefusal>> {
+            self.0.lock().unwrap().push(format!("wake {alias}"));
+            None
+        }
+
+        fn status(&self, alias: &str) -> Option<ModelStatus> {
+            self.0.lock().unwrap().push(format!("status {alias}"));
+            Some(ModelStatus::new(ModelPhase::Stopped))
+        }
+    }
+
+    /// A loopback endpoint that reads one request head, waits `delay`, then writes `answer` (or
+    /// closes without one) and hands back the head it read.
+    fn endpoint_once(
+        answer: Option<&'static str>,
+        delay: Duration,
+    ) -> (SocketAddr, JoinHandle<String>) {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let thread = thread::spawn(move || {
+            let (mut connection, _) = listener.accept().unwrap();
+            connection
+                .set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            let mut head = Vec::new();
+            let mut byte = [0_u8; 1];
+            while !head.ends_with(b"\r\n\r\n") {
+                match connection.read(&mut byte) {
+                    Ok(1) => head.push(byte[0]),
+                    _ => break,
+                }
+            }
+            thread::sleep(delay);
+            if let Some(answer) = answer {
+                drop(connection.write_all(answer.as_bytes()));
+            }
+            String::from_utf8_lossy(&head).into_owned()
+        });
+        (address, thread)
+    }
+
+    fn targets(alias: &str, endpoint: HostedEndpoint, bounds: ProbeBounds) -> HostedTargets {
+        HostedTargets::new(
+            BTreeMap::from([(alias.to_owned(), endpoint)]),
+            Arc::new(NoTls),
+            Arc::new(Rest::default()),
+        )
+        .with_probe_bounds(bounds)
+    }
+
+    /// Bounds that reuse nothing, so every read probes.
+    fn fresh(timeout: Duration) -> ProbeBounds {
+        ProbeBounds {
+            timeout,
+            reuse: Duration::ZERO,
+        }
+    }
+
+    fn unreachable(why: &str) -> ModelStatus {
+        ModelStatus {
+            phase: ModelPhase::Unreachable,
+            sub_phase: Some(why.to_owned()),
+            profile: None,
+        }
+    }
+
+    fn bearer() -> EndpointCredential {
+        EndpointCredential::Bearer(TargetBearer::new(b"sk-status-0123456789".to_vec()).unwrap())
+    }
+
+    /// Acceptance 1 and 2: the probe's status decides the phase, and only a `client` endpoint
+    /// reads 401 and 403 as an endpoint that answered.
+    #[test]
+    fn route_status_a_hosted_status_is_ready_on_2xx_and_unreachable_saying_why_otherwise() {
+        let ready = ModelStatus::new(ModelPhase::Ready);
+        let cases: [(bool, Option<&'static str>, ModelStatus); 15] = [
+            (
+                false,
+                Some("HTTP/1.1 200 OK\r\ncontent-length: 0\r\n\r\n"),
+                ready.clone(),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 204 No Content\r\n\r\n"),
+                ready.clone(),
+            ),
+            (false, Some("HTTP/1.0 299 Odd\r\n\r\n"), ready.clone()),
+            (
+                false,
+                Some("HTTP/1.1 100 Continue\r\n\r\nHTTP/1.1 200 OK\r\n\r\n"),
+                ready.clone(),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 301 Moved\r\n\r\n"),
+                unreachable("status-301"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 401 Unauthorized\r\n\r\n"),
+                unreachable("credential-refused"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 403 Forbidden\r\n\r\n"),
+                unreachable("credential-refused"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 404 Not Found\r\n\r\n"),
+                unreachable("status-404"),
+            ),
+            (
+                false,
+                Some("HTTP/1.1 503 Busy\r\n\r\n"),
+                unreachable("status-503"),
+            ),
+            (
+                false,
+                Some("not http at all\r\n\r\n"),
+                unreachable("no-answer"),
+            ),
+            (false, None, unreachable("no-answer")),
+            (
+                true,
+                Some("HTTP/1.1 401 Unauthorized\r\n\r\n"),
+                ready.clone(),
+            ),
+            (true, Some("HTTP/1.1 403 Forbidden\r\n\r\n"), ready.clone()),
+            (true, Some("HTTP/1.1 200 OK\r\n\r\n"), ready.clone()),
+            (
+                true,
+                Some("HTTP/1.1 429 Slow Down\r\n\r\n"),
+                unreachable("status-429"),
+            ),
+        ];
+        for (client, answer, expected) in cases {
+            let (address, server) = endpoint_once(answer, Duration::ZERO);
+            let credential = if client {
+                EndpointCredential::Client
+            } else {
+                bearer()
+            };
+            let endpoint =
+                HostedEndpoint::new(&format!("http://{address}/v1"), credential).unwrap();
+            let targets = targets("m", endpoint, fresh(Duration::from_secs(5)));
+            assert_eq!(targets.status("m"), Some(expected), "{client} {answer:?}");
+            drop(server.join());
+        }
+        // Nothing listens: no connection is no answer.
+        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = closed.local_addr().unwrap();
+        drop(closed);
+        let endpoint = HostedEndpoint::new(&format!("http://{address}"), bearer()).unwrap();
+        let targets = targets("m", endpoint, fresh(Duration::from_secs(5)));
+        assert_eq!(targets.status("m"), Some(unreachable("no-answer")));
+    }
+
+    /// Acceptance 3: the probe is `GET <base path>/models` with the model's own static headers
+    /// and credential as its `auth_kind` sends it, and nothing else; a `client` endpoint's
+    /// carries no credential.
+    #[test]
+    fn route_status_the_probe_carries_the_models_credential_and_headers_and_nothing_else() {
+        let key = || TargetBearer::new(b"sk-status-0123456789".to_vec()).unwrap();
+        let header = StaticHeader::new("x-team", "blue").unwrap();
+        let cases = [
+            (
+                "/openai/v1",
+                EndpointCredential::Bearer(key()),
+                "GET /openai/v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\nauthorization: Bearer sk-status-0123456789\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+            (
+                "",
+                EndpointCredential::ApiKey {
+                    header: CredentialHeader::new("x-api-key").unwrap(),
+                    key: key(),
+                },
+                "GET /v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\nx-api-key: sk-status-0123456789\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+            (
+                "/v1",
+                EndpointCredential::Client,
+                "GET /v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+            (
+                "/v1",
+                EndpointCredential::Anonymous,
+                "GET /v1/models HTTP/1.1\r\nhost: {authority}\r\nx-team: blue\r\naccept: application/json\r\nconnection: close\r\n\r\n",
+            ),
+        ];
+        for (base, credential, expected) in cases {
+            let (address, server) = endpoint_once(Some("HTTP/1.1 200 OK\r\n\r\n"), Duration::ZERO);
+            let endpoint = HostedEndpoint::new(&format!("http://{address}{base}"), credential)
+                .unwrap()
+                .with_headers(vec![header.clone()])
+                .unwrap();
+            let targets = targets("m", endpoint, fresh(Duration::from_secs(5)));
+            assert_eq!(
+                targets.status("m"),
+                Some(ModelStatus::new(ModelPhase::Ready))
+            );
+            assert_eq!(
+                server.join().unwrap(),
+                expected.replace("{authority}", &address.to_string())
+            );
+        }
+    }
+
+    /// Acceptance 3: a head that arrives inside the probe's deadline is read; one that does
+    /// not, or never arrives, is `no-answer` once the deadline has passed, and no later.
+    #[test]
+    fn route_status_a_probe_not_answered_inside_its_deadline_is_no_answer_at_the_deadline() {
+        let deadline = Duration::from_millis(600);
+        let ok = Some("HTTP/1.1 200 OK\r\n\r\n");
+        for (delay, expected) in [
+            (
+                Duration::from_millis(200),
+                ModelStatus::new(ModelPhase::Ready),
+            ),
+            (Duration::from_millis(1200), unreachable("no-answer")),
+        ] {
+            let (address, server) = endpoint_once(ok, delay);
+            let endpoint = HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap();
+            let targets = targets("m", endpoint, fresh(deadline));
+            let started = Instant::now();
+            assert_eq!(targets.status("m"), Some(expected), "{delay:?}");
+            let took = started.elapsed();
+            assert!(took < deadline + Duration::from_millis(500), "{took:?}");
+            if delay > deadline {
+                assert!(took >= deadline, "{took:?}");
+            }
+            drop(server.join());
+        }
+    }
+
+    /// Acceptance 3: a result is reused until `status-reuse-seconds` have passed since its probe
+    /// ended, at exactly the published number, on a clock the test moves.
+    #[test]
+    fn route_status_a_result_is_reused_until_the_published_reuse_time_has_passed() {
+        assert_eq!(ProbeBounds::default().reuse, Duration::from_secs(10));
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&probes);
+        thread::spawn(move || {
+            for connection in listener.incoming() {
+                let Ok(mut connection) = connection else {
+                    return;
+                };
+                counted.fetch_add(1, Ordering::SeqCst);
+                let mut seen = [0_u8; 1024];
+                drop(connection.read(&mut seen));
+                drop(connection.write_all(b"HTTP/1.1 200 OK\r\n\r\n"));
+            }
+        });
+        let now = Arc::new(AtomicU64::new(1_000));
+        let clock = Arc::clone(&now);
+        let endpoint = HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap();
+        let targets = targets("m", endpoint, ProbeBounds::default())
+            .with_probe_clock(Arc::new(move || clock.load(Ordering::SeqCst)));
+        let ready = Some(ModelStatus::new(ModelPhase::Ready));
+        assert_eq!(targets.status("m"), ready);
+        assert_eq!(probes.load(Ordering::SeqCst), 1);
+        now.store(1_000 + 9_999, Ordering::SeqCst);
+        assert_eq!(targets.status("m"), ready);
+        assert_eq!(
+            probes.load(Ordering::SeqCst),
+            1,
+            "probed inside the reuse time"
+        );
+        now.store(1_000 + 10_000, Ordering::SeqCst);
+        assert_eq!(targets.status("m"), ready);
+        assert_eq!(
+            probes.load(Ordering::SeqCst),
+            2,
+            "not probed once the reuse time passed"
+        );
+    }
+
+    /// The name lookup is inside the probe's deadline. A lookup that has not returned by then is
+    /// `no-answer` at the deadline and is left running on its own: the next read starts none of
+    /// its own while it runs and answers at its own deadline, and once it has ended the next read
+    /// looks the name up afresh and probes.
+    #[test]
+    fn route_status_a_lookup_past_the_deadline_is_no_answer_and_only_one_is_left_running() {
+        let timeout = Duration::from_millis(300);
+        let (answering, endpoint_thread) =
+            endpoint_once(Some("HTTP/1.1 200 OK\r\n\r\n"), Duration::ZERO);
+        let calls = Arc::new(AtomicUsize::new(0));
+        let (release, released) = std::sync::mpsc::channel::<()>();
+        let released = Mutex::new(released);
+        let counted = Arc::clone(&calls);
+        let resolver: super::Resolver = Arc::new(move |host: &str, port: u16| {
+            assert_eq!((host, port), ("localhost", 8080));
+            if counted.fetch_add(1, Ordering::SeqCst) == 0 {
+                // The first lookup does not return until the test lets it.
+                let _released = released.lock().unwrap().recv();
+            }
+            Ok(vec![answering])
+        });
+        let endpoint =
+            HostedEndpoint::new("http://localhost:8080/v1", EndpointCredential::Anonymous).unwrap();
+        let targets = targets("m", endpoint, fresh(timeout)).with_resolver(resolver);
+        for read in 0..2 {
+            let started = Instant::now();
+            assert_eq!(
+                targets.status("m"),
+                Some(unreachable("no-answer")),
+                "{read}"
+            );
+            let took = started.elapsed();
+            assert!(took >= timeout, "read {read} took {took:?}");
+            assert!(
+                took < timeout + Duration::from_millis(500),
+                "read {read} took {took:?}"
+            );
+        }
+        assert_eq!(calls.load(Ordering::SeqCst), 1, "a second lookup started");
+        release.send(()).unwrap();
+        // The released lookup ends at once; its late answer is not used, the next read's is.
+        assert_eq!(
+            targets.status("m"),
+            Some(ModelStatus::new(ModelPhase::Ready))
+        );
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        assert!(
+            endpoint_thread
+                .join()
+                .unwrap()
+                .starts_with("GET /v1/models ")
+        );
+    }
+
+    /// Acceptance 3: two reads of one model at once send one probe, and both read its result.
+    #[test]
+    fn route_status_two_reads_of_one_model_at_once_send_one_probe() {
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let probes = Arc::new(AtomicUsize::new(0));
+        let counted = Arc::clone(&probes);
+        thread::spawn(move || {
+            for connection in listener.incoming() {
+                let Ok(mut connection) = connection else {
+                    return;
+                };
+                counted.fetch_add(1, Ordering::SeqCst);
+                let mut seen = [0_u8; 1024];
+                drop(connection.read(&mut seen));
+                thread::sleep(Duration::from_millis(300));
+                drop(connection.write_all(b"HTTP/1.1 200 OK\r\n\r\n"));
+            }
+        });
+        let endpoint = HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap();
+        let targets = Arc::new(targets(
+            "m",
+            endpoint,
+            ProbeBounds {
+                timeout: Duration::from_secs(5),
+                reuse: Duration::from_secs(10),
+            },
+        ));
+        let readers: Vec<_> = (0..2)
+            .map(|_| {
+                let targets = Arc::clone(&targets);
+                thread::spawn(move || targets.status("m"))
+            })
+            .collect();
+        for reader in readers {
+            assert_eq!(
+                reader.join().unwrap(),
+                Some(ModelStatus::new(ModelPhase::Ready))
+            );
+        }
+        assert_eq!(probes.load(Ordering::SeqCst), 1);
+    }
+
+    /// Acceptance 3 and 4: a hosted model's status asks the rest of the composition nothing,
+    /// its wake stays `None`, and any other alias is still the rest's.
+    #[test]
+    fn route_status_a_hosted_status_asks_the_rest_nothing_and_its_wake_stays_none() {
+        let (address, server) = endpoint_once(Some("HTTP/1.1 200 OK\r\n\r\n"), Duration::ZERO);
+        let rest = Arc::new(Rest::default());
+        let targets = HostedTargets::new(
+            BTreeMap::from([(
+                "m".to_owned(),
+                HostedEndpoint::new(&format!("http://{address}/v1"), bearer()).unwrap(),
+            )]),
+            Arc::new(NoTls),
+            Arc::clone(&rest) as Arc<dyn RelayTargets>,
+        );
+        assert_eq!(
+            targets.status("m"),
+            Some(ModelStatus::new(ModelPhase::Ready))
+        );
+        assert!(targets.wake("m").is_none());
+        assert!(rest.0.lock().unwrap().is_empty(), "{:?}", rest.0.lock());
+        assert_eq!(
+            targets.status("pod"),
+            Some(ModelStatus::new(ModelPhase::Stopped))
+        );
+        assert_eq!(*rest.0.lock().unwrap(), ["status pod"]);
+        drop(server.join());
+    }
+
+    /// The bounds `docs/gateway.md` publishes ("Bounds of the status probe") are the defaults
+    /// the binary serves with.
+    #[test]
+    fn route_status_the_published_probe_bounds_are_the_defaults() {
+        let contract = include_str!("../../../docs/gateway.md");
+        let section = contract
+            .split_once("\n## Bounds of the status probe\n")
+            .expect("docs/gateway.md has no section for the status probe's bounds")
+            .1
+            .split("\n## ")
+            .next()
+            .unwrap();
+        let rows: BTreeMap<String, (String, u64)> = section
+            .lines()
+            .filter(|line| line.starts_with("| `"))
+            .map(|line| {
+                let cells: Vec<&str> = line.trim_matches('|').split('|').map(str::trim).collect();
+                (
+                    cells[0].trim_matches('`').to_owned(),
+                    (
+                        cells[1].trim_matches('`').to_owned(),
+                        cells[2].parse().unwrap(),
+                    ),
+                )
+            })
+            .collect();
+        let bounds = ProbeBounds::default();
+        let expected: BTreeMap<String, (String, u64)> = [
+            (
+                "status-probe-timeout-ms",
+                "ProbeBounds::timeout",
+                u64::try_from(bounds.timeout.as_millis()).unwrap(),
+            ),
+            (
+                "status-reuse-seconds",
+                "ProbeBounds::reuse",
+                bounds.reuse.as_secs(),
+            ),
+        ]
+        .into_iter()
+        .map(|(name, constant, value)| (name.to_owned(), (constant.to_owned(), value)))
+        .collect();
+        assert_eq!(rows, expected);
+        assert_eq!(
+            (bounds.timeout, bounds.reuse),
+            (Duration::from_secs(5), Duration::from_secs(10))
+        );
     }
 }

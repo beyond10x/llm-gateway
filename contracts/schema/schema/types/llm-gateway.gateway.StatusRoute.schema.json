@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.StatusRoute",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:0952c1fc3504ed616ffd6ad8d6523468b39a5ea0d86bdfdcaff8e3f431eb9c42",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.StatusRoute": {
+      "title": "StatusRoute",
+      "x-ess-name": "llm-gateway.gateway.StatusRoute",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "List"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "path",
+          "type": "String",
+          "values": {
+            "List": "/v1/status"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "methods",
+          "type": "String",
+          "values": {
+            "List": "GET, HEAD"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "format",
+          "type": "String",
+          "values": {
+            "List": "llm-gateway.status/1"
+          }
+        }
+      ]
+    }
+  }
+}

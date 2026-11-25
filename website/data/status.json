@@ -130,9 +130,16 @@
     },
     {
       "area": "Relay",
-      "detail": "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model has neither and is path-unknown. Tested over the emulator.",
+      "detail": "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model, a route and a Bedrock model have no wake. Tested over the emulator.",
       "href": "/docs/concepts/relay",
       "label": "Wake a model and read its phase",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
+      "detail": "GET /v1/models/<alias>/status of a hosted model or a route probes its endpoint only when read, at most once per model at a time, within 5 s, reused for 10 s: ready on a 2xx answer, otherwise unreachable with no-answer, credential-refused or status-<code>. GET /v1/status lists every model in alias order with its kind, wires, status and whether a call is answered now, asking all of them side by side. A Bedrock model has no status. Tested against loopback endpoints, not against a vendor API.",
+      "href": "/docs/concepts/relay",
+      "label": "A status for every served model",
       "status": "shipped"
     },
     {

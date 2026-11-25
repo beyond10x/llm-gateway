@@ -113,6 +113,10 @@
       "llm-gateway.gateway/authored/sa-token-each-token-the-review-does-not-admit-is-refused-and-relays-nothing",
       "llm-gateway.gateway/authored/sa-token-without-a-review-only-the-owners-bearer-is-admitted",
       "llm-gateway.gateway/authored/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted",
+      "llm-gateway.gateway/authored/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready",
+      "llm-gateway.gateway/authored/status-a-hosted-model-and-a-route-are-ready-when-their-endpoint-answers-and-unreachable-saying-why",
+      "llm-gateway.gateway/authored/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered",
+      "llm-gateway.gateway/authored/status-the-list-takes-the-owner-credential-and-is-refused-before-any-status-is-asked",
       "llm-gateway.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case",
       "llm-gateway.gateway/authored/the-concurrency-bound-admits-its-own-count",
       "llm-gateway.gateway/authored/the-owner-inspects-every-route-and-unreported-limits-stay-absent",
@@ -870,6 +874,26 @@
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/sa-token-without-an-owner-secret-only-a-reviewed-token-is-admitted"
       },
+      "gateway/scenarios/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready.yaml": {
+        "digest": "sha256:17ec895061384be883b111e57134f18be6c2cb8c55740173da9f93cbbef29366",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready"
+      },
+      "gateway/scenarios/status-a-hosted-model-and-a-route-are-ready-when-their-endpoint-answers-and-unreachable-saying-why.yaml": {
+        "digest": "sha256:d83accda5cf69ef07057fbb3067021a209ffff5b63ac77046cbb83bab406c07e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/status-a-hosted-model-and-a-route-are-ready-when-their-endpoint-answers-and-unreachable-saying-why"
+      },
+      "gateway/scenarios/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered.yaml": {
+        "digest": "sha256:3ea750dd1e70b5afe385cac15824a1ea4a2a85974583179600b0e90d81c8a2e1",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered"
+      },
+      "gateway/scenarios/status-the-list-takes-the-owner-credential-and-is-refused-before-any-status-is-asked.yaml": {
+        "digest": "sha256:03ebd8acfff33389c231ab158f104855f5363ee536f7d854e67b7e7036f43ef6",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/status-the-list-takes-the-owner-credential-and-is-refused-before-any-status-is-asked"
+      },
       "gateway/scenarios/the-bearer-scheme-is-matched-without-regard-to-case.yaml": {
         "digest": "sha256:8874b79daa1859670eeb718758c3446e6205a1aeed1270c4b5afea55afde7ce7",
         "disposition": "accepted",
@@ -1101,7 +1125,7 @@
         "scenario": "llm-gateway.gateway/authored/wake-and-status-are-refused-before-the-target-source-is-asked"
       },
       "gateway/scenarios/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown.yaml": {
-        "digest": "sha256:720f8a60907b2c736dcf4aa6de802a023543dabfb49922b233088124bf8332b6",
+        "digest": "sha256:c4500b488288be075861983f6b54a9e3b52d5cceb0566c0c8108cc3575eae9dd",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown"
       },
@@ -1847,7 +1871,7 @@
       }
     },
     "counts": {
-      "authored": 307,
+      "authored": 311,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -1962,9 +1986,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "2cf2c1e320adb14d4ca5368148b764359f6f2903722f0b564cad6e3b7e9b8438",
+    "contract_digest": "f32c390ec5aedd6fd6c0ec9aeb4b6d888541004dc6d31c6f2c8dae6f921e9df7",
     "scenario_initial_state": "empty",
-    "spec_digest": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
+    "spec_digest": "d72dda311675344e86ee1e50b4ab1a53f6daa15e5482b8ec09bf8148ba09fc05",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -13840,6 +13864,582 @@
         }
       ]
     },
+    "llm-gateway.gateway/authored/status-a-client-credential-model-is-probed-without-a-credential-and-a-refusal-is-ready": {
+      "purpose": "an auth_kind client endpoint is probed with no credential and nothing of the caller's, and a 401 or 403 answer is ready; any other status outside 2xx is still unreachable",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"none\",\"models\":[{\"alias\":\"subscription\",\"upstream_model\":\"vendor-sub\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"client\"}},{\"alias\":\"team\",\"upstream_model\":\"vendor-team\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"auth_kind\":\"client\"}},{\"alias\":\"broken\",\"upstream_model\":\"vendor-broken\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-3\",\"scheme\":\"http\",\"auth_kind\":\"client\"}}],\"pods\":[[{\"status\":401}],[{\"status\":403}],[{\"status\":500}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/subscription/status\",\"body\":\"\",\"headers\":[\"x-api-key: sk-client-0123456789abcdef\",\"anthropic-version: 2023-06-01\"]},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/team/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/broken/status\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "absent",
+                  "absent",
+                  "absent"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"model\":\"subscription\",\"phase\":\"ready\"}",
+                  "{\"model\":\"team\",\"phase\":\"ready\"}",
+                  "{\"model\":\"broken\",\"phase\":\"unreachable\",\"sub_phase\":\"status-500\"}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "received_heads": {
+                "kind": "literal",
+                "value": [
+                  "accept: application/json | connection: close",
+                  "accept: application/json | connection: close",
+                  "accept: application/json | connection: close"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 GET /v1/models ",
+                  "pod-2 GET /v1/models ",
+                  "pod-3 GET /v1/models "
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/status-a-hosted-model-and-a-route-are-ready-when-their-endpoint-answers-and-unreachable-saying-why": {
+      "purpose": "a hosted model and a route are probed with their own credential; 2xx is ready, 401 or 403 credential-refused, another status status-<code>, no answer no-answer; the wake stays path-unknown",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"answering\",\"upstream_model\":\"vendor-a\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"base_path\":\"/openai/v1\",\"auth_kind\":\"bearer\",\"credential\":\"endpoint-bearer-0123456789abcdef\",\"headers\":{\"x-team\":\"blue\"}}},{\"alias\":\"refusing\",\"upstream_model\":\"vendor-r\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"auth_kind\":\"api-key\",\"credential\":\"endpoint-api-key-0123456789abcdef\",\"credential_header\":\"x-api-key\"}},{\"alias\":\"failing\",\"upstream_model\":\"vendor-f\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-3\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"silent\",\"upstream_model\":\"vendor-s\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-4\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"untrusted\",\"upstream_model\":\"vendor-u\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-5\",\"scheme\":\"https\",\"certificate\":\"untrusted\",\"auth_kind\":\"bearer\",\"credential\":\"endpoint-bearer-fedcba9876543210\"}}],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  openrouter: {base_url: \\\"http://pod-6/api/v1\\\", protocol: chat-completions, auth: {kind: bearer, secret: \\\"file:~/keys/openrouter\\\"}}\\nroutes:\\n  router: openrouter/vendor/model-x\\n\",\"route_credentials\":{\"openrouter\":\"route-bearer-0123456789abcdef\"},\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"object\\\":\\\"list\\\",\\\"data\\\":[]}\"]}],[{\"status\":403}],[{\"status\":503}],[{\"transport\":\"closed\"}],[{\"status\":200}],[{\"status\":204}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/answering/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/refusing/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/failing/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/silent/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/untrusted/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/router/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/models/answering/status\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/answering/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/router/wake\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "authorizations": {
+                "kind": "literal",
+                "value": [
+                  "Bearer endpoint-bearer-0123456789abcdef",
+                  "absent",
+                  "absent",
+                  "absent",
+                  "Bearer route-bearer-0123456789abcdef"
+                ]
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"model\":\"answering\",\"phase\":\"ready\"}",
+                  "{\"model\":\"refusing\",\"phase\":\"unreachable\",\"sub_phase\":\"credential-refused\"}",
+                  "{\"model\":\"failing\",\"phase\":\"unreachable\",\"sub_phase\":\"status-503\"}",
+                  "{\"model\":\"silent\",\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\"}",
+                  "{\"model\":\"untrusted\",\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\"}",
+                  "{\"model\":\"router\",\"phase\":\"ready\"}",
+                  "{\"model\":\"answering\",\"phase\":\"ready\"}",
+                  "{\"error\":{\"code\":\"path-unknown\",\"message\":\"no such gateway resource\"}}",
+                  "{\"error\":{\"code\":\"path-unknown\",\"message\":\"no such gateway resource\"}}"
+                ]
+              },
+              "connections": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 plain request",
+                  "pod-2 plain request",
+                  "pod-3 plain request",
+                  "pod-4 plain request",
+                  "pod-5 tls-refused nothing",
+                  "pod-6 plain request"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "status answering",
+                  "status refusing",
+                  "status failing",
+                  "status silent",
+                  "status untrusted",
+                  "status router",
+                  "status answering",
+                  "wake answering",
+                  "wake router"
+                ]
+              },
+              "received_heads": {
+                "kind": "literal",
+                "value": [
+                  "x-team: blue | authorization: Bearer endpoint-bearer-0123456789abcdef | accept: application/json | connection: close",
+                  "x-api-key: endpoint-api-key-0123456789abcdef | accept: application/json | connection: close",
+                  "accept: application/json | connection: close",
+                  "accept: application/json | connection: close",
+                  "authorization: Bearer route-bearer-0123456789abcdef | accept: application/json | connection: close"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "200 answered",
+                  "404 path-unknown",
+                  "404 path-unknown"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 GET /openai/v1/models ",
+                  "pod-2 GET /v1/models ",
+                  "pod-3 GET /v1/models ",
+                  "pod-4 GET /v1/models ",
+                  "pod-6 GET /api/v1/models "
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/status-the-list-names-every-model-in-alias-order-with-its-kind-wires-status-and-whether-a-call-is-answered": {
+      "purpose": "GET /v1/status lists every model in alias order with kind, wires, status and callable; a stopped pod is callable, a stopping pod and an unreachable endpoint are not",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"translation\":\"on\",\"models\":[{\"alias\":\"a-pod\",\"upstream_model\":\"a-pod\",\"wires\":[\"chat\",\"responses\"]},{\"alias\":\"b-hosted\",\"upstream_model\":\"vendor-b\",\"wires\":[\"chat\",\"messages\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"bearer\",\"credential\":\"endpoint-bearer-0123456789abcdef\"}},{\"alias\":\"c-hosted\",\"upstream_model\":\"vendor-c\",\"wires\":[\"responses\"],\"endpoint\":{\"pod\":\"pod-2\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}}],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  anthropic: {base_url: \\\"http://pod-3/anthropic/v1\\\", protocol: messages, auth: {kind: api-key, header: x-api-key, secret: \\\"file:/run/keys/anthropic\\\"}}\\nroutes:\\n  d-route: anthropic/claude-opus-4-1\\n\",\"route_credentials\":{\"anthropic\":\"endpoint-api-key-0123456789abcdef\"},\"lifecycle\":{\"status\":[{\"phase\":\"stopped\"},{\"phase\":\"stopping\"}]},\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"data\\\":[]}\"]}],[{\"transport\":\"closed\"}],[{\"status\":401}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"format\":\"llm-gateway.status/1\",\"models\":[{\"model\":\"a-pod\",\"kind\":\"pod\",\"wires\":[\"chat\",\"responses\"],\"phase\":\"stopped\",\"callable\":true},{\"model\":\"b-hosted\",\"kind\":\"hosted\",\"wires\":[\"chat\",\"messages\"],\"phase\":\"ready\",\"callable\":true},{\"model\":\"c-hosted\",\"kind\":\"hosted\",\"wires\":[\"responses\"],\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\",\"callable\":false},{\"model\":\"d-route\",\"kind\":\"route\",\"wires\":[\"messages\"],\"phase\":\"unreachable\",\"sub_phase\":\"credential-refused\",\"callable\":false}]}",
+                  "{\"format\":\"llm-gateway.status/1\",\"models\":[{\"model\":\"a-pod\",\"kind\":\"pod\",\"wires\":[\"chat\",\"responses\"],\"phase\":\"stopping\",\"callable\":false},{\"model\":\"b-hosted\",\"kind\":\"hosted\",\"wires\":[\"chat\",\"messages\"],\"phase\":\"ready\",\"callable\":true},{\"model\":\"c-hosted\",\"kind\":\"hosted\",\"wires\":[\"responses\"],\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\",\"callable\":false},{\"model\":\"d-route\",\"kind\":\"route\",\"wires\":[\"messages\"],\"phase\":\"unreachable\",\"sub_phase\":\"credential-refused\",\"callable\":false}]}"
+                ]
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "invalidated": {
+                "kind": "literal",
+                "value": []
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "released": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "secret_upstream": {
+                "kind": "literal",
+                "value": false
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/status-the-list-takes-the-owner-credential-and-is-refused-before-any-status-is-asked": {
+      "purpose": "GET /v1/status takes the owner credential, its method, a body and readiness are refused before any status is asked, and a model without a status has no phase or callable",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"none\",\"models\":[{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\",\"responses\"]}],\"pods\":[[]],\"steps\":[{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"\"},{\"step\":\"mark_ready\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"\",\"credential\":false},{\"step\":\"request\",\"method\":\"POST\",\"path\":\"/v1/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"{}\"},{\"step\":\"request\",\"method\":\"GET\",\"path\":\"/v1/status\",\"body\":\"\"},{\"step\":\"request\",\"method\":\"HEAD\",\"path\":\"/v1/status\",\"body\":\"\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "bodies": {
+                "kind": "literal",
+                "value": [
+                  "{\"error\":{\"code\":\"unavailable\",\"message\":\"the gateway is not ready to serve inspection\"}}",
+                  "{\"error\":{\"code\":\"credential-absent\",\"message\":\"no owner credential was presented\"}}",
+                  "{\"error\":{\"code\":\"method-not-allowed\",\"message\":\"this path does not accept that method\"}}",
+                  "{\"error\":{\"code\":\"body-not-allowed\",\"message\":\"the inspection surface accepts no request body\"}}",
+                  "{\"format\":\"llm-gateway.status/1\",\"models\":[{\"model\":\"small\",\"kind\":\"pod\",\"wires\":[\"chat\",\"responses\"]}]}",
+                  ""
+                ]
+              },
+              "connections": {
+                "kind": "literal",
+                "value": []
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "headers": {
+                "kind": "literal",
+                "value": [
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=GET, HEAD",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent",
+                  "content-type=application/json cache-control=no-store allow=absent"
+                ]
+              },
+              "lifecycle_asks": {
+                "kind": "literal",
+                "value": [
+                  "status small",
+                  "status small"
+                ]
+              },
+              "records": {
+                "kind": "literal",
+                "value": []
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "503 unavailable",
+                  "ok",
+                  "401 credential-absent",
+                  "405 method-not-allowed",
+                  "400 body-not-allowed",
+                  "200 answered",
+                  "200 answered"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
     "llm-gateway.gateway/authored/the-bearer-scheme-is-matched-without-regard-to-case": {
       "purpose": "the scheme word is case-insensitive; the credential is not",
       "source": [
@@ -18750,7 +19350,7 @@
       ]
     },
     "llm-gateway.gateway/authored/wake-and-status-of-a-model-with-no-lifecycle-are-path-unknown": {
-      "purpose": "a hosted endpoint, and a model whose target source starts no pod, have no lifecycle routes and are answered path-unknown without any connection",
+      "purpose": "a hosted endpoint has no wake, and a model whose target source starts no pod and reports no status has neither lifecycle route; each is answered path-unknown without any connection",
       "source": [
         {
           "kind": "domain",
@@ -18778,7 +19378,7 @@
           "input": {
             "program_json": {
               "kind": "literal",
-              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"routed\",\"upstream_model\":\"vendor-routed\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/routed/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/routed/status\",\"body\":\"\",\"method\":\"GET\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"GET\"}]}"
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"routed\",\"upstream_model\":\"vendor-routed\",\"wires\":[\"chat\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"anonymous\"}},{\"alias\":\"small\",\"upstream_model\":\"small\",\"wires\":[\"chat\"]}],\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/models/routed/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/wake\",\"body\":\"\"},{\"step\":\"request\",\"path\":\"/v1/models/small/status\",\"body\":\"\",\"method\":\"GET\"}]}"
             }
           },
           "step": "execute_command"
@@ -18826,7 +19426,6 @@
                 "kind": "literal",
                 "value": [
                   "wake routed",
-                  "status routed",
                   "wake small",
                   "status small"
                 ]
@@ -18835,7 +19434,6 @@
                 "kind": "literal",
                 "value": [
                   "ok",
-                  "404 path-unknown",
                   "404 path-unknown",
                   "404 path-unknown",
                   "404 path-unknown"

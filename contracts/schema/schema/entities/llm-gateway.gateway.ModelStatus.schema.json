@@ -30,7 +30,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:df74968a70b5ba3f2fa743aab98d402dc4c4d2dd9b84bf518af2ab139ef7ebe6",
+    "contract_digest": "slice-sha256/2:93269f6317b6450668d1e910250c12f26ce2cd0124ac2ad47f8d01c3526ae2e8",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -43,7 +43,8 @@
         "Stopped",
         "Starting",
         "Ready",
-        "Stopping"
+        "Stopping",
+        "Unreachable"
       ],
       "x-ess-attributes": [
         {
@@ -54,7 +55,8 @@
             "Ready": "ready",
             "Starting": "starting",
             "Stopped": "stopped",
-            "Stopping": "stopping"
+            "Stopping": "stopping",
+            "Unreachable": "unreachable"
           }
         }
       ]

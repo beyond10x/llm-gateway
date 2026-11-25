@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.ModelKind",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:72a8c56ca67a2d087170682d55dad62571f679db2475592297390922d6e738d3",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.ModelKind": {
+      "title": "ModelKind",
+      "x-ess-name": "llm-gateway.gateway.ModelKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Pod",
+        "Hosted",
+        "Route",
+        "Bedrock"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "code",
+          "type": "String",
+          "values": {
+            "Bedrock": "bedrock",
+            "Hosted": "hosted",
+            "Pod": "pod",
+            "Route": "route"
+          }
+        }
+      ]
+    }
+  }
+}

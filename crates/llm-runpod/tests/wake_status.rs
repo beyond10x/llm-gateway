@@ -253,9 +253,11 @@ fn a_restarted_pool_reports_a_pod_it_has_not_observed_yet_as_starting_with_no_su
     assert_eq!(status.deployment, Some(id("qwen-1")));
 }
 
-/// The pool's phase codes are exactly `llm-gateway.gateway.ModelPhase`'s, in order.
+/// The pool's phase codes are `llm-gateway.gateway.ModelPhase`'s, in order, without
+/// `unreachable`: that phase is declared and is no pool phase, because a pod never has it (it is
+/// the phase of a hosted endpoint, a route or a server that does not answer).
 #[test]
-fn every_pool_phase_is_declared_with_its_code() {
+fn every_pool_phase_is_declared_with_its_code_and_unreachable_is_none() {
     let start = SPEC
         .find("  - name: llm-gateway.gateway.ModelPhase\n")
         .expect("spec/domains/gateway.yaml declares no ModelPhase");
@@ -267,5 +269,17 @@ fn every_pool_phase_is_declared_with_its_code() {
         .map(|code| code.trim_end_matches("}}"))
         .collect();
     let codes: Vec<&str> = ModelPhase::ALL.iter().map(|phase| phase.code()).collect();
-    assert_eq!(declared, codes);
+    assert!(
+        declared.contains(&"unreachable"),
+        "unreachable is not declared: {declared:?}"
+    );
+    assert!(
+        !codes.contains(&"unreachable"),
+        "unreachable is a pool phase: {codes:?}"
+    );
+    let without_unreachable: Vec<&str> = declared
+        .into_iter()
+        .filter(|code| *code != "unreachable")
+        .collect();
+    assert_eq!(without_unreachable, codes);
 }

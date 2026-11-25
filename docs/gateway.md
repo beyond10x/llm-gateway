@@ -108,7 +108,8 @@ The gateway serves one request per connection; keep-alive is not in this milesto
 | `GET`, `HEAD` | `/v1/routes/{alias}` | owner | One route by alias. |
 | `GET`, `HEAD` | `/metrics` | owner | The counters, as Prometheus text ([counters and usage records](#counters-and-usage-records)). |
 | `POST` | `/v1/models/{alias}/wake` | owner | Starts the model's pod and answers `202` at once with its status ([the lifecycle routes](#the-lifecycle-routes)). |
-| `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase and profile; starts nothing. |
+| `GET`, `HEAD` | `/v1/models/{alias}/status` | owner | The model's phase and profile; starts nothing. A hosted model's or route's is a probe of its endpoint. |
+| `GET`, `HEAD` | `/v1/status` | owner | Every relayed model's kind, wires, status and whether a call is answered now ([the status list](#the-status-list)). |
 | `POST` | `/v1/chat/completions` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `chat` wire, relayed ([the relay](#the-relay)). |
 | `POST` | `/v1/responses` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `responses` wire, relayed. |
 | `POST` | `/v1/messages` | owner, or none under `IngressAuth::None`, or a reviewed service account under `IngressAuth::ServiceAccountToken` | The `messages` wire, relayed. |
@@ -166,8 +167,11 @@ model's upstream name is written only on a gateway open on loopback. `GET /` for
 cannot disagree. `GET /v1/launch` is what the launchers read: `llm-gateway.launch/1` JSON with the
 origin and, per relayed model, its alias, prefix, whether it forwards the client's own credential,
 whether Claude Code and Codex reach it, its context and auto-compact windows, its `/model` label
-and its phase. It reads each model's status, so it takes the owner credential (none on a gateway
-open on loopback) and is not a public route.
+and its phase. It reads each pod model's status, so it takes the owner credential (none on a
+gateway open on loopback) and is not a public route. It asks no endpoint: a hosted model's, a
+route's and a Bedrock model's `phase` is `null` there, because their status is a probe of the
+endpoint (or none), and the read that probes is `GET /v1/status` ([the status
+list](#the-status-list)) or `GET /v1/models/{alias}/status`.
 
 `GET /v1/models` is `{"object":"list","data":[…]}`, one entry per model in alias order:
 `{"id":<alias>,"object":"model","owned_by":"llm-gateway","max_model_len"?:<n>,"wires":[…]}`.
@@ -238,9 +242,9 @@ source is asked anything:
 2. A declared body is `body-not-allowed`, and before `mark_ready` the route is `unavailable`.
 3. An alias no relayed model has is `model-unknown`.
 4. A model whose target source starts nothing for it is `path-unknown`: the route does not
-   exist for it. `RelayTargets::wake` and `RelayTargets::status` answer `None` by default, and
-   the binary answers `None` for a hosted endpoint and a route of the routes document, which are
-   relayed upstreams with no lifecycle.
+   exist for it. `RelayTargets::wake` and `RelayTargets::status` answer `None` by default. The
+   binary's wake answers `None` for a hosted endpoint and a route of the routes document, which
+   are relayed upstreams with no lifecycle; its status answers `None` only for a Bedrock model.
 
 Then `POST /v1/models/{alias}/wake` asks the source to start the model's target as a request's
 first ask for it would (`RelayTargets::wake`) and answers `202` at once with the status the
@@ -261,15 +265,52 @@ not report absent, never empty:
 `phase` is a `ModelPhase`, named by what a request for the model would meet: `stopped` (no pod
 is live; a request starts one), `starting` (a request is held while the pod starts), `ready`
 (the pod was last observed serving) and `stopping` (a previous pod owes a stop not yet
-confirmed; nothing starts meanwhile). `sub_phase` is the provider's own word for the pod while
-it starts, and `profile` the profile it was started on. Neither route makes a usage record or
-counts a series of its own. The specification is `llm-gateway.gateway.LifecycleRoute`; the
-scenarios are `contracts/gateway/scenarios/wake-*`.
+confirmed; nothing starts meanwhile) and `unreachable` (the model's endpoint did not answer its
+probe as serving; a call fails until it does). `sub_phase` is the provider's own word for the
+pod while it starts, or for an `unreachable` model why: `no-answer` (no final status inside the
+probe's deadline: refused, closed, untrusted TLS or silent), `credential-refused` (401 or 403
+to the model's own credential) or `status-<code>` (any other non-2xx status, three digits).
+`profile` is the profile a pod was started on. Neither route makes a usage record or counts a
+series of its own, and a status read never asks the source to acquire, wake or invalidate
+anything. The specification is `llm-gateway.gateway.LifecycleRoute`; the scenarios are
+`contracts/gateway/scenarios/wake-*` and `contracts/gateway/scenarios/status-*`.
 
 In the binary a Runpod model's wake is one `RunpodPool::wake`, so its spend check and its
 profile fallback are a request's, and the pod it starts, a spend refusal or a failed start is
 counted as a request's would be (`docs/hosting.md`, "Waking a model and reading its phase").
 Its status is `RunpodPool::status`, read from the hosting state machine with no provider call.
+
+A hosted model's and a route's status is a probe of its endpoint, the one `credential set`
+sends: `GET <base path>/models` with the model's credential and static headers and nothing
+else. A 2xx answer is `ready`; for an endpoint whose credential is the client's own
+(`auth_kind = "client"`) the probe carries no credential, and a 401 or 403 is `ready` too (the
+endpoint answers, and a caller's own credential decides). Anything else is `unreachable` with
+its `sub_phase`. The probe runs only when a status is read, never in the background: one probe
+per model at a time (a second read waits for the first and takes its result), and a result is
+reused until the reuse time has passed since its probe ended ([bounds of the status
+probe](#bounds-of-the-status-probe)). Wake stays `path-unknown` for both.
+
+### The status list
+
+`GET /v1/status` answers one list of every relayed model, in alias order, as
+`application/json`; `HEAD` answers the same without a body. It takes the owner credential, and
+the method (`allow: GET, HEAD`), body and readiness checks of the lifecycle routes, all before
+any status is asked. A gateway composed without a relay answers an empty list.
+
+```json
+{"format":"llm-gateway.status/1","models":[
+ {"model":"a-pod","kind":"pod","wires":["chat"],"phase":"stopped","callable":true},
+ {"model":"b-hosted","kind":"hosted","wires":["chat","responses"],"phase":"unreachable","sub_phase":"no-answer","callable":false},
+ {"model":"c-bedrock","kind":"bedrock","wires":["messages"]}]}
+```
+
+(Wrapped here; the answer is one line.) Each entry names `model`, `kind` (`pod`, `hosted`,
+`route` or `bedrock`), `wires` (the wires its upstream declares), the `ModelStatus` keys
+`phase`, `sub_phase` and `profile`, and `callable`: whether a call for it now is relayed or
+held while its pod starts. `callable` is `true` for `ready`, `starting` and `stopped` (a call
+starts a pod) and `false` for `stopping` and `unreachable`. A model with no status (Bedrock)
+has neither `phase` nor `callable`. Every status is asked side by side, so the list is answered
+within one probe deadline and a second however many endpoints are silent.
 
 ## Service-account tokens
 
@@ -1436,6 +1477,29 @@ agents' pods.
 
 `token_review.ca_file` is read once, at start: a rotated cluster CA takes a restart.
 `token_review.credential_file` is read again at every review.
+
+## Bounds of the status probe
+
+The bounds of the binary's status probe of a hosted model or route
+(`crates/llm-gateway-cli/src/hosted.rs`, `ProbeBounds::default`); the gateway crate holds none of
+them, so they are not in [Bounds](#bounds).
+`route_status_the_published_probe_bounds_are_the_defaults` in that file reads this table.
+
+| Bound | Constant | Value |
+| --- | --- | --- |
+| `status-probe-timeout-ms` | `ProbeBounds::timeout` | 5000 |
+| `status-reuse-seconds` | `ProbeBounds::reuse` | 10 |
+
+One probe, name lookup, connection, handshake, request and first final status, ends within
+`status-probe-timeout-ms` or is `unreachable`/`no-answer`. The lookup and the connection run on
+a thread of their own, so a lookup that does not return ends the probe at its deadline too. Such
+a lookup is left to end on its own, at most one per model: while it runs, a status read of that
+model starts no second one, waits for it until its own deadline and is `no-answer` if it has not
+ended; once it has ended, what it found is dropped and the next probe looks the name up again.
+A probe's result is reused for every
+status read of that model until `status-reuse-seconds` have passed since the probe ended; the
+next read after that probes again. `GET /v1/status` asks every model side by side, so it is
+answered within `status-probe-timeout-ms` and one second however many endpoints are silent.
 
 ## Bounds of the translated path
 

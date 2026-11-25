@@ -202,8 +202,15 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Wake a model and read its phase",
-        "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model has neither and is path-unknown. Tested over the emulator.",
+        "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model, a route and a Bedrock model have no wake. Tested over the emulator.",
         "crates/llm-gateway-cli/tests/wake_status.rs::wake_starts_the_pod_once_at_once_status_reads_it_without_a_call_and_a_request_reuses_it",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
+        "A status for every served model",
+        "GET /v1/models/<alias>/status of a hosted model or a route probes its endpoint only when read, at most once per model at a time, within 5 s, reused for 10 s: ready on a 2xx answer, otherwise unreachable with no-answer, credential-refused or status-<code>. GET /v1/status lists every model in alias order with its kind, wires, status and whether a call is answered now, asking all of them side by side. A Bedrock model has no status. Tested against loopback endpoints, not against a vendor API.",
+        "crates/llm-gateway-cli/tests/wake_status.rs::route_status_the_binary_lists_a_pod_a_hosted_model_and_a_route_with_their_kinds",
         RELAY,
     ),
     shipped(

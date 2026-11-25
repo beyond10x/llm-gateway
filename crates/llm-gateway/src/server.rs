@@ -45,6 +45,10 @@ const ROUTES_PREFIX: &str = "/v1/routes/";
 const MODELS_PREFIX: &str = "/v1/models/";
 const WAKE_SUFFIX: &str = "/wake";
 const STATUS_SUFFIX: &str = "/status";
+/// The owner's status list (`llm-gateway.gateway.StatusRoute`).
+const STATUS_LIST: &str = "/v1/status";
+/// The status list's format.
+const STATUS_FORMAT: &str = "llm-gateway.status/1";
 /// The owner's counters as Prometheus text (row R4).
 const METRICS: &str = "/metrics";
 const DASHBOARD: &str = "/dashboard";
@@ -1440,6 +1444,9 @@ fn decide(
     if let (Some((route, alias)), Some(relay)) = (Lifecycle::of(request.path), &shared.relay) {
         return (lifecycle(request, shared, relay, route, alias), None);
     }
+    if request.path == STATUS_LIST {
+        return (status_list(request, shared), None);
+    }
     if request.path == METRICS {
         return (scrape(request, shared), None);
     }
@@ -1596,6 +1603,14 @@ fn lifecycle_body(alias: &str, status: &ModelStatus) -> String {
     writer.begin_object();
     writer.key("model");
     writer.string(alias);
+    status_keys(&mut writer, status);
+    writer.end_object();
+    writer.finish()
+}
+
+/// A `ModelStatus`'s keys after `model`: `phase`, then `sub_phase` and `profile` when reported
+/// and not empty.
+fn status_keys(writer: &mut crate::json::Writer, status: &ModelStatus) {
     writer.key("phase");
     writer.string(status.phase.code());
     for (key, value) in [
@@ -1607,6 +1622,54 @@ fn lifecycle_body(alias: &str, status: &ModelStatus) -> String {
             writer.string(value);
         }
     }
+}
+
+/// `GET /v1/status` (`llm-gateway.gateway.StatusRoute`, story:route-status-for-every-model),
+/// after authentication: its method, a declared body and readiness are decided before the
+/// target source is asked anything, as for a lifecycle route.
+fn status_list(request: &Request<'_>, shared: &Shared) -> Outcome {
+    if !request.is_read() {
+        return Outcome::NotAllowed("GET, HEAD");
+    }
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    if !serves_inspection(shared) {
+        return Outcome::Refused(RefusalCode::Unavailable);
+    }
+    Outcome::Public(JSON, status_list_body(shared.relay.as_ref()))
+}
+
+/// `{"format":"llm-gateway.status/1","models":[…]}`, one entry per relayed model in alias order:
+/// `model`, `kind`, `wires` (the declared ones, in their order), then the keys of its status
+/// and `callable` when its source reports one (`llm-gateway.gateway.StatusEntry`).
+fn status_list_body(relay: Option<&Relay>) -> String {
+    let mut writer = crate::json::Writer::new();
+    writer.begin_object();
+    writer.key("format");
+    writer.string(STATUS_FORMAT);
+    writer.key("models");
+    writer.begin_array();
+    for (model, status) in relay.map(Relay::statuses).unwrap_or_default() {
+        writer.begin_object();
+        writer.key("model");
+        writer.string(model.alias().as_str());
+        writer.key("kind");
+        writer.string(model.kind().code());
+        writer.key("wires");
+        writer.begin_array();
+        for wire in model.wires() {
+            writer.string(wire.label());
+        }
+        writer.end_array();
+        if let Some(status) = status {
+            status_keys(&mut writer, &status);
+            writer.key("callable");
+            writer.boolean(status.phase.callable());
+        }
+        writer.end_object();
+    }
+    writer.end_array();
     writer.end_object();
     writer.finish()
 }

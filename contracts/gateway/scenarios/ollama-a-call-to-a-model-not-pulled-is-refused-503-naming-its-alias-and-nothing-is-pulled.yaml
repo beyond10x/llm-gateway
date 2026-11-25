@@ -1,0 +1,43 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: ollama-a-call-to-a-model-not-pulled-is-refused-503-naming-its-alias-and-nothing-is-pulled
+summary: a call to a model tags does not list is refused 503 model-not-pulled naming the alias, without retry-after; the server is asked once for its list and never to pull
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"missing","upstream_model":"llama3.2","wires":["chat","messages"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous","kind":"ollama"}}],"pods":[[{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"qwen2.5:1.5b\",\"model\":\"qwen2.5:1.5b\",\"size\":986061892}]}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"missing\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"missing\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"},{"step":"request","method":"GET","path":"/v1/models/missing/status","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 503 model-not-pulled
+    - 503 model-not-pulled
+    - 200 answered
+    retry_after:
+    - absent
+    - absent
+    - absent
+    bodies:
+    - '{"error":{"code":"model-not-pulled","message":"the model is not pulled on its Ollama server, and the gateway pulls no model: missing"}}'
+    - '{"error":{"code":"model-not-pulled","message":"the model is not pulled on its Ollama server, and the gateway pulls no model: missing"}}'
+    - '{"model":"missing","phase":"unreachable","sub_phase":"model-not-pulled"}'
+    upstream:
+    - 'pod-1 GET /api/tags '
+    authorizations:
+    - absent
+    secret_upstream: false
+    acquired: 2
+    released: 0
+    invalidated: []
+    records:
+    - model=missing wire=chat disposition=Refused refusal=model-not-pulled status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    - model=missing wire=messages disposition=Refused refusal=model-not-pulled status=503 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent

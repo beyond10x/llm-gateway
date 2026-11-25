@@ -1805,6 +1805,11 @@ mod tests {
                 "ProbeBounds::reuse",
                 bounds.reuse.as_secs(),
             ),
+            (
+                "ollama-list-max-bytes",
+                "OLLAMA_LIST_MAX_BYTES",
+                u64::try_from(super::OLLAMA_LIST_MAX_BYTES).unwrap(),
+            ),
         ]
         .into_iter()
         .map(|(name, constant, value)| (name.to_owned(), (constant.to_owned(), value)))

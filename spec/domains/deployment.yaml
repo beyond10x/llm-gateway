@@ -606,10 +606,24 @@ types:
   #                      by default; any other string, `high` and `max` included, is
   #                      `config:value`. A messages-wire request that names no effort reaches
   #                      the endpoint with this one (llm-gateway.gateway `Relay`, step 6)
-  #   kind               `endpoint` (default) or `bedrock` (llm-gateway.upstream.HostedKind);
-  #                      any other string is `config:schema`. Every rule above is an
-  #                      `endpoint`'s; each key below is a `bedrock` model's, and is
-  #                      `config:value` naming `hosted.<alias>.<key>` on an endpoint
+  #   kind               `endpoint` (default), `bedrock` or `ollama`
+  #                      (llm-gateway.upstream.HostedKind); any other string is
+  #                      `config:schema`. Every rule above is an `endpoint`'s; each key below
+  #                      is a `bedrock` model's, and is `config:value` naming
+  #                      `hosted.<alias>.<key>` on an endpoint
+  # A `kind = "ollama"` model (DECIDED 2026-11-25, story:ollama-route) takes an endpoint's keys
+  # and rules, with these differences, each refusal `config:value` naming the key:
+  #   base_url           optional, default `http://127.0.0.1:11434`: the Ollama server's root,
+  #                      an endpoint's `base_url` with no base path (a path, `/v1` included, is
+  #                      refused); a host that is not loopback is admitted over `http` as for
+  #                      any `anonymous` endpoint
+  #   wires              optional, default `["chat", "responses", "messages"]`
+  #   auth_kind          optional, `anonymous` only; `credential_file`, `credential` and
+  #                      `credential_header` are refused
+  #   upstream_model     the Ollama model name the alias is sent as, default the alias; without
+  #                      a tag it matches `<name>:latest` in the server's lists
+  #   billing_kind       default `self-hosted`
+  #   each `bedrock` key is refused as on an endpoint
   # A `kind = "bedrock"` model (DECIDED 2026-10-23, story:bedrock-hosted-target): `wires`,
   # `base_url`, `auth_kind`, `credential_file`, `credential_header`, `upstream_model`,
   # `reasoning_effort` and `headers` are each `config:value` naming the key. Its rules, each a
@@ -653,7 +667,7 @@ types:
     kind: struct
     fields:
       - {name: kind, type: llm-gateway.upstream.HostedKind}
-      # Required for an `endpoint`, absent for a `bedrock` model.
+      # Required for an `endpoint`, optional for an `ollama` model, absent for a `bedrock` model.
       - {name: wires, type: 'Optional<List<llm-gateway.deployment.Wire>>'}
       - {name: base_url, type: 'Optional<String>'}
       - {name: auth_kind, type: 'Optional<llm-gateway.upstream.AuthKind>'}

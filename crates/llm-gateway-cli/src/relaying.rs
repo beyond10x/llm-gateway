@@ -1462,7 +1462,8 @@ mod tests {
              [hosted.remote]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\n\
              upstream_model = \"vendor-remote\"\nauth_kind = \"anonymous\"\n\n\
              [hosted.claude]\nkind = \"bedrock\"\nregion = \"eu-central-1\"\n\
-             model_id = \"anthropic.claude-test-v1:0\"\ncredential_source = \"container\"\n",
+             model_id = \"anthropic.claude-test-v1:0\"\ncredential_source = \"container\"\n\n\
+             [hosted.local]\nkind = \"ollama\"\nupstream_model = \"qwen2.5:1.5b\"\n",
         )
         .unwrap();
         let kinds: Vec<(String, ModelKind)> = super::relay_models(&deployment)
@@ -1473,6 +1474,7 @@ mod tests {
         assert_eq!(
             kinds,
             [
+                ("local".to_owned(), ModelKind::Ollama),
                 ("remote".to_owned(), ModelKind::Hosted),
                 ("claude".to_owned(), ModelKind::Bedrock),
                 ("small".to_owned(), ModelKind::Pod),

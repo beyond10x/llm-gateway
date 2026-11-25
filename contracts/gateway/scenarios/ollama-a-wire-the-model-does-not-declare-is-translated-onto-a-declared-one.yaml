@@ -1,0 +1,34 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: ollama-a-wire-the-model-does-not-declare-is-translated-onto-a-declared-one
+summary: a model declaring only chat is served on messages translated onto the server chat path after the same status read
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","translation":"on","models":[{"alias":"local","upstream_model":"qwen2.5:1.5b","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous","kind":"ollama"}}],"pods":[[{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"qwen2.5:1.5b\",\"model\":\"qwen2.5:1.5b\",\"size\":986061892}]}"]},{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"qwen2.5:1.5b\",\"model\":\"qwen2.5:1.5b\",\"size\":1529343744}]}"]},{"status":200,"content_type":"text/event-stream","chunks":["data: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"model\":\"qwen2.5:1.5b\",\"choices\":[{\"index\":0,\"delta\":{\"role\":\"assistant\",\"content\":\"Hello.\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"model\":\"qwen2.5:1.5b\",\"choices\":[{\"index\":0,\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: {\"id\":\"chatcmpl-1\",\"object\":\"chat.completion.chunk\",\"model\":\"qwen2.5:1.5b\",\"choices\":[],\"usage\":{\"prompt_tokens\":17,\"completion_tokens\":3,\"total_tokens\":20}}\n\ndata: [DONE]\n\n"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"local\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 translated
+    upstream:
+    - 'pod-1 GET /api/tags '
+    - 'pod-1 GET /api/ps '
+    - 'pod-1 POST /v1/chat/completions {"max_completion_tokens":16,"messages":[{"content":"hi","role":"user"}],"model":"qwen2.5:1.5b","stream":true,"stream_options":{"include_usage":true}}'
+    authorizations:
+    - absent
+    - absent
+    - absent
+    secret_upstream: false
+    acquired: 1
+    released: 1
+    invalidated: []

@@ -547,6 +547,7 @@ impl RelayTargets for ProvokingTargets {
             "full" => Ok(Box::new(CountsTen)),
             "cold" => Err(TargetRefusal::ColdStart),
             "capped" => Err(TargetRefusal::SpendCeiling),
+            "unpulled" => Err(TargetRefusal::NotPulled),
             _ => Err(TargetRefusal::Unavailable),
         }
     }
@@ -569,6 +570,7 @@ fn provoking_relay() -> Relay {
             model("down").unwrap(),
             model("cold").unwrap(),
             model("capped").unwrap(),
+            model("unpulled").unwrap(),
             model("none").unwrap(),
             full,
         ],
@@ -701,6 +703,8 @@ fn provoke(code: RefusalCode) -> Provocation {
         }
         RefusalCode::ModelColdStart => relayed(chat, "{\"model\":\"cold\"}"),
         RefusalCode::SpendCeiling => relayed(chat, "{\"model\":\"capped\"}"),
+        // story:ollama-route: the source reports the model not pulled on its Ollama server.
+        RefusalCode::ModelNotPulled => relayed(chat, "{\"model\":\"unpulled\"}"),
         RefusalCode::UpstreamFailed => relayed(chat, "{\"model\":\"down\"}"),
         // `down` is chat-only, so a messages request for it is translated, and the translator
         // refuses or fails with the code its body names.

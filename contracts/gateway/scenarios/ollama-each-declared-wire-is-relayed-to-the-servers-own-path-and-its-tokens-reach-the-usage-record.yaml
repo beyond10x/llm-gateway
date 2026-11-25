@@ -1,0 +1,48 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: ollama-each-declared-wire-is-relayed-to-the-servers-own-path-and-its-tokens-reach-the-usage-record
+summary: a pulled model not loaded is callable; each wire is relayed to the server path with the Ollama model name and no credential, and each usage record carries the server tokens
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"local","upstream_model":"qwen2.5:1.5b","wires":["chat","responses","messages"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous","kind":"ollama"}}],"pods":[[{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"qwen2.5:1.5b\",\"model\":\"qwen2.5:1.5b\",\"size\":986061892}]}"]},{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[]}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chatcmpl-1\",\"object\":\"chat.completion\",\"created\":1764072000,\"model\":\"qwen2.5:1.5b\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Hello.\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"total_tokens\":18}}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"resp_1\",\"object\":\"response\",\"created_at\":1764072000,\"model\":\"qwen2.5:1.5b\",\"status\":\"completed\",\"output\":[{\"type\":\"message\",\"id\":\"msg_1\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"Hello.\",\"annotations\":[]}]}],\"usage\":{\"input_tokens\":13,\"output_tokens\":5,\"total_tokens\":18}}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"msg_1\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"qwen2.5:1.5b\",\"content\":[{\"type\":\"text\",\"text\":\"Hello.\"}],\"stop_reason\":\"end_turn\",\"usage\":{\"input_tokens\":17,\"output_tokens\":3}}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"local\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"},{"step":"request","path":"/v1/responses","body":"{\"model\":\"local\",\"input\":\"hi\"}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"local\",\"max_tokens\":16,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    - 200 relayed
+    bodies:
+    - '{"id":"chatcmpl-1","object":"chat.completion","created":1764072000,"model":"qwen2.5:1.5b","choices":[{"index":0,"message":{"role":"assistant","content":"Hello."},"finish_reason":"stop"}],"usage":{"prompt_tokens":11,"completion_tokens":7,"total_tokens":18}}'
+    - '{"id":"resp_1","object":"response","created_at":1764072000,"model":"qwen2.5:1.5b","status":"completed","output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":"Hello.","annotations":[]}]}],"usage":{"input_tokens":13,"output_tokens":5,"total_tokens":18}}'
+    - '{"id":"msg_1","type":"message","role":"assistant","model":"qwen2.5:1.5b","content":[{"type":"text","text":"Hello."}],"stop_reason":"end_turn","usage":{"input_tokens":17,"output_tokens":3}}'
+    upstream:
+    - 'pod-1 GET /api/tags '
+    - 'pod-1 GET /api/ps '
+    - 'pod-1 POST /v1/chat/completions {"model":"qwen2.5:1.5b","messages":[{"role":"user","content":"hi"}]}'
+    - 'pod-1 POST /v1/responses {"model":"qwen2.5:1.5b","input":"hi"}'
+    - 'pod-1 POST /v1/messages {"model":"qwen2.5:1.5b","max_tokens":16,"messages":[{"role":"user","content":"hi"}]}'
+    authorizations:
+    - absent
+    - absent
+    - absent
+    - absent
+    - absent
+    secret_upstream: false
+    acquired: 3
+    released: 3
+    invalidated: []
+    records:
+    - model=local wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=256 duration_ms=bounded tokens=reported
+    - model=local wire=responses disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=318 duration_ms=bounded tokens=reported
+    - model=local wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=188 duration_ms=bounded tokens=reported

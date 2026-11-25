@@ -671,7 +671,7 @@ fn route_status_callable_is_true_exactly_where_a_call_is_relayed_or_held() {
     );
     assert_eq!(model("small").kind(), ModelKind::Pod);
     let codes: Vec<&str> = ModelKind::ALL.iter().map(|kind| kind.code()).collect();
-    assert_eq!(codes, ["pod", "hosted", "route", "bedrock"]);
+    assert_eq!(codes, ["pod", "hosted", "route", "bedrock", "ollama"]);
 }
 
 /// The statuses are asked side by side: three models whose status takes 800 ms each are listed
@@ -868,5 +868,207 @@ fn route_status_every_kind_and_the_list_are_declared() {
             "{name: List, attributes: {path: /v1/status, methods: \"GET, HEAD\", format: llm-gateway.status/1}}"
         ),
         "spec/domains/gateway.yaml declares no StatusRoute List"
+    );
+}
+
+// --- story:ollama-route ------------------------------------------------------------------------
+
+/// Acceptance 3 in the list: an Ollama model is listed with kind `ollama`, and `callable` is
+/// its phase's alone: `ready` and `stopped` `not-loaded` (a call loads the model) are callable,
+/// `unreachable` for either reason is not.
+#[test]
+fn ollama_the_list_names_an_ollama_model_by_its_kind_and_callable_by_its_phase() {
+    let all = vec![Wire::Chat, Wire::Responses, Wire::Messages];
+    let source = Table::new(
+        &[
+            ("a-ready", Some(status(ModelPhase::Ready, None, None))),
+            (
+                "b-not-loaded",
+                Some(status(ModelPhase::Stopped, Some("not-loaded"), None)),
+            ),
+            (
+                "c-not-pulled",
+                Some(status(
+                    ModelPhase::Unreachable,
+                    Some("model-not-pulled"),
+                    None,
+                )),
+            ),
+            (
+                "d-silent",
+                Some(status(ModelPhase::Unreachable, Some("no-answer"), None)),
+            ),
+        ],
+        Duration::ZERO,
+    );
+    let models = ["a-ready", "b-not-loaded", "c-not-pulled", "d-silent"]
+        .into_iter()
+        .map(|alias| kinded(alias, ModelKind::Ollama, all.clone()))
+        .collect();
+    let (metrics, records) = (Arc::new(Metrics::default()), Arc::new(Records::default()));
+    let handle = listing(models, Arc::clone(&source), &metrics, &records, |_| {});
+    handle.mark_ready();
+    let list = send(handle.local_addr(), "GET", "/v1/status", true, "");
+    handle.shutdown();
+    assert_eq!(list.status, 200, "{}", list.body);
+    let wires = "\"wires\":[\"chat\",\"responses\",\"messages\"]";
+    assert_eq!(
+        list.body,
+        format!(
+            "{{\"format\":\"llm-gateway.status/1\",\"models\":[\
+             {{\"model\":\"a-ready\",\"kind\":\"ollama\",{wires},\"phase\":\"ready\",\"callable\":true}},\
+             {{\"model\":\"b-not-loaded\",\"kind\":\"ollama\",{wires},\"phase\":\"stopped\",\"sub_phase\":\"not-loaded\",\"callable\":true}},\
+             {{\"model\":\"c-not-pulled\",\"kind\":\"ollama\",{wires},\"phase\":\"unreachable\",\"sub_phase\":\"model-not-pulled\",\"callable\":false}},\
+             {{\"model\":\"d-silent\",\"kind\":\"ollama\",{wires},\"phase\":\"unreachable\",\"sub_phase\":\"no-answer\",\"callable\":false}}\
+             ]}}"
+        )
+    );
+    assert!(records.0.lock().unwrap().is_empty());
+}
+
+/// A source that reports every model not pulled on its Ollama server, recording each ask.
+#[derive(Default)]
+struct Unpulled(Mutex<Vec<String>>);
+
+impl RelayTargets for Unpulled {
+    fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
+        self.0.lock().unwrap().push(format!("acquire {alias}"));
+        Err(TargetRefusal::NotPulled)
+    }
+
+    fn invalidate(&self, alias: &str, _authority: &str) {
+        self.0.lock().unwrap().push(format!("invalidate {alias}"));
+    }
+}
+
+/// Every usage record the relay hands out, whole.
+#[derive(Default)]
+struct Kept(Mutex<Vec<UsageRecord>>);
+
+impl UsageRecords for Kept {
+    fn record(&self, record: &UsageRecord) {
+        self.0.lock().unwrap().push(record.clone());
+    }
+}
+
+/// Acceptance 4: a call to a model its Ollama server has not pulled is refused `503`
+/// `model-not-pulled` on every wire, with no `retry-after`, its message the fixed text followed
+/// by `: ` and the alias of the model the call named (the declaring alias for a call matched by
+/// a `model_prefix`, never the caller's own model name), and its usage record is a refusal with
+/// no target status and the outcome `refused`.
+#[test]
+fn ollama_a_model_not_pulled_is_refused_503_naming_its_alias_without_retry_after() {
+    let all = vec![Wire::Chat, Wire::Responses, Wire::Messages];
+    let models = vec![
+        kinded("qwen-local", ModelKind::Ollama, all.clone()),
+        kinded("qwen-family", ModelKind::Ollama, all)
+            .with_model_prefix("qwen2.5:")
+            .unwrap(),
+    ];
+    let source = Arc::new(Unpulled::default());
+    let records = Arc::new(Kept::default());
+    let verifier = Arc::new(
+        SharedSecretVerifier::new(OwnerToken::new(OWNER.as_bytes().to_vec()).unwrap()).unwrap(),
+    );
+    let relay = Relay::new(models, Arc::clone(&source) as Arc<dyn RelayTargets>)
+        .unwrap()
+        .with_records(Arc::clone(&records) as Arc<dyn UsageRecords>);
+    let handle = Gateway::bind_with_relay(
+        GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+        verifier,
+        RouteInventory::new(Vec::new()).unwrap(),
+        relay,
+    )
+    .unwrap();
+    handle.mark_ready();
+    let calls = [
+        ("/v1/chat/completions", "qwen-local", "qwen-local"),
+        ("/v1/responses", "qwen-local", "qwen-local"),
+        ("/v1/messages", "qwen-local", "qwen-local"),
+        ("/v1/chat/completions", "qwen2.5:7b", "qwen-family"),
+    ];
+    let reason = RefusalCode::ModelNotPulled.reason();
+    for (path, named, alias) in calls {
+        let body = format!("{{\"model\":\"{named}\",\"max_tokens\":8}}");
+        let answer = send(handle.local_addr(), "POST", path, true, &body);
+        assert_eq!(answer.status, 503, "{path} {}", answer.body);
+        assert_eq!(answer.header("retry-after"), None, "{path}");
+        assert_eq!(
+            answer.body,
+            format!(
+                "{{\"error\":{{\"code\":\"model-not-pulled\",\"message\":\"{reason}: {alias}\"}}}}"
+            ),
+            "{path}"
+        );
+    }
+    handle.shutdown();
+    assert_eq!(
+        *source.0.lock().unwrap(),
+        [
+            "acquire qwen-local",
+            "acquire qwen-local",
+            "acquire qwen-local",
+            "acquire qwen-family"
+        ]
+    );
+    let records = records.0.lock().unwrap();
+    let seen: Vec<_> = records
+        .iter()
+        .map(|record| {
+            (
+                record.model.as_deref(),
+                record.wire,
+                record.disposition,
+                record.refusal,
+                record.outcome,
+                record.status,
+                record.target_status,
+                record.response_bytes,
+            )
+        })
+        .collect();
+    let refused = |alias, wire| {
+        (
+            Some(alias),
+            wire,
+            llm_gateway::Disposition::Refused,
+            Some(RefusalCode::ModelNotPulled),
+            llm_gateway::Outcome::Refused,
+            503,
+            None,
+            0,
+        )
+    };
+    assert_eq!(
+        seen,
+        [
+            refused("qwen-local", Wire::Chat),
+            refused("qwen-local", Wire::Responses),
+            refused("qwen-local", Wire::Messages),
+            refused("qwen-family", Wire::Chat),
+        ]
+    );
+}
+
+/// `model-not-pulled` is the only refusal whose message carries more than its fixed text: every
+/// other code's body is the fixed message alone, so the alias reaches no other refusal.
+#[test]
+fn ollama_no_other_refusal_names_the_alias() {
+    let handle = gateway(Arc::new(Source::default()), true, |_| {});
+    let answer = send(
+        handle.local_addr(),
+        "POST",
+        "/v1/chat/completions",
+        true,
+        "{\"model\":\"small\"}",
+    );
+    handle.shutdown();
+    assert_eq!(answer.status, 503, "{}", answer.body);
+    assert_eq!(
+        answer.body,
+        format!(
+            "{{\"error\":{{\"code\":\"target-unavailable\",\"message\":\"{}\"}}}}",
+            RefusalCode::TargetUnavailable.reason()
+        )
     );
 }

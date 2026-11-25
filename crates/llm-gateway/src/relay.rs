@@ -2934,6 +2934,7 @@ mod tests {
                 TargetRefusal::Unavailable => RefusalCode::TargetUnavailable,
                 TargetRefusal::ColdStart => RefusalCode::ModelColdStart,
                 TargetRefusal::SpendCeiling => RefusalCode::SpendCeiling,
+                TargetRefusal::NotPulled => RefusalCode::ModelNotPulled,
             };
             assert_eq!(refusal.refusal(), expected);
             assert_eq!(expected.status(), 503);

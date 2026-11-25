@@ -741,6 +741,10 @@ mod relay {
         /// Static header names to values.
         #[serde(default)]
         headers: BTreeMap<String, String>,
+        /// `endpoint`, the default, or `ollama`: the pod is a fake Ollama server
+        /// (story:ollama-route).
+        #[serde(default)]
+        kind: Option<String>,
     }
 
     impl EndpointInput {
@@ -755,6 +759,26 @@ mod relay {
             (self.scheme == "https").then(|| self.certificate.as_deref() != Some("untrusted"))
         }
 
+        /// Whether the endpoint is an Ollama server's (story:ollama-route).
+        fn ollama(&self) -> bool {
+            self.kind.as_deref() == Some("ollama")
+        }
+
+        /// An endpoint's `kind` is `endpoint` or `ollama`; an Ollama endpoint is `http`,
+        /// `anonymous`, at the server's root and without a certificate, as the binary admits one.
+        fn ollama_valid(&self) -> bool {
+            match self.kind.as_deref() {
+                None | Some("endpoint") => true,
+                Some("ollama") => {
+                    self.scheme == "http"
+                        && self.auth_kind == "anonymous"
+                        && self.base_path.is_none()
+                        && self.certificate.is_none()
+                }
+                Some(_) => false,
+            }
+        }
+
         fn valid(&self, pods: usize) -> bool {
             let credential = match self.auth_kind.as_str() {
                 "anonymous" | "client" => {
@@ -765,6 +789,7 @@ mod relay {
                 _ => false,
             };
             credential
+                && self.ollama_valid()
                 && self.pod_index(pods).is_some()
                 && matches!(self.scheme.as_str(), "http" | "https")
                 && match self.certificate.as_deref() {
@@ -1813,7 +1838,10 @@ mod relay {
                 .map_err(|_| "endpoint:base-url".to_owned())?
                 .with_headers(headers)
                 .map_err(|_| "endpoint:headers".to_owned())?;
-            endpoints.insert(model.alias.clone(), hosted);
+            endpoints.insert(
+                model.alias.clone(),
+                ollama_endpoint(model, endpoint, hosted),
+            );
         }
         Ok(endpoints)
     }
@@ -1872,6 +1900,29 @@ mod relay {
         Ok(routes)
     }
 
+    /// An Ollama endpoint asks its server for the model's `upstream_model`, as the binary's
+    /// `kind = "ollama"` table does (story:ollama-route); any other endpoint is as built.
+    fn ollama_endpoint(
+        model: &ModelInput,
+        endpoint: &EndpointInput,
+        hosted: HostedEndpoint,
+    ) -> HostedEndpoint {
+        if endpoint.ollama() {
+            hosted.with_ollama(&model.upstream_model)
+        } else {
+            hosted
+        }
+    }
+
+    /// The kind of a model a hosted endpoint serves: `ollama` for an Ollama server's.
+    fn hosted_kind(endpoint: &EndpointInput) -> ModelKind {
+        if endpoint.ollama() {
+            ModelKind::Ollama
+        } else {
+            ModelKind::Hosted
+        }
+    }
+
     /// The relayed model a program's model declares.
     fn relay_model(model: &ModelInput) -> Result<RelayModel, String> {
         let wires = model
@@ -1902,7 +1953,7 @@ mod relay {
         // A model served by a hosted endpoint is the binary's `hosted` kind, and one whose
         // endpoint takes the client's own credential forwards it, as the binary composes both.
         if let Some(endpoint) = &model.endpoint {
-            relayed = relayed.with_kind(ModelKind::Hosted);
+            relayed = relayed.with_kind(hosted_kind(endpoint));
             if endpoint.auth_kind == "client" {
                 relayed = relayed.with_client_credentials();
             }

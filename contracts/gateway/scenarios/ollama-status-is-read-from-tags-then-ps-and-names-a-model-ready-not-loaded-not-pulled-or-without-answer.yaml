@@ -1,0 +1,59 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: ollama-status-is-read-from-tags-then-ps-and-names-a-model-ready-not-loaded-not-pulled-or-without-answer
+summary: tags then, for a listed model, ps give ready, stopped not-loaded, unreachable model-not-pulled or no-answer; a read is reused, the list names kind ollama, and a wake is path-unknown
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"cold","upstream_model":"llama3.2","wires":["chat","responses","messages"],"endpoint":{"pod":"pod-2","scheme":"http","auth_kind":"anonymous","kind":"ollama"}},{"alias":"gone","upstream_model":"qwen2.5:1.5b","wires":["chat","responses","messages"],"endpoint":{"pod":"pod-4","scheme":"http","auth_kind":"anonymous","kind":"ollama"}},{"alias":"missing","upstream_model":"mistral:7b","wires":["chat","responses","messages"],"endpoint":{"pod":"pod-3","scheme":"http","auth_kind":"anonymous","kind":"ollama"}},{"alias":"ready","upstream_model":"qwen2.5:1.5b","wires":["chat","responses","messages"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"anonymous","kind":"ollama"}}],"pods":[[{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"qwen2.5:1.5b\",\"model\":\"qwen2.5:1.5b\",\"modified_at\":\"2026-11-25T10:00:00Z\",\"size\":986061892,\"digest\":\"d1\",\"details\":{\"format\":\"gguf\",\"family\":\"qwen2\"},\"capabilities\":[\"completion\",\"tools\"]}]}"]},{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"qwen2.5:1.5b\",\"model\":\"qwen2.5:1.5b\",\"size\":1529343744,\"size_vram\":0,\"expires_at\":\"2026-11-25T12:05:00Z\"}]}"]}],[{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"llama3.2:latest\",\"model\":\"llama3.2:latest\",\"size\":2019393189}]}"]},{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[]}"]}],[{"status":200,"content_type":"application/json; charset=utf-8","chunks":["{\"models\":[{\"name\":\"mistral:latest\",\"model\":\"mistral:latest\",\"size\":4113301824}]}"]}],[{"transport":"closed"}]],"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/v1/models/ready/status","body":""},{"step":"request","method":"GET","path":"/v1/models/cold/status","body":""},{"step":"request","method":"GET","path":"/v1/models/missing/status","body":""},{"step":"request","method":"GET","path":"/v1/models/gone/status","body":""},{"step":"request","method":"GET","path":"/v1/status","body":""},{"step":"request","path":"/v1/models/ready/wake","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 404 path-unknown
+    bodies:
+    - '{"model":"ready","phase":"ready"}'
+    - '{"model":"cold","phase":"stopped","sub_phase":"not-loaded"}'
+    - '{"model":"missing","phase":"unreachable","sub_phase":"model-not-pulled"}'
+    - '{"model":"gone","phase":"unreachable","sub_phase":"no-answer"}'
+    - '{"format":"llm-gateway.status/1","models":[{"model":"cold","kind":"ollama","wires":["chat","responses","messages"],"phase":"stopped","sub_phase":"not-loaded","callable":true},{"model":"gone","kind":"ollama","wires":["chat","responses","messages"],"phase":"unreachable","sub_phase":"no-answer","callable":false},{"model":"missing","kind":"ollama","wires":["chat","responses","messages"],"phase":"unreachable","sub_phase":"model-not-pulled","callable":false},{"model":"ready","kind":"ollama","wires":["chat","responses","messages"],"phase":"ready","callable":true}]}'
+    upstream:
+    - 'pod-1 GET /api/tags '
+    - 'pod-1 GET /api/ps '
+    - 'pod-2 GET /api/tags '
+    - 'pod-2 GET /api/ps '
+    - 'pod-3 GET /api/tags '
+    - 'pod-4 GET /api/tags '
+    authorizations:
+    - absent
+    - absent
+    - absent
+    - absent
+    - absent
+    - absent
+    received_heads:
+    - 'accept: application/json | connection: close'
+    - 'accept: application/json | connection: close'
+    - 'accept: application/json | connection: close'
+    - 'accept: application/json | connection: close'
+    - 'accept: application/json | connection: close'
+    - 'accept: application/json | connection: close'
+    secret_upstream: false
+    acquired: 0
+    released: 0
+    invalidated: []
+    records: []

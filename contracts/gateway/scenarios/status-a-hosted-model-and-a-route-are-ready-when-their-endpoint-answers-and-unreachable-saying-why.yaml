@@ -1,0 +1,80 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: status-a-hosted-model-and-a-route-are-ready-when-their-endpoint-answers-and-unreachable-saying-why
+summary: a hosted model and a route are probed with their own credential; 2xx is ready, 401 or 403 credential-refused, another status status-<code>, no answer no-answer; the wake stays path-unknown
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"answering","upstream_model":"vendor-a","wires":["chat"],"endpoint":{"pod":"pod-1","scheme":"http","base_path":"/openai/v1","auth_kind":"bearer","credential":"endpoint-bearer-0123456789abcdef","headers":{"x-team":"blue"}}},{"alias":"refusing","upstream_model":"vendor-r","wires":["chat"],"endpoint":{"pod":"pod-2","scheme":"http","auth_kind":"api-key","credential":"endpoint-api-key-0123456789abcdef","credential_header":"x-api-key"}},{"alias":"failing","upstream_model":"vendor-f","wires":["chat"],"endpoint":{"pod":"pod-3","scheme":"http","auth_kind":"anonymous"}},{"alias":"silent","upstream_model":"vendor-s","wires":["chat"],"endpoint":{"pod":"pod-4","scheme":"http","auth_kind":"anonymous"}},{"alias":"untrusted","upstream_model":"vendor-u","wires":["chat"],"endpoint":{"pod":"pod-5","scheme":"https","certificate":"untrusted","auth_kind":"bearer","credential":"endpoint-bearer-fedcba9876543210"}}],"routes_document":"format: llm.routes/1\nendpoints:\n  openrouter: {base_url: \"http://pod-6/api/v1\", protocol: chat-completions, auth: {kind: bearer, secret: \"file:~/keys/openrouter\"}}\nroutes:\n  router: openrouter/vendor/model-x\n","route_credentials":{"openrouter":"route-bearer-0123456789abcdef"},"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"object\":\"list\",\"data\":[]}"]}],[{"status":403}],[{"status":503}],[{"transport":"closed"}],[{"status":200}],[{"status":204}]],"steps":[{"step":"mark_ready"},{"step":"request","method":"GET","path":"/v1/models/answering/status","body":""},{"step":"request","method":"GET","path":"/v1/models/refusing/status","body":""},{"step":"request","method":"GET","path":"/v1/models/failing/status","body":""},{"step":"request","method":"GET","path":"/v1/models/silent/status","body":""},{"step":"request","method":"GET","path":"/v1/models/untrusted/status","body":""},{"step":"request","method":"GET","path":"/v1/models/router/status","body":""},{"step":"request","method":"GET","path":"/v1/models/answering/status","body":""},{"step":"request","path":"/v1/models/answering/wake","body":""},{"step":"request","path":"/v1/models/router/wake","body":""}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 200 answered
+    - 404 path-unknown
+    - 404 path-unknown
+    bodies:
+    - '{"model":"answering","phase":"ready"}'
+    - '{"model":"refusing","phase":"unreachable","sub_phase":"credential-refused"}'
+    - '{"model":"failing","phase":"unreachable","sub_phase":"status-503"}'
+    - '{"model":"silent","phase":"unreachable","sub_phase":"no-answer"}'
+    - '{"model":"untrusted","phase":"unreachable","sub_phase":"no-answer"}'
+    - '{"model":"router","phase":"ready"}'
+    - '{"model":"answering","phase":"ready"}'
+    - '{"error":{"code":"path-unknown","message":"no such gateway resource"}}'
+    - '{"error":{"code":"path-unknown","message":"no such gateway resource"}}'
+    upstream:
+    - 'pod-1 GET /openai/v1/models '
+    - 'pod-2 GET /v1/models '
+    - 'pod-3 GET /v1/models '
+    - 'pod-4 GET /v1/models '
+    - 'pod-6 GET /api/v1/models '
+    authorizations:
+    - 'Bearer endpoint-bearer-0123456789abcdef'
+    - 'absent'
+    - 'absent'
+    - 'absent'
+    - 'Bearer route-bearer-0123456789abcdef'
+    received_heads:
+    - 'x-team: blue | authorization: Bearer endpoint-bearer-0123456789abcdef | accept: application/json | connection: close'
+    - 'x-api-key: endpoint-api-key-0123456789abcdef | accept: application/json | connection: close'
+    - 'accept: application/json | connection: close'
+    - 'accept: application/json | connection: close'
+    - 'authorization: Bearer route-bearer-0123456789abcdef | accept: application/json | connection: close'
+    connections:
+    - 'pod-1 plain request'
+    - 'pod-2 plain request'
+    - 'pod-3 plain request'
+    - 'pod-4 plain request'
+    - 'pod-5 tls-refused nothing'
+    - 'pod-6 plain request'
+    lifecycle_asks:
+    - status answering
+    - status refusing
+    - status failing
+    - status silent
+    - status untrusted
+    - status router
+    - status answering
+    - wake answering
+    - wake router
+    secret_upstream: false
+    acquired: 0
+    released: 0
+    invalidated: []
+    records: []

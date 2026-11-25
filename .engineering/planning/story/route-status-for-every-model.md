@@ -2,12 +2,16 @@
 format: aep.planning-md/3
 id: story:route-status-for-every-model
 kind: story
-status: draft
+status: implemented
 title: Every served model has a status, and one list holds them all
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-25T20:25:20Z", actor: "human:operator", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-25T20:25:20Z", actor: "human:operator", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-25T21:54:45Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 ## Outcome
 

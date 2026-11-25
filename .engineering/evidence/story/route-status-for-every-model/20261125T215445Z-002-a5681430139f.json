@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-25T21:54:45Z",
+  "actor": "human:operator",
+  "artifact": "story:route-status-for-every-model",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "at 2a2a2567: cargo test --workspace --locked --no-fail-fast 1237 passed, 0 failed, 1 ignored, 133 test binaries; cargo fmt --all --check; clippy --workspace --all-targets --all-features -D warnings; docs generate --check; ess specify validate 8 files valid; spec-diff passed (1 acknowledged); conformance 405 of 405 in each of three runs; aep plan artifact validate valid; each exit 0. Red before the implementation at 25f62697: gateway lifecycle_routes 5 compile errors (no ModelKind, callable, kind, Unreachable), cli lib 8 errors, cli wake_status 4 errors, each exit 101. Red at 317ff6ee: the launch route probed the endpoint (left 1, right 0) in two cases, a lookup that never returns was not bounded (read took 347 microseconds against 300 ms; a second lookup started). Red at af824b73: a connection opened after the deadline still held open 2 s after its opening ended. Every endpoint in these tests is a loopback listener on port 0; no test reaches a provider.",
+    "reference": "wave/2026-11-25-w01@2a2a2567"
+  }
+}

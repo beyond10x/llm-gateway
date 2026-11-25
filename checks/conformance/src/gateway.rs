@@ -526,7 +526,7 @@ mod relay {
         StaticHeaderError, TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords,
         Wire,
     };
-    use llm_gateway::{ModelPhase, ModelStatus};
+    use llm_gateway::{ModelKind, ModelPhase, ModelStatus};
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, PodConnector,
         ProxyConnector, Routes,
@@ -757,7 +757,9 @@ mod relay {
 
         fn valid(&self, pods: usize) -> bool {
             let credential = match self.auth_kind.as_str() {
-                "anonymous" => self.credential.is_none() && self.credential_header.is_none(),
+                "anonymous" | "client" => {
+                    self.credential.is_none() && self.credential_header.is_none()
+                }
                 "bearer" => self.credential.is_some() && self.credential_header.is_none(),
                 "api-key" => self.credential.is_some() && self.credential_header.is_some(),
                 _ => false,
@@ -1777,6 +1779,7 @@ mod relay {
             };
             let credential = match endpoint.auth_kind.as_str() {
                 "anonymous" => EndpointCredential::Anonymous,
+                "client" => EndpointCredential::Client,
                 "bearer" => EndpointCredential::Bearer(bearer(endpoint.credential.as_ref())?),
                 _ => EndpointCredential::ApiKey {
                     header: CredentialHeader::new(
@@ -1895,6 +1898,14 @@ mod relay {
             let effort = ReasoningEffort::from_name(effort)
                 .ok_or_else(|| "fixture:unknown-reasoning-effort".to_owned())?;
             relayed = relayed.with_reasoning_effort(effort);
+        }
+        // A model served by a hosted endpoint is the binary's `hosted` kind, and one whose
+        // endpoint takes the client's own credential forwards it, as the binary composes both.
+        if let Some(endpoint) = &model.endpoint {
+            relayed = relayed.with_kind(ModelKind::Hosted);
+            if endpoint.auth_kind == "client" {
+                relayed = relayed.with_client_credentials();
+            }
         }
         Ok(relayed)
     }
@@ -2185,7 +2196,9 @@ mod relay {
         decode(&raw)
     }
 
-    fn summary(received: &Received, progress: &Progress) -> String {
+    /// With `probed`, the request read a status: a pod's reply was the status probe's, never
+    /// the client's answer, so a 2xx the gateway wrote is `answered`.
+    fn summary(received: &Received, progress: &Progress, probed: bool) -> String {
         let Some(status) = received.status else {
             return "no-response".to_owned();
         };
@@ -2193,7 +2206,8 @@ mod relay {
             .replied
             .lock()
             .ok()
-            .and_then(|replied| replied.clone());
+            .and_then(|replied| replied.clone())
+            .filter(|_| !probed);
         if progress.is_closed() {
             return format!("{status} closed");
         }
@@ -2567,7 +2581,7 @@ mod relay {
             received.header("content-type")
         ));
         if status != 200 {
-            return summary(&received, &Progress::default());
+            return summary(&received, &Progress::default(), false);
         }
         let text = String::from_utf8_lossy(&received.body).into_owned();
         let samples: Vec<&str> = text.lines().filter(|line| !line.starts_with('#')).collect();
@@ -2753,7 +2767,8 @@ mod relay {
                 results.push("no-response".to_owned());
                 continue;
             };
-            results.push(summary(&received, &progress));
+            let probed = matches!(step, Step::Request { path, .. } if path.ends_with("/status"));
+            results.push(summary(&received, &progress, probed));
             let body = String::from_utf8_lossy(&received.body).into_owned();
             bodies.push(page_fact(&redact_seals(&body)));
             if let Some(slot) = answered.last_mut() {

@@ -536,8 +536,8 @@ impl RelayTarget for CountsTen {
 }
 
 /// Hands out an unreachable target for `down` and a target counting 10 input tokens for `full`,
-/// reports `cold` still starting, refuses `capped` for a spend ceiling, and has none for
-/// anything else.
+/// reports `cold` still starting, refuses `capped` for a spend ceiling and `stopped` as a model
+/// whose pod a request does not start, and has none for anything else.
 struct ProvokingTargets;
 
 impl RelayTargets for ProvokingTargets {
@@ -547,6 +547,7 @@ impl RelayTargets for ProvokingTargets {
             "full" => Ok(Box::new(CountsTen)),
             "cold" => Err(TargetRefusal::ColdStart),
             "capped" => Err(TargetRefusal::SpendCeiling),
+            "stopped" => Err(TargetRefusal::Stopped),
             _ => Err(TargetRefusal::Unavailable),
         }
     }
@@ -569,6 +570,7 @@ fn provoking_relay() -> Relay {
             model("down").unwrap(),
             model("cold").unwrap(),
             model("capped").unwrap(),
+            model("stopped").unwrap(),
             model("none").unwrap(),
             full,
         ],
@@ -701,6 +703,7 @@ fn provoke(code: RefusalCode) -> Provocation {
         }
         RefusalCode::ModelColdStart => relayed(chat, "{\"model\":\"cold\"}"),
         RefusalCode::SpendCeiling => relayed(chat, "{\"model\":\"capped\"}"),
+        RefusalCode::ModelStopped => relayed(chat, "{\"model\":\"stopped\"}"),
         RefusalCode::UpstreamFailed => relayed(chat, "{\"model\":\"down\"}"),
         // `down` is chat-only, so a messages request for it is translated, and the translator
         // refuses or fails with the code its body names.

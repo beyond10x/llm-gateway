@@ -202,8 +202,15 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Relay",
         "Wake a model and read its phase",
-        "POST /v1/models/<alias>/wake starts a Runpod model's pod as a request would, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model, a route and a Bedrock model have no wake. Tested over the emulator.",
+        "POST /v1/models/<alias>/wake starts a Runpod model's pod, whatever its start_on_request, through the same spend check and profile fallback, and answers 202 at once; it starts nothing more while the pod starts or serves. GET /v1/models/<alias>/status answers stopped, starting (with the provider's sub-phase), ready or stopping and the profile, from the pool's records, with no provider call. Both take the owner credential; a hosted model, a route and a Bedrock model have no wake. Tested over the emulator.",
         "crates/llm-gateway-cli/tests/wake_status.rs::wake_starts_the_pod_once_at_once_status_reads_it_without_a_call_and_a_request_reuses_it",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
+        "A model call starts no pod",
+        "A call to a Runpod model whose pod is stopped or stopping is refused model-stopped (503, no retry-after) at once, with no create and no spend read; only the owner's wake starts the pod, a call after it is held on the starting pod, and a pod that fails while a call is held starts no replacement. start_on_request = true, accepted only under the provider's daily_cap_usd, restores a call that starts the pod. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/relaying.rs::start_on_request_off_a_call_to_a_stopped_model_is_model_stopped_at_once_and_creates_nothing",
         RELAY,
     ),
     shipped(

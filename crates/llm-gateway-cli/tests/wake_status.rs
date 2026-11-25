@@ -362,7 +362,8 @@ impl Answering {
 
 /// Acceptance 5 in the binary's composition: `GET /v1/status` lists the pod model, the hosted
 /// model and the route of the routes document in alias order with their kinds, probes each
-/// endpoint once for two reads, and starts nothing.
+/// endpoint once for two reads, and starts nothing. `small` sets no `start_on_request`, so a
+/// call to it while stopped is `model-stopped` and it is not callable (story:a-call-starts-no-pod).
 #[test]
 fn route_status_the_binary_lists_a_pod_a_hosted_model_and_a_route_with_their_kinds() {
     let fixture = Fixture::new("route-status-list");
@@ -412,7 +413,7 @@ fn route_status_the_binary_lists_a_pod_a_hosted_model_and_a_route_with_their_kin
             "{\"format\":\"llm-gateway.status/1\",\"models\":[",
             "{\"model\":\"remote\",\"kind\":\"hosted\",\"wires\":[\"chat\",\"messages\"],\"phase\":\"ready\",\"callable\":true},",
             "{\"model\":\"router\",\"kind\":\"route\",\"wires\":[\"chat\"],\"phase\":\"unreachable\",\"sub_phase\":\"credential-refused\",\"callable\":false},",
-            "{\"model\":\"small\",\"kind\":\"pod\",\"wires\":[\"chat\",\"responses\"],\"phase\":\"stopped\",\"callable\":true}",
+            "{\"model\":\"small\",\"kind\":\"pod\",\"wires\":[\"chat\",\"responses\"],\"phase\":\"stopped\",\"callable\":false}",
             "]}"
         )
     );

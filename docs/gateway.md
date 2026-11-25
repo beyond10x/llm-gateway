@@ -251,7 +251,9 @@ first ask for it would (`RelayTargets::wake`) and answers `202` at once with the
 source reports after that ask; it never waits for the target to serve. While a start is in
 progress, or the target is ready, a wake starts nothing more and answers `202` the same way. A
 refusal is the one `acquire` would have earned: `target-unavailable`, `spend-ceiling` (503,
-without `retry-after`) or `model-cold-start` (with `retry-after: 30`).
+without `retry-after`) or `model-cold-start` (with `retry-after: 30`). A wake is never
+`model-stopped`: in the binary it is the only way a Runpod model without `start_on_request` gets
+a pod, and that model's requests are `model-stopped` until it has one.
 `GET /v1/models/{alias}/status` asks the source for the status (`RelayTargets::status`), which
 starts nothing, and answers `200`; `HEAD` answers the same without a body.
 
@@ -306,11 +308,24 @@ any status is asked. A gateway composed without a relay answers an empty list.
 
 (Wrapped here; the answer is one line.) Each entry names `model`, `kind` (`pod`, `hosted`,
 `route` or `bedrock`), `wires` (the wires its upstream declares), the `ModelStatus` keys
-`phase`, `sub_phase` and `profile`, and `callable`: whether a call for it now is relayed or
-held while its pod starts. `callable` is `true` for `ready`, `starting` and `stopped` (a call
-starts a pod) and `false` for `stopping` and `unreachable`. A model with no status (Bedrock)
-has neither `phase` nor `callable`. Every status is asked side by side, so the list is answered
-within one probe deadline and a second however many endpoints are silent.
+`phase`, `sub_phase` and `profile`, and `callable`: whether a call sent now is relayed, held on
+a pod that is starting or serving, or starts the pod. `callable` is `true` for `ready` and
+`starting`, and for `stopped` where a call starts the pod; a model declared with
+`RelayModel::with_no_call_start` is `false` while `stopped`. The binary declares it on every
+Runpod model whose call does not start its pod (no `start_on_request` under its own provider's
+enforced daily cap), whose call is answered `model-stopped`. `callable` is `false` for
+`unreachable`, and for `stopping`, with or without `start_on_request`: the call would be
+refused, or would wait on a stop still owed, with no promise of an answer from the model. A call
+with `start_on_request` to a `stopping` model meets one of three outcomes:
+
+- The stop is confirmed within its hold: it binds to the replacement pod and is relayed, or is
+  `model-cold-start` if that pod still starts when the hold passes.
+- The stop is still owed when its hold passes: `target-unavailable`.
+- The gateway is stopping: `target-unavailable` at once.
+
+A model with no status (Bedrock) has neither `phase` nor `callable`. Every status is asked side
+by side, so the list is answered within one probe deadline and a second however many endpoints
+are silent.
 
 ## Service-account tokens
 
@@ -428,10 +443,19 @@ A request to a wire path is decided in this order:
    `model_cold_start` (row W6). It is the only refusal that carries `retry-after`.
    `SpendCeiling`, starting the model's pod would pass a spend ceiling of its provider account
    or that account's spend is unknown, is `spend-ceiling` (503), answered at once and without
-   `retry-after`; its message names neither the ceiling nor the amount. The embedding
-   holds the request while its target starts and owns the hold budget; the Runpod composition
-   asks its pool every 500 ms for up to the model's `request_hold_seconds` (rows L6 and K28,
-   `docs/hosting.md`). Then, on the messages wire only, the output clamp. The window `w` is the
+   `retry-after`; its message names neither the ceiling nor the amount. `Stopped`, the
+   model's pod is not running and a request does not start it, is `model-stopped` (503),
+   answered at once and without `retry-after`; its message says the owner wakes the model.
+   The embedding holds the request while its target starts and owns the hold budget; the
+   Runpod composition asks its pool every 500 ms for up to the model's `request_hold_seconds`
+   (rows L6 and K28, `docs/hosting.md`). It starts a pod for a request only for a model whose
+   `start_on_request` is `true` and whose provider declares `daily_cap_usd`; for any other
+   model, the default, a request to a pod that is stopped or stopping is `model-stopped` and
+   starts nothing, a request to a pod the owner's wake started is held on it as above, and a pod
+   that fails while a request is held, or fails a relay, starts no replacement: the next
+   request is `model-stopped` until the owner wakes the model (story:a-call-starts-no-pod).
+   Once the gateway starts to stop, a request starts and waits for nothing, with or without the
+   key: without a ready pod it is `target-unavailable`, not `model-stopped`. Then, on the messages wire only, the output clamp. The window `w` is the
    `max_model_len` the target handed out states (`RelayTarget::max_model_len`), else the model's
    `max_model_len`, else its `context_window`, else it has none: the binary declares a Runpod
    model's `max_model_len`, what `vllm serve` is started with, and a hosted model's
@@ -1189,6 +1213,7 @@ every code the gateway can emit.
 | `method-not-allowed` | `refused` |
 | `model-absent` | `refused` |
 | `model-cold-start` | `timeout` |
+| `model-stopped` | `refused` |
 | `model-unknown` | `refused` |
 | `overloaded` | `refused` |
 | `path-unknown` | `refused` |
@@ -1314,6 +1339,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `method-not-allowed` | 405 | this path does not accept that method |
 | `model-absent` | 400 | the request body names no model |
 | `model-cold-start` | 503 | the model is still starting; ask again after the retry-after delay |
+| `model-stopped` | 503 | the model's pod is not running and a request does not start it; the owner wakes it |
 | `model-unknown` | 404 | no such model |
 | `overloaded` | 503 | the gateway is already serving its maximum concurrent requests |
 | `path-unknown` | 404 | no such gateway resource |
@@ -1330,7 +1356,7 @@ refusal. A target's own answer is relayed, not refused, and is the target's text
 | `translation-unrepresentable` | 502 | the model's answer cannot be written on this wire |
 | `translation-unsupported` | 400 | the request uses a field or value outside the subset the gateway translates |
 | `unavailable` | 503 | the gateway is not ready to serve inspection |
-| `upstream-failed` | 502 | the model target could not be reached or failed; the next request asks for a replacement |
+| `upstream-failed` | 502 | the model target could not be reached or failed |
 | `upstream-refused` | 502 | the model target refused the translated request |
 | `wire-not-served` | 400 | the model is not served on this wire |
 

@@ -44,11 +44,13 @@ through the `RunpodTransport` trait, which has two implementations:
 The pool it composes:
 
 - starts **one pod per model** however many first requests arrive together, and holds the later
-  ones on it;
+  ones on it; a request starts it only for a model that sets `start_on_request = true` under a
+  `daily_cap_usd`, and otherwise only the owner's wake does, a request to a stopped pod being
+  refused `model-stopped`;
 - tries the declared GPU types **in order**, but ends the attempt when a create's answer is lost,
   because Runpod takes no idempotency key and a second create could pay twice;
 - **terminates** a pod that crash-loops, refuses its vLLM key or misses its startup deadline, and
-  replaces it on the next request;
+  replaces it on the next request that may start one, or the next wake;
 - **reaps** a pod idle past `idle_timeout_minutes`, never below its measured cold start and never
   with a request in flight;
 - does not stop a pod with a request in flight when its ownership lease expires: the stop waits

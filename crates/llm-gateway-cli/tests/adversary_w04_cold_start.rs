@@ -15,14 +15,17 @@ use std::{
     thread,
     time::Duration,
 };
-use support::{Fixture, OWNER_SECRET, document, mutate, with_vllm_key};
+use support::{
+    Fixture, OWNER_SECRET, document, mutate, no_spend, starts_on_request, with_vllm_key,
+};
 
 const WAIT: Duration = Duration::from_secs(20);
 const CHAT: &str = "/v1/chat/completions";
 const SMALL_CHAT: &str = "{\"model\":\"small\",\"messages\":[]}";
 
 /// The support document on an ephemeral loopback port, serving every wire, with `lines` added
-/// to `[models.small]`.
+/// to `[models.small]`, whose request starts its pod ([`starts_on_request`]): every case here
+/// is a request holding for a pod it started.
 fn deployment(fixture: &Fixture, lines: &str) -> Deployment {
     let secret = fixture.owner_secret();
     let key = fixture.vllm_key();
@@ -37,7 +40,14 @@ fn deployment(fixture: &Fixture, lines: &str) -> Deployment {
         "max_model_len = 1024\n",
         &format!("max_model_len = 1024\n{lines}"),
     );
-    load(&fixture.config(&text)).unwrap()
+    load(&fixture.config(&starts_on_request(&text))).unwrap()
+}
+
+/// An emulator whose account reports no spend, so the capped start is admitted.
+fn emulator() -> EmulatedRunpod {
+    let runpod = EmulatedRunpod::new();
+    no_spend(&runpod);
+    runpod
 }
 
 /// A loopback address nothing answers on: no case here reaches a pod.
@@ -97,7 +107,7 @@ fn adv_w6_every_request_held_on_a_pod_that_misses_its_startup_deadline_is_target
         &fixture,
         "start_wait_seconds = 10\nrequest_hold_seconds = 4\n",
     );
-    let runpod = EmulatedRunpod::new();
+    let runpod = emulator();
     runpod.ready_after(u32::MAX);
     let clock = ManualClock::new(1_000);
     let running = start_relaying(
@@ -133,7 +143,7 @@ fn adv_w6_every_request_held_on_a_pod_that_misses_its_startup_deadline_is_target
 fn adv_w6_a_request_held_on_a_pod_that_exits_is_target_unavailable() {
     let fixture = Fixture::new("adv-w04-exited");
     let deployment = deployment(&fixture, "request_hold_seconds = 5\n");
-    let runpod = EmulatedRunpod::new();
+    let runpod = emulator();
     runpod.ready_after(u32::MAX);
     let running = start_relaying(
         &deployment,
@@ -162,7 +172,7 @@ fn adv_w6_a_request_held_on_a_pod_that_exits_is_target_unavailable() {
 fn adv_w6_every_wire_answers_model_cold_start_with_retry_after_30() {
     let fixture = Fixture::new("adv-w04-wires");
     let deployment = deployment(&fixture, "request_hold_seconds = 0\n");
-    let runpod = EmulatedRunpod::new();
+    let runpod = emulator();
     runpod.ready_after(u32::MAX);
     let running = start_relaying(
         &deployment,

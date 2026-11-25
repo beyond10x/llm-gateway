@@ -674,6 +674,55 @@ fn route_status_callable_is_true_exactly_where_a_call_is_relayed_or_held() {
     assert_eq!(codes, ["pod", "hosted", "route", "bedrock"]);
 }
 
+/// story:a-call-starts-no-pod: a model declared with `RelayModel::with_no_call_start` is listed
+/// `callable: false` while `stopped`, and as any other model in every other phase; an undeclared
+/// model keeps `stopped` callable.
+#[test]
+fn callable_a_model_whose_call_starts_nothing_is_not_callable_while_stopped() {
+    let phases: Vec<(String, Option<ModelStatus>)> = ModelPhase::ALL
+        .iter()
+        .map(|phase| {
+            (
+                format!("n-{}", phase.code()),
+                Some(status(*phase, None, None)),
+            )
+        })
+        .chain([(
+            "u-stopped".to_owned(),
+            Some(status(ModelPhase::Stopped, None, None)),
+        )])
+        .collect();
+    let rows: Vec<(&str, Option<ModelStatus>)> = phases
+        .iter()
+        .map(|(alias, status)| (alias.as_str(), status.clone()))
+        .collect();
+    let source = Table::new(&rows, Duration::ZERO);
+    let mut models: Vec<RelayModel> = ModelPhase::ALL
+        .iter()
+        .map(|phase| model(&format!("n-{}", phase.code())).with_no_call_start())
+        .collect();
+    models.push(model("u-stopped"));
+    let (metrics, records) = (Arc::new(Metrics::default()), Arc::new(Records::default()));
+    let handle = listing(models, Arc::clone(&source), &metrics, &records, |_| {});
+    handle.mark_ready();
+    let list = send(handle.local_addr(), "GET", "/v1/status", true, "");
+    handle.shutdown();
+    assert_eq!(list.status, 200, "{}", list.body);
+    assert_eq!(
+        list.body,
+        concat!(
+            "{\"format\":\"llm-gateway.status/1\",\"models\":[",
+            "{\"model\":\"n-ready\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"ready\",\"callable\":true},",
+            "{\"model\":\"n-starting\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"starting\",\"callable\":true},",
+            "{\"model\":\"n-stopped\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"stopped\",\"callable\":false},",
+            "{\"model\":\"n-stopping\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"stopping\",\"callable\":false},",
+            "{\"model\":\"n-unreachable\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"unreachable\",\"callable\":false},",
+            "{\"model\":\"u-stopped\",\"kind\":\"pod\",\"wires\":[\"chat\"],\"phase\":\"stopped\",\"callable\":true}",
+            "]}"
+        )
+    );
+}
+
 /// The statuses are asked side by side: three models whose status takes 800 ms each are listed
 /// in well under twice that, not in 2.4 s.
 #[test]

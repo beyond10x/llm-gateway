@@ -333,6 +333,7 @@ scenarios:
 - gateway/scenarios/cost-a-token-price-written-as-a-number-composes-nothing.yaml
 - gateway/scenarios/cost-a-token-price-without-its-output-composes-nothing.yaml
 - gateway/scenarios/cost-an-unknown-token-price-key-composes-nothing.yaml
+- gateway/scenarios/cost-the-call-record-names-a-priced-calls-cost-and-an-unpriced-calls-none.yaml
 - gateway/scenarios/calls-every-answer-to-an-authenticated-model-call-carries-a-new-id.yaml
 - gateway/scenarios/calls-the-owner-reads-an-ended-calls-record-by-its-id.yaml
 - gateway/scenarios/calls-an-id-the-gateway-does-not-hold-is-call-unknown.yaml

@@ -7,11 +7,11 @@
 //! is opened.
 
 use llm_gateway::{
-    AnswerFraming, CallerReview, CallerToken, Gateway, GatewayConfig, GatewayHandle, IngressAuth,
-    Label, OwnerToken, Principal, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, Review, RouteInventory, SharedSecretVerifier, TargetRefusal, TranslatedAnswer,
-    Translation, TranslationFailure, TranslationRequest, Translator, UsageRecord, UsageRecords,
-    Wire,
+    AnswerFraming, CallPricing, CallerReview, CallerToken, Gateway, GatewayConfig, GatewayHandle,
+    IngressAuth, Label, OwnerToken, Principal, RefusalCode, Relay, RelayModel, RelayStream,
+    RelayTarget, RelayTargets, Review, RouteInventory, SharedSecretVerifier, TargetRefusal,
+    TranslatedAnswer, Translation, TranslationFailure, TranslationRequest, Translator, Usage,
+    UsageRecord, UsageRecords, Wire,
 };
 use std::{
     collections::{BTreeSet, VecDeque},
@@ -674,6 +674,68 @@ fn a2_the_owner_reads_an_ended_calls_record_by_its_id_with_its_keys_in_order() {
     assert_eq!(
         head.header("content-length"),
         Some(read.body.len().to_string().as_str())
+    );
+}
+
+/// A pricing whose answer is made of the counters it was asked about, so a record shows which
+/// usage reached it: `0.<input><output><cache read>`, none when one of them is unreported.
+struct Echo;
+
+impl CallPricing for Echo {
+    fn cost_usd(&self, _wire: Wire, usage: Usage) -> Option<String> {
+        Some(format!(
+            "0.{}{}{}",
+            usage.input_tokens?, usage.output_tokens?, usage.cache_read_tokens?
+        ))
+    }
+}
+
+/// story:cost-per-call: a priced model's record names `cost_usd` after its token keys, what the
+/// model's pricing answered for the tokens the fake reported; the same call of a model that
+/// declares no pricing has no such key.
+#[test]
+fn a2_a_priced_calls_record_names_its_cost_after_the_token_keys_and_an_unpriced_ones_none() {
+    let upstream = Upstream::start(vec![
+        Reply::Whole(json_answer(COMPLETION)),
+        Reply::Whole(json_answer(COMPLETION)),
+    ]);
+    let priced = RelayModel::new(label("priced"), label("priced"), vec![Wire::Chat])
+        .unwrap()
+        .with_pricing(Arc::new(Echo));
+    let fixture = gateway(&upstream, vec![code(), priced], |_| {});
+    let address = fixture.address();
+    let ids: Vec<String> = ["priced", "code"]
+        .into_iter()
+        .map(|alias| {
+            post(
+                address,
+                "/v1/chat/completions",
+                &format!(r#"{{"model":"{alias}"}}"#),
+                Some(OWNER),
+            )
+            .call()
+            .unwrap()
+        })
+        .collect();
+    let read = record(address, &ids[0]);
+    assert_eq!(read.status, 200, "{read:?}");
+    let (body, _) = timed(&read.body);
+    assert_eq!(
+        body,
+        format!(
+            r#"{{"format":"llm-gateway.call/1","id":"{}","state":"ended","model":"priced","wire":"chat","disposition":"relayed","outcome":"ok","status":200,"target_status":200,"input_tokens":11,"output_tokens":7,"cache_read_tokens":3,"cost_usd":"0.1173","response_bytes":{},"duration_ms":D}}"#,
+            ids[0],
+            COMPLETION.len()
+        )
+    );
+    let read = record(address, &ids[1]);
+    assert_eq!(read.status, 200, "{read:?}");
+    assert!(!read.body.contains("cost_usd"), "{}", read.body);
+    assert!(
+        read.body
+            .contains("\"cache_read_tokens\":3,\"response_bytes\":"),
+        "{}",
+        read.body
     );
 }
 

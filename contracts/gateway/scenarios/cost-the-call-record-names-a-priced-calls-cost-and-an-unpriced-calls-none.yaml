@@ -1,0 +1,38 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: cost-the-call-record-names-a-priced-calls-cost-and-an-unpriced-calls-none
+summary: the record of a priced call names its cost after its token keys, and the same call of an unpriced model has no cost key
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"priced","upstream_model":"served-priced","wires":["chat"],"token_price":{"input":"3","output":"15","cache_read":"0.3"}},{"alias":"plain","upstream_model":"served-plain","wires":["chat"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"prompt_tokens_details\":{\"cached_tokens\":3}}}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\",\"usage\":{\"prompt_tokens\":11,\"completion_tokens\":7,\"prompt_tokens_details\":{\"cached_tokens\":3}}}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"priced\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"plain\",\"messages\":[]}"},{"step":"request","method":"GET","path":"/v1/calls/<call>","body":"","call_from":1},{"step":"request","method":"GET","path":"/v1/calls/<call>","body":"","call_from":2}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '200 relayed'
+    - '200 answered'
+    - '200 answered'
+    calls:
+    - 'new'
+    - 'new'
+    - 'absent'
+    - 'absent'
+    bodies:
+    - '{"id":"chat-1","usage":{"prompt_tokens":11,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":3}}}'
+    - '{"id":"chat-1","usage":{"prompt_tokens":11,"completion_tokens":7,"prompt_tokens_details":{"cached_tokens":3}}}'
+    - '{"format":"llm-gateway.call/1","id":"<call>","state":"ended","model":"priced","wire":"chat","disposition":"relayed","outcome":"ok","status":200,"target_status":200,"input_tokens":11,"output_tokens":7,"cache_read_tokens":3,"cost_usd":"0.0001299","response_bytes":110,"duration_ms":"<bounded>"}'
+    - '{"format":"llm-gateway.call/1","id":"<call>","state":"ended","model":"plain","wire":"chat","disposition":"relayed","outcome":"ok","status":200,"target_status":200,"input_tokens":11,"output_tokens":7,"cache_read_tokens":3,"response_bytes":110,"duration_ms":"<bounded>"}'
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-priced","messages":[]}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served-plain","messages":[]}'

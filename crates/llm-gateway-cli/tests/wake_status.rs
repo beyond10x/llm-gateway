@@ -2015,6 +2015,73 @@ fn ollama_each_wire_is_relayed_and_its_usage_record_carries_the_servers_tokens()
     assert!(ollama.storing().is_empty());
 }
 
+/// story:cost-per-call in the binary's composition: an Ollama model that declares
+/// `[hosted.<alias>.token_price]` is priced as every hosted model is, and the record the owner
+/// reads by the call's id names the cost of the tokens the server reported (11 input tokens at
+/// 3 and 7 output tokens at 15 USD per million: 0.000138) after its token keys; the same call
+/// of an Ollama model without a price has no `cost_usd`.
+#[test]
+fn cost_an_ollama_models_call_record_names_what_its_token_price_gives_and_an_unpriced_ones_none() {
+    let ollama = FakeOllama::start(&["qwen2.5:1.5b"], &[]);
+    let fixture = Fixture::new("ollama-cost");
+    let deployment = deployment(&fixture, |text| {
+        format!(
+            "{text}\n[hosted.local]\nkind = \"ollama\"\nbase_url = \"{0}\"\nupstream_model = \"qwen2.5:1.5b\"\n\n\
+             [hosted.local.token_price]\ninput = \"3\"\noutput = \"15\"\n\n\
+             [hosted.plain]\nkind = \"ollama\"\nbase_url = \"{0}\"\nupstream_model = \"qwen2.5:1.5b\"\n",
+            ollama.base_url()
+        )
+    });
+    let pod = Pod::start(0, "{}");
+    let running = start_relaying(
+        &deployment,
+        EmulatedRunpod::new(),
+        Arc::new(Loopback(pod.address)),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let address = running.local_addr();
+    let records: Vec<String> = ["local", "plain"]
+        .into_iter()
+        .map(|alias| {
+            let answer = send(
+                address,
+                "POST",
+                "/v1/chat/completions",
+                &format!(
+                    "{{\"model\":\"{alias}\",\"messages\":[{{\"role\":\"user\",\"content\":\"hi\"}}]}}"
+                ),
+            );
+            assert!(answer.starts_with("HTTP/1.1 200 "), "{alias}: {answer}");
+            let id = answer
+                .split("\r\n\r\n")
+                .next()
+                .unwrap_or_default()
+                .split("\r\n")
+                .find_map(|line| line.strip_prefix("x-llm-gateway-call: "))
+                .unwrap_or_else(|| panic!("no call id in {answer}"))
+                .to_owned();
+            let read = send(address, "GET", &format!("/v1/calls/{id}"), "");
+            assert!(read.starts_with("HTTP/1.1 200 "), "{alias}: {read}");
+            body(&read).to_owned()
+        })
+        .collect();
+    running.shutdown();
+    assert!(
+        records[0].contains(
+            "\"input_tokens\":11,\"output_tokens\":7,\"cost_usd\":\"0.000138\",\"response_bytes\":"
+        ),
+        "{}",
+        records[0]
+    );
+    assert!(
+        records[1].contains("\"input_tokens\":11,\"output_tokens\":7,\"response_bytes\":"),
+        "{}",
+        records[1]
+    );
+    assert!(ollama.storing().is_empty());
+}
+
 mod adversary_ollama_route {
     //! Adversarial pass 1 over story:ollama-route. Every server here is a fake on loopback at
     //! port 0; no case reaches a real Ollama, starts one, or pulls or loads a model.

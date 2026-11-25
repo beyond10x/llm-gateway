@@ -1,8 +1,11 @@
 {
   "format": "ess-diff-acknowledgements/1",
-  "before": "2e00b75ad4845eead039f29eeeef330ad92af0d0cf0d74bfd5e6599bd9f7d6b0",
-  "after": "d72dda311675344e86ee1e50b4ab1a53f6daa15e5482b8ec09bf8148ba09fc05",
+  "before": "d72dda311675344e86ee1e50b4ab1a53f6daa15e5482b8ec09bf8148ba09fc05",
+  "after": "3a93be29e547c0c83852d02a3be5ada2895834be3852ab9d65ceb7f8295dde0c",
   "acknowledged": [
-    "system/llm-gateway/unclassified-changed"
+    "system/llm-gateway/unclassified-changed",
+    "type/llm-gateway.deployment.ModelDeclaration/field-added/start_on_request",
+    "entity/llm-gateway.gateway.RelayObservation/field-added/pod_creates",
+    "view/llm-gateway.gateway.LastRelay/field-added/pod_creates"
   ]
 }

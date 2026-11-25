@@ -1114,6 +1114,10 @@ const OLLAMA_ALLOWED: [&str; 6] = [
     "POST /v1/messages/count_tokens",
 ];
 
+/// The `input_tokens` the fake answers `POST /v1/messages/count_tokens` with: what the gateway's
+/// output clamp reads. Not checked against a running Ollama server.
+const OLLAMA_COUNTED: u64 = 4_000;
+
 /// The paths that change what an Ollama server stores.
 const OLLAMA_STORING: [&str; 5] = [
     "/api/pull",
@@ -1305,6 +1309,10 @@ fn ollama_answer(
             )
         }
         ("GET", "/api/ps") => ollama_json("200 OK", &ollama_list(&state.lock().unwrap().loaded)),
+        ("POST", "/v1/messages/count_tokens") => ollama_json(
+            "200 OK",
+            &format!("{{\"input_tokens\":{OLLAMA_COUNTED}}}"),
+        ),
         ("POST", "/v1/chat/completions" | "/v1/responses" | "/v1/messages") => {
             ollama_call(&path, &named_model(&body), &mut state.lock().unwrap())
         }
@@ -1811,6 +1819,72 @@ fn ollama_the_gateway_never_asks_the_server_to_change_what_it_stores() {
     assert_eq!(ollama.storing(), Vec::<String>::new());
 }
 
+/// The output clamp on an Ollama model in the binary's composition: a messages call with
+/// `max_tokens` to a model declaring `context_window` makes the gateway send the server
+/// `POST /v1/messages/count_tokens` under the Ollama model name, read its count, and relay the
+/// call with `max_tokens` cut to the room left. Every request line the server saw is in the
+/// allowed set. The fake answers the count with what the gateway needs (`input_tokens`); how an
+/// Ollama server answers that path was not checked against a running one.
+#[test]
+fn ollama_the_output_clamp_counts_on_the_server_under_the_ollama_model_name() {
+    let ollama = FakeOllama::start(&["qwen2.5:1.5b"], &[]);
+    let fixture = Fixture::new("ollama-output-clamp");
+    let deployment = deployment(&fixture, |text| {
+        format!(
+            "{text}\n[hosted.local]\nkind = \"ollama\"\nbase_url = \"{}\"\n\
+             upstream_model = \"qwen2.5:1.5b\"\ncontext_window = 4096\n",
+            ollama.base_url()
+        )
+    });
+    let pod = Pod::start(0, "{}");
+    let runpod = EmulatedRunpod::new();
+    let running = start_relaying(
+        &deployment,
+        runpod.clone(),
+        Arc::new(Loopback(pod.address)),
+        Arc::new(ManualClock::new(1_000)),
+    )
+    .unwrap();
+    let answer = send(
+        running.local_addr(),
+        "POST",
+        "/v1/messages",
+        "{\"model\":\"local\",\"max_tokens\":1000,\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}",
+    );
+    running.shutdown();
+    assert_eq!(runpod.create_calls(), 0);
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    let seen = ollama.seen();
+    let lines: Vec<&str> = seen.iter().map(|seen| seen.line.as_str()).collect();
+    let outside: Vec<&&str> = lines
+        .iter()
+        .filter(|line| !OLLAMA_ALLOWED.contains(line))
+        .collect();
+    assert!(
+        outside.is_empty(),
+        "outside the allowed set: {outside:?} of {lines:?}"
+    );
+    let counted: Vec<&OllamaSeen> = seen
+        .iter()
+        .filter(|seen| seen.line == "POST /v1/messages/count_tokens")
+        .collect();
+    assert_eq!(counted.len(), 1, "{lines:?}");
+    assert_eq!(named_model(&counted[0].body), "qwen2.5:1.5b");
+    let relayed: Vec<&OllamaSeen> = seen
+        .iter()
+        .filter(|seen| seen.line == "POST /v1/messages")
+        .collect();
+    assert_eq!(relayed.len(), 1, "{lines:?}");
+    assert_eq!(named_model(&relayed[0].body), "qwen2.5:1.5b");
+    let room = 4096 - OLLAMA_COUNTED;
+    assert!(
+        relayed[0].body.contains(&format!("\"max_tokens\":{room}")),
+        "the call was not cut to the room the count left: {}",
+        relayed[0].body
+    );
+    assert!(ollama.storing().is_empty());
+}
+
 /// Every usage record the relay hands out, whole.
 #[derive(Default)]
 struct KeptRecords(Mutex<Vec<llm_gateway::UsageRecord>>);
@@ -1912,77 +1986,52 @@ mod adversary_ollama_route {
 
     use super::*;
 
-    /// The binary's composition with the Ollama model `local` (`upstream_model = "qwen2.5:1.5b"`)
-    /// declaring `model_prefix = "llama"`, a key the deployment reference keeps for this kind
-    /// ("every other endpoint key keeps its rule above"); one chat call naming `client_model`.
-    fn call_prefixed(ollama: &FakeOllama, fixture: &str, client_model: &str) -> String {
+    /// Loads the document with the Ollama model `local` (`upstream_model = "qwen2.5:1.5b"`)
+    /// declaring `model_prefix = "llama"` on `ollama`, and checks that the start is refused:
+    /// `config:value` naming `hosted.local.model_prefix`, quoting no value, and nothing sent to
+    /// the server. An Ollama model's status and its `model-not-pulled` refusal are read for one
+    /// name, `upstream_model`; a prefix would send names the status does not describe.
+    fn refused_prefixed(ollama: &FakeOllama, fixture: &str) {
         let fixture = Fixture::new(fixture);
-        let deployment = deployment(&fixture, |text| {
-            format!(
-                "{text}\n[hosted.local]\nkind = \"ollama\"\nbase_url = \"{}\"\n\
-                 upstream_model = \"qwen2.5:1.5b\"\nmodel_prefix = \"llama\"\n",
-                ollama.base_url()
-            )
-        });
-        let pod = Pod::start(0, "{}");
-        let runpod = EmulatedRunpod::new();
-        let running = start_relaying(
-            &deployment,
-            runpod.clone(),
-            Arc::new(Loopback(pod.address)),
-            Arc::new(ManualClock::new(1_000)),
-        )
-        .unwrap();
-        let answer = send(
-            running.local_addr(),
-            "POST",
-            "/v1/chat/completions",
-            &format!(
-                "{{\"model\":\"{client_model}\",\"messages\":[{{\"role\":\"user\",\"content\":\"hi\"}}]}}"
-            ),
+        let secret = fixture.owner_secret();
+        let key = fixture.vllm_key();
+        let text = format!(
+            "{}\n[hosted.local]\nkind = \"ollama\"\nbase_url = \"{}\"\n\
+             upstream_model = \"qwen2.5:1.5b\"\nmodel_prefix = \"llama\"\n",
+            with_vllm_key(&document("127.0.0.1:0", &secret), &key),
+            ollama.base_url()
         );
-        running.shutdown();
-        assert_eq!(runpod.create_calls(), 0);
-        answer
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{refusal}");
+        assert!(
+            refusal.message().starts_with("hosted.local.model_prefix"),
+            "{}",
+            refusal.message()
+        );
+        assert!(
+            !refusal.message().contains("llama"),
+            "{}",
+            refusal.message()
+        );
+        assert!(ollama.lines().is_empty(), "{:?}", ollama.lines());
     }
 
-    /// Acceptance 4 ("a call to a model that is not pulled is refused") read the other way, and
-    /// the deployment reference's `model_prefix` ("every model name starting with it is served
-    /// by this model too, relayed as the client sent it"): a prefixed name the server lists as
-    /// pulled is relayed, not refused `model-not-pulled`. The refusal must say what the server
-    /// answered; here the server listed the very model the call names.
+    /// Acceptance 4 and the decision on `model_prefix` (correction round 1): a prefix that would
+    /// send a name the server lists as pulled, while the status is read for another, is refused
+    /// at start, so no call is refused `model-not-pulled` for a model the server listed.
     #[test]
-    fn adv_ollama_a_prefixed_name_the_server_lists_is_relayed_not_refused() {
+    fn adv_ollama_a_prefix_for_a_name_the_server_lists_is_refused_at_start() {
         let ollama = FakeOllama::start(&["llama3.2:latest"], &[]);
-        let answer = call_prefixed(&ollama, "adv-ollama-prefix-listed", "llama3.2:latest");
-        assert!(
-            answer.starts_with("HTTP/1.1 200 "),
-            "the server lists llama3.2:latest, the call names it, and the gateway answered: \
-             {answer}\nrequest lines the server saw: {:?}",
-            ollama.lines()
-        );
-        assert!(ollama.storing().is_empty());
+        refused_prefixed(&ollama, "adv-ollama-prefix-listed");
     }
 
-    /// Acceptance 4: "A call to a model that is not pulled is refused `503` with a code of its
-    /// own, `model-not-pulled`". With a `model_prefix` the call is sent under the name the client
-    /// wrote, which the server does not list; the gateway must refuse it before any wire call
-    /// reaches the server, not relay it into Ollama's own 404.
+    /// Acceptance 4 and the decision on `model_prefix`: a prefix that would send a name the
+    /// server does not list, into Ollama's own 404 instead of `model-not-pulled`, is refused at
+    /// start.
     #[test]
-    fn adv_ollama_a_prefixed_name_the_server_does_not_list_is_refused_model_not_pulled() {
+    fn adv_ollama_a_prefix_for_a_name_the_server_does_not_list_is_refused_at_start() {
         let ollama = FakeOllama::start(&["qwen2.5:1.5b"], &[]);
-        let answer = call_prefixed(&ollama, "adv-ollama-prefix-unlisted", "llama3.2");
-        let relayed: Vec<String> = ollama
-            .lines()
-            .into_iter()
-            .filter(|line| line.starts_with("POST "))
-            .collect();
-        assert!(
-            answer.starts_with("HTTP/1.1 503 ") && answer.contains("\"code\":\"model-not-pulled\""),
-            "the server does not list llama3.2 and the gateway answered: {answer}\n\
-             wire calls the server received: {relayed:?}"
-        );
-        assert!(relayed.is_empty(), "{relayed:?}");
+        refused_prefixed(&ollama, "adv-ollama-prefix-unlisted");
     }
 
     /// A loopback server answering its connections, in order, with `answers`, each after the

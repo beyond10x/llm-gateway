@@ -1,0 +1,41 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: calls-every-answer-to-an-authenticated-model-call-carries-a-new-id
+summary: a relayed answer, a refusal and a wrong method on a wire path each carry one new call id, also after a restart, while a request that fails authentication and an answer off the wire paths carry none
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"served-small","wires":["chat","responses"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-2\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"other\",\"messages\":[]}"},{"step":"request","method":"GET","path":"/v1/responses","body":""},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\",\"messages\":[]}","credential":false},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\",\"messages\":[]}","credential":false,"headers":["authorization: Bearer not-the-owner-0123456789abcdef0123456789"]},{"step":"request","method":"GET","path":"/v1/status","body":""},{"step":"restart"},{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '404 model-unknown'
+    - '405 method-not-allowed'
+    - '401 credential-absent'
+    - '401 credential-rejected'
+    - '200 answered'
+    - 'ok'
+    - 'ok'
+    - '200 relayed'
+    calls:
+    - 'new'
+    - 'new'
+    - 'new'
+    - 'absent'
+    - 'absent'
+    - 'absent'
+    - 'new'
+    upstream:
+    - 'pod-1 POST /v1/chat/completions {"model":"served-small","messages":[]}'
+    - 'pod-1 POST /v1/chat/completions {"model":"served-small","messages":[]}'

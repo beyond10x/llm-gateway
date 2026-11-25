@@ -193,6 +193,10 @@ refusal_codes! {
     /// No such resource on this gateway.
     PathUnknown => "path-unknown", 404,
         "no such gateway resource";
+    /// The gateway holds no call with the id `GET /v1/calls/{id}` names: of another form, never
+    /// given out, or no longer held.
+    CallUnknown => "call-unknown", 404,
+        "the gateway holds no call with that id";
     /// The request is not HTTP this gateway parses: its head, or the chunked framing of a relayed
     /// body.
     RequestMalformed => "request-malformed", 400,

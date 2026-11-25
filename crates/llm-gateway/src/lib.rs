@@ -45,6 +45,7 @@
 
 mod auth;
 mod body;
+mod calls;
 mod dashboard;
 mod error;
 mod guide;

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.gateway.CallRoute",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:0ff13676208831517733c0e316b858eaf4ee2292fa37b381c36d34ab4f6f244b",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.gateway.CallRoute": {
+      "title": "CallRoute",
+      "x-ess-name": "llm-gateway.gateway.CallRoute",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Record"
+      ],
+      "x-ess-attributes": [
+        {
+          "kind": "string",
+          "name": "path",
+          "type": "String",
+          "values": {
+            "Record": "/v1/calls/{id}"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "methods",
+          "type": "String",
+          "values": {
+            "Record": "GET, HEAD"
+          }
+        },
+        {
+          "kind": "string",
+          "name": "format",
+          "type": "String",
+          "values": {
+            "Record": "llm-gateway.call/1"
+          }
+        }
+      ]
+    }
+  }
+}

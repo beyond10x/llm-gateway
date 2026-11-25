@@ -367,7 +367,7 @@
     },
     {
       "area": "Observability",
-      "detail": "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
+      "detail": "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info, naming the call's id.",
       "href": "/docs/guides/scrape-the-counters",
       "label": "One usage record per authenticated wire request",
       "status": "shipped"
@@ -404,6 +404,12 @@
       "area": "Observability",
       "detail": "Each usage record carries the input, output, cache read and cache creation tokens the answer reported, read from a decoded copy when it is content-encoded; a count it did not report stays absent.",
       "label": "Token counts in usage records",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "Every answer to an authenticated model call carries x-llm-gateway-call with the call's id, and the owner reads that call's record, in flight or ended, at GET /v1/calls/<id>: its outcome, statuses, token counts, bytes and duration, an absent value left out. The gateway holds the last 1024 ended calls.",
+      "label": "Call ids and call records",
       "status": "shipped"
     },
     {

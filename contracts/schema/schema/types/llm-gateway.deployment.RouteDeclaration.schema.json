@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:8c2aa59b915202a82f2fd34b0473467dea63526d87dfeb2ac5e4b1336ea4a421",
+    "contract_digest": "slice-sha256/2:e56de211b78a19c32f6ac488f75f685597138db212f870f1c0c377cc7fc4d3d7",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -28,6 +28,9 @@
         },
         "max_output_tokens": {
           "type": "integer"
+        },
+        "price": {
+          "$ref": "#/$defs/llm-gateway.deployment.RoutePriceDeclaration"
         }
       },
       "required": [
@@ -36,6 +39,33 @@
         "tools",
         "context_window",
         "max_output_tokens"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.RoutePriceDeclaration": {
+      "title": "RoutePriceDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RoutePriceDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "cached_input": {
+          "type": "string"
+        },
+        "cache_creation_input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "currency"
       ],
       "additionalProperties": false
     }

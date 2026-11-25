@@ -74,7 +74,7 @@ pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,
 };
-pub use metrics::{Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
+pub use metrics::{CallPricing, Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
 pub use relay::{
     BasePath, BodyDecoder, CALLER_SESSION_HEADER, Caller, CredentialHeader, DEFAULT_RETRY_ATTEMPTS,
     DEFAULT_RETRY_WAIT, Decoded, MAX_ERROR_BODY, ModelKind, ModelPhase, ModelStatus,

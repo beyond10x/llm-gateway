@@ -41,7 +41,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:2f9322f81e4600edbd1ae529e16aea01d30ca6a030ebb271687181c74c718356",
+    "contract_digest": "slice-sha256/2:676c3e22b20e2641f8bc06f27290e2ce5e7a4542db49b76ea54959e9ff5e482b",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -264,6 +264,9 @@
         },
         "compact_window": {
           "type": "integer"
+        },
+        "token_price": {
+          "$ref": "#/$defs/llm-gateway.deployment.TokenPriceDeclaration"
         }
       },
       "required": [
@@ -424,6 +427,9 @@
         },
         "start_on_request": {
           "type": "boolean"
+        },
+        "token_price": {
+          "$ref": "#/$defs/llm-gateway.deployment.TokenPriceDeclaration"
         }
       },
       "required": [
@@ -563,6 +569,9 @@
         },
         "max_output_tokens": {
           "type": "integer"
+        },
+        "price": {
+          "$ref": "#/$defs/llm-gateway.deployment.RoutePriceDeclaration"
         }
       },
       "required": [
@@ -603,6 +612,33 @@
         "base_url",
         "protocol",
         "auth_kind"
+      ],
+      "additionalProperties": false
+    },
+    "llm-gateway.deployment.RoutePriceDeclaration": {
+      "title": "RoutePriceDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RoutePriceDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "cached_input": {
+          "type": "string"
+        },
+        "cache_creation_input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "currency"
       ],
       "additionalProperties": false
     },
@@ -727,6 +763,31 @@
         "On",
         "Off"
       ]
+    },
+    "llm-gateway.deployment.TokenPriceDeclaration": {
+      "title": "TokenPriceDeclaration",
+      "x-ess-name": "llm-gateway.deployment.TokenPriceDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "cache_read": {
+          "type": "string"
+        },
+        "cache_creation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "output"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.TokenReviewDeclaration": {
       "title": "TokenReviewDeclaration",

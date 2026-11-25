@@ -7,9 +7,9 @@
 //! refused connect. The gateway listens on loopback; nothing else is opened.
 
 use llm_gateway::{
-    Disposition, Gateway, GatewayConfig, GatewayHandle, Label, Metrics, OwnerToken, RefusalCode,
-    Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory,
-    SharedSecretVerifier, TargetRefusal, UsageRecord, UsageRecords, Wire,
+    CallPricing, Disposition, Gateway, GatewayConfig, GatewayHandle, Label, Metrics, OwnerToken,
+    RefusalCode, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, RouteInventory,
+    SharedSecretVerifier, TargetRefusal, Usage, UsageRecord, UsageRecords, Wire,
 };
 use std::{
     collections::{BTreeMap, VecDeque},
@@ -759,6 +759,8 @@ fn assert_record(record: &UsageRecord, expected: Expected, elapsed: Duration) {
     assert_eq!(record.cached_input_tokens, None);
     assert_eq!(record.cache_creation_input_tokens, None);
     assert_eq!(record.reasoning_output_tokens, None);
+    // No model here declares a pricing (story:cost-per-call).
+    assert_eq!(record.cost_usd, None);
 }
 
 /// Asserts each series grew by exactly its count between two scrapes.
@@ -949,3 +951,98 @@ fn a_record_names_the_profile_of_the_pod_that_served_and_none_otherwise() {
 
 /// The relay reads this stream as a target connection; it names no socket to shut down.
 impl RelayStream for Canned {}
+
+// --- story:cost-per-call: a model's declared pricing prices each call it relayed ----------------
+
+/// Answers one cost for every call and keeps what it was asked.
+#[derive(Default)]
+struct Pricing(Mutex<Vec<(Wire, Usage)>>);
+
+impl CallPricing for Pricing {
+    fn cost_usd(&self, wire: Wire, usage: Usage) -> Option<String> {
+        self.0.lock().unwrap().push((wire, usage));
+        Some("0.00756".to_owned())
+    }
+}
+
+/// A chat answer reporting 1200 prompt tokens, 200 of them cached, and 300 completion tokens.
+const USAGE_ANSWER: &str = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 113\r\n\r\n{\"id\":\"c-1\",\"usage\":{\"prompt_tokens\":1200,\"completion_tokens\":300,\"prompt_tokens_details\":{\"cached_tokens\":200}}}";
+
+/// `priced` on chat with `pricing` declared, and `plain` on chat with none.
+fn priced_and_plain(pricing: &Arc<Pricing>, script: Vec<Script>) -> Fixture {
+    relaying_models(
+        vec![
+            RelayModel::new(label("priced"), label("served-priced"), vec![Wire::Chat])
+                .unwrap()
+                .with_pricing(Arc::clone(pricing) as Arc<dyn CallPricing>),
+            RelayModel::new(label("plain"), label("served-plain"), vec![Wire::Chat]).unwrap(),
+        ],
+        script,
+        true,
+    )
+}
+
+#[test]
+fn cost_a_relayed_call_of_a_priced_model_carries_what_its_pricing_answers_and_an_unpriced_one_none()
+{
+    let pricing = Arc::new(Pricing::default());
+    let fixture = priced_and_plain(
+        &pricing,
+        vec![Script::Answer(USAGE_ANSWER), Script::Answer(USAGE_ANSWER)],
+    );
+    let address = fixture.handle.local_addr();
+    let priced = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"priced\"}",
+        true,
+    );
+    let plain = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"plain\"}",
+        true,
+    );
+    assert_eq!((priced.status, plain.status), (200, 200));
+    let costs: Vec<Option<String>> = fixture
+        .records()
+        .iter()
+        .map(|record| record.cost_usd.clone())
+        .collect();
+    assert_eq!(costs, [Some("0.00756".to_owned()), None]);
+    // The pricing is asked once, for the priced call, with the wire and the tokens it reported.
+    assert_eq!(
+        *pricing.0.lock().unwrap(),
+        [(
+            Wire::Chat,
+            Usage {
+                input_tokens: Some(1200),
+                output_tokens: Some(300),
+                cache_read_tokens: Some(200),
+                cache_creation_tokens: None,
+            }
+        )]
+    );
+}
+
+#[test]
+fn cost_a_refused_call_and_an_upstream_failure_of_a_priced_model_carry_none_and_ask_nothing() {
+    let pricing = Arc::new(Pricing::default());
+    let fixture = priced_and_plain(&pricing, vec![Script::Refused]);
+    let address = fixture.handle.local_addr();
+    let refused = post(address, "/v1/messages", "{\"model\":\"priced\"}", true);
+    let failed = post(
+        address,
+        "/v1/chat/completions",
+        "{\"model\":\"priced\"}",
+        true,
+    );
+    assert_eq!((refused.status, failed.status), (400, 502));
+    let records = fixture.records();
+    assert_eq!(records.len(), 2, "{records:?}");
+    assert!(
+        records.iter().all(|record| record.cost_usd.is_none()),
+        "{records:?}"
+    );
+    assert!(pricing.0.lock().unwrap().is_empty());
+}

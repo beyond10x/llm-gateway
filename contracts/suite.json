@@ -54,6 +54,15 @@
       "llm-gateway.gateway/authored/claude-code-anthropic-headers-never-reach-the-target",
       "llm-gateway.gateway/authored/claude-code-structured-output-format-reaches-the-target-unchanged",
       "llm-gateway.gateway/authored/claude-code-the-startup-probe-head-api-hello-is-refused",
+      "llm-gateway.gateway/authored/cost-a-negative-token-price-composes-nothing",
+      "llm-gateway.gateway/authored/cost-a-priced-call-records-its-cost-and-one-without-tokens-an-unpriced-one-and-a-refusal-none",
+      "llm-gateway.gateway/authored/cost-a-priced-route-of-the-routes-document-records-its-cost-and-an-unpriced-route-none",
+      "llm-gateway.gateway/authored/cost-a-route-priced-in-another-currency-composes-nothing",
+      "llm-gateway.gateway/authored/cost-a-token-price-llm-refuses-composes-nothing",
+      "llm-gateway.gateway/authored/cost-a-token-price-on-a-pod-a-hosted-and-a-bedrock-model-is-read",
+      "llm-gateway.gateway/authored/cost-a-token-price-without-its-output-composes-nothing",
+      "llm-gateway.gateway/authored/cost-a-token-price-written-as-a-number-composes-nothing",
+      "llm-gateway.gateway/authored/cost-an-unknown-token-price-key-composes-nothing",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
       "llm-gateway.gateway/authored/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing",
       "llm-gateway.gateway/authored/hosted-a-base-url-path-replaces-the-v1-prefix-of-every-wire-path",
@@ -564,6 +573,51 @@
         "digest": "sha256:00477d630f2e560b3ee57d75eb67f9f7cc5828f96faca90b056b4c152968234f",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/claude-code-the-startup-probe-head-api-hello-is-refused"
+      },
+      "gateway/scenarios/cost-a-negative-token-price-composes-nothing.yaml": {
+        "digest": "sha256:67706fd8947d3e384eb2e23d99a2ef97d9630b3125ffd226085af713de09cf74",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-negative-token-price-composes-nothing"
+      },
+      "gateway/scenarios/cost-a-priced-call-records-its-cost-and-one-without-tokens-an-unpriced-one-and-a-refusal-none.yaml": {
+        "digest": "sha256:58be8b5de66ffa727c88c218dbe26f4c4f9c4dffa25d6629c7b378fa189a91ef",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-priced-call-records-its-cost-and-one-without-tokens-an-unpriced-one-and-a-refusal-none"
+      },
+      "gateway/scenarios/cost-a-priced-route-of-the-routes-document-records-its-cost-and-an-unpriced-route-none.yaml": {
+        "digest": "sha256:4ad92037a3b2255a110923886699be9b221a5e370031067ef70d9e76e50cb1c4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-priced-route-of-the-routes-document-records-its-cost-and-an-unpriced-route-none"
+      },
+      "gateway/scenarios/cost-a-route-priced-in-another-currency-composes-nothing.yaml": {
+        "digest": "sha256:4d5b6a28c0b8b5238bc1b763184390d4a61e47b0506da422cf37e493e75bfb86",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-route-priced-in-another-currency-composes-nothing"
+      },
+      "gateway/scenarios/cost-a-token-price-llm-refuses-composes-nothing.yaml": {
+        "digest": "sha256:0c4090696a065d9403140ab0cb507cafffeca1109656cfb59d6aa226e6850f82",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-token-price-llm-refuses-composes-nothing"
+      },
+      "gateway/scenarios/cost-a-token-price-on-a-pod-a-hosted-and-a-bedrock-model-is-read.yaml": {
+        "digest": "sha256:19b4f4841eddcbdba1e96e2e1a80170f485fbba927a8c157a9e149f8639af04e",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-token-price-on-a-pod-a-hosted-and-a-bedrock-model-is-read"
+      },
+      "gateway/scenarios/cost-a-token-price-without-its-output-composes-nothing.yaml": {
+        "digest": "sha256:95b6507eb05cc0d63fff6aab9d3d7a02d2113490540da5bc37524a58794da1ba",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-token-price-without-its-output-composes-nothing"
+      },
+      "gateway/scenarios/cost-a-token-price-written-as-a-number-composes-nothing.yaml": {
+        "digest": "sha256:8938bf09caef3a64e8086e66ac7350979580d35bd015add23481ae799f9ba0f0",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-a-token-price-written-as-a-number-composes-nothing"
+      },
+      "gateway/scenarios/cost-an-unknown-token-price-key-composes-nothing.yaml": {
+        "digest": "sha256:40184c8263a8233dea21102e1d47f7d0e80a47c907eaaffb534abde74b45fa41",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/cost-an-unknown-token-price-key-composes-nothing"
       },
       "gateway/scenarios/gateway-a-header-name-followed-by-whitespace-is-malformed.yaml": {
         "digest": "sha256:7b9b260a007aa5475525e43d9defa53b20c041e838905a43d60a66fc0fec5aac",
@@ -1907,7 +1961,7 @@
       }
     },
     "counts": {
-      "authored": 317,
+      "authored": 326,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -2022,9 +2076,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "d43f2caffd4c4b41abeb9a9e5488f801fc5d71c2d64003d2c3e91094a3719790",
+    "contract_digest": "57a84ecb4885049339a51d6594e9ddd46de24d7483b90b1d09a4095b3c61105e",
     "scenario_initial_state": "empty",
-    "spec_digest": "3a93be29e547c0c83852d02a3be5ada2895834be3852ab9d65ceb7f8295dde0c",
+    "spec_digest": "9a46a10334a17a49a0d97bd47f3bf79b9b22fa4ed695e4798fa09bf37d850ec5",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -6962,6 +7016,805 @@
                   "404 no-body",
                   "404 path-unknown"
                 ]
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-negative-token-price-composes-nothing": {
+      "purpose": "the binary refuses a document whose hosted model declares a negative token price as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[hosted.remote]\\nwires = [\\\"chat\\\"]\\nbase_url = \\\"http://127.0.0.1:9/v1\\\"\\nauth_kind = \\\"anonymous\\\"\\n\\n[hosted.remote.token_price]\\ninput = \\\"-3\\\"\\noutput = \\\"15\\\"\\n\",\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-priced-call-records-its-cost-and-one-without-tokens-an-unpriced-one-and-a-refusal-none": {
+      "purpose": "a priced model's call records what its reported tokens cost; its call without reported tokens, the same call of an unpriced model and a refused call record none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[{\"alias\":\"priced\",\"upstream_model\":\"served-priced\",\"wires\":[\"chat\"],\"token_price\":{\"input\":\"3\",\"output\":\"15\",\"cache_read\":\"0.3\"}},{\"alias\":\"plain\",\"upstream_model\":\"served-plain\",\"wires\":[\"chat\"]}],\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"c-1\\\",\\\"usage\\\":{\\\"prompt_tokens\\\":1200,\\\"completion_tokens\\\":300,\\\"prompt_tokens_details\\\":{\\\"cached_tokens\\\":200}}}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"c-2\\\"}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"c-1\\\",\\\"usage\\\":{\\\"prompt_tokens\\\":1200,\\\"completion_tokens\\\":300,\\\"prompt_tokens_details\\\":{\\\"cached_tokens\\\":200}}}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"priced\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"priced\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/chat/completions\",\"body\":\"{\\\"model\\\":\\\"plain\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"priced\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=priced wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=113 duration_ms=bounded tokens=reported cost_usd=0.00756",
+                  "model=priced wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=12 duration_ms=bounded tokens=absent",
+                  "model=plain wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=113 duration_ms=bounded tokens=reported",
+                  "model=priced wire=messages disposition=Refused refusal=wire-not-served status=400 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed",
+                  "200 relayed",
+                  "400 wire-not-served"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-priced-route-of-the-routes-document-records-its-cost-and-an-unpriced-route-none": {
+      "purpose": "a route priced in the routes document records what each class of its reported tokens cost, cache reads and writes included; the same answer on an unpriced route records none",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  lab: {base_url: \\\"http://pod-1/v1\\\", protocol: messages, auth: {kind: anonymous}}\\nroutes:\\n  small: {model: lab/small-model, price: {currency: USD, input: \\\"3\\\", cached_input: \\\"0.3\\\", cache_creation_input: \\\"3.75\\\", output: \\\"15\\\"}}\\n  free: lab/free-model\\n\",\"pods\":[[{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"m-1\\\",\\\"usage\\\":{\\\"input_tokens\\\":100,\\\"cache_creation_input_tokens\\\":2000,\\\"cache_read_input_tokens\\\":10000,\\\"output_tokens\\\":50}}\"]},{\"status\":200,\"content_type\":\"application/json\",\"chunks\":[\"{\\\"id\\\":\\\"m-1\\\",\\\"usage\\\":{\\\"input_tokens\\\":100,\\\"cache_creation_input_tokens\\\":2000,\\\"cache_read_input_tokens\\\":10000,\\\"output_tokens\\\":50}}\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"small\\\",\\\"messages\\\":[]}\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"free\\\",\\\"messages\\\":[]}\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "records": {
+                "kind": "literal",
+                "value": [
+                  "model=small wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=127 duration_ms=bounded tokens=reported cost_usd=0.01155",
+                  "model=free wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=127 duration_ms=bounded tokens=reported"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
+                  "200 relayed",
+                  "200 relayed"
+                ]
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": [
+                  "pod-1 POST /v1/messages {\"model\":\"small-model\",\"messages\":[]}",
+                  "pod-1 POST /v1/messages {\"model\":\"free-model\",\"messages\":[]}"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-route-priced-in-another-currency-composes-nothing": {
+      "purpose": "a routes document whose route is priced in a currency other than USD, which llm admits and a cost in USD cannot carry, is refused config:value and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"models\":[],\"routes_document\":\"format: llm.routes/1\\nendpoints:\\n  lab: {base_url: \\\"http://pod-1/v1\\\", protocol: messages, auth: {kind: anonymous}}\\nroutes:\\n  small: {model: lab/small-model, price: {currency: EUR, input: \\\"3\\\", output: \\\"15\\\"}}\\n\",\"pods\":[[]],\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "acquired": {
+                "kind": "literal",
+                "value": 0.0
+              },
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "upstream": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-token-price-llm-refuses-composes-nothing": {
+      "purpose": "the binary refuses a document whose pod model declares a token price with more decimal places than llm's amounts hold as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\n\\n[models.small.token_price]\\ninput = \\\"0.2\\\"\\noutput = \\\"0.6000000001\\\"\\n\",\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-token-price-on-a-pod-a-hosted-and-a-bedrock-model-is-read": {
+      "purpose": "the binary reads a document whose pod model, hosted endpoint and Bedrock model each declare a token_price table of quoted decimal strings, the cache keys optional, and composes it",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[providers.runpod]\\nkind = \\\"runpod-vllm\\\"\\n\\n[models.small]\\nprovider = \\\"runpod\\\"\\nwires = [\\\"chat\\\"]\\ncontext_window = 65536\\nhf_model = \\\"example/small-model\\\"\\nimage = \\\"vllm/vllm-openai:v0.27.1\\\"\\ngpu_types = [\\\"NVIDIA L40S\\\"]\\nmax_model_len = 1024\\n\\n[models.small.token_price]\\ninput = \\\"0.2\\\"\\noutput = \\\"0.6\\\"\\n\\n[hosted.remote]\\nwires = [\\\"chat\\\"]\\nbase_url = \\\"http://127.0.0.1:9/v1\\\"\\nauth_kind = \\\"anonymous\\\"\\n\\n[hosted.remote.token_price]\\ninput = \\\"3\\\"\\noutput = \\\"15\\\"\\ncache_read = \\\"0.3\\\"\\ncache_creation = \\\"3.75\\\"\\n\\n[hosted.haiku]\\nkind = \\\"bedrock\\\"\\nregion = \\\"eu-central-1\\\"\\nmodel_id = \\\"eu.anthropic.claude-fixture-v1:0\\\"\\ncredential_source = \\\"container\\\"\\n\\n[hosted.haiku.token_price]\\ninput = \\\"1\\\"\\noutput = \\\"5\\\"\\n\",\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-token-price-without-its-output-composes-nothing": {
+      "purpose": "the binary refuses a document whose hosted model declares a token_price table without its required output key as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[hosted.remote]\\nwires = [\\\"chat\\\"]\\nbase_url = \\\"http://127.0.0.1:9/v1\\\"\\nauth_kind = \\\"anonymous\\\"\\n\\n[hosted.remote.token_price]\\ninput = \\\"3\\\"\\ncache_read = \\\"0.3\\\"\\n\",\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-a-token-price-written-as-a-number-composes-nothing": {
+      "purpose": "the binary refuses a document whose Bedrock model writes a token price as a TOML number instead of a quoted decimal string as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[hosted.haiku]\\nkind = \\\"bedrock\\\"\\nregion = \\\"eu-central-1\\\"\\nmodel_id = \\\"eu.anthropic.claude-fixture-v1:0\\\"\\ncredential_source = \\\"container\\\"\\n\\n[hosted.haiku.token_price]\\ninput = 1.25\\noutput = \\\"5\\\"\\n\",\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/cost-an-unknown-token-price-key-composes-nothing": {
+      "purpose": "the binary refuses a document whose token_price table names a key it does not have (llm's route key cached_input) as config:value, and nothing is composed",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Exchange"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastExchange"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Exchange",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"document\":\"listen = \\\"127.0.0.1:0\\\"\\nowner_secret_file = \\\"/run/owner-secret\\\"\\n\\n[hosted.remote]\\nwires = [\\\"chat\\\"]\\nbase_url = \\\"http://127.0.0.1:9/v1\\\"\\nauth_kind = \\\"anonymous\\\"\\n\\n[hosted.remote.token_price]\\ninput = \\\"3\\\"\\noutput = \\\"15\\\"\\ncached_input = \\\"0.3\\\"\\n\",\"steps\":[{\"step\":\"mark_ready\"}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Exchange",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastExchange"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": "config:value"
+              },
+              "results": {
+                "kind": "literal",
+                "value": []
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
               }
             }
           },

@@ -61,6 +61,7 @@ fn record(disposition: Disposition, refusal: Option<RefusalCode>, status: u16) -
         cached_input_tokens: None,
         cache_creation_input_tokens: None,
         reasoning_output_tokens: None,
+        cost_usd: None,
         response_bytes: 10,
         duration_ms: 7,
         profile: None,
@@ -231,4 +232,119 @@ fn r4_the_binary_serves_its_counters_to_the_owner() {
         scraped.contains("\nllmgw_pod_starts_total 0\n"),
         "{scraped}"
     );
+}
+
+/// A chat answer reporting 1200 prompt tokens, 200 of them cached, and 300 completion tokens.
+const PRICED_ANSWER: &str = "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 113\r\nconnection: close\r\n\r\n{\"id\":\"c-1\",\"usage\":{\"prompt_tokens\":1200,\"completion_tokens\":300,\"prompt_tokens_details\":{\"cached_tokens\":200}}}";
+
+/// A fake upstream on a loopback port: answers each of `count` connections with `answer` once
+/// it has read the request's head and its `content-length` body.
+fn upstream(count: usize, answer: &'static str) -> SocketAddr {
+    let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+    let address = listener.local_addr().unwrap();
+    std::thread::spawn(move || {
+        for _ in 0..count {
+            let Ok((mut stream, _)) = listener.accept() else {
+                return;
+            };
+            stream.set_read_timeout(Some(WAIT)).unwrap();
+            let mut seen = Vec::new();
+            let mut chunk = [0_u8; 4096];
+            let complete = |seen: &[u8]| {
+                let text = String::from_utf8_lossy(seen);
+                let Some((head, body)) = text.split_once("\r\n\r\n") else {
+                    return false;
+                };
+                let length = head
+                    .lines()
+                    .find_map(|line| {
+                        let (name, value) = line.split_once(':')?;
+                        name.eq_ignore_ascii_case("content-length")
+                            .then(|| value.trim().parse::<usize>().ok())?
+                    })
+                    .unwrap_or(0);
+                body.len() >= length
+            };
+            while !complete(&seen) {
+                match stream.read(&mut chunk) {
+                    Ok(0) | Err(_) => break,
+                    Ok(read) => seen.extend_from_slice(&chunk[..read]),
+                }
+            }
+            drop(stream.write_all(answer.as_bytes()));
+        }
+    });
+    address
+}
+
+/// story:cost-per-call, through the binary: a `[hosted.<alias>.token_price]` model's call is
+/// logged with the cost its reported tokens come to, by llm's pricing (1000 uncached input
+/// tokens at 3, 200 cached at 0.3 and 300 output at 15 USD per million: 0.00756), and the same
+/// call of a model declaring no price is logged without one.
+#[test]
+fn cost_the_binary_logs_the_cost_of_a_priced_call_and_none_for_an_unpriced_one() {
+    let fixture = Fixture::new("cost-binary");
+    let pod = upstream(2, PRICED_ANSWER);
+    let config = fixture.config(&format!(
+        "listen = \"127.0.0.1:0\"\nowner_secret_file = \"{}\"\n\n\
+         [hosted.priced]\nwires = [\"chat\"]\nbase_url = \"http://{pod}/v1\"\nauth_kind = \"anonymous\"\n\n\
+         [hosted.priced.token_price]\ninput = \"3\"\noutput = \"15\"\ncache_read = \"0.3\"\n\n\
+         [hosted.plain]\nwires = [\"chat\"]\nbase_url = \"http://{pod}/v1\"\nauth_kind = \"anonymous\"\n",
+        fixture.owner_secret().display()
+    ));
+    let mut child = Command::new(binary())
+        .args(["--config", config.to_str().unwrap()])
+        .env_remove("RUST_LOG")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::piped())
+        .spawn()
+        .unwrap();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut lines = Vec::new();
+    let address: SocketAddr = loop {
+        let mut line = String::new();
+        assert!(
+            stderr.read_line(&mut line).unwrap() > 0,
+            "the gateway exited before listening: {lines:?}"
+        );
+        let line = line.trim_end().to_owned();
+        let listening = line.strip_prefix(LISTENING).map(str::to_owned);
+        lines.push(line);
+        if let Some(address) = listening {
+            break address.parse().unwrap();
+        }
+    };
+    for alias in ["priced", "plain"] {
+        let body = format!("{{\"model\":\"{alias}\",\"messages\":[]}}");
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        write!(
+            stream,
+            "POST /v1/chat/completions HTTP/1.1\r\nhost: g\r\nauthorization: Bearer {OWNER_SECRET}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .unwrap();
+        let mut answer = String::new();
+        drop(stream.read_to_string(&mut answer));
+        assert!(answer.starts_with("HTTP/1.1 200 "), "{alias}: {answer}");
+    }
+    kill_process(Pid::from_child(&child), Signal::TERM).unwrap();
+    let mut rest = String::new();
+    stderr.read_to_string(&mut rest).unwrap();
+    lines.extend(rest.lines().map(str::to_owned));
+    assert_eq!(child.wait().unwrap().code(), Some(0), "{lines:?}");
+    let usage = |alias: &str| {
+        lines
+            .iter()
+            .find(|line| line.contains(" usage: ") && line.contains(&format!("model=\"{alias}\"")))
+            .unwrap_or_else(|| panic!("no usage event for {alias}: {lines:?}"))
+            .clone()
+    };
+    assert!(
+        usage("priced").contains(" cost_usd=\"0.00756\""),
+        "{}",
+        usage("priced")
+    );
+    assert!(!usage("plain").contains("cost_usd"), "{}", usage("plain"));
 }

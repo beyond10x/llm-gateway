@@ -153,6 +153,7 @@ dependencies = [
  "llm-blocking",
  "llm-chat",
  "llm-core",
+ "llm-cost",
  "llm-credentials",
  "llm-http",
  "llm-messages",

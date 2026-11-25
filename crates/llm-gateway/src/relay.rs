@@ -17,7 +17,7 @@ use crate::{
         TargetRefusal, TokenError,
     },
     inventory::Label,
-    metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
+    metrics::{CallPricing, Metrics, NoRecords, UsageRecord, UsageRecords},
     review::{CallerReview, CallerToken, Review},
     translate::{
         AnswerFraming, TranslatedAnswer, TranslationFailure, TranslationRequest, Translator,
@@ -897,6 +897,26 @@ pub struct RelayModel {
     compact_window: Option<u64>,
     kind: ModelKind,
     no_call_start: bool,
+    pricing: Option<Pricing>,
+}
+
+/// A model's [`CallPricing`], compared by identity: two declarations are equal when they name
+/// the same pricing.
+#[derive(Clone)]
+struct Pricing(Arc<dyn CallPricing>);
+
+impl PartialEq for Pricing {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for Pricing {}
+
+impl fmt::Debug for Pricing {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Pricing")
+    }
 }
 
 impl RelayModel {
@@ -932,7 +952,23 @@ impl RelayModel {
             compact_window: None,
             kind: ModelKind::default(),
             no_call_start: false,
+            pricing: None,
         })
+    }
+
+    /// Declares what the model's calls cost: each call relayed whose answer ended as written
+    /// is priced by `pricing`, and its [`UsageRecord::cost_usd`] is what it answers
+    /// (story:cost-per-call). Undeclared, no record of the model carries a cost.
+    #[must_use]
+    pub fn with_pricing(mut self, pricing: Arc<dyn CallPricing>) -> Self {
+        self.pricing = Some(Pricing(pricing));
+        self
+    }
+
+    /// What a call of the model on `wire` whose answer reported `usage` cost, by its declared
+    /// pricing; `None` without one.
+    pub(crate) fn cost_usd(&self, wire: Wire, usage: Usage) -> Option<String> {
+        self.pricing.as_ref()?.0.cost_usd(wire, usage)
     }
 
     /// Declares what serves the model, which `GET /v1/status` names
@@ -1380,6 +1416,13 @@ impl Relay {
                 })
                 .collect()
         })
+    }
+
+    /// What a call of `alias` on `wire` whose answer reported `usage` cost, by the pricing the
+    /// model declares ([`RelayModel::with_pricing`]); `None` for an alias no model has and a
+    /// model that declares none.
+    pub(crate) fn cost_usd(&self, alias: &str, wire: Wire, usage: Usage) -> Option<String> {
+        self.models.get(alias)?.cost_usd(wire, usage)
     }
 
     /// Feeds a record to the counters, then hands it to the embedding.

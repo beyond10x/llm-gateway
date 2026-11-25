@@ -5,7 +5,7 @@
 //! text by hand: the crate takes no dependency for it. A record leaves the crate only through
 //! [`UsageRecords`], which the embedding implements, as it implements the target source.
 
-use crate::{error::RefusalCode, relay::Wire};
+use crate::{error::RefusalCode, relay::Wire, usage::Usage};
 use std::{
     collections::BTreeMap,
     fmt::Write as _,
@@ -98,12 +98,18 @@ pub struct UsageRecord {
     pub target_status: Option<u16>,
     /// The model name the target reported. Not read yet (story:usage-records): always `None`.
     pub reported_model: Option<String>,
-    /// Token counters the target reported. Not read yet (story:usage-records): always `None`.
+    /// Token counters the answer reported, read as it streamed; `None` for a counter it did not
+    /// report. The reasoning counter is not read yet: always `None`.
     pub input_tokens: Option<u64>,
     pub output_tokens: Option<u64>,
     pub cached_input_tokens: Option<u64>,
     pub cache_creation_input_tokens: Option<u64>,
     pub reasoning_output_tokens: Option<u64>,
+    /// What the call cost in USD, as a decimal string, by the [`CallPricing`] its model
+    /// declares ([`crate::RelayModel::with_pricing`]). `None` for a call that was refused, cut
+    /// short or ended in its wire's terminal error, for a model that declares no pricing, and
+    /// whenever the pricing cannot say exactly: never `0` in place of an unknown.
+    pub cost_usd: Option<String>,
     /// Decoded body bytes of the target's answer relayed to the client; 0 for a refusal.
     pub response_bytes: u64,
     /// From the end of the request head to the last byte relayed or the refusal written.
@@ -120,6 +126,16 @@ pub struct UsageRecord {
 /// the connection's own thread before the connection is closed, so it should return quickly.
 pub trait UsageRecords: Send + Sync {
     fn record(&self, record: &UsageRecord);
+}
+
+/// What one call of a model cost: the port a [`crate::RelayModel::with_pricing`] declaration
+/// names. The crate does no arithmetic on money; the embedding prices with what it links (the
+/// binary: llm's `llm-cost`), as it implements [`UsageRecords`].
+pub trait CallPricing: Send + Sync {
+    /// What a call on `wire` whose answer reported `usage` cost, in USD, as a decimal string;
+    /// `None` when it cannot say exactly. The gateway asks only for a call it relayed whose
+    /// answer ended as written.
+    fn cost_usd(&self, wire: Wire, usage: Usage) -> Option<String>;
 }
 
 /// Hands records to nobody: what a relay composed without [`crate::Relay::with_records`] uses.
@@ -517,6 +533,7 @@ mod tests {
             cached_input_tokens: None,
             cache_creation_input_tokens: None,
             reasoning_output_tokens: None,
+            cost_usd: None,
             response_bytes: 0,
             duration_ms,
             profile: None,
@@ -674,6 +691,7 @@ mod tests {
             cached_input_tokens: None,
             cache_creation_input_tokens: None,
             reasoning_output_tokens: None,
+            cost_usd: None,
             response_bytes: 0,
             duration_ms: 1,
             profile: None,

@@ -5,6 +5,7 @@
 
 use crate::{
     keychain::KeychainRef,
+    pricing::TokenPrice,
     refusal::{Refusal, StartupRefusal},
     routes::Routes,
     trusted,
@@ -929,6 +930,10 @@ pub struct Model {
     /// `false` leaves the owner's wake as the only start; `true` is accepted only beside a
     /// `daily_cap_usd` on the model's provider (story:a-call-starts-no-pod).
     pub start_on_request: bool,
+    /// What the model's tokens cost (`[models.<alias>.token_price]`), which each call's usage
+    /// record prices (story:cost-per-call); `None` when undeclared. Unrelated to
+    /// `price_per_hour_micro_usd`.
+    pub token_price: Option<TokenPrice>,
 }
 
 /// `[hosted.<alias>]`, with every default applied and every rule checked: a model a hosted
@@ -972,6 +977,9 @@ pub struct Hosted {
     pub retry: (Option<u32>, Option<u32>),
     /// The auto-compact window the Claude Code launcher sets for this model, when declared.
     pub compact_window: Option<u32>,
+    /// What the model's tokens cost (`[hosted.<alias>.token_price]`), which each call's usage
+    /// record prices (story:cost-per-call); `None` when undeclared.
+    pub token_price: Option<TokenPrice>,
 }
 
 /// `[hosted.<alias>] kind = "bedrock"`, with every default applied and every rule checked: a
@@ -1002,6 +1010,9 @@ pub struct Bedrock {
     /// every name of [`BEDROCK_REASONING_EFFORTS`] for `anthropic-invoke`; always empty for
     /// `converse`.
     pub reasoning_efforts: Vec<String>,
+    /// What the model's tokens cost (`[hosted.<alias>.token_price]`), which each call's usage
+    /// record prices (story:cost-per-call); `None` when undeclared.
+    pub token_price: Option<TokenPrice>,
 }
 
 /// A loaded and validated deployment document.
@@ -1481,6 +1492,7 @@ fn validate_hosted(at: &str, alias: &str, declared: HostedDocument) -> Result<Ho
         tool_calling: tool_calling(declared.tool_calling.unwrap_or_default()),
         reasoning_effort,
         model_prefix: declared.model_prefix,
+        token_price: None,
     })
 }
 
@@ -1899,6 +1911,7 @@ fn validate_bedrock(at: &str, declared: HostedDocument) -> Result<Bedrock, Refus
         tool_calling: tool_calling(declared.tool_calling.unwrap_or(ToolCallingDocument::Parsed)),
         anthropic_beta,
         reasoning_efforts,
+        token_price: None,
     })
 }
 
@@ -2352,5 +2365,6 @@ fn into_model(model: ModelDocument, profiles: Vec<(String, ProfileDocument)>) ->
         },
         price_per_hour_micro_usd: None,
         start_on_request: model.start_on_request,
+        token_price: None,
     }
 }

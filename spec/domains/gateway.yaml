@@ -1079,7 +1079,8 @@ entities:
       # tokens=<check>`, then ` principal=<principal>` when the record names one. `duration_ms` is `bounded` when the record's value is at most the
       # time the client took from sending the request to reading its last byte, and the value
       # otherwise; `tokens` is `absent` when all five token counters are absent, and
-      # `reported` otherwise.
+      # `reported` otherwise. Then ` cost_usd=<amount>` when the record carries a cost
+      # (llm-gateway.telemetry.UsageRecord `cost_usd`), as the record writes it.
       - {name: records, type: 'List<String>'}
       # Per `scrape` step, in order: `<n> <status> content-type=<value>`, then for a served
       # scrape every sample line of its body as `<n> <line>`, where `<n>` counts scrapes from 1.
@@ -1213,7 +1214,11 @@ commands:
       #           unless given, which the output clamp takes before the model's own window; the
       #           optional `reasoning_effort` is `low`, `medium` or `xhigh`, the effort the model
       #           declares (step 6), none unless given, and any other value makes the program
-      #           invalid;
+      #           invalid; the optional `token_price` is an object of a token price's keys to
+      #           strings (llm-gateway.deployment.TokenPriceDeclaration), read by the binary's
+      #           own reader (`llm_gateway_cli::TokenPrice::from_table`) and declared on the
+      #           model as the binary declares it; one the reader refuses composes nothing, its
+      #           `error_code` the refusal's `<source>:<rule>` (`config:value`);
       #           the optional `endpoint` serves the model by a hosted endpoint
       #           (llm-gateway.upstream.HostedEndpoint) instead of the source's current pod:
       #           `{pod, scheme, base_path, certificate, auth_kind, credential,

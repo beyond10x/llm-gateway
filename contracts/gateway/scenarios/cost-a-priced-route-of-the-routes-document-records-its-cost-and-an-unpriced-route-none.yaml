@@ -1,0 +1,29 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: cost-a-priced-route-of-the-routes-document-records-its-cost-and-an-unpriced-route-none
+summary: a route priced in the routes document records what each class of its reported tokens cost, cache reads and writes included; the same answer on an unpriced route records none
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[],"routes_document":"format: llm.routes/1\nendpoints:\n  lab: {base_url: \"http://pod-1/v1\", protocol: messages, auth: {kind: anonymous}}\nroutes:\n  small: {model: lab/small-model, price: {currency: USD, input: \"3\", cached_input: \"0.3\", cache_creation_input: \"3.75\", output: \"15\"}}\n  free: lab/free-model\n","pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"m-1\",\"usage\":{\"input_tokens\":100,\"cache_creation_input_tokens\":2000,\"cache_read_input_tokens\":10000,\"output_tokens\":50}}"]},{"status":200,"content_type":"application/json","chunks":["{\"id\":\"m-1\",\"usage\":{\"input_tokens\":100,\"cache_creation_input_tokens\":2000,\"cache_read_input_tokens\":10000,\"output_tokens\":50}}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"small\",\"messages\":[]}"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"free\",\"messages\":[]}"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    upstream:
+    - "pod-1 POST /v1/messages {\"model\":\"small-model\",\"messages\":[]}"
+    - "pod-1 POST /v1/messages {\"model\":\"free-model\",\"messages\":[]}"
+    records:
+    - model=small wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=127 duration_ms=bounded tokens=reported cost_usd=0.01155
+    - model=free wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=127 duration_ms=bounded tokens=reported

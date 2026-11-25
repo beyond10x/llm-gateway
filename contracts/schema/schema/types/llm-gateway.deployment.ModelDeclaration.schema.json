@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:b64864d7a6a32bb9eae18f08681ddda949f567949131428444a2c115c71ee456",
+    "contract_digest": "slice-sha256/2:1f874ad4161942bb90966e053c90ef6f4447c61ae0188f2e44a59662b0464f37",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -120,6 +120,9 @@
         },
         "start_on_request": {
           "type": "boolean"
+        },
+        "token_price": {
+          "$ref": "#/$defs/llm-gateway.deployment.TokenPriceDeclaration"
         }
       },
       "required": [
@@ -204,6 +207,31 @@
         "On",
         "Off"
       ]
+    },
+    "llm-gateway.deployment.TokenPriceDeclaration": {
+      "title": "TokenPriceDeclaration",
+      "x-ess-name": "llm-gateway.deployment.TokenPriceDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "cache_read": {
+          "type": "string"
+        },
+        "cache_creation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "output"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.Wire": {
       "title": "Wire",

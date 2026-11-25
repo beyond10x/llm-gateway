@@ -21,6 +21,7 @@ mod keychain;
 mod keys;
 mod launch;
 mod logging;
+mod pricing;
 mod refusal;
 mod relaying;
 mod routes;
@@ -52,6 +53,7 @@ pub use keychain::{
 };
 pub use keys::{VllmKey, VllmKeys, vllm_keys};
 pub use logging::{TracingRecords, install_logging, log_filter};
+pub use pricing::TokenPrice;
 pub use refusal::{CredentialRefusal, Refusal, Source, StartupRefusal};
 pub use relaying::{
     ACCOUNT, CLEANUP_INTERVAL, CONTROLLER, CRASH_RESTART_LIMIT, CRASH_WINDOW_MS, LEASE_MS, LEDGER,

@@ -204,6 +204,21 @@ entities:
       - {name: cached_input_tokens, type: 'Optional<Integer>'}
       - {name: cache_creation_input_tokens, type: 'Optional<Integer>'}
       - {name: reasoning_output_tokens, type: 'Optional<Integer>'}
+      # DECIDED 2026-11-26 (story:cost-per-call): what the call cost in USD, by the token price
+      # its model declares (llm-gateway.deployment.TokenPriceDeclaration, or a route's
+      # RoutePriceDeclaration), computed by llm 0.24.0's own pricing (`llm_cost::PriceBook::quote`,
+      # each class's line rounded up once to a nanodollar, the lines summed) and written as llm
+      # writes an `Amount`: a decimal string without trailing zeros (`0.000135`, `0`). Present
+      # only for a call that was relayed (no `refusal`) and whose answer ended as written (not
+      # cut by the client leaving, not ended in its wire's terminal error), whose model declares
+      # a price, whose answer reported both its input and its output tokens, and where every
+      # token class the answer reported a non-zero count of has a rate. Otherwise absent: never
+      # `0` in place of an unknown, never a lower bound, never an estimate. The classes are
+      # llm's: input not read from or written to a cache, cache read, cache creation, output.
+      # On the messages wire `input_tokens` leaves the cache classes out; on chat and responses
+      # it counts them in. A cache class the answer did not report counts no tokens. The binary writes it as the `cost_usd` field of
+      # the record's `usage` event.
+      - {name: cost_usd, type: 'Optional<Decimal>'}
       # Decoded body bytes of the target's answer relayed to the client (llmgw
       # `route_response_bytes_total`); 0 for a refusal, whose body is the gateway's own.
       - {name: response_bytes, type: Integer}

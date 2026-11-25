@@ -527,6 +527,7 @@ mod relay {
         Wire,
     };
     use llm_gateway::{ModelKind, ModelPhase, ModelStatus};
+    use llm_gateway_cli::TokenPrice;
     use llm_gateway_cli::{
         EndpointCredential, HostedEndpoint, HostedTargets, LlmTranslator, PodConnector,
         ProxyConnector, Routes,
@@ -791,6 +792,10 @@ mod relay {
         /// of the source's current pod.
         #[serde(default)]
         endpoint: Option<EndpointInput>,
+        /// A `token_price` table's keys to strings, read by the binary's own reader
+        /// (story:cost-per-call).
+        #[serde(default)]
+        token_price: Option<BTreeMap<String, String>>,
     }
 
     /// A hosted endpoint at a fixture pod's address (llm-gateway.upstream.HostedEndpoint).
@@ -1499,6 +1504,15 @@ mod relay {
         )
     }
 
+    /// What the `records` fact writes after a record's [`record_fact`]: ` cost_usd=<amount>`
+    /// when the record carries a cost (story:cost-per-call), and nothing otherwise.
+    fn cost_fact(record: &UsageRecord) -> String {
+        record
+            .cost_usd
+            .as_deref()
+            .map_or_else(String::new, |cost| format!(" cost_usd={cost}"))
+    }
+
     /// The program's caller review: a table of presented bearers and their answers.
     #[derive(Debug)]
     struct Reviews(BTreeMap<Vec<u8>, Review>);
@@ -1982,7 +1996,19 @@ mod relay {
                 relayed = relayed.with_client_credentials();
             }
         }
-        Ok(relayed)
+        with_token_price(model, relayed)
+    }
+
+    /// `relayed` with the `token_price` `model` declares, read by the binary's own reader and
+    /// declared as the binary declares it (story:cost-per-call); a table the reader refuses is
+    /// the refusal's `<source>:<rule>`.
+    fn with_token_price(model: &ModelInput, relayed: RelayModel) -> Result<RelayModel, String> {
+        let Some(table) = &model.token_price else {
+            return Ok(relayed);
+        };
+        let price = TokenPrice::from_table(&format!("models.{}.token_price", model.alias), table)
+            .map_err(|refusal| refusal.code().to_owned())?;
+        Ok(relayed.with_pricing(price.pricing()))
     }
 
     fn compose(
@@ -2859,7 +2885,7 @@ mod relay {
                 records
                     .take()
                     .iter()
-                    .map(|record| record_fact(record, elapsed)),
+                    .map(|record| record_fact(record, elapsed) + &cost_fact(record)),
             );
             let Some(received) = received else {
                 results.push("no-response".to_owned());

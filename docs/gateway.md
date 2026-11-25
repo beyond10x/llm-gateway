@@ -308,11 +308,24 @@ any status is asked. A gateway composed without a relay answers an empty list.
 
 (Wrapped here; the answer is one line.) Each entry names `model`, `kind` (`pod`, `hosted`,
 `route` or `bedrock`), `wires` (the wires its upstream declares), the `ModelStatus` keys
-`phase`, `sub_phase` and `profile`, and `callable`: whether a call for it now is relayed or
-held while its pod starts. `callable` is `true` for `ready`, `starting` and `stopped` (a call
-starts a pod) and `false` for `stopping` and `unreachable`. A model with no status (Bedrock)
-has neither `phase` nor `callable`. Every status is asked side by side, so the list is answered
-within one probe deadline and a second however many endpoints are silent.
+`phase`, `sub_phase` and `profile`, and `callable`: whether a call sent now is relayed, held on
+a pod that is starting or serving, or starts the pod. `callable` is `true` for `ready` and
+`starting`, and for `stopped` where a call starts the pod; a model declared with
+`RelayModel::with_no_call_start` is `false` while `stopped`. The binary declares it on every
+Runpod model whose call does not start its pod (no `start_on_request` under its own provider's
+enforced daily cap), whose call is answered `model-stopped`. `callable` is `false` for
+`unreachable`, and for `stopping`, with or without `start_on_request`: the call would be
+refused, or would wait on a stop still owed, with no promise of an answer from the model. A call
+with `start_on_request` to a `stopping` model meets one of three outcomes:
+
+- The stop is confirmed within its hold: it binds to the replacement pod and is relayed, or is
+  `model-cold-start` if that pod still starts when the hold passes.
+- The stop is still owed when its hold passes: `target-unavailable`.
+- The gateway is stopping: `target-unavailable` at once.
+
+A model with no status (Bedrock) has neither `phase` nor `callable`. Every status is asked side
+by side, so the list is answered within one probe deadline and a second however many endpoints
+are silent.
 
 ## Service-account tokens
 

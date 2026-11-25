@@ -645,9 +645,13 @@ entities:
   # alias, `kind` its ModelKind, `wires` the wires the model declares (its upstream's, in their
   # declared order: `upstream_wires` of a ListedModel when the relay translates), then the keys
   # of its ModelStatus as LifecycleRoute renders them, and `callable`: whether a call sent now
-  # would be relayed or held (`true` for `ready` and `starting`, and for `stopped`, where a call
-  # starts the model's pod) or refused (`false` for `stopping` and `unreachable`). A model whose
-  # source reports no status (a Bedrock model) carries neither `phase` nor `callable`.
+  # is relayed, held on a pod that is starting or serving, or starts the pod (`true` for `ready`
+  # and `starting`, and for `stopped` where a call starts the pod; `false` for `stopped` of a
+  # model whose call starts nothing, in the binary a Runpod model a call would refuse
+  # `model-stopped`). `false` for `unreachable`, and for `stopping` with or without
+  # `start_on_request`: the call would be refused, or would wait on a stop still owed, with no
+  # promise of an answer from the model. A model whose source reports no status (a Bedrock
+  # model) carries neither `phase` nor `callable`.
   - name: llm-gateway.gateway.StatusEntry
     identity: {name: model, type: String}
     fields:

@@ -1325,24 +1325,28 @@ fn relay_models(deployment: &Deployment) -> Result<Vec<RelayModel>, Refusal> {
         let wires = model.wires.iter().copied().map(relay_wire).collect();
         // The pod serves the model under its alias (`--served-model-name`), so the upstream
         // name is the alias too.
-        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires);
-        models.push(
-            relayed
-                .map_err(|error| {
-                    Refusal::new(
-                        StartupRefusal::ConfigValue,
-                        format!("models.{alias}: {error}"),
-                    )
-                })?
-                .with_tool_calling(model.tool_calling)
-                .with_max_model_len(
-                    profile_windows(model)
-                        .map(|(_, window)| window)
-                        .min()
-                        .unwrap_or(u64::from(model.vllm.max_model_len)),
+        let relayed = RelayModel::new(relay_label(alias)?, relay_label(alias)?, wires)
+            .map_err(|error| {
+                Refusal::new(
+                    StartupRefusal::ConfigValue,
+                    format!("models.{alias}: {error}"),
                 )
-                .with_context_window(u64::from(model.context_window)),
-        );
+            })?
+            .with_tool_calling(model.tool_calling)
+            .with_max_model_len(
+                profile_windows(model)
+                    .map(|(_, window)| window)
+                    .min()
+                    .unwrap_or(u64::from(model.vllm.max_model_len)),
+            )
+            .with_context_window(u64::from(model.context_window));
+        // The status list says what `acquire` does, from the same decision
+        // (story:a-call-starts-no-pod).
+        models.push(if starts_on_request(deployment, model) {
+            relayed
+        } else {
+            relayed.with_no_call_start()
+        });
     }
     // Each route of the routes document, on its endpoint's wire (story:routes-document).
     models.extend(deployment.routes.relay_models()?);

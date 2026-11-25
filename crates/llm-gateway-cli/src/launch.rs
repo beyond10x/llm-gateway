@@ -87,18 +87,11 @@ pub fn overlay(document: &LaunchDocument, launch: &LaunchClaude) -> (Value, Vec<
                     json!(window.to_string()),
                 );
             }
-            match route.phase.as_deref() {
-                None | Some("ready") => {}
-                // A hosted endpoint or route that did not answer its probe
-                // (story:route-status-for-every-model): waiting does not help.
-                Some("unreachable") => notes.push(format!(
-                    "route {} is unreachable; its calls fail until its endpoint answers",
-                    route.alias
-                )),
-                Some(phase) => notes.push(format!(
+            if let Some(phase) = route.phase.as_deref().filter(|phase| *phase != "ready") {
+                notes.push(format!(
                     "route {} is {phase}; its first call may wait for it",
                     route.alias
-                )),
+                ));
             }
         }
         Some(route) => notes.push(format!(
@@ -601,27 +594,6 @@ mod tests {
                 "x"
             ])
         );
-    }
-
-    /// story:route-status-for-every-model: an implementer route that is starting may hold its
-    /// first call; one that is unreachable will not answer by waiting.
-    #[test]
-    fn route_status_an_implementer_route_not_ready_is_a_note_naming_its_phase() {
-        for (phase, note) in [
-            (
-                "starting",
-                "route qwen is starting; its first call may wait for it",
-            ),
-            (
-                "unreachable",
-                "route qwen is unreachable; its calls fail until its endpoint answers",
-            ),
-        ] {
-            let text = FIXTURE.replace("\"phase\":\"ready\"", &format!("\"phase\":\"{phase}\""));
-            let document: LaunchDocument = serde_json::from_str(&text).unwrap();
-            let (_, notes) = overlay(&document, &LaunchClaude::default());
-            assert_eq!(notes, [note], "{phase}");
-        }
     }
 
     #[test]

@@ -530,10 +530,14 @@ fn route_status_three_endpoints_that_never_answer_are_listed_within_one_deadline
     );
 }
 
-/// A resolver whose lookup never returns, counting its calls.
+/// A resolver whose lookup of port 9 never returns, counting those calls; any other address
+/// literal is answered as it is written.
 fn stuck_resolver(calls: &Arc<AtomicUsize>) -> Resolver {
     let calls = Arc::clone(calls);
-    Arc::new(move |_host: &str, _port: u16| {
+    Arc::new(move |host: &str, port: u16| {
+        if port != 9 {
+            return Ok(vec![SocketAddr::new(host.parse().unwrap(), port)]);
+        }
         calls.fetch_add(1, Ordering::SeqCst);
         loop {
             thread::park();
@@ -781,7 +785,10 @@ fn route_status_the_launch_route_asks_no_endpoint() {
     drop(server);
     assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
     assert!(answer.contains("\"alias\":\"qwen\""), "{answer}");
-    assert_eq!(accepted, 0, "the launch route probed the endpoint: {answer}");
+    assert_eq!(
+        accepted, 0,
+        "the launch route probed the endpoint: {answer}"
+    );
 }
 
 /// The launcher starts Claude Code (`tests/fixture/claude.rs`) against a gateway whose
@@ -825,5 +832,8 @@ fn route_status_the_launcher_starts_claude_without_a_probe_of_its_routes() {
     drop(server);
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert_eq!(output.status.code(), Some(0), "{stderr}");
-    assert_eq!(accepted, 0, "the launch probed the endpoint; stderr: {stderr}");
+    assert_eq!(
+        accepted, 0,
+        "the launch probed the endpoint; stderr: {stderr}"
+    );
 }

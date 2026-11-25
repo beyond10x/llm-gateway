@@ -8,7 +8,7 @@
 //! is open on loopback, whose reader is its owner. A model without tool calling is left out:
 //! both agents call tools on every turn.
 
-use crate::relay::{Relay, RelayModel, ToolCalling, Wire};
+use crate::relay::{ModelKind, Relay, RelayModel, ToolCalling, Wire};
 use std::fmt::Write as _;
 
 /// `GET /llms.txt`.
@@ -183,7 +183,9 @@ pub(crate) const LAUNCH_FORMAT: &str = "llm-gateway.launch/1";
 /// The launch document: the gateway's origin and, per relayed model, its alias, prefix, whether
 /// it forwards the client's own credential, whether Claude Code reaches it on the messages wire
 /// and Codex on the responses wire, its context and auto-compact windows, its `/model` label and its phase where the source knows
-/// one. It reads each model's status, every one at once, so it is never a public route.
+/// one. It reads each pod model's status, so it is never a public route. It asks no other
+/// model's: a hosted model's or a route's status is a probe of its endpoint, and the launch route
+/// asks no endpoint (`GET /v1/status` does).
 pub(crate) fn launch(relay: Option<&Relay>, origin: &str) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
@@ -193,15 +195,10 @@ pub(crate) fn launch(relay: Option<&Relay>, origin: &str) -> String {
     writer.string(origin);
     writer.key("routes");
     writer.begin_array();
-    // Every status at once, side by side (story:route-status-for-every-model): a hosted model's
-    // is a probe of its endpoint, bounded by the probe's deadline.
-    let models = relay.into_iter().flat_map(|relay| {
-        relay
-            .statuses()
-            .into_iter()
-            .map(move |(model, status)| (relay, model, status))
-    });
-    for (relay, model, status) in models {
+    let models = relay
+        .iter()
+        .flat_map(|relay| relay.models().map(move |model| (*relay, model)));
+    for (relay, model) in models {
         let alias = model.alias().as_str();
         writer.begin_object();
         writer.key("alias");
@@ -229,7 +226,11 @@ pub(crate) fn launch(relay: Option<&Relay>, origin: &str) -> String {
         writer.key("label");
         writer.string(&label(model, true));
         writer.key("phase");
-        optional(&mut writer, status.map(|status| status.phase.code()));
+        let phase = (model.kind() == ModelKind::Pod)
+            .then(|| relay.status(alias).ok())
+            .flatten()
+            .map(|status| status.phase.code());
+        optional(&mut writer, phase);
         writer.end_object();
     }
     writer.end_array();

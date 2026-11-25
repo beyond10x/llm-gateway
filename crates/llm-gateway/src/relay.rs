@@ -779,7 +779,8 @@ impl ModelPhase {
 }
 
 /// What serves a relayed model (`llm-gateway.gateway.ModelKind`), which `GET /v1/status` names.
-/// The gateway decides nothing by it.
+/// `GET /v1/launch` asks the status of a [`ModelKind::Pod`] model only; nothing else is decided
+/// by it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModelKind {
     /// A pod the embedding starts. The default.

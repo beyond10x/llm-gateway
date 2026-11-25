@@ -167,9 +167,11 @@ model's upstream name is written only on a gateway open on loopback. `GET /` for
 cannot disagree. `GET /v1/launch` is what the launchers read: `llm-gateway.launch/1` JSON with the
 origin and, per relayed model, its alias, prefix, whether it forwards the client's own credential,
 whether Claude Code and Codex reach it, its context and auto-compact windows, its `/model` label
-and its phase. It reads each model's status, every one at once (a hosted model's or route's is a
-probe of its endpoint, [the lifecycle routes](#the-lifecycle-routes)), so it takes the owner
-credential (none on a gateway open on loopback) and is not a public route.
+and its phase. It reads each pod model's status, so it takes the owner credential (none on a
+gateway open on loopback) and is not a public route. It asks no endpoint: a hosted model's, a
+route's and a Bedrock model's `phase` is `null` there, because their status is a probe of the
+endpoint (or none), and the read that probes is `GET /v1/status` ([the status
+list](#the-status-list)) or `GET /v1/models/{alias}/status`.
 
 `GET /v1/models` is `{"object":"list","data":[…]}`, one entry per model in alias order:
 `{"id":<alias>,"object":"model","owned_by":"llm-gateway","max_model_len"?:<n>,"wires":[…]}`.
@@ -1488,8 +1490,13 @@ them, so they are not in [Bounds](#bounds).
 | `status-probe-timeout-ms` | `ProbeBounds::timeout` | 5000 |
 | `status-reuse-seconds` | `ProbeBounds::reuse` | 10 |
 
-One probe, connection, handshake, request and first final status, ends within
-`status-probe-timeout-ms` or is `unreachable`/`no-answer`. A probe's result is reused for every
+One probe, name lookup, connection, handshake, request and first final status, ends within
+`status-probe-timeout-ms` or is `unreachable`/`no-answer`. The lookup and the connection run on
+a thread of their own, so a lookup that does not return ends the probe at its deadline too. Such
+a lookup is left to end on its own, at most one per model: while it runs, a status read of that
+model starts no second one, waits for it until its own deadline and is `no-answer` if it has not
+ended; once it has ended, what it found is dropped and the next probe looks the name up again.
+A probe's result is reused for every
 status read of that model until `status-reuse-seconds` have passed since the probe ended; the
 next read after that probes again. `GET /v1/status` asks every model side by side, so it is
 answered within `status-probe-timeout-ms` and one second however many endpoints are silent.

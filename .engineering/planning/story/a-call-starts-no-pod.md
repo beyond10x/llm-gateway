@@ -2,15 +2,16 @@
 format: aep.planning-md/3
 id: story:a-call-starts-no-pod
 kind: story
-status: active
+status: implemented
 title: A model call starts no pod unless the document says so and names a daily cap
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
-revision: 3
+revision: 4
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-25T20:25:24Z", actor: "human:operator", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-25T20:25:25Z", actor: "human:operator", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-25T22:36:10Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 ## Outcome
 

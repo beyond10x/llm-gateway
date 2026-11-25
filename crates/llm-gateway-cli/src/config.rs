@@ -1175,6 +1175,39 @@ fn schema_refusal(text: &str, error: &toml::de::Error) -> Refusal {
     }
 }
 
+/// The checked `[hosted.<alias>]` tables: the endpoints and Ollama models, then the Bedrock models.
+type HostedTables = (BTreeMap<String, Hosted>, BTreeMap<String, Bedrock>);
+
+/// The `[hosted.<alias>]` tables, checked by their kind: the endpoints and Ollama models, and the
+/// Bedrock models. An alias `models` already declares is refused.
+fn hosted_tables(
+    declared: BTreeMap<String, HostedDocument>,
+    models: &BTreeMap<String, Model>,
+) -> Result<HostedTables, Refusal> {
+    let mut hosted = BTreeMap::new();
+    let mut bedrock = BTreeMap::new();
+    for (alias, declared) in declared {
+        let at = format!("hosted.{alias}");
+        closed_name(&at, &alias)?;
+        ensure(
+            !models.contains_key(&alias),
+            &at,
+            "names an alias models already declares",
+        )?;
+        if declared.kind == HostedKindDocument::Bedrock {
+            let loaded = validate_bedrock(&at, declared)?;
+            bedrock.insert(alias, loaded);
+        } else if declared.kind == HostedKindDocument::Ollama {
+            let loaded = validate_ollama(&at, &alias, declared)?;
+            hosted.insert(alias, loaded);
+        } else {
+            let loaded = validate_hosted(&at, &alias, declared)?;
+            hosted.insert(alias, loaded);
+        }
+    }
+    Ok((hosted, bedrock))
+}
+
 /// Loads the closed document from its text, as [`load`] does once the trusted-file reader has
 /// read it. No file the document names is read.
 ///
@@ -1210,27 +1243,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         start_on_request_capped(&at, &model, &providers)?;
         models.insert(alias, model);
     }
-    let mut hosted = BTreeMap::new();
-    let mut bedrock = BTreeMap::new();
-    for (alias, declared) in document.hosted {
-        let at = format!("hosted.{alias}");
-        closed_name(&at, &alias)?;
-        ensure(
-            !models.contains_key(&alias),
-            &at,
-            "names an alias models already declares",
-        )?;
-        if declared.kind == HostedKindDocument::Bedrock {
-            let loaded = validate_bedrock(&at, declared)?;
-            bedrock.insert(alias, loaded);
-        } else if declared.kind == HostedKindDocument::Ollama {
-            let loaded = validate_ollama(&at, &alias, declared)?;
-            hosted.insert(alias, loaded);
-        } else {
-            let loaded = validate_hosted(&at, &alias, declared)?;
-            hosted.insert(alias, loaded);
-        }
-    }
+    let (hosted, bedrock) = hosted_tables(document.hosted, &models)?;
     let ingress_auth = match document.ingress_auth {
         IngressAuthDocument::Bearer => IngressAuth::Bearer,
         IngressAuthDocument::None => IngressAuth::None,

@@ -763,26 +763,16 @@ fn provoke(code: RefusalCode) -> Provocation {
         },
         // A bound of zero makes every connection one too many: the overload path, without a race.
         RefusalCode::Overloaded => Provocation {
-            ready: true,
-            max_head_bytes: 8192,
             max_concurrent_requests: 0,
-            raw: format!(
+            ..owned(format!(
                 "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
-            ),
-            relayed: false,
-            translated: false,
-            ingress: IngressAuth::Bearer,
+            ))
         },
         RefusalCode::Unavailable => Provocation {
             ready: false,
-            max_head_bytes: 8192,
-            max_concurrent_requests: 64,
-            raw: format!(
+            ..owned(format!(
                 "GET /v1/routes HTTP/1.1\r\nhost: h\r\nauthorization: Bearer {OWNER_SECRET}\r\n\r\n"
-            ),
-            relayed: false,
-            translated: false,
-            ingress: IngressAuth::Bearer,
+            ))
         },
     }
 }

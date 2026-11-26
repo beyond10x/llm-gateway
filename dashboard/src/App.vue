@@ -186,7 +186,7 @@ function yesNo(v: boolean | null): string {
     <section aria-labelledby="h-routes">
       <h2 id="h-routes">Routes</h2>
       <div class="scroll" tabindex="0" role="region" aria-label="Routes table">
-        <table>
+        <table class="routes">
           <thead>
             <tr>
               <th scope="col">Route</th><th scope="col" class="n">Calls</th><th scope="col" class="n">Errors</th><th scope="col" class="n"><abbr title="the client left before or while the answer was written: status 0, no refusal">Cancelled</abbr></th>

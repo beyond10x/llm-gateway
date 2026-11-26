@@ -20,15 +20,17 @@ It needs [Task](https://taskfile.dev), [cargo-nextest](https://nexte.st/) and th
 ## 1. Rust
 
 ```bash
+cargo nextest run --workspace --locked --no-run
 cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 ```
 
-The first command is `task test`. It builds the tests, runs them with
-`cargo nextest run --workspace --locked`, each test in a process of its own, kills a test that
-runs over 60 seconds and counts it failed, ends the run at 120 seconds, and prints the ten slowest
-tests and the time the run took; it fails when that time is over 120 seconds. Each crate builds
+The first two commands are `task test`. The first builds the tests, untimed. The second runs
+them with `cargo nextest run --workspace --locked`, each test in a process of its own, kills a
+test that runs over 60 seconds and counts it failed, ends the run at 120 seconds, prints the ten
+slowest tests, and fails when the run took over 120 seconds of wall clock. It needs
+cargo-nextest 0.9.143 or newer; `.config/nextest.toml` refuses an older one. Each crate builds
 one test binary from `tests/main.rs`.
 
 `task rust` runs this stage alone. The workspace forbids `unsafe`, and Clippy runs `all` plus

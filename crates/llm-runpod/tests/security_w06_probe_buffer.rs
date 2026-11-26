@@ -18,7 +18,6 @@ use llm_runpod::{ConnectorsBinding, ConnectorsRunpod, Probe, ProbeTarget, Runpod
 use std::{
     fs::{self, File},
     io::{Read, Seek, SeekFrom},
-    net::TcpListener,
     path::Path,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -177,9 +176,8 @@ fn the_scan_sees_an_allocation_freed_holding_its_bytes() {
 #[test]
 fn the_readiness_probe_leaves_the_vllm_key_nowhere_in_this_process_once_the_transport_is_gone() {
     let sentinel = Sentinel::new(0x81);
-    let closed = TcpListener::bind("127.0.0.1:0").expect("loopback");
-    let endpoint = format!("http://{}/v1/", closed.local_addr().expect("address"));
-    drop(closed);
+    let closed = crate::refusing::Refusing::new();
+    let endpoint = format!("http://{}/v1/", closed.address);
     let mut transport = ConnectorsRunpod::new(ConnectorsBinding {
         executable: Path::new(env!("CARGO_TARGET_TMPDIR")).join("security_w06_no_connectors"),
         adapter: "gpu".to_owned(),

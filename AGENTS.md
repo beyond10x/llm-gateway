@@ -70,12 +70,15 @@ at all.
 
 1. `task rust`: `task test`, `cargo fmt --all --check`, then
    `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. `task test` is
-   the test step, `cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test`: it builds the
-   tests, runs them with `cargo nextest run --workspace --locked` under `.config/nextest.toml`
-   (each test in a process of its own; a test over 60 s is killed and fails; the run ends at
-   120 s), prints the ten slowest tests from the run's `JUnit` report, and fails when the run
-   took over 120 s by that report. It needs `cargo-nextest` on `PATH` (CI installs 0.9.143,
-   checked by its SHA-256). Each crate builds one integration-test binary: `autotests = false`
+   the test step, two commands, and CI runs the same two as two steps: `cargo nextest run
+   --workspace --locked --no-run` builds the tests, untimed (a build, and a wait for a build slot,
+   are not the test step), then `cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test`
+   runs `cargo nextest run --workspace --locked` under `.config/nextest.toml` (each test in a
+   process of its own; a test over 60 s is killed and fails; the run ends at 120 s), times the
+   run's wall clock from its start to its exit and fails over 120 s (decision D89, 2026-11-26),
+   and prints the ten slowest tests from the run's `JUnit` report. It needs `cargo-nextest`
+   0.9.143 on `PATH`: `.config/nextest.toml` requires that version and refuses an older one, and
+   CI installs it, checked by its SHA-256. Each crate builds one integration-test binary: `autotests = false`
    and one `[[test]]` at `tests/main.rs`, whose modules are the other files of `tests/`; a new
    test file is a `mod` line there (`checks/xtask/tests/budget.rs` holds all of this). The
    workspace has no doc test, and nextest runs none. Run one crate's tests with

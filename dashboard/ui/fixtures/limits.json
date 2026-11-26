@@ -1,0 +1,55 @@
+{
+  "view": "dashboard.Limits",
+  "rows": [
+    {
+      "credential": "6b1d9e40",
+      "limits": {
+        "text": "unified",
+        "title": "credential 6b1d9e40",
+        "note": {
+          "text": "seen 3s ago"
+        }
+      },
+      "status": {
+        "text": "rejected",
+        "title": "rejected",
+        "sub": [
+          {
+            "text": "resets in 47m 0s"
+          }
+        ]
+      },
+      "window_5h": {
+        "text": "100%",
+        "key": "rejected",
+        "sub": [
+          {
+            "text": "resets in 47m 0s"
+          }
+        ]
+      },
+      "window_7d": {
+        "text": "86%",
+        "key": "allowed_warning",
+        "sub": [
+          {
+            "text": "resets in 2d 0h"
+          }
+        ]
+      },
+      "overage": {
+        "text": "rejected",
+        "title": "rejected"
+      },
+      "overage_reason": {
+        "text": "org_level_disabled",
+        "title": "org_level_disabled"
+      },
+      "claim": {
+        "text": "five_hour",
+        "title": "five_hour"
+      },
+      "headers": null
+    }
+  ]
+}

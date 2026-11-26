@@ -1,22 +1,24 @@
 // Writes a round directory, ux/rounds/<id>/{report.md,round.json,shots/}, and its row in
 // ux/rounds/trend.md, from what measure-round wrote. With UX_WRITE_BASELINE=1 it also writes
-// ux/baseline.json from the round's gating numbers, refused unless every gate replay was measured
-// and, for a value made worse, unless UX_DECISION names the decision.
+// ux/baseline.json from the round's gating numbers and the scrollers at the measured-only
+// viewports, refused unless every gate replay was measured on a committed page and harness and,
+// for a value made worse, unless UX_DECISION names the decision.
 import { createHash } from 'node:crypto';
-import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { test } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
-import { aggregate, baselineFrom, compare, describeProblem, type Aggregate, type Baseline } from '../ux/ratchet.ts';
-import { baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf } from '../ux/round-guard.ts';
+import { aggregate, baselineFrom, compare, describeProblem, measuredOnlyAggregate, mergeAggregates, type Aggregate, type Baseline } from '../ux/ratchet.ts';
+import { baselineAbout, baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf, treeStamp } from '../ux/round-guard.ts';
 import { REPLAY_METHOD } from './harness.ts';
 import type { Measurement } from './measure.ts';
 import { activeSessions } from '../src/flow.ts';
-import { AXE_RULE_PREFIX, flowProblems, fmtKeyFont, FLOW_VISIBLE_MIN, METRIC_KEYS } from './metrics.ts';
+import { AXE_RULE_PREFIX, expectedFetches, flowProblems, fmtKeyFont, FLOW_VISIBLE_MIN, keyDataItems, METRIC_KEYS, SCREEN_ONLY_KEYS, screenOnlyProblems, statusProblems } from './metrics.ts';
 import { metricsDir, readMeasurements } from './metrics-dir.ts';
-import { GATING, KEY_FONT_PX, SECONDARY_FONT_PX, THEMES, VIEWPORTS, type Theme } from './profiles.ts';
+import { fmt, worstMoments } from './report.ts';
+import { KNOWN_FAILURES, unexpected } from './known-failures.ts';
+import { FULL_PAGE_VIEWPORT, GATING, HEADING_FONT_PX, KEY_FONT_PX, SECONDARY_FONT_PX, THEMES, VIEWPORTS, type Theme } from './profiles.ts';
 
 // The scenarios whose last state shows an active session: their token-flow canvas is gated.
 const WITH_SESSIONS = new Set(SCENARIOS.filter((s) => { const st = s.states(Date.now()); return activeSessions(st[st.length - 1]!).size > 0; }).map((s) => s.name));
@@ -34,6 +36,15 @@ interface GateResult {
   passed: number;
   of: number;
   headline: string;
+}
+
+// Of the replays a gate fails, how many fail only on items a known failure holds, and the findings
+// that hold them, so a red row that the gate passes reads as what it is.
+function heldBy(check: 'key-data', ms: Measurement[], items: (m: Measurement) => string[]): string {
+  const failing = ms.filter((m) => items(m).length > 0);
+  const held = failing.filter((m) => unexpected(check, m.scenario, items(m), undefined, m.viewport.name).length === 0);
+  const findings = [...new Set(KNOWN_FAILURES.filter((k) => k.check === check && held.some((m) => !k.scenarios || k.scenarios.includes(m.scenario))).map((k) => k.finding))];
+  return held.length ? `${held.length} of the ${failing.length} failing replays fail only on known failures (${findings.join(', ')}, e2e/known-failures.ts), which the gate passes` : 'no failing replay is held by a known failure';
 }
 
 function hardGates(ms: Measurement[]): GateResult[] {
@@ -57,28 +68,17 @@ function hardGates(ms: Measurement[]): GateResult[] {
     g('gate 5 axe', mine, (m) => m.metrics['axe.serious_critical'] === 0, `${sum('axe.serious_critical')} serious/critical nodes over ${mine.length} replays (${[...new Set(mine.flatMap((m) => m.details.axe.map((a) => a.id)))].join(', ') || 'none'})`);
     g('gate 5 keyboard', mine, (m) => m.metrics['keyboard.unreachable'] === 0 && m.metrics['keyboard.focus_invisible'] === 0, `${max('keyboard.unreachable')} unreachable, ${max('keyboard.focus_invisible')} focus-invisible max`);
     g('gate 5 reduced motion', mine, (m) => m.metrics['reduced_motion.violations'] === 0, `${max('reduced_motion.violations')} violations max`);
-    g('key data', mine, (m) => m.details.key_font_below.length === 0 && m.details.secondary_font_below.length === 0, `key ${max('key_font.deficit_px')} px short max (floor ${KEY_FONT_PX}), secondary ${max('secondary_font.deficit_px')} px short max (floor ${SECONDARY_FONT_PX})`);
+    g('key data', mine, (m) => keyDataItems(m).length === 0, `key ${max('key_font.deficit_px')} px short max (floor ${KEY_FONT_PX}), headings ${max('heading_font.deficit_px')} px short max (floor ${HEADING_FONT_PX}), secondary ${max('secondary_font.deficit_px')} px short max (floor ${SECONDARY_FONT_PX}); no key text in ${mine.filter((m) => m.key_font_min_px === null).length} replays; ${heldBy('key-data', mine, keyDataItems)}`);
+    g('copy', mine, (m) => m.metrics['copy.defects'] === 0, `${max('copy.defects')} distinct items max (${[...new Set(mine.flatMap((m) => m.details.copy.map((c) => c.key.split(' ')[0])))].join(', ') || 'none'})`);
+    const played = mine.filter((m) => m.screen_only.length > 0);
+    if (played.length > 0) g('gate 4 screen-only user', played, (m) => screenOnlyProblems(m.screen_only).length === 0, `${played.flatMap((m) => m.screen_only).filter((r) => r.reached).length} of ${played.flatMap((m) => m.screen_only).length} tasks reached; actions ${Math.max(...played.flatMap((m) => m.screen_only.map((r) => r.actions)))} max, glance ${Math.max(...played.flatMap((m) => m.screen_only.map((r) => r.looks)))} max`);
     const flow = mine.filter((m) => WITH_SESSIONS.has(m.scenario));
     g(`flow (${[...WITH_SESSIONS].join(', ')})`, flow, (m) => flowProblems(m).length === 0, `visible ratio ${Math.min(1, ...flow.map((m) => m.flow.visible_ratio))} min (bar ${FLOW_VISIBLE_MIN}), drawn ${flow.filter((m) => m.flow.drawn).length} of ${flow.length}, drawn under reduced motion ${flow.filter((m) => m.reduced_flow.drawn).length} of ${flow.length}`);
-    g('replay hermetic and live', mine, (m) => m.blocked_requests === 0 && m.snapshot_fetches === 1 && m.status.every((s) => s === 'live'), `${mine.reduce((a, m) => a + m.blocked_requests, 0)} requests aborted`);
+    const actionsOf = (m: Measurement) => SCENARIOS.find((s) => s.name === m.scenario)?.actions ?? [];
+    const wordsOf = (m: Measurement) => SCENARIOS.find((s) => s.name === m.scenario)?.truth?.connection?.state;
+    g('replay hermetic, live, a lost connection in words', mine, (m) => m.blocked_requests === 0 && m.snapshot_fetches === expectedFetches(actionsOf(m)) && statusProblems(m.status, m.states, actionsOf(m), wordsOf(m)).length === 0, `${mine.reduce((a, m) => a + m.blocked_requests, 0)} requests aborted; status after a lost connection: ${[...new Set(mine.filter((m) => actionsOf(m).includes('lose-connection')).map((m) => m.status[m.status.length - 1]))].join(', ') || 'no such scenario'}`);
   }
   return out;
-}
-
-function git(args: string[]): string {
-  return execFileSync('git', args, { encoding: 'utf8', cwd: REPO }).trim();
-}
-
-// The commit of the page and of the harness, each marked `+changes` when the tree differs from it.
-function commits(): { page: string; harness: string } {
-  try {
-    const head = git(['rev-parse', '--short=8', 'HEAD']);
-    const page = git(['status', '--porcelain', '--', 'dashboard/src', 'crates/llm-gateway/src/dashboard.html']);
-    const harness = git(['status', '--porcelain', '--', 'dashboard/e2e', 'dashboard/ux', 'dashboard/playwright.config.ts', 'dashboard/package.json', 'dashboard/pnpm-lock.yaml', ':(exclude)dashboard/ux/rounds']);
-    return { page: page ? `${head}+changes` : head, harness: harness ? `${head}+changes` : head };
-  } catch {
-    return { page: 'unknown', harness: 'unknown' };
-  }
 }
 
 function packageVersion(name: string): string {
@@ -86,7 +86,6 @@ function packageVersion(name: string): string {
   return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as { version: string }).version : 'unknown';
 }
 
-const fmt = (v: number | undefined) => (v === undefined || !Number.isFinite(v) ? '–' : Number.isInteger(v) ? String(v) : v.toFixed(3));
 
 test('write the round directory', async ({ page }) => {
   const id = process.env.UX_ROUND!;
@@ -99,7 +98,10 @@ test('write the round directory', async ({ page }) => {
   if (refusal) throw new Error(refusal);
   mkdirSync(join(roundDir, 'shots'), { recursive: true });
 
-  const gatingAgg = aggregate(all.filter((m) => m.viewport.gating));
+  // The ratchet's basis: the gating replays, and the sideways scrollers at the measured-only
+  // viewports (overflow.scrollers.<viewport>), ratcheted without a gate.
+  const measuredOnly = measuredOnlyAggregate(all.filter((m) => !m.viewport.gating).map((m) => ({ scenario: m.scenario, viewport: m.viewport.name, scrollers: m.metrics['overflow.scrollers'] })));
+  const gatingAgg = mergeAggregates(aggregate(all.filter((m) => m.viewport.gating)), measuredOnly);
   const allAgg = aggregate(all);
   const gates = hardGates(all);
   const pageDigest = createHash('sha256').update(readFileSync(BUILT)).digest('hex');
@@ -108,7 +110,8 @@ test('write the round directory', async ({ page }) => {
   const previous = existsSync(baselineFile) ? (JSON.parse(readFileSync(baselineFile, 'utf8')) as Baseline) : null;
   const problems = previous ? compare(previous, gatingAgg) : [];
   const ratchet = previous ? problems.map(describeProblem) : ['no baseline yet'];
-  const stamp = commits();
+  // Taken before anything is written: the round's own outputs are not the tree it measured.
+  const stamp = treeStamp(REPO);
   const tools = {
     chromium: toolsOf(all).chromium,
     axe_core: toolsOf(all).axe_core,
@@ -136,6 +139,24 @@ test('write the round directory', async ({ page }) => {
       await page.screenshot({ path: join(roundDir, 'shots', name), fullPage: true });
       sheets.push(name);
     }
+  }
+
+  // Full-page sheets: per theme, the whole page of every scenario after its last action at
+  // FULL_PAGE_VIEWPORT, at half size side by side, so what lies below the fold is pictured.
+  const fullViewport = VIEWPORTS.find((v) => v.name === FULL_PAGE_VIEWPORT)!;
+  for (const theme of THEMES) {
+    const shots = SCENARIOS.map((s) => ({ s: s.name, png: readFileSync(join(dir, 'shots', `full__${s.name}__${FULL_PAGE_VIEWPORT}__${theme}.png`)) }));
+    const heights = shots.map(({ png }) => png.readUInt32BE(20));
+    const w = fullViewport.width / 2;
+    const h = Math.ceil(Math.max(...heights) / 2);
+    const tiles = shots.map(({ s, png }, i) => `<figure><figcaption>${s}</figcaption><img src="data:image/png;base64,${png.toString('base64')}" style="height:${Math.ceil(heights[i]! / 2)}px"></figure>`).join('');
+    await page.setViewportSize({ width: (w + 4) * shots.length + 8, height: h + 30 });
+    await page.setContent(
+      `<style>body{margin:0;padding:4px;display:grid;grid-template-columns:repeat(${shots.length},${w}px);gap:4px;align-items:start;background:#888;font:12px system-ui}figure{margin:0}img{width:${w}px;display:block}figcaption{height:18px;color:#fff}</style>${tiles}`,
+    );
+    const name = `full-${FULL_PAGE_VIEWPORT}-${theme}.png`;
+    await page.screenshot({ path: join(roundDir, 'shots', name), fullPage: true });
+    sheets.push(name);
   }
 
   const round = {
@@ -170,6 +191,7 @@ test('write the round directory', async ({ page }) => {
       secondary_font_at: m.secondary_font_at,
       shifts: m.shifts,
       status: m.status,
+      screen_only: m.screen_only,
       snapshot_fetches: m.snapshot_fetches,
       blocked: m.blocked,
       details: m.details,
@@ -213,41 +235,30 @@ test('write the round directory', async ({ page }) => {
     md.push(`| ${m.scenario} | ${m.viewport.name}${m.viewport.gating ? '' : ' (measured)'} | ${m.theme} | ${x['axe.serious_critical']} | ${x['overflow.x_px']} | ${x['overflow.elements']} | ${x['overflow.scrollers']} | ${m.header_min_visible_ratio} | ${x['keyboard.unreachable'] + x['overflow.scrollers_unreachable']} | ${x['keyboard.focus_invisible']} | ${fmtKeyFont(m.key_font_min_px)} | ${fmt(x['layout_shift.per_state_max'])} | ${x['reduced_motion.violations']} | ${x['truncation.without_full_value']} | ${fmt(m.flow.visible_ratio)} | ${m.flow.drawn ? 'yes' : 'no'} (${m.reduced_flow.drawn ? 'yes' : 'no'}) | ${status} |`);
   }
 
-  const worstMoments = (ms: Measurement[]) => {
-    const out: string[] = [];
-    for (const k of METRIC_KEYS) {
-      const worst = [...ms].sort((a, b) => b.metrics[k] - a.metrics[k])[0];
-      if (!worst || worst.metrics[k] <= 0) continue;
-      const d = worst.details;
-      const sample =
-        k === 'axe.serious_critical' ? d.axe.map((a) => `${a.id}: ${a.targets.join('; ')}`)
-        : k === 'overflow.elements' ? d.overflowing.map((o) => o.label)
-        : k === 'overflow.scrollers' ? d.scrollers.map((x) => x.label)
-        : k === 'overflow.scrollers_unreachable' ? d.scrollers_unreachable
-        : k === 'header.hidden_ratio' ? d.header.filter((h) => h.visible_ratio < 1).map((h) => `${h.name} visible ${h.visible_ratio}`)
-        : k === 'keyboard.unreachable' ? d.unreachable
-        : k === 'keyboard.focus_invisible' ? d.focus_invisible
-        : k === 'reduced_motion.violations' ? d.reduced_motion
-        : k === 'truncation.without_full_value' ? d.truncated.map((t) => t.label)
-        : k === 'key_font.deficit_px' ? [`${fmtKeyFont(worst.key_font_min_px)} px at ${worst.key_font_at}`]
-        : k === 'secondary_font.deficit_px' ? [`${fmtKeyFont(worst.secondary_font_min_px)} px at ${worst.secondary_font_at}`]
-        : k === 'layout_shift.per_state_max' ? [`per state: ${worst.shifts.join(', ')}`]
-        : [];
-      out.push(`- \`${k}\` = ${fmt(worst.metrics[k])} at ${worst.scenario} ${worst.viewport.name} ${worst.theme}: ${sample.slice(0, 3).join(' / ') || '–'}`);
-    }
-    return out.length ? out : ['- none above 0'];
-  };
+  md.push('', '## Screen-only user (gate 4)', '');
+  md.push('Deterministic, no model (e2e/screen-only.ts): it plays each task on the last state in the light theme, using only controls fully in view and uncovered, found by role and name; a click, a key press or a scroll is one action. Glance 1: the truth in the upper half of the first screen; 2: elsewhere on the first screen; 3: it needed a scroll, or a click moved the page by more than half a viewport. Only text a person can read counts as seen: in the viewport, not cut by its box, opacity over 0.5, contrast 3:1 or more.', '');
+  md.push('| scenario | viewport | task | reached | actions | glance | steps | seen |', '|---|---|---|---|---|---|---|---|');
+  for (const m of all.filter((x) => x.viewport.gating && x.screen_only.length > 0)) {
+    for (const r of m.screen_only) md.push(`| ${m.scenario} | ${m.viewport.name} | ${r.task} | ${r.reached ? 'yes' : 'no'} | ${r.actions} | ${r.looks} | ${r.steps.filter((x) => x !== 'look').join(', ') || 'none'} | ${r.seen.replace(/\|/g, '/').slice(0, 60)} |`);
+  }
+  md.push('', `Ratcheted per scenario: ${SCREEN_ONLY_KEYS.map((k) => `\`${k}\``).join(', ')} (actions summed over the tasks, the worst glance, 1 when every task was reached).`);
+  md.push('', '## Visible text (copy)', '', 'Distinct items of the visible-text probe (e2e/copy.ts) per scenario over the gating replays: words run together across elements, a raw identifier as a label, a control named by a glyph.', '');
+  for (const s of SCENARIOS) {
+    const items = new Map<string, string>();
+    for (const m of all.filter((x) => x.scenario === s.name && x.viewport.gating)) for (const c of m.details.copy) if (!items.has(c.key)) items.set(c.key, c.label);
+    md.push(`- ${s.name}: ${items.size ? [...items.entries()].map(([k, l]) => `\`${k}\` (${l.replace(/^\S+ /, '')})`).join('; ') : 'none'}`);
+  }
   md.push('', '## Worst moments at the gating viewports', '', ...worstMoments(all.filter((m) => m.viewport.gating)));
   md.push('', '## Worst moments at the measured-only viewports (no screenshot)', '', ...worstMoments(all.filter((m) => !m.viewport.gating)));
   md.push('', '## Ratchet against `ux/baseline.json` (gating values)', '');
   md.push(...(ratchet.length ? ratchet.map((r) => `- ${r}`) : ['- every value equals the baseline within its tolerance']));
-  md.push('', '## Contact sheets', '', 'The last state of each scenario, 0.75 s after it arrived, at half size.', '');
+  md.push('', '## Contact sheets', '', `The last state of each scenario, 0.75 s after it arrived, at half size; then (\`full-…\`) the whole page of each scenario after its last action at ${FULL_PAGE_VIEWPORT}, at half size.`, '');
   for (const s of sheets) md.push(`![${s}](shots/${s})`);
   md.push('');
   writeFileSync(join(roundDir, 'report.md'), md.join('\n'));
 
   const trendFile = join(UX, 'rounds', 'trend.md');
-  const header = ['# Trend', '', 'One row per round: hard-gate replays passing at the gating viewports (light / dark), and the worst values over every scenario at the gating viewports only (the ratchet\'s basis). "key font px" is the smallest key-data font there, n/a when no replay shows key data.', '', '| round | date | commit | toggle | gate 1 | gate 2 | gate 5 axe | gate 5 keyboard | gate 5 motion | axe nodes | past box | key font px | layout shift |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
+  const header = ['# Trend', '', 'One row per round: hard-gate replays passing at the gating viewports (light / dark), and the worst values over every scenario at the gating viewports only (the ratchet\'s basis). "key font px" is the smallest key-data font there, n/a when no replay shows key data. Not like for like: R-01 to R-04 were measured with the host\'s fonts, R-05 on with the pinned fonts; R-05 also moved to the renderer and merged the Recent calls wrapping (R-05/notes.md). From R-06 the scenarios include `offline`.', '', '| round | date | commit | toggle | gate 1 | gate 2 | gate 5 axe | gate 5 keyboard | gate 5 motion | axe nodes | past box | key font px | layout shift |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
   const trendRows = existsSync(trendFile) ? readFileSync(trendFile, 'utf8').split('\n').filter((l) => /^\| R-/.test(l) && !l.startsWith(`| ${id} |`)).map(shortCommit) : [];
   const pass = (gate: string) => THEMES.map((t) => { const g = gates.find((x) => x.gate === gate && x.theme === t)!; return `${g.passed}/${g.of}`; }).join(' / ');
   const worst = (k: keyof Measurement['metrics']) => fmt(Math.max(...Object.values(gatingAgg).map((r) => r[k] ?? 0)));
@@ -258,11 +269,10 @@ test('write the round directory', async ({ page }) => {
   if (process.env.UX_WRITE_BASELINE === '1') {
     const decision = process.env.UX_DECISION || undefined;
     const missing = missingGateReplays(all, { scenarios: SCENARIOS.map((s) => s.name), viewports: GATING.map((v) => v.name), themes: THEMES });
-    const refused = baselineRefusal(missing, problems, decision, tools.fonts);
+    const refused = baselineRefusal(missing, problems, decision, tools.fonts, stamp);
     if (refused) throw new Error(refused);
-    // The round directory may be a scratch one that is not kept: the text names the page it measured
-    // (the sha256 a committed round.json carries as page_sha256), not the round.
-    const baseline = baselineFrom(gatingAgg, `Worst value per scenario over the gating viewports (${GATING.map((v) => v.name).join(', ')}) and both themes, measured on the built page with sha256 ${pageDigest.slice(0, 12)} (page commit ${stamp.page}). Lower is better, except flow.visible_ratio and flow.drawn, where higher is better. Written by \`pnpm ux:round R-nn --baseline\`.`, previous ?? undefined, decision);
+    // The commit is clean (refused above otherwise), so the round and the commit reproduce it.
+    const baseline = baselineFrom(gatingAgg, baselineAbout(GATING.map((v) => v.name), id, stamp.page, pageDigest), previous ?? undefined, decision);
     writeFileSync(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`);
   }
 });

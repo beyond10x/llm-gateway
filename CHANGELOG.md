@@ -15,6 +15,7 @@ Nothing in any release is deployed or qualified against a live client.
 
 ### Changed
 
+- The dashboard is specified by one ess-ui/1 document, `dashboard/ui/llm-gateway.ui.yaml`, checked with `ess ui check` in `task dashboard-ux` and the Gate workflow, and drawn by the page's own renderer from it; the page is still one embedded file and looks and behaves as before, except that the Provider panel names the provider as a "Name" figure instead of in its heading.
 - The dashboard's subscription limit tiles wrap a value only between words or after an underscore, never inside a word; the status `allowed_warning` reads "allowed (warning)", and every status, overage, claim and overage reason keeps its raw header value in its tooltip.
 - The dashboard's Recent calls table fits a 1280 px wide window without sideways scrolling: its column headings, its flags and the upstream model and provider lines under a route wrap onto more lines instead of widening the table.
 - The dashboard says a watchdog heartbeat older than 5 minutes is stale in words beside its age ("11m 0s ago · stale (over 5 min)"), not in red alone.

@@ -158,7 +158,7 @@ const records = readdirSync(DIR)
   .map((f) => parse(f, readFileSync(join(DIR, f), 'utf8')));
 
 const record = (fields: Record<string, string>) =>
-  parse('UXF-999.md', `---\n${Object.entries({ id: 'UXF-999', title: 't', class: 'layout', severity: 'S2', metric: 'm', status: 'closed', found_by: 'f', evidence_recording: 'none', evidence_screenshot: 's', evidence_lines: 'dashboard/src/App.vue:1 (`<script setup`)', regression_asset: 'none', ...fields }).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n`);
+  parse('UXF-999.md', `---\n${Object.entries({ id: 'UXF-999', title: 't', class: 'layout', severity: 'S2', metric: 'm', status: 'closed', found_by: 'f', evidence_recording: 'none', evidence_screenshot: 's', evidence_lines: 'dashboard/src/essui/bind.ts:1 (`The binding`)', regression_asset: 'none', ...fields }).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n`);
 
 test('every finding record is complete, and no closed S1 or S2 finding lacks a regression asset', () => {
   expect(records.length).toBeGreaterThan(0);
@@ -182,27 +182,27 @@ test('break: a closed record whose asset names no declared e2e test is refused',
 });
 
 test('break: evidence lines past the end of their file, or in a file that does not exist, are refused', () => {
-  const lines = readFileSync(join(REPO, 'dashboard/src/App.vue'), 'utf8').split('\n').length;
-  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${lines + 1} (a line past the end, \`x\`)`, regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
-    `UXF-999.md: evidence dashboard/src/App.vue:${lines + 1} is past the end (${lines} lines)`,
+  const lines = readFileSync(join(REPO, 'dashboard/src/essui/bind.ts'), 'utf8').split('\n').length;
+  expect(problems(record({ evidence_lines: `dashboard/src/essui/bind.ts:${lines + 1} (a line past the end, \`x\`)`, regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
+    `UXF-999.md: evidence dashboard/src/essui/bind.ts:${lines + 1} is past the end (${lines} lines)`,
   ]);
-  expect(problems(record({ evidence_lines: 'dashboard/src/App.vue:99999-99999 (\`x\`); dashboard/src/Gone.vue:1 (\`y\`)', regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
-    `UXF-999.md: evidence dashboard/src/App.vue:99999 is past the end (${lines} lines)`,
+  expect(problems(record({ evidence_lines: 'dashboard/src/essui/bind.ts:99999-99999 (\`x\`); dashboard/src/Gone.vue:1 (\`y\`)', regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
+    `UXF-999.md: evidence dashboard/src/essui/bind.ts:99999 is past the end (${lines} lines)`,
     'UXF-999.md: evidence dashboard/src/Gone.vue does not exist',
   ]);
 });
 
 test('break: a cited line that does not hold a token the record names is refused, as is a citation without a token', () => {
-  const source = readFileSync(join(REPO, 'dashboard/src/App.vue'), 'utf8').split('\n');
+  const source = readFileSync(join(REPO, 'dashboard/src/essui/bind.ts'), 'utf8').split('\n');
   const at = source.findIndex((l) => l.includes('WATCHDOG_STALE_MS =')) + 1;
   const asset = { regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' };
-  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${at} (\`WATCHDOG_STALE_MS\`)`, ...asset }))).toEqual([]);
-  expect(problems(record({ evidence_lines: 'dashboard/src/App.vue (\`WATCHDOG_STALE_MS\`)', ...asset }))).toEqual([]);
-  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${at + 1} (\`WATCHDOG_STALE_MS\`)`, ...asset }))).toEqual([
-    `UXF-999.md: evidence dashboard/src/App.vue:${at + 1} holds none of \`WATCHDOG_STALE_MS\``,
+  expect(problems(record({ evidence_lines: `dashboard/src/essui/bind.ts:${at} (\`WATCHDOG_STALE_MS\`)`, ...asset }))).toEqual([]);
+  expect(problems(record({ evidence_lines: 'dashboard/src/essui/bind.ts (\`WATCHDOG_STALE_MS\`)', ...asset }))).toEqual([]);
+  expect(problems(record({ evidence_lines: `dashboard/src/essui/bind.ts:${at + 1} (\`WATCHDOG_STALE_MS\`)`, ...asset }))).toEqual([
+    `UXF-999.md: evidence dashboard/src/essui/bind.ts:${at + 1} holds none of \`WATCHDOG_STALE_MS\``,
   ]);
-  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${at} (the stale limit)`, ...asset }))).toEqual([
-    `UXF-999.md: evidence dashboard/src/App.vue:${at} names no token in backticks to find there`,
+  expect(problems(record({ evidence_lines: `dashboard/src/essui/bind.ts:${at} (the stale limit)`, ...asset }))).toEqual([
+    `UXF-999.md: evidence dashboard/src/essui/bind.ts:${at} names no token in backticks to find there`,
   ]);
 });
 

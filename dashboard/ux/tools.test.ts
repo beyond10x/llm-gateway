@@ -1,15 +1,33 @@
 // Break tests of the measuring tools that need no browser: each feeds a tool a bad input and
 // asserts that it reports it.
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, expect, test } from 'vitest';
 import { fontFileProblems, fontMode, fontsLabel, MAX_FONT_BYTES, MONO_FAMILY, PINNED_FONTS, PINNED_LABEL, SANS_FAMILY } from '../e2e/fonts.ts';
 import { KNOWN_FAILURES,stale, unexpected, wholeCheck, type KnownFailure } from '../e2e/known-failures.ts';
-import { flowProblems, fmtKeyFont, keyFontDeficit, mergeAxe, METRIC_KEYS, secondaryFontDeficit, type AxeFinding, type Metrics } from '../e2e/metrics.ts';
+import {
+  expectedFetches,
+  flowProblems,
+  fmtKeyFont,
+  headingFontDeficit,
+  keyDataItems,
+  keyFontDeficit,
+  mergeAxe,
+  METRIC_KEYS,
+  screenOnlyMetrics,
+  screenOnlyProblems,
+  secondaryFontDeficit,
+  statusProblems,
+  type AxeFinding,
+  type Metrics,
+} from '../e2e/metrics.ts';
 import type { FlowProbe } from '../e2e/probe.ts';
 import { METRICS_ROOT, metricsDir, readMeasurements } from '../e2e/metrics-dir.ts';
-import { aggregate, baselineFrom, compare, toleranceOf, type Baseline } from './ratchet.ts';
-import { baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf } from './round-guard.ts';
+import type { Measurement } from '../e2e/measure.ts';
+import { worstMoments } from '../e2e/report.ts';
+import { aggregate, baselineFrom, compare, describeProblem, measuredOnlyAggregate, mergeAggregates, toleranceOf, type Baseline } from './ratchet.ts';
+import { aboutRound, baselineAbout, baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf, treeStamp } from './round-guard.ts';
 
 mkdirSync(METRICS_ROOT, { recursive: true });
 const scratch = mkdtempSync(join(METRICS_ROOT, 'unit-'));
@@ -162,7 +180,7 @@ test('break: the ratchet holds the flow keys, higher is better: a blank or hidde
   expect(kinds([m(true, true, 1)])).toEqual(['flow.visible_ratio improved-not-taken']);
 });
 
-test('break: the layout-shift tolerance is relative: 0.007 to 0.017 fails, noise of 0.001 passes', () => {
+test('break: the layout-shift tolerance is relative and on the worse side only: 0.007 to 0.017 fails, 0.008 passes, any improvement must be taken', () => {
   expect(toleranceOf('layout_shift.per_state_max', 0.007)).toBe(0.002);
   expect(toleranceOf('layout_shift.per_state_max', 0.059)).toBe(0.0059);
   expect(toleranceOf('overflow.elements', 3)).toBe(0);
@@ -171,12 +189,161 @@ test('break: the layout-shift tolerance is relative: 0.007 to 0.017 fails, noise
   expect(kind(0.017)).toEqual(['worse']);
   expect(kind(0.01)).toEqual(['worse']);
   expect(kind(0.008)).toEqual([]);
-  expect(kind(0.006)).toEqual([]);
+  expect(kind(0.007)).toEqual([]);
+  expect(kind(0.006)).toEqual(['improved-not-taken']);
   expect(kind(0.004)).toEqual(['improved-not-taken']);
+  // The R-06 review's input: errors' baseline 0.003, measured 0.001, inside the 0.002 band.
+  const errors: Baseline = { about: 'test', scenarios: { errors: { 'layout_shift.per_state_max': { value: 0.003, tolerance: 0.002 } } }, tolerances: {} };
+  expect(compare(errors, { errors: { 'layout_shift.per_state_max': 0.001 } }).map(describeProblem)).toEqual([
+    'errors layout_shift.per_state_max: better than the baseline: take it into ux/baseline.json in this change (baseline 0.003, measured 0.001)',
+  ]);
+});
+
+test('break: every worst moment of the round report names where it is, the heading font included', () => {
+  const item = { key: 'k', label: 'an element' };
+  const m = {
+    scenario: 's',
+    viewport: { name: '1280x720', width: 1280, height: 720, gating: true },
+    theme: 'light',
+    metrics: Object.fromEntries(METRIC_KEYS.map((k) => [k, 1])),
+    key_font_min_px: 13,
+    key_font_at: 'td "a"',
+    heading_font_min_px: 13.3,
+    heading_font_at: 'h2 "Routes"',
+    secondary_font_min_px: 11,
+    secondary_font_at: 'span.small "b"',
+    shifts: [0.1],
+    details: {
+      axe: [{ id: 'color-contrast', impact: 'serious', help: 'h', nodes: 1, targets: ['td'] }],
+      overflowing: [item],
+      scrollers: [item],
+      scrollers_unreachable: ['div.scroll'],
+      truncated: [item],
+      header: [{ name: 'h1', visible_ratio: 0.5 }],
+      unreachable: ['button'],
+      focus_invisible: ['a'],
+      reduced_motion: ['animation'],
+      key_font_below: ['13px td'],
+      heading_font_below: ['13.3px h2'],
+      secondary_font_below: ['11px span.small'],
+      copy: [item],
+    },
+  } as unknown as Measurement;
+  const lines = worstMoments([m]);
+  expect(lines).toHaveLength(METRIC_KEYS.length);
+  expect(lines.filter((l) => l.endsWith(': –'))).toEqual([]);
+  expect(lines.find((l) => l.startsWith('- `heading_font.deficit_px`'))).toBe('- `heading_font.deficit_px` = 1 at s 1280x720 light: 13.3 px at h2 "Routes" / 13.3px h2');
 });
 
 test('trend rows carry 8 characters of the commit, also a row written with 12', () => {
   expect(shortCommit('| R-03 | 2026-11-26 | 6bd91d70289c | present | 8/8 |')).toBe('| R-03 | 2026-11-26 | 6bd91d70 | present | 8/8 |');
   expect(shortCommit('| R-04 | 2026-11-26 | 6bd91d70+changes | present |')).toBe('| R-04 | 2026-11-26 | 6bd91d70+changes | present |');
   expect(shortCommit('| R-05 | 2026-11-26 | 0123456789ab+changes | present |')).toBe('| R-05 | 2026-11-26 | 01234567+changes | present |');
+});
+
+test('break: the key-data gate refuses a replay that found no key text, and names headings apart', () => {
+  const details = { key_font_below: [], heading_font_below: ['13.3px h2'], secondary_font_below: [] };
+  expect(keyDataItems({ key_font_min_px: null, details })).toEqual(['no key text', 'heading 13.3px h2']);
+  expect(keyDataItems({ key_font_min_px: 14, details: { ...details, heading_font_below: [] } })).toEqual([]);
+  expect(headingFontDeficit(13.3)).toBe(0.7);
+  expect(headingFontDeficit(15.4)).toBe(0);
+});
+
+test('break: the replay status is live until the connection is lost and a non-live word after it', () => {
+  const words = ['\\boffline\\b'];
+  expect(statusProblems(['live', 'live', 'live'], 3, ['show-all-calls'])).toEqual([]);
+  expect(statusProblems(['live', 'polling every 5 s'], 2, [])).toEqual(['status "polling every 5 s" at step 2, not live']);
+  expect(statusProblems(['live', 'live', 'offline'], 2, ['lose-connection'], words)).toEqual([]);
+  expect(statusProblems(['live', 'live', 'live'], 2, ['lose-connection'], words)).toEqual(['status "live" at step 3, after the connection was lost']);
+  expect(statusProblems(['live', 'live', 'polling every 5 s'], 2, ['lose-connection'], words)).toEqual(['status "polling every 5 s" at step 3, after the connection was lost']);
+  expect(statusProblems(['live', 'live'], 2, ['lose-connection'], words)).toEqual(['no status after the connection was lost']);
+  expect(expectedFetches(['lose-connection'])).toBe(2);
+  expect(expectedFetches([])).toBe(1);
+});
+
+const task = (t: string, reached: boolean, actions: number, looks: number) => ({ task: t, reached, actions, looks });
+
+test('break: gate 4 refuses a task not reached; the ratchet sums actions, keeps the worst glance and the worst reach', () => {
+  expect(screenOnlyProblems([task('a', true, 3, 3)])).toEqual([]);
+  expect(screenOnlyProblems([task('a', true, 3, 3), task('b', false, 12, 3)])).toEqual(['b: the truth was not reached in 12 actions']);
+  expect(screenOnlyMetrics([])).toEqual({});
+  expect(screenOnlyMetrics([task('a', true, 3, 3), task('b', true, 0, 1)])).toEqual({ 'screen_only.actions': 3, 'screen_only.looks': 3, 'screen_only.reached': 1 });
+  const m = (tasks: ReturnType<typeof task>[]) => ({ scenario: 's', metrics: zeros, axe_rules: {}, screen_only: tasks });
+  const measured = aggregate([m([task('a', true, 3, 3)]), m([]), m([task('a', true, 1, 1)])]);
+  expect(measured.s).toMatchObject({ 'screen_only.actions': 3, 'screen_only.looks': 3, 'screen_only.reached': 1 });
+  const baseline = baselineFrom(measured, 'test');
+  const kinds = (tasks: ReturnType<typeof task>[]) => compare(baseline, aggregate([m(tasks)])).map((p) => `${p.metric} ${p.kind}`);
+  expect(kinds([task('a', false, 12, 3)])).toEqual(['screen_only.actions worse', 'screen_only.reached worse']);
+  expect(kinds([task('a', true, 0, 1)])).toEqual(['screen_only.actions improved-not-taken', 'screen_only.looks improved-not-taken']);
+});
+
+test('break: the scrollers at a measured-only viewport are ratcheted per viewport, the worst over the themes', () => {
+  const only = measuredOnlyAggregate([
+    { scenario: 's', viewport: '390x844', scrollers: 3 },
+    { scenario: 's', viewport: '390x844', scrollers: 5 },
+    { scenario: 's', viewport: '960x1080', scrollers: 0 },
+  ]);
+  expect(only).toEqual({ s: { 'overflow.scrollers.390x844': 5, 'overflow.scrollers.960x1080': 0 } });
+  const baseline = baselineFrom(mergeAggregates({ s: { 'overflow.x_px': 0 } }, only), 'test');
+  const kinds = (n: number) => compare(baseline, mergeAggregates({ s: { 'overflow.x_px': 0 } }, { s: { ...only.s, 'overflow.scrollers.390x844': n } })).map((p) => `${p.metric} ${p.kind}`);
+  expect(kinds(5)).toEqual([]);
+  expect(kinds(6)).toEqual(['overflow.scrollers.390x844 worse']);
+  expect(kinds(4)).toEqual(['overflow.scrollers.390x844 improved-not-taken']);
+});
+
+test('break: a new baseline takes an improvement inside the tolerance and does not creep up inside it', () => {
+  const previous: Baseline = { about: '', scenarios: { s: { 'layout_shift.per_state_max': { value: 0.043, tolerance: 0.0043 } } }, tolerances: {} };
+  const take = (v: number, decision?: string) => baselineFrom({ s: { 'layout_shift.per_state_max': v } }, '', previous, decision).scenarios.s!['layout_shift.per_state_max'];
+  expect(take(0.039)).toEqual({ value: 0.039, tolerance: 0.0039 });
+  expect(take(0.046)).toEqual({ value: 0.043, tolerance: 0.0043 });
+  expect(take(0.06, 'D9')).toEqual({ value: 0.06, tolerance: 0.006, decision: 'D9' });
+});
+
+test('break: --baseline is refused on a page or harness that differs from a commit', () => {
+  expect(baselineRefusal([], [], undefined, PINNED_LABEL, { page: 'abcdef12', harness: 'abcdef12' })).toBeNull();
+  expect(baselineRefusal([], [], undefined, PINNED_LABEL, { page: 'abcdef12+changes', harness: 'abcdef12' })).toMatch(/--baseline refused: the page \(abcdef12\+changes\) differ/);
+  expect(baselineRefusal([], [], undefined, PINNED_LABEL, { page: 'unknown', harness: 'unknown' })).toMatch(/refused/);
+});
+
+// A repository of its own under the metrics scratch directory, with the page's sources committed.
+function gitRepo(): string {
+  const repo = mkdtempSync(join(scratch, 'git-'));
+  const git = (...args: string[]) => execFileSync('git', ['-c', 'user.name=t', '-c', 'user.email=t@example.invalid', '-c', 'commit.gpgsign=false', ...args], { cwd: repo, encoding: 'utf8' });
+  git('init', '-q');
+  for (const f of ['dashboard/ui/page.ui.yaml', 'dashboard/index.html', 'dashboard/vite.config.ts', 'dashboard/src/main.ts', 'dashboard/e2e/a.ts', 'dashboard/ux/rounds/R-01/report.md']) {
+    mkdirSync(join(repo, f, '..'), { recursive: true });
+    writeFileSync(join(repo, f), 'v1\n');
+  }
+  git('add', '-A');
+  git('commit', '-q', '-m', 'base');
+  return repo;
+}
+
+test('break: the page is marked +changes for an edit of the document, index.html or vite.config.ts, not for a round directory', () => {
+  const repo = gitRepo();
+  const clean = treeStamp(repo);
+  expect(clean.page).toMatch(/^[0-9a-f]{8}$/);
+  expect(clean.harness).toBe(clean.page);
+  for (const f of ['dashboard/ui/page.ui.yaml', 'dashboard/index.html', 'dashboard/vite.config.ts']) {
+    writeFileSync(join(repo, f), 'v2\n');
+    expect(treeStamp(repo).page, f).toBe(`${clean.page}+changes`);
+    writeFileSync(join(repo, f), 'v1\n');
+  }
+  writeFileSync(join(repo, 'dashboard/ux/rounds/R-01/report.md'), 'v2\n');
+  writeFileSync(join(repo, 'dashboard/ux/baseline.json'), '{}\n');
+  expect(treeStamp(repo)).toEqual(clean);
+  writeFileSync(join(repo, 'dashboard/e2e/a.ts'), 'v2\n');
+  expect(treeStamp(repo)).toEqual({ page: clean.page, harness: `${clean.page}+changes` });
+});
+
+test('the baseline names the round and the commit it was taken on, and a kept round agrees on the page', () => {
+  const file = new URL('./baseline.json', import.meta.url);
+  const about = (JSON.parse(readFileSync(file, 'utf8')) as Baseline).about;
+  const named = aboutRound(about);
+  expect(named, about).not.toBeNull();
+  const round = new URL(`./rounds/${named!.round}/round.json`, import.meta.url);
+  if (existsSync(round)) expect((JSON.parse(readFileSync(round, 'utf8')) as { page_sha256: string }).page_sha256.startsWith(named!.page)).toBe(true);
+  expect(aboutRound(baselineAbout(['1366x768'], 'R-07', 'abcdef12', 'f'.repeat(64)))).toEqual({ round: 'R-07', commit: 'abcdef12', page: 'f'.repeat(12) });
+  expect(aboutRound('Re-taken by the harness at commit abcdef12 on the built page of round R-05 with sha256 ffffffffffff.')).toEqual({ round: 'R-05', commit: 'abcdef12', page: 'f'.repeat(12) });
+  expect(aboutRound('measured on the built page with sha256 951512ba2fae (page commit 076c9fb9+changes)')).toBeNull();
 });

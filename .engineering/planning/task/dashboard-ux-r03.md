@@ -3,35 +3,33 @@ format: aep.planning-md/3
 id: task:dashboard-ux-r03
 kind: task
 status: draft
-title: 'R-03 change set: scroll regions, cache tile overflow, visible token flow, status word break, key-data font'
-summary: Findings UXF-002, UXF-003, UXF-006, UXF-004 and the token-flow visibility finding; each fixed failing-first against its e2e assertion, baseline moved in the same merge.
+title: 'R-03 change set: scroll regions, cache tile overflow, routes table, visible token flow, key-data font'
+summary: Findings UXF-002, UXF-003, UXF-007, UXF-008 and UXF-004; each fixed failing-first against its e2e assertion, baseline moved in the same merge.
 relations:
 - decomposes: story:dashboard-ux-loop
-revision: 1
+revision: 3
 ---
-<!-- Starting point for a `task` artifact, seeded by `aep artifact new task <name>`.
-     No frontmatter here on purpose: the `---` block is written by the CLI from the id, kind, status
-     and relations you gave it, and a second copy in this file would be the one that went stale.
-     Delete the italic guidance as you fill each section. -->
-
-# Task: <name>
+# Task: R-03 change set
 
 ## What
 
-*The concrete unit of work, in the active voice. One task, one thing — if this needs an "and", it is
-two tasks or it is a story.*
+Fix the five findings of the R-02 triage failing-first: UXF-002 (scroll regions without keyboard
+access), UXF-003 (cache tile runs into its neighbour), UXF-007 (routes table cut at the right
+edge), UXF-008 (token flow hidden behind the panels: a panel of its own, decision R-03) and UXF-004
+(key data under 14 px).
 
 ## Why
 
-*Which story or specification this serves. The `decomposes` or `implements` relation carries the
-edge; this says what would be lost by dropping the task.*
+story:dashboard-ux-loop takes each round's change set as one task. These five ranked highest in
+dashboard/ux/rounds/R-02/triage.md; three are S2.
 
 ## Done When
 
-*The observable condition that ends it. A task whose completion is a matter of opinion is one that
-gets marked done twice and finished never.*
+Each finding has a red test commit before its fix commit, its record is closed with a regression
+asset in dashboard/e2e, and round R-03 shows its target metric moved: axe serious/critical 2 → 0,
+overflow.elements 1 → 0, Routes columns cut → 0, flow.visible_ratio ≥ 0.95, key-font deficit → 0.
 
 ## Notes
 
-*Anything the next person needs and cannot derive: the file to start in, the command to run, the
-trap somebody already fell into.*
+Outcome (R-03 and its reviews): four targets met; UXF-004 reached a deficit of 1.75 px of 3.6 px
+and was reopened in the R-03 triage. Commits on the merged branch of pull request 68.

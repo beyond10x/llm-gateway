@@ -1,0 +1,25 @@
+{
+  "view": "dashboard.InFlight",
+  "rows": [
+    {
+      "id": 9103,
+      "route": "claude-haiku",
+      "model": {
+        "text": "claude-haiku-4-5",
+        "mono": true
+      },
+      "wire": "messages",
+      "state": {
+        "text": "waiting-retry",
+        "note": {
+          "text": "24 s left · attempt 2"
+        }
+      },
+      "elapsed": "6.00 s",
+      "session": {
+        "text": "9c4e01d7b3a2",
+        "mono": true
+      }
+    }
+  ]
+}

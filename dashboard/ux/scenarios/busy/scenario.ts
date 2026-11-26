@@ -1,4 +1,5 @@
 import { fixture } from '../../../src/fixture.ts';
+import { CAUSE_429 } from '../build.ts';
 import type { Scenario } from '../types.ts';
 
 // The page's own development fixture: 40 calls over three routes and three sessions, three in
@@ -9,4 +10,6 @@ export const busy: Scenario = {
   anchor: true,
   states: (base) => [fixture(base), fixture(base + 1_000), fixture(base + 2_000)],
   actions: ['show-all-calls'],
+  // claude-sonnet has the most errors (2), each a 429; the heartbeat is 7 minutes old.
+  truth: { failing_route: { route: 'claude-sonnet', cause: CAUSE_429 }, watchdog: { state: ['stale'] } },
 };

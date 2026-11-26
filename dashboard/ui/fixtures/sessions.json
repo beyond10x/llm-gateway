@@ -1,0 +1,39 @@
+{
+  "view": "dashboard.Sessions",
+  "rows": [
+    {
+      "session": {
+        "text": "curl/8.11",
+        "note": {
+          "text": "27fa6b0e5c19",
+          "mono": true
+        }
+      },
+      "calls": 6,
+      "errors": 6,
+      "cancelled": 0,
+      "tokens": "0 / 0",
+      "cache_read": null,
+      "input_tps": "–",
+      "output_tps": "–",
+      "last_seen": "0s ago"
+    },
+    {
+      "session": {
+        "text": "claude-code",
+        "note": {
+          "text": "9c4e01d7b3a2",
+          "mono": true
+        }
+      },
+      "calls": 5,
+      "errors": 5,
+      "cancelled": 0,
+      "tokens": "0 / 0",
+      "cache_read": null,
+      "input_tps": "–",
+      "output_tps": "–",
+      "last_seen": "0s ago"
+    }
+  ]
+}

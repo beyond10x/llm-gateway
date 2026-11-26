@@ -17,10 +17,11 @@ tasks:
     cmds:
       - pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard test && pnpm --dir dashboard build
   dashboard-ux:
-    desc: Run what the Gate workflow's dashboard job runs, browser install aside (type check, unit tests, the built page against the committed one, the layout contract, hard gates and ratchet in Playwright)
+    desc: Run what the Gate workflow's dashboard job runs, browser install aside (the UI document, type check, unit tests, the built page against the committed one, the layout contract, hard gates and ratchet in Playwright)
     dir: dashboard
     cmds:
       - pnpm install --frozen-lockfile
+      - ess ui check --path ui/llm-gateway.ui.yaml
       - pnpm typecheck
       - pnpm test
       - pnpm build

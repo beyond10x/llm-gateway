@@ -5,7 +5,8 @@
 // lines here. `viewports` limits an entry to those viewports.
 // An entry without items holds a whole single-valued check (the token-flow canvas): its test is
 // marked `test.fail` and fails once the check passes.
-export type Check = 'overflow' | 'truncation' | 'header' | 'axe' | 'keyboard' | 'reduced-motion' | 'key-data' | 'flow';
+// A copy item is `<kind> <place>` (e2e/copy.ts); a key-data item is `<class> <px>px <element>`.
+export type Check = 'overflow' | 'truncation' | 'header' | 'axe' | 'keyboard' | 'reduced-motion' | 'key-data' | 'copy' | 'flow';
 
 export interface KnownFailure {
   finding: string;

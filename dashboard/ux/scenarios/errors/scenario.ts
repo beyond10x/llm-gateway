@@ -1,5 +1,5 @@
 import type { AttemptRecord, LimitRow, ProviderPanel, Snapshot } from '../../../src/extra.ts';
-import { Ledger, RATE_LIMITED, inFlight, type SessionDef } from '../build.ts';
+import { CAUSE_429, Ledger, RATE_LIMITED, inFlight, type SessionDef } from '../build.ts';
 import type { Scenario } from '../types.ts';
 
 const A: SessionDef = { session: '9c4e01d7b3a2', label: 'claude-code' };
@@ -87,4 +87,6 @@ export const errors: Scenario = {
     return out;
   },
   actions: ['expand-first-attempts'],
+  // Every claude-sonnet call fails with a 429; the heartbeat is 11 minutes old.
+  truth: { failing_route: { route: 'claude-sonnet', cause: CAUSE_429 }, watchdog: { state: ['stale'] } },
 };

@@ -1,0 +1,8 @@
+{
+  "view": "dashboard.Gateway",
+  "rows": [
+    {
+      "uptime_ms": 7215000
+    }
+  ]
+}

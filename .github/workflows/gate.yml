@@ -85,6 +85,25 @@ jobs:
           fi
           echo "dashboard checks: $run"
           echo "run=$run" >> "$GITHUB_OUTPUT"
+      - name: Install ess
+        if: steps.changes.outputs.run == 'yes'
+        env:
+          ESS_VERSION: "0.99.4"
+          ESS_SHA256: 3902d0f8a6dffe5255bd0a9c8f56608fabf52faf14b97d90b6e7f7ed3da7032d
+        run: |
+          set -euo pipefail
+          asset="ess-$ESS_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          release="https://github.com/beyond10x/ess/releases/download/$ESS_VERSION"
+          cd "$RUNNER_TEMP"
+          curl --fail --silent --show-error --location --output "$asset" "$release/$asset"
+          curl --fail --silent --show-error --location --output SHA256SUMS "$release/SHA256SUMS"
+          grep -Fx "$ESS_SHA256  $asset" SHA256SUMS
+          grep -F "  $asset" SHA256SUMS | sha256sum --check --strict
+          tar -xzf "$asset"
+          echo "$RUNNER_TEMP/ess-$ESS_VERSION-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
+      - name: The UI document
+        if: steps.changes.outputs.run == 'yes'
+        run: ess ui check --path ui/llm-gateway.ui.yaml
       - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
         if: steps.changes.outputs.run == 'yes'
         with:

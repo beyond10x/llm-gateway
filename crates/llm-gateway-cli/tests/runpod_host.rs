@@ -679,9 +679,16 @@ fn runpod_host_a_wake_under_a_spend_ceiling_reads_the_v2_pod_billing_and_starts_
     keychain();
     let fake = Fake::start();
     let pods = Pods::new(&fake, vec![".pods.fake.test"]);
+    // The pool's spend ledger in this test's own file, never the state directory's.
+    let ledger = std::path::Path::new(env!("CARGO_TARGET_TMPDIR")).join(format!(
+        "runpod-host-spend-ledger-{}.json",
+        std::process::id()
+    ));
+    drop(std::fs::remove_file(&ledger));
     let text = document(&format!(
-        "{}daily_cap_usd = 10.0\ntotal_cap_usd = 100.0\n",
-        both_at(&fake)
+        "{}daily_cap_usd = 10.0\ntotal_cap_usd = 100.0\nspend_ledger_file = \"{}\"\n",
+        both_at(&fake),
+        ledger.display()
     )) + "price_per_hour_usd = 0.79\n";
     let deployment = parse(&text).unwrap();
     let relaying = start_connected(&deployment, |transport| transport, pods).unwrap();

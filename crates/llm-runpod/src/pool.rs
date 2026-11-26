@@ -506,10 +506,18 @@ impl<T: RunpodTransport> RunpodPool<T> {
         self
     }
 
-    /// The pool with its spend ledger kept in `store`.
+    /// The pool with its spend ledger kept in `store`, read now
+    /// ([`RunpodProvider::set_ledger`]): the spend check counts the pool's own pods' estimated
+    /// spend, stopped ones and ones a previous pool on the same store started included, until
+    /// the reported spend holds at least as much. Each cleanup pass records as stopped every
+    /// ledger pod that no live record holds and a complete listing no longer shows.
     #[must_use]
-    pub fn with_ledger(self, store: Box<dyn LedgerStore>) -> Self {
-        drop(store);
+    pub fn with_ledger(mut self, store: Box<dyn LedgerStore>) -> Self {
+        self.inner
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .provider
+            .set_ledger(Some(store));
         self
     }
 
@@ -1153,7 +1161,7 @@ impl<T: RunpodTransport> Inner<T> {
             .collect();
         let inventory = self.provider.inventory();
         let mut orphans = Vec::new();
-        for resource in inventory.resources {
+        for resource in &inventory.resources {
             let ours = resource.owner.as_ref() == Some(&self.policy.controller);
             let recorded = keys.contains(&resource.key)
                 || resource
@@ -1171,9 +1179,15 @@ impl<T: RunpodTransport> Inner<T> {
                 .provider
                 .stop(&resource.key, resource.epoch.unwrap_or(0));
             if outcome.evidence.is_some() {
-                orphans.push(resource.key.incarnation);
+                orphans.push(resource.key.incarnation.clone());
             }
         }
+        // A ledger pod no live record holds and the listing no longer shows has stopped.
+        let held = live
+            .iter()
+            .map(|record| record.request_id.clone())
+            .collect();
+        self.provider.settle_ledger(&inventory, &held);
         orphans
     }
 
@@ -1236,7 +1250,13 @@ impl<T: RunpodTransport> Inner<T> {
                     .live_records()
                     .into_iter()
                     .filter(|record| record.phase.occupies_a_slot())
-                    .filter_map(|record| Some((record.requested.model, record.started_at_ms?)))
+                    .filter_map(|record| {
+                        Some((
+                            record.requested.model,
+                            record.started_at_ms?,
+                            record.request_id,
+                        ))
+                    })
                     .collect();
                 self.provider.set_live(live);
                 let _stale = self.provider.take_spend_refusal();

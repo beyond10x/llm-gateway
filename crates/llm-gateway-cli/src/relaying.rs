@@ -247,6 +247,57 @@ pub fn spend_policy(deployment: &Deployment) -> Result<SpendPolicy, Refusal> {
     Ok(policy)
 }
 
+/// Where the pool built from `deployment` keeps its spend ledger (story:spend-cap-counts-earlier-pods):
+/// `None` when the pool is unmetered, and otherwise the `spend_ledger_file` of the provider
+/// whose ceilings bind it, else, when `default` (the shipped compositions), `spend-ledger.json`
+/// in the state directory of this process's environment. A test seam passes `default = false`,
+/// so a document that names no file keeps no ledger there and no test touches a real one.
+///
+/// # Errors
+/// A `config:value` [`Refusal`] naming `providers.<name>.spend_ledger_file` when the file is
+/// the default and neither `XDG_STATE_HOME` nor `HOME` is an absolute path; as
+/// [`spend_policy`] otherwise.
+fn spend_ledger(
+    deployment: &Deployment,
+    default: bool,
+) -> Result<Option<crate::FileLedger>, Refusal> {
+    if !spend_policy(deployment)?.is_metered() {
+        return Ok(None);
+    }
+    let Some((name, provider)) = enforced_ceiling(deployment) else {
+        return Ok(None);
+    };
+    let path = match (&provider.spend_ledger_file, default) {
+        (Some(path), _) => path.clone(),
+        (None, false) => return Ok(None),
+        (None, true) => crate::spend_ledger::default_path(
+            std::env::var_os("XDG_STATE_HOME"),
+            std::env::var_os("HOME"),
+        )
+        .ok_or_else(|| {
+            Refusal::new(
+                StartupRefusal::ConfigValue,
+                format!(
+                    "providers.{name}.spend_ledger_file: none declared, and neither \
+                     XDG_STATE_HOME nor HOME is set"
+                ),
+            )
+        })?,
+    };
+    Ok(Some(crate::FileLedger::new(path)))
+}
+
+/// `pool` with `ledger` as its spend ledger, read now; unchanged without one.
+fn with_ledger<T: RunpodTransport>(
+    pool: RunpodPool<T>,
+    ledger: Option<crate::FileLedger>,
+) -> RunpodPool<T> {
+    match ledger {
+        Some(ledger) => pool.with_ledger(Box::new(ledger)),
+        None => pool,
+    }
+}
+
 /// `idle_timeout_minutes` as the pool's idle window. 0 is no idle grace (row K27): the pool takes
 /// no zero window, so it is 1 ms, and the pod is stopped by the first cleanup pass that finds it
 /// quiet, never sooner than its measured cold start.
@@ -952,7 +1003,11 @@ pub fn start_relaying<T: RunpodTransport + Send + 'static>(
     clock: Arc<dyn Clock>,
 ) -> Result<Relaying, Refusal> {
     let parts = Parts::read(deployment, &pods)?;
-    let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
+    let ledger = spend_ledger(deployment, false)?;
+    let pool = Arc::new(with_ledger(
+        runpod_pool(deployment, transport, clock)?,
+        ledger,
+    ));
     let targets = PoolTargets::new(
         deployment,
         &parts.vllm_keys,
@@ -981,7 +1036,11 @@ pub fn pod_targets<T: RunpodTransport + Send + 'static>(
     pods: Arc<dyn PodConnector>,
     clock: Arc<dyn Clock>,
 ) -> Result<Arc<dyn RelayTargets>, Refusal> {
-    let pool = Arc::new(runpod_pool(deployment, transport, clock)?);
+    let ledger = spend_ledger(deployment, false)?;
+    let pool = Arc::new(with_ledger(
+        runpod_pool(deployment, transport, clock)?,
+        ledger,
+    ));
     let targets = PoolTargets::new(
         deployment,
         &VllmKeys::given(keys),
@@ -1108,6 +1167,7 @@ where
     runpod_models(&subset)?;
     hosting_policy(&subset)?;
     spend_policy(&subset)?;
+    let ledger = spend_ledger(&subset, true)?;
     let authorization = compute_authorization_for(&subset)?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let mut transport = ConnectorsRunpod::new(binding.clone());
@@ -1126,11 +1186,10 @@ where
     }
     // The one constructor every composition builds its pool with, so none starts a pod
     // without the spend ceilings the document declares.
-    let pool = Arc::new(runpod_pool(
-        &subset,
-        wrap(transport),
-        Arc::new(WallClock::default()),
-    )?);
+    let pool = Arc::new(with_ledger(
+        runpod_pool(&subset, wrap(transport), Arc::new(WallClock::default()))?,
+        ledger,
+    ));
     let targets = PoolTargets::from_relayed(
         relayed,
         authorization,
@@ -1168,6 +1227,7 @@ fn start_rest(
     runpod_models(&subset)?;
     hosting_policy(&subset)?;
     spend_policy(&subset)?;
+    let ledger = spend_ledger(&subset, true)?;
     let authorization = compute_authorization_for(&subset)?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
     let key = crate::account::read_key(provider, where_key)?;
@@ -1197,11 +1257,10 @@ fn start_rest(
             transport.set_vllm_key(alias, key.expose().to_vec());
         }
     }
-    let pool = Arc::new(runpod_pool(
-        &subset,
-        transport,
-        Arc::new(WallClock::default()),
-    )?);
+    let pool = Arc::new(with_ledger(
+        runpod_pool(&subset, transport, Arc::new(WallClock::default()))?,
+        ledger,
+    ));
     let targets = PoolTargets::from_relayed(
         relayed,
         authorization,

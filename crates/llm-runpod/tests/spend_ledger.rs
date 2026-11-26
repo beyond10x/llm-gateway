@@ -132,11 +132,11 @@ fn run(pool: &RunpodPool<EmulatedRunpod>, alias: &str) {
     );
 }
 
-fn over(ceiling: SpendCeiling, micro_usd: u64) -> Option<PoolError> {
-    Some(PoolError::SpendCeiling(SpendRefusal::Over {
+fn over(ceiling: SpendCeiling, micro_usd: u64) -> PoolError {
+    PoolError::SpendCeiling(SpendRefusal::Over {
         ceiling,
         over_micro_usd: micro_usd,
-    }))
+    })
 }
 
 #[test]
@@ -150,7 +150,7 @@ fn a_stopped_pod_counts_until_the_reported_spend_holds_at_least_as_much() {
     // Five hours at 2 USD: 10 in the ledger, none reported yet, 1 for the start: 11.
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),
-        over(SpendCeiling::Daily, USD),
+        Some(over(SpendCeiling::Daily, USD)),
         "the stopped pod still counts"
     );
     assert_eq!(world.runpod.create_calls(), 1);
@@ -160,7 +160,7 @@ fn a_stopped_pod_counts_until_the_reported_spend_holds_at_least_as_much() {
         .set_account_spend(Some(reported(8 * USD, 8 * USD)));
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),
-        over(SpendCeiling::Daily, USD)
+        Some(over(SpendCeiling::Daily, USD))
     );
     // Billing reports more than the ledger: the reported spend counts, once.
     world
@@ -168,7 +168,7 @@ fn a_stopped_pod_counts_until_the_reported_spend_holds_at_least_as_much() {
         .set_account_spend(Some(reported(10 * USD + 500_000, 10 * USD + 500_000)));
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),
-        over(SpendCeiling::Daily, 1_500_000)
+        Some(over(SpendCeiling::Daily, 1_500_000))
     );
     // The next UTC day the stopped pod's spend is no longer the day's.
     world.runpod.set_account_spend(Some(reported(0, 10 * USD)));
@@ -190,7 +190,7 @@ fn the_total_ceiling_counts_the_ledger_over_the_reported_window() {
     world.clock.advance(DAY_MS);
     assert_eq!(
         pool.ensure(&id("qwen"), &authorization()).err(),
-        over(SpendCeiling::Total, 500_000),
+        Some(over(SpendCeiling::Total, 500_000)),
         "yesterday's 10 USD and 1 for the start"
     );
     world.clock.advance(30 * DAY_MS);
@@ -212,7 +212,7 @@ fn a_restarted_pool_reads_the_ledger_and_refuses_a_start_it_puts_over_the_ceilin
     let second = world.pool(&["qwen"], spend(&["qwen"], Some(10 * USD), None));
     assert_eq!(
         second.ensure(&id("qwen"), &authorization()).err(),
-        over(SpendCeiling::Daily, USD),
+        Some(over(SpendCeiling::Daily, USD)),
         "the pod from before the restart has run five hours"
     );
     assert_eq!(world.runpod.create_calls(), 1);
@@ -222,7 +222,7 @@ fn a_restarted_pool_reads_the_ledger_and_refuses_a_start_it_puts_over_the_ceilin
     world.clock.advance(HOUR_MS);
     assert_eq!(
         second.ensure(&id("qwen"), &authorization()).err(),
-        over(SpendCeiling::Daily, USD),
+        Some(over(SpendCeiling::Daily, USD)),
         "stopped at the sweep: it counts five hours, not six"
     );
     let entries = world.ledger.entries().expect("a ledger");

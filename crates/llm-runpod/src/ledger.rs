@@ -290,7 +290,7 @@ impl Ledger {
         self.close_where(now_ms, |entry| entry.pod.as_deref() == Some(pod_id));
     }
 
-    /// Records as stopped now every running entry that `running` says no longer runs.
+    /// Records as stopped now every running entry `stopped` holds for.
     pub(crate) fn close_where(&mut self, now_ms: u64, stopped: impl Fn(&LedgerEntry) -> bool) {
         if !self.loaded {
             return;

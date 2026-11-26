@@ -119,6 +119,50 @@ pub(crate) const TOKEN_REVIEW_CA: Policy = Policy {
     resolve_links: true,
 };
 
+/// The rules one file is read by, whatever its source.
+pub(crate) struct Rules {
+    /// Size bound in bytes, inclusive.
+    pub(crate) limit: u64,
+    /// Permission bits that refuse the file when any is set.
+    pub(crate) unsafe_mode: u32,
+    /// Whether the path is resolved through its symbolic links first.
+    pub(crate) resolve_links: bool,
+}
+
+impl Policy {
+    const fn rules(&self) -> Rules {
+        Rules {
+            limit: self.limit,
+            unsafe_mode: self.unsafe_mode,
+            resolve_links: self.resolve_links,
+        }
+    }
+}
+
+/// The pool's spend ledger (`crate::spend_ledger`): at most 1 MiB, refused when group- or
+/// world-writable, as the deployment document is. It holds no secret.
+pub(crate) const SPEND_LEDGER: Rules = Rules {
+    limit: 1 << 20,
+    unsafe_mode: 0o022,
+    resolve_links: false,
+};
+
+/// A file rule a file broke, and why, in words that name no path.
+#[derive(Debug)]
+pub(crate) struct Broken {
+    pub(crate) rule: FileRule,
+    pub(crate) detail: String,
+}
+
+impl Broken {
+    fn new(rule: FileRule, detail: &str) -> Self {
+        Self {
+            rule,
+            detail: detail.to_owned(),
+        }
+    }
+}
+
 /// The refusal of `rule` for `policy`'s source. Its message is `detail` alone: no refusal quotes
 /// the path it was given or the file a link resolves to, because a secret written by mistake as
 /// a path would be printed and logged with it. The code names the source, and a caller that
@@ -128,14 +172,14 @@ fn refuse(policy: &Policy, rule: FileRule, detail: &str) -> Refusal {
 }
 
 /// Opens `target` without following a final symlink.
-fn open_final(target: &Path, policy: &Policy) -> Result<File, Refusal> {
+fn open_final(target: &Path) -> Result<File, Broken> {
     // Non-blocking, so a FIFO cannot hold the open; it is then refused as not a regular file.
     let flags = OFlags::RDONLY | OFlags::NOFOLLOW | OFlags::CLOEXEC | OFlags::NONBLOCK;
     let descriptor = open(target, flags, Mode::empty()).map_err(|errno| {
         if errno == Errno::LOOP {
-            refuse(policy, FileRule::Symlink, "is a symbolic link")
+            Broken::new(FileRule::Symlink, "is a symbolic link")
         } else {
-            refuse(policy, FileRule::Unreadable, &errno.to_string())
+            Broken::new(FileRule::Unreadable, &errno.to_string())
         }
     })?;
     Ok(File::from(descriptor))
@@ -146,9 +190,8 @@ fn open_final(target: &Path, policy: &Policy) -> Result<File, Refusal> {
 /// links do; one outside it is refused as a symbolic link, naming neither file. A rotation can
 /// remove the directory a resolution named before the open reaches it, so a resolved file that
 /// has vanished is resolved once more.
-fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
-    let unreadable =
-        |error: std::io::Error| refuse(policy, FileRule::Unreadable, &error.to_string());
+fn open_resolved(path: &Path) -> Result<File, Broken> {
+    let unreadable = |error: std::io::Error| Broken::new(FileRule::Unreadable, &error.to_string());
     let parent = match path.parent() {
         Some(parent) if !parent.as_os_str().is_empty() => parent,
         _ => Path::new("."),
@@ -159,15 +202,14 @@ fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
         if resolved.starts_with(&directory) {
             Ok(resolved)
         } else {
-            Err(refuse(
-                policy,
+            Err(Broken::new(
                 FileRule::Symlink,
                 "resolves outside the directory that holds it",
             ))
         }
     };
-    match open_final(&resolve()?, policy) {
-        Err(_) if fs::metadata(path).is_ok() => open_final(&resolve()?, policy),
+    match open_final(&resolve()?) {
+        Err(_) if fs::metadata(path).is_ok() => open_final(&resolve()?),
         opened => opened,
     }
 }
@@ -175,33 +217,33 @@ fn open_resolved(path: &Path, policy: &Policy) -> Result<File, Refusal> {
 /// Reads `path` as UTF-8 text after checking the opened handle against `policy`. The text is
 /// exactly the bytes read. A refusal's message is the rule's detail alone.
 pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
+    checked(path, &policy.rules()).map_err(|broken| refuse(policy, broken.rule, &broken.detail))
+}
+
+/// [`read`] for a file no startup refusal names, the spend ledger's: the rule it broke, and the
+/// detail, which names no path.
+pub(crate) fn checked(path: &Path, policy: &Rules) -> Result<String, Broken> {
     let mut file = if policy.resolve_links {
-        open_resolved(path, policy)?
+        open_resolved(path)?
     } else {
-        open_final(path, policy)?
+        open_final(path)?
     };
     let metadata = file
         .metadata()
-        .map_err(|error| refuse(policy, FileRule::Unreadable, &error.to_string()))?;
+        .map_err(|error| Broken::new(FileRule::Unreadable, &error.to_string()))?;
     if !metadata.file_type().is_file() {
-        return Err(refuse(
-            policy,
-            FileRule::NotRegular,
-            "is not a regular file",
-        ));
+        return Err(Broken::new(FileRule::NotRegular, "is not a regular file"));
     }
     let owner = metadata.uid();
     if owner != geteuid().as_raw() && owner != 0 {
-        return Err(refuse(
-            policy,
+        return Err(Broken::new(
             FileRule::UntrustedOwner,
             "is owned by neither this user nor root",
         ));
     }
     let mode = metadata.permissions().mode() & 0o777;
     if mode & policy.unsafe_mode != 0 {
-        return Err(refuse(
-            policy,
+        return Err(Broken::new(
             FileRule::UnsafeMode,
             &format!(
                 "has mode {mode:03o}; none of {:03o} may be set",
@@ -210,8 +252,7 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
         ));
     }
     let too_large = || {
-        refuse(
-            policy,
+        Broken::new(
             FileRule::TooLarge,
             &format!("exceeds {} bytes", policy.limit),
         )
@@ -233,7 +274,7 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
             Ok(0) => break,
             Ok(read) => filled += read,
             Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
-            Err(error) => return Err(refuse(policy, FileRule::Unreadable, &error.to_string())),
+            Err(error) => return Err(Broken::new(FileRule::Unreadable, &error.to_string())),
         }
     }
     if u64::try_from(filled).unwrap_or(u64::MAX) > policy.limit {
@@ -241,7 +282,7 @@ pub(crate) fn read(path: &Path, policy: &Policy) -> Result<String, Refusal> {
     }
     bytes
         .into_text(filled)
-        .map_err(|_| refuse(policy, FileRule::NotUtf8, "is not UTF-8"))
+        .map_err(|_| Broken::new(FileRule::NotUtf8, "is not UTF-8"))
 }
 
 /// [`read`] for a file a setting names: a refusal's message is `<setting>: <detail>`, naming

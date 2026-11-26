@@ -2,6 +2,7 @@
 // ux/round-guard.test.ts can feed them bad input.
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
+import { PINNED_LABEL } from '../e2e/fonts.ts';
 import type { Measurement } from '../e2e/measure.ts';
 import { METRIC_KEYS } from '../e2e/metrics.ts';
 import type { Problem } from './ratchet.ts';
@@ -37,9 +38,10 @@ export function missingGateReplays(ms: Pick<Measurement, 'scenario' | 'viewport'
   return missing;
 }
 
-// --baseline is refused unless every gate replay was measured, and a value made worse (or no longer
-// measured) needs a decision id.
-export function baselineRefusal(missing: string[], problems: Problem[], decision: string | undefined): string | null {
+// --baseline is refused unless every gate replay was measured with the pinned fonts, and a value
+// made worse (or no longer measured) needs a decision id.
+export function baselineRefusal(missing: string[], problems: Problem[], decision: string | undefined, fonts: string = PINNED_LABEL): string | null {
+  if (fonts !== PINNED_LABEL) return `--baseline refused: the round was measured with the fonts "${fonts}"; the baseline holds what the pinned fonts measure (unset UX_FONTS)`;
   if (missing.length > 0) return `--baseline refused: ${missing.length} gate replay(s) not measured: ${missing.slice(0, 5).join(', ')}`;
   const worse = problems.filter((p) => p.kind === 'worse' || p.kind === 'missing-measured');
   if (worse.length > 0 && !decision) {
@@ -51,12 +53,13 @@ export function baselineRefusal(missing: string[], problems: Problem[], decision
   return null;
 }
 
-// The browser and axe-core every measurement of a round ran on; a round measured on two is refused.
+// The browser, axe-core and fonts every measurement of a round ran on; a round measured on two is
+// refused.
 export function toolsOf(ms: Pick<Measurement, 'tools'>[]): Measurement['tools'] {
   const seen = new Set(ms.map((m) => JSON.stringify(m.tools ?? null)));
   if (seen.size !== 1) throw new Error(`the round's measurements ran on different tools: ${[...seen].join(' / ')}`);
   const tools = ms[0]!.tools;
-  if (!tools?.chromium || !tools.axe_core) throw new Error('a measurement names no Chromium or axe-core version');
+  if (!tools?.chromium || !tools.axe_core || !tools.fonts) throw new Error('a measurement names no Chromium or axe-core version, or no fonts');
   return tools;
 }
 

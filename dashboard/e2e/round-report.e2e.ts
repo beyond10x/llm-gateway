@@ -112,6 +112,7 @@ test('write the round directory', async ({ page }) => {
   const tools = {
     chromium: toolsOf(all).chromium,
     axe_core: toolsOf(all).axe_core,
+    fonts: toolsOf(all).fonts,
     axe_core_playwright: packageVersion('@axe-core/playwright'),
     playwright: packageVersion('@playwright/test'),
     harness_commit: stamp.harness,
@@ -186,7 +187,7 @@ test('write the round directory', async ({ page }) => {
   const md: string[] = [];
   md.push(`# Round ${id}`, '');
   md.push(`Date ${date}. Page commit \`${round.commit}\`, built page sha256 \`${pageDigest.slice(0, 12)}…\`. Theme toggle: ${round.toggle}.`);
-  md.push(`Tools: Chromium ${tools.chromium}, axe-core ${tools.axe_core} (@axe-core/playwright ${tools.axe_core_playwright}), Playwright ${tools.playwright}, harness commit \`${tools.harness_commit}\`.`);
+  md.push(`Tools: Chromium ${tools.chromium}, axe-core ${tools.axe_core} (@axe-core/playwright ${tools.axe_core_playwright}), Playwright ${tools.playwright}, harness commit \`${tools.harness_commit}\`. Fonts: ${tools.fonts}.`);
   md.push(`Scenarios: ${SCENARIOS.map((s) => `\`${s.name}\`${s.anchor ? ' (anchor)' : ''}`).join(', ')}. Gating viewports ${GATING.map((v) => v.name).join(', ')}; measured-only ${VIEWPORTS.filter((v) => !v.gating).map((v) => v.name).join(', ')}.`, '');
   md.push('## Method', '', ...REPLAY_METHOD.split('\n').map((l) => `- ${l}`), '');
   md.push('## Hard gates (gating viewports)', '', '| gate | theme | replays passing | headline |', '|---|---|---|---|');
@@ -257,7 +258,7 @@ test('write the round directory', async ({ page }) => {
   if (process.env.UX_WRITE_BASELINE === '1') {
     const decision = process.env.UX_DECISION || undefined;
     const missing = missingGateReplays(all, { scenarios: SCENARIOS.map((s) => s.name), viewports: GATING.map((v) => v.name), themes: THEMES });
-    const refused = baselineRefusal(missing, problems, decision);
+    const refused = baselineRefusal(missing, problems, decision, tools.fonts);
     if (refused) throw new Error(refused);
     // The round directory may be a scratch one that is not kept: the text names the page it measured
     // (the sha256 a committed round.json carries as page_sha256), not the round.

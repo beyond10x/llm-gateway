@@ -122,6 +122,10 @@ table.mini th, table.mini td { padding: 0.15rem 0.5rem; border-bottom: none; }
 .attempts .wrap { max-width: 60rem; white-space: pre-wrap; }
 .expand { font: inherit; padding: 0 0.4rem; border: 1px solid var(--control); border-radius: var(--radius-sm); background: var(--surface); color: var(--text); cursor: pointer; }
 .expand:hover, .expand:focus-visible { border-color: var(--accent); color: var(--accent); }
+.calls > thead th { white-space: normal; vertical-align: bottom; }
+.calls td.col-flags { white-space: normal; }
+.calls .flag { white-space: nowrap; }
+.calls td.col-route .small { white-space: normal; }
 
 .nav { display: inline-flex; gap: 1rem; }
 .nav a { color: var(--accent); }

@@ -8,6 +8,7 @@ import { expect, test, type Browser, type Page, type Route } from '@playwright/t
 import type { Snapshot } from '../src/extra.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
 import { runAxe } from './axe.ts';
+import { pinFonts } from './fonts.ts';
 import { PAGE_URL, openReplay, settle } from './harness.ts';
 import { flowProbe } from './probe.ts';
 import { VIEWPORTS, type Theme } from './profiles.ts';
@@ -159,6 +160,7 @@ async function flowReplay(page: Page, name: string, theme: Theme): Promise<{ adv
   let held: Route | null = null;
   let waiting: (() => void) | null = null;
   await page.emulateMedia({ colorScheme: theme, reducedMotion: 'no-preference' });
+  await pinFonts(page);
   await page.addInitScript((t) => localStorage.setItem('llm-gateway.theme', t), theme);
   await page.route('**/*', async (route) => {
     const url = route.request().url();

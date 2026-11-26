@@ -2,6 +2,7 @@
 // one way and asserts the tool reports it, so a gate that passes is not passing by construction.
 import { expect, test, type Page } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
+import { fontMode, MONO_FAMILY } from './fonts.ts';
 import { openReplay, themeToggleProblems } from './harness.ts';
 import { reducedMotionReplay } from './measure.ts';
 import { flowProblems } from './metrics.ts';
@@ -28,6 +29,60 @@ test.describe('theme toggle check', () => {
     });
     const replay = await openReplay(page, scenario('idle'), 'light');
     expect(await themeToggleProblems(replay, 'dark')).toEqual(['after a reload the page shows light, not the stored dark']);
+  });
+});
+
+// The fonts Chromium drew each element's own text with, by CDP, and how wide the token-flow
+// canvas's monospace stack is against the pinned mono face and the host's monospace.
+async function renderedFonts(page: Page, selectors: string[]): Promise<{ text: Record<string, string[]>; canvas: { stack: number; pinned: number; host: number } }> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+  const text: Record<string, string[]> = {};
+  for (const selector of selectors) {
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+    if (!nodeId) throw new Error(`no element ${selector}`);
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+    text[selector] = fonts.map((f) => `${f.familyName.replace(/ SmBld$/, '')}${f.isCustomFont ? '' : ' (host)'}`);
+  }
+  const canvas = await page.evaluate(({ stack, pinned }) => {
+    const c = document.createElement('canvas').getContext('2d')!;
+    const w = (font: string) => {
+      c.font = `12px ${font}`;
+      return c.measureText('0123456789 abcdef 12:34:56').width;
+    };
+    return { stack: w(stack), pinned: w(`'${pinned}'`), host: w('monospace') };
+  }, { stack: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace", pinned: MONO_FAMILY });
+  return { text, canvas };
+}
+
+test.describe('pinned fonts', () => {
+  const SELECTORS = ['h1', 'section[aria-labelledby="h-calls"] thead th', 'section[aria-labelledby="h-calls"] tbody td.mono', 'section[aria-labelledby="h-calls"] tbody td:nth-child(3)'];
+  const PINNED = { 'h1': ['IBM Plex Sans'], [SELECTORS[1]!]: ['IBM Plex Sans'], [SELECTORS[2]!]: ['IBM Plex Mono'], [SELECTORS[3]!]: ['IBM Plex Sans'] };
+
+  test('every replay draws the page and its canvas with the committed fonts, not the host\'s', async ({ page }) => {
+    test.skip(fontMode().kind !== 'pinned', 'UX_FONTS measures with host fonts');
+    await openReplay(page, scenario('busy'), 'light');
+    const { text, canvas } = await renderedFonts(page, SELECTORS);
+    expect(text).toEqual(PINNED);
+    expect(canvas.stack).toBe(canvas.pinned);
+    expect(canvas.stack).not.toBe(canvas.host);
+  });
+
+  test('break: a replay with the host\'s fonts is told apart', async ({ page }) => {
+    const before = process.env.UX_FONTS;
+    process.env.UX_FONTS = 'host';
+    try {
+      await openReplay(page, scenario('busy'), 'light');
+    } finally {
+      if (before === undefined) delete process.env.UX_FONTS;
+      else process.env.UX_FONTS = before;
+    }
+    const { text, canvas } = await renderedFonts(page, SELECTORS);
+    expect(text).not.toEqual(PINNED);
+    expect(Object.values(text).flat().every((f) => f.endsWith('(host)'))).toBe(true);
+    expect(canvas.stack).toBe(canvas.host);
   });
 });
 

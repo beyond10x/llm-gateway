@@ -110,6 +110,13 @@ committed `crates/llm-gateway/src/dashboard.html`, then the Playwright gate (`e2
 60 s per test, 120 s for the step, the ten slowest printed, the report uploaded on failure).
 On a pull request it runs only when `dashboard/ci/changed.sh` says the diff reaches the dashboard;
 `task dashboard-ux` runs the same commands locally, browser install aside.
+The page asks for `system-ui` and a monospace stack, which a build host and an Ubuntu runner
+resolve to different installed fonts of different widths (Noto Sans and DejaVu Sans): every replay
+therefore renders with the committed IBM Plex subsets in `dashboard/e2e/fonts/` (SIL OFL 1.1, the
+digests in `dashboard/e2e/fonts.ts`, checked by a unit test), so both measure the same widths and
+`dashboard/ux/baseline.json` holds what those fonts measure. `UX_FONTS=host` (or
+`UX_FONTS=host:<installed family>`, e.g. `host:DejaVu Sans` for the runner's widths) measures with
+host fonts instead; it is a check of the page, not the gate, and a round refuses `--baseline` with it.
 
 Every build writes the worktree's own `target/`; never set `CARGO_TARGET_DIR`. Check `df -h /`
 before a full gate. End a tree with `worktree finish --discard-cache --archive <tree>`, which

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import type { Locator, Page } from '@playwright/test';
 import type { Snapshot } from '../src/extra.ts';
 import type { Action, Scenario } from '../ux/scenarios/index.ts';
+import { fontsLabel, pinFonts } from './fonts.ts';
 import type { Theme } from './profiles.ts';
 
 export const ORIGIN = 'http://gateway.test';
@@ -27,6 +28,7 @@ export const REPLAY_METHOD = [
   'The first state answers the one `dashboard/snapshot` fetch; every state then arrives as one `snapshot` event on a stand-in event stream that opened once and stays open, as the gateway serves it, so the connection status reads "live" and the page never polls.',
   `Layout shift per state: the sum of layout-shift entries from the moment the state is pushed to two animation frames later. No state is pushed within ${INPUT_QUIET_MS} ms of a harness click or key press, since the browser leaves out shifts that soon after an input; the value does not depend on what ran before it (an axe scan, a wait).`,
   'axe-core scans every state of every replay and the page after every action; a rule counts the distinct nodes over all scans.',
+  `Fonts: ${fontsLabel()}. The pinned fonts are committed under \`e2e/fonts/\` and installed in every replay before the page's first script, so every host measures the same text widths (e2e/fonts.ts); "host" measures with the fonts the host has installed and is not the gate.`,
   'The token-flow canvas is measured at the last state, scrolled to the top: `flow.visible_ratio` is the share of a 32 x 16 grid over its box that lies in the viewport with nothing painted over it; `flow.drawn` is whether it holds pixels other than its background.',
 ].join('\n');
 
@@ -116,6 +118,7 @@ export async function openReplay(page: Page, scenario: Scenario, theme: Theme, o
   let lastInput = 0;
 
   await page.emulateMedia({ colorScheme: theme, reducedMotion: opts.reducedMotion ? 'reduce' : 'no-preference' });
+  await pinFonts(page);
   await page.addInitScript(OBSERVER);
   await page.addInitScript(FAKE_STREAM);
   await page.route('**/*', async (route) => {

@@ -3,7 +3,8 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, expect, test } from 'vitest';
-import { KNOWN_FAILURES, stale, unexpected, wholeCheck, type KnownFailure } from '../e2e/known-failures.ts';
+import { fontFileProblems, fontMode, fontsLabel, MAX_FONT_BYTES, MONO_FAMILY, PINNED_FONTS, PINNED_LABEL, SANS_FAMILY } from '../e2e/fonts.ts';
+import { KNOWN_FAILURES,stale, unexpected, wholeCheck, type KnownFailure } from '../e2e/known-failures.ts';
 import { flowProblems, fmtKeyFont, keyFontDeficit, mergeAxe, METRIC_KEYS, secondaryFontDeficit, type AxeFinding, type Metrics } from '../e2e/metrics.ts';
 import type { FlowProbe } from '../e2e/probe.ts';
 import { METRICS_ROOT, metricsDir, readMeasurements } from '../e2e/metrics-dir.ts';
@@ -58,9 +59,44 @@ test('break: --baseline is refused when a gate replay is missing or incomplete, 
 });
 
 test('break: a round measured on two browser or axe versions is refused', () => {
-  expect(toolsOf([{ tools: { chromium: '1', axe_core: '4' } }, { tools: { chromium: '1', axe_core: '4' } }])).toEqual({ chromium: '1', axe_core: '4' });
-  expect(() => toolsOf([{ tools: { chromium: '1', axe_core: '4' } }, { tools: { chromium: '2', axe_core: '4' } }])).toThrow(/different tools/);
-  expect(() => toolsOf([{ tools: { chromium: '', axe_core: '4' } }])).toThrow(/no Chromium/);
+  expect(toolsOf([{ tools: { chromium: '1', axe_core: '4', fonts: 'f' } }, { tools: { chromium: '1', axe_core: '4', fonts: 'f' } }])).toEqual({ chromium: '1', axe_core: '4', fonts: 'f' });
+  expect(() => toolsOf([{ tools: { chromium: '1', axe_core: '4', fonts: 'f' } }, { tools: { chromium: '2', axe_core: '4', fonts: 'f' } }])).toThrow(/different tools/);
+  expect(() => toolsOf([{ tools: { chromium: '', axe_core: '4', fonts: 'f' } }])).toThrow(/no Chromium/);
+  expect(() => toolsOf([{ tools: { chromium: '1', axe_core: '4', fonts: 'f' } }, { tools: { chromium: '1', axe_core: '4', fonts: 'host' } }])).toThrow(/different tools/);
+  expect(() => toolsOf([{ tools: { chromium: '1', axe_core: '4', fonts: '' } }])).toThrow(/no fonts/);
+});
+
+test('the pinned fonts are the committed files with their declared sha256, under 200 KB, with their licence', () => {
+  expect(fontFileProblems()).toEqual([]);
+  expect(PINNED_FONTS.map((f) => `${f.family} ${f.weight}`).sort()).toEqual([`${SANS_FAMILY} 400`, `${SANS_FAMILY} 600`, `${MONO_FAMILY} 400`, `${MONO_FAMILY} 600`].sort());
+});
+
+test('break: a font file that is not the declared one, too many bytes, or no licence is reported', () => {
+  const dir = join(scratch, 'fonts/');
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, 'a.woff2'), 'not the font');
+  const declared = [{ file: 'a.woff2', family: SANS_FAMILY, weight: 400, sha256: '0'.repeat(64) }, { file: 'gone.woff2', family: SANS_FAMILY, weight: 600, sha256: '0'.repeat(64) }];
+  const problems = fontFileProblems(declared, dir);
+  expect(problems).toHaveLength(3);
+  expect(problems[0]).toMatch(/^a\.woff2: sha256 [0-9a-f]{64}, declared 0{64}$/);
+  expect(problems[1]).toBe('gone.woff2: missing');
+  expect(problems[2]).toMatch(/^OFL\.txt: no SIL Open Font License/);
+  writeFileSync(join(dir, 'big.woff2'), Buffer.alloc(MAX_FONT_BYTES + 1));
+  writeFileSync(join(dir, 'OFL.txt'), 'SIL Open Font License, Version 1.1');
+  expect(fontFileProblems([{ file: 'big.woff2', family: SANS_FAMILY, weight: 400, sha256: '0'.repeat(64) }], dir)).toEqual([
+    expect.stringMatching(/^big\.woff2: sha256/),
+    `the font files hold ${MAX_FONT_BYTES + 1} bytes, more than ${MAX_FONT_BYTES}`,
+  ]);
+});
+
+test('break: UX_FONTS takes pinned, host or host:<family>, and a baseline only from the pinned fonts', () => {
+  expect(fontMode('')).toEqual({ kind: 'pinned' });
+  expect(fontMode('host')).toEqual({ kind: 'host', sans: null });
+  expect(fontMode('host:DejaVu Sans')).toEqual({ kind: 'host', sans: 'DejaVu Sans' });
+  expect(() => fontMode('hosted')).toThrow(/UX_FONTS=hosted/);
+  expect(() => fontMode('host:')).toThrow(/UX_FONTS=host:/);
+  expect(baselineRefusal([], [], undefined, PINNED_LABEL)).toBeNull();
+  expect(baselineRefusal([], [], undefined, fontsLabel({ kind: 'host', sans: null }))).toMatch(/--baseline refused: the round was measured with the fonts "host"/);
 });
 
 test('break: axe nodes are the union over every scan, not the largest scan', () => {

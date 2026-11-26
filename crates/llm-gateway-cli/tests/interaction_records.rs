@@ -224,14 +224,19 @@ impl Gateway {
     }
 
     /// One counter of `GET /metrics`.
-    fn counter(&self, name: &str) -> u64 {
+    /// `GET /metrics` as text.
+    fn scrape(&self) -> String {
         let answer = exchange(
             self.address,
             &format!(
                 "GET /metrics HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\nconnection: close\r\n\r\n"
             ),
         );
-        let text = String::from_utf8_lossy(&answer.body).into_owned();
+        String::from_utf8_lossy(&answer.body).into_owned()
+    }
+
+    fn counter(&self, name: &str) -> u64 {
+        let text = self.scrape();
         text.lines()
             .find_map(|line| line.strip_prefix(&format!("{name} ")))
             .unwrap_or_else(|| panic!("/metrics has no {name}: {text}"))
@@ -420,10 +425,6 @@ fn agents(steps: &[Step]) -> Vec<&sessionspec_types::session::StartAgent> {
         .collect()
 }
 
-fn count(steps: &[Step], name: &str) -> usize {
-    names(steps).iter().filter(|each| **each == name).count()
-}
-
 // --- Acceptance 2: the table -----------------------------------------------------------------
 
 const MINIMAL: &str = "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\n\n[hosted.claude]\nwires = [\"messages\"]\nbase_url = \"http://127.0.0.1:9\"\nauth_kind = \"anonymous\"\n";
@@ -516,6 +517,142 @@ fn a_path_whose_directory_is_missing_is_refused_at_start_by_name_and_never_quote
     );
     assert!(!stderr.contains("no-such-directory"), "{stderr}");
     assert!(!store.exists() && !store.parent().unwrap().exists());
+}
+
+/// The binary's start on `config`: whether it was refused, and its standard error. A binary
+/// still running after [`STARTUP`] was not refused; it is stopped.
+fn refused_start(config: &Path) -> (bool, String) {
+    let log = config.with_extension("stderr");
+    let mut child = Command::new(env!("CARGO_BIN_EXE_b10x-llm-gateway"))
+        .args(["--config", config.to_str().unwrap()])
+        .env_remove("RUST_LOG")
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(std::fs::File::create(&log).unwrap())
+        .spawn()
+        .unwrap();
+    let deadline = Instant::now() + STARTUP;
+    let refused = loop {
+        if let Some(status) = child.try_wait().unwrap() {
+            break !status.success();
+        }
+        if Instant::now() >= deadline || std::fs::read_to_string(&log).unwrap().contains(LISTENING)
+        {
+            drop(child.kill());
+            drop(child.wait());
+            break false;
+        }
+        thread::sleep(Duration::from_millis(10));
+    };
+    (refused, std::fs::read_to_string(&log).unwrap())
+}
+
+/// D94: a SQLite file that is no session store (another program's, here a table `notes` with
+/// one row) refuses the start by name and is left as it was; sessionspec's own open would have
+/// emptied it.
+#[test]
+fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
+    let fixture = Fixture::new("records-no-store");
+    let upstream = Upstream::start(Vec::new());
+    let store = store_in(&fixture);
+    {
+        let connection = rusqlite::Connection::open(&store).unwrap();
+        connection
+            .execute_batch("CREATE TABLE notes (text TEXT); INSERT INTO notes VALUES ('kept');")
+            .unwrap();
+    }
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let (refused, stderr) = refused_start(&config);
+    assert!(refused, "{stderr}");
+    assert!(
+        stderr.contains("refused config:value")
+            && stderr.contains("interaction_records.path")
+            && stderr.contains("no session store"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains(&*store.to_string_lossy()), "{stderr}");
+    let kept: i64 = rusqlite::Connection::open(&store)
+        .unwrap()
+        .query_row("SELECT count(*) FROM notes", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(kept, 1);
+}
+
+/// D94: a store of another schema version refuses the start naming both versions, never the
+/// path; an empty file is a new store, as a missing one is.
+#[test]
+fn a_store_of_another_schema_version_is_refused_naming_both_versions_and_an_empty_file_is_used() {
+    let fixture = Fixture::new("records-schema-version");
+    let upstream = Upstream::start(Vec::new());
+    let store = store_in(&fixture);
+    {
+        let connection = rusqlite::Connection::open(&store).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); \
+                 INSERT INTO meta VALUES ('schema', '3');",
+            )
+            .unwrap();
+    }
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let (refused, stderr) = refused_start(&config);
+    assert!(refused, "{stderr}");
+    let ours = sessionspec_records::store::SCHEMA_VERSION;
+    assert!(
+        stderr.contains("refused config:value")
+            && stderr.contains("interaction_records.path")
+            && stderr.contains("schema version 3")
+            && stderr.contains(&format!("schema version {ours}")),
+        "{stderr}"
+    );
+    assert!(!stderr.contains(&*store.to_string_lossy()), "{stderr}");
+
+    std::fs::write(&store, b"").unwrap();
+    let gateway = Gateway::start(&config, &fixture.dir);
+    let answer = post(
+        &gateway,
+        "/v1/messages",
+        &claude_session("empty-file"),
+        &first_turn("hello"),
+    );
+    assert_eq!(answer.status, 200);
+    stored_when(
+        &store,
+        &session_hash("claude-code", "empty-file"),
+        |steps| turns(steps).len() == 1,
+    );
+}
+
+/// The three interaction-record series are served, the skipped one's help names every cause
+/// (over the bound, not decoded, a lift that yields no step), and the output pasted in the
+/// counters guide is what `/metrics` serves for each.
+#[test]
+fn the_three_series_are_served_and_pasted_in_the_counters_guide_as_served() {
+    let fixture = Fixture::new("records-series");
+    let upstream = Upstream::start(Vec::new());
+    let store = store_in(&fixture);
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let gateway = Gateway::start(&config, &fixture.dir);
+    let served = gateway.scrape();
+    let guide = include_str!("../../../website/docs/guides/scrape-the-counters.md");
+    for series in [
+        "llmgw_interaction_records_dropped_total",
+        "llmgw_interaction_records_skipped_total",
+        "llmgw_interaction_records_failed_total",
+    ] {
+        let help = served
+            .lines()
+            .find(|line| line.starts_with(&format!("# HELP {series} ")))
+            .unwrap_or_else(|| panic!("/metrics serves no {series}: {served}"));
+        assert!(guide.contains(help), "the guide does not paste {help:?}");
+    }
+    let skipped = served
+        .lines()
+        .find(|line| line.starts_with("# HELP llmgw_interaction_records_skipped_total "))
+        .unwrap();
+    for cause in ["over the bound", "not decoded", "no step"] {
+        assert!(skipped.contains(cause), "{skipped}");
+    }
 }
 
 // --- Acceptance 3: without the table ----------------------------------------------------------
@@ -690,7 +827,7 @@ fn a_call_over_call_bytes_is_answered_unchanged_stored_never_and_counted_skipped
 // --- Acceptance 5: the session bound ------------------------------------------------------------
 
 #[test]
-fn a_session_past_sessions_held_starts_a_new_agent_and_a_held_one_does_not() {
+fn a_session_past_sessions_held_continues_under_its_agent_id_in_the_store() {
     let fixture = Fixture::new("records-sessions-held");
     let upstream = Upstream::start(Vec::new());
     let store = store_in(&fixture);
@@ -723,10 +860,34 @@ fn a_session_past_sessions_held_starts_a_new_agent_and_a_held_one_does_not() {
     let a = stored_when(&store, &hash("a"), |steps| turns(steps).len() == 2);
     let b = stored_when(&store, &hash("b"), |steps| turns(steps).len() == 2);
     let c = stored_when(&store, &hash("c"), |steps| turns(steps).len() == 1);
-    assert_eq!(agents(&a).len(), 2, "A, forgotten: {:?}", names(&a));
-    assert_eq!(count(&a, "OpenSession"), 2, "{:?}", names(&a));
-    assert_eq!(agents(&b).len(), 1, "B, held: {:?}", names(&b));
-    assert_eq!(agents(&c).len(), 1, "{:?}", names(&c));
+    // What the store shows: each session's agents by id. A's call after it was forgotten
+    // continues under the agent id its first call started.
+    let shown = |session: &str| -> Vec<String> {
+        Store::open(&store)
+            .unwrap()
+            .agents(&hash(session))
+            .unwrap()
+            .into_iter()
+            .map(|agent| agent.agent_id.0)
+            .collect()
+    };
+    let first_agent = |steps: &[Step]| agents(steps)[0].agent_id.0.clone();
+    assert_eq!(
+        shown("a"),
+        [first_agent(&a)],
+        "A, forgotten: {:?}",
+        names(&a)
+    );
+    assert!(
+        agents(&a)
+            .iter()
+            .all(|start| start.agent_id.0 == first_agent(&a)),
+        "every agent A's calls name is its first: {:?}",
+        agents(&a)
+    );
+    assert_eq!(shown("b"), [first_agent(&b)], "B, held: {:?}", names(&b));
+    assert_eq!(shown("c"), [first_agent(&c)], "{:?}", names(&c));
+    assert_ne!(first_agent(&a), first_agent(&b));
 }
 
 // --- Acceptances 6 and 7: a two-agent session ---------------------------------------------------
@@ -1029,9 +1190,15 @@ fn the_guide_names_the_table_its_keys_the_session_bound_and_how_sessionspec_read
         "1024",
         "8 MiB",
         "4096",
-        "new agent",
+        "same agent id",
         "llmgw_interaction_records_dropped_total",
         "llmgw_interaction_records_skipped_total",
+        "llmgw_interaction_records_failed_total",
+        "makes no record",
+        "a file of its own",
+        "schema version",
+        "calls not stored at stop",
+        "`queue` times `call_bytes`",
         "sessionspec serve",
     ] {
         assert!(guide.contains(named), "the guide does not name {named}");

@@ -29,10 +29,10 @@ const OWNER: &str = "owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const WAIT: Duration = Duration::from_secs(10);
 const PROMETHEUS: &str = "text/plain; version=0.0.4; charset=utf-8";
 
-/// llmgw's 13 series, the gateway's own spend-refusal series and its two interaction-record
-/// series (story:finished-call-facts), in the order llm-gateway.telemetry lists them: eleven
+/// llmgw's 13 series, the gateway's own spend-refusal series and its three interaction-record
+/// series (story:finished-call-facts), in the order llm-gateway.telemetry lists them: twelve
 /// process-wide, then five per model and wire.
-const PROCESS_SERIES: [&str; 11] = [
+const PROCESS_SERIES: [&str; 12] = [
     "llmgw_inference_requests_total",
     "llmgw_upstream_failures_total",
     "llmgw_instruction_views_total",
@@ -44,6 +44,7 @@ const PROCESS_SERIES: [&str; 11] = [
     "llmgw_pod_start_spend_refusals_total",
     "llmgw_interaction_records_dropped_total",
     "llmgw_interaction_records_skipped_total",
+    "llmgw_interaction_records_failed_total",
 ];
 const ROUTE_SERIES: [&str; 5] = [
     "llmgw_route_requests_total",

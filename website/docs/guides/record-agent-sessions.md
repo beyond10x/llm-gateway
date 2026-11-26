@@ -60,10 +60,12 @@ file.
 Give the gateway a file of its own, in a directory of its own. Never point it at the
 `sessions.db` sessionspec keeps in its own state directory for the transcripts it lifts.
 
-The reason is the schema version. sessionspec empties a store of another schema version when it
-opens it, and starts it again in its own version. A sessionspec of another version that opens
-the gateway's file empties the gateway's records. The other way round the gateway refuses to
-start, as above.
+The reason is the schema version. A sessionspec of another schema version that opens the file
+rebuilds the tables it derives in its own version: sessionspec 0.1.1 and later keep the
+gateway's wire records and refuse a file whose wire records they cannot read, while 0.1.0
+empties the file. From then on the file holds the other version, and the gateway refuses to
+start on it, as above. Read the gateway's file only with a sessionspec of the same schema
+version.
 
 ## What is held, and what is left out
 
@@ -98,12 +100,16 @@ response ids belong to which agent. A sub-agent that starts after its session wa
 not linked to the call that spawned it. Raise `sessions_held` when more sessions than that are
 active at once.
 
+Within a held session the gateway keeps the 4,096 most recent response ids, the 4,096 most
+recent conversation ids and the 4,096 most recent spawn inputs. A call that continues from an
+older one, or a sub-agent started by an older spawn call, starts a new agent with no parent.
+
 ## Memory
 
-- A held session keeps its lift state: per agent its id and open tool calls, one entry per
-  model turn (its response id) and one per spawn call. It grows with each model turn and each
-  spawn for as long as the session is held. `sessions_held` bounds how many sessions are held,
-  not how large one grows.
+- A held session keeps its lift state: per agent its id and open tool calls, and its links: at
+  most 4,096 response ids, 4,096 conversation ids and 4,096 spawn inputs, the most recent kept.
+  The links stop growing at that cap; the agents and their open tool calls grow with the
+  session for as long as it is held. `sessions_held` bounds how many sessions are held.
 - A call's byte copy, at most `call_bytes`, is held on the call's own thread until its lift
   ends; while it is lifted it is held twice.
 - A queued call holds the steps lifted from it: digests, counts and ids, no text. Plan for
@@ -128,7 +134,7 @@ The stop line itself is unchanged, and so is the exit status 0.
 
 `sessionspec serve` shows the sessions of the store in its state directory, `sessions.db` there.
 Start a sessionspec that writes the same schema version (one built on `sessionspec-records`
-0.1.0, schema version 4, for this gateway) on the gateway's own directory:
+0.1.1, schema version 4, for this gateway) on the gateway's own directory:
 
 ```bash
 sessionspec --state-dir /srv/gateway-sessions serve

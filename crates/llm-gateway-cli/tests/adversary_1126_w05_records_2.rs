@@ -19,7 +19,16 @@ use std::{
 const LISTENING: &str = "b10x-llm-gateway: listening on ";
 const STARTUP: Duration = Duration::from_secs(20);
 const MESSAGE: &str = r#"{"id":"msg_adv","type":"message","role":"assistant","model":"claude","content":[{"type":"text","text":"ok"}],"stop_reason":"end_turn","usage":{"input_tokens":3,"output_tokens":1}}"#;
-const FAILED_WARNING: &str = "the writer failed to store a call";
+const FAILED_WARNING: &str = "the writer failed to store ";
+
+/// The calls a failure warning names; `None` for any other line.
+fn warned_calls(line: &str) -> Option<usize> {
+    let (_, rest) = line.split_once(FAILED_WARNING)?;
+    if rest.starts_with("a call") {
+        return Some(1);
+    }
+    rest.split_once(" calls")?.0.parse().ok()
+}
 const NOT_STORED: &str = "b10x-llm-gateway: interaction records: ";
 
 /// A loopback messages endpoint answering every request with [`MESSAGE`].
@@ -251,8 +260,9 @@ fn a_session_store_held_locked_at_start_is_never_refused_as_no_session_store() {
     assert_eq!(wire_records_kept(&store), 1);
 }
 
-/// The guide: a call the writer failed to store is counted and logged with one warning per
-/// call; D96: a call not stored by the end of the stop's wait is named on the stop's line. A
+/// The guide: a call the writer failed to store is counted and logged by a warning that names
+/// how many calls failed (D98, at most one per second); D96: a call not stored by the end of
+/// the stop's wait is named on the stop's line. Before correction 2 a
 /// call that fails while the stop waits is neither: the thread that reads the writer's failure
 /// count reads it every 100 ms and ends without a last read once the gateway's shutdown has
 /// dropped the adapter, nothing reads the count after the wait, and the stop's line names only
@@ -265,7 +275,9 @@ fn a_call_that_fails_to_store_during_the_stop_is_warned_or_named_at_the_stop() {
     let store = store_in(&fixture);
     let config = document(&fixture, upstream(), &store);
     let mut gateway = start(&config, &fixture.dir).unwrap();
-    thread::sleep(Duration::from_millis(800));
+    // No wait for the writer: it opened the store before the binary reported `listening on`
+    // (`Appender::spawn` opens it before it returns), and a call queued while the lock is held
+    // waits for it whatever the writer was doing.
     let lock = rusqlite::Connection::open(&store).unwrap();
     lock.busy_timeout(Duration::from_secs(5)).unwrap();
     lock.execute_batch("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE;")
@@ -297,10 +309,10 @@ fn a_call_that_fails_to_store_during_the_stop_is_warned_or_named_at_the_stop() {
                 .ok()
         })
         .unwrap_or(0);
-    let warned = lines
-        .iter()
-        .filter(|line| line.contains(FAILED_WARNING))
-        .count();
+    // A warning names how many calls failed since the last one (D98): "a call" or "<n> calls".
+    // Under load the failure thread's read can come before the stop's own, and one warning then
+    // names all three calls.
+    let warned: usize = lines.iter().filter_map(|line| warned_calls(line)).sum();
     let named: usize = lines
         .iter()
         .find_map(|line| {

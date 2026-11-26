@@ -62,9 +62,9 @@ serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"
 # The interaction records (src/records.rs): sessionspec's wire lift and its SQLite writer.
-sessionspec-records = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.0" }
+sessionspec-records = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.1" }
 # The IR types the lift takes (its harness and incomplete reason), at the same tag.
-sessionspec-types = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.0" }
+sessionspec-types = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.1" }
 sha2.workspace = true
 signal-hook = "0.4"
 tokio = { version = "1.54", features = ["rt-multi-thread"] }

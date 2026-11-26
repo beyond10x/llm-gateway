@@ -276,8 +276,9 @@ pages:
         live: {channel: events, effect: replace}
         columns:
           - {field: route, label: Route}
-          - {field: calls, label: Calls, as: number}
-          - {field: errors, label: Errors, as: number, tone_by: errors}
+          - {field: recent, label: "Failed, last 5 min", as: number, tone_by: call_result, help: {text: "calls of the route that failed in the last 5 minutes, of all its calls in that time, as the Problems strip counts them; a call the client left is not a failure"}}
+          - {field: calls, label: Calls, as: number, help: {text: since the gateway started}}
+          - {field: errors, label: Errors, as: number, tone_by: errors, help: {text: "since the gateway started; a call the client left is not an error"}}
           - {field: cancelled, label: Cancelled, as: number, help: {text: "the client left before or while the answer was written: status 0, no refusal"}}
           - {field: tokens, label: Tokens in / out, as: number}
           - {field: cache, label: Cache r / w, as: number}

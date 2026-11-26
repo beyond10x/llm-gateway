@@ -152,11 +152,10 @@ function problems(s: Snapshot, now: number, connection: unknown): Row[] {
   const lost = LIFECYCLE_PROBLEM[String(connection)];
   if (lost) out.push(lost);
 
-  const recent = s.calls.filter((c) => c.route !== null && now - c.started_ms <= PROBLEM_WINDOW_MS);
-  const failing = [...new Set(recent.filter((c) => callResult(c) !== 'ok').map((c) => c.route!))];
+  const failing = [...recentByRoute(s, now)].filter(([, w]) => w.failed > 0).sort(([, a], [, b]) => b.failed - a.failed);
   if (failing.length > 0) {
-    const tally = failing.map((r) => `${r} ${recent.filter((c) => c.route === r && callResult(c) !== 'ok').length} of ${recent.filter((c) => c.route === r).length}`);
-    out.push({ kind: 'routes', level: 'error', text: `Failed calls in the last ${PROBLEM_WINDOW_MS / 60_000} min: ${tally.join(', ')}`, href: '#h-routes' });
+    const tally = failing.map(([r, w]) => `${r} ${w.failed} of ${w.calls} failed, ${[...w.causes].join(' and ')}`);
+    out.push({ kind: 'routes', level: 'error', text: `Failed calls in the last ${PROBLEM_WINDOW_MS / 60_000} min: ${tally.join('; ')}`, href: '#h-routes' });
   }
 
   const p = s.provider;
@@ -182,6 +181,75 @@ function problems(s: Snapshot, now: number, connection: unknown): Row[] {
   if (ending.length > 0) {
     const text = ending.map((d) => `Pod ${d.name} shuts down ${countdown(now, d.shutdown!.at_ms)} (${SHUTDOWN_LIMIT[d.shutdown!.limit] ?? d.shutdown!.limit})`).join('; ');
     out.push({ kind: 'pods', level: 'warning', text, href: '#h-provider' });
+  }
+  return out;
+}
+
+// A call the client left: no answer was written (status 0, no refusal), or the client went away
+// while it was. The gateway counts it as cancelled, not as an error.
+function cancelledCall(c: CallRecord): boolean {
+  return c.client_disconnected || (c.status === 0 && c.refusal === null);
+}
+
+// A failed call as the gateway's route and session errors count it: an outcome other than ok or a
+// status of 400 or more, and not cancelled.
+export function failedCall(c: CallRecord): boolean {
+  return callResult(c) !== 'ok' && !cancelledCall(c);
+}
+
+// The kind of error of an upstream error body (`{"error":{"type":"rate_limit_error"}}`), in words.
+const ERROR_TYPE: Record<string, string> = {
+  rate_limit_error: 'rate limited',
+  overloaded_error: 'overloaded',
+  api_error: 'upstream error',
+  authentication_error: 'authentication failed',
+  permission_error: 'permission denied',
+  not_found_error: 'not found',
+  invalid_request_error: 'invalid request',
+  request_too_large: 'request too large',
+  timeout_error: 'timed out',
+};
+const OUTCOME_WORDS: Record<string, string> = { timeout: 'timed out', upstream_error: 'upstream error', refused: 'refused' };
+
+function errorType(body: string | null | undefined): string | null {
+  if (!body) return null;
+  try {
+    const t = (JSON.parse(body) as { error?: { type?: unknown } }).error?.type;
+    return typeof t === 'string' && t ? (ERROR_TYPE[t] ?? t.replace(/_error$/, '').replace(/_/g, ' ')) : null;
+  } catch {
+    return null;
+  }
+}
+
+// Why a call failed: its status and the kind of error ("429 rate limited", "504 timed out",
+// "404 unknown model"); "no answer" stands for the status when the target never answered.
+export function failureCause(c: CallRecord): string {
+  const status = c.status > 0 ? String(c.status) : 'no answer';
+  const body = [...c.attempts].reverse().find((a) => a.error_body)?.error_body;
+  const kind = c.refusal ?? errorType(body) ?? OUTCOME_WORDS[c.outcome] ?? (c.status >= 400 ? 'error' : null);
+  return kind ? `${status} ${kind}` : status;
+}
+
+// Per route, its calls of the last PROBLEM_WINDOW_MS, how many of them failed, and the causes of
+// those failures in the order first seen. The Problems strip's failed-calls line and the Routes
+// table's window column read these same numbers.
+export interface RouteWindow {
+  calls: number;
+  failed: number;
+  causes: Set<string>;
+}
+
+export function recentByRoute(s: Snapshot, now: number): Map<string, RouteWindow> {
+  const out = new Map<string, RouteWindow>();
+  for (const c of [...s.calls].sort((a, b) => a.started_ms - b.started_ms)) {
+    if (c.route === null || now - c.started_ms > PROBLEM_WINDOW_MS) continue;
+    const w = out.get(c.route) ?? { calls: 0, failed: 0, causes: new Set<string>() };
+    w.calls += 1;
+    if (failedCall(c)) {
+      w.failed += 1;
+      w.causes.add(failureCause(c));
+    }
+    out.set(c.route, w);
   }
   return out;
 }
@@ -245,25 +313,31 @@ export const BINDINGS: Record<string, Answer> = {
       session: { text: f.session, mono: true },
     })),
 
-  'dashboard.Routes': (s) =>
-    s.routes.map((r) => ({
-      route: { text: r.route, sub: parts(r.upstream_model !== r.route && r.upstream_model) },
-      calls: r.calls,
-      errors: r.errors,
-      cancelled: r.cancelled,
-      tokens: pair(r.input_tokens, r.output_tokens),
-      cache:
-        r.cache_source === 'vllm'
-          ? { text: pair(r.cache_read_tokens, r.cache_creation_tokens), title: VLLM_WRITE, tag: { text: 'vLLM', title: VLLM_SOURCE } }
-          : pair(r.cache_read_tokens, r.cache_creation_tokens),
-      uncached: r.uncached_input_tokens,
-      cache_hit: r.cache_hit_rate,
-      input_tps: tps(r.input_tps),
-      output_tps: tps(r.output_tps),
-      in_flight: r.in_flight,
-      server: r.upstream ? `${count(r.upstream.requests_running)} / ${count(r.upstream.requests_waiting)}` : DASH,
-      kv_cache: r.upstream ? r.upstream.kv_cache_usage : null,
-    })),
+  'dashboard.Routes': (s, now) => {
+    const recent = recentByRoute(s, now);
+    return s.routes.map((r) => {
+      const w = recent.get(r.route);
+      return {
+        route: { text: r.route, sub: parts(r.upstream_model !== r.route && r.upstream_model) },
+        recent: w ? { text: `${w.failed} of ${w.calls}`, key: w.failed > 0 ? 'failed' : 'none', title: w.failed > 0 ? [...w.causes].join(', ') : undefined } : DASH,
+        calls: r.calls,
+        errors: r.errors,
+        cancelled: r.cancelled,
+        tokens: pair(r.input_tokens, r.output_tokens),
+        cache:
+          r.cache_source === 'vllm'
+            ? { text: pair(r.cache_read_tokens, r.cache_creation_tokens), title: VLLM_WRITE, tag: { text: 'vLLM', title: VLLM_SOURCE } }
+            : pair(r.cache_read_tokens, r.cache_creation_tokens),
+        uncached: r.uncached_input_tokens,
+        cache_hit: r.cache_hit_rate,
+        input_tps: tps(r.input_tps),
+        output_tps: tps(r.output_tps),
+        in_flight: r.in_flight,
+        server: r.upstream ? `${count(r.upstream.requests_running)} / ${count(r.upstream.requests_waiting)}` : DASH,
+        kv_cache: r.upstream ? r.upstream.kv_cache_usage : null,
+      };
+    });
+  },
 
   'dashboard.Sessions': (s, now) =>
     s.sessions.map((r) => ({

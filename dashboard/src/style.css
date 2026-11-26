@@ -83,7 +83,7 @@ caption { text-align: left; color: var(--muted); padding-bottom: 0.3rem; font-si
 th, td { padding: 0.3rem 0.6rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
 thead th { background: var(--head); font-weight: 600; font-size: var(--type-caption-size); color: var(--muted); }
 tbody th { font-weight: 600; }
-.routes thead th { white-space: normal; vertical-align: bottom; }
+.routes thead th { white-space: normal; vertical-align: bottom; } .routes :is(th, td) { padding-left: 0.4rem; padding-right: 0.4rem; }
 .n { text-align: right; }
 .wrap { white-space: normal; max-width: 22rem; overflow-wrap: anywhere; }
 .mono { font-family: var(--type-mono-family); }

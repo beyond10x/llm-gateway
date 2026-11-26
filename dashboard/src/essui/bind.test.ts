@@ -6,7 +6,7 @@ import { expect, test } from 'vitest';
 import YAML from '../../ui/llm-gateway.ui.yaml?raw';
 import { SCENARIOS } from '../../ux/scenarios/index.ts';
 import type { Snapshot } from '../extra.ts';
-import { BINDINGS, answer } from './bind.ts';
+import { BINDINGS, answer, failedCall, failureCause, recentByRoute } from './bind.ts';
 import { loadDocument } from './load.ts';
 import type { Field, MetricNode, Node, Reads, RecordNode, Section } from './types.ts';
 
@@ -114,4 +114,19 @@ test('the fixture files are what the binding answers for the last state of the e
     expect(script.channel).toBe(channel);
     expect(script.events.map((e) => e.lifecycle)).toEqual(['connecting', 'live']);
   }
+});
+
+test('a failed call is named by its status and kind of error, and the strip and Routes count the same calls', () => {
+  const snap = last('errors');
+  const sonnet = snap.calls.find((c) => c.route === 'claude-sonnet')!;
+  expect(failureCause(sonnet)).toBe('429 rate limited');
+  expect(failureCause({ ...sonnet, attempts: [], outcome: 'timeout', status: 504 })).toBe('504 timed out');
+  expect(failureCause({ ...sonnet, attempts: [], outcome: 'refused', status: 404, refusal: 'unknown model' })).toBe('404 unknown model');
+  expect(failedCall({ ...sonnet, status: 0, outcome: 'upstream_error', refusal: null })).toBe(false);
+  expect(failedCall({ ...sonnet, client_disconnected: true })).toBe(false);
+  const window = recentByRoute(snap, snap.now_ms).get('claude-sonnet')!;
+  const line = answer('dashboard.Problems', snap, snap.now_ms, {}).find((r) => r.kind === 'routes')!;
+  const row = answer('dashboard.Routes', snap, snap.now_ms, {}).find((r) => (r.route as { text: string }).text === 'claude-sonnet')!;
+  expect(line.text).toContain(`claude-sonnet ${window.failed} of ${window.calls} failed, 429 rate limited`);
+  expect((row.recent as { text: string }).text).toBe(`${window.failed} of ${window.calls}`);
 });

@@ -1,5 +1,5 @@
 {
-  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, and the sideways scrollers at each measured-only viewport (overflow.scrollers.<viewport>, the worst over both themes). Re-taken by the harness at commit 5a2e3003 on the built page of round R-06 with sha256 249874c33fcb. Lower is better, except flow.visible_ratio, flow.drawn and screen_only.reached, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
+  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, and the sideways scrollers at each measured-only viewport (overflow.scrollers.<viewport>, the worst over both themes). Re-taken by the harness at commit 5a2e3003 on the built page of round R-06 with sha256 249874c33fcb. The values the next change set improved were taken at commit 79275d5d on its built page, sha256 a07c861bbc3a, by a round that is not kept; no value was made worse. Lower is better, except flow.visible_ratio, flow.drawn and screen_only.reached, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
   "scenarios": {
     "busy": {
       "axe.serious_critical": {
@@ -23,7 +23,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 1.4,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -75,11 +75,11 @@
         "tolerance": 0
       },
       "screen_only.actions": {
-        "value": 2,
+        "value": 0,
         "tolerance": 0
       },
       "screen_only.looks": {
-        "value": 3,
+        "value": 1,
         "tolerance": 0
       },
       "screen_only.reached": {
@@ -117,7 +117,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 1.4,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -153,7 +153,7 @@
         "tolerance": 0
       },
       "overflow.scrollers.960x1080": {
-        "value": 3,
+        "value": 2,
         "tolerance": 0
       },
       "overflow.scrollers_unreachable": {
@@ -169,11 +169,11 @@
         "tolerance": 0
       },
       "screen_only.actions": {
-        "value": 1,
+        "value": 0,
         "tolerance": 0
       },
       "screen_only.looks": {
-        "value": 2,
+        "value": 1,
         "tolerance": 0
       },
       "screen_only.reached": {
@@ -211,7 +211,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 0.7,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -293,7 +293,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 0.7,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -309,8 +309,8 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.024,
-        "tolerance": 0.0024
+        "value": 0.023,
+        "tolerance": 0.0023
       },
       "overflow.elements": {
         "value": 0,
@@ -375,7 +375,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 0.7,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {

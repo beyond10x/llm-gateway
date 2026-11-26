@@ -270,11 +270,12 @@ test.describe('replay', () => {
 });
 
 // One page with every kind of copy defect once, and the forms the probe must leave alone: a space,
-// a block boundary, generated content, a raw value in a code element or a `.mono` cell, a title
+// a block boundary, generated content, a raw value in a code element or a monospace cell, a title
 // attribute, a control with a word.
 const COPY_PAGE = `<!doctype html><html><head><style>
   .b::before { content: ' · '; }
   .card h3 { display: flex; gap: 6px; }
+  .mono { font-family: monospace; }
 </style></head><body><main>
 <section aria-labelledby="h-a"><h2 id="h-a">Overview</h2>
   <div class="tile"><div class="label">Tokens in</div><div class="sub">1.88k tok/s<span class="muted">last 60 s</span></div></div>
@@ -302,6 +303,39 @@ test.describe('visible text (copy)', () => {
       'run-together #h-b th.col-session',
       'snake-label #h-a div.tile div.label',
       'snake-value #h-a div.tile div.value',
+    ]);
+  });
+
+  // The R-06 review's inputs: what the eye reads as one word, set by the rendered boxes, not by the
+  // markup. Each case is a section of its own, so its item names its place.
+  const GEOMETRY_PAGE = `<!doctype html><html><head><style>
+    body { font: 14px sans-serif; } section { margin: 8px 0; } .mono { font-family: monospace; }
+  </style></head><body><main>
+    <section id="flex"><div style="display:flex"><span>1.88k tok/s</span><span>last 60 s</span></div></section>
+    <section id="grid"><div style="display:grid;grid-template-columns:auto auto;justify-content:start"><span>claude-code</span><span>3f9a1c0e</span></div></section>
+    <section id="margin"><span>alpha</span><span style="margin-left:8px">beta</span></section>
+    <section id="padding"><span style="padding-right:4px">alpha</span><span>beta</span></section>
+    <section id="spaced-flex"><div style="display:flex;gap:6px"><span>1.88k tok/s</span><span>last 60 s</span></div></section>
+    <section id="unit"><span>12</span><span>ms</span> and <span>4.2</span><span>k</span></section>
+    <section id="power"><p>x<sup>2</sup> and e<sub>i</sub></p></section>
+    <section id="percent"><span>12%</span><span>errors</span></section>
+    <section id="paren"><span>(3 of 5)</span><span>errors</span></section>
+    <section id="bracket"><span>[beta]</span><span>route</span></section>
+    <section id="percent-digit"><span>12%</span><span>3</span></section>
+    <section id="lines"><span>alpha</span><br><span>beta</span></section>
+    <section id="cells"><table><tbody><tr><td>qwen_coder</td><td class="mono">qwen_coder</td></tr></tbody></table></section>
+  </main></body></html>`;
+
+  test('break: runs whose boxes touch on one line run together, whatever the markup; a margin, a unit, a superscript and a monospace cell do not; a run ending in %, ) or ] counts', async ({ page }) => {
+    await page.setContent(GEOMETRY_PAGE);
+    const items = (await page.evaluate(copyProbe)).map((i) => i.split(' | ')[0]).sort();
+    expect(items).toEqual([
+      'run-together #bracket span',
+      'run-together #flex span',
+      'run-together #grid span',
+      'run-together #paren span',
+      'run-together #percent span',
+      'snake-value #cells td',
     ]);
   });
 

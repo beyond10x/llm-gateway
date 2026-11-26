@@ -4,23 +4,33 @@
 //
 // Kinds, each an item `<kind> <place>` (stable over states, rows, viewports and themes) and a label
 // with the text it saw:
-// - `run-together`: two runs in different elements meet with no whitespace, no line or cell break
-//   and no generated content between them, where the first ends in a letter, a digit or a dash and
-//   the second starts with a letter or a digit ("tok/s" + "last 60 s", "claude-code" + "3f9a1c0e");
+// - `run-together`: two consecutive runs that the eye reads as one word: the box of the first
+//   run's last character and the box of the second run's first character sit on one line and
+//   touch, with a gap under SPACE_EM of the first run's font size (a space is wider), where the
+//   first ends in a letter, a digit or a dash and the second starts with a letter or a digit, or
+//   the first ends in `%`, `)` or `]` and the second starts with a letter ("tok/s" + "last 60 s"
+//   in a flex row without a gap, "claude-code" + "3f9a1c0e", "12%" + "errors"). It is the
+//   rendered geometry that counts, not the markup: a margin, padding, generated content, a cell
+//   or a line break between the runs sets them apart, whitespace in the DOM that renders as
+//   nothing does not. A number and its unit ("12" + "ms") and a superscript or subscript
+//   ("x" + "²" in `sup`) are allowed;
 // - `hex-title`: a run of nothing but 8 or more hex digits in a heading or card title;
-// - `header-name`: a raw `anthropic-ratelimit-…` header name outside a raw-value cell;
+// - `header-name`: a raw `anthropic-ratelimit-…` header name outside a raw value;
 // - `snake-label`: a snake_case token in a label (a heading, a term, a column head, a control, a
-//   tile label); `snake-value`: one anywhere else outside a raw-value cell;
+//   tile label); `snake-value`: one anywhere else outside a raw value;
 // - `glyph-control`: a button or link whose visible text holds no word of two letters ("▸ 2").
-// A raw-value cell is code, preformatted text or a `.mono` cell or definition (`td.mono`,
-// `dd.mono`) that is not itself a label; a title attribute is never read.
+// A raw value is code, preformatted text or sample output (`code`, `pre`, `kbd`, `samp`,
+// `[data-raw]`), or a table body cell or definition whose value the document marks raw, which the
+// page sets in a monospace face; never inside a label. A title attribute is never read.
 export function copyProbe(): string[] {
-  const RAW = 'code, pre, kbd, samp, td.mono, dd.mono, [data-raw]';
-  const LABEL = 'h1, h2, h3, h4, h5, h6, [role="heading"], th, dt, caption, legend, label, button, summary, [role="button"], .label';
+  const CODE = 'code, pre, kbd, samp, [data-raw]';
+  const CELL = 'tbody td, tbody th, [role="cell"], [role="gridcell"], [role="rowheader"], dd, [role="definition"]';
+  const LABEL = 'h1, h2, h3, h4, h5, h6, [role="heading"], thead th, [role="columnheader"], dt, caption, legend, label, button, summary, [role="button"], .label';
   const HEADING = 'h1, h2, h3, h4, h5, h6, [role="heading"], caption, legend';
   const CONTROL = 'button, [role="button"], summary, a[href]';
   const SKIP = 'script, style, noscript, template, canvas, svg';
-  const INLINE = new Set(['inline', 'inline-block', 'inline-flex', 'inline-grid', 'contents']);
+  const SPACE_EM = 0.2;
+  const UNIT = /^(?:[kMGT]i?B|[kMGTµnm]?s|min|h|d|px|em|rem|tok(?:\/s)?|req(?:\/s)?|\/s|[kMGT]|x)(?![\p{L}\p{N}])/u;
 
   const styles = new Map<Element, CSSStyleDeclaration>();
   const style = (el: Element) => {
@@ -95,33 +105,33 @@ export function copyProbe(): string[] {
 
   const items: string[] = [];
   const add = (kind: string, el: Element, label: string) => items.push(`${kind} ${place(el)} | ${kind} "${label}"`);
-  const raw = (el: Element) => el.closest(RAW) !== null && el.closest(LABEL) === null;
+  const mono = (el: Element) => /\bmono(?:space)?\b/i.test(style(el).fontFamily);
+  const raw = (el: Element) => el.closest(LABEL) === null && (el.closest(CODE) !== null || (el.closest(CELL) !== null && mono(el)));
 
-  // A break between two runs: an element on either path to their common ancestor that is not
-  // inline (a block, a flex or grid item, a cell), a <br>, generated content, or whitespace.
-  const pathUp = (from: Element, to: Node): Element[] => {
-    const out: Element[] = [];
-    for (let e: Element | null = from; e && e !== to; e = e.parentElement) out.push(e);
-    return out;
-  };
-  const pseudo = (el: Element, which: '::before' | '::after') => {
-    const c = getComputedStyle(el, which).content;
-    return c !== 'none' && c !== 'normal' && c !== '""' && c !== "''";
-  };
-  const broken = (a: Run, b: Run): boolean => {
-    if (/\s$/.test(a.text) || /^\s/.test(b.text)) return true;
+  // The box of one character of a text node, the last box when it spans a line break.
+  const charBox = (node: Text, i: number): DOMRect | null => {
+    if (i < 0 || i >= node.data.length) return null;
     const range = document.createRange();
-    range.setStart(a.last, a.last.data.length);
-    range.setEnd(b.first, 0);
-    const common = range.commonAncestorContainer;
-    const up = pathUp(a.el, common);
-    const down = pathUp(b.el, common);
-    if ([...up, ...down].some((e) => !INLINE.has(style(e).display))) return true;
-    const between = range.toString();
-    if (/\s/.test(between)) return true;
-    if (range.cloneContents().querySelector('br')) return true;
-    if (up.some((e) => pseudo(e, '::after')) || down.some((e) => pseudo(e, '::before'))) return true;
-    return false;
+    const end = i + 1 < node.data.length && /[\uDC00-\uDFFF]/.test(node.data[i + 1]!) ? i + 2 : i + 1;
+    range.setStart(node, i);
+    range.setEnd(node, end);
+    const boxes = range.getClientRects();
+    return boxes.length ? boxes[boxes.length - 1]! : null;
+  };
+  const lastBox = (r: Run) => charBox(r.last, r.last.data.search(/\S\s*$/));
+  const firstBox = (r: Run) => charBox(r.first, r.first.data.search(/\S/));
+  const raised = (el: Element) => el.closest('sup, sub') !== null || ['super', 'sub'].includes(style(el).verticalAlign);
+  // Whether the eye reads the two runs as one word: one line, and the gap between the last
+  // character of the first and the first character of the second under SPACE_EM.
+  const touching = (a: Run, b: Run): boolean => {
+    const ra = lastBox(a);
+    const rb = firstBox(b);
+    if (!ra || !rb || ra.height <= 0 || rb.height <= 0) return false;
+    const overlap = Math.min(ra.bottom, rb.bottom) - Math.max(ra.top, rb.top);
+    if (overlap < 0.5 * Math.min(ra.height, rb.height)) return false;
+    const em = parseFloat(style(a.el).fontSize) || 16;
+    const gap = rb.left - ra.right;
+    return gap > -0.25 * em && gap < SPACE_EM * em;
   };
 
   for (let i = 0; i < runs.length; i++) {
@@ -133,10 +143,13 @@ export function copyProbe(): string[] {
     const snake = t.match(/(?<![\w-])[a-z][a-z0-9]*(?:_[a-z0-9]+)+(?![\w-])/);
     if (snake && !raw(el)) add(el.closest(LABEL) ? 'snake-label' : 'snake-value', el, snake[0]);
     const next = runs[i + 1];
-    if (next && next.el !== el) {
+    if (next) {
       const tail = run.text.trimEnd();
       const head = next.text.trimStart();
-      if (/[\p{L}\p{N}‐-―-]$/u.test(tail) && /^[\p{L}\p{N}]/u.test(head) && !broken(run, next)) {
+      const word = /[\p{L}\p{N}‐-―-]$/u.test(tail) && /^[\p{L}\p{N}]/u.test(head);
+      const closer = /[%)\]]$/u.test(tail) && /^\p{L}/u.test(head);
+      const unit = /\p{N}$/u.test(tail) && UNIT.test(head);
+      if ((word || closer) && !unit && !raised(next.el) && !raised(el) && touching(run, next)) {
         add('run-together', el, `${tail.slice(-16)}|${head.slice(0, 16)}`);
       }
     }

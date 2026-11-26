@@ -18,6 +18,9 @@ domain: llm-gateway.deployment
 #   `b10x-llm-gateway: warning ingress auth is off (ingress_auth = "none"): model calls are
 #   served without a credential`, once, before `listening on`, for a document whose
 #   `ingress_auth` is `none`;
+#   `b10x-llm-gateway: metrics listening on <address>` once, before `listening on`, for a
+#   document that sets `metrics_listen`, with the address that listener bound (amended
+#   2026-11-26: a document may name port 0 and a reader learns the port from this line);
 #   `b10x-llm-gateway: listening on <address>` once the gateway is bound and marked ready;
 #   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
@@ -903,7 +906,9 @@ types:
   # `metrics_listen`, optional and absent by default, is a `<address>:<port>` the gateway binds a
   # second listener on, serving
   # `GET /metrics` without the owner credential and nothing else (llm-gateway.telemetry). It
-  # must differ from `listen` (`config:value` naming `metrics_listen`). `metrics_bearer_file`,
+  # must differ from `listen` (`config:value` naming `metrics_listen`), unless both name port 0
+  # (amended 2026-11-26): the system then picks a port for each, so they never name one socket,
+  # and the line `metrics listening on <address>` reports the one picked. `metrics_bearer_file`,
   # optional, names the trusted file of the token a scrape must send as `authorization: Bearer`
   # (StartupRefusal `metrics-bearer:*`); it is `config:value` without `metrics_listen`. Without
   # it the listener is open, and the guides say to bind it only on an address a network policy

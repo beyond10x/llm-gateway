@@ -201,6 +201,33 @@ pub fn connectors_table(executable: &Path, work_directory: &Path) -> String {
     )
 }
 
+/// A loopback port that refuses every connection for as long as this value lives: a TCP socket
+/// bound to `127.0.0.1:0` that never listens. A connection to it is refused, and no other
+/// socket of any test can bind the port while it is held. A port chosen by binding a listener
+/// and dropping it is free for another test to take before it is used, so a test that needs
+/// "nothing answers here" holds one of these instead.
+pub struct Refusing {
+    _socket: rustix::fd::OwnedFd,
+    pub address: std::net::SocketAddr,
+}
+
+impl Refusing {
+    pub fn new() -> Self {
+        use rustix::net::{AddressFamily, SocketType, bind, getsockname, socket};
+        let socket = socket(AddressFamily::INET, SocketType::STREAM, None).unwrap();
+        bind(
+            &socket,
+            &std::net::SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+        )
+        .unwrap();
+        let address = std::net::SocketAddr::try_from(getsockname(&socket).unwrap()).unwrap();
+        Self {
+            _socket: socket,
+            address,
+        }
+    }
+}
+
 /// A fixture of the `connectors` CLI (`crates/llm-runpod/tests/fixture/connectors.rs`) in its own
 /// directory: the `connectors` link to the fixture program, its `script.json` and the
 /// `calls.jsonl` it appends one line to per invocation, and a private `work` directory.

@@ -9,19 +9,20 @@
 //! specification carries as `ESS-LIMIT:` notes: a deadline, a stop, a dropped handle. Nothing
 //! leaves the machine.
 
+use crate::upstream::{self, Upstream};
 use llm_gateway::{
     Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, RefusalCode, Relay, RelayModel,
-    RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetRefusal,
-    Wire,
+    RelayStream, RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, StaticHeader,
+    TargetRefusal, Wire,
 };
 use std::{
     io::{self, Read, Write},
-    net::{Shutdown, SocketAddr, TcpListener, TcpStream},
+    net::{Shutdown, SocketAddr, TcpStream},
     sync::{
         Arc, Mutex,
         mpsc::{self, Receiver},
     },
-    thread::{self, JoinHandle},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -161,93 +162,32 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
         .position(|window| window == needle)
 }
 
-/// One read of a pod's connection. An interrupted read is retried: a socket with a read timeout
-/// answers a signal, or a stop and continue of the test process, with `EINTR` whatever
-/// `SA_RESTART` says (`man 7 signal`), and a pod that took it for the end of the request would
-/// close with the body unread and reset the gateway's write.
-fn read_some(connection: &mut TcpStream, chunk: &mut [u8]) -> Option<usize> {
-    loop {
-        match connection.read(chunk) {
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            read => return read.ok(),
-        }
-    }
-}
-
-/// Reads one request head and its `content-length` body.
-fn read_request(connection: &mut TcpStream) -> Option<Vec<u8>> {
-    let mut buffer = Vec::new();
-    let mut chunk = [0_u8; 16_384];
-    let end = loop {
-        if let Some(end) = find(&buffer, b"\r\n\r\n") {
-            break end;
-        }
-        let read = read_some(connection, &mut chunk)?;
-        if read == 0 {
-            return None;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    };
-    let head = String::from_utf8_lossy(&buffer[..end]).to_ascii_lowercase();
-    let wanted: usize = head
-        .split("\r\n")
-        .find_map(|line| line.strip_prefix("content-length:"))
-        .and_then(|value| value.trim().parse().ok())
-        .unwrap_or(0);
-    while buffer.len() < end + 4 + wanted {
-        let read = read_some(connection, &mut chunk)?;
-        if read == 0 {
-            break;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    }
-    Some(buffer)
-}
-
-/// A loopback pod that runs `answer` on the first connection it accepts, after reading its
-/// request.
+/// A loopback pod that runs `answer` on the first call of its test, after reading its request.
+/// It answers only its own test's calls (`crate::upstream`).
 struct Pod {
     authority: String,
-    thread: Option<JoinHandle<()>>,
+    upstream: Upstream,
 }
 
 impl Pod {
     fn start(answer: impl FnOnce(&mut TcpStream) + Send + 'static) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let thread = thread::spawn(move || {
-            let Ok((mut connection, _)) = listener.accept() else {
-                return;
-            };
-            connection.set_read_timeout(Some(WAIT)).unwrap();
-            connection.set_write_timeout(Some(WAIT)).unwrap();
-            if read_request(&mut connection).is_some() {
-                answer(&mut connection);
-            }
-            drop(connection.shutdown(Shutdown::Both));
-        });
+        let upstream = Upstream::scripted(vec![Box::new(answer)]);
         Self {
-            authority,
-            thread: Some(thread),
+            authority: upstream.authority().to_owned(),
+            upstream,
         }
     }
-}
 
-impl Drop for Pod {
-    fn drop(&mut self) {
-        // A pod nobody connected to is still blocked in `accept`.
-        drop(TcpStream::connect(&self.authority));
-        if let Some(thread) = self.thread.take() {
-            drop(thread.join());
-        }
+    fn connect(&self) -> Connect {
+        Connect::Pod(self.upstream.target(WAIT))
     }
 }
 
 /// How the fixture target connects.
 #[derive(Clone)]
 enum Connect {
-    /// To a loopback pod at this authority.
-    Pod(String),
+    /// To a loopback pod, through its target.
+    Pod(upstream::Target),
     /// To a stream whose every write fails.
     Unwritable,
 }
@@ -320,19 +260,21 @@ struct Target(Connect);
 impl RelayTarget for Target {
     fn authority(&self) -> &str {
         match &self.0 {
-            Connect::Pod(authority) => authority,
+            Connect::Pod(target) => target.authority(),
             Connect::Unwritable => "unwritable.invalid:80",
+        }
+    }
+
+    fn headers(&self) -> &[StaticHeader] {
+        match &self.0 {
+            Connect::Pod(target) => target.headers(),
+            Connect::Unwritable => &[],
         }
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
         match &self.0 {
-            Connect::Pod(authority) => {
-                let stream = TcpStream::connect(authority)?;
-                stream.set_read_timeout(Some(WAIT))?;
-                stream.set_write_timeout(Some(WAIT))?;
-                Ok(Box::new(stream))
-            }
+            Connect::Pod(target) => target.connect(),
             Connect::Unwritable => Ok(Box::new(Unwritable)),
         }
     }
@@ -517,7 +459,7 @@ fn row_17_an_unwritable_request_or_a_malformed_answer_head_is_upstream_failed() 
     let pod = Pod::start(|connection| {
         drop(connection.write_all(b"this is not an answer\r\n\r\n"));
     });
-    let malformed = Source::new(Connect::Pod(pod.authority.clone()));
+    let malformed = Source::new(pod.connect());
     let handle = relayed(&malformed, WAIT);
     let mut stream = connect(handle.local_addr());
     stream
@@ -598,7 +540,7 @@ fn held_stream(release: Receiver<()>) -> Pod {
 fn row_23_a_stop_waits_for_a_relayed_stream_to_end() {
     let (release, released) = mpsc::channel();
     let pod = held_stream(released);
-    let source = Source::new(Connect::Pod(pod.authority.clone()));
+    let source = Source::new(pod.connect());
     let handle = relayed(&source, Duration::from_millis(300));
     let mut stream = connect(handle.local_addr());
     let body = b"{\"model\":\"code\"}";
@@ -646,7 +588,7 @@ fn row_23_a_client_that_stops_reading_a_stream_cannot_hold_the_stop() {
             }
         }
     });
-    let source = Source::new(Connect::Pod(pod.authority.clone()));
+    let source = Source::new(pod.connect());
     let handle = relayed(&source, Duration::from_millis(300));
     let mut stream = connect(handle.local_addr());
     let body = b"{\"model\":\"code\"}";

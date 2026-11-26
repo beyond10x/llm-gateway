@@ -6,23 +6,19 @@
 //! answer. The translator is a fixture that reaches that upstream and writes a fixed translated
 //! answer, so the relay's half of the contract is held with no llm crate in the build.
 
+use crate::upstream::{self, Upstream as Shared};
 use llm_gateway::{
     AnswerBytes, AnswerFraming, CallBytes, CallEnding, CallPricing, FinishedCall, FinishedCalls,
     Gateway, GatewayConfig, GatewayHandle, Harness, IngressAuth, Label, Metrics, NoOwnerVerifier,
-    OwnerToken, OwnerVerifier, RefusalCode, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, RouteInventory, SharedSecretVerifier, StaticHeader, TargetRefusal,
-    TranslatedAnswer, Translation, TranslationFailure, TranslationRequest, Translator, Usage,
-    UsageRecord, UsageRecords, Wire,
+    OwnerToken, OwnerVerifier, RefusalCode, Relay, RelayModel, RelayTarget, RelayTargets,
+    RouteInventory, SharedSecretVerifier, TargetRefusal, TranslatedAnswer, Translation,
+    TranslationFailure, TranslationRequest, Translator, Usage, UsageRecord, UsageRecords, Wire,
 };
 use std::{
-    collections::VecDeque,
-    io::{self, Read, Write},
-    net::{Shutdown, SocketAddr, TcpListener, TcpStream},
-    sync::{
-        Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
-    },
-    thread::{self, JoinHandle},
+    io::{Read, Write},
+    net::{SocketAddr, TcpStream},
+    sync::{Arc, Mutex},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -45,97 +41,29 @@ enum Reply {
     Close,
 }
 
-/// The header each request of a rig's calls carries to its upstream, valued per upstream
-/// ([`Source`] sends it as a static header of its targets).
-const CALL_HEADER: &str = "x-finished-calls-upstream";
-
 /// A loopback upstream answering its rig's calls with [`Reply`]s in the order their requests
-/// arrive, each connection on a thread of its own. Any process on the host can reach a loopback
-/// port, so a connection whose request does not carry this upstream's [`CALL_HEADER`] value is
-/// no call of the rig: it is closed unanswered and takes no reply.
+/// arrive: a shared upstream (`crate::upstream`), which answers only requests carrying its token
+/// and closes any other connection unanswered, without using a reply.
 struct Upstream {
     authority: String,
-    /// The [`CALL_HEADER`] value this upstream answers.
-    token: String,
-    stopping: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
+    shared: Shared,
 }
 
 impl Upstream {
     fn start(replies: Vec<Reply>) -> Self {
-        static STARTED: AtomicUsize = AtomicUsize::new(0);
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let token = format!(
-            "{}-{}",
-            std::process::id(),
-            STARTED.fetch_add(1, Ordering::SeqCst)
+        let shared = Shared::scripted(
+            replies
+                .into_iter()
+                .map(|reply| -> upstream::Reply {
+                    Box::new(move |connection| answer(connection, reply))
+                })
+                .collect(),
         );
-        let replies = Arc::new(Mutex::new(VecDeque::from(replies)));
-        let stopping = Arc::new(AtomicBool::new(false));
-        let thread = {
-            let (token, stopping) = (token.clone(), Arc::clone(&stopping));
-            thread::spawn(move || {
-                for connection in listener.incoming() {
-                    if stopping.load(Ordering::SeqCst) {
-                        return;
-                    }
-                    let Ok(connection) = connection else {
-                        continue;
-                    };
-                    let (token, replies) = (token.clone(), Arc::clone(&replies));
-                    thread::spawn(move || serve(connection, &token, &replies));
-                }
-            })
-        };
         Self {
-            authority,
-            token,
-            stopping,
-            thread: Some(thread),
+            authority: shared.authority().to_owned(),
+            shared,
         }
     }
-}
-
-impl Drop for Upstream {
-    fn drop(&mut self) {
-        // The accept loop holds the listener until it sees `stopping`, so this connection
-        // reaches this upstream and no other process's listener.
-        self.stopping.store(true, Ordering::SeqCst);
-        drop(TcpStream::connect(&self.authority));
-        if let Some(thread) = self.thread.take() {
-            drop(thread.join());
-        }
-    }
-}
-
-/// Answers one connection: the next reply when its request is a call of this upstream's rig,
-/// else nothing.
-fn serve(mut connection: TcpStream, token: &str, replies: &Mutex<VecDeque<Reply>>) {
-    if connection.set_read_timeout(Some(WAIT)).is_err()
-        || connection.set_write_timeout(Some(WAIT)).is_err()
-    {
-        return;
-    }
-    let Some(request) = read_request(&mut connection) else {
-        return;
-    };
-    if carries(&request, token) {
-        let reply = replies.lock().unwrap().pop_front();
-        if let Some(reply) = reply {
-            answer(&mut connection, reply);
-        }
-    }
-    drop(connection.shutdown(Shutdown::Both));
-}
-
-/// Whether `request`'s head carries [`CALL_HEADER`] with the value `token`.
-fn carries(request: &[u8], token: &str) -> bool {
-    let end = find(request, b"\r\n\r\n").unwrap_or(request.len());
-    String::from_utf8_lossy(&request[..end])
-        .split("\r\n")
-        .filter_map(|line| line.split_once(':'))
-        .any(|(name, value)| name.eq_ignore_ascii_case(CALL_HEADER) && value.trim() == token)
 }
 
 fn answer(connection: &mut TcpStream, reply: Reply) {
@@ -164,55 +92,10 @@ fn answer(connection: &mut TcpStream, reply: Reply) {
     }
 }
 
-/// A request to `authority` from no call of the rig, as a gateway of another test process whose
-/// target held that port before would send it, read to its end.
-fn foreign_request(authority: &str) {
-    let mut connection = TcpStream::connect(authority).unwrap();
-    connection.set_read_timeout(Some(WAIT)).unwrap();
-    connection
-        .write_all(
-            format!("POST /v1/messages HTTP/1.1\r\nhost: {authority}\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{{}}")
-                .as_bytes(),
-        )
-        .unwrap();
-    let mut answer = Vec::new();
-    drop(connection.read_to_end(&mut answer));
-}
-
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
         .windows(needle.len())
         .position(|window| window == needle)
-}
-
-/// Reads one request head and its `content-length` body.
-fn read_request(connection: &mut TcpStream) -> Option<Vec<u8>> {
-    let mut buffer = Vec::new();
-    let mut chunk = [0_u8; 16_384];
-    let end = loop {
-        if let Some(end) = find(&buffer, b"\r\n\r\n") {
-            break end;
-        }
-        let read = connection.read(&mut chunk).ok()?;
-        if read == 0 {
-            return None;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    };
-    let head = String::from_utf8_lossy(&buffer[..end]).to_ascii_lowercase();
-    let wanted: usize = head
-        .split("\r\n")
-        .find_map(|line| line.strip_prefix("content-length:"))
-        .and_then(|value| value.trim().parse().ok())
-        .unwrap_or(0);
-    while buffer.len() < end + 4 + wanted {
-        let read = connection.read(&mut chunk).ok()?;
-        if read == 0 {
-            break;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    }
-    Some(buffer)
 }
 
 /// A `200` JSON answer framed by length.
@@ -246,52 +129,21 @@ fn events(pieces: &[&str]) -> Reply {
 
 // --- Targets, the translator and the ports -----------------------------------------------------
 
-/// Targets on one upstream, whose requests carry its [`CALL_HEADER`] value.
-struct Source {
-    authority: String,
-    headers: Vec<StaticHeader>,
-}
+/// Targets on one upstream, whose requests carry its token.
+struct Source(upstream::Target);
 
 impl Source {
     fn of(upstream: &Upstream) -> Self {
-        Self {
-            authority: upstream.authority.clone(),
-            headers: vec![StaticHeader::new(CALL_HEADER, &upstream.token).unwrap()],
-        }
+        Self(upstream.shared.target(WAIT))
     }
 }
 
 impl RelayTargets for Source {
     fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
-        Ok(Box::new(Target {
-            authority: self.authority.clone(),
-            headers: self.headers.clone(),
-        }))
+        Ok(Box::new(self.0.clone()))
     }
 
     fn invalidate(&self, _alias: &str, _authority: &str) {}
-}
-
-struct Target {
-    authority: String,
-    headers: Vec<StaticHeader>,
-}
-
-impl RelayTarget for Target {
-    fn authority(&self) -> &str {
-        &self.authority
-    }
-
-    fn headers(&self) -> &[StaticHeader] {
-        &self.headers
-    }
-
-    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
-        let stream = TcpStream::connect(&self.authority)?;
-        stream.set_read_timeout(Some(WAIT))?;
-        stream.set_write_timeout(Some(WAIT))?;
-        Ok(Box::new(stream))
-    }
 }
 
 /// What the fixture translator writes once it has read the upstream's answer.
@@ -882,7 +734,8 @@ fn each_ending_is_named_and_the_cost_is_present_exactly_when_the_record_s_is() {
     rig.call(CHAT, r#"{"model":"code"}"#, "");
     // Another process on the host reaches the upstream's port, as a test whose own listener
     // held that port before, or one that probes a port it chose, may.
-    foreign_request(&rig.upstream.authority);
+    let foreign = upstream::foreign_request(&rig.upstream.authority);
+    assert!(foreign.is_empty(), "{}", String::from_utf8_lossy(&foreign));
     rig.call(MESSAGES, r#"{"model":"code","stream":true}"#, "");
     rig.call(CHAT, r#"{"model":"code"}"#, "");
     rig.call(CHAT, r#"{"model":"nobody"}"#, "");

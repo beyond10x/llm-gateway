@@ -6,26 +6,27 @@
 //! answer (`usage_*`, story:usage-details-pass-through). The specification is
 //! the `Relay` command of `spec/domains/gateway.yaml`.
 //!
-//! Every target is a loopback fixture pod in this file: a `TcpListener` on `127.0.0.1:0` that
-//! answers a fixed script. The gateway never connects anywhere itself; it asks the injected
-//! [`RelayTargets`] for a target and the target opens the connection. Nothing leaves the
-//! machine, and no provider is involved.
+//! Every target is a loopback fixture pod in this file: a shared [`Upstream`] on `127.0.0.1:0`
+//! that answers its test's calls from a fixed script. The gateway never connects anywhere
+//! itself; it asks the injected [`RelayTargets`] for a target and the target opens the
+//! connection. Nothing leaves the machine, and no provider is involved.
 
+use crate::upstream::{Reply, Upstream};
 use llm_gateway::{
     CredentialHeader, CredentialHeaderError, Gateway, GatewayConfig, GatewayHandle, Label,
     OwnerToken, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, RouteInventory, SharedSecretVerifier, TargetBearer, TargetRefusal, TokenError,
-    ToolCalling, Wire,
+    RelayTargets, RouteInventory, SharedSecretVerifier, StaticHeader, TargetBearer, TargetRefusal,
+    TokenError, ToolCalling, Wire,
 };
 use std::{
     io::{self, Read, Write},
-    net::{Shutdown, SocketAddr, TcpListener, TcpStream},
+    net::{Shutdown, SocketAddr, TcpStream},
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicUsize, Ordering},
         mpsc::{self, Receiver, Sender},
     },
-    thread::{self, JoinHandle},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -76,6 +77,11 @@ enum Answer {
     },
     /// Reads the request, then closes without a byte of answer.
     Close,
+    /// Reads the request, then holds the connection open unanswered until something is sent on
+    /// (or the sender of) the receiver, and closes it.
+    Hold(Receiver<()>),
+    /// Reads the request, then writes these bytes as they are and closes.
+    Raw(Vec<u8>),
 }
 
 fn reply(status: u16, content_type: &'static str, body: &[u8]) -> Answer {
@@ -127,61 +133,36 @@ impl Seen {
     }
 }
 
-/// A loopback pod that answers its script in order, one connection per answer, then stops
-/// listening, so a connection past its script is refused.
+/// A loopback pod that answers its test's calls with its script in order, one connection per
+/// answer, and closes a call past its script unanswered: a shared [`Upstream`], which answers
+/// only requests carrying its token, sent by every [`Slot`] made [`listening`] on it.
 struct Pod {
     authority: String,
-    seen: Arc<Mutex<Vec<Seen>>>,
-    stopping: Arc<AtomicBool>,
-    thread: Option<JoinHandle<()>>,
+    upstream: Upstream,
 }
 
 impl Pod {
     fn start(script: Vec<Answer>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let recording = Arc::clone(&seen);
-        let stopping = Arc::new(AtomicBool::new(false));
-        let stopped = Arc::clone(&stopping);
-        let thread = thread::spawn(move || {
-            for answer in script {
-                let Ok((mut connection, _)) = listener.accept() else {
-                    return;
-                };
-                if stopped.load(Ordering::SeqCst) {
-                    return;
-                }
-                connection.set_read_timeout(Some(WAIT)).unwrap();
-                connection.set_write_timeout(Some(WAIT)).unwrap();
-                if let Some(request) = read_request(&mut connection) {
-                    recording.lock().unwrap().push(request);
-                }
-                answer_with(&mut connection, answer);
-            }
-        });
+        let upstream = Upstream::scripted(
+            script
+                .into_iter()
+                .map(|answer| -> Reply {
+                    Box::new(move |connection| answer_with(connection, answer))
+                })
+                .collect(),
+        );
         Self {
-            authority,
-            seen,
-            stopping,
-            thread: Some(thread),
+            authority: upstream.authority().to_owned(),
+            upstream,
         }
     }
 
     fn seen(&self) -> Vec<Seen> {
-        self.seen.lock().unwrap().clone()
-    }
-}
-
-impl Drop for Pod {
-    fn drop(&mut self) {
-        // A pod whose script was not used up is still blocked in `accept`: mark it stopping,
-        // then unblock it with one connection it will not answer.
-        self.stopping.store(true, Ordering::SeqCst);
-        drop(TcpStream::connect(&self.authority));
-        if let Some(thread) = self.thread.take() {
-            drop(thread.join());
-        }
+        self.upstream
+            .seen()
+            .iter()
+            .filter_map(|raw| seen_of(raw))
+            .collect()
     }
 }
 
@@ -200,73 +181,50 @@ fn header_of(head: &str, name: &str) -> Option<String> {
     })
 }
 
-/// One read of a pod's connection. An interrupted read is retried: a socket with a read timeout
-/// answers a signal, or a stop and continue of the test process, with `EINTR` whatever
-/// `SA_RESTART` says (`man 7 signal`), and a pod that took it for the end of the request would
-/// close with the body unread and reset the gateway's write.
-fn read_some(connection: &mut TcpStream, chunk: &mut [u8]) -> Option<usize> {
-    loop {
-        match connection.read(chunk) {
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            read => return read.ok(),
-        }
-    }
-}
-
-/// Reads one request head and its `content-length` body.
-fn read_request(connection: &mut TcpStream) -> Option<Seen> {
-    let mut buffer = Vec::new();
-    let mut chunk = [0_u8; 16_384];
-    let end = loop {
-        if let Some(end) = find(&buffer, b"\r\n\r\n") {
-            break end;
-        }
-        let read = read_some(connection, &mut chunk)?;
-        if read == 0 {
-            return None;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    };
-    let head = String::from_utf8(buffer[..end].to_vec()).ok()?;
-    let mut body = buffer[end + 4..].to_vec();
-    let content_length = header_of(&head, "content-length");
-    let wanted: usize = content_length
-        .as_deref()
-        .and_then(|value| value.parse().ok())
-        .unwrap_or(0);
-    while body.len() < wanted {
-        let read = read_some(connection, &mut chunk)?;
-        if read == 0 {
-            break;
-        }
-        body.extend_from_slice(&chunk[..read]);
-    }
-    let raw = [&buffer[..end + 4], body.as_slice()].concat();
+/// One request head and its body as the pod read them, raw; `None` for a head that is not
+/// UTF-8 or has no request line.
+fn seen_of(raw: &[u8]) -> Option<Seen> {
+    let end = find(raw, b"\r\n\r\n")?;
+    let head = String::from_utf8(raw[..end].to_vec()).ok()?;
     let mut start = head.split("\r\n").next()?.split(' ');
     Some(Seen {
         method: start.next()?.to_string(),
         path: start.next()?.to_string(),
         host: header_of(&head, "host"),
-        content_length,
+        content_length: header_of(&head, "content-length"),
         transfer_encoding: header_of(&head, "transfer-encoding"),
         authorization: header_of(&head, "authorization"),
-        body,
-        raw,
+        body: raw[end + 4..].to_vec(),
+        raw: raw.to_vec(),
     })
 }
 
 fn answer_with(connection: &mut TcpStream, answer: Answer) {
-    let Answer::Reply {
-        status,
-        content_type,
-        chunks,
-        framing,
-        hold_head,
-        hold_chunks,
-    } = answer
-    else {
-        drop(connection.shutdown(Shutdown::Both));
-        return;
+    let (status, content_type, chunks, framing, hold_head, hold_chunks) = match answer {
+        Answer::Reply {
+            status,
+            content_type,
+            chunks,
+            framing,
+            hold_head,
+            hold_chunks,
+        } => (
+            status,
+            content_type,
+            chunks,
+            framing,
+            hold_head,
+            hold_chunks,
+        ),
+        Answer::Close => return,
+        Answer::Hold(release) => {
+            let _released = release.recv_timeout(WAIT);
+            return;
+        }
+        Answer::Raw(raw) => {
+            drop(connection.write_all(&raw));
+            return;
+        }
     };
     if let Some(hold) = hold_head {
         // A sender that is gone releases the hold as surely as one that sent.
@@ -325,6 +283,8 @@ struct Slot {
     /// How many of the connections this slot's targets open, counted across them all, are
     /// refused before any is opened.
     refuse_first: Arc<AtomicUsize>,
+    /// The static headers its targets send: the token of the pod it is listening on.
+    headers: Vec<StaticHeader>,
 }
 
 /// The fake target source: hands out the current slot, and moves to the next one when the
@@ -395,6 +355,7 @@ fn listening(pod: &Pod) -> Slot {
         bearer: None,
         header: None,
         refuse_first: Arc::new(AtomicUsize::new(0)),
+        headers: pod.upstream.headers(),
     }
 }
 
@@ -405,6 +366,7 @@ fn refusing(name: &str) -> Slot {
         bearer: None,
         header: None,
         refuse_first: Arc::new(AtomicUsize::new(0)),
+        headers: Vec::new(),
     }
 }
 
@@ -464,6 +426,10 @@ impl RelayTarget for Target {
 
     fn credential_header(&self) -> Option<&CredentialHeader> {
         self.slot.header.as_ref()
+    }
+
+    fn headers(&self) -> &[StaticHeader] {
+        &self.slot.headers
     }
 
     fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
@@ -2645,31 +2611,11 @@ fn clamp_a_count_that_fails_relays_the_request_unchanged() {
 #[test]
 fn clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes() {
     let deadline = Duration::from_millis(500);
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let authority = listener.local_addr().unwrap().to_string();
     let (release, released) = mpsc::channel::<()>();
-    let pod = thread::spawn(move || {
-        // The count is read and never answered; the relay that follows is answered while the
-        // count's connection is still held open.
-        let (mut count, _) = listener.accept().unwrap();
-        count.set_read_timeout(Some(WAIT)).unwrap();
-        let counted = read_request(&mut count).unwrap();
-        let (mut relay, _) = listener.accept().unwrap();
-        relay.set_read_timeout(Some(WAIT)).unwrap();
-        let relayed = read_request(&mut relay).unwrap();
-        answer_with(&mut relay, ok_json("{}"));
-        let _held = released.recv_timeout(WAIT);
-        drop(count);
-        (counted, relayed)
-    });
-    let slot = Slot {
-        authority,
-        refuses: false,
-        bearer: None,
-        header: None,
-        refuse_first: Arc::new(AtomicUsize::new(0)),
-    };
-    let source = Source::new(vec![slot]);
+    // The count is read and never answered; the relay that follows is answered while the
+    // count's connection is still held open.
+    let pod = Pod::start(vec![Answer::Hold(released), ok_json("{}")]);
+    let source = Source::of(&[&pod]);
     let gateway = Relayed::configured(
         vec![code_model().with_max_model_len(100)],
         &source,
@@ -2693,7 +2639,9 @@ fn clamp_a_count_that_never_answers_relays_the_request_once_its_deadline_passes(
         took >= deadline,
         "the request was relayed after {took:?}, before the count's deadline of {deadline:?}"
     );
-    let (counted, relayed) = pod.join().unwrap();
+    let seen = pod.seen();
+    assert_eq!(seen.len(), 2);
+    let (counted, relayed) = (&seen[0], &seen[1]);
     assert_eq!(counted.path, "/v1/messages/count_tokens");
     assert_eq!(relayed.path, "/v1/messages");
     assert_eq!(
@@ -3505,24 +3453,9 @@ fn a_non_streamed_client_that_left_releases_the_target_before_the_answer() {
 // --- Target answer heads and obs-text (story:target-header-obs-text) ----------------------------
 
 /// A target on a loopback port that answers one request with `answer`, byte for byte.
-fn raw_target(answer: Vec<u8>) -> (Arc<Source>, thread::JoinHandle<()>) {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let authority = listener.local_addr().unwrap().to_string();
-    let pod = thread::spawn(move || {
-        let (mut connection, _) = listener.accept().unwrap();
-        connection.set_read_timeout(Some(WAIT)).unwrap();
-        drop(read_request(&mut connection));
-        drop(connection.write_all(&answer));
-        drop(connection.shutdown(Shutdown::Both));
-    });
-    let source = Source::new(vec![Slot {
-        authority,
-        refuses: false,
-        bearer: None,
-        header: None,
-        refuse_first: Arc::new(AtomicUsize::new(0)),
-    }]);
-    (source, pod)
+fn raw_target(answer: Vec<u8>) -> (Arc<Source>, Pod) {
+    let pod = Pod::start(vec![Answer::Raw(answer)]);
+    (Source::of(&[&pod]), pod)
 }
 
 /// `head` with `byte` after its first `@`.
@@ -3546,7 +3479,7 @@ fn a_non_utf8_byte_in_an_ignored_target_header_is_relayed() {
     ));
     let gateway = Relayed::start(vec![code_model()], &source);
     let answer = gateway.post_text("/v1/chat/completions", HI);
-    pod.join().unwrap();
+    assert_eq!(pod.seen().len(), 1, "the target was asked once");
     assert_eq!(answer.status, 200, "{answer:?}");
     assert!(
         source.invalidated().is_empty(),
@@ -3570,7 +3503,7 @@ fn a_non_utf8_byte_in_a_target_line_the_relay_reads_is_refused() {
         let (source, pod) = raw_target(with_byte(head, 0xe9));
         let gateway = Relayed::start(vec![code_model()], &source);
         let answer = gateway.post_text("/v1/chat/completions", HI);
-        pod.join().unwrap();
+        assert_eq!(pod.seen().len(), 1, "the target was asked once");
         assert_eq!(answer.status, 502, "{answer:?}");
         assert_eq!(answer.code().as_deref(), Some("upstream-failed"));
         assert_eq!(source.invalidated().len(), 1, "{:?}", source.invalidated());
@@ -3586,7 +3519,7 @@ fn a_non_utf8_byte_in_a_target_trailer_is_relayed() {
     ));
     let gateway = Relayed::start(vec![code_model()], &source);
     let answer = gateway.post_text("/v1/chat/completions", HI);
-    pod.join().unwrap();
+    assert_eq!(pod.seen().len(), 1, "the target was asked once");
     assert_eq!(answer.status, 200, "{answer:?}");
     assert_eq!(answer.body, b"{\"id\":\"a\"}");
     assert!(
@@ -3655,7 +3588,7 @@ fn adversary_a_non_utf8_byte_in_a_target_chunk_extension_is_relayed() {
     ));
     let gateway = Relayed::start(vec![code_model()], &source);
     let answer = gateway.post_text("/v1/chat/completions", HI);
-    pod.join().unwrap();
+    assert_eq!(pod.seen().len(), 1, "the target was asked once");
     assert_eq!(answer.status, 200, "{answer:?}");
     assert_eq!(answer.body, b"{\"id\":\"a\"}", "{answer:?}");
 }
@@ -3781,4 +3714,52 @@ fn adversary_a_client_that_left_releases_a_target_whose_stream_names_its_socket(
         released, 1,
         "a target over a named socket was still held 3 s after the client left"
     );
+}
+
+// --- A pod answers only its own test's calls (story:test-upstreams-bound-to-their-rig) ----------
+
+/// Any process on the host reaches a pod's loopback port: a request from no call of this test,
+/// as a gateway of another test whose target held that port before sends one, takes no scripted
+/// answer, and the gateway's own call still gets the answer scripted for it.
+#[test]
+fn a_foreign_connection_to_a_pod_takes_no_scripted_answer() {
+    let pod = Pod::start(vec![ok_json("{\"id\":\"rig\"}")]);
+    let foreign = crate::upstream::foreign_request(&pod.authority);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let answer = gateway.post_text("/v1/chat/completions", "{\"model\":\"code\"}");
+    assert!(
+        foreign.is_empty(),
+        "a foreign connection took a scripted answer: {}",
+        String::from_utf8_lossy(&foreign)
+    );
+    assert_eq!(answer.status, 200, "{answer:?}");
+    assert_eq!(answer.text(), "{\"id\":\"rig\"}");
+    assert_eq!(pod.seen().len(), 1);
+}
+
+/// A dropped pod connects to no port it no longer holds: once its port is free another process
+/// may hold it, and a connection there is that process's, not the pod's.
+#[test]
+fn a_dropped_pod_connects_to_no_port_it_no_longer_holds() {
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    assert_eq!(
+        gateway
+            .post_text("/v1/chat/completions", "{\"model\":\"code\"}")
+            .status,
+        200
+    );
+    drop(gateway);
+    // Another process binds the port as soon as the pod lets it go.
+    let taken = crate::upstream::take_port(&pod.authority, Duration::from_millis(500));
+    drop(pod);
+    if let Some(listener) = taken {
+        listener.set_nonblocking(true).unwrap();
+        assert!(
+            listener.accept().is_err(),
+            "the dropped pod connected to a port another process held"
+        );
+    }
 }

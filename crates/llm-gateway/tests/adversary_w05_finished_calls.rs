@@ -5,111 +5,45 @@
 //! "Finished calls": "`Refused(code)`, else `WireError` ..., else `UpstreamCut`"). An answer
 //! that carried its wire's terminal error and whose upstream then closed without ending the body
 //! is both; by that precedence it is a `WireError`. Every upstream here is a fake on loopback,
-//! port 0, that writes its pieces and closes.
+//! port 0, that answers only its own test's call (`crate::upstream`): it writes its pieces and
+//! closes.
 
+use crate::upstream::{self, Upstream};
 use llm_gateway::{
     CallBytes, CallEnding, FinishedCall, FinishedCalls, Gateway, GatewayConfig, GatewayHandle,
-    IngressAuth, Label, NoOwnerVerifier, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    IngressAuth, Label, NoOwnerVerifier, Relay, RelayModel, RelayTarget, RelayTargets,
     RouteInventory, TargetRefusal, Wire,
 };
 use std::{
-    io::{self, Read, Write},
-    net::{Shutdown, TcpListener, TcpStream},
+    io::{Read, Write},
+    net::TcpStream,
     sync::{Arc, Mutex},
-    thread::{self, JoinHandle},
+    thread,
     time::{Duration, Instant},
 };
 
 const WAIT: Duration = Duration::from_secs(10);
 
-/// An upstream that reads one request, writes `pieces` and closes the connection.
-struct Upstream {
-    authority: String,
-    thread: Option<JoinHandle<()>>,
-}
-
-impl Upstream {
-    fn start(pieces: Vec<Vec<u8>>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let thread = thread::spawn(move || {
-            let Ok((mut connection, _)) = listener.accept() else {
-                return;
-            };
-            connection.set_read_timeout(Some(WAIT)).unwrap();
-            let mut buffer = Vec::new();
-            let mut chunk = [0_u8; 16_384];
-            // The head, then the body by its `content-length`.
-            let end = loop {
-                if let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
-                    break end;
-                }
-                match connection.read(&mut chunk) {
-                    Ok(0) | Err(_) => return,
-                    Ok(read) => buffer.extend_from_slice(&chunk[..read]),
-                }
-            };
-            let head = String::from_utf8_lossy(&buffer[..end]).to_ascii_lowercase();
-            let wanted: usize = head
-                .split("\r\n")
-                .find_map(|line| line.strip_prefix("content-length:"))
-                .and_then(|value| value.trim().parse().ok())
-                .unwrap_or(0);
-            while buffer.len() < end + 4 + wanted {
-                match connection.read(&mut chunk) {
-                    Ok(0) | Err(_) => break,
-                    Ok(read) => buffer.extend_from_slice(&chunk[..read]),
-                }
+/// An upstream that reads one request of its test's call, writes `pieces` and closes.
+fn piecewise(pieces: Vec<Vec<u8>>) -> Upstream {
+    Upstream::scripted(vec![Box::new(move |connection: &mut TcpStream| {
+        for piece in pieces {
+            if connection.write_all(&piece).is_err() {
+                break;
             }
-            for piece in pieces {
-                if connection.write_all(&piece).is_err() {
-                    break;
-                }
-                thread::sleep(Duration::from_millis(5));
-            }
-            drop(connection.shutdown(Shutdown::Both));
-        });
-        Self {
-            authority,
-            thread: Some(thread),
+            thread::sleep(Duration::from_millis(5));
         }
-    }
+    })])
 }
 
-impl Drop for Upstream {
-    fn drop(&mut self) {
-        if let Some(thread) = self.thread.take() {
-            if !thread.is_finished() {
-                drop(TcpStream::connect(&self.authority));
-            }
-            drop(thread.join());
-        }
-    }
-}
-
-struct Source(String);
+struct Source(upstream::Target);
 
 impl RelayTargets for Source {
     fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
-        Ok(Box::new(Target(self.0.clone())))
+        Ok(Box::new(self.0.clone()))
     }
 
     fn invalidate(&self, _alias: &str, _authority: &str) {}
-}
-
-struct Target(String);
-
-impl RelayTarget for Target {
-    fn authority(&self) -> &str {
-        &self.0
-    }
-
-    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
-        let stream = TcpStream::connect(&self.0)?;
-        stream.set_read_timeout(Some(WAIT))?;
-        stream.set_write_timeout(Some(WAIT))?;
-        Ok(Box::new(stream))
-    }
 }
 
 #[derive(Default)]
@@ -145,7 +79,7 @@ fn gateway(upstream: &Upstream, port: &Arc<Port>) -> GatewayHandle {
             .unwrap()
             .with_client_credentials(),
     ];
-    let relay = Relay::new(models, Arc::new(Source(upstream.authority.clone())))
+    let relay = Relay::new(models, Arc::new(Source(upstream.target(WAIT))))
         .unwrap()
         .with_finished_calls(Arc::clone(port) as Arc<dyn FinishedCalls>);
     let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
@@ -195,7 +129,7 @@ fn error_then_cut() -> Vec<Vec<u8>> {
 }
 
 fn ending_of(body: &str, headers: &str) -> (Vec<u8>, FinishedCall) {
-    let upstream = Upstream::start(error_then_cut());
+    let upstream = piecewise(error_then_cut());
     let port = Arc::new(Port::default());
     let handle = gateway(&upstream, &port);
     let answer = call(&handle, body, headers);

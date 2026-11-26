@@ -3,15 +3,15 @@
 //! on any path, and the dashboard it serves there keeps no header value but the user agent.
 //! Every target is a loopback fixture pod; nothing leaves the machine.
 
+use crate::upstream::{self, Upstream};
 use llm_gateway::{
     Gateway, GatewayConfig, GatewayHandle, IngressAuth, Label, NoOwnerVerifier, Relay, RelayModel,
-    RelayStream, RelayTarget, RelayTargets, RouteInventory, TargetRefusal, Wire,
+    RelayTarget, RelayTargets, RouteInventory, TargetRefusal, Wire,
 };
 use std::{
-    io::{self, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
-    sync::{Arc, Mutex},
-    thread::{self, JoinHandle},
+    io::{Read, Write},
+    net::{SocketAddr, TcpStream},
+    sync::Arc,
     time::Duration,
 };
 
@@ -20,101 +20,35 @@ const SESSION: &str = "5b0c7e9a-local-open-session";
 /// The answer of a messages stream, with the usage a self-hosted model reports.
 const STREAM: &str = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\nconnection: close\r\n\r\nevent: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1200,\"cache_read_input_tokens\":64,\"output_tokens\":1}}}\n\nevent: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":300}}\n\n";
 
-/// A loopback pod answering every request with `answer`, keeping every head it read.
+/// A loopback pod answering every call of its test with `answer`, keeping every head it read. It
+/// answers only its own test's calls (`crate::upstream`).
 struct Pod {
-    authority: String,
-    heads: Arc<Mutex<Vec<String>>>,
-    thread: Option<JoinHandle<()>>,
-    stop: Arc<Mutex<bool>>,
+    upstream: Upstream,
 }
 
 impl Pod {
     fn start(answer: &'static str) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let heads = Arc::new(Mutex::new(Vec::new()));
-        let seen = Arc::clone(&heads);
-        let stop = Arc::new(Mutex::new(false));
-        let stopping = Arc::clone(&stop);
-        let thread = thread::spawn(move || {
-            loop {
-                let Ok((mut connection, _)) = listener.accept() else {
-                    return;
-                };
-                if *stopping.lock().unwrap() {
-                    return;
-                }
-                connection.set_read_timeout(Some(WAIT)).unwrap();
-                let mut buffer = Vec::new();
-                let mut chunk = [0_u8; 8192];
-                let end = loop {
-                    if let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
-                        break end;
-                    }
-                    match connection.read(&mut chunk) {
-                        Ok(0) | Err(_) => break 0,
-                        Ok(read) => buffer.extend_from_slice(&chunk[..read]),
-                    }
-                };
-                let head = String::from_utf8_lossy(&buffer[..end]).into_owned();
-                let wanted: usize = head
-                    .split("\r\n")
-                    .find_map(|line| {
-                        let (name, value) = line.split_once(':')?;
-                        name.eq_ignore_ascii_case("content-length")
-                            .then(|| value.trim().parse().ok())?
-                    })
-                    .unwrap_or(0);
-                let mut body = buffer.len().saturating_sub(end + 4);
-                while body < wanted {
-                    match connection.read(&mut chunk) {
-                        Ok(0) | Err(_) => break,
-                        Ok(read) => body += read,
-                    }
-                }
-                seen.lock().unwrap().push(head);
-                drop(connection.write_all(answer.as_bytes()));
-            }
-        });
         Self {
-            authority,
-            heads,
-            thread: Some(thread),
-            stop,
+            upstream: Upstream::answering(move |connection| {
+                drop(connection.write_all(answer.as_bytes()));
+            }),
         }
     }
-}
 
-impl Drop for Pod {
-    fn drop(&mut self) {
-        *self.stop.lock().unwrap() = true;
-        drop(TcpStream::connect(&self.authority));
-        if let Some(thread) = self.thread.take() {
-            drop(thread.join());
-        }
+    fn heads(&self) -> Vec<String> {
+        self.upstream
+            .seen()
+            .iter()
+            .map(|raw| upstream::head_of(raw))
+            .collect()
     }
 }
 
-struct Source(String);
-
-struct Target(String);
-
-impl RelayTarget for Target {
-    fn authority(&self) -> &str {
-        &self.0
-    }
-
-    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
-        let stream = TcpStream::connect(&self.0)?;
-        stream.set_read_timeout(Some(WAIT))?;
-        stream.set_write_timeout(Some(WAIT))?;
-        Ok(Box::new(stream))
-    }
-}
+struct Source(upstream::Target);
 
 impl RelayTargets for Source {
     fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
-        Ok(Box::new(Target(self.0.clone())))
+        Ok(Box::new(self.0.clone()))
     }
 
     fn invalidate(&self, _alias: &str, _authority: &str) {}
@@ -135,7 +69,7 @@ fn start(pod: &Pod, bind: &str) -> (GatewayHandle, SocketAddr) {
     config.read_timeout = WAIT;
     config.ingress_auth = IngressAuth::None;
     let inventory = RouteInventory::new(Vec::new()).unwrap();
-    let relay = Relay::new(vec![model()], Arc::new(Source(pod.authority.clone()))).unwrap();
+    let relay = Relay::new(vec![model()], Arc::new(Source(pod.upstream.target(WAIT)))).unwrap();
     let handle =
         Gateway::bind_with_relay(config, Arc::new(NoOwnerVerifier), inventory, relay).unwrap();
     handle.mark_ready();
@@ -227,7 +161,7 @@ fn adv_local_open_no_route_answers_401_without_a_credential() {
         );
     }
     // The token count reaches the target at its own path.
-    let heads = pod.heads.lock().unwrap().clone();
+    let heads = pod.heads();
     assert!(
         heads
             .iter()

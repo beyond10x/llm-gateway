@@ -6,15 +6,16 @@
 //! rows R6-R8, W1-W5, W7, K11) or HTTP/1.1 (RFC 9110, RFC 9112) requires. The cases run one at
 //! a time under a file-local lock, because one of them measures the process's resident memory.
 
+use crate::upstream::{self, Upstream};
 use llm_gateway::{
-    Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay, RelayModel, RelayStream,
-    RelayTarget, RelayTargets, RouteInventory, SharedSecretVerifier, TargetRefusal, Wire,
+    Gateway, GatewayConfig, GatewayHandle, Label, OwnerToken, Relay, RelayModel, RelayTarget,
+    RelayTargets, RouteInventory, SharedSecretVerifier, TargetRefusal, Wire,
 };
 use std::{
-    io::{self, Read, Write},
-    net::{Shutdown, SocketAddr, TcpListener, TcpStream},
+    io::{Read, Write},
+    net::{Shutdown, SocketAddr, TcpStream},
     sync::{Arc, Mutex, MutexGuard},
-    thread::{self, JoinHandle},
+    thread,
     time::Duration,
 };
 
@@ -52,98 +53,22 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 
 // --- A loopback pod that records raw requests and answers raw bytes ---------------------------
 
+/// Answers each call of its test with the next raw answer, written verbatim, then closes. It
+/// answers only its own test's calls (`crate::upstream`).
 struct Pod {
-    authority: String,
-    seen: Arc<Mutex<Vec<Vec<u8>>>>,
-    thread: Option<JoinHandle<()>>,
+    upstream: Upstream,
 }
 
 impl Pod {
-    /// Answers each accepted connection with the next raw answer, written verbatim, then closes.
     fn start(answers: Vec<Vec<u8>>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let seen = Arc::new(Mutex::new(Vec::new()));
-        let recording = Arc::clone(&seen);
-        let thread = thread::spawn(move || {
-            for answer in answers {
-                let Ok((mut connection, _)) = listener.accept() else {
-                    return;
-                };
-                connection.set_read_timeout(Some(WAIT)).unwrap();
-                connection.set_write_timeout(Some(WAIT)).unwrap();
-                let Some(raw) = read_request(&mut connection) else {
-                    // The unblocking connection from `Drop`, or a gateway that sent nothing.
-                    return;
-                };
-                recording.lock().unwrap().push(raw);
-                drop(connection.write_all(&answer));
-                drop(connection.flush());
-                drop(connection.shutdown(Shutdown::Both));
-            }
-        });
         Self {
-            authority,
-            seen,
-            thread: Some(thread),
+            upstream: Upstream::scripted(answers.into_iter().map(upstream::bytes).collect()),
         }
     }
 
     fn seen(&self) -> Vec<Vec<u8>> {
-        self.seen.lock().unwrap().clone()
+        self.upstream.seen()
     }
-}
-
-impl Drop for Pod {
-    fn drop(&mut self) {
-        drop(TcpStream::connect(&self.authority));
-        if let Some(thread) = self.thread.take() {
-            drop(thread.join());
-        }
-    }
-}
-
-/// One read of a pod's connection. An interrupted read is retried: a socket with a read timeout
-/// answers a signal, or a stop and continue of the test process, with `EINTR` whatever
-/// `SA_RESTART` says (`man 7 signal`), and a pod that took it for the end of the request would
-/// close with the body unread and reset the gateway's write.
-fn read_some(connection: &mut TcpStream, chunk: &mut [u8]) -> Option<usize> {
-    loop {
-        match connection.read(chunk) {
-            Err(error) if error.kind() == std::io::ErrorKind::Interrupted => {}
-            read => return read.ok(),
-        }
-    }
-}
-
-/// Reads one request head and its `content-length` body, raw.
-fn read_request(connection: &mut TcpStream) -> Option<Vec<u8>> {
-    let mut buffer = Vec::new();
-    let mut chunk = [0_u8; 16_384];
-    let end = loop {
-        if let Some(end) = find(&buffer, b"\r\n\r\n") {
-            break end;
-        }
-        let read = read_some(connection, &mut chunk)?;
-        if read == 0 {
-            return None;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    };
-    let head = String::from_utf8_lossy(&buffer[..end]).to_ascii_lowercase();
-    let wanted: usize = head
-        .split("\r\n")
-        .find_map(|line| line.strip_prefix("content-length:"))
-        .and_then(|value| value.trim().parse().ok())
-        .unwrap_or(0);
-    while buffer.len() < end + 4 + wanted {
-        let read = read_some(connection, &mut chunk)?;
-        if read == 0 {
-            break;
-        }
-        buffer.extend_from_slice(&chunk[..read]);
-    }
-    Some(buffer)
 }
 
 fn json_answer(body: &str) -> Vec<u8> {
@@ -157,7 +82,7 @@ fn json_answer(body: &str) -> Vec<u8> {
 // --- The target source ------------------------------------------------------------------------
 
 struct Source {
-    authority: String,
+    target: upstream::Target,
     acquired: Mutex<Vec<String>>,
     invalidated: Mutex<Vec<(String, String)>>,
 }
@@ -165,7 +90,7 @@ struct Source {
 impl Source {
     fn of(pod: &Pod) -> Arc<Self> {
         Arc::new(Self {
-            authority: pod.authority.clone(),
+            target: pod.upstream.target(WAIT),
             acquired: Mutex::new(Vec::new()),
             invalidated: Mutex::new(Vec::new()),
         })
@@ -183,9 +108,7 @@ impl Source {
 impl RelayTargets for Source {
     fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         self.acquired.lock().unwrap().push(alias.to_string());
-        Ok(Box::new(Target {
-            authority: self.authority.clone(),
-        }))
+        Ok(Box::new(self.target.clone()))
     }
 
     fn invalidate(&self, alias: &str, authority: &str) {
@@ -193,23 +116,6 @@ impl RelayTargets for Source {
             .lock()
             .unwrap()
             .push((alias.to_string(), authority.to_string()));
-    }
-}
-
-struct Target {
-    authority: String,
-}
-
-impl RelayTarget for Target {
-    fn authority(&self) -> &str {
-        &self.authority
-    }
-
-    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
-        let stream = TcpStream::connect(&self.authority)?;
-        stream.set_read_timeout(Some(WAIT))?;
-        stream.set_write_timeout(Some(WAIT))?;
-        Ok(Box::new(stream))
     }
 }
 
@@ -570,7 +476,8 @@ fn adv_w1_a_header_value_holding_a_bare_lf_is_request_malformed() {
 // --- Pins: what the relay already gets right and no test held ---------------------------------
 
 /// The owner credential and every other client header stay at the gateway: the target sees
-/// exactly `host`, `content-type`, `content-length` and `connection`.
+/// exactly `host`, `content-type`, `content-length` and `connection`. (It is also sent its own
+/// static header, the pod's token, which the pod takes out of every request it keeps.)
 #[test]
 fn adv_r6_the_owner_credential_and_client_headers_never_reach_the_target() {
     let _serial = serial();

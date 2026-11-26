@@ -4,6 +4,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
 import { openReplay, type Replay } from './harness.ts';
 import { HEADING_FONT_PX, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
+import { stripLines } from './r06-problems.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
 const viewport = (name: string): Viewport => VIEWPORTS.find((v) => v.name === name)!;
@@ -15,6 +16,14 @@ async function pageAt(browser: Browser, v: Viewport): Promise<Page> {
 
 async function replayed(browser: Browser, name: string, v = viewport('1366x768'), theme: Theme = 'light'): Promise<Replay> {
   return openReplay(await pageAt(browser, v), scenario(name), theme);
+}
+
+async function eachState(replay: Replay, check: (index: number) => Promise<void>): Promise<void> {
+  await check(replay.index);
+  while (replay.index + 1 < replay.states.length) {
+    await replay.advance();
+    await check(replay.index);
+  }
 }
 
 // A heading is read at the size of its own text and of every text inside it (a card title holds
@@ -46,4 +55,59 @@ test.describe('UXF-021', () => {
       }
     }
   });
+});
+
+// The failed-calls line of the Problems strip and the Routes table count the same thing: calls of
+// the last 5 minutes, failed by one definition. The line names every route the table shows as
+// failing, with the table's numbers and the status and kind of error of its failed calls.
+interface RouteRow {
+  route: string;
+  recent: string;
+}
+
+async function routeRows(page: Page): Promise<RouteRow[]> {
+  return page.locator('table.routes tbody tr').evaluateAll((trs) =>
+    trs.map((tr) => ({
+      route: ((tr.querySelector('th') as HTMLElement | null)?.innerText ?? '').split('\n')[0]!.trim(),
+      recent: ((tr.querySelector('td.col-recent') as HTMLElement | null)?.innerText ?? '').replace(/\s+/g, ' ').trim(),
+    })),
+  );
+}
+
+test.describe('UXF-026', () => {
+  for (const name of ['busy', 'errors']) {
+    test(`the failed-calls line counts what Routes counts for the same 5 minutes, names every failing route with its cause, and links to Routes — ${name}`, async ({ browser }) => {
+      const replay = await replayed(browser, name);
+      const { page } = replay;
+      const truth = scenario(name).truth!.failing_route!;
+      let lines = 0;
+      try {
+        await eachState(replay, async (i) => {
+          const at = `${name} state ${i}`;
+          const line = (await stripLines(page)).find((l) => /^Failed calls\b/.test(l.text));
+          const rows = await routeRows(page);
+          expect(rows.length, `${at}: Routes rows`).toBeGreaterThan(0);
+          const failing = rows.filter((r) => /^[1-9]\d* of \d+$/.test(r.recent));
+          if (!line) {
+            expect(failing, `${at}: no line, so no route failed in the window`).toEqual([]);
+            return;
+          }
+          lines += 1;
+          expect(line.href, `${at}: the line links to Routes`).toBe('#h-routes');
+          expect(line.text, `${at}: the line says its window`).toMatch(/^Failed calls in the last 5 min: /);
+          const segments = [...line.text.replace(/^[^:]*: /, '').matchAll(/(?:^|; )(\S+) (\d+) of (\d+) failed(?:, ([^;]+))?/g)].map((m) => ({ route: m[1]!, of: `${m[2]} of ${m[3]}`, cause: m[4] ?? '' }));
+          expect(segments.map((s) => s.route).sort(), `${at}: "${line.text}" names every failing route of the table`).toEqual(failing.map((r) => r.route).sort());
+          for (const s of segments) {
+            expect(s.of, `${at}: ${s.route} on the line and in Routes`).toBe(rows.find((r) => r.route === s.route)?.recent);
+            expect(s.cause, `${at}: ${s.route} names its status and the kind of error`).toMatch(/\b[1-5]\d\d [a-z]/);
+          }
+          const cause = segments.find((s) => s.route === truth.route)?.cause ?? '';
+          expect(truth.cause.some((c) => new RegExp(c, 'i').test(cause)), `${at}: "${cause}" says why ${truth.route} fails`).toBe(true);
+        });
+        expect(lines, `${name}: a failed-calls line in some state`).toBeGreaterThan(0);
+      } finally {
+        await page.context().close();
+      }
+    });
+  }
 });

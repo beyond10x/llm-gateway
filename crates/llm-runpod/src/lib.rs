@@ -44,6 +44,7 @@
 
 mod config;
 mod emulated;
+mod ledger;
 mod pool;
 mod provider;
 mod proxy;
@@ -56,6 +57,10 @@ pub use config::{
     Thinking, VllmSettings,
 };
 pub use emulated::EmulatedRunpod;
+pub use ledger::{
+    LEDGER_FORMAT, LedgerEntry, LedgerStore, LedgerUnavailable, MemoryLedger, TOTAL_WINDOW_MS,
+    decode_ledger, encode_ledger,
+};
 /// The hosting-contract values a [`RunpodPool`] is built from, so a composer can build one
 /// without naming `b10x-llm-provision` itself.
 pub use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};

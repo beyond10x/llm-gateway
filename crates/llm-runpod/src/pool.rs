@@ -27,8 +27,8 @@ use llm_provision::{
 };
 
 use crate::{
-    ConfigError, ProxyUrl, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy, SpendRefusal,
-    Unserviceable, request::in_namespace,
+    ConfigError, LedgerStore, ProxyUrl, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy,
+    SpendRefusal, Unserviceable, request::in_namespace,
 };
 
 /// A trusted Unix-millisecond clock. It must never move backwards.
@@ -503,6 +503,13 @@ impl<T: RunpodTransport> RunpodPool<T> {
             .unwrap_or_else(PoisonError::into_inner)
             .provider
             .set_spend(Some(spend));
+        self
+    }
+
+    /// The pool with its spend ledger kept in `store`.
+    #[must_use]
+    pub fn with_ledger(self, store: Box<dyn LedgerStore>) -> Self {
+        drop(store);
         self
     }
 

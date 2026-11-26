@@ -194,7 +194,7 @@ on `ring`, encoded with `base64`); every other one is still refused `translation
 
 ## Dependency on sessionspec
 
-`b10x-llm-gateway-cli` takes `sessionspec-records` and `sessionspec-types` at tag `0.1.0` of
+`b10x-llm-gateway-cli` takes `sessionspec-records` and `sessionspec-types` at tag `0.1.1` of
 [beyond10x/sessionspec](https://github.com/beyond10x/sessionspec), by tag, never by path, for
 the interaction records (`src/records.rs`). Their `GatewayFacts`, `WireCall`, `lift_call`,
 `Appender::spawn`, `AppenderHandle::append` and `stats`, and `store::SCHEMA_VERSION` with the

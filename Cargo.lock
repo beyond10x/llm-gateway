@@ -534,7 +534,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1525,7 +1525,7 @@ dependencies = [
  "once_cell",
  "socket2",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1735,7 +1735,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.61.2",
+ "windows-sys 0.52.0",
 ]
 
 [[package]]
@@ -1922,7 +1922,7 @@ dependencies = [
 [[package]]
 name = "session-ir"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.0#39c551d6bc6867b20c99a0aee319cdcb03c762aa"
+source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
 dependencies = [
  "sessionspec-types",
 ]
@@ -1930,15 +1930,15 @@ dependencies = [
 [[package]]
 name = "session-view"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.0#39c551d6bc6867b20c99a0aee319cdcb03c762aa"
+source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
 dependencies = [
  "sessionspec-types",
 ]
 
 [[package]]
 name = "sessionspec-records"
-version = "0.1.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.0#39c551d6bc6867b20c99a0aee319cdcb03c762aa"
+version = "0.1.1"
+source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
 dependencies = [
  "rayon",
  "regex",
@@ -1956,7 +1956,7 @@ dependencies = [
 [[package]]
 name = "sessionspec-server"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.0#39c551d6bc6867b20c99a0aee319cdcb03c762aa"
+source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
 dependencies = [
  "clap",
  "session-ir",
@@ -1970,7 +1970,7 @@ dependencies = [
 [[package]]
 name = "sessionspec-system"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.0#39c551d6bc6867b20c99a0aee319cdcb03c762aa"
+source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
 dependencies = [
  "session-ir",
  "session-view",
@@ -1980,7 +1980,7 @@ dependencies = [
 [[package]]
 name = "sessionspec-types"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.0#39c551d6bc6867b20c99a0aee319cdcb03c762aa"
+source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
 
 [[package]]
 name = "sha2"

@@ -228,11 +228,11 @@ pages:
         reads: {placeholder: dashboard.Provider, fixture: provider.json}
         live: {channel: events, effect: replace}
         visible: section.provider.row
+        children: [{name: named, primitive: text, text: section.provider.row.name, style: heading}]
         fields:
-          - {field: name, label: Name}
-          - {field: other_pods, label: Other pods, as: number}
+          - {field: other_pods, label: Pods not run by this gateway, as: number}
           - {field: heartbeat, label: Watchdog heartbeat, tone_by: heartbeat}
-          - {field: read, label: Read}
+          - {field: read, label: Account read}
 
       - name: pods
         title: Pods

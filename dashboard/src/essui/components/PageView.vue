@@ -1,10 +1,11 @@
 <script setup lang="ts">
 // The page's sections in the order of its layout's areas, one area under the other. An area of
 // frame `each` draws each section in a frame of its own; a `shared` area draws its sections in one
-// frame under its title, and is left out when none of them is visible.
+// frame under its title, followed by the heading texts of its sections ("Provider: runpod"), and is
+// left out when none of them is visible.
 import { computed } from 'vue';
 import { holds } from '../expr.ts';
-import { scopeOf, useCtx } from '../context.ts';
+import { headingTexts, scopeOf, useCtx } from '../context.ts';
 import type { Frame, Section } from '../types.ts';
 import SectionView from './SectionView.vue';
 
@@ -42,7 +43,7 @@ const shown = (s: Section) => holds(s.visible, scopeOf(ctx));
       <SectionView v-for="s in a.sections.filter(shown)" :key="s.name" :section="s" />
     </template>
     <section v-else-if="a.sections.some(shown)" :aria-labelledby="`h-${a.name}`">
-      <h2 :id="`h-${a.name}`">{{ a.title }}</h2>
+      <h2 :id="`h-${a.name}`">{{ a.title }}<template v-for="(t, i) in a.sections.filter(shown).flatMap((s) => headingTexts(ctx, s))" :key="i">{{ `: ${t}` }}</template></h2>
       <SectionView v-for="s in a.sections.filter(shown)" :key="s.name" :section="s" in-frame />
     </section>
   </template>

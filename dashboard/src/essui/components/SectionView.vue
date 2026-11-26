@@ -1,9 +1,10 @@
 <script setup lang="ts">
 // One section: a host slot drawn by its host, or a composite in a frame of its own under its title
 // (or inside a shared frame, where its title names its table). A child metric that counts the
-// section's rows and has no label is drawn beside the title, as the number of rows.
+// section's rows and has no label is drawn beside the title, as the number of rows. In a shared
+// frame a heading text is drawn in the frame's heading (PageView), not again here.
 import { computed } from 'vue';
-import { readRows, scopeOf, useCtx } from '../context.ts';
+import { isHeadingText, readRows, scopeOf, useCtx } from '../context.ts';
 import type { MetricNode, Node, Section } from '../types.ts';
 import HostView from './HostView.vue';
 import NodeView from './NodeView.vue';
@@ -13,7 +14,7 @@ const ctx = useCtx();
 
 const isCount = (n: Node): n is MetricNode => 'component' in n && n.component === 'metric' && n.aggregate === 'count' && !n.label;
 const counts = computed(() => (props.section.children ?? []).filter(isCount).map((m) => ({ name: m.name, n: readRows(ctx, m.reads, scopeOf(ctx))?.length ?? 0 })));
-const others = computed(() => (props.section.children ?? []).filter((n) => !isCount(n)));
+const others = computed(() => (props.section.children ?? []).filter((n) => !isCount(n) && !(props.inFrame && isHeadingText(n))));
 const empty = computed(() => props.section.states?.empty?.message);
 const id = computed(() => `h-${props.section.name}`);
 </script>

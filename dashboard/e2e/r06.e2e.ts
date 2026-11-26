@@ -4,9 +4,10 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { parse as parseYaml } from 'yaml';
+import { FONT_PX, FlowModel } from '../src/flow.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
-import { openReplay } from './harness.ts';
-import { VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
+import { openReplay, settle } from './harness.ts';
+import { KEY_FONT_PX, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
 const viewport = (name: string): Viewport => VIEWPORTS.find((v) => v.name === name)!;
@@ -157,4 +158,35 @@ test.describe('UXF-011', () => {
     const twice = [...seen].filter(([, words]) => words.size > 1).map(([raw, words]) => `${raw}: ${[...words].join(' / ')}`);
     expect(twice, 'one raw value, one spelling').toEqual([]);
   });
+});
+
+// The token flow is a canvas, so its labels are read from the layout the canvas draws (FlowModel,
+// the code FlowCanvas.vue paints with) at the size the page gives the canvas's box.
+test.describe('UXF-014', () => {
+  test('the token flow draws its labels at the key-data size', () => {
+    expect(FONT_PX).toBeGreaterThanOrEqual(KEY_FONT_PX);
+  });
+
+  for (const name of ['busy', 'token-flow', 'errors']) {
+    test(`every route name in the token flow is drawn whole at every viewport, 390x844 included — ${name}`, async ({ browser }) => {
+      const page = await opened(browser, name, viewport('390x844'));
+      try {
+        const states = scenario(name).states(Date.now());
+        for (const v of VIEWPORTS) {
+          await page.setViewportSize({ width: v.width, height: v.height });
+          await settle(page);
+          const box = await page.locator('.flow-box').evaluate((el) => ({ w: el.clientWidth, h: el.clientHeight }));
+          const model = new FlowModel({ reduced: true });
+          for (const [i, s] of states.entries()) {
+            model.apply(s);
+            const routes = [...model.layout(box.w, box.h).routes.values()];
+            expect(routes.length, `${v.name} state ${i}: routes drawn`).toBe(model.routes.length);
+            for (const r of routes) expect(r.text, `${v.name} state ${i}, a ${box.w} px wide canvas`).toBe(r.key);
+          }
+        }
+      } finally {
+        await page.context().close();
+      }
+    });
+  }
 });

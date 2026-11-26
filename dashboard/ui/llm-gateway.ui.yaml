@@ -33,7 +33,7 @@ tokens:
   type:
     body: {family: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", size: 14px}
     caption: {size: 0.875rem}
-    heading: {size: 0.95rem, weight: 700}
+    heading: {size: 1.1rem, weight: 700}
     mono: {family: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace"}
   tone:
     neutral: {text: text, fill: head}
@@ -228,11 +228,11 @@ pages:
         reads: {placeholder: dashboard.Provider, fixture: provider.json}
         live: {channel: events, effect: replace}
         visible: section.provider.row
+        children: [{name: named, primitive: text, text: section.provider.row.name, style: heading}]
         fields:
-          - {field: name, label: Name}
-          - {field: other_pods, label: Other pods, as: number}
+          - {field: other_pods, label: Pods not run by this gateway, as: number}
           - {field: heartbeat, label: Watchdog heartbeat, tone_by: heartbeat}
-          - {field: read, label: Read}
+          - {field: read, label: Account read}
 
       - name: pods
         title: Pods
@@ -276,8 +276,9 @@ pages:
         live: {channel: events, effect: replace}
         columns:
           - {field: route, label: Route}
-          - {field: calls, label: Calls, as: number}
-          - {field: errors, label: Errors, as: number, tone_by: errors}
+          - {field: recent, label: "Failed, last 5 min", as: number, tone_by: call_result, help: {text: "calls of the route that failed in the last 5 minutes, of all its calls in that time, as the Problems strip counts them; a call the client left is not a failure"}}
+          - {field: calls, label: Calls, as: number, help: {text: since the gateway started}}
+          - {field: errors, label: Errors, as: number, tone_by: errors, help: {text: "since the gateway started; a call the client left is not an error"}}
           - {field: cancelled, label: Cancelled, as: number, help: {text: "the client left before or while the answer was written: status 0, no refusal"}}
           - {field: tokens, label: Tokens in / out, as: number}
           - {field: cache, label: Cache r / w, as: number}

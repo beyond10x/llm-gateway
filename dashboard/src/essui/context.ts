@@ -3,10 +3,10 @@
 // words and tone it is drawn with.
 import { inject, type Component, type InjectionKey } from 'vue';
 import { DASH, count, pct, span } from '../format.ts';
-import { value as evalExpr, type Scope } from './expr.ts';
+import { holds, value as evalExpr, type Scope } from './expr.ts';
 import type { Source } from './source.ts';
 import type { ShellState } from './state.ts';
-import { isRich, type Action, type Document, type Field, type Page, type Reads, type Row, type Tone, type ToneMap, type Value } from './types.ts';
+import { isRich, type Action, type Document, type Field, type Node, type Page, type Reads, type Row, type Section, type TextNode, type Tone, type ToneMap, type Value } from './types.ts';
 
 export interface Ctx {
   doc: Document;
@@ -127,4 +127,15 @@ export function run(ctx: Ctx, action: Action, row?: unknown): void {
     const next = src === 'toggle' ? !ctx.shell.values[m[1]!] : evalExpr(src, scopeOf(ctx, row));
     ctx.shell.set(m[1]!, next);
   }
+}
+
+// A section's heading texts: its `children` that are text primitives in the heading style. In a
+// shared frame the frame's heading draws them after its title, "Provider: runpod", since a frame's
+// title is a fixed string; outside a frame they are drawn with the section like any child.
+export function isHeadingText(n: Node): n is TextNode {
+  return 'primitive' in n && n.primitive === 'text' && n.style === 'heading';
+}
+
+export function headingTexts(ctx: Ctx, section: Section): string[] {
+  return (section.children ?? []).filter(isHeadingText).filter((n) => holds(n.visible, scopeOf(ctx))).map((n) => textOf(ctx, n.text));
 }

@@ -23,7 +23,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 1.4,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -75,11 +75,11 @@
         "tolerance": 0
       },
       "screen_only.actions": {
-        "value": 2,
+        "value": 0,
         "tolerance": 0
       },
       "screen_only.looks": {
-        "value": 3,
+        "value": 1,
         "tolerance": 0
       },
       "screen_only.reached": {
@@ -117,7 +117,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 1.4,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -153,7 +153,7 @@
         "tolerance": 0
       },
       "overflow.scrollers.960x1080": {
-        "value": 3,
+        "value": 2,
         "tolerance": 0
       },
       "overflow.scrollers_unreachable": {
@@ -169,7 +169,7 @@
         "tolerance": 0
       },
       "screen_only.actions": {
-        "value": 1,
+        "value": 0,
         "tolerance": 0
       },
       "screen_only.looks": {
@@ -212,7 +212,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 0.7,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -294,7 +294,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 0.7,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -310,8 +310,8 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.024,
-        "tolerance": 0.0024
+        "value": 0.023,
+        "tolerance": 0.0023
       },
       "overflow.elements": {
         "value": 0,
@@ -376,7 +376,7 @@
         "tolerance": 0
       },
       "heading_font.deficit_px": {
-        "value": 0.7,
+        "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {

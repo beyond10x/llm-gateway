@@ -10,6 +10,11 @@
           }
         ]
       },
+      "recent": {
+        "text": "4 of 4",
+        "key": "failed",
+        "title": "429 rate limited"
+      },
       "calls": 4,
       "errors": 4,
       "cancelled": 0,
@@ -31,6 +36,11 @@
             "text": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
           }
         ]
+      },
+      "recent": {
+        "text": "1 of 1",
+        "key": "failed",
+        "title": "504 timed out"
       },
       "calls": 1,
       "errors": 1,

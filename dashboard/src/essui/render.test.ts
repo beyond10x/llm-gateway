@@ -27,7 +27,7 @@ test('the page carries its headings, its table regions and the theme radio group
   await flushPromises();
   expect(w.find('h1').text()).toBe('llm-gateway');
   const headings = w.findAll('h2').map((h) => h.text().replace(/ \d+$/, ''));
-  expect(headings).toEqual(expect.arrayContaining(['Overview', 'Provider', 'In flight', 'Routes', 'Sessions', 'Recent calls']));
+  expect(headings).toEqual(expect.arrayContaining(['Overview', 'Provider: runpod', 'In flight', 'Routes', 'Sessions', 'Recent calls']));
   expect(w.find('#h-kpi').exists()).toBe(true);
   expect(w.find('#h-routes').exists()).toBe(true);
   expect(w.find('[role="region"][aria-label="Routes table"]').exists()).toBe(true);

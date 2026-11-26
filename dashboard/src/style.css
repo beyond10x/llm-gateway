@@ -83,7 +83,7 @@ caption { text-align: left; color: var(--muted); padding-bottom: 0.3rem; font-si
 th, td { padding: 0.3rem 0.6rem; text-align: left; border-bottom: 1px solid var(--line); white-space: nowrap; vertical-align: top; }
 thead th { background: var(--head); font-weight: 600; font-size: var(--type-caption-size); color: var(--muted); }
 tbody th { font-weight: 600; }
-.routes thead th { white-space: normal; vertical-align: bottom; }
+.routes thead th { white-space: normal; vertical-align: bottom; } .routes :is(th, td) { padding-left: 0.4rem; padding-right: 0.4rem; }
 .n { text-align: right; }
 .wrap { white-space: normal; max-width: 22rem; overflow-wrap: anywhere; }
 .mono { font-family: var(--type-mono-family); }
@@ -100,7 +100,7 @@ td.toned.tone-danger, th.toned.tone-danger { font-weight: 600; }
 .flag { display: inline-block; margin-right: 0.3rem; padding: 0 0.35rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--warning); }
 .calls tbody tr:hover { background: var(--head); }
 
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.6rem; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.6rem; }
 .tile { border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: var(--radius-md); padding: 0.5rem 0.7rem; min-width: 0; }
 .tile.wide { grid-column: span 2; }
 @media (max-width: 600px) { .tile.wide { grid-column: 1 / -1; } }
@@ -113,7 +113,7 @@ td.toned.tone-danger, th.toned.tone-danger { font-weight: 600; }
 .tile.tone-warning, .tile.tone-danger { background: var(--tone-fill); }
 .tile.toned .value { color: var(--tone-text); }
 .card { margin-top: 1rem; }
-.card h3 { margin: 0 0 0.5rem; font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; align-items: baseline; }
+.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; align-items: baseline; }
 .headers { display: grid; grid-template-columns: fit-content(50%) minmax(0, 1fr); gap: 0.1rem 1rem; margin: 0.6rem 0 0; }
 .headers dt { color: var(--muted); overflow-wrap: anywhere; }
 .headers dd { margin: 0; overflow-wrap: anywhere; }
@@ -154,3 +154,12 @@ ul.list a { color: var(--accent); }
 section:has(> ul.problems) { border-left: 4px solid var(--danger); }
 section:has(> ul.problems) h2 { margin-bottom: 0.4rem; }
 h2[id] { scroll-margin-top: 4rem; }
+
+/* A table that scrolls sideways: the edge that hides columns fades, and while columns are hidden to
+   the right a cue on the line above it says to scroll (ScrollRegion). */
+.scroller { position: relative; }
+.scroller::before, .scroller::after { content: ''; position: absolute; top: 0; bottom: 0; width: 1.6rem; pointer-events: none; opacity: 0; z-index: 1; }
+.scroller::before { left: 0; background-image: linear-gradient(to right, var(--surface), transparent); }
+.scroller::after { right: 0; background-image: linear-gradient(to left, var(--surface) 20%, transparent); }
+.scroller.more-left::before, .scroller.more-right::after { opacity: 1; }
+.scroll-cue { margin: 0 0 0.2rem; min-height: 1.4em; text-align: right; color: var(--muted); }

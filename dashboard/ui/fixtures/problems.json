@@ -4,7 +4,7 @@
     {
       "kind": "routes",
       "level": "error",
-      "text": "Failed calls in the last 5 min: claude-sonnet 4 of 4, qwen-coder 1 of 1",
+      "text": "Failed calls in the last 5 min: claude-sonnet 4 of 4 failed, 429 rate limited; qwen-coder 1 of 1 failed, 504 timed out",
       "href": "#h-routes"
     },
     {

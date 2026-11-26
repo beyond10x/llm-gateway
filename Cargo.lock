@@ -9,6 +9,53 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
+name = "agentspec-records"
+version = "0.2.0"
+source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+dependencies = [
+ "agentspec-server",
+ "agentspec-system",
+ "agentspec-types",
+ "rayon",
+ "regex",
+ "rusqlite",
+ "serde_json",
+ "session-ir",
+ "session-view",
+ "sha2 0.10.9",
+ "zstd",
+]
+
+[[package]]
+name = "agentspec-server"
+version = "1.0.0"
+source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+dependencies = [
+ "agentspec-system",
+ "agentspec-types",
+ "clap",
+ "session-ir",
+ "session-view",
+ "time",
+ "uuid",
+]
+
+[[package]]
+name = "agentspec-system"
+version = "1.0.0"
+source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+dependencies = [
+ "agentspec-types",
+ "session-ir",
+ "session-view",
+]
+
+[[package]]
+name = "agentspec-types"
+version = "1.0.0"
+source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -141,6 +188,8 @@ version = "0.26.0"
 name = "b10x-llm-gateway-cli"
 version = "0.26.0"
 dependencies = [
+ "agentspec-records",
+ "agentspec-types",
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
  "b10x-llm-runpod",
@@ -169,8 +218,6 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_yaml",
- "sessionspec-records",
- "sessionspec-types",
  "sha2 0.11.1",
  "signal-hook",
  "tokio",
@@ -1923,65 +1970,18 @@ dependencies = [
 [[package]]
 name = "session-ir"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
+source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
 dependencies = [
- "sessionspec-types",
+ "agentspec-types",
 ]
 
 [[package]]
 name = "session-view"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
+source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
 dependencies = [
- "sessionspec-types",
+ "agentspec-types",
 ]
-
-[[package]]
-name = "sessionspec-records"
-version = "0.1.1"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
-dependencies = [
- "rayon",
- "regex",
- "rusqlite",
- "serde_json",
- "session-ir",
- "session-view",
- "sessionspec-server",
- "sessionspec-system",
- "sessionspec-types",
- "sha2 0.10.9",
- "zstd",
-]
-
-[[package]]
-name = "sessionspec-server"
-version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
-dependencies = [
- "clap",
- "session-ir",
- "session-view",
- "sessionspec-system",
- "sessionspec-types",
- "time",
- "uuid",
-]
-
-[[package]]
-name = "sessionspec-system"
-version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
-dependencies = [
- "session-ir",
- "session-view",
- "sessionspec-types",
-]
-
-[[package]]
-name = "sessionspec-types"
-version = "1.0.0"
-source = "git+https://github.com/beyond10x/sessionspec?tag=0.1.1#ac6b5d52289795649b2bcd1e1e993458f8568b07"
 
 [[package]]
 name = "sha2"

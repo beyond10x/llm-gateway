@@ -441,13 +441,13 @@
     },
     {
       "area": "Observability",
-      "detail": "Every call with an id hands an embedding one finished-call value: its id, session hash, harness, path, wire, route, upstream, attempts, times, cost and how it ended, the facts sessionspec's GatewayFacts names. With a declared bound it also hands a copy of the request and the answer the client received, or both sizes when they pass the bound; without one no byte is copied. The library carries the port; the binary composes it when its document declares interaction records.",
+      "detail": "Every call with an id hands an embedding one finished-call value: its id, session hash, harness, path, wire, route, upstream, attempts, times, cost and how it ended, the facts agentspec's GatewayFacts names. With a declared bound it also hands a copy of the request and the answer the client received, or both sizes when they pass the bound; without one no byte is copied. The library carries the port; the binary composes it when its document declares interaction records.",
       "label": "Finished calls",
       "status": "shipped"
     },
     {
       "area": "Observability",
-      "detail": "With [interaction_records] in its document the binary lifts every finished call into sessionspec's session records (sessions, agents and which spawned which, prompts, model turns with the gateway's facts, tool calls, refused calls as incomplete turns) and appends them to a SQLite file that sessionspec serve reads, on one writer thread behind a bounded queue. No message text is stored. A full queue or a call over its byte bound is counted, not stored. Tested against a loopback endpoint.",
+      "detail": "With [interaction_records] in its document the binary lifts every finished call into agentspec's session records (sessions, agents and which spawned which, prompts, model turns with the gateway's facts, tool calls, refused calls as incomplete turns) and appends them to a SQLite file that agentspec serve reads, on one writer thread behind a bounded queue. No message text is stored. A store an earlier gateway wrote in an earlier schema version is migrated at start, its wire records kept. A full queue or a call over its byte bound is counted, not stored. Tested against a loopback endpoint.",
       "href": "/docs/guides/record-agent-sessions",
       "label": "Session records",
       "status": "shipped"

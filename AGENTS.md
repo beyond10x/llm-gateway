@@ -13,7 +13,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | Path | What it is |
 | --- | --- |
 | `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency; it holds the translation port (`Translator`) and translates nothing itself, the body-decoding port (`BodyDecoder`) and decodes nothing itself, the passthrough of a client-credential route (`relay/passthrough.rs`) and the dashboard (`dashboard.rs`, `dashboard/`), whose page `src/dashboard.html` is built from `dashboard/` |
-| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source, an Ollama server's status read included (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `llm-models`), the Bedrock models (`bedrock.rs`, over `llm-bedrock`, signed from the container credentials endpoint), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.24.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`; the keychain reader (`keychain.rs`), the watchdog and its heartbeat (`watchdog.rs`, `heartbeat.rs`), the launchers (`launch.rs`), the answer decoder (`decode.rs`: `flate2`, `brotli-decompressor`, `ruzstd`), the dashboard's Runpod account and vLLM server readers (`account.rs`, `vllm_stats.rs`), and the service-account token review (`token_review.rs`, `TokenReviewer`, the gateway crate's `CallerReview` port over the cluster's TokenReview API on the same TLS client, trusting only `token_review.ca_file`), and the interaction records (`records.rs`, the gateway crate's `FinishedCalls` port over sessionspec's `sessionspec-records`: the wire lift and its SQLite writer thread, composed only when the document declares `[interaction_records]`). It carries the dependencies the gateway crate must not have |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source, an Ollama server's status read included (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `llm-models`), the Bedrock models (`bedrock.rs`, over `llm-bedrock`, signed from the container credentials endpoint), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.24.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`; the keychain reader (`keychain.rs`), the watchdog and its heartbeat (`watchdog.rs`, `heartbeat.rs`), the launchers (`launch.rs`), the answer decoder (`decode.rs`: `flate2`, `brotli-decompressor`, `ruzstd`), the dashboard's Runpod account and vLLM server readers (`account.rs`, `vllm_stats.rs`), and the service-account token review (`token_review.rs`, `TokenReviewer`, the gateway crate's `CallerReview` port over the cluster's TokenReview API on the same TLS client, trusting only `token_review.ca_file`), and the interaction records (`records.rs`, the gateway crate's `FinishedCalls` port over agentspec's `agentspec-records`: the wire lift and its SQLite writer thread, composed only when the document declares `[interaction_records]`). It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests; `ConnectorsRunpod`, which reaches the control plane only through the `connectors` CLI (a cluster); `RestRunpod`, which calls Runpod's REST API with a key the process holds (a local gateway). Every created pod's placement is read back and a pod off Secure Cloud on-demand is terminated at once |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
@@ -208,18 +208,24 @@ translator made for that route since it started (`crates/llm-gateway-cli/src/sea
 on `ring`, encoded with `base64`); every other one is still refused `translation-opaque-state`
 (`crates/llm-gateway-cli/tests/translation.rs`).
 
-## Dependency on sessionspec
+## Dependency on agentspec
 
-`b10x-llm-gateway-cli` takes `sessionspec-records` and `sessionspec-types` at tag `0.1.1` of
-[beyond10x/sessionspec](https://github.com/beyond10x/sessionspec), by tag, never by path, for
-the interaction records (`src/records.rs`). Their `GatewayFacts`, `WireCall`, `lift_call`,
-`Appender::spawn`, `AppenderHandle::append` and `stats`, and `store::SCHEMA_VERSION` with the
-`meta` table it is read from, are a contract sessionspec keeps with this repository; a new tag
-moves both crates together. They bring `rusqlite` with a bundled SQLite and `zstd` (both compile
-C) into the binary; the gateway crate links neither. The binary reads the store's schema version
-with `rusqlite` before the writer opens it (sessionspec's open empties a store of another
-version), and the tests read the store with sessionspec's own reader and hold it locked with
-`rusqlite`, a dependency at the version `sessionspec-records` links.
+`b10x-llm-gateway-cli` takes `agentspec-records` and `agentspec-types` at tag `0.2.0` of
+[beyond10x/agentspec](https://github.com/beyond10x/agentspec) (formerly sessionspec), by tag,
+never by path, for the interaction records (`src/records.rs`). Their `GatewayFacts`, `WireCall`,
+`lift_call`, `Appender::spawn`, `AppenderHandle::append` and `stats`, and
+`store::SCHEMA_VERSION` (5 at 0.2.0) with the `meta` table it is read from, are a contract
+agentspec keeps with this repository; a new tag moves both crates together. They bring
+`rusqlite` with a bundled SQLite and `zstd` (both compile C) into the binary; the gateway crate
+links neither. agentspec's open migrates a store of an earlier schema version: it drops and
+fills again the tables it derives, keeps the wire rows, and refuses, changing nothing, a store
+whose wire rows are in a format it cannot read. The binary reads the store's schema version with
+`rusqlite` before the writer opens it and lets through only a missing or empty file, a session
+store of `SCHEMA_VERSION` or of an earlier version written as agentspec writes it (`4`, not
+`04`); it refuses a later version and a file that is no session store, which agentspec's open
+would change. The tests read the store with agentspec's own reader, build a schema-4 store from
+sessionspec 0.1.1's tables, and hold the store locked with `rusqlite`, a dependency at the
+version `agentspec-records` links.
 
 ## Documents
 

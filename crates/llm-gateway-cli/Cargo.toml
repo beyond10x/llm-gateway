@@ -50,8 +50,8 @@ llm-runpod = { package = "b10x-llm-runpod", path = "../llm-runpod" }
 # The reasoning seal's HMAC-SHA256 key and tag (src/seal.rs), on the ring the TLS client
 # already links.
 ring = "0.17.14"
-# Reads the interaction record store's schema version before sessionspec's writer opens it
-# (src/records.rs); the version sessionspec-records already links.
+# Reads the interaction record store's schema version before agentspec's writer opens it
+# (src/records.rs); the version agentspec-records already links.
 rusqlite = "0.41"
 rustix = { version = "1.1", features = ["fs", "process", "termios"] }
 # The pod connection's TLS client (spec/domains/deployment.yaml, the pod endpoint rule): rustls
@@ -61,10 +61,10 @@ ruzstd = "0.8.3"
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"
-# The interaction records (src/records.rs): sessionspec's wire lift and its SQLite writer.
-sessionspec-records = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.1" }
+# The interaction records (src/records.rs): agentspec's wire lift and its SQLite writer.
+agentspec-records = { git = "https://github.com/beyond10x/agentspec", tag = "0.2.0" }
 # The IR types the lift takes (its harness and incomplete reason), at the same tag.
-sessionspec-types = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.1" }
+agentspec-types = { git = "https://github.com/beyond10x/agentspec", tag = "0.2.0" }
 sha2.workspace = true
 signal-hook = "0.4"
 tokio = { version = "1.54", features = ["rt-multi-thread"] }

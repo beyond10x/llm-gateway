@@ -41,7 +41,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:263e4639987bc1bd41a56ede534f198fea6ca51a6dc1aafe7ee374e6388b934d",
+    "contract_digest": "slice-sha256/2:3694a447fe909a2e6b629e0fa6db7224ab3fc907ea2c68f5f2e4969a903f851e",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -148,6 +148,9 @@
         },
         "launch": {
           "$ref": "#/$defs/llm-gateway.deployment.LaunchDeclaration"
+        },
+        "interaction_records": {
+          "$ref": "#/$defs/llm-gateway.deployment.InteractionRecordsDeclaration"
         }
       },
       "required": [
@@ -300,6 +303,33 @@
         "None",
         "ServiceAccountToken"
       ]
+    },
+    "llm-gateway.deployment.InteractionRecordsDeclaration": {
+      "title": "InteractionRecordsDeclaration",
+      "x-ess-name": "llm-gateway.deployment.InteractionRecordsDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "queue": {
+          "type": "integer"
+        },
+        "call_bytes": {
+          "type": "integer"
+        },
+        "sessions_held": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "queue",
+        "call_bytes",
+        "sessions_held"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.LaunchDeclaration": {
       "title": "LaunchDeclaration",

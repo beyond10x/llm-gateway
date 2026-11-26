@@ -2,6 +2,7 @@
 //! A test that needs its own process gets one from cargo-nextest, which runs every test alone.
 
 mod adversary;
+mod adversary_1126_w05_records;
 mod adversary_ess_0_69_opencode;
 mod adversary_k8s_guide;
 mod adversary_w02;

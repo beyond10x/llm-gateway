@@ -1,9 +1,10 @@
 {
   "format": "ess-diff-acknowledgements/1",
   "before": "87ddacf2fdc67b7660f6d2656ccb53b2675922e059a1fd54df9b1b0ee3709107",
-  "after": "7ccb44c758aa9ca91d4f85bbd45f4b27f8b9fb7e5955e046a35b8a04e3c3a550",
+  "after": "589cb950cf45918d198e03c1b48303ce119fd90f72f79a0cbdd4ab58a773ceff",
   "acknowledged": [
     "entity/llm-gateway.gateway.RelayObservation/field-added/finished",
+    "type/llm-gateway.deployment.DeploymentConfiguration/field-added/interaction_records",
     "view/llm-gateway.gateway.LastRelay/field-added/finished"
   ]
 }

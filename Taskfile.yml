@@ -17,9 +17,15 @@ tasks:
     cmds:
       - pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard test && pnpm --dir dashboard build
   dashboard-ux:
-    desc: Run the dashboard's layout contract, hard gates and ratchet on the built page (Playwright, hermetic)
+    desc: Run what the Gate workflow's dashboard job runs, browser install aside (type check, unit tests, the built page against the committed one, the layout contract, hard gates and ratchet in Playwright)
+    dir: dashboard
     cmds:
-      - pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard e2e --workers=2
+      - pnpm install --frozen-lockfile
+      - pnpm typecheck
+      - pnpm test
+      - pnpm build
+      - git diff --exit-code ../crates/llm-gateway/src/dashboard.html
+      - timeout 120 pnpm e2e --workers=2
   docs:
     desc: Check the generated documentation pages for drift and the hand-written ones for the public boundary
     cmds:

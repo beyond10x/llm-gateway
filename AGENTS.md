@@ -104,6 +104,13 @@ build to its commit with `llm-gateway-docs provenance`; on a push to `main` it u
 as `b10x-project-site`, and `.github/workflows/b10x-docs-site.yml` (`Documentation site`) deploys
 it through the Website's `project-site.yml` when the push was the bot's.
 
+The Gate workflow's second job, `dashboard`, runs in `dashboard/` on Node 22 with the pnpm that
+`packageManager` pins (through corepack): type check, unit tests, the build compared with the
+committed `crates/llm-gateway/src/dashboard.html`, then the Playwright gate (`e2e --workers=2`,
+60 s per test, 120 s for the step, the ten slowest printed, the report uploaded on failure).
+On a pull request it runs only when `dashboard/ci/changed.sh` says the diff reaches the dashboard;
+`task dashboard-ux` runs the same commands locally, browser install aside.
+
 Every build writes the worktree's own `target/`; never set `CARGO_TARGET_DIR`. Check `df -h /`
 before a full gate. End a tree with `worktree finish --discard-cache --archive <tree>`, which
 removes the build cache it recognises, instead of deleting `target/` by hand.

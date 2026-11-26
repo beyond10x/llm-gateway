@@ -18,7 +18,8 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: true,
   retries: 0,
-  reporter: [['list'], ['./e2e/slowest-reporter.ts']],
+  // On CI (`CI` set) the HTML report is written too; the Gate workflow uploads it when a test fails.
+  reporter: [['list'], ['./e2e/slowest-reporter.ts'], ...(process.env.CI ? [['html', { open: 'never' }] as const] : [])],
   use: {
     ...devices['Desktop Chrome'],
     trace: 'off',

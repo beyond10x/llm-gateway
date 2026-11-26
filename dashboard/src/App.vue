@@ -4,6 +4,7 @@ import { useFeed, type Link } from './feed.ts';
 import { DASH, ago, clock, count, countdown, ms, pct, span, tps, usd } from './format.ts';
 import type { CallRecord, InFlight, PodRow, Snapshot } from './extra.ts';
 import Kpis from './Kpis.vue';
+import FlowCanvas from './FlowCanvas.vue';
 import ThemeToggle from './ThemeToggle.vue';
 
 const WATCHDOG_STALE_MS = 5 * 60_000;
@@ -103,6 +104,7 @@ function yesNo(v: boolean | null): string {
 
 <template>
   <a class="skip" href="#content">Skip to content</a>
+  <FlowCanvas :snap="snap" />
   <header class="top">
     <h1>llm-gateway</h1>
     <nav class="nav"><a href="/">Setup</a></nav>

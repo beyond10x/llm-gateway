@@ -2,13 +2,15 @@
 format: aep.planning-md/3
 id: story:finished-call-facts
 kind: story
-status: draft
+status: proposed
 title: One finished-call value per call, and a bounded copy of its bytes when declared, through one port
 relations:
 - decomposes: epic:interaction-records
 - serves: vision:portable-model-inference
 - depends_on: story:test-step-within-budget
-revision: 4
+revision: 5
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T02:21:06Z", actor: "human:operator", revision: 5, decided_on: {"recorded":{"review_outcome":1}}}
 ---
 ## Outcome
 

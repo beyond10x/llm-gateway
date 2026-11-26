@@ -21,6 +21,7 @@ Nothing in any release is deployed or qualified against a live client.
 
 ### Fixed
 
+- The idle reaper stopped a woken pod that was still starting once its idle window had passed since the wake, before its startup deadline: a pod is now idle only from the first time it is found ready.
 - `RestRunpod` read and wrote Runpod's v1 shapes against the v2 API. Spend: `GET /v2/billing/pods` answers an object whose `records` each carry `totalAmount` and the day bucket's `startTime`; it was read as an array of `{amount, time}`, so every spend read was unknown and every wake under a spend ceiling was refused `spend-ceiling`. The total is Runpod's default window, the 30 days up to now. Pods: read by `status` (`PROVISIONING` and `STARTING` not running yet, `ERROR` as exited), `startedAt`, `cloud`, `cost` and `runtime.uptime`, where `desiredStatus`, `lastStartedAt`, `machine.secureCloud`, `costPerHr` and `uptimeSeconds` were read; v2 has no `interruptible`. Create: v2 refuses the v1 keys `cloudType`, `containerDiskInGb`, `volumeInGb`, `volumeMountPath`, `networkVolumeId`, `interruptible`, `dockerEntrypoint` and `dockerStartCmd` the body carried.
 
 ## 0.26.0 (2026-11-26)

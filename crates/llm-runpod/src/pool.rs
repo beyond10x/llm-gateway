@@ -1088,6 +1088,11 @@ impl<T: RunpodTransport> Inner<T> {
             .filter_map(|(alias, slot)| {
                 let model = self.models.get(alias)?;
                 let deployment = slot.current.clone()?;
+                // A pod never yet ready is still starting: its startup deadline bounds it, and
+                // its idle window opens when it is first found ready.
+                if !slot.ready_seen {
+                    return None;
+                }
                 let quiet = slot.usage.in_flight.load(Ordering::SeqCst) == 0;
                 let last_used = slot.usage.last_used_ms.load(Ordering::SeqCst);
                 let expired = now.saturating_sub(last_used) >= slot.idle_limit_ms(model);

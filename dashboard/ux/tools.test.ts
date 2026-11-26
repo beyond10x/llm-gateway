@@ -24,7 +24,7 @@ import {
 } from '../e2e/metrics.ts';
 import type { FlowProbe } from '../e2e/probe.ts';
 import { METRICS_ROOT, metricsDir, readMeasurements } from '../e2e/metrics-dir.ts';
-import { aggregate, baselineFrom, compare, measuredOnlyAggregate, mergeAggregates, toleranceOf, type Baseline } from './ratchet.ts';
+import { aggregate, baselineFrom, compare, describeProblem, measuredOnlyAggregate, mergeAggregates, toleranceOf, type Baseline } from './ratchet.ts';
 import { aboutRound, baselineAbout, baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf, treeStamp } from './round-guard.ts';
 
 mkdirSync(METRICS_ROOT, { recursive: true });
@@ -178,7 +178,7 @@ test('break: the ratchet holds the flow keys, higher is better: a blank or hidde
   expect(kinds([m(true, true, 1)])).toEqual(['flow.visible_ratio improved-not-taken']);
 });
 
-test('break: the layout-shift tolerance is relative: 0.007 to 0.017 fails, noise of 0.001 passes', () => {
+test('break: the layout-shift tolerance is relative and on the worse side only: 0.007 to 0.017 fails, 0.008 passes, any improvement must be taken', () => {
   expect(toleranceOf('layout_shift.per_state_max', 0.007)).toBe(0.002);
   expect(toleranceOf('layout_shift.per_state_max', 0.059)).toBe(0.0059);
   expect(toleranceOf('overflow.elements', 3)).toBe(0);
@@ -187,8 +187,14 @@ test('break: the layout-shift tolerance is relative: 0.007 to 0.017 fails, noise
   expect(kind(0.017)).toEqual(['worse']);
   expect(kind(0.01)).toEqual(['worse']);
   expect(kind(0.008)).toEqual([]);
-  expect(kind(0.006)).toEqual([]);
+  expect(kind(0.007)).toEqual([]);
+  expect(kind(0.006)).toEqual(['improved-not-taken']);
   expect(kind(0.004)).toEqual(['improved-not-taken']);
+  // The R-06 review's input: errors' baseline 0.003, measured 0.001, inside the 0.002 band.
+  const errors: Baseline = { about: 'test', scenarios: { errors: { 'layout_shift.per_state_max': { value: 0.003, tolerance: 0.002 } } }, tolerances: {} };
+  expect(compare(errors, { errors: { 'layout_shift.per_state_max': 0.001 } }).map(describeProblem)).toEqual([
+    'errors layout_shift.per_state_max: better than the baseline: take it into ux/baseline.json in this change (baseline 0.003, measured 0.001)',
+  ]);
 });
 
 test('trend rows carry 8 characters of the commit, also a row written with 12', () => {

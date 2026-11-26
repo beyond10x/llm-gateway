@@ -306,6 +306,7 @@ fn the_recorded_v2_document_is_the_published_one_and_matches_its_digest() {
         ("/v2/pods", "POST"),
         ("/v2/pods/abc", "GET"),
         ("/v2/pods/abc", "DELETE"),
+        ("/v2/pods/abc/logs", "GET"),
         ("/v2/pods/abc/action", "POST"),
         ("/v2/billing/balance", "GET"),
         ("/v2/billing/pods", "GET"),
@@ -344,4 +345,48 @@ fn the_check_refuses_an_undeclared_or_missing_field_and_a_value_off_its_enum() {
     assert!(request("GET /v2/billing/pods?bucketSize=fortnight HTTP/1.1").is_err());
     assert!(request("GET /v2/billing/pods?since=yesterday HTTP/1.1").is_err());
     assert!(request("GET /v2/pods?cursor=c2 HTTP/1.1").is_ok());
+}
+
+/// A container's start is read from the pod's log stream, `GET /v2/pods/{id}/logs`: the
+/// document declares the request the client sends (`source=system`, `tail=100` inside its
+/// bound), answers it with `text/event-stream`, and names the `data` payload's fields the client
+/// reads (`source`, `line`, `ts`). A source the document does not list is refused.
+#[test]
+fn the_pod_log_stream_declares_the_request_and_the_fields_a_container_start_is_read_from() {
+    check_request(
+        "GET /v2/pods/abc123/logs?source=system&tail=100 HTTP/1.1",
+        b"",
+    );
+    assert!(
+        std::panic::catch_unwind(|| check_request(
+            "GET /v2/pods/abc123/logs?source=host HTTP/1.1",
+            b""
+        ))
+        .is_err()
+    );
+    let (item, operation) = operation("GET", "/v2/pods/abc123/logs");
+    let tail = parameters(item, operation)
+        .into_iter()
+        .find(|parameter| parameter["name"] == "tail")
+        .expect("a tail parameter");
+    assert!(tail["schema"]["maximum"].as_u64() >= Some(100));
+    let stream = &operation["responses"]["200"]["content"]["text/event-stream"];
+    let example = stream["examples"]["logLine"]["value"]
+        .as_str()
+        .expect("an example event");
+    let data: Value = serde_json::from_str(
+        example
+            .lines()
+            .find_map(|line| line.strip_prefix("data: "))
+            .expect("a data line"),
+    )
+    .expect("a JSON payload");
+    let mut fields: Vec<&str> = data
+        .as_object()
+        .expect("an object")
+        .keys()
+        .map(String::as_str)
+        .collect();
+    fields.sort_unstable();
+    assert_eq!(fields, ["line", "source", "ts"]);
 }

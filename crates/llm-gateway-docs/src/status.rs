@@ -525,14 +525,14 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Observability",
         "Finished calls",
-        "Every call with an id hands an embedding one finished-call value: its id, session hash, harness, path, wire, route, upstream, attempts, times, cost and how it ended, the facts sessionspec's GatewayFacts names. With a declared bound it also hands a copy of the request and the answer the client received, or both sizes when they pass the bound; without one no byte is copied. The library carries the port; the binary composes it when its document declares interaction records.",
+        "Every call with an id hands an embedding one finished-call value: its id, session hash, harness, path, wire, route, upstream, attempts, times, cost and how it ended, the facts agentspec's GatewayFacts names. With a declared bound it also hands a copy of the request and the answer the client received, or both sizes when they pass the bound; without one no byte is copied. The library carries the port; the binary composes it when its document declares interaction records.",
         "crates/llm-gateway/tests/finished_calls.rs::each_copy_is_the_request_and_the_answer_as_the_client_received_it",
         None,
     ),
     shipped(
         "Observability",
         "Session records",
-        "With [interaction_records] in its document the binary lifts every finished call into sessionspec's session records (sessions, agents and which spawned which, prompts, model turns with the gateway's facts, tool calls, refused calls as incomplete turns) and appends them to a SQLite file that sessionspec serve reads, on one writer thread behind a bounded queue. No message text is stored. A full queue or a call over its byte bound is counted, not stored. Tested against a loopback endpoint.",
+        "With [interaction_records] in its document the binary lifts every finished call into agentspec's session records (sessions, agents and which spawned which, prompts, model turns with the gateway's facts, tool calls, refused calls as incomplete turns) and appends them to a SQLite file that agentspec serve reads, on one writer thread behind a bounded queue. No message text is stored. A store an earlier gateway wrote in an earlier schema version is migrated at start, its wire records kept. A full queue or a call over its byte bound is counted, not stored. Tested against a loopback endpoint.",
         "crates/llm-gateway-cli/tests/interaction_records.rs::a_two_agent_session_and_a_refused_call_read_back_with_both_agents_the_link_and_the_facts",
         Some("/docs/guides/record-agent-sessions"),
     ),

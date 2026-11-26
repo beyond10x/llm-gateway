@@ -5,7 +5,7 @@
 //! A value leaves the crate only through [`FinishedCalls`], which the embedding implements, as it
 //! implements [`crate::UsageRecords`]. It is built at the one place a call ends, where its usage
 //! record is made, and handed over once, on the connection's thread, before the connection is
-//! closed. The fields map one to one onto sessionspec's `GatewayFacts`; the copy onto its
+//! closed. The fields map one to one onto agentspec's `GatewayFacts`; the copy onto its
 //! `WireCall` request and answer.
 
 use crate::{error::RefusalCode, relay::Wire};
@@ -51,7 +51,7 @@ pub enum CallEnding {
 }
 
 /// What the gateway knows of one finished model call (`llm-gateway.telemetry.FinishedCall`).
-/// Each field is sessionspec's `GatewayFacts` field of the same name, but `declared_cost_usd`
+/// Each field is agentspec's `GatewayFacts` field of the same name, but `declared_cost_usd`
 /// (its `declared_cost_microdollars`, converted by the embedding: the crate does no arithmetic on
 /// money) and `ending` (its `incomplete`); `wire` is its `WireCall`'s.
 #[derive(Debug, Clone, PartialEq, Eq)]

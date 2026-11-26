@@ -1,12 +1,12 @@
 //! story:interaction-record-store: with `[interaction_records]` the binary lifts every finished
-//! call into sessionspec's session records and appends them to a SQLite file; without it the
+//! call into agentspec's session records and appends them to a SQLite file; without it the
 //! relay copies nothing, no writer thread runs and no file is created.
 //!
 //! Every test runs the shipped binary on port 0 against a fake messages endpoint on loopback and
-//! reads the store back with `sessionspec-records`' own reader (`Store::wire_steps`).
+//! reads the store back with `agentspec-records`' own reader (`Store::wire_steps`).
 
 use crate::support::{Fixture, OWNER_SECRET};
-use sessionspec_records::{
+use agentspec_records::{
     claude::{Cmd, Step},
     store::{Store, command_text},
     wire::session_hash,
@@ -31,7 +31,7 @@ const STARTUP: Duration = Duration::from_secs(20);
 /// How long a test waits for the writer thread to store what it was handed.
 const STORED: Duration = Duration::from_secs(4);
 /// The name the writer thread carries, as `/proc` shows it (15 bytes).
-const WRITER_THREAD: &str = "sessionspec-app";
+const WRITER_THREAD: &str = "agentspec-appen";
 
 // --- The fake messages endpoint ------------------------------------------------------------------
 
@@ -401,11 +401,11 @@ fn stored_when(store: &Path, hash: &str, done: impl Fn(&[Step]) -> bool) -> Vec<
 fn names(steps: &[Step]) -> Vec<&'static str> {
     steps
         .iter()
-        .map(|step| sessionspec_records::replay::command_name(&step.cmd))
+        .map(|step| agentspec_records::replay::command_name(&step.cmd))
         .collect()
 }
 
-fn turns(steps: &[Step]) -> Vec<&sessionspec_types::session::RecordModelTurn> {
+fn turns(steps: &[Step]) -> Vec<&agentspec_types::session::RecordModelTurn> {
     steps
         .iter()
         .filter_map(|step| match &step.cmd {
@@ -415,7 +415,7 @@ fn turns(steps: &[Step]) -> Vec<&sessionspec_types::session::RecordModelTurn> {
         .collect()
 }
 
-fn agents(steps: &[Step]) -> Vec<&sessionspec_types::session::StartAgent> {
+fn agents(steps: &[Step]) -> Vec<&agentspec_types::session::StartAgent> {
     steps
         .iter()
         .filter_map(|step| match &step.cmd {
@@ -548,8 +548,8 @@ fn refused_start(config: &Path) -> (bool, String) {
 }
 
 /// D94: a SQLite file that is no session store (another program's, here a table `notes` with
-/// one row) refuses the start by name and is left as it was; sessionspec's own open would have
-/// emptied it.
+/// one row) refuses the start by name and is left as it was; agentspec's own open would have
+/// dropped every table named like one it derives and added its own.
 #[test]
 fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
     let fixture = Fixture::new("records-no-store");
@@ -578,10 +578,10 @@ fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
     assert_eq!(kept, 1);
 }
 
-/// A file sessionspec's open began and did not finish (its `meta` table without a schema row,
-/// no other table) is a new store: sessionspec's open completes it and loses nothing.
+/// A file agentspec's open began and did not finish (its `meta` table without a schema row,
+/// no other table) is a new store: agentspec's open completes it and loses nothing.
 #[test]
-fn a_file_with_only_sessionspecs_meta_table_and_no_schema_row_is_a_new_store() {
+fn a_file_with_only_agentspecs_meta_table_and_no_schema_row_is_a_new_store() {
     let fixture = Fixture::new("records-meta-only");
     let upstream = Upstream::start(Vec::new());
     let store = store_in(&fixture);
@@ -623,7 +623,7 @@ fn a_store_held_locked_at_start_is_refused_as_held_locked() {
         connection
             .execute(
                 "INSERT INTO meta VALUES ('schema', ?1)",
-                [sessionspec_records::store::SCHEMA_VERSION.to_string()],
+                [agentspec_records::store::SCHEMA_VERSION.to_string()],
             )
             .unwrap();
     }
@@ -712,10 +712,10 @@ fn a_removed_store_under_load_warns_at_most_once_a_second_and_counts_every_call(
     );
 }
 
-/// D94: a store of another schema version refuses the start naming both versions, never the
+/// D94: a store of a later schema version refuses the start naming both versions, never the
 /// path; an empty file is a new store, as a missing one is.
 #[test]
-fn a_store_of_another_schema_version_is_refused_naming_both_versions_and_an_empty_file_is_used() {
+fn a_store_of_a_later_schema_version_is_refused_naming_both_versions_and_an_empty_file_is_used() {
     let fixture = Fixture::new("records-schema-version");
     let upstream = Upstream::start(Vec::new());
     let store = store_in(&fixture);
@@ -724,18 +724,18 @@ fn a_store_of_another_schema_version_is_refused_naming_both_versions_and_an_empt
         connection
             .execute_batch(
                 "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT); \
-                 INSERT INTO meta VALUES ('schema', '3');",
+                 INSERT INTO meta VALUES ('schema', '9');",
             )
             .unwrap();
     }
     let config = document(&fixture, &upstream, &records_table(&store, ""));
     let (refused, stderr) = refused_start(&config);
     assert!(refused, "{stderr}");
-    let ours = sessionspec_records::store::SCHEMA_VERSION;
+    let ours = agentspec_records::store::SCHEMA_VERSION;
     assert!(
         stderr.contains("refused config:value")
             && stderr.contains("interaction_records.path")
-            && stderr.contains("schema version 3")
+            && stderr.contains("schema version 9")
             && stderr.contains(&format!("schema version {ours}")),
         "{stderr}"
     );
@@ -755,6 +755,130 @@ fn a_store_of_another_schema_version_is_refused_naming_both_versions_and_an_empt
         &session_hash("claude-code", "empty-file"),
         |steps| turns(steps).len() == 1,
     );
+}
+
+/// The tables of a schema-4 store, as sessionspec 0.1.1, the last writer of schema 4, creates
+/// them (`crates/sessionspec-records/src/store.rs` at that tag).
+const SCHEMA_4: &str = "
+CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sources (
+  path TEXT PRIMARY KEY, session_id TEXT NOT NULL, fingerprint TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS sessions (
+  session_id TEXT PRIMARY KEY, path TEXT NOT NULL, title TEXT, agents INTEGER NOT NULL,
+  files TEXT NOT NULL, steps BLOB NOT NULL, events_count INTEGER NOT NULL,
+  last_ms INTEGER NOT NULL, row TEXT NOT NULL, kpis TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS event_chunks (
+  session_id TEXT NOT NULL, chunk INTEGER NOT NULL, events BLOB NOT NULL,
+  PRIMARY KEY (session_id, chunk));
+CREATE TABLE IF NOT EXISTS agents (
+  session_id TEXT NOT NULL, agent_id TEXT NOT NULL, started_ms INTEGER NOT NULL,
+  row TEXT NOT NULL, PRIMARY KEY (session_id, agent_id));
+CREATE TABLE IF NOT EXISTS checks (
+  session_id TEXT NOT NULL, name TEXT NOT NULL, about TEXT NOT NULL, severity TEXT NOT NULL,
+  verdict TEXT NOT NULL, rows INTEGER NOT NULL, possible INTEGER NOT NULL,
+  PRIMARY KEY (session_id, name));
+CREATE TABLE IF NOT EXISTS wire_steps (
+  session_id TEXT NOT NULL, seq INTEGER NOT NULL, harness TEXT NOT NULL, step TEXT NOT NULL,
+  PRIMARY KEY (session_id, seq));
+CREATE INDEX IF NOT EXISTS sessions_last ON sessions (last_ms);
+INSERT INTO meta VALUES ('schema', '4');
+INSERT INTO meta VALUES ('wire_format', '1');
+";
+
+/// A store of schema version 4, which the gateway wrote before schema 5, is migrated by the
+/// writer's open at start: the start is not refused, the tables of schema 4 are replaced, the
+/// session is projected again from its wire rows, which are all kept, and the next call of the
+/// session is appended after them.
+#[test]
+fn a_store_of_schema_version_4_is_migrated_at_start_and_keeps_its_wire_records() {
+    let fixture = Fixture::new("records-schema-4");
+    let upstream = Upstream::start(Vec::new());
+    let hash = session_hash("claude-code", "earlier");
+    // The wire rows of one call as this gateway writes them, in a store of its own.
+    let written = store_in(&fixture);
+    let earlier = {
+        let config = document(&fixture, &upstream, &records_table(&written, ""));
+        let gateway = Gateway::start(&config, &fixture.dir);
+        let answer = post(
+            &gateway,
+            "/v1/messages",
+            &claude_session("earlier"),
+            &first_turn("hello"),
+        );
+        assert_eq!(answer.status, 200);
+        let steps = stored_when(&written, &hash, |steps| turns(steps).len() == 1);
+        turns(&steps)[0].call_id.clone().expect("a call id")
+    };
+    let rows: Vec<(String, i64, String, String)> = {
+        let connection = rusqlite::Connection::open(&written).unwrap();
+        let mut statement = connection
+            .prepare(
+                "SELECT session_id, seq, harness, step FROM wire_steps ORDER BY session_id, seq",
+            )
+            .unwrap();
+        statement
+            .query_map([], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+            })
+            .unwrap()
+            .collect::<rusqlite::Result<_>>()
+            .unwrap()
+    };
+    assert!(!rows.is_empty());
+    let store = written.with_file_name("schema-4.db");
+    {
+        let connection = rusqlite::Connection::open(&store).unwrap();
+        connection.execute_batch(SCHEMA_4).unwrap();
+        for (session, seq, harness, step) in &rows {
+            connection
+                .execute(
+                    "INSERT INTO wire_steps VALUES (?1, ?2, ?3, ?4)",
+                    rusqlite::params![session, seq, harness, step],
+                )
+                .unwrap();
+        }
+    }
+
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let gateway = Gateway::start(&config, &fixture.dir);
+    {
+        let read = rusqlite::Connection::open(&store).unwrap();
+        let count = |sql: &str| -> i64 { read.query_row(sql, [], |row| row.get(0)).unwrap() };
+        let schema: String = read
+            .query_row("SELECT value FROM meta WHERE key = 'schema'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(schema, "5", "the open at start did not migrate the store");
+        assert_eq!(
+            count("SELECT count(*) FROM sqlite_master WHERE name = 'event_chunks'"),
+            0,
+            "a table of schema 4 is left"
+        );
+        assert_eq!(
+            count(&format!(
+                "SELECT count(*) FROM sessions WHERE session_id = '{hash}'"
+            )),
+            1,
+            "the session was not projected again from its wire rows"
+        );
+        assert_eq!(
+            count("SELECT count(*) FROM wire_steps"),
+            i64::try_from(rows.len()).unwrap(),
+            "the wire rows were not kept"
+        );
+    }
+    let answer = post(
+        &gateway,
+        "/v1/messages",
+        &claude_session("earlier"),
+        &request(
+            r#"[{"role":"user","content":"hello"},{"role":"assistant","content":"ok"},{"role":"user","content":"again"}]"#,
+        ),
+    );
+    assert_eq!(answer.status, 200);
+    let steps = stored_when(&store, &hash, |steps| turns(steps).len() == 2);
+    assert_eq!(turns(&steps)[0].call_id.as_deref(), Some(earlier.as_str()));
 }
 
 /// The three interaction-record series are served, the skipped one's help names every cause
@@ -1305,7 +1429,7 @@ fn no_stored_command_holds_a_prompt_or_a_tool_input_and_a_planted_prompt_is_foun
 // --- Acceptance 8: the session hash -------------------------------------------------------------
 
 #[test]
-fn each_header_source_keys_the_store_by_sessionspecs_session_hash() {
+fn each_header_source_keys_the_store_by_agentspecs_session_hash() {
     let fixture = Fixture::new("records-session-hash");
     let upstream = Upstream::start(Vec::new());
     let store = store_in(&fixture);
@@ -1368,7 +1492,7 @@ fn each_header_source_keys_the_store_by_sessionspecs_session_hash() {
 // --- Acceptance 10: the guide ----------------------------------------------------------------------
 
 #[test]
-fn the_guide_names_the_table_its_keys_the_session_bound_and_how_sessionspec_reads_the_file() {
+fn the_guide_names_the_table_its_keys_the_session_bound_and_how_agentspec_reads_the_file() {
     let guide = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../website/docs/guides/record-agent-sessions.md"),
@@ -1392,7 +1516,7 @@ fn the_guide_names_the_table_its_keys_the_session_bound_and_how_sessionspec_read
         "schema version",
         "calls not stored at stop",
         "`queue` times `call_bytes`",
-        "sessionspec serve",
+        "agentspec serve",
     ] {
         assert!(guide.contains(named), "the guide does not name {named}");
     }

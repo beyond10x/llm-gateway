@@ -13,18 +13,20 @@ use std::{
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use llm_runpod::{
     AccountSpend, CloudType, CreateAnswer, PodPlacement, PodRequest, PodStatus, PodStream, PodTls,
-    RestBinding, RestRunpod, RunpodAccount, RunpodTransport, TerminateAnswer,
+    Probe, ProbeTarget, RestBinding, RestRunpod, RunpodAccount, RunpodTransport, TerminateAnswer,
 };
 use serde_json::{Value, json};
 
 use crate::openapi::{check_answer, check_request};
 
-const KEY: &str = "rpa_TESTKEY0123456789abcdef";
+pub(super) const KEY: &str = "rpa_TESTKEY0123456789abcdef";
+/// How long a log stream may stay quiet before a test's read of it ends.
+pub(super) const QUIET: Duration = Duration::from_millis(200);
 
 /// One scripted answer.
 enum Play {
@@ -34,14 +36,16 @@ enum Play {
     Close,
     /// Nothing is answered for this long, then the connection closes.
     Stall(Duration),
+    /// These bytes, then the connection stays open this long, as Runpod's log stream does.
+    Open(Vec<u8>, Duration),
 }
 
 /// One recorded request.
 #[derive(Debug, Clone)]
-struct Seen {
-    line: String,
-    headers: BTreeMap<String, String>,
-    body: Vec<u8>,
+pub(super) struct Seen {
+    pub(super) line: String,
+    pub(super) headers: BTreeMap<String, String>,
+    pub(super) body: Vec<u8>,
 }
 
 impl Seen {
@@ -76,6 +80,10 @@ impl Server {
                     }
                     Play::Close => {}
                     Play::Stall(duration) => thread::sleep(duration),
+                    Play::Open(bytes, open) => {
+                        let _ = stream.write_all(&bytes);
+                        thread::sleep(open);
+                    }
                 }
             }
         });
@@ -86,15 +94,19 @@ impl Server {
         format!("http://{}/v2", self.address)
     }
 
+    /// This fixture's endpoints, a pod log read on every ask, and short bounds.
+    fn binding(&self) -> RestBinding {
+        RestBinding {
+            base_url: self.base(),
+            graphql_url: format!("http://{}/graphql", self.address),
+            timeout: Duration::from_millis(1_500),
+            log_quiet: QUIET,
+            log_every: Duration::ZERO,
+        }
+    }
+
     fn transport(&self) -> RestRunpod {
-        RestRunpod::new(
-            RestBinding {
-                base_url: self.base(),
-                graphql_url: format!("http://{}/graphql", self.address),
-                timeout: Duration::from_millis(1_500),
-            },
-            KEY.as_bytes().to_vec(),
-        )
+        RestRunpod::new(self.binding(), KEY.as_bytes().to_vec())
     }
 
     /// Every request received, each v2 one checked against the recorded document.
@@ -113,7 +125,7 @@ impl Server {
     }
 }
 
-fn read_request(stream: &mut TcpStream) -> Option<Seen> {
+pub(super) fn read_request(stream: &mut TcpStream) -> Option<Seen> {
     stream.set_read_timeout(Some(Duration::from_secs(5))).ok()?;
     let mut bytes = Vec::new();
     let mut buffer = [0_u8; 4096];
@@ -170,7 +182,7 @@ fn v2(method: &str, path: &str, status: u16, body: &Value) -> Play {
 }
 
 /// One page of `GET /v2/pods`: `{"pods": [...], "pagination": {...}}`.
-fn page(pods: &[Value], next: Option<&str>) -> Value {
+pub(super) fn page(pods: &[Value], next: Option<&str>) -> Value {
     json!({
         "pods": pods,
         "pagination": {"hasNextPage": next.is_some(), "nextCursor": next},
@@ -184,7 +196,7 @@ fn listing(pods: &[Value]) -> Play {
 
 /// A running pod of this crate as v2's `Pod` writes it: every field the document requires, and
 /// `runtime` null, as `GET /v2/pods` answers it.
-fn pod(id: &str, request: &str) -> Value {
+pub(super) fn pod(id: &str, request: &str) -> Value {
     json!({
         "id": id,
         "name": "b10x-llm-qwen",
@@ -220,7 +232,7 @@ fn pod_in(id: &str, request: &str, status: &str) -> Value {
 }
 
 /// A v2 problem answer (`ErrorResponse`).
-fn problem(status: u16, detail: &str) -> Value {
+pub(super) fn problem(status: u16, detail: &str) -> Value {
     json!({"title": "Error", "status": status, "detail": detail})
 }
 
@@ -625,37 +637,179 @@ fn terminate_is_delete_by_id() {
     );
 }
 
-/// The start time is the pod's `startedAt` (RFC 3339, no fraction) in the listing; a pod that
-/// has not started (`startedAt` null) has none. Only the documented v2 calls are made.
+/// The image every recorded log names.
+pub(super) const IMAGE: &str = "vllm/vllm-openai:v0.27.1";
+
+/// One event of `GET /v2/pods/{id}/logs` as Runpod's document describes it and the live API
+/// wrote it on 2026-11-26: an `id:` line (the event's `ts`) and a JSON `data:` line with
+/// `source`, `line` and `ts`.
+pub(super) fn log_event(source: &str, line: &str, ts: &str) -> String {
+    format!(
+        "id: {ts}\ndata: {}\n\n",
+        json!({"source": source, "line": line, "ts": ts})
+    )
+}
+
+/// The system line Runpod writes each time the pod's container starts.
+pub(super) fn container_start(ts: &str) -> String {
+    log_event("system", &format!("start container for {IMAGE}: begin"), ts)
+}
+
+/// A log stream's answer: Runpod's `text/event-stream` head, then each event as one chunk. The
+/// stream is never ended, as Runpod's is not.
+pub(super) fn log_stream(events: &[String]) -> Vec<u8> {
+    let mut bytes = b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\nCache-Control: no-cache\r\nConnection: keep-alive\r\nX-Accel-Buffering: no\r\nTransfer-Encoding: chunked\r\n\r\n".to_vec();
+    for event in events {
+        bytes.extend_from_slice(format!("{:x}\r\n{event}\r\n", event.len()).as_bytes());
+    }
+    bytes
+}
+
+/// The container's start is the last `start container for <image>: begin` line of the pod's
+/// system log (`GET /v2/pods/{id}/logs?source=system&tail=100`), not the pod's `startedAt`, which
+/// a container restart does not move. A container line, or a system line of another kind, is
+/// no start. The stream stays open: it is read only until it falls quiet.
 #[test]
-fn the_start_time_is_started_at_of_the_pod_in_the_listing() {
-    let mut unstarted = pod_in("abc123", "req-1", "PROVISIONING");
-    unstarted["startedAt"] = Value::Null;
+fn the_container_start_is_the_last_start_line_of_the_pods_system_log() {
+    let events = [
+        container_start("2026-11-26T15:29:38.112Z"),
+        log_event(
+            "container",
+            "RuntimeError: Engine core initialization failed. See root cause above.",
+            "2026-11-26T15:30:02.5Z",
+        ),
+        container_start("2026-11-26T15:30:11.204Z"),
+        log_event("system", "stop container: begin", "2026-11-26T15:30:40Z"),
+        log_event(
+            "container",
+            &format!("start container for {IMAGE}: begin"),
+            "2026-11-26T15:30:41Z",
+        ),
+    ];
+    let server = Server::start(vec![Play::Open(
+        log_stream(&events),
+        Duration::from_secs(5),
+    )]);
+    let mut transport = server.transport();
+    let began = Instant::now();
+    assert_eq!(
+        transport.container_started_at("abc123"),
+        llm_runpod::started_at_ms("2026-11-26T15:30:11.204Z")
+    );
+    assert!(
+        began.elapsed() < Duration::from_secs(3),
+        "an open stream is read only until it falls quiet: {:?}",
+        began.elapsed()
+    );
+    let seen = server.seen();
+    assert_eq!(
+        server.lines(),
+        ["GET /v2/pods/abc123/logs?source=system&tail=100 HTTP/1.1"]
+    );
+    assert_headers(&seen[0]);
+}
+
+/// A log read that fails, or that holds no start line, reports no start; once a start was read,
+/// a later read that finds none keeps it, and a later one that finds a later start reports it.
+#[test]
+fn a_log_without_a_start_line_or_a_failed_read_reports_no_later_start() {
+    let first = "2026-11-26T15:29:38Z";
+    let second = "2026-11-26T15:30:11Z";
+    let quiet = log_event("system", "pull image: done", "2026-11-26T15:29:00Z");
     let server = Server::start(vec![
-        listing(&[pod("other", "req-0"), pod("abc123", "req-1")]),
-        listing(&[pod("other", "req-0")]),
-        listing(&[unstarted]),
+        v2(
+            "GET",
+            "/v2/pods/abc123/logs",
+            404,
+            &problem(404, "pod not found"),
+        ),
+        Play::Bytes(log_stream(std::slice::from_ref(&quiet))),
+        Play::Bytes(log_stream(&[quiet.clone(), container_start(first)])),
+        Play::Close,
+        answer(500, "{}"),
+        Play::Bytes(log_stream(&[
+            container_start(first),
+            container_start(second),
+        ])),
     ]);
     let mut transport = server.transport();
-    let started = llm_runpod::started_at_ms("2026-11-04T10:00:00Z");
-    assert!(started.is_some(), "RFC 3339 without a fraction is read");
-    assert_eq!(transport.container_started_at("abc123"), started);
+    let at = |stamp: &str| llm_runpod::started_at_ms(stamp);
+    assert_eq!(transport.container_started_at("abc123"), None, "404");
+    assert_eq!(transport.container_started_at("abc123"), None, "no start");
+    assert_eq!(transport.container_started_at("abc123"), at(first));
     assert_eq!(
         transport.container_started_at("abc123"),
-        None,
-        "a listing without the pod"
+        at(first),
+        "closed"
     );
+    assert_eq!(transport.container_started_at("abc123"), at(first), "500");
+    assert_eq!(transport.container_started_at("abc123"), at(second));
+    assert_eq!(server.seen().len(), 6);
+}
+
+const LOGS: &str = "GET /v2/pods/abc123/logs?source=system&tail=100 HTTP/1.1";
+
+/// A pod's log is read at most once per `log_every`: an ask in between sends nothing and
+/// answers the start the last read found. The read is made under the pool's lock, so this keeps
+/// a starting pod from holding it on every ask.
+#[test]
+fn a_pods_log_is_read_at_most_once_per_log_every() {
+    let first = "2026-11-26T15:29:38Z";
+    let server = Server::start(vec![Play::Bytes(log_stream(&[container_start(first)]))]);
+    let mut transport = RestRunpod::new(
+        RestBinding {
+            log_every: Duration::from_secs(60),
+            ..server.binding()
+        },
+        KEY.as_bytes().to_vec(),
+    );
+    let at = llm_runpod::started_at_ms(first);
+    assert_eq!(transport.container_started_at("abc123"), at);
+    assert_eq!(transport.container_started_at("abc123"), at);
+    assert_eq!(server.lines(), [LOGS]);
+}
+
+/// A pod whose last probe found vLLM serving has its log left unread: a restart of a serving
+/// container shows first as a probe that fails, and the log is read again from then on.
+#[test]
+fn a_serving_pods_log_is_not_read_until_a_probe_finds_it_not_serving() {
+    let (first, second) = ("2026-11-26T15:29:38Z", "2026-11-26T15:30:11Z");
+    let server = Server::start(vec![
+        Play::Bytes(log_stream(&[container_start(first)])),
+        answer(200, r#"{"object":"list","data":[{"id":"qwen"}]}"#),
+        answer(503, "{}"),
+        Play::Bytes(log_stream(&[
+            container_start(first),
+            container_start(second),
+        ])),
+    ]);
+    let mut transport = server.transport();
+    let endpoint = format!("http://{}/v1/", server.address);
+    let target = ProbeTarget {
+        pod_id: "abc123",
+        model: None,
+        endpoint: Some(&endpoint),
+    };
+    let at = |stamp: &str| llm_runpod::started_at_ms(stamp);
+    assert_eq!(transport.container_started_at("abc123"), at(first));
+    assert!(matches!(
+        transport.probe_ready(&target),
+        Probe::Ready { .. }
+    ));
     assert_eq!(
         transport.container_started_at("abc123"),
-        None,
-        "a pod that has not started"
+        at(first),
+        "serving: the log is not read"
     );
+    assert_eq!(transport.probe_ready(&target), Probe::NotReady);
+    assert_eq!(transport.container_started_at("abc123"), at(second));
     assert_eq!(
         server.lines(),
         [
-            "GET /v2/pods HTTP/1.1",
-            "GET /v2/pods HTTP/1.1",
-            "GET /v2/pods HTTP/1.1"
+            LOGS,
+            "GET /v1/models HTTP/1.1",
+            "GET /v1/models HTTP/1.1",
+            LOGS
         ]
     );
 }
@@ -1099,6 +1253,7 @@ fn no_call_leaves_without_tls_or_to_a_non_loopback_http_host() {
                 base_url: base.to_owned(),
                 graphql_url: "https://api.runpod.io/graphql".to_owned(),
                 timeout: Duration::from_millis(200),
+                ..RestBinding::runpod()
             },
             KEY.as_bytes().to_vec(),
         );

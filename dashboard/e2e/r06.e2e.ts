@@ -1,6 +1,9 @@
 // The regression assertions of change set R-06 (UXF-010, 016, 011, 014, 019), each run against the
 // built page through the hermetic replay.
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import { parse as parseYaml } from 'yaml';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
 import { openReplay } from './harness.ts';
 import { VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
@@ -88,4 +91,70 @@ test.describe('UXF-016', () => {
       }
     });
   }
+});
+
+// The document's one table of display words for state values (label_maps.state).
+const DOCUMENT = parseYaml(readFileSync(fileURLToPath(new URL('../ui/llm-gateway.ui.yaml', import.meta.url)), 'utf8')) as { label_maps?: Record<string, Record<string, string>> };
+const STATE_WORDS: Record<string, string> = DOCUMENT.label_maps?.state ?? {};
+
+interface Shown {
+  where: string;
+  text: string;
+  raw: string | null;
+}
+
+// Every state value the page shows, with the raw value its title holds.
+async function statesShown(page: Page): Promise<Shown[]> {
+  return page.evaluate(() => {
+    const out: { where: string; text: string; raw: string | null }[] = [];
+    const norm = (t: string | null) => (t ?? '').replace(/\s+/g, ' ').trim();
+    const take = (where: string, el: Element) => {
+      const titled = el.hasAttribute('title') ? el : el.querySelector('[title]');
+      out.push({ where, text: norm(el.textContent), raw: titled?.getAttribute('title') ?? null });
+    };
+    for (const [where, sel] of [
+      ['in flight', 'table.inflight td.col-state .pill'],
+      ['pod state', 'table.pods td.col-state .pill'],
+      ['vLLM ready', 'table.pods td.col-vllm_ready'],
+      ['call status', 'table.calls td.col-status .pill'],
+      ['attempt status', 'table.mini td.col-status .pill'],
+    ] as const) {
+      for (const el of document.querySelectorAll(sel)) take(where, el);
+    }
+    for (const tile of document.querySelectorAll('.card .tile')) {
+      const label = norm(tile.querySelector('.label')?.textContent ?? '');
+      const value = tile.querySelector('.value');
+      if (value && ['Status', 'Overage', 'Overage reason', 'Representative claim'].includes(label)) take(`limit ${label}`, value);
+    }
+    return out;
+  });
+}
+
+test.describe('UXF-011', () => {
+  test('the state words come from one table: every state badge and limit status is spelled by it, with the raw value in its title', async ({ browser }) => {
+    expect(Object.keys(STATE_WORDS).length, 'label_maps.state in the document').toBeGreaterThan(0);
+    const spellings = Object.values(STATE_WORDS);
+    for (const w of spellings) expect(w, 'a display word has no underscore and is not in capitals').toMatch(/^(?!.*_)(?!.*\b[A-Z]{2,}\b).+$/);
+    const seen = new Map<string, Set<string>>();
+    for (const name of ['busy', 'errors']) {
+      const page = await opened(browser, name);
+      try {
+        await page.locator('button[aria-expanded="false"]').first().click();
+        const shown = await statesShown(page);
+        const places = new Set(shown.map((s) => s.where));
+        for (const p of ['in flight', 'call status', 'attempt status', 'limit Status']) expect(places, `${name} shows ${p}`).toContain(p);
+        if (name === 'busy') for (const p of ['pod state', 'vLLM ready']) expect(places, `${name} shows ${p}`).toContain(p);
+        for (const s of shown) {
+          const at = `${name}, ${s.where}: "${s.text}"`;
+          expect(spellings, `${at} is a word of the table`).toContain(s.text);
+          expect(s.raw, `${at} keeps its raw value in a title`).toBeTruthy();
+          (seen.get(s.raw!) ?? seen.set(s.raw!, new Set()).get(s.raw!)!).add(s.text);
+        }
+      } finally {
+        await page.context().close();
+      }
+    }
+    const twice = [...seen].filter(([, words]) => words.size > 1).map(([raw, words]) => `${raw}: ${[...words].join(' / ')}`);
+    expect(twice, 'one raw value, one spelling').toEqual([]);
+  });
 });

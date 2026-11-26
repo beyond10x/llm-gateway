@@ -1611,7 +1611,8 @@ record types are declared once in `dashboard.rs` (`SNAPSHOT_TYPES`);
   a `null` cache read. The
   KPI `cache_hit_rate` and `llmgw_cache_hit_ratio` are every route's cache reads over every
   route's prompt tokens, both sources together, and `cache_routes` lists each route's figures.
-- **Runpod account.** With a provider whose `api_key` is a keychain reference, the binary reads
+- **Runpod account.** With a provider that names its Runpod API key (`api_key`, a keychain
+  reference, or `api_key_file`, a file read under the trusted-file rules), the binary reads
   the account every 60 seconds (`Dashboard::set_provider`): balance, spend rate, the pods the
   gateway owns, and every other live pod counted in `other_pods`. A pod a hosted route reaches
   through its proxy address is also a row, marked `external`: it has no countdown and is never

@@ -22,9 +22,10 @@ async function eachState(replay: Replay, check: (index: number) => Promise<void>
   }
 }
 
-// A session comes and goes and nothing else on the page changes: one call nine minutes ago keeps
+// A session comes and goes and nothing else on the page changes: one call 9.5 minutes ago keeps
 // every table as it is, and only the session's last-seen time moves inside the five minutes that
-// make it active, then out again. "9m 0s ago" and "1m 0s ago" are the same width in tabular digits.
+// make it active, then out again. "9m 30s ago" and "1m 30s ago" (a second less as the page's
+// clock ticks) have the same width in tabular digits, so the Sessions table keeps its columns.
 const A: SessionDef = { session: '4b7d20e9c1f3', label: 'claude-code' };
 const comesAndGoes: Scenario = {
   name: 'session-comes-and-goes',
@@ -32,10 +33,10 @@ const comesAndGoes: Scenario = {
   anchor: false,
   states(base: number): Snapshot[] {
     const ledger = new Ledger();
-    ledger.add({ session: A, route: 'claude-sonnet', at: base - 9 * 60_000, input: 12_400, output: 512 });
+    ledger.add({ session: A, route: 'claude-sonnet', at: base - 570_000, input: 12_400, output: 512 });
     const idle = ledger.snapshot(base, base - 3_600_000);
     const active: Snapshot = JSON.parse(JSON.stringify(idle));
-    active.sessions[0]!.last_ms = base - 60_000;
+    active.sessions[0]!.last_ms = base - 90_000;
     return [idle, active, JSON.parse(JSON.stringify(idle))];
   },
 };

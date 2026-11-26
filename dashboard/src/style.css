@@ -75,10 +75,13 @@ body { margin: 0; background: var(--bg); color: var(--fg); }
 }
 .skip:focus { top: 0.5rem; }
 
-.flow-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 1rem; margin: 0 0 0.4rem; }
-.flow-head h2 { margin: 0; }
-.flow-caption { margin: 0; color: var(--muted); }
-.flow-key { white-space: nowrap; margin-left: 0.6rem; }
+/* The panel keeps one height whatever the sessions: the counts change on the heading's line and
+   never wrap, and the caption below them does not change with the state. */
+.flow-head { display: flex; align-items: baseline; gap: 1rem; margin: 0 0 0.2rem; }
+.flow-head h2 { margin: 0; white-space: nowrap; }
+.flow-count { margin: 0; color: var(--muted); white-space: nowrap; }
+.flow-caption { margin: 0 0 0.4rem; color: var(--muted); }
+.flow-key { white-space: nowrap; margin-right: 0.8rem; }
 .swatch { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.3rem; }
 .swatch.in { background: var(--flow-in); }
 .swatch.out { background: var(--flow-out); }

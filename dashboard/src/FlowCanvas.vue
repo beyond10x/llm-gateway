@@ -205,12 +205,12 @@ onUnmounted(() => {
   <section class="flow-panel" aria-labelledby="h-flow">
     <div class="flow-head">
       <h2 id="h-flow">Token flow</h2>
-      <p class="flow-caption">
-        <span v-if="summary.sessions > 0">{{ plural(summary.sessions, 'active session') }} → {{ plural(summary.routes, 'route') }};</span>
-        <span class="flow-key"><span class="swatch in" aria-hidden="true"></span>input tokens</span>
-        <span class="flow-key"><span class="swatch out" aria-hidden="true"></span>output tokens</span>
-      </p>
+      <p class="flow-count">{{ summary.sessions > 0 ? `${plural(summary.sessions, 'active session')} → ${plural(summary.routes, 'route')}` : 'no active session' }}</p>
     </div>
+    <p class="flow-caption">
+      <span class="flow-key"><span class="swatch in" aria-hidden="true"></span>input tokens</span>
+      <span class="flow-key"><span class="swatch out" aria-hidden="true"></span>output tokens</span>
+    </p>
     <div ref="box" class="flow-box">
       <canvas ref="canvas" aria-hidden="true"></canvas>
       <p v-if="summary.sessions === 0" class="flow-empty">No active sessions.</p>

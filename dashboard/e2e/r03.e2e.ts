@@ -211,7 +211,7 @@ test.describe('UXF-008', () => {
           first: flow !== null && sections[0] === flow,
           above: !!flow && !!overview && flow.getBoundingClientRect().bottom <= overview.getBoundingClientRect().top,
           fixedCanvas: [...document.querySelectorAll('canvas')].filter((c) => getComputedStyle(c).position === 'fixed').length,
-          caption: (flow?.querySelector('.flow-caption')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          caption: (flow?.querySelector('.flow-count')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
         };
       });
       expect(order.flow, 'a section headed "Token flow"').toBe(true);

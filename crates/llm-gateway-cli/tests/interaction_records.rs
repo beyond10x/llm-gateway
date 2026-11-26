@@ -13,6 +13,7 @@ use sessionspec_records::{
 };
 use std::{
     collections::VecDeque,
+    fmt::Write as _,
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     path::{Path, PathBuf},
@@ -52,7 +53,7 @@ fn json(body: &str) -> Reply {
 fn events(pieces: &[(&str, &str)]) -> Reply {
     let mut body = String::new();
     for (name, data) in pieces {
-        body.push_str(&format!("event: {name}\ndata: {data}\n\n"));
+        let _ = write!(body, "event: {name}\ndata: {data}\n\n");
     }
     Reply {
         content_type: "text/event-stream",
@@ -564,18 +565,27 @@ fn without_the_table_no_writer_thread_runs_and_no_file_is_created() {
     assert!(after.is_empty(), "files created: {after:?}");
     assert!(files_under(&home).is_empty());
 
-    // The same probe sees the writer and the file when the table is declared.
+    // The same probe, after the same call, sees the writer and the file when the table is
+    // declared. A thread takes its name only once it runs, so the probe waits for it.
     let store = store_in(&fixture);
     let config = document(&fixture, &upstream, &records_table(&store, ""));
     let gateway = Gateway::start(&config, &fixture.dir);
-    assert!(
-        gateway
-            .threads()
-            .iter()
-            .any(|name| name.starts_with(WRITER_THREAD)),
-        "{:?}",
-        gateway.threads()
+    let answer = post(
+        &gateway,
+        "/v1/messages",
+        &claude_session("on"),
+        &first_turn("hello"),
     );
+    assert_eq!(answer.status, 200);
+    let deadline = Instant::now() + Duration::from_secs(2);
+    while !gateway
+        .threads()
+        .iter()
+        .any(|name| name.starts_with(WRITER_THREAD))
+    {
+        assert!(Instant::now() < deadline, "{:?}", gateway.threads());
+        thread::sleep(Duration::from_millis(10));
+    }
     assert!(store.exists());
 }
 

@@ -33,7 +33,7 @@ The serving command line takes nothing else: a positional argument or another op
 | 1 | the start was refused: the document, a file it names, the listen address or the signal handlers | `b10x-llm-gateway: refused <source>:<rule>: <message>` |
 | 2 | a usage error, which names its kind and never echoes an argument | ``b10x-llm-gateway: usage error (<kind>); Usage: b10x-llm-gateway --config <CONFIG>; see `b10x-llm-gateway --help` `` |
 
-While it serves, the process writes `b10x-llm-gateway: listening on <address>` once. `RUST_LOG` sets the level of the structured events it writes beside these lines (default `info`).
+While it serves, the process writes `b10x-llm-gateway: listening on <address>` once, with the address it bound, so a `listen` on port 0 reports the port the system picked. A document that sets `metrics_listen` gets `b10x-llm-gateway: metrics listening on <address>` once before it, with the address that listener bound. `RUST_LOG` sets the level of the structured events it writes beside these lines (default `info`).
 
 ## `b10x-llm-gateway serve`
 

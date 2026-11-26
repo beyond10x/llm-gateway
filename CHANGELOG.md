@@ -7,6 +7,14 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Changed
+
+- `metrics_listen` may equal `listen` when both name port 0: the system picks a port for each. Any other equal pair is still `config:value`.
+
+### Added
+
+- The binary writes `b10x-llm-gateway: metrics listening on <address>` once, before `listening on`, when the document sets `metrics_listen`, with the address that listener bound, so a `metrics_listen` on port 0 reports the port the system picked.
+
 ## 0.25.0 (2026-11-26)
 
 ### Changed

@@ -420,6 +420,10 @@ fn serve_document(config: &std::path::Path, pods: crate::ProxyConnector) -> std:
             return std::process::ExitCode::FAILURE;
         }
     };
+    // The bound addresses, so a document may name port 0 and a reader learns the port here.
+    if let Some(metrics) = running.metrics_addr() {
+        report(format_args!("metrics listening on {metrics}"));
+    }
     report(format_args!("listening on {}", running.local_addr()));
     let stopped = running.wait_for_stop();
     // The heartbeat ends with the gateway; its last beat stays and goes stale, so the watchdog

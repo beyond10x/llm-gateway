@@ -147,8 +147,10 @@ curl -s -H "Authorization: Bearer $(cat scrape-token)" http://127.0.0.1:9090/met
 - Without `metrics_bearer_file` the listener is open. Bind it only on an address a network policy
   guards, as [Run on Kubernetes](run-on-kubernetes.md#scrape-the-counters) does.
 - It answers before the gateway is ready and while it drains, and it stops with the gateway.
-- `metrics_listen` must differ from `listen`. The owner-guarded `/metrics` on `listen` is
-  unchanged.
+- `metrics_listen` must differ from `listen`, unless both name port 0. The owner-guarded
+  `/metrics` on `listen` is unchanged.
+- The binary writes `b10x-llm-gateway: metrics listening on <address>` before `listening on`,
+  with the address the listener bound: on port 0 that line names the port the system picked.
 
 A Prometheus job for it:
 
@@ -191,4 +193,4 @@ curl -s -H "Authorization: Bearer $(cat owner-secret)" \
 The gateway holds the last 1024 ended calls; an id it does not hold is `404 call-unknown`.
 
 `RUST_LOG=warn` or `RUST_LOG=off` silences the usage events; the lines the binary writes itself
-(`listening on`, `refused`, `stopped by`) stay.
+(`metrics listening on`, `listening on`, `refused`, `stopped by`) stay.

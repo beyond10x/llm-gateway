@@ -87,10 +87,11 @@ pub struct FinishedCall {
     pub finished_ms: u64,
 }
 
-/// A copied answer, as the client received it.
+/// A copied answer, as the client received it, de-chunked and, when it carried a content coding,
+/// decoded.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AnswerBytes {
-    /// The body bytes, de-chunked.
+    /// The body bytes, de-chunked and decoded.
     Body(Vec<u8>),
     /// The `data:` payload of each server-sent event the client received whole, in order.
     Events(Vec<Vec<u8>>),
@@ -106,10 +107,18 @@ pub enum CallBytes {
         request: Vec<u8>,
         answer: Option<AnswerBytes>,
     },
-    /// They were over the bound: no bytes, both sizes.
+    /// They were over the bound: no bytes, both sizes, the answer's decoded.
     OverBound {
         request_bytes: u64,
         answer_bytes: u64,
+    },
+    /// The answer carried a content coding the relay's [`crate::BodyDecoder`] did not decode
+    /// whole: no bytes, the request's size, the answer's size as the client received it
+    /// (encoded), and the coding (`content-encoding` as the target sent it).
+    Undecodable {
+        request_bytes: u64,
+        answer_bytes: u64,
+        coding: String,
     },
 }
 
@@ -230,9 +239,17 @@ struct Held {
     answer: Option<Copying>,
 }
 
+/// An answer with a content coding while it arrives: its bytes are counted as the client
+/// received them, and copied only once the relay hands them decoded ([`Tap::decoded`]).
+#[derive(Debug)]
+struct Coded {
+    coding: String,
+    received: u64,
+}
+
 /// The copy of one call's bytes while it runs: the request body as read, and the answer body as
-/// the client received it, until the two together pass the bound, when the copy is dropped and
-/// only their sizes are counted.
+/// the client received it (decoded when it carried a content coding), until the two together
+/// pass the bound, when the copy is dropped and only their sizes are counted.
 #[derive(Debug)]
 pub(crate) struct Tap {
     bound: usize,
@@ -240,6 +257,8 @@ pub(crate) struct Tap {
     answer_bytes: u64,
     /// `None` once the call passed the bound.
     held: Option<Held>,
+    /// The answer's content coding, when it carried one and was not yet handed decoded.
+    coded: Option<Coded>,
 }
 
 impl Tap {
@@ -249,6 +268,24 @@ impl Tap {
             request_bytes: 0,
             answer_bytes: 0,
             held: Some(Held::default()),
+            coded: None,
+        }
+    }
+
+    /// The answer's content coding was `coding`, and `decoded` is what the relay's decoder made
+    /// of the bytes the client received, `None` when there was none to ask or it knew no such
+    /// coding. A whole decode is copied as the answer; any other is
+    /// [`CallBytes::Undecodable`].
+    pub(crate) fn decoded(&mut self, decoded: Option<&crate::relay::Decoded>) {
+        let Some(coded) = self.coded.take() else {
+            return;
+        };
+        match decoded {
+            Some(decoded) if decoded.complete => self.answer(&decoded.bytes),
+            _ => {
+                self.held = None;
+                self.coded = Some(coded);
+            }
         }
     }
 
@@ -273,8 +310,8 @@ impl Tap {
     }
 
     /// An answer head was written to the client; `events` says its body is a server-sent event
-    /// stream without a content coding.
-    pub(crate) fn head(&mut self, events: bool) {
+    /// stream, and `coding` names its content coding when it carries one.
+    pub(crate) fn head(&mut self, events: bool, coding: Option<&str>) {
         if let Some(held) = &mut self.held {
             held.answer = Some(if events {
                 Copying::Events(EventReader::default())
@@ -282,10 +319,21 @@ impl Tap {
                 Copying::Body(Vec::new())
             });
         }
+        self.coded = coding.map(|coding| Coded {
+            coding: coding.to_owned(),
+            received: 0,
+        });
     }
 
-    /// Answer body bytes the client received.
+    /// Answer body bytes the client received. Those of an answer with a content coding are only
+    /// counted until the relay hands them decoded.
     pub(crate) fn answer(&mut self, bytes: &[u8]) {
+        if let Some(coded) = &mut self.coded {
+            coded.received = coded
+                .received
+                .saturating_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX));
+            return;
+        }
         self.answer_bytes = self
             .answer_bytes
             .saturating_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX));
@@ -299,8 +347,17 @@ impl Tap {
         }
     }
 
-    /// The copy, or both sizes when it passed the bound.
+    /// The copy, both sizes when it passed the bound, or both sizes and the coding when its
+    /// answer was not decoded whole. An answer with a coding the relay never handed decoded (the
+    /// call ended before it could be) is not decoded whole.
     pub(crate) fn finish(self) -> CallBytes {
+        if let Some(coded) = self.coded {
+            return CallBytes::Undecodable {
+                request_bytes: self.request_bytes,
+                answer_bytes: coded.received,
+                coding: coded.coding,
+            };
+        }
         match self.held {
             Some(held) => CallBytes::Copied {
                 request: held.request,
@@ -347,7 +404,7 @@ mod tests {
     fn copied(pieces: &[&[u8]], events: bool) -> CallBytes {
         let mut tap = Tap::new(1 << 20);
         tap.request(b"{}");
-        tap.head(events);
+        tap.head(events, None);
         for piece in pieces {
             tap.answer(piece);
         }

@@ -1,0 +1,24 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: finished-calls-a-passed-through-answer-whose-coding-is-not-decoded-is-handed-its-sizes-and-its-coding
+summary: with no decoder composed, a passed-through answer that carries a content coding is handed without bytes, with the request's size, the answer's size as received and its coding
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","ingress_auth":"none","call_bytes":1000,"models":[{"alias":"subscription","upstream_model":"vendor-sub","wires":["messages"],"endpoint":{"pod":"pod-1","scheme":"http","auth_kind":"client"}}],"pods":[[{"status":200,"content_type":"text/event-stream","content_encoding":"gzip","framing":"chunked","chunks":["not gzip"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/messages","body":"{\"model\":\"subscription\",\"stream\":true}","headers":["x-api-key: sk-client-0123456789abcdef","anthropic-version: 2023-06-01"]}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 relayed
+    finished:
+    - call=recorded path=/v1/messages wire=messages route=subscription upstream=pod-1 attempts=1 queue_wait_ms=bounded ttft_ms=bounded ending=Complete refusal=absent cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=undecodable request=38 answer=8 coding=gzip

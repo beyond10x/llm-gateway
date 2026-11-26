@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:40009690ec10df3ea942c0c939cbd76c0b99ea77fa7f7ecc2b8b5bde54d489c7",
+    "contract_digest": "slice-sha256/2:c53d6b55dc0f85c5f3d39eb540e23bbf9a8de5a940c8b4bc06b2ae93ea243764",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -15,7 +15,8 @@
       "type": "string",
       "enum": [
         "Copied",
-        "OverBound"
+        "OverBound",
+        "Undecodable"
       ]
     }
   }

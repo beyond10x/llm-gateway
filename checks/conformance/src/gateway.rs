@@ -891,6 +891,10 @@ mod relay {
         status: Option<u16>,
         #[serde(default)]
         content_type: Option<String>,
+        /// The answer's `content-encoding` line, written as given; the chunks are sent as they
+        /// are, not encoded.
+        #[serde(default)]
+        content_encoding: Option<String>,
         #[serde(default)]
         chunks: Vec<String>,
         #[serde(default)]
@@ -976,11 +980,18 @@ mod relay {
                     matches!(transport.as_str(), "refused" | "closed")
                         && self.chunks.is_empty()
                         && self.content_type.is_none()
+                        && self.content_encoding.is_none()
                         && self.framing.is_none()
                         && self.delay_ms.is_none()
                 }
                 (None, Some(status)) => {
                     (200..=599).contains(&status)
+                        && self.content_encoding.as_deref().is_none_or(|coding| {
+                            !coding.is_empty()
+                                && coding
+                                    .bytes()
+                                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                        })
                         && matches!(self.framing.as_deref(), None | Some("length" | "chunked"))
                         && matches!(
                             self.release.as_deref(),
@@ -1091,6 +1102,22 @@ mod relay {
         secret_upstream: AtomicBool,
         progress: Mutex<Arc<Progress>>,
         stopping: AtomicBool,
+        /// TLS handshakes a pod began and has not recorded yet. A pod whose certificate the
+        /// gateway refuses records `tls-refused` after the gateway already gave up on it, so the
+        /// run waits for that record before its next step ([`Shared::settle`]).
+        handshaking: AtomicUsize,
+    }
+
+    impl Shared {
+        /// Waits, at most [`WAIT`], until no pod is in a TLS handshake it has not recorded, so
+        /// the `connections` fact lists each pod's connection in the order the gateway opened
+        /// them, whichever thread ran first.
+        fn settle(&self) {
+            let deadline = Instant::now() + WAIT;
+            while self.handshaking.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
     }
 
     struct Pod {
@@ -1220,9 +1247,23 @@ mod relay {
         }
     }
 
+    /// The TLS handshake on `socket`, counted in [`Shared::handshaking`] from before the pod's
+    /// certificate is sent until a refusal is recorded or the handshake succeeded.
+    fn handshake(
+        socket: TcpStream,
+        config: &Arc<ServerConfig>,
+        pod: &str,
+        shared: &Shared,
+    ) -> Option<Connection> {
+        shared.handshaking.fetch_add(1, Ordering::SeqCst);
+        let connection = handshake_recorded(socket, config, pod, shared);
+        shared.handshaking.fetch_sub(1, Ordering::SeqCst);
+        connection
+    }
+
     /// The TLS handshake on `socket`; on failure the connection is recorded `tls-refused` with
     /// whatever request bytes were decrypted (none are expected) and `None` returned.
-    fn handshake(
+    fn handshake_recorded(
         socket: TcpStream,
         config: &Arc<ServerConfig>,
         pod: &str,
@@ -1328,8 +1369,14 @@ mod relay {
             .content_type
             .as_ref()
             .map_or(String::new(), |value| format!("content-type: {value}\r\n"));
+        let content_encoding = answer
+            .content_encoding
+            .as_ref()
+            .map_or(String::new(), |value| {
+                format!("content-encoding: {value}\r\n")
+            });
         let head = format!(
-            "HTTP/1.1 {status} Fixture\r\n{content_type}{framing}connection: close\r\n\r\n"
+            "HTTP/1.1 {status} Fixture\r\n{content_type}{content_encoding}{framing}connection: close\r\n\r\n"
         );
         if connection.write_all(head.as_bytes()).is_err() {
             return;
@@ -1601,6 +1648,13 @@ mod relay {
                 request_bytes,
                 answer_bytes,
             }) => format!("over-bound request={request_bytes} answer={answer_bytes}"),
+            Some(CallBytes::Undecodable {
+                request_bytes,
+                answer_bytes,
+                coding,
+            }) => {
+                format!("undecodable request={request_bytes} answer={answer_bytes} coding={coding}")
+            }
         };
         format!(
             "call={} path={} wire={} route={} upstream={upstream} attempts={} queue_wait_ms={} ttft_ms={} ending={ending} refusal={} cost_usd={} session={} harness={harness} span={span} bytes={bytes}",
@@ -3077,6 +3131,7 @@ mod relay {
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
             let elapsed = started.elapsed();
+            shared.settle();
             let (made, handed) = records.take_facts(elapsed, run_started.elapsed());
             recorded.extend(made);
             finished.extend(handed);

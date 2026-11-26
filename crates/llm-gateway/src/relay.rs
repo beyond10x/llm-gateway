@@ -2044,10 +2044,12 @@ pub(crate) enum Unfinished {
 }
 
 impl Call {
-    /// Notes the terminal error `scanner` read, unless the answer already fell short otherwise.
+    /// Notes the terminal error `scanner` read. It takes the place of a cut noted before it: an
+    /// answer that carried its wire's error ends in that error, whether or not its upstream cut it
+    /// afterwards (`llm-gateway.telemetry.CallEnding`).
     pub(crate) fn note_terminal_error(&mut self, scanner: &UsageScanner) {
         if scanner.terminal_error() {
-            self.unfinished.get_or_insert(Unfinished::TerminalError);
+            self.unfinished = Some(Unfinished::TerminalError);
         }
     }
 
@@ -2067,8 +2069,8 @@ impl Call {
     }
 
     /// Tells the copy, when there is one, that an answer head was written to the client with
-    /// `content_type`; `encoded` says the body carries a content coding.
-    pub(crate) fn copy_head(&mut self, content_type: Option<&str>, encoded: bool) {
+    /// `content_type`; `coding` names the body's content coding when it carries one.
+    pub(crate) fn copy_head(&mut self, content_type: Option<&str>, coding: Option<&str>) {
         if let Some(tap) = &mut self.tap {
             let events = content_type.is_some_and(|value| {
                 value
@@ -2076,7 +2078,7 @@ impl Call {
                     .next()
                     .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("text/event-stream"))
             });
-            tap.head(events && !encoded);
+            tap.head(events, coding);
         }
     }
 
@@ -2084,6 +2086,14 @@ impl Call {
     pub(crate) fn copy_answer(&mut self, bytes: &[u8]) {
         if let Some(tap) = &mut self.tap {
             tap.answer(bytes);
+        }
+    }
+
+    /// Hands the copy, when there is one, what the relay's decoder made of an answer with a
+    /// content coding (story:finished-call-facts, decision D92).
+    pub(crate) fn copy_decoded(&mut self, decoded: Option<&Decoded>) {
+        if let Some(tap) = &mut self.tap {
+            tap.decoded(decoded);
         }
     }
 
@@ -2315,7 +2325,7 @@ impl TranslatedAnswer for ClientAnswer<'_> {
         );
         let there = self.write(head.as_bytes());
         if there {
-            self.call.copy_head(shown, false);
+            self.call.copy_head(shown, None);
         }
         there
     }
@@ -3063,7 +3073,7 @@ fn relay_pieces(
         call.client_disconnected = true;
         return written;
     }
-    call.copy_head(head.content_type.as_deref(), false);
+    call.copy_head(head.content_type.as_deref(), None);
     loop {
         match next_piece(input, &mut head.framing, limits.line_bytes) {
             Ok(Some(piece)) => {

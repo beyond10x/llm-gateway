@@ -18,7 +18,7 @@ export default defineConfig({
   },
   projects: [
     { name: 'measure-gate', testMatch: 'measure-gate.e2e.ts' },
-    { name: 'gate', testMatch: 'gates.e2e.ts', dependencies: ['measure-gate'] },
+    { name: 'gate', testMatch: ['gates.e2e.ts', 'r03.e2e.ts'], dependencies: ['measure-gate'] },
     { name: 'measure-round', testMatch: 'measure-round.e2e.ts' },
     { name: 'round', testMatch: 'round-report.e2e.ts', dependencies: ['measure-round'] },
   ],

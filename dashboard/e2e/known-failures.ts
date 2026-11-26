@@ -5,7 +5,8 @@
 // lines here. `viewports` limits an entry to those viewports.
 // An entry without items holds a whole single-valued check (the token-flow canvas): its test is
 // marked `test.fail` and fails once the check passes.
-export type Check = 'overflow' | 'truncation' | 'header' | 'axe' | 'keyboard' | 'reduced-motion' | 'key-data' | 'flow';
+// A copy item is `<kind> <place>` (e2e/copy.ts); a key-data item is `<class> <px>px <element>`.
+export type Check = 'overflow' | 'truncation' | 'header' | 'axe' | 'keyboard' | 'reduced-motion' | 'key-data' | 'copy' | 'flow';
 
 export interface KnownFailure {
   finding: string;
@@ -15,7 +16,24 @@ export interface KnownFailure {
   items?: string[];
 }
 
-export const KNOWN_FAILURES: KnownFailure[] = [];
+const ALL = ['idle', 'busy', 'token-flow', 'errors', 'offline'];
+
+export const KNOWN_FAILURES: KnownFailure[] = [
+  // Words run together where the renderer drops the space before a second line or between tags.
+  { finding: 'UXF-016', check: 'copy', scenarios: ALL, items: ['run-together #h-kpi div.tile div.sub'] },
+  { finding: 'UXF-016', check: 'copy', scenarios: ['busy', 'errors', 'token-flow', 'offline'], items: ['run-together #h-sessions th.col-session'] },
+  { finding: 'UXF-016', check: 'copy', scenarios: ['busy', 'errors', 'token-flow'], items: ['run-together #h-kpi th', 'run-together #h-routes td.col-cache'] },
+  { finding: 'UXF-016', check: 'copy', scenarios: ['busy', 'errors'], items: ['run-together #h-inflight td.col-state span.pill'] },
+  { finding: 'UXF-016', check: 'copy', scenarios: ['busy'], items: ['run-together #h-calls td.col-flags span.flag'] },
+  // A limit card named by a hash, raw header names as labels, the attempts button named "▸ 2".
+  { finding: 'UXF-010', check: 'copy', scenarios: ['busy', 'errors'], items: ['hex-title #h-kpi h3 span.mono', 'glyph-control #h-calls button.expand'] },
+  { finding: 'UXF-010', check: 'copy', scenarios: ['busy'], items: ['header-name #h-kpi dt.mono'] },
+  // Raw header values shown as words ("five_hour", "out_of_credits"): a second vocabulary.
+  { finding: 'UXF-011', check: 'copy', scenarios: ['busy', 'errors'], items: ['snake-value #h-kpi div.tile div.value', 'snake-value #h-kpi div.tile div.sub'] },
+  // Section headings at 13.3 px and limit card titles at 12.6 px, under the 14 px heading floor.
+  { finding: 'UXF-021', check: 'key-data', scenarios: ALL, items: ['heading 13.3px h2'] },
+  { finding: 'UXF-021', check: 'key-data', scenarios: ['busy', 'errors'], items: ['heading 12.6px h3', 'heading 12.6px span.mono'] },
+];
 
 function applies(k: KnownFailure, check: Check, scenario: string, viewport?: string): boolean {
   return k.check === check && (!k.scenarios || k.scenarios.includes(scenario)) && (!k.viewports || viewport === undefined || k.viewports.includes(viewport));

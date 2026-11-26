@@ -1,18 +1,19 @@
-// The hard gates (1, 2 and 5 of the loop) on every scenario at the gating viewports in both
-// themes, gate 2 also at the measured-only viewports, key data, the token-flow canvas in every
-// scenario with active sessions, the replay's own soundness, the theme toggle, and the ratchet
-// against ux/baseline.json. Reads what measure-gate wrote; the theme toggle drives a page itself.
+// The hard gates (1, 2, 4 and 5 of the loop) on every scenario at the gating viewports in both
+// themes, gate 2 also at the measured-only viewports, key data, the visible text (copy), the
+// token-flow canvas in every scenario with active sessions, the replay's own soundness and its
+// connection status, the theme toggle, and the ratchet against ux/baseline.json. Reads what
+// measure-gate wrote; the theme toggle drives a page itself.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 import { activeSessions } from '../src/flow.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
-import { aggregate, compare, describeProblem, type Baseline } from '../ux/ratchet.ts';
+import { aggregate, compare, describeProblem, measuredOnlyAggregate, mergeAggregates, type Baseline } from '../ux/ratchet.ts';
 import { openReplay, themeToggleProblems } from './harness.ts';
 import { stale, unexpected, wholeCheck, type Check } from './known-failures.ts';
 import { headersDir, type HeaderMeasurement, type Measurement } from './measure.ts';
-import { axeItems, flowProblems } from './metrics.ts';
+import { axeItems, expectedFetches, flowProblems, keyDataItems, screenOnlyProblems, statusProblems } from './metrics.ts';
 import { metricsDir, readMeasurements } from './metrics-dir.ts';
 import { GATING, MEASURED_ONLY, THEMES, type Theme } from './profiles.ts';
 
@@ -51,7 +52,8 @@ function itemsOf(m: Measurement): Record<Itemised, string[]> {
     axe: axeItems(m.details.axe),
     keyboard: [...m.details.unreachable.map((u) => `unreachable: ${u}`), ...m.details.focus_invisible.map((f) => `focus invisible: ${f}`)],
     'reduced-motion': m.details.reduced_motion,
-    'key-data': [...m.details.key_font_below.map((k) => `key ${k}`), ...m.details.secondary_font_below.map((k) => `secondary ${k}`)],
+    'key-data': keyDataItems(m),
+    copy: m.details.copy.map((c) => c.key),
   };
 }
 
@@ -91,9 +93,23 @@ for (const scenario of SCENARIOS) {
         expect(unexpected('reduced-motion', scenario.name, items()['reduced-motion'], undefined, viewport.name)).toEqual([]);
       });
 
-      test(`key data: key values are 14 px or more and secondary text 12 px or more at every state — ${at}`, () => {
+      test(`key data: key text is found, key values and headings are 14 px or more and every other text 12 px or more at every state — ${at}`, () => {
         expect(unexpected('key-data', scenario.name, items()['key-data'], undefined, viewport.name)).toEqual([]);
       });
+
+      test(`copy: no words run together, no raw identifier as a label, no control named by a glyph, at every state — ${at}`, () => {
+        const m = load(scenario.name, viewport.name, theme);
+        const label = new Map(m.details.copy.map((c) => [c.key, c.label]));
+        expect(unexpected('copy', scenario.name, items().copy, undefined, viewport.name).map((k) => `${k} (${label.get(k)})`)).toEqual([]);
+      });
+
+      if (theme === 'light' && (scenario.truth?.failing_route || scenario.truth?.watchdog)) {
+        test(`gate 4: the screen-only user reaches the truth of every task — ${scenario.name} ${viewport.name}`, () => {
+          const m = load(scenario.name, viewport.name, theme);
+          expect(m.screen_only.map((r) => r.task).sort()).toEqual([...(scenario.truth?.failing_route ? ['failing-route'] : []), ...(scenario.truth?.watchdog ? ['watchdog'] : [])].sort());
+          expect(screenOnlyProblems(m.screen_only)).toEqual([]);
+        });
+      }
 
       if (sessions) {
         test(`flow: the token-flow canvas is drawn, also under reduced motion, and at least 95 % in view and uncovered — ${at}`, () => {
@@ -127,18 +143,20 @@ for (const scenario of SCENARIOS) {
       }
       for (const items of Object.values(loadHeaders(scenario.name, theme).viewports)) add('header', hiddenHeader(items));
     }
-    const checks: Itemised[] = ['overflow', 'truncation', 'header', 'axe', 'keyboard', 'reduced-motion', 'key-data'];
+    const checks: Itemised[] = ['overflow', 'truncation', 'header', 'axe', 'keyboard', 'reduced-motion', 'key-data', 'copy'];
     expect(checks.flatMap((c) => stale(c, scenario.name, seen[c] ?? new Set()))).toEqual([]);
   });
 
-  test(`replay: nothing left the browser, one snapshot fetch, and the stream read live at every state — ${scenario.name}`, () => {
+  const actions = scenario.actions ?? [];
+  const lost = actions.includes('lose-connection');
+  test(`replay: nothing left the browser, one snapshot fetch${lost ? ' and one failed poll' : ''}, and the stream read live at every state${lost ? ', and the status names the lost connection in words after it' : ''} — ${scenario.name}`, () => {
     for (const viewport of GATING) {
       for (const theme of THEMES) {
         const m = load(scenario.name, viewport.name, theme);
         const at = `${viewport.name} ${theme}`;
         expect.soft(m.blocked, `${at}: requests aborted`).toEqual([]);
-        expect.soft(m.snapshot_fetches, `${at}: snapshot fetches`).toBe(1);
-        expect.soft(m.status.filter((s) => s !== 'live'), `${at}: status other than live`).toEqual([]);
+        expect.soft(m.snapshot_fetches, `${at}: snapshot fetches`).toBe(expectedFetches(actions));
+        expect.soft(statusProblems(m.status, m.states, actions, scenario.truth?.connection?.state), `${at}: connection status`).toEqual([]);
         expect(m.theme_applied, `${at}: the emulated scheme shows its palette`).toBe(true);
       }
     }
@@ -157,7 +175,10 @@ for (const theme of THEMES) {
 
 test('ratchet: no metric is worse than ux/baseline.json, and every improvement is taken into it', () => {
   const baseline = JSON.parse(readFileSync(BASELINE, 'utf8')) as Baseline;
-  const measured = aggregate(readMeasurements(metricsDir('gate')));
+  const rows = SCENARIOS.flatMap((s) =>
+    THEMES.flatMap((t) => Object.entries(loadHeaders(s.name, t).scrollers).map(([viewport, list]) => ({ scenario: s.name, viewport, scrollers: list.length }))),
+  );
+  const measured = mergeAggregates(aggregate(readMeasurements(metricsDir('gate'))), measuredOnlyAggregate(rows));
   expect(Object.keys(measured).sort()).toEqual(SCENARIOS.map((s) => s.name).sort());
   expect(compare(baseline, measured).map(describeProblem)).toEqual([]);
 });

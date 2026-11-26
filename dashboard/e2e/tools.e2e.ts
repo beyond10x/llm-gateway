@@ -2,11 +2,13 @@
 // one way and asserts the tool reports it, so a gate that passes is not passing by construction.
 import { expect, test, type Page } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
+import { copyProbe } from './copy.ts';
 import { fontMode, MONO_FAMILY } from './fonts.ts';
 import { openReplay, themeToggleProblems } from './harness.ts';
 import { reducedMotionReplay } from './measure.ts';
-import { flowProblems } from './metrics.ts';
-import { canvasPixels, flowProbe, focusStep, headerProbe } from './probe.ts';
+import { flowProblems, keyDataItems } from './metrics.ts';
+import { canvasPixels, flowProbe, focusStep, headerProbe, keyDataProbe, layoutProbe } from './probe.ts';
+import { playTask, type ScreenTask } from './screen-only.ts';
 
 const scenario = (name: string) => SCENARIOS.find((s) => s.name === name)!;
 
@@ -264,5 +266,125 @@ test.describe('replay', () => {
     expect(replay.blocked).toEqual([]);
     await page.evaluate(() => (window as unknown as { __uxStream: { fail(): void } }).__uxStream.fail());
     await expect.poll(() => replay.status()).not.toBe('live');
+  });
+});
+
+// One page with every kind of copy defect once, and the forms the probe must leave alone: a space,
+// a block boundary, generated content, a raw value in a code element or a `.mono` cell, a title
+// attribute, a control with a word.
+const COPY_PAGE = `<!doctype html><html><head><style>
+  .b::before { content: ' · '; }
+  .card h3 { display: flex; gap: 6px; }
+</style></head><body><main>
+<section aria-labelledby="h-a"><h2 id="h-a">Overview</h2>
+  <div class="tile"><div class="label">Tokens in</div><div class="sub">1.88k tok/s<span class="muted">last 60 s</span></div></div>
+  <div class="tile"><div class="label">Tokens out</div><div class="sub">45 tok/s <span class="muted">last 60 s</span></div></div>
+  <div class="tile"><div class="label">five_hour</div><div class="value">five_<wbr>hour</div><div class="value" title="five_hour">Five hours</div></div>
+  <div class="card"><h3>Subscription limits <span class="mono">3fa9c1d2</span></h3>
+    <dl class="headers"><dt class="mono">anthropic-ratelimit-unified-status</dt><dd class="mono">allowed_warning</dd></dl></div>
+  <p><span>alpha</span><span class="b">beta</span> <span style="display:none">hidden_word</span><code>five_hour</code></p>
+  <div><div>gamma</div><div>delta</div></div>
+</section>
+<section aria-labelledby="h-b"><h2 id="h-b">Sessions</h2>
+  <table><tbody><tr><th class="col-session">claude-code<span class="mono">3f9a1c0e</span></th><td class="col-calls mono">anthropic-ratelimit-requests-limit</td><td>200</td></tr></tbody></table>
+  <button class="expand">▸ 2</button><button>▸ 2 attempts</button>
+</section></main></body></html>`;
+
+test.describe('visible text (copy)', () => {
+  test('break: each kind of copy defect is reported once, at a place without its text, and the allowed forms are not', async ({ page }) => {
+    await page.setContent(COPY_PAGE);
+    const items = (await page.evaluate(copyProbe)).map((i) => i.split(' | ')[0]).sort();
+    expect(items).toEqual([
+      'glyph-control #h-b button.expand',
+      'header-name #h-a dt.mono',
+      'hex-title #h-a h3 span.mono',
+      'run-together #h-a div.tile div.sub',
+      'run-together #h-b th.col-session',
+      'snake-label #h-a div.tile div.label',
+      'snake-value #h-a div.tile div.value',
+    ]);
+  });
+
+  test('break: on the page, a space put back between the runs clears a run-together item', async ({ page }) => {
+    await openReplay(page, scenario('busy'), 'light');
+    const before = (await page.evaluate(copyProbe)).filter((i) => i.startsWith('run-together #h-kpi div.tile div.sub'));
+    expect(before.length, 'the Tokens tiles run "tok/s" into "last 60 s"').toBeGreaterThan(0);
+    await page.evaluate(() => document.querySelectorAll('.tile .sub .muted').forEach((m) => m.before(' ')));
+    expect((await page.evaluate(copyProbe)).filter((i) => i.startsWith('run-together #h-kpi div.tile div.sub'))).toEqual([]);
+  });
+});
+
+const FAILING: ScreenTask = { name: 'failing-route', follow: /error|fail/i, truth: [['claude-sonnet'], ['\\b429\\b']] };
+const SPACER = (px: number) => `<div style="height:${px}px"></div>`;
+
+async function play(page: Page, body: string, task: ScreenTask = FAILING) {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.setContent(`<!doctype html><html><body style="margin:0;font:14px sans-serif">${body}</body></html>`);
+  return playTask(page, task);
+}
+
+test.describe('screen-only user', () => {
+  test('break: the truth at the top costs no action and glance 1; in the lower half glance 2; below the fold scrolls and glance 3', async ({ page }) => {
+    expect(await play(page, `<p>claude-sonnet failed: 429 rate limited</p>${SPACER(3000)}`)).toMatchObject({ reached: true, actions: 0, looks: 1 });
+    expect(await play(page, `${SPACER(400)}<p>claude-sonnet failed: 429</p>${SPACER(3000)}`)).toMatchObject({ reached: true, actions: 0, looks: 2 });
+    expect(await play(page, `${SPACER(1500)}<p>claude-sonnet failed: 429</p>${SPACER(3000)}`)).toMatchObject({ reached: true, actions: 2, looks: 3, steps: ['look', 'scroll', 'look', 'scroll', 'look'] });
+  });
+
+  test('break: a visible link named for the task is one action; the same link covered is not used', async ({ page }) => {
+    const body = (cover: boolean) =>
+      `<p><a href="#calls">claude-sonnet: 4 errors</a></p>${cover ? '<div style="position:fixed;left:0;top:0;width:100%;height:80px;background:#fff"></div>' : ''}${SPACER(2000)}<section id="calls"><table><tr><td>claude-sonnet</td><td>429</td></tr></table></section>${SPACER(2000)}`;
+    const followed = await play(page, body(false));
+    expect(followed).toMatchObject({ reached: true, actions: 1, looks: 1 });
+    expect(followed.steps).toContain('click link claude-sonnet: 4 errors');
+    const covered = await play(page, body(true));
+    expect(covered.steps.some((s) => s.startsWith('click'))).toBe(false);
+    expect(covered).toMatchObject({ reached: true, looks: 3 });
+  });
+
+  test('break: a route and a cause in two different rows, or no truth at all, are not reached', async ({ page }) => {
+    const split = await play(page, `<table><tbody><tr><td>claude-sonnet</td><td>200</td></tr><tr><td>qwen-coder</td><td>429</td></tr></tbody></table>${SPACER(1000)}`);
+    expect(split).toMatchObject({ reached: false, looks: 3 });
+    expect(split.steps[split.steps.length - 1]).toBe('end of page');
+    expect(await play(page, `<p>all routes healthy</p>${SPACER(1000)}`)).toMatchObject({ reached: false });
+  });
+});
+
+test.describe('key data', () => {
+  test('break: a page with no key text is refused, a heading under 14 px and any other text under 12 px are reported', async ({ page }) => {
+    await page.setContent('<main><p>only a paragraph</p></main>');
+    const none = await page.evaluate(keyDataProbe);
+    expect(none.key).toBeNull();
+    expect(keyDataItems({ key_font_min_px: none.key?.px ?? null, details: { key_font_below: none.key_below, heading_font_below: none.heading_below, secondary_font_below: none.secondary_below } })).toContain('no key text');
+    await page.setContent(`<main><h2 style="font-size:13.3px">Routes</h2><div class="card"><h3 style="font-size:14px">Limits <span class="mono" style="font-size:12.6px">3fa9c1d2</span></h3></div>
+      <table><tbody><tr><td style="font-size:14px">qwen-coder</td></tr></tbody></table>
+      <button style="font-size:11px">Show all 40</button><dl class="headers"><dt style="font-size:11.5px">status</dt><dd style="font-size:14px">allowed</dd></dl></main>`);
+    const k = await page.evaluate(keyDataProbe);
+    expect(k.key?.px).toBe(14);
+    expect(k.heading_below).toEqual(['12.6px span.mono', '13.3px h2']);
+    expect(k.secondary_below).toEqual(['11.5px dt', '11px button']);
+  });
+});
+
+test.describe('truncation', () => {
+  test('break: route cells cut with an ellipsis and no title are reported; with their full text in a title they are not', async ({ page }) => {
+    await page.setViewportSize({ width: 1366, height: 768 });
+    await openReplay(page, scenario('busy'), 'light');
+    await page.addStyleTag({ content: 'td.col-route { max-width: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }' });
+    const cut = (await page.evaluate(layoutProbe)).truncated.filter((t) => t.includes('td.col-route'));
+    expect(cut.length).toBeGreaterThan(0);
+    await page.evaluate(() => document.querySelectorAll('td.col-route').forEach((td) => td.setAttribute('title', (td.textContent ?? '').trim())));
+    expect((await page.evaluate(layoutProbe)).truncated.filter((t) => t.includes('td.col-route'))).toEqual([]);
+  });
+});
+
+test.describe('connection loss', () => {
+  test('break: the offline replay reads live until the stream errors, then offline in words, with one failed poll', async ({ page }) => {
+    const replay = await openReplay(page, scenario('offline'), 'light');
+    while (replay.index + 1 < replay.states.length) await replay.advance();
+    expect(await replay.status()).toBe('live');
+    await replay.act('lose-connection');
+    expect(await replay.status()).toMatch(/offline/i);
+    expect(replay.snapshotFetches).toBe(2);
+    expect(replay.blocked).toEqual([]);
   });
 });

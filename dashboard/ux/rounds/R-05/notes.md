@@ -4,6 +4,14 @@ R-05 measures the page that the ess-ui renderer draws from `ui/llm-gateway.ui.ya
 hand-written App.vue and Kpis.vue. The base branch's pinned fonts and Recent calls wrapping are
 merged in. R-04 measured the hand-written page with the host's fonts.
 
+Not like for like: the R-04 column below differs from R-05 in three things at once: the page (the
+renderer), the fonts (host against pinned) and the Recent calls wrapping. Read the renderer's own
+effect from the same-font comparison in review-report.md § 1: the page the baseline was taken on,
+measured with the pinned fonts and the wrapping, equals R-05 in every metric, and R-05's layout
+shift is lower or equal everywhere. The baseline at the time named that page by its sha256 and
+`076c9fb9+changes`, not a committed round; from R-06 a baseline is refused on a tree that differs
+from its commit, and it names the round and the commit it was taken on.
+
 ## Hard gates, gating viewports, light / dark
 
 | gate | R-04 | R-05 |

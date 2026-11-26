@@ -1,9 +1,13 @@
 {
-  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, measured on the built page with sha256 951512ba2fae (page commit 076c9fb9+changes). Lower is better, except flow.visible_ratio and flow.drawn, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
+  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, and the sideways scrollers at each measured-only viewport (overflow.scrollers.<viewport>, the worst over both themes). Re-taken by the harness at commit 73cd8ee7 on the built page of round R-05 with sha256 7c042a1eea54. Lower is better, except flow.visible_ratio, flow.drawn and screen_only.reached, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
   "scenarios": {
     "busy": {
       "axe.serious_critical": {
         "value": 0,
+        "tolerance": 0
+      },
+      "copy.defects": {
+        "value": 11,
         "tolerance": 0
       },
       "flow.drawn": {
@@ -16,6 +20,10 @@
       },
       "header.hidden_ratio": {
         "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 1.4,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -42,6 +50,18 @@
         "value": 0,
         "tolerance": 0
       },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 5,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 3,
+        "tolerance": 0
+      },
       "overflow.scrollers_unreachable": {
         "value": 0,
         "tolerance": 0
@@ -52,6 +72,18 @@
       },
       "reduced_motion.violations": {
         "value": 0,
+        "tolerance": 0
+      },
+      "screen_only.actions": {
+        "value": 4,
+        "tolerance": 0
+      },
+      "screen_only.looks": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "screen_only.reached": {
+        "value": 1,
         "tolerance": 0
       },
       "secondary_font.deficit_px": {
@@ -68,6 +100,10 @@
         "value": 0,
         "tolerance": 0
       },
+      "copy.defects": {
+        "value": 9,
+        "tolerance": 0
+      },
       "flow.drawn": {
         "value": 1,
         "tolerance": 0
@@ -78,6 +114,10 @@
       },
       "header.hidden_ratio": {
         "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 1.4,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -93,7 +133,7 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.007,
+        "value": 0.006,
         "tolerance": 0.002
       },
       "overflow.elements": {
@@ -101,6 +141,112 @@
         "tolerance": 0
       },
       "overflow.scrollers": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 5,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "overflow.scrollers_unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.x_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "screen_only.actions": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "screen_only.looks": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "screen_only.reached": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "truncation.without_full_value": {
+        "value": 0,
+        "tolerance": 0
+      }
+    },
+    "idle": {
+      "axe.serious_critical": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "copy.defects": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.drawn": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "header.hidden_ratio": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0.7,
+        "tolerance": 0
+      },
+      "key_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.focus_invisible": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout_shift.per_state_max": {
+        "value": 0,
+        "tolerance": 0.002
+      },
+      "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
         "value": 0,
         "tolerance": 0
       },
@@ -125,13 +271,17 @@
         "tolerance": 0
       }
     },
-    "idle": {
+    "offline": {
       "axe.serious_critical": {
         "value": 0,
         "tolerance": 0
       },
+      "copy.defects": {
+        "value": 2,
+        "tolerance": 0
+      },
       "flow.drawn": {
-        "value": 0,
+        "value": 1,
         "tolerance": 0
       },
       "flow.visible_ratio": {
@@ -140,6 +290,10 @@
       },
       "header.hidden_ratio": {
         "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0.7,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -155,8 +309,8 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0,
-        "tolerance": 0.002
+        "value": 0.024,
+        "tolerance": 0.0024
       },
       "overflow.elements": {
         "value": 0,
@@ -164,6 +318,18 @@
       },
       "overflow.scrollers": {
         "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 4,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 1,
         "tolerance": 0
       },
       "overflow.scrollers_unreachable": {
@@ -192,6 +358,10 @@
         "value": 0,
         "tolerance": 0
       },
+      "copy.defects": {
+        "value": 4,
+        "tolerance": 0
+      },
       "flow.drawn": {
         "value": 1,
         "tolerance": 0
@@ -202,6 +372,10 @@
       },
       "header.hidden_ratio": {
         "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0.7,
         "tolerance": 0
       },
       "key_font.deficit_px": {
@@ -217,8 +391,8 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.043,
-        "tolerance": 0.0043
+        "value": 0.039,
+        "tolerance": 0.0039
       },
       "overflow.elements": {
         "value": 0,
@@ -226,6 +400,18 @@
       },
       "overflow.scrollers": {
         "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 4,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 2,
         "tolerance": 0
       },
       "overflow.scrollers_unreachable": {

@@ -9,11 +9,12 @@ import type { Scenario } from '../ux/scenarios/index.ts';
 import { runAxe } from './axe.ts';
 import { fontsLabel } from './fonts.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
-import { axeRules, keyFontDeficit, mergeAxe, secondaryFontDeficit, type AxeFinding, type Metrics } from './metrics.ts';
+import { axeRules, headingFontDeficit, keyFontDeficit, mergeAxe, secondaryFontDeficit, type AxeFinding, type Metrics } from './metrics.ts';
 import { runId } from './metrics-dir.ts';
 import {
   ALWAYS_ATTR,
   canvasPixels,
+  layoutProbe,
   flowProbe,
   focusStep,
   headerProbeSource,
@@ -26,6 +27,7 @@ import {
   type StateProbe,
 } from './probe.ts';
 import { AXE_TAGS, type Theme, type Viewport } from './profiles.ts';
+import { screenOnly, type TaskResult } from './screen-only.ts';
 
 export { METRIC_KEYS, type AxeFinding, type Metrics } from './metrics.ts';
 
@@ -51,11 +53,13 @@ export interface Measurement {
   // null when the page shows no key data (no secondary text).
   key_font_min_px: number | null;
   key_font_at: string;
+  heading_font_min_px: number | null;
+  heading_font_at: string;
   secondary_font_min_px: number | null;
   secondary_font_at: string;
   header_min_visible_ratio: number;
   shifts: number[];
-  // The connection status text at every state.
+  // The connection status text at every state, then after every action.
   status: string[];
   snapshot_fetches: number;
   blocked_requests: number;
@@ -64,6 +68,9 @@ export interface Measurement {
   // reduced-motion replay.
   flow: FlowProbe;
   reduced_flow: FlowProbe;
+  // The screen-only user's tasks (e2e/screen-only.ts), played in the light theme only (the layout
+  // does not depend on the theme); empty in the dark theme and for a scenario without a task.
+  screen_only: TaskResult[];
   // The fonts the replay rendered with (e2e/fonts.ts).
   tools: { chromium: string; axe_core: string; fonts: string };
   details: {
@@ -77,7 +84,10 @@ export interface Measurement {
     focus_invisible: string[];
     reduced_motion: string[];
     key_font_below: string[];
+    heading_font_below: string[];
     secondary_font_below: string[];
+    // The visible-text probe's items over every state and action (e2e/copy.ts).
+    copy: Item[];
   };
 }
 
@@ -88,6 +98,8 @@ export interface HeaderMeasurement {
   scenario: string;
   theme: Theme;
   viewports: Record<string, HeaderItem[]>;
+  // The elements that scroll sideways at each viewport, over every state and action.
+  scrollers: Record<string, Item[]>;
 }
 
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
@@ -168,13 +180,17 @@ async function keyboardWalk(page: Page): Promise<{ unreachable: string[]; invisi
   return { unreachable, invisible: [...invisible], scrollersUnreachable };
 }
 
-export async function measure(browser: Browser, scenario: Scenario, viewport: Viewport, theme: Theme, shotPath?: string): Promise<Measurement> {
+// `shots.last`: the viewport at the last state, 0.75 s after it arrived; `shots.full`: the whole page
+// after the last action.
+export async function measure(browser: Browser, scenario: Scenario, viewport: Viewport, theme: Theme, shots: { last?: string; full?: string } = {}): Promise<Measurement> {
   const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, timezoneId: 'UTC', locale: 'en-GB' });
   const page = await context.newPage();
   try {
     // The reduced-motion replay runs in a context of its own beside this one; it mostly waits.
     const reducedMotionRun = reducedMotion(browser, scenario, viewport, theme);
     reducedMotionRun.catch(() => undefined);
+    const screenOnlyRun = theme === 'light' ? screenOnly(browser, scenario, viewport, theme) : Promise.resolve([]);
+    screenOnlyRun.catch(() => undefined);
     const replay = await openReplay(page, scenario, theme);
     await markAlways(page, replay);
 
@@ -182,6 +198,7 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     const overflowing = new Map<string, string>();
     const scrollers = new Map<string, string>();
     const truncated = new Map<string, string>();
+    const copy = new Map<string, string>();
     const keep = (into: Map<string, string>) => (entry: string) => {
       const [key, label = entry] = entry.split(' | ');
       if (!into.has(key!)) into.set(key!, label);
@@ -189,6 +206,8 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     const header = new Map<string, number>();
     let overflowPx = 0;
     let keyFont: FontItem | null = null;
+    let headingFont: FontItem | null = null;
+    const headingBelow = new Set<string>();
     let secondaryFont: FontItem | null = null;
     const keyBelow = new Set<string>();
     const secondaryBelow = new Set<string>();
@@ -209,6 +228,9 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       }
       const k = state.key_data;
       if (k.key && (!keyFont || k.key.px < keyFont.px)) keyFont = k.key;
+      if (k.heading && (!headingFont || k.heading.px < headingFont.px)) headingFont = k.heading;
+      k.heading_below.forEach((x) => headingBelow.add(x));
+      state.copy.forEach(keep(copy));
       if (k.secondary && (!secondaryFont || k.secondary.px < secondaryFont.px)) secondaryFont = k.secondary;
       k.key_below.forEach((x) => keyBelow.add(x));
       k.secondary_below.forEach((x) => secondaryBelow.add(x));
@@ -235,19 +257,27 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     }
     await settle(page);
     const flow = await page.evaluate(flowProbe);
-    if (shotPath) {
+    if (shots.last) {
       await page.waitForTimeout(750);
-      mkdirSync(join(shotPath, '..'), { recursive: true });
-      await page.screenshot({ path: shotPath, animations: 'allow' });
+      mkdirSync(join(shots.last, '..'), { recursive: true });
+      await page.screenshot({ path: shots.last, animations: 'allow' });
     }
     for (const action of scenario.actions ?? []) {
       await replay.act(action);
       await page.mouse.move(0, 0);
+      status.push(await replay.status());
       await probe();
       await scan();
     }
+    if (shots.full) {
+      await page.evaluate(() => window.scrollTo(0, 0));
+      await settle(page);
+      mkdirSync(join(shots.full, '..'), { recursive: true });
+      await page.screenshot({ path: shots.full, fullPage: true, animations: 'allow' });
+    }
     const walk = await keyboardWalk(page);
     const motion = await reducedMotionRun;
+    const tasks = await screenOnlyRun;
 
     const headerItems = headerList(header);
     const headerMin = headerItems.length ? Math.min(...headerItems.map((h) => h.visible_ratio)) : 0;
@@ -255,6 +285,7 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     const fontOf = (f: FontItem | null) => (f ? round3(f.px) : null);
     const key = keyFont as FontItem | null;
     const secondary = secondaryFont as FontItem | null;
+    const heading = headingFont as FontItem | null;
     const items = (m: Map<string, string>): Item[] => [...m.entries()].map(([k, label]) => ({ key: k, label }));
     const metrics: Metrics = {
       'axe.serious_critical': axeList.reduce((a, f) => a + f.nodes, 0),
@@ -266,10 +297,12 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       'keyboard.unreachable': walk.unreachable.length,
       'keyboard.focus_invisible': walk.invisible.length,
       'key_font.deficit_px': keyFontDeficit(fontOf(key)),
+      'heading_font.deficit_px': headingFontDeficit(fontOf(heading)),
       'secondary_font.deficit_px': secondaryFontDeficit(fontOf(secondary)),
       'layout_shift.per_state_max': shifts.length ? Math.max(...shifts) : 0,
       'reduced_motion.violations': motion.violations.length,
       'truncation.without_full_value': truncated.size,
+      'copy.defects': copy.size,
     };
     return {
       run: runId(),
@@ -284,6 +317,8 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       axe_scans: axeScans,
       key_font_min_px: fontOf(key),
       key_font_at: key?.at ?? '',
+      heading_font_min_px: fontOf(heading),
+      heading_font_at: heading?.at ?? '',
       secondary_font_min_px: fontOf(secondary),
       secondary_font_at: secondary?.at ?? '',
       header_min_visible_ratio: headerMin,
@@ -294,6 +329,7 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       blocked: [...replay.blocked],
       flow,
       reduced_flow: motion.flow,
+      screen_only: tasks,
       tools: { chromium: browser.version(), axe_core: axeVersion, fonts: fontsLabel() },
       details: {
         axe: axeList,
@@ -306,7 +342,9 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
         focus_invisible: walk.invisible,
         reduced_motion: motion.violations,
         key_font_below: [...keyBelow].sort(),
+        heading_font_below: [...headingBelow].sort(),
         secondary_font_below: [...secondaryBelow].sort(),
+        copy: items(copy).sort((a, b) => a.key.localeCompare(b.key)),
       },
     };
   } finally {
@@ -364,11 +402,17 @@ export async function measureHeaders(browser: Browser, scenario: Scenario, theme
     const replay = await openReplay(page, scenario, theme);
     await markAlways(page, replay);
     const seen = new Map<string, Map<string, number>>(viewports.map((v) => [v.name, new Map()]));
+    const scrollers = new Map<string, Map<string, string>>(viewports.map((v) => [v.name, new Map()]));
     const probe = async () => {
       for (const v of viewports) {
         await page.setViewportSize({ width: v.width, height: v.height });
         await settle(page);
         keepHeader(seen.get(v.name)!, await page.evaluate<HeaderItem[]>(HEADER_PROBE));
+        const into = scrollers.get(v.name)!;
+        for (const entry of (await page.evaluate(layoutProbe)).scrollers) {
+          const [key, label = entry] = entry.split(' | ');
+          if (!into.has(key!)) into.set(key!, label);
+        }
       }
     };
     await probe();
@@ -381,7 +425,13 @@ export async function measureHeaders(browser: Browser, scenario: Scenario, theme
       await page.mouse.move(0, 0);
       await probe();
     }
-    return { run: runId(), scenario: scenario.name, theme, viewports: Object.fromEntries([...seen.entries()].map(([k, m]) => [k, headerList(m)])) };
+    return {
+      run: runId(),
+      scenario: scenario.name,
+      theme,
+      viewports: Object.fromEntries([...seen.entries()].map(([k, m]) => [k, headerList(m)])),
+      scrollers: Object.fromEntries([...scrollers.entries()].map(([k, m]) => [k, [...m.entries()].map(([key, label]) => ({ key, label }))])),
+    };
   } finally {
     await context.close();
   }

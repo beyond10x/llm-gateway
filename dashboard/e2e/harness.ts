@@ -26,8 +26,11 @@ export const INPUT_QUIET_MS = 600;
 export const REPLAY_METHOD = [
   'Hermetic: every snapshot comes from `ux/scenarios/`; the page is the built `dashboard.html` on a fake origin; every other request is aborted (`blocked` in round.json).',
   'The first state answers the one `dashboard/snapshot` fetch; every state then arrives as one `snapshot` event on a stand-in event stream that opened once and stays open, as the gateway serves it, so the connection status reads "live" and the page never polls.',
+  'A scenario that loses its connection (`offline`) ends with the stream erroring and every later snapshot fetch answering 503; the page\'s poll is held and run once by the harness, so the replay sees exactly one failed poll.',
   `Layout shift per state: the sum of layout-shift entries from the moment the state is pushed to two animation frames later. No state is pushed within ${INPUT_QUIET_MS} ms of a harness click or key press, since the browser leaves out shifts that soon after an input; the value does not depend on what ran before it (an axe scan, a wait).`,
   'axe-core scans every state of every replay and the page after every action; a rule counts the distinct nodes over all scans.',
+  'The visible-text probe (e2e/copy.ts) reads every text run at every state and after every action: words run together across elements, a raw identifier as a label, a control named by a glyph. The key-data probe floors every text outside the header: key data and headings at 14 px, the rest at 12 px.',
+  'The screen-only user (e2e/screen-only.ts) plays the tasks of a scenario with a `truth` (busy, errors) in the light theme at each gating viewport, on a replay of its own after the last state, with reduced motion.',
   `Fonts: ${fontsLabel()}. The pinned fonts are committed under \`e2e/fonts/\` and installed in every replay before the page's first script, so every host measures the same text widths (e2e/fonts.ts); "host" measures with the fonts the host has installed and is not the gate.`,
   'The token-flow canvas is measured at the last state, scrolled to the top: `flow.visible_ratio` is the share of a 32 x 16 grid over its box that lies in the viewport with nothing painted over it; `flow.drawn` is whether it holds pixels other than its background.',
 ].join('\n');
@@ -84,6 +87,23 @@ const FAKE_STREAM = `
   })();
 `;
 
+// Holds every interval of 2 s or more the page sets (its snapshot poll) instead of starting it, so
+// a replay that loses its connection runs the poll exactly once, when it chooses (__uxPolls).
+const HELD_POLLS = `
+  (() => {
+    const real = window.setInterval.bind(window);
+    const polls = [];
+    window.__uxPolls = polls;
+    window.setInterval = (fn, ms, ...args) => {
+      if (typeof fn === "function" && Number(ms) >= 2000) {
+        polls.push(() => fn(...args));
+        return real(() => undefined, 2 ** 30);
+      }
+      return real(fn, ms, ...args);
+    };
+  })();
+`;
+
 export interface Replay {
   page: Page;
   states: Snapshot[];
@@ -116,18 +136,23 @@ export async function openReplay(page: Page, scenario: Scenario, theme: Theme, o
   let index = 0;
   let snapshotFetches = 0;
   let lastInput = 0;
+  // After a lose-connection action every snapshot fetch answers 503.
+  let lost = false;
+  const losesConnection = (scenario.actions ?? []).includes('lose-connection');
 
   await page.emulateMedia({ colorScheme: theme, reducedMotion: opts.reducedMotion ? 'reduce' : 'no-preference' });
   await pinFonts(page);
   await page.addInitScript(OBSERVER);
   await page.addInitScript(FAKE_STREAM);
+  if (losesConnection) await page.addInitScript(HELD_POLLS);
   await page.route('**/*', async (route) => {
     const url = route.request().url();
     if (url === PAGE_URL) {
       await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: builtPage() });
     } else if (url === `${PAGE_URL}/snapshot`) {
       snapshotFetches += 1;
-      await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(states[index]) });
+      if (lost) await route.fulfill({ status: 503, contentType: 'text/plain', body: 'unavailable' });
+      else await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(states[index]) });
     } else {
       blocked.push(url);
       await route.abort('blockedbyclient');
@@ -164,7 +189,18 @@ export async function openReplay(page: Page, scenario: Scenario, theme: Theme, o
       await settle(page);
     },
     async act(action: Action) {
-      if (action === 'expand-first-attempts') {
+      if (action === 'lose-connection') {
+        lost = true;
+        await page.evaluate(() => (window as unknown as { __uxStream: { fail(): void } }).__uxStream.fail());
+        await settle(page);
+        const polls = await page.evaluate(async () => {
+          const held = (window as unknown as { __uxPolls?: (() => unknown)[] }).__uxPolls ?? [];
+          for (const poll of held) await poll();
+          return held.length;
+        });
+        if (polls === 0) throw new Error('the page started no poll after its stream failed');
+        await settle(page);
+      } else if (action === 'expand-first-attempts') {
         await replay.click(page.locator('button[aria-expanded="false"]').first());
       } else {
         await replay.click(page.getByRole('button', { name: /^Show all/ }));

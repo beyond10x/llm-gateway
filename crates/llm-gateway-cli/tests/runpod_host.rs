@@ -210,21 +210,38 @@ fn serve(mut connection: TcpStream, state: &Arc<Mutex<State>>) {
             &json!({"pods": pods, "pagination": {"hasNextPage": false, "nextCursor": null}}),
         )
     } else if line.starts_with("POST /v2/pods ") {
+        // Runpod REST API v2's `Pod`: answered `PROVISIONING`, listed `RUNNING` from then on.
         let body = seen.json();
         let mut held = state.lock().unwrap();
         held.created += 1;
-        let pod = json!({
+        let mut pod = json!({
             "id": format!("pod{}", held.created),
             "name": body["name"],
             "image": body["image"],
-            "desiredStatus": "RUNNING",
-            "costPerHr": 0.79,
-            "gpu": body["gpu"],
+            "args": "",
+            "disk": body["disk"],
+            "ports": body["ports"],
             "env": body["env"],
-            "machine": {"secureCloud": true, "gpuTypeId": body["gpu"]["id"]},
-            "lastStartedAt": "2026-11-26T08:00:00.000Z",
+            "registry": null,
+            "status": "RUNNING",
+            "actions": ["stop", "restart", "terminate"],
+            "mounts": {},
+            "gpu": {"id": body["gpu"]["id"], "count": body["gpu"]["count"], "vcpuCount": 16, "memory": 62},
+            "cloud": body["cloud"],
+            "dataCenterId": "EU-RO-1",
+            "cudaVersion": "12.8",
+            "ssh": {"proxy": null, "direct": null},
+            "template": null,
+            "cost": 0.79,
+            "locked": false,
+            "globalNetworking": {"enabled": false},
+            "runtime": null,
+            "createdAt": "2026-11-26T07:59:00Z",
+            "startedAt": "2026-11-26T08:00:00Z",
         });
         held.pods.push(pod.clone());
+        pod["status"] = json!("PROVISIONING");
+        pod["startedAt"] = Value::Null;
         json_answer(201, &pod)
     } else if let Some(id) = line
         .strip_prefix("DELETE /v2/pods/")
@@ -238,7 +255,22 @@ fn serve(mut connection: TcpStream, state: &Arc<Mutex<State>>) {
             &json!({"balanceAmount": 25.5, "billingMode": "PREPAID"}),
         )
     } else if line.starts_with("GET /v2/billing/pods") {
-        json_answer(200, &json!([]))
+        // The shape the live API answered on 2026-11-26: one record per pod per day.
+        json_answer(
+            200,
+            &json!({
+                "metadata": {
+                    "query": {"bucketSize": "day", "startTime": "2026-10-27T00:00:00Z", "endTime": "2026-11-27T00:00:00Z"},
+                    "recordCount": 1,
+                    "totals": {"cpuAmount": 0, "diskAmount": 0.0046, "gpuAmount": 1.29, "totalAmount": 1.295},
+                    "uniquePodCount": 1,
+                },
+                "records": [{
+                    "podId": "29ppsonrj1f9ot", "startTime": "2026-10-30T00:00:00Z", "endTime": "2026-10-31T00:00:00Z",
+                    "cpuAmount": 0, "diskAmount": 0.0046, "gpuAmount": 1.29, "totalAmount": 1.295,
+                }],
+            }),
+        )
     } else if line.starts_with("POST /graphql ") {
         json_answer(
             200,
@@ -631,6 +663,36 @@ fn runpod_host_a_call_without_stream_reaches_the_proxy_streamed_and_is_answered_
             "no gap past the idle bound: {written:?}"
         );
     }
+}
+
+/// A provider with spend ceilings reads the account's spend from `GET /v2/billing/pods` in the
+/// shape Runpod answers it (an object holding `records`), and a wake within both ceilings is
+/// admitted and creates the pod; an unread spend would refuse it `spend-ceiling`.
+#[test]
+fn runpod_host_a_wake_under_a_spend_ceiling_reads_the_v2_pod_billing_and_starts_the_pod() {
+    keychain();
+    let fake = Fake::start();
+    let pods = Pods::new(&fake, vec![".pods.fake.test"]);
+    let text = document(&format!(
+        "{}daily_cap_usd = 10.0\ntotal_cap_usd = 100.0\n",
+        both_at(&fake)
+    )) + "price_per_hour_usd = 0.79\n";
+    let deployment = parse(&text).unwrap();
+    let relaying = start_connected(&deployment, |transport| transport, pods).unwrap();
+    let wake = send(relaying.local_addr(), "POST", "/v1/models/small/wake", "");
+    relaying.shutdown();
+    assert!(wake.starts_with("HTTP/1.1 202 "), "{wake}");
+    let lines = fake.lines();
+    assert!(
+        lines
+            .iter()
+            .any(|line| line == "GET /v2/billing/pods?bucketSize=day HTTP/1.1"),
+        "{lines:?}"
+    );
+    assert!(
+        lines.iter().any(|line| line == "POST /v2/pods HTTP/1.1"),
+        "{lines:?}"
+    );
 }
 
 /// Acceptance 9 on the messages wire: the body is the non-streamed message of the events.

@@ -2,7 +2,7 @@
 // built page through the hermetic replay.
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
-import { openReplay, type Replay } from './harness.ts';
+import { openReplay, settle, type Replay } from './harness.ts';
 import { HEADING_FONT_PX, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
 import { stripLines } from './r06-problems.ts';
 
@@ -136,4 +136,29 @@ test.describe('UXF-018', () => {
       }
     }
   });
+});
+
+// The tiles of the Overview record (the four token and cache tiles and the provider's balance)
+// stand on one row at the gating viewports.
+test.describe('UXF-020', () => {
+  for (const name of ['busy', 'errors']) {
+    test(`the Overview tiles, Provider balance included, share one row at 1280x720 and 1366x768 — ${name}`, async ({ browser }) => {
+      const { page } = await replayed(browser, name, viewport('1280x720'));
+      try {
+        for (const v of [viewport('1280x720'), viewport('1366x768')]) {
+          await page.setViewportSize({ width: v.width, height: v.height });
+          await settle(page);
+          const tiles = await page.locator('section[aria-labelledby="h-kpi"] > .tiles > .tile').evaluateAll((els) =>
+            els.map((el) => ({ label: (el.querySelector('.label')?.textContent ?? '').trim(), top: Math.round(el.getBoundingClientRect().top) })),
+          );
+          expect(tiles.map((t) => t.label), `${name} ${v.name}: the Overview tiles`).toContain('Provider balance');
+          expect(tiles.length, `${name} ${v.name}`).toBe(5);
+          const rows = new Set(tiles.map((t) => t.top));
+          expect(rows.size, `${name} ${v.name}: rows of tiles ${JSON.stringify(tiles)}`).toBe(1);
+        }
+      } finally {
+        await page.context().close();
+      }
+    });
+  }
 });

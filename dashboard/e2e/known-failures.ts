@@ -15,7 +15,7 @@ export interface KnownFailure {
   items?: string[];
 }
 
-export const KNOWN_FAILURES: KnownFailure[] = [{ finding: 'UXF-015', check: 'header', viewports: ['390x844'], items: ['theme toggle'] }];
+export const KNOWN_FAILURES: KnownFailure[] = [];
 
 function applies(k: KnownFailure, check: Check, scenario: string, viewport?: string): boolean {
   return k.check === check && (!k.scenarios || k.scenarios.includes(scenario)) && (!k.viewports || viewport === undefined || k.viewports.includes(viewport));

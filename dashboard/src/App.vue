@@ -124,7 +124,13 @@ function yesNo(v: boolean | null): string {
         <div><dt>Other pods</dt><dd>{{ snap.provider.other_pods }}</dd></div>
         <div :class="{ alarm: watchdogStale }">
           <dt>Watchdog heartbeat</dt>
-          <dd>{{ snap.provider.watchdog_heartbeat_age_ms === null ? 'none' : span(snap.provider.watchdog_heartbeat_age_ms) + ' ago' }}</dd>
+          <dd>
+            {{ snap.provider.watchdog_heartbeat_age_ms === null ? 'none' : span(snap.provider.watchdog_heartbeat_age_ms) + ' ago' }}<span
+              v-if="watchdogStale && snap.provider.watchdog_heartbeat_age_ms !== null"
+              class="stale"
+              :title="`no heartbeat for over ${WATCHDOG_STALE_MS / 60_000} min: pods may not be stopped on schedule`"
+            > · stale (over {{ WATCHDOG_STALE_MS / 60_000 }} min)</span>
+          </dd>
         </div>
         <div><dt>Read</dt><dd>{{ ago(now, snap.provider.read_ms) }}</dd></div>
       </dl>

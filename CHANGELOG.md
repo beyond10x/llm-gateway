@@ -16,6 +16,7 @@ Nothing in any release is deployed or qualified against a live client.
 ### Changed
 
 - The dashboard's subscription limit tiles wrap a value only between words or after an underscore, never inside a word; the status `allowed_warning` reads "allowed (warning)", and every status, overage, claim and overage reason keeps its raw header value in its tooltip.
+- The dashboard says a watchdog heartbeat older than 5 minutes is stale in words beside its age ("11m 0s ago · stale (over 5 min)"), not in red alone.
 
 ## 0.25.0 (2026-11-26)
 

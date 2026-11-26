@@ -131,6 +131,7 @@ h2 { margin: 0 0 0.6rem; font-size: 0.95rem; }
 .stats dt { color: var(--muted); font-size: 0.875rem; }
 .stats dd { margin: 0; font-size: 1.15rem; font-variant-numeric: tabular-nums; font-weight: 600; }
 .stats .alarm dd, .stats .alarm dt { color: var(--bad); }
+.stats .stale { font-weight: normal; }
 
 .scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }

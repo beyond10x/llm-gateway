@@ -12,6 +12,7 @@ const viewport = (name: string) => {
   const v = VIEWPORTS.find((x) => x.name === name)!;
   return { width: v.width, height: v.height };
 };
+const GATING = ['1366x768', '1280x720'];
 
 async function freshPage(browser: Browser, vp: string): Promise<Page> {
   const context = await browser.newContext({ viewport: viewport(vp), timezoneId: 'UTC', locale: 'en-GB' });
@@ -112,6 +113,35 @@ test.describe('UXF-003', () => {
         }
       });
       expect([...found]).toEqual([]);
+    });
+  }
+});
+
+test.describe('UXF-007', () => {
+  for (const name of SCENARIOS.map((s) => s.name)) {
+    test(`every Routes column is in view without scrolling at 1366x768 and 1280x720 — ${name}`, async ({ page }) => {
+      const replay = await openReplay(page, scenario(name), 'light');
+      const cut = new Set<string>();
+      await eachState(replay, async () => {
+        for (const vp of GATING) {
+          await page.setViewportSize(viewport(vp));
+          await settle(page);
+          const r = await page.evaluate(() => {
+            const table = document.querySelector('#h-routes')?.closest('section')?.querySelector('table');
+            const region = table?.parentElement;
+            if (!table || !region) return { missing: true, cut: [] as string[], scrolls: false };
+            const box = region.getBoundingClientRect();
+            const cut = [...table.querySelectorAll('thead th')]
+              .filter((th) => th.getBoundingClientRect().right > box.right + 1)
+              .map((th) => (th.textContent ?? '').trim());
+            return { missing: false, cut, scrolls: region.scrollWidth > region.clientWidth + 1 };
+          });
+          expect(r.missing, 'routes table').toBe(false);
+          for (const c of r.cut) cut.add(`${vp}: ${c}`);
+          if (r.scrolls) cut.add(`${vp}: the region scrolls`);
+        }
+      });
+      expect([...cut]).toEqual([]);
     });
   }
 });

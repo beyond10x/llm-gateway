@@ -1084,12 +1084,8 @@ where
     F: FnOnce(ConnectorsRunpod) -> W,
 {
     let parts = Parts::read(deployment, &pods)?;
-    if let Some((provider, reference)) = deployment
-        .providers
-        .iter()
-        .find_map(|(name, provider)| Some((name, provider.api_key.clone()?)))
-    {
-        return start_rest(deployment, parts, provider, &reference, pods);
+    if let Some((provider, key)) = crate::account::keyed_provider(deployment) {
+        return start_rest(deployment, parts, provider, key, pods);
     }
     let connected = deployment
         .providers
@@ -1148,17 +1144,19 @@ where
 }
 
 /// The composition for a provider that names its Runpod API key by a keychain entry
-/// (story:keychain-references): the key is read once from the OS keychain, and the provider's
-/// models run through one `RunpodPool` over `RestRunpod`, which calls Runpod's REST API itself
-/// over the pod connector's TLS. When one complete pod listing cannot be read at start, no pool
-/// is composed and its models are `target-unavailable`, as for an unreachable `connectors`
-/// connection. A key the keychain does not yield refuses the start with an
-/// `endpoint-credential:*` refusal naming `providers.<name>.api_key`.
+/// (story:keychain-references) or a file (story:runpod-key-file): the key is read once, from the
+/// OS keychain or through the trusted-file reader, before any request is sent, and the
+/// provider's models run through one `RunpodPool` over `RestRunpod`, which calls Runpod's REST
+/// API itself over the pod connector's TLS. When one complete pod listing cannot be read at
+/// start, no pool is composed and its models are `target-unavailable`, as for an unreachable
+/// `connectors` connection. A key that cannot be read refuses the start with an
+/// `endpoint-credential:*` refusal naming `providers.<name>.api_key` or
+/// `providers.<name>.api_key_file`.
 fn start_rest(
     deployment: &Deployment,
     parts: Parts,
     provider: &str,
-    reference: &crate::keychain::KeychainRef,
+    where_key: crate::account::ProviderKey<'_>,
     pods: Arc<dyn PodConnector>,
 ) -> Result<Relaying, Refusal> {
     let mut subset = deployment.clone();
@@ -1172,15 +1170,7 @@ fn start_rest(
     spend_policy(&subset)?;
     let authorization = compute_authorization_for(&subset)?;
     let relayed = relayed_models(&subset, &parts.vllm_keys)?;
-    let key = crate::keychain::read_keychain_token(
-        reference,
-        &format!("providers.{provider}.api_key"),
-        (
-            StartupRefusal::EndpointCredentialUnreadable,
-            StartupRefusal::EndpointCredentialTooLarge,
-            StartupRefusal::EndpointCredentialNotAToken,
-        ),
-    )?;
+    let key = crate::account::read_key(provider, where_key)?;
     let binding = rest_binding(&subset.providers[provider]);
     let mut transport = RestRunpod::new(binding.clone(), key);
     transport.set_tls(Arc::new(ProbeOver(Arc::clone(&pods))));

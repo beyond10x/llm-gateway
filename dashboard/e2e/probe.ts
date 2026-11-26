@@ -1,5 +1,6 @@
 // Functions that run inside the page (through page.evaluate). Each is self-contained: the browser
 // gets its source text, not its closure.
+import { copyProbe } from './copy.ts';
 
 export interface HeaderItem {
   name: string;
@@ -167,50 +168,61 @@ export interface FontItem {
 }
 
 export interface KeyDataProbe {
-  // The smallest font of key data and of secondary text; null when the page shows none.
+  // The smallest font of key data, of headings and of secondary text; null when the page shows none.
   key: FontItem | null;
+  heading: FontItem | null;
   secondary: FontItem | null;
   // Every element below its floor, keyed without its text so one element counts once.
   key_below: string[];
+  heading_below: string[];
   secondary_below: string[];
 }
 
-// The one definition of key data, read by the key-font metric and by the gate on it. Key data is
-// the text of table body cells (token counts, rates, statuses, money, route names), definitions,
-// tile values and their second lines, and the connection status. Secondary text is a second line
-// under a name (`.small`), a badge, a caption, a column head, a tile or stat label: secondary text
-// inside a key-data cell is secondary, not key. The token-flow panel and the skip link are neither.
-// Key data must be KEY_PX or more, secondary text SECONDARY_PX or more.
+// The one definition of key data, read by the key-font metric and by the gate on it. Every text in
+// the page outside the header is in one of three classes, so a renamed class moves text from one
+// floor to another, never out of every floor:
+// - secondary text, first: a second line under a name (`.small`), a badge, a caption, a column
+//   head, a tile or stat label; secondary text inside a key-data cell or a heading is secondary;
+// - headings (`h1` to `h6`, `[role=heading]`, the page title and a card title included);
+// - key data: table body cells (token counts, rates, statuses, money, route names), definitions,
+//   tile values and their second lines, and the connection status;
+// - every other text (a term, a button, a label, a paragraph) is secondary.
+// The token-flow panel and the skip link are in none. The floors come from the page's type scale
+// (14 px body, 12.25 px caption): key data and headings 14 px (a heading is never smaller than the
+// text under it), secondary text 12 px.
 export function keyDataProbe(): KeyDataProbe {
   const KEY_PX = 14;
+  const HEADING_PX = 14;
   const SECONDARY_PX = 12;
   const KEY = 'main tbody td, main tbody th, main dd, .tile .value, .tile .sub, header [role="status"]';
   const SECONDARY = '.small, .badge, caption, thead th, .tile .label, .stats dt';
+  const HEADING = 'h1, h2, h3, h4, h5, h6, [role="heading"]';
   const shape = (el: Element) => `${el.tagName.toLowerCase()}${el.classList.length ? `.${[...el.classList].join('.')}` : ''}`;
   const describe = (el: Element) => `${shape(el)} "${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 30)}"`;
-  let key: FontItem | null = null;
-  let secondary: FontItem | null = null;
-  const keyBelow = new Set<string>();
-  const secondaryBelow = new Set<string>();
-  for (const el of document.querySelectorAll('main *, header [role="status"], header [role="status"] *')) {
-    if (el.closest('.flow-panel, .skip')) continue;
+  const out = { key: null as FontItem | null, heading: null as FontItem | null, secondary: null as FontItem | null };
+  const below = { key: new Set<string>(), heading: new Set<string>(), secondary: new Set<string>() };
+  const floor = { key: KEY_PX, heading: HEADING_PX, secondary: SECONDARY_PX };
+  for (const el of document.querySelectorAll('body *')) {
+    if (el.closest('.flow-panel, .skip, script, style, noscript, template')) continue;
+    const inHeader = el.closest('header');
+    if (inHeader && !el.closest('header [role="status"], header h1')) continue;
     const cs = getComputedStyle(el);
     if (cs.display === 'none' || cs.visibility === 'hidden') continue;
     const r = el.getBoundingClientRect();
     if (r.width === 0 && r.height === 0) continue;
     if (![...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())) continue;
     const px = parseFloat(cs.fontSize);
-    const isSecondary = el.closest(SECONDARY) !== null;
-    const isKey = !isSecondary && el.closest(KEY) !== null;
-    if (isKey) {
-      if (!key || px < key.px) key = { px, at: describe(el) };
-      if (px < KEY_PX - 1e-6) keyBelow.add(`${px}px ${shape(el)}`);
-    } else if (isSecondary) {
-      if (!secondary || px < secondary.px) secondary = { px, at: describe(el) };
-      if (px < SECONDARY_PX - 1e-6) secondaryBelow.add(`${px}px ${shape(el)}`);
-    }
+    const kind: keyof typeof floor = el.closest(SECONDARY) ? 'secondary' : el.closest(HEADING) ? 'heading' : el.closest(KEY) ? 'key' : 'secondary';
+    const seen = out[kind];
+    if (!seen || px < seen.px) out[kind] = { px, at: describe(el) };
+    if (px < floor[kind] - 1e-6) below[kind].add(`${px}px ${shape(el)}`);
   }
-  return { key, secondary, key_below: [...keyBelow].sort(), secondary_below: [...secondaryBelow].sort() };
+  return {
+    ...out,
+    key_below: [...below.key].sort(),
+    heading_below: [...below.heading].sort(),
+    secondary_below: [...below.secondary].sort(),
+  };
 }
 
 export interface Candidate {
@@ -488,6 +500,8 @@ export interface StateProbe {
   // At the top of the document and scrolled to its end.
   views: { layout: LayoutProbe; header: HeaderItem[] }[];
   key_data: KeyDataProbe;
+  // The visible-text probe's items (e2e/copy.ts), `<key> | <label>`.
+  copy: string[];
 }
 
 // The probes of one state in one call: layout and always-visible elements at the top and at the end
@@ -499,13 +513,14 @@ export function stateProbeSource(): string {
     const layout = ${layoutProbe.toString()};
     const header = ${headerProbe.toString()};
     const keyData = ${keyDataProbe.toString()};
+    const copy = ${copyProbe.toString()};
     const views = [];
     for (const y of [0, document.documentElement.scrollHeight]) {
       window.scrollTo(0, y);
       views.push({ layout: layout(), header: header() });
     }
     window.scrollTo(0, 0);
-    return { views, key_data: keyData() };
+    return { views, key_data: keyData(), copy: copy() };
   })()`;
 }
 

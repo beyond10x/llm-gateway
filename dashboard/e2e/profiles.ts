@@ -15,14 +15,18 @@ export const VIEWPORTS: Viewport[] = [
 ];
 
 export const GATING = VIEWPORTS.filter((v) => v.gating);
+// The viewport of the full-page contact sheets.
+export const FULL_PAGE_VIEWPORT = '1280x720';
 export const MEASURED_ONLY = VIEWPORTS.filter((v) => !v.gating);
 
 export type Theme = 'light' | 'dark';
 export const THEMES: Theme[] = ['light', 'dark'];
 
-// Key data below this size fails heuristic 15; secondary text (second lines, badges, labels) has a
-// floor of its own. e2e/probe.ts keyDataProbe holds the same two numbers.
+// Key data below this size fails heuristic 15; a heading is never smaller than the body text under
+// it; secondary text (second lines, badges, labels, every other text) has a floor of its own.
+// e2e/probe.ts keyDataProbe holds the same three numbers.
 export const KEY_FONT_PX = 14;
+export const HEADING_FONT_PX = 14;
 export const SECONDARY_FONT_PX = 12;
 
 export const AXE_TAGS = ['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa', 'wcag22aa'];

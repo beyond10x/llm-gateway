@@ -6,8 +6,9 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import { parse as parseYaml } from 'yaml';
 import { FONT_PX, FlowModel } from '../src/flow.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
-import { openReplay, settle } from './harness.ts';
-import { KEY_FONT_PX, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
+import { openReplay, settle, type Replay } from './harness.ts';
+import { KEY_FONT_PX, THEMES, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
+import { KINDS, dropConnection, kindsOf, stripLines, type Kind } from './r06-problems.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
 const viewport = (name: string): Viewport => VIEWPORTS.find((v) => v.name === name)!;
@@ -189,4 +190,104 @@ test.describe('UXF-014', () => {
       }
     });
   }
+});
+
+// The strip at the top names each kind of problem the state holds, one line each, in words, fully on
+// the first screen and uncovered, and holds nothing else; with no problem there is no strip.
+async function stripProblems(page: Page, want: Kind[], v: Viewport, at: string): Promise<void> {
+  const region = page.getByRole('region', { name: 'Problems', exact: true });
+  if (want.length === 0) {
+    expect(await region.count(), `${at}: no strip when nothing is wrong`).toBe(0);
+    return;
+  }
+  expect(await region.count(), `${at}: a region named Problems`).toBe(1);
+  const lines = await stripLines(page);
+  expect(lines.map((l) => l.text).sort(), `${at}: one line per kind (${want.join(', ')})`).toHaveLength(want.length);
+  for (const kind of want) {
+    const k = KINDS[kind];
+    const line = lines.find((l) => k.words.test(l.text));
+    expect(line, `${at}: a line for ${kind} among ${JSON.stringify(lines.map((l) => l.text))}`).toBeDefined();
+    const where = `${at}, ${kind}: "${line!.text}"`;
+    expect(line!.level, `${where} says its severity in a word`).toMatch(/^(error|warning)$/);
+    expect(line!.href, `${where} links to its section`).toBe(k.href);
+    if (k.href) expect(line!.target, `${where}: ${k.href} exists`).toBe(true);
+    expect(line!.box.top, `${where} starts on the first screen`).toBeGreaterThanOrEqual(0);
+    expect(line!.box.bottom, `${where} ends on the first screen`).toBeLessThanOrEqual(v.height);
+    expect(line!.box.left, where).toBeGreaterThanOrEqual(0);
+    expect(line!.box.right, where).toBeLessThanOrEqual(v.width);
+    expect(line!.covered, `${where} is not covered`).toBe(0);
+  }
+}
+
+async function eachState(replay: Replay, check: (index: number) => Promise<void>): Promise<void> {
+  await check(replay.index);
+  while (replay.index + 1 < replay.states.length) {
+    await replay.advance();
+    await check(replay.index);
+  }
+}
+
+test.describe('UXF-019', () => {
+  const v = viewport('1280x720');
+  const expected: Record<string, Kind[]> = { idle: [], 'token-flow': [], busy: ['route', 'watchdog', 'limit', 'pod'], errors: ['route', 'watchdog', 'limit', 'pod'] };
+  for (const name of Object.keys(expected)) {
+    for (const theme of THEMES) {
+      test(`the alert strip names every current problem on the first screen at 1280x720, a link to its section each, and is absent when nothing is wrong — ${name} ${theme}`, async ({ browser }) => {
+        const page = await pageAt(browser, v);
+        try {
+          const replay = await openReplay(page, scenario(name), theme);
+          const seen = new Set<Kind>();
+          await eachState(replay, async (i) => {
+            const want = kindsOf(replay.states[i]!);
+            for (const k of want) seen.add(k);
+            await stripProblems(page, want, v, `${name} ${theme} state ${i}`);
+          });
+          expect([...seen].sort(), `${name}: the kinds its states hold`).toEqual([...expected[name]!].sort());
+        } finally {
+          await page.context().close();
+        }
+      });
+    }
+  }
+
+  for (const theme of THEMES) {
+    test(`a connection that is not live is a line of the strip, beside every other problem, on the first screen at 1280x720 — ${theme}`, async ({ browser }) => {
+      const page = await pageAt(browser, v);
+      try {
+        const idle = await openReplay(page, scenario('idle'), theme);
+        await stripProblems(page, [], v, `idle ${theme} live`);
+        await dropConnection(idle.page);
+        await stripProblems(page, ['connection'], v, `idle ${theme} not live`);
+      } finally {
+        await page.context().close();
+      }
+      const all = await pageAt(browser, v);
+      try {
+        const errors = await openReplay(all, scenario('errors'), theme);
+        await dropConnection(errors.page);
+        await stripProblems(all, ['connection', ...kindsOf(errors.states[errors.index]!)], v, `errors ${theme} not live`);
+      } finally {
+        await all.context().close();
+      }
+    });
+  }
+
+  test('a line of the strip opens its section below the sticky header', async ({ browser }) => {
+    const page = await pageAt(browser, v);
+    try {
+      await openReplay(page, scenario('errors'), 'light');
+      await page.getByRole('region', { name: 'Problems', exact: true }).getByRole('link', { name: /^Failed calls/ }).click({ timeout: 5_000 });
+      await settle(page);
+      const at = await page.evaluate(() => ({
+        header: document.querySelector('header.top')!.getBoundingClientRect().bottom,
+        heading: document.getElementById('h-routes')!.getBoundingClientRect().top,
+        scrolled: window.scrollY,
+      }));
+      expect(at.scrolled, 'the page scrolled to Routes').toBeGreaterThan(0);
+      expect(at.heading, 'the Routes heading is not under the header').toBeGreaterThanOrEqual(at.header);
+      expect(at.heading, 'the Routes heading is on the screen').toBeLessThan(v.height);
+    } finally {
+      await page.context().close();
+    }
+  });
 });

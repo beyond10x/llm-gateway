@@ -848,6 +848,8 @@ pub struct Relaying {
     /// The pool's cleanup pass; `None` when no pool is composed.
     cleanup: Option<Cleanup>,
     stopping: Arc<AtomicBool>,
+    /// The interaction records' writer the stop waits on; `None` without `[interaction_records]`.
+    records: Option<crate::records::Drain>,
 }
 
 impl Relaying {
@@ -867,12 +869,22 @@ impl Relaying {
     }
 
     /// Drains and stops the gateway gracefully now, then stops the cleanup pass. A request
-    /// still waiting for its pod is answered `target-unavailable` at once.
+    /// still waiting for its pod is answered `target-unavailable` at once. With
+    /// `[interaction_records]` it then waits at most 2 s for the writer to store its queue and
+    /// names the calls still queued on one line (D96).
     pub fn shutdown(self) -> ShutdownReport {
         self.stopping.store(true, Ordering::SeqCst);
         let report = self.running.shutdown();
         if let Some(cleanup) = self.cleanup {
             cleanup.stop();
+        }
+        if let Some(records) = self.records {
+            let left = records.finish();
+            if left > 0 {
+                crate::serve::report(format_args!(
+                    "interaction records: {left} calls not stored at stop"
+                ));
+            }
         }
         report
     }
@@ -1421,7 +1433,8 @@ fn compose(
         .with_records(Arc::new(crate::logging::TracingRecords));
     // Every finished call into the session store, when the document declares one
     // (story:interaction-record-store).
-    let relay = crate::records::compose(relay, deployment.interaction_records.as_ref(), &metrics)?;
+    let (relay, records) =
+        crate::records::compose(relay, deployment.interaction_records.as_ref(), &metrics)?;
     let relay = match reviewer {
         Some(reviewer) => relay.with_caller_review(Arc::new(reviewer)),
         None => relay,
@@ -1456,6 +1469,7 @@ fn compose(
         metrics_addr,
         cleanup,
         stopping,
+        records,
     })
 }
 

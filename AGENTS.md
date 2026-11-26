@@ -197,11 +197,13 @@ on `ring`, encoded with `base64`); every other one is still refused `translation
 `b10x-llm-gateway-cli` takes `sessionspec-records` and `sessionspec-types` at tag `0.1.0` of
 [beyond10x/sessionspec](https://github.com/beyond10x/sessionspec), by tag, never by path, for
 the interaction records (`src/records.rs`). Their `GatewayFacts`, `WireCall`, `lift_call`,
-`Appender::spawn` and `AppenderHandle::append` are a contract sessionspec keeps with this
-repository; a new tag moves both crates together. They bring `rusqlite` with a bundled SQLite
-and `zstd` (both compile C) into the binary; the gateway crate links neither. The tests read the
-store with sessionspec's own reader and hold it locked with `rusqlite`, a dev-dependency at the
-version `sessionspec-records` links.
+`Appender::spawn`, `AppenderHandle::append` and `stats`, and `store::SCHEMA_VERSION` with the
+`meta` table it is read from, are a contract sessionspec keeps with this repository; a new tag
+moves both crates together. They bring `rusqlite` with a bundled SQLite and `zstd` (both compile
+C) into the binary; the gateway crate links neither. The binary reads the store's schema version
+with `rusqlite` before the writer opens it (sessionspec's open empties a store of another
+version), and the tests read the store with sessionspec's own reader and hold it locked with
+`rusqlite`, a dependency at the version `sessionspec-records` links.
 
 ## Documents
 

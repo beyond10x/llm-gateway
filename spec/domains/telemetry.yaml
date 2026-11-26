@@ -59,13 +59,19 @@ domain: llm-gateway.telemetry
 #     llmgw_interaction_records_dropped_total         each finished call the embedding could not
 #                                                     queue (`Metrics::count_interaction_record_
 #                                                     dropped`)
-#     llmgw_interaction_records_skipped_total         each finished call whose bytes were over the
-#                                                     bound (`CallBytes` `OverBound`) or not decoded
-#                                                     (`Undecodable`), whose record the embedding
-#                                                     left out
+#     llmgw_interaction_records_skipped_total         each finished call whose record the embedding
+#                                                     left out: its bytes were over the bound
+#                                                     (`CallBytes` `OverBound`) or not decoded
+#                                                     (`Undecodable`), or it lifts to no step
 #                                                     (`Metrics::count_interaction_record_skipped`)
-#   DECIDED 2026-11-26 (story:finished-call-facts): both are process-wide counters after the
-#   spend-refusal series, registered at zero; the gateway counts neither itself.
+#     llmgw_interaction_records_failed_total          each finished call the embedding queued and
+#                                                     then failed to store
+#                                                     (`Metrics::count_interaction_record_failed`)
+#   DECIDED 2026-11-26 (story:finished-call-facts): the series are process-wide counters after
+#   the spend-refusal series, registered at zero; the gateway counts none of them itself.
+#   DECIDED 2026-11-26 (story:interaction-record-store, correction 1): the failed series is the
+#   third, after skipped; the binary reads it from its writer's own failure count and logs one
+#   warning per failure naming the series, never the path.
 # DECIDED 2026-10-16 (story:spend-caps): beside llmgw's 13 the gateway serves one series of its
 # own, `llmgw_pod_start_spend_refusals_total`, process-wide, after llmgw's eight; its prefix
 # keeps one scrape configuration for every series. llmgw had no spend ceiling to count.

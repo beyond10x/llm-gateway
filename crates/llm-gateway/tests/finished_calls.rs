@@ -1019,6 +1019,9 @@ fn the_three_interaction_record_series_start_at_zero_and_count_what_the_embeddin
     rig.metrics.count_interaction_record_dropped();
     rig.metrics.count_interaction_record_dropped();
     rig.metrics.count_interaction_record_skipped();
+    for _ in 0..3 {
+        rig.metrics.count_interaction_record_failed();
+    }
     let after = rig.scrape();
     assert!(
         after.contains("\nllmgw_interaction_records_dropped_total 2\n"),
@@ -1026,6 +1029,10 @@ fn the_three_interaction_record_series_start_at_zero_and_count_what_the_embeddin
     );
     assert!(
         after.contains("\nllmgw_interaction_records_skipped_total 1\n"),
+        "{after}"
+    );
+    assert!(
+        after.contains("\nllmgw_interaction_records_failed_total 3\n"),
         "{after}"
     );
     let order = |text: &str, name: &str| text.find(&format!("# HELP {name} ")).unwrap();

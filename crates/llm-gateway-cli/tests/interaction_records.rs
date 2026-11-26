@@ -223,7 +223,6 @@ impl Gateway {
             .collect()
     }
 
-    /// One counter of `GET /metrics`.
     /// `GET /metrics` as text.
     fn scrape(&self) -> String {
         let answer = exchange(
@@ -235,6 +234,7 @@ impl Gateway {
         String::from_utf8_lossy(&answer.body).into_owned()
     }
 
+    /// One counter of `GET /metrics`.
     fn counter(&self, name: &str) -> u64 {
         let text = self.scrape();
         text.lines()
@@ -783,6 +783,65 @@ fn with_the_writer_held_every_answer_completes_and_the_calls_beyond_the_queue_ar
         turns(steps).len() == QUEUE
     });
     assert_eq!(turns(&steps).len(), QUEUE);
+}
+
+/// D96: with the writer held, the stop waits 2 s for it, then names the calls still queued on
+/// one line just before the stop line, which is unchanged, and exits 0.
+#[test]
+fn a_stop_with_the_writer_held_names_the_calls_not_stored_just_before_the_stop_line() {
+    const CALLS: usize = 2;
+    let fixture = Fixture::new("records-stop");
+    let upstream = Upstream::start(Vec::new());
+    let store = store_in(&fixture);
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let mut gateway = Gateway::start(&config, &fixture.dir);
+    let lock = rusqlite::Connection::open(&store).unwrap();
+    lock.busy_timeout(Duration::from_secs(5)).unwrap();
+    lock.execute_batch("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE;")
+        .unwrap();
+    thread::sleep(Duration::from_millis(800));
+    for n in 0..CALLS {
+        let answer = post(
+            &gateway,
+            "/v1/messages",
+            &claude_session(&format!("stop-{n}")),
+            &first_turn("hello"),
+        );
+        assert_eq!(answer.status, 200);
+    }
+    assert_eq!(
+        gateway.counter("llmgw_interaction_records_dropped_total"),
+        0
+    );
+    let signalled = Instant::now();
+    rustix::process::kill_process(
+        rustix::process::Pid::from_child(&gateway.child),
+        rustix::process::Signal::TERM,
+    )
+    .unwrap();
+    let status = gateway.child.wait().unwrap();
+    let stopped_after = signalled.elapsed();
+    let mut lines = Vec::new();
+    while let Ok(line) = gateway.lines.recv_timeout(Duration::from_secs(2)) {
+        lines.push(line);
+    }
+    drop(lock);
+    assert!(status.success(), "{status}: {lines:?}");
+    let [.., not_stored, stop] = lines.as_slice() else {
+        panic!("{lines:?}");
+    };
+    assert_eq!(
+        not_stored,
+        &format!("b10x-llm-gateway: interaction records: {CALLS} calls not stored at stop")
+    );
+    assert!(
+        stop.starts_with("b10x-llm-gateway: stopped by SIGTERM accepted="),
+        "{lines:?}"
+    );
+    assert!(
+        stopped_after >= Duration::from_secs(2) && stopped_after < Duration::from_secs(5),
+        "{stopped_after:?}"
+    );
 }
 
 #[test]

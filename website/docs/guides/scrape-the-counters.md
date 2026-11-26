@@ -2,7 +2,7 @@
 title: Scrape the counters
 sidebar_position: 2
 description: Read llmgw's 13 counters, the gateway's spend-refusal and interaction-record counters and the latency and outcomes of every model from GET /metrics, scrape them without the owner secret, and read the usage events from standard error.
-lede: GET /metrics serves llmgw's 13 counters under their llmgw names behind the owner credential, so a scrape configured for llmgw keeps working, three counters of the gateway's own, and a latency histogram and an outcome counter per model; an optional second listener serves the same text to a Prometheus server that holds no owner secret.
+lede: GET /metrics serves llmgw's 13 counters under their llmgw names behind the owner credential, so a scrape configured for llmgw keeps working, four counters of the gateway's own, and a latency histogram and an outcome counter per model; an optional second listener serves the same text to a Prometheus server that holds no owner secret.
 source: docs/gateway.md (Counters and usage records), crates/llm-gateway/src/metrics.rs, crates/llm-gateway/tests/observability.rs, crates/llm-gateway/tests/prometheus_metrics.rs, crates/llm-gateway-cli/tests/observability.rs, crates/llm-gateway-cli/tests/binary.rs; the output below is pasted from a run of the binary on the getting-started document
 ---
 
@@ -46,9 +46,12 @@ llmgw_pod_start_spend_refusals_total 0
 # HELP llmgw_interaction_records_dropped_total Finished calls the embedding could not queue for its interaction record.
 # TYPE llmgw_interaction_records_dropped_total counter
 llmgw_interaction_records_dropped_total 0
-# HELP llmgw_interaction_records_skipped_total Finished calls whose bytes were over the bound, left out of the interaction record.
+# HELP llmgw_interaction_records_skipped_total Finished calls left out of the interaction record: bytes over the bound or not decoded, or a call that lifts to no step.
 # TYPE llmgw_interaction_records_skipped_total counter
 llmgw_interaction_records_skipped_total 0
+# HELP llmgw_interaction_records_failed_total Finished calls the embedding queued for its interaction record and failed to store.
+# TYPE llmgw_interaction_records_failed_total counter
+llmgw_interaction_records_failed_total 0
 # HELP llmgw_route_requests_total Model calls per model and wire.
 # TYPE llmgw_route_requests_total counter
 llmgw_route_requests_total{model="small",wire="chat"} 1

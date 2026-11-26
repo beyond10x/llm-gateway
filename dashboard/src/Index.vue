@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref } from 'vue';
 import { parse, type Inline } from './markdown.ts';
+import ThemeToggle from './ThemeToggle.vue';
 
 const props = defineProps<{ markdown: string }>();
 const blocks = parse(props.markdown);
@@ -29,11 +30,14 @@ function key(parts: Inline[]): string {
 </script>
 
 <template>
+  <a class="skip" href="#content">Skip to content</a>
   <header class="top">
     <h1>llm-gateway</h1>
     <nav class="nav"><a href="/dashboard">Dashboard</a><a href="/llms.txt">llms.txt</a></nav>
+    <span class="spacer"></span>
+    <ThemeToggle />
   </header>
-  <main class="guide">
+  <main id="content" class="guide" tabindex="-1">
     <template v-for="(block, index) in blocks" :key="index">
       <component :is="`h${Math.min(block.level + 1, 6)}`" v-if="block.kind === 'heading' && block.level > 1">
         <template v-for="(part, p) in block.text" :key="p">

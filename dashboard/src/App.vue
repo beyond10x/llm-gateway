@@ -4,6 +4,7 @@ import { useFeed, type Link } from './feed.ts';
 import { DASH, ago, clock, count, countdown, ms, pct, span, tps, usd } from './format.ts';
 import type { CallRecord, InFlight, PodRow, Snapshot } from './extra.ts';
 import Kpis from './Kpis.vue';
+import ThemeToggle from './ThemeToggle.vue';
 
 const WATCHDOG_STALE_MS = 5 * 60_000;
 const SHUTDOWN_LIMIT: Record<string, string> = { idle: 'idle limit', 'max-runtime': 'max runtime', balance: 'balance floor' };
@@ -62,8 +63,9 @@ const LINK_TEXT: Record<Link, string> = {
 onMounted(async () => {
   if (import.meta.env.DEV && new URLSearchParams(location.search).has('fixture')) {
     const { fixture } = await import('./fixture.ts');
-    fixtureSnapshot.value = fixture(Date.now());
-    setInterval(() => (fixtureSnapshot.value = fixture(Date.now())), 1000);
+    let replay = 0;
+    fixtureSnapshot.value = fixture(Date.now(), replay);
+    setInterval(() => (fixtureSnapshot.value = fixture(Date.now(), ++replay)), 1000);
     return;
   }
   await feed.start();
@@ -100,6 +102,7 @@ function yesNo(v: boolean | null): string {
 </script>
 
 <template>
+  <a class="skip" href="#content">Skip to content</a>
   <header class="top">
     <h1>llm-gateway</h1>
     <nav class="nav"><a href="/">Setup</a></nav>
@@ -107,9 +110,10 @@ function yesNo(v: boolean | null): string {
     <span class="link" :class="link" role="status" aria-live="polite">
       <span class="dot" aria-hidden="true"></span>{{ LINK_TEXT[link] }}
     </span>
+    <ThemeToggle />
   </header>
 
-  <main v-if="snap">
+  <main v-if="snap" id="content" tabindex="-1">
     <Kpis v-if="showKpis" :snap="snap" :now="now" />
 
     <section v-if="snap.provider" aria-labelledby="h-provider">
@@ -312,7 +316,7 @@ function yesNo(v: boolean | null): string {
     </section>
   </main>
 
-  <main v-else class="waiting">
+  <main v-else id="content" class="waiting" tabindex="-1">
     <p>{{ feed.error.value ? `Cannot reach the gateway: ${feed.error.value}` : 'Waiting for the first snapshot…' }}</p>
   </main>
 </template>

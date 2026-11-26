@@ -1,7 +1,7 @@
 //! The interaction records (story:interaction-record-store; `spec/domains/deployment.yaml`
-//! `InteractionRecordsDeclaration`): every finished call lifted into sessionspec's session
-//! records (`sessionspec_records::wire::lift_call`) and appended to a SQLite file by one writer
-//! thread (`sessionspec_records::append::Appender`).
+//! `InteractionRecordsDeclaration`): every finished call lifted into agentspec's session
+//! records (`agentspec_records::wire::lift_call`) and appended to a SQLite file by one writer
+//! thread (`agentspec_records::append::Appender`).
 //!
 //! The adapter implements the gateway's [`FinishedCalls`] port. It is called on the connection's
 //! thread and never waits: the lift is a pure function of the call and the session's state, and
@@ -20,16 +20,16 @@ use crate::{
     config::InteractionRecordsConfig,
     refusal::{Refusal, StartupRefusal},
 };
-use llm_gateway::{
-    AnswerBytes, CallBytes, CallEnding, FinishedCall, FinishedCalls, Harness, Metrics, Relay, Wire,
-};
-use rusqlite::{OpenFlags, OptionalExtension};
-use sessionspec_records::{
+use agentspec_records::{
     append::{Appender, AppenderHandle, Stats},
     store::SCHEMA_VERSION,
     wire::{self, Answer, GatewayFacts, WireCall, WireSession},
 };
-use sessionspec_types::session as s;
+use agentspec_types::session as s;
+use llm_gateway::{
+    AnswerBytes, CallBytes, CallEnding, FinishedCall, FinishedCalls, Harness, Metrics, Relay, Wire,
+};
+use rusqlite::{OpenFlags, OptionalExtension};
 use std::{
     collections::{BTreeMap, HashMap},
     path::Path,
@@ -397,7 +397,7 @@ impl FinishedCalls for InteractionRecords {
     }
 }
 
-/// sessionspec's `GatewayFacts` of a finished call (`spec/domains/telemetry.yaml`, the
+/// agentspec's `GatewayFacts` of a finished call (`spec/domains/telemetry.yaml`, the
 /// `BOUNDARY:` comment of `FinishedCall`).
 fn facts(call: &FinishedCall) -> GatewayFacts {
     GatewayFacts {

@@ -97,6 +97,9 @@ pub(crate) struct Watch {
     first_seen: BTreeMap<String, u64>,
     /// When this watchdog last saw each pod ready, by pod id.
     last_ready: BTreeMap<String, u64>,
+    /// Where a pod is probed when the keyed provider declares a proxy URL
+    /// (story:runpod-rest-host); `None` probes llm's Runpod endpoint for it.
+    proxy: Option<llm_runpod::ProxyUrl>,
 }
 
 impl Watch {
@@ -113,6 +116,9 @@ impl Watch {
                 .collect(),
             first_seen: BTreeMap::new(),
             last_ready: BTreeMap::new(),
+            proxy: crate::account::keyed_provider(deployment)
+                .and_then(|(name, _)| deployment.providers.get(name))
+                .map(|provider| provider.proxy_url.clone()),
         }
     }
 
@@ -123,7 +129,8 @@ impl Watch {
         heartbeat: Option<&Heartbeat>,
         now_ms: u64,
     ) -> Polled {
-        let Some(account) = transport.account() else {
+        // A read that did not list every pod decides nothing: a pod it missed is not idle.
+        let Some(account) = transport.account().filter(|account| account.pods_read) else {
             return Polled::AccountUnreadable;
         };
         let owned: Vec<&PodSummary> = account
@@ -186,7 +193,7 @@ impl Watch {
             .max(born);
         if now_ms.saturating_sub(ready_since) > self.not_ready_ms {
             // Probed only once it would be terminated otherwise: a ready pod resets the window.
-            if ready(transport, pod, alias) {
+            if ready(transport, pod, alias, self.proxy.as_ref()) {
                 self.last_ready.insert(pod.id.clone(), now_ms);
             } else {
                 return Some(Reason::NotReady);
@@ -221,12 +228,18 @@ pub(crate) fn owned(pod: &PodSummary) -> bool {
     in_namespace(&pod.name) && pod.env_owner.as_deref() == Some(CONTROLLER)
 }
 
-/// One probe of the pod's vLLM server at llm's Runpod endpoint for it.
-fn ready<T: RunpodTransport>(transport: &mut T, pod: &PodSummary, alias: &str) -> bool {
+/// One probe of the pod's vLLM server at llm's Runpod endpoint for it, or at `proxy` filled
+/// with its id when the provider declares one.
+fn ready<T: RunpodTransport>(
+    transport: &mut T,
+    pod: &PodSummary,
+    alias: &str,
+    proxy: Option<&llm_runpod::ProxyUrl>,
+) -> bool {
     let endpoint = llm_providers::descriptions::runpod()
         .inference_base_url(&pod.id)
         .ok()
-        .map(|url| url.as_str().to_owned());
+        .map(|url| proxy.map_or_else(|| url.as_str().to_owned(), |proxy| proxy.endpoint(&pod.id)));
     matches!(
         transport.probe_ready(&ProbeTarget {
             pod_id: &pod.id,
@@ -292,7 +305,10 @@ fn rest_transport(
     key: Vec<u8>,
     pods: &crate::ProxyConnector,
 ) -> Result<RestRunpod, Refusal> {
-    let mut transport = RestRunpod::new(RestBinding::runpod(), key);
+    let binding = crate::account::keyed_provider(deployment)
+        .and_then(|(name, _)| deployment.providers.get(name))
+        .map_or_else(RestBinding::runpod, crate::relaying::rest_binding);
+    let mut transport = RestRunpod::new(binding, key);
     transport.set_tls(Arc::new(ProbeOver(Arc::new(pods.clone()))));
     let keys = crate::vllm_keys(deployment)?;
     for alias in deployment.models.keys() {

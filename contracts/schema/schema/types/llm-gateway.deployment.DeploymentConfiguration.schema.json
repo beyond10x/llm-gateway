@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:85eda698143913ad4e2f4fe0337838130fbfdb6928f50eec511de417a123fa91",
+    "contract_digest": "slice-sha256/2:2582ded0c2654beac221657b3bbd6a79d49bc6c396942931a4cf394770b39134",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -493,6 +493,12 @@
           "$ref": "#/$defs/llm-gateway.deployment.ConnectorsDeclaration"
         },
         "api_key": {
+          "type": "string"
+        },
+        "management_url": {
+          "type": "string"
+        },
+        "proxy_url": {
           "type": "string"
         },
         "daily_cap_usd": {

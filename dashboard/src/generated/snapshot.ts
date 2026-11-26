@@ -118,6 +118,7 @@ export interface ProviderPanel {
   balance_usd: number | null;
   spend_per_hour_usd: number | null;
   other_pods: number;
+  pods_unread: boolean;
   pods: PodRow[];
   watchdog_heartbeat_age_ms: number | null;
 }

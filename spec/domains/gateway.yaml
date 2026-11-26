@@ -1084,6 +1084,23 @@ entities:
   #      client is not sent a chunked answer (RFC 9112 section 6.1): it gets the bytes unframed,
   #      ended by closing the connection. Every head the target sends, interim 1xx heads
   #      included, and its trailer section share one head-sized budget.
+  #      DECIDED 2026-11-26 (story:runpod-rest-host): a target that asks to be streamed
+  #      (`RelayTarget::streamed`, every Runpod pod: the Runpod proxy closes a connection after
+  #      a bound it does not say it counts how) on a relay that holds an assembler
+  #      (`Relay::with_assembler`, the embedding's) is sent every call that is not a token count
+  #      with a top-level `stream: true`, and on the chat wire with `stream_options:
+  #      {"include_usage": true}` when the body names no `stream_options`. A call the client
+  #      sent streamed is relayed as above. Of a call the client did not stream, a 2xx
+  #      `text/event-stream` answer is read whole and handed to the assembler, which makes the
+  #      one body the same events' non-streamed answer is on the client's wire; the client gets
+  #      it with the target's status, `content-type: application/json` and a
+  #      `content-length`. Any other answer is relayed as above. An event stream whose read
+  #      fails is the upstream cut: the head is written and the answer ends without its body,
+  #      so the client sees it cut and the call ends `UpstreamCut` (FinishedCall `ending`); a
+  #      `524` answer of a streamed target is relayed as above and ends `UpstreamCut` too. A
+  #      stream the assembler cannot make one answer of, or that passes its bound, is
+  #      `upstream-failed` (502) and the target is kept. Proved by
+  #      `runpod_host_a_call_without_stream_*` in crates/llm-gateway-cli/tests/runpod_host.rs.
   #  10. O1, O2: every request to a wire path that passed step 1 makes one
   #      llm-gateway.telemetry.UsageRecord once its answer or refusal is written, before the
   #      connection is closed. The record feeds the counters llm-gateway.telemetry lists and

@@ -73,17 +73,20 @@ pub use error::{
     BasePathError, CredentialHeaderError, InventoryError, LabelError, PrincipalError, RefusalCode,
     RelayError, StaticHeaderError, TargetRefusal, TokenError, VerifierError,
 };
-pub use finished::{AnswerBytes, CallBytes, CallEnding, FinishedCall, FinishedCalls, Harness};
+pub use finished::{
+    AnswerBytes, CallBytes, CallEnding, EventReader, FinishedCall, FinishedCalls, Harness,
+};
 pub use inventory::{
     AuthKind, BillingKind, Label, RouteInventory, RouteSummary, TargetLimits, TargetProvenance,
     TargetSummary,
 };
 pub use metrics::{CallPricing, Disposition, Metrics, Outcome, UsageRecord, UsageRecords};
 pub use relay::{
-    BasePath, BodyDecoder, CALLER_SESSION_HEADER, Caller, CredentialHeader, DEFAULT_RETRY_ATTEMPTS,
-    DEFAULT_RETRY_WAIT, Decoded, MAX_ERROR_BODY, ModelKind, ModelPhase, ModelStatus,
-    ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets, StaticHeader,
-    TargetBearer, TargetScheme, ToolCalling, UNFORWARDED_HEADERS, Wire, read_within_timeout,
+    Assembly, BasePath, BodyDecoder, CALLER_SESSION_HEADER, Caller, CredentialHeader,
+    DEFAULT_RETRY_ATTEMPTS, DEFAULT_RETRY_WAIT, Decoded, MAX_ERROR_BODY, ModelKind, ModelPhase,
+    ModelStatus, ReasoningEffort, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    StaticHeader, StreamAssembler, TargetBearer, TargetScheme, ToolCalling, UNFORWARDED_HEADERS,
+    Wire, read_within_timeout,
 };
 pub use review::{CallerReview, CallerToken, MAX_PRINCIPAL_BYTES, Principal, Review};
 pub use server::{Gateway, GatewayConfig, GatewayHandle, IngressAuth, ShutdownReport};

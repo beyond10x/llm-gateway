@@ -348,13 +348,25 @@ pub fn runpod_pool<T: RunpodTransport>(
         runpod_models(deployment)?,
         clock,
     )
-    .map(|pool| pool.with_spend(spend))
+    .map(|pool| {
+        let pool = pool.with_spend(spend);
+        match pool_provider(deployment) {
+            Some(provider) => pool.with_proxy_url(provider.proxy_url.clone()),
+            None => pool,
+        }
+    })
     .map_err(|error| {
         Refusal::new(
             StartupRefusal::ConfigValue,
             format!("the Runpod pool cannot be composed: {error}"),
         )
     })
+}
+
+/// The provider whose pods the pool of `deployment` runs: the first model's.
+fn pool_provider(deployment: &Deployment) -> Option<&crate::config::Provider> {
+    let model = deployment.models.values().next()?;
+    deployment.providers.get(&model.provider)
 }
 
 /// What one relayed model needs at acquisition.
@@ -791,6 +803,12 @@ impl RelayTarget for PodTarget {
         self.max_model_len
     }
 
+    /// Every pod is reached through Runpod's proxy, which closes a connection silent past its
+    /// bound: every call is sent streamed (story:runpod-rest-host).
+    fn streamed(&self) -> bool {
+        true
+    }
+
     fn held(&self) -> bool {
         self.held
     }
@@ -978,10 +996,27 @@ pub fn pod_targets<T: RunpodTransport + Send + 'static>(
 /// Targets for models no pool serves: every acquisition and every wake is
 /// `target-unavailable`, and every such model is `stopped`, as [`PoolTargets`] answers a model
 /// of a provider it does not run. Only a Runpod model reaches it: a
-/// hosted model is answered before it ([`HostedTargets`]).
-struct Unconnected;
+/// hosted model is answered before it ([`HostedTargets`]). `reason`, when given, is why
+/// (story:runpod-rest-host): every refusal names it.
+#[derive(Default)]
+struct Unconnected {
+    reason: Option<String>,
+}
+
+impl Unconnected {
+    /// The models of `provider`, which was not reachable at start.
+    fn unreachable(provider: &str) -> Self {
+        Self {
+            reason: Some(format!("provider {provider} was not reachable at start")),
+        }
+    }
+}
 
 impl RelayTargets for Unconnected {
+    fn unavailable_reason(&self, _alias: &str) -> Option<String> {
+        self.reason.clone()
+    }
+
     fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         Err(TargetRefusal::Unavailable)
     }
@@ -1061,7 +1096,7 @@ where
         .iter()
         .find_map(|(name, provider)| Some((name, provider.connectors.clone()?)));
     let Some((provider, binding)) = connected else {
-        return compose(deployment, parts, Arc::new(Unconnected), None);
+        return compose(deployment, parts, Arc::new(Unconnected::default()), None);
     };
     // The pool runs this provider's models on this provider's account: the subset holds no
     // other provider, so no other provider's spend ceiling binds it.
@@ -1069,7 +1104,7 @@ where
     subset.models.retain(|_, model| &model.provider == provider);
     subset.providers.retain(|name, _| name == provider);
     if subset.models.is_empty() {
-        return compose(deployment, parts, Arc::new(Unconnected), None);
+        return compose(deployment, parts, Arc::new(Unconnected::default()), None);
     }
     // Every check the pool and its targets make, made before the transport is built: whether
     // a document is valid never depends on the connection, and a refused document costs no
@@ -1086,7 +1121,7 @@ where
             provider = provider.as_str(),
             "connectors connection unreachable; its models answer target-unavailable"
         );
-        return compose(deployment, parts, Arc::new(Unconnected), None);
+        return compose(deployment, parts, Arc::new(Unconnected::default()), None);
     }
     for alias in subset.models.keys() {
         if let Some(key) = parts.vllm_keys.get(alias) {
@@ -1130,7 +1165,7 @@ fn start_rest(
     subset.models.retain(|_, model| model.provider == provider);
     subset.providers.retain(|name, _| name == provider);
     if subset.models.is_empty() {
-        return compose(deployment, parts, Arc::new(Unconnected), None);
+        return compose(deployment, parts, Arc::new(Unconnected::default()), None);
     }
     runpod_models(&subset)?;
     hosting_policy(&subset)?;
@@ -1146,17 +1181,26 @@ fn start_rest(
             StartupRefusal::EndpointCredentialNotAToken,
         ),
     )?;
-    let mut transport = RestRunpod::new(RestBinding::runpod(), key);
+    let binding = rest_binding(&subset.providers[provider]);
+    let mut transport = RestRunpod::new(binding.clone(), key);
     transport.set_tls(Arc::new(ProbeOver(Arc::clone(&pods))));
     if !transport
         .list_pods()
         .is_ok_and(|listing: PodListing| listing.complete)
     {
+        let (host, cause) = failure_fields(transport.last_failure(), &binding);
         tracing::warn!(
             provider,
+            host = host.as_str(),
+            cause = cause.as_str(),
             "Runpod REST API unreachable; its models answer target-unavailable"
         );
-        return compose(deployment, parts, Arc::new(Unconnected), None);
+        return compose(
+            deployment,
+            parts,
+            Arc::new(Unconnected::unreachable(provider)),
+            None,
+        );
     }
     for alias in subset.models.keys() {
         if let Some(key) = parts.vllm_keys.get(alias) {
@@ -1178,6 +1222,37 @@ fn start_rest(
     );
     let pass = move |metrics: &Metrics| count_reaps(metrics, pool.reap());
     compose(deployment, parts, Arc::new(targets), Some(Box::new(pass)))
+}
+
+/// Where a provider with an `api_key` manages its pods: its `management_url`, Runpod's GraphQL
+/// and the 30 s bound (story:runpod-rest-host).
+pub(crate) fn rest_binding(provider: &crate::config::Provider) -> RestBinding {
+    RestBinding {
+        base_url: provider.management_url.clone(),
+        ..RestBinding::runpod()
+    }
+}
+
+/// The host and the cause a warning about a failed Runpod read names: the last failed call's,
+/// or the management API's host and an incomplete listing when no call failed. Never the key.
+pub(crate) fn failure_fields(
+    failure: Option<llm_runpod::CallFailure>,
+    binding: &RestBinding,
+) -> (String, String) {
+    failure.map_or_else(
+        || {
+            let host = binding
+                .base_url
+                .split_once("://")
+                .map_or(binding.base_url.as_str(), |(_, rest)| rest)
+                .split('/')
+                .next()
+                .unwrap_or_default()
+                .to_owned();
+            (host, "the pod listing was not complete".to_owned())
+        },
+        |failure| (failure.host, failure.cause.to_string()),
+    )
 }
 
 /// What every composition reads from the document first, in this order, and the state the
@@ -1430,6 +1505,7 @@ fn compose(
         .with_translator(Arc::new(translator))
         .with_metrics(Arc::clone(&metrics))
         .with_decoder(Arc::new(crate::decode::Decoder))
+        .with_assembler(Arc::new(crate::assemble::EventAssembler))
         .with_records(Arc::new(crate::logging::TracingRecords));
     // Every finished call into the session store, when the document declares one
     // (story:interaction-record-store).

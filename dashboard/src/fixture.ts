@@ -170,6 +170,7 @@ export function fixture(now: number, tick = 0): Snapshot {
       balance_usd: 87.412,
       spend_per_hour_usd: 2.39,
       other_pods: 1,
+      pods_unread: false,
       pods: [
         { id: 'abc123xyz', name: 'b10x-llm-qwen-coder', model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', state: 'RUNNING', gpu: 'NVIDIA H100 80GB HBM3', cost_per_hour_usd: 2.39, uptime_s: 3 * 3600 + 1240, vllm_ready: true, last_call_ms: now - 2_400, in_flight: 1, shutdown: { at_ms: T0 + 17 * 60_000, limit: 'idle' }, external: false },
         { id: 'def456uvw', name: 'b10x-llm-small', model: null, state: 'STARTING', gpu: 'NVIDIA L40S', cost_per_hour_usd: 0.86, uptime_s: 95, vllm_ready: false, last_call_ms: null, in_flight: 0, shutdown: { at_ms: T0 + 4 * 60_000 + 30_000, limit: 'max-runtime' }, external: false },

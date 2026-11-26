@@ -33,5 +33,7 @@ mod relayed_session;
 mod security_w06_head_buffer;
 mod service_account_ingress;
 mod spec_declarations;
+mod streamed_targets;
 mod translation_port;
+mod unavailable_reason;
 mod wire_relay;

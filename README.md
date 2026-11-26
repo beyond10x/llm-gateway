@@ -156,7 +156,8 @@ bytes is accepted; a broken rule refuses the start as `vllm-api-key:<rule>`. The
 Runpod API key and refuses `runpod_api_key_file`: with a `connectors` table that key stays in
 connectors' keyring, and a gateway on an operator's own machine may instead name it as
 `[providers.<name>] api_key = "keychain:<service>/<account>"`, an OS keychain entry read once at
-start, and then calls Runpod's REST API itself
+start, and then calls Runpod's REST API v2 itself, at `https://api.runpod.io/v2` unless the
+provider names another `management_url`
 ([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1). The same reference
 names a model's `vllm_api_key`, a hosted model's `credential` and a route endpoint's
 `auth.secret` in place of a file
@@ -216,8 +217,9 @@ optional scrape token of `metrics_bearer_file`, so a Prometheus server never hol
 secret; without that token it is open, so bind it only where a network policy guards it. [docs/gateway.md](docs/gateway.md) has the full surface and every refusal code.
 The binary also takes the owner's `POST /v1/chat/completions`, `POST /v1/responses` and
 `POST /v1/messages` for the wires each model declares. A model whose provider declares
-`connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` over
-TLS, with the pod's certificate verified against the Mozilla roots compiled into the binary before
+`connectors` is relayed to its Runpod pod at `https://<pod id>-8000.proxy.runpod.net/v1/` (or
+the provider's `proxy_url`, filled) over TLS, every call but a token count sent streamed and
+answered whole to a client that did not stream, with the pod's certificate verified against the Mozilla roots compiled into the binary before
 any request byte is sent; no document key or option adds a root or turns verification off. A
 model call starts no pod: while the pod is stopped it is answered `503` `model-stopped`, and the
 owner starts it with `POST /v1/models/<alias>/wake`, unless the model sets

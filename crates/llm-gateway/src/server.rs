@@ -488,6 +488,10 @@ enum Outcome {
     Metrics(String),
     Probe(u16, String),
     Refused(RefusalCode),
+    /// A refusal whose message carries, after its fixed text, why the target source has no
+    /// target for the model ([`crate::RelayTargets::unavailable_reason`],
+    /// story:runpod-rest-host).
+    RefusedFor(RefusalCode, String),
     /// `method-not-allowed`, with the methods the path does take.
     NotAllowed(&'static str),
     /// A relay the head admitted; its body has not been read yet.
@@ -604,7 +608,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
                     drop(stream.shutdown(Shutdown::Both));
                     return;
                 }
-                Err(code) => Outcome::Refused(code),
+                Err(code) => refused_for(relay, code, call.model.as_deref()),
             }
         }
         (Outcome::Relay(_), None) => Outcome::Refused(RefusalCode::PathUnknown),
@@ -621,7 +625,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
         Instant::now() + timeout,
     );
     let refusal = match outcome {
-        Outcome::Refused(code) => Some(code),
+        Outcome::Refused(code) | Outcome::RefusedFor(code, _) => Some(code),
         Outcome::NotAllowed(_) => Some(RefusalCode::MethodNotAllowed),
         _ => None,
     };
@@ -1768,8 +1772,19 @@ fn lifecycle(
     };
     match answered {
         Ok((code, status)) => Outcome::Lifecycle(code, lifecycle_body(alias, &status)),
-        Err(code) => Outcome::Refused(code),
+        Err(code) => refused_for(relay, code, Some(alias)),
     }
+}
+
+/// The refusal `code` of a call or a wake of `alias`: a `target-unavailable` one carries the
+/// target source's reason when it gives one (story:runpod-rest-host).
+fn refused_for(relay: &Relay, code: RefusalCode, alias: Option<&str>) -> Outcome {
+    alias
+        .filter(|_| code == RefusalCode::TargetUnavailable)
+        .and_then(|alias| relay.unavailable_reason(alias))
+        .map_or(Outcome::Refused(code), |reason| {
+            Outcome::RefusedFor(code, reason)
+        })
 }
 
 /// `{"model","phase","sub_phase"?,"profile"?}`: a value the source did not report, or reported
@@ -1994,7 +2009,7 @@ fn write_outcome(
     head_only: bool,
     deadline: Instant,
 ) {
-    let refused = |code: RefusalCode| (code.status(), refusal_body(code, alias), None);
+    let refused = |code: RefusalCode| (code.status(), refusal_body(code, alias, None), None);
     let (status, body, allow) = match outcome {
         Outcome::Served(body) | Outcome::Metrics(body) | Outcome::Public(_, body) => {
             (200, body.clone(), None)
@@ -2003,9 +2018,14 @@ fn write_outcome(
             (*status, body.clone(), None)
         }
         Outcome::Refused(code) => refused(*code),
+        Outcome::RefusedFor(code, reason) => (
+            code.status(),
+            refusal_body(*code, alias, Some(reason)),
+            None,
+        ),
         Outcome::NotAllowed(allow) => {
             let code = RefusalCode::MethodNotAllowed;
-            (code.status(), refusal_body(code, None), Some(*allow))
+            (code.status(), refusal_body(code, None, None), Some(*allow))
         }
         // `serve` relays an admitted request before anything is written; one that reaches
         // here had no relay to go to.
@@ -2077,9 +2097,10 @@ pub(crate) fn write_by(stream: &mut TcpStream, mut bytes: &[u8], deadline: Insta
 }
 
 /// The refusal body of `code`: its code and its fixed message. A `model-not-pulled` refusal of a
-/// call on `alias` names the alias after the fixed message, as `<message>: <alias>`; no other
-/// refusal carries more than its fixed message.
-fn refusal_body(code: RefusalCode, alias: Option<&str>) -> String {
+/// call on `alias` names the alias after the fixed message, as `<message>: <alias>`; a refusal
+/// given a `reason` (a `target-unavailable` one, story:runpod-rest-host) names it the same way;
+/// no other refusal carries more than its fixed message.
+fn refusal_body(code: RefusalCode, alias: Option<&str>, reason: Option<&str>) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
     writer.key("error");
@@ -2087,9 +2108,14 @@ fn refusal_body(code: RefusalCode, alias: Option<&str>) -> String {
     writer.key("code");
     writer.string(code.wire());
     writer.key("message");
-    match alias.filter(|_| code == RefusalCode::ModelNotPulled) {
-        Some(alias) => writer.string(&format!("{}: {alias}", code.reason())),
-        None => writer.string(code.reason()),
+    match (
+        alias.filter(|_| code == RefusalCode::ModelNotPulled),
+        reason,
+    ) {
+        (Some(named), _) | (None, Some(named)) => {
+            writer.string(&format!("{}: {named}", code.reason()));
+        }
+        (None, None) => writer.string(code.reason()),
     }
     writer.end_object();
     writer.end_object();

@@ -54,7 +54,7 @@ struct State {
     lose_next: Option<bool>,
     ready_after: u32,
     uptimes: Vec<u64>,
-    partial: bool,
+    listing: Listing,
     unreachable: bool,
     /// What a spend read answers; `None`, the default, is a read that answers nothing.
     account_spend: Option<SpendScript>,
@@ -65,6 +65,18 @@ struct State {
     balance_usd: Option<f64>,
     spend_per_hour_usd: Option<f64>,
     account_unanswered: bool,
+}
+
+/// What a pod listing answers.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+enum Listing {
+    /// Every pod, complete.
+    #[default]
+    Whole,
+    /// Every pod, marked incomplete.
+    Partial,
+    /// No listing at all (`Err`), as when the management API is down (story:runpod-rest-host).
+    Fails,
 }
 
 /// The placement one created pod is scripted to get; `Placed(None)` is an unreadable one.
@@ -179,7 +191,20 @@ impl EmulatedRunpod {
     }
     /// Listings from now on claim to be incomplete.
     pub fn partial_listing(&self, partial: bool) {
-        self.state().partial = partial;
+        self.state().listing = if partial {
+            Listing::Partial
+        } else {
+            Listing::Whole
+        };
+    }
+    /// Listings from now on fail outright, as when the management API cannot be reached
+    /// (story:runpod-rest-host); `false` makes them whole again.
+    pub fn listing_fails(&self, fails: bool) {
+        self.state().listing = if fails {
+            Listing::Fails
+        } else {
+            Listing::Whole
+        };
     }
     /// Probes from now on get no answer at all.
     pub fn probe_unreachable(&self, unreachable: bool) {
@@ -316,6 +341,7 @@ impl RunpodAccount for EmulatedRunpod {
                     env_owner: pod.pod.env.get(crate::TAG_OWNER).cloned(),
                 })
                 .collect(),
+            pods_read: true,
         })
     }
 }
@@ -332,9 +358,12 @@ impl RunpodTransport for EmulatedRunpod {
     fn list_pods(&mut self) -> Result<PodListing, ()> {
         let mut state = self.state();
         state.lists = state.lists.saturating_add(1);
+        if state.listing == Listing::Fails {
+            return Err(());
+        }
         Ok(PodListing {
             pods: state.pods.iter().map(|pod| pod.pod.clone()).collect(),
-            complete: !state.partial,
+            complete: state.listing == Listing::Whole,
         })
     }
 

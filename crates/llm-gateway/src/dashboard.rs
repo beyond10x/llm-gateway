@@ -205,6 +205,7 @@ const PROVIDER: RecordType = RecordType {
         ("balance_usd", "number | null"),
         ("spend_per_hour_usd", "number | null"),
         ("other_pods", "number"),
+        ("pods_unread", "boolean"),
         ("pods", "PodRow[]"),
         ("watchdog_heartbeat_age_ms", "number | null"),
     ],
@@ -332,6 +333,9 @@ pub struct ProviderPanel {
     pub spend_per_hour_usd: Option<f64>,
     /// The account's pods this gateway does not own.
     pub other_pods: u64,
+    /// The last read could not list the account's pods: `pods` and `other_pods` say nothing
+    /// of them, while the balance still shows (story:runpod-rest-host).
+    pub pods_unread: bool,
     pub pods: Vec<PodPanel>,
     /// When the watchdog last wrote its heartbeat, in milliseconds since the Unix epoch.
     pub watchdog_heartbeat_ms: Option<u64>,
@@ -1535,6 +1539,7 @@ fn provider_record(writer: &mut Writer, provider: &ProviderPanel, state: &State,
         "balance_usd" => optional_decimal(writer, provider.balance_usd),
         "spend_per_hour_usd" => optional_decimal(writer, provider.spend_per_hour_usd),
         "other_pods" => writer.number(provider.other_pods),
+        "pods_unread" => writer.boolean(provider.pods_unread),
         "pods" => {
             writer.begin_array();
             for pod in &provider.pods {

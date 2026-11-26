@@ -1,0 +1,190 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Runpod REST API v2 (recorded subset)",
+    "version": "2",
+    "description": "NOT DOWNLOADED. Written on 2026-11-26 from the pages the gateway's REST client cites (docs.runpod.io/api-reference-v2: migrate-from-v1, pods/list-pods, pods/create-a-pod, pods/trigger-a-pod-state-transition, pods/terminate-a-pod, billing/get-the-account-balance, billing/get-pod-billing-history), as the subset of paths, methods and fields the client calls, reads and writes. Replace it with the published document (https://docs.runpod.io/api-reference-v2/openapi.json) and its digest."
+  },
+  "servers": [{"url": "https://api.runpod.io/v2"}],
+  "security": [{"bearer": []}],
+  "paths": {
+    "/pods": {
+      "get": {
+        "operationId": "listPods",
+        "summary": "List pods. Paginated: follow pagination.nextCursor while pagination.hasNextPage; filters in the query are ignored.",
+        "parameters": [
+          {"name": "cursor", "in": "query", "required": false, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/PodList"}}}}
+        }
+      },
+      "post": {
+        "operationId": "createPod",
+        "summary": "Create a pod: name and image required, exactly one of gpu or cpu, one GPU type per pod, ports listed explicitly.",
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PodCreate"}}}
+        },
+        "responses": {
+          "201": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Pod"}}}},
+          "400": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/pods/{podId}": {
+      "delete": {
+        "operationId": "terminatePod",
+        "summary": "Terminate a pod.",
+        "parameters": [
+          {"name": "podId", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "204": {"description": "Terminated."},
+          "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/pods/{podId}/action": {
+      "post": {
+        "operationId": "podAction",
+        "summary": "Trigger a pod state transition; 409 when the action is not valid for the pod's status. Scope pods:write.",
+        "parameters": [
+          {"name": "podId", "in": "path", "required": true, "schema": {"type": "string"}}
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {"application/json": {"schema": {"$ref": "#/components/schemas/PodAction"}}}
+        },
+        "responses": {
+          "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Pod"}}}},
+          "409": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/billing/balance": {
+      "get": {
+        "operationId": "getBalance",
+        "summary": "The account balance in USD. Scope billing:read; 404 for an organization without a billing account.",
+        "responses": {
+          "200": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Balance"}}}},
+          "403": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}},
+          "404": {"content": {"application/json": {"schema": {"$ref": "#/components/schemas/Error"}}}}
+        }
+      }
+    },
+    "/billing/pods": {
+      "get": {
+        "operationId": "podBilling",
+        "summary": "Pod billing history.",
+        "parameters": [
+          {"name": "bucketSize", "in": "query", "required": false, "schema": {"type": "string", "enum": ["hour", "day", "week", "month", "year"]}}
+        ],
+        "responses": {
+          "200": {"content": {"application/json": {"schema": {"type": "array", "items": {"$ref": "#/components/schemas/BillingRecord"}}}}}
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearer": {"type": "http", "scheme": "bearer"}
+    },
+    "schemas": {
+      "PodList": {
+        "type": "object",
+        "required": ["pods"],
+        "properties": {
+          "pods": {"type": "array", "items": {"$ref": "#/components/schemas/Pod"}},
+          "pagination": {"$ref": "#/components/schemas/Pagination"}
+        }
+      },
+      "Pagination": {
+        "type": "object",
+        "properties": {
+          "hasNextPage": {"type": "boolean"},
+          "nextCursor": {"type": ["string", "null"]}
+        }
+      },
+      "Pod": {
+        "type": "object",
+        "required": ["id"],
+        "properties": {
+          "id": {"type": "string"},
+          "name": {"type": "string"},
+          "image": {"type": "string"},
+          "desiredStatus": {"type": "string", "enum": ["RUNNING", "EXITED", "TERMINATED"]},
+          "costPerHr": {"type": ["number", "string"]},
+          "gpu": {"$ref": "#/components/schemas/Gpu"},
+          "env": {"type": "object", "additionalProperties": {"type": "string"}},
+          "interruptible": {"type": "boolean"},
+          "lastStartedAt": {"type": "string"},
+          "uptimeSeconds": {"type": "integer"},
+          "machine": {"$ref": "#/components/schemas/Machine"}
+        }
+      },
+      "Gpu": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "string"},
+          "count": {"type": "integer"}
+        }
+      },
+      "Machine": {
+        "type": "object",
+        "properties": {
+          "secureCloud": {"type": "boolean"},
+          "gpuTypeId": {"type": "string"},
+          "dataCenterId": {"type": "string"}
+        }
+      },
+      "PodCreate": {
+        "type": "object",
+        "required": ["name", "image"],
+        "properties": {
+          "name": {"type": "string"},
+          "image": {"type": "string"},
+          "gpu": {"$ref": "#/components/schemas/Gpu"},
+          "cloudType": {"type": "string", "enum": ["SECURE", "COMMUNITY"]},
+          "interruptible": {"type": "boolean"},
+          "containerDiskInGb": {"type": "integer"},
+          "volumeInGb": {"type": "integer"},
+          "volumeMountPath": {"type": "string"},
+          "networkVolumeId": {"type": "string"},
+          "dataCenterIds": {"type": "array", "items": {"type": "string"}},
+          "ports": {"type": "array", "items": {"type": "string"}},
+          "env": {"type": "object", "additionalProperties": {"type": "string"}},
+          "dockerEntrypoint": {"type": "array", "items": {"type": "string"}},
+          "dockerStartCmd": {"type": "array", "items": {"type": "string"}}
+        }
+      },
+      "PodAction": {
+        "type": "object",
+        "required": ["action"],
+        "properties": {
+          "action": {"type": "string", "enum": ["start", "stop", "restart", "terminate"]}
+        }
+      },
+      "Balance": {
+        "type": "object",
+        "properties": {
+          "balanceAmount": {"type": "number"},
+          "billingMode": {"type": "string", "enum": ["PREPAID", "POSTPAID"]}
+        }
+      },
+      "BillingRecord": {
+        "type": "object",
+        "properties": {
+          "amount": {"type": "number"},
+          "time": {"type": "string"}
+        }
+      },
+      "Error": {
+        "type": "object",
+        "properties": {
+          "error": {"type": "string"}
+        }
+      }
+    }
+  }
+}

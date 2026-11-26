@@ -27,7 +27,7 @@ use llm_provision::{
 };
 
 use crate::{
-    ConfigError, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy, SpendRefusal,
+    ConfigError, ProxyUrl, RunpodModel, RunpodProvider, RunpodTransport, SpendPolicy, SpendRefusal,
     Unserviceable, request::in_namespace,
 };
 
@@ -506,6 +506,18 @@ impl<T: RunpodTransport> RunpodPool<T> {
         self
     }
 
+    /// The pool with its running pods reached at `proxy` filled with each pod's id and vLLM's
+    /// port, instead of llm's Runpod description's address (story:runpod-rest-host).
+    #[must_use]
+    pub fn with_proxy_url(mut self, proxy: ProxyUrl) -> Self {
+        self.inner
+            .get_mut()
+            .unwrap_or_else(PoisonError::into_inner)
+            .provider
+            .set_proxy_url(Some(proxy));
+        self
+    }
+
     fn lock(&self) -> MutexGuard<'_, Inner<T>> {
         self.inner.lock().unwrap_or_else(PoisonError::into_inner)
     }
@@ -658,7 +670,10 @@ impl<T: RunpodTransport> RunpodPool<T> {
         let record = inner.record(&deployment).ok_or(PoolError::Starting)?;
         match record.phase {
             Phase::StopRequired => Err(PoolError::Stopping),
-            Phase::Requested | Phase::Active if ready_now(&record, now) => {
+            Phase::Requested | Phase::Active
+                if ready_now(&record, now)
+                    || (inner.provider.listing_failed() && ready_when_seen(&record)) =>
+            {
                 let observed = record.observed.as_ref();
                 let profile =
                     observed.and_then(|observed| inner.provider.profile_of(&observed.key));
@@ -798,6 +813,14 @@ impl<T: RunpodTransport> RunpodPool<T> {
     pub fn snapshot(&self) -> Vec<DeploymentRecord> {
         self.lock().controller.snapshot()
     }
+}
+
+/// The record's pod was ready when last observed, however long ago (story:runpod-rest-host).
+fn ready_when_seen(record: &DeploymentRecord) -> bool {
+    record
+        .observed
+        .as_ref()
+        .is_some_and(llm_provision::ProvisionedDeployment::is_ready)
 }
 
 /// Whether a record was observed ready at this very step. An older observation is not current.

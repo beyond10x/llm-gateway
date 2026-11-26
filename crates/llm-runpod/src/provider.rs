@@ -19,8 +19,8 @@ use llm_provision::{
 };
 
 use crate::{
-    Clock, CreateAnswer, Pod, PodStatus, Probe, ProbeTarget, RunpodModel, RunpodTransport,
-    SpendPolicy, SpendRefusal, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
+    Clock, CreateAnswer, Pod, PodStatus, Probe, ProbeTarget, ProxyUrl, RunpodModel,
+    RunpodTransport, SpendPolicy, SpendRefusal, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
     config::image_allowed,
     request::{Tags, in_namespace, pod_request},
     spend::{DAY_MS, admit, estimate},
@@ -58,6 +58,9 @@ pub struct RunpodProvider<T> {
     clock: Arc<dyn Clock>,
     /// llm's Runpod provider description: where a running pod serves inference.
     description: ProviderDescription,
+    /// The declared proxy URL a running pod is reached at instead of the description's;
+    /// `None` keeps the description's.
+    proxy: Option<ProxyUrl>,
     /// The account's spend ceilings and the declared prices; `None` checks nothing.
     spend: Option<SpendPolicy>,
     /// The pool's live pods the spend check estimates: model alias and submission instant.
@@ -69,6 +72,9 @@ pub struct RunpodProvider<T> {
     gpus: BTreeMap<String, String>,
     /// Pods whose placement was refused and whose terminate was not confirmed: never ready.
     condemned: BTreeSet<String>,
+    /// The last listing failed outright: nothing of the account was read
+    /// (story:runpod-rest-host).
+    unlisted: bool,
 }
 
 /// How many terminates a pod whose placement was refused is sent, while each answer is lost.
@@ -106,12 +112,38 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             health: BTreeMap::new(),
             clock,
             description: descriptions::runpod(),
+            proxy: None,
             spend: None,
             live: Vec::new(),
             spend_refusal: None,
             gpus: BTreeMap::new(),
             condemned: BTreeSet::new(),
+            unlisted: false,
         }
+    }
+
+    /// Whether the last listing failed outright, so the account's pods were not read at all
+    /// (story:runpod-rest-host): a pod ready at its last observation is then taken as still
+    /// serving, since a failed management call must not break a running pod's route.
+    pub fn listing_failed(&self) -> bool {
+        self.unlisted
+    }
+
+    /// Sets the proxy URL every running pod is reached at; `None` keeps llm's Runpod
+    /// description's address.
+    pub fn set_proxy_url(&mut self, proxy: Option<ProxyUrl>) {
+        self.proxy = proxy;
+    }
+
+    /// Where the pod `pod_id` serves inference: llm's Runpod description filled with the pod
+    /// id, or the declared proxy URL filled with it. `None` for an id the description does not
+    /// accept.
+    fn endpoint_of(&self, pod_id: &str) -> Option<String> {
+        let described = self.description.inference_base_url(pod_id).ok()?;
+        Some(self.proxy.as_ref().map_or_else(
+            || described.as_str().to_owned(),
+            |proxy| proxy.endpoint(pod_id),
+        ))
     }
 
     /// Sets the spend ceilings every create is checked against; `None` checks nothing.
@@ -243,12 +275,12 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             Some(Probe::NotReady | Probe::Refused) => (Some(false), None),
             Some(Probe::Unreachable) | None => (None, None),
         };
-        // The address is llm's Runpod description filled with the pod id. It exists only for a
-        // running pod whose id the description accepts; any other pod reports none.
+        // The address is llm's Runpod description, or the declared proxy URL, filled with the
+        // pod id. It exists only for a running pod whose id the description accepts; any other
+        // pod reports none.
         let endpoint = (pod.status == PodStatus::Running)
-            .then(|| self.description.inference_base_url(&pod.id).ok())
-            .flatten()
-            .map(|url| url.as_str().to_owned());
+            .then(|| self.endpoint_of(&pod.id))
+            .flatten();
         // A running pod with no address cannot serve anybody, whatever it answers, so it is
         // never ready: no lease without an address is handed out, and its startup deadline
         // retires it like a pod that never becomes ready.
@@ -283,11 +315,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
 
     /// Polls one running pod: readiness, and the start time that reveals a restart.
     fn poll(&mut self, pod: &Pod) -> Probe {
-        let endpoint = self
-            .description
-            .inference_base_url(&pod.id)
-            .ok()
-            .map(|url| url.as_str().to_owned());
+        let endpoint = self.endpoint_of(&pod.id);
         let probe = self.transport.probe_ready(&ProbeTarget {
             pod_id: &pod.id,
             model: pod.name.strip_prefix(crate::POD_NAME_PREFIX),
@@ -505,7 +533,9 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
     }
 
     fn inventory(&mut self) -> Inventory {
-        let Ok(listing) = self.transport.list_pods() else {
+        let listing = self.transport.list_pods();
+        self.unlisted = listing.is_err();
+        let Ok(listing) = listing else {
             return Inventory {
                 completeness: llm_provision::Completeness::Partial,
                 resources: Vec::new(),

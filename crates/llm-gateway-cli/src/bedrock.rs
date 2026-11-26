@@ -445,6 +445,13 @@ impl RelayTargets for BedrockTargets {
         }
         self.rest.status(alias)
     }
+
+    fn unavailable_reason(&self, alias: &str) -> Option<String> {
+        if self.holds(alias) {
+            return None;
+        }
+        self.rest.unavailable_reason(alias)
+    }
 }
 
 fn label(value: &str) -> Result<Label, Refusal> {

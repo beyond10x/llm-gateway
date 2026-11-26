@@ -19,6 +19,7 @@ function provider(now: number, shutdownAt: number): ProviderPanel {
     balance_usd: 3.208,
     spend_per_hour_usd: 2.39,
     other_pods: 0,
+    pods_unread: false,
     pods: [
       {
         id: 'f0e1d2c3b4a5',

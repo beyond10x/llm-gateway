@@ -7,7 +7,7 @@ title: The Runpod REST client calls a host that resolves, and says which one it 
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
-revision: 7
+revision: 9
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 3}
@@ -50,6 +50,13 @@ logged the same account read failure on the same host before the switch. No pod 
    while a call relays through the fake proxy, and the call completes.
 9. A relayed answer cut by the proxy's 100 s bound (`524`, or the connection closed) is reported as
    today's upstream cut, and the guide names the bound.
+9. Calls to a pod are streamed (section "The proxy's bound"): a client call without `stream` to a
+   managed model reaches the fake proxy with `stream: true` and the client gets one body equal to
+   what a non-streamed answer of the same events would be; a test has the fake send its first event
+   at once and the rest over a span longer than any idle gap the test allows, and the call
+   completes. A relayed answer cut by the proxy (`524`, or the connection closed) is reported as
+   today's upstream cut, and the guide names the bound and that it is not documented whether it
+   counts the whole connection.
 
 ## Documented route
 
@@ -97,3 +104,25 @@ management rest endpoint, and then you get an llm endpoint dedicated proxy"):
 
 Both declared in `spec/domains/deployment.yaml`. The GraphQL fallback for the balance stays at
 `https://api.runpod.io/graphql`.
+
+## The proxy's bound
+
+What the proxy's bound counts is not documented (read 2026-11-26):
+
+- Runpod, https://docs.runpod.io/pods/configuration/expose-ports.md: "Cloudflare enforces a maximum
+  connection time of 100 seconds", then `524`.
+- Cloudflare, https://developers.cloudflare.com/support/troubleshooting/http-status-codes/cloudflare-5xx-errors/error-524/:
+  524 means "the origin did not provide an HTTP response before the default 125 seconds" (Proxy
+  Read Timeout); https://developers.cloudflare.com/fundamentals/reference/connection-limits/ lists
+  "Proxy Read Timeout | 125 | 524" and does not say whether it runs until the headers, between two
+  reads, or to the end of the answer.
+
+Neither page answers it, and a fake on loopback cannot measure Cloudflare. Both readings that
+Cloudflare's 524 is known for (until the first byte, or idle between reads) are covered by
+streaming; only a bound on the whole connection is not, and nothing short of a shorter answer
+covers that. So the gateway streams every call to a pod: a client call without `stream` is sent to
+the pod with `stream: true` (usage included) and answered to the client as one body, assembled by
+the gateway. Today the gateway passes the client's `stream` value through unchanged.
+
+The open check, on the next pod the owner starts (no pod is started for it): one streamed call
+whose answer runs over 125 s; the record names the elapsed time and whether it completed.

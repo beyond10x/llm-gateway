@@ -34,6 +34,19 @@ function tone(status: string | null | undefined): string {
   return '';
 }
 
+// A status word as a person reads it out; the raw header value stays in the title.
+const STATUS_LABEL: Record<string, string> = { allowed_warning: 'allowed (warning)' };
+
+function label(v: string): string {
+  return STATUS_LABEL[v] ?? v;
+}
+
+// A value split after each underscore, so it may wrap there (a <wbr> between the parts) and never
+// inside a word.
+function parts(v: string): string[] {
+  return v.split(/(?<=_)/);
+}
+
 function unixMs(v: string | undefined): number | null {
   if (v === undefined) return null;
   const n = Number(v);
@@ -136,7 +149,7 @@ const limits = computed<Limit[]>(() =>
       <div class="tiles">
         <div class="tile" :class="l.tone">
           <div class="label">Status</div>
-          <div class="value">{{ l.status ?? DASH }}</div>
+          <div class="value" :title="l.status ?? undefined"><template v-for="(p, i) in parts(label(l.status ?? DASH))" :key="i"><wbr v-if="i > 0" />{{ p }}</template></div>
           <div v-if="l.reset !== null" class="sub">resets {{ countdown(now, l.reset) }}</div>
         </div>
         <div v-for="w in l.windows" :key="w.name" class="tile" :class="w.tone">
@@ -146,12 +159,12 @@ const limits = computed<Limit[]>(() =>
         </div>
         <div v-if="l.overage !== null" class="tile" :class="l.overageTone">
           <div class="label">Overage</div>
-          <div class="value">{{ l.overage }}</div>
-          <div v-if="l.overageReason" class="sub">{{ l.overageReason }}</div>
+          <div class="value" :title="l.overage"><template v-for="(p, i) in parts(label(l.overage))" :key="i"><wbr v-if="i > 0" />{{ p }}</template></div>
+          <div v-if="l.overageReason" class="sub" :title="l.overageReason"><template v-for="(p, i) in parts(l.overageReason)" :key="i"><wbr v-if="i > 0" />{{ p }}</template></div>
         </div>
         <div v-if="l.claim !== null" class="tile">
           <div class="label"><abbr title="the window that currently decides the status">Representative claim</abbr></div>
-          <div class="value">{{ l.claim }}</div>
+          <div class="value" :title="l.claim"><template v-for="(p, i) in parts(l.claim)" :key="i"><wbr v-if="i > 0" />{{ p }}</template></div>
         </div>
       </div>
       <dl v-if="l.rest.length" class="headers">

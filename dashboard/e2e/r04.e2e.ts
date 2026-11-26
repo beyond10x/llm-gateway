@@ -126,10 +126,10 @@ test.describe('UXF-006', () => {
         }
       });
       expect([...found]).toEqual([]);
-      // The Status tile of every limit names the raw header value in its title.
+      // The Status tile of every limit names the raw header value in its title (none without one).
       const raw = replay.states[replay.states.length - 1]!.limits!.map((l) => {
         const h = Object.fromEntries(Object.entries(l.headers).map(([k, v]) => [k.toLowerCase(), v]));
-        return h['anthropic-ratelimit-unified-status'];
+        return h['anthropic-ratelimit-unified-status'] ?? null;
       });
       const titles = await page.evaluate(() => [...document.querySelectorAll('.limit')].map((l) => l.querySelector('.tile .value')?.getAttribute('title') ?? null));
       expect(titles).toEqual(raw);

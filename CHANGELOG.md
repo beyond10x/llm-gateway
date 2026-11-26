@@ -13,6 +13,10 @@ Nothing in any release is deployed or qualified against a live client.
 - The dashboard shows the token flow in its own "Token flow" panel at the top of the page, above Overview, 180 px high (140 px on a narrow screen): a line from each active session (an in-flight call, or seen in the last five minutes), labelled with the first 8 characters of its id and its client, to each route it calls, each new call's input and output tokens moving along it on a log scale, a slow pulse while a call is in flight, at most 30 frames a second, paused in a hidden tab and still under reduced motion. Its heading line counts the active sessions and their routes, a caption names the two token colours, the panel keeps one height whether sessions come or go, and it says "No active sessions." when there are none. It reads only the snapshot the page already receives.
 - The Gate workflow has a `dashboard` job: on a push to `main`, and on a pull request whose diff reaches the dashboard, it type-checks the dashboard, runs its unit tests, checks that the built page equals the committed one and runs the Playwright gate; `task dashboard-ux` runs the same steps locally.
 
+### Changed
+
+- The dashboard's subscription limit tiles wrap a value only between words or after an underscore, never inside a word; the status `allowed_warning` reads "allowed (warning)", and every status, overage, claim and overage reason keeps its raw header value in its tooltip.
+
 ## 0.25.0 (2026-11-26)
 
 ### Changed

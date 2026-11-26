@@ -111,3 +111,29 @@ test.describe('UXF-026', () => {
     });
   }
 });
+
+// The Provider frame says whose account it shows in its heading, as the page did before the move
+// to the renderer, and labels each figure in words that stand without the frame.
+test.describe('UXF-018', () => {
+  test('the Provider frame names the provider in its heading, and its figure labels are words a reader can say', async ({ browser }) => {
+    for (const name of ['busy', 'errors']) {
+      const { page } = await replayed(browser, name);
+      try {
+        const provider = scenario(name).states(Date.now())[0]!.provider!;
+        const heading = page.locator('#h-provider');
+        await expect(heading, `${name}: the frame's heading`).toHaveText(`Provider: ${provider.name}`);
+        const frame = page.locator('section[aria-labelledby="h-provider"]');
+        const labels = (await frame.locator('.stats dt').allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+        expect(labels.length, `${name}: the provider's figures`).toBeGreaterThan(0);
+        for (const l of labels) {
+          expect(l.split(' ').length, `${name}: "${l}" is more than one word`).toBeGreaterThan(1);
+          expect(['Name', 'Read', 'Other pods'], `${name}: "${l}" says what the figure is`).not.toContain(l);
+        }
+        expect(labels, `${name}: the pods the gateway does not run`).toContain('Pods not run by this gateway');
+        expect(labels, `${name}: when the account was read`).toContain('Account read');
+      } finally {
+        await page.context().close();
+      }
+    }
+  });
+});

@@ -1411,3 +1411,386 @@ mod adversary_w03_cost_conditions {
         assert_eq!(records[0].cost_usd, None, "{:?}", records[0]);
     }
 }
+
+// --- Correction of the adversary pass, wave 2026-11-25-w03 ---------------------------------------
+
+/// Every relay path and every wire: an answer that ended in its wire's terminal error has no
+/// cost, and the counters and the cost read the answer's usage object only, never a member of the
+/// same name elsewhere in the body (docs/gateway.md "Counters and usage records" and "The cost
+/// of a call"). Every target is the fake upstream on loopback, port 0.
+mod correction_w03 {
+    use super::*;
+
+    /// A pricing that answers a cost whenever input and output were reported.
+    struct Half;
+
+    impl CallPricing for Half {
+        fn cost_usd(&self, _wire: Wire, usage: Usage) -> Option<String> {
+            usage.input_tokens?;
+            usage.output_tokens?;
+            Some("0.5".to_owned())
+        }
+    }
+
+    /// A pricing that writes the counts it was asked about into its answer: `0.<input><output>`.
+    struct Counts;
+
+    impl CallPricing for Counts {
+        fn cost_usd(&self, _wire: Wire, usage: Usage) -> Option<String> {
+            Some(format!("0.{}{}", usage.input_tokens?, usage.output_tokens?))
+        }
+    }
+
+    /// `priced`, relayed on `wire` and priced by `pricing`.
+    fn priced(wire: Wire, pricing: Arc<dyn CallPricing>) -> RelayModel {
+        RelayModel::new(label("priced"), label("priced"), vec![wire])
+            .unwrap()
+            .with_pricing(pricing)
+    }
+
+    /// A streamed answer of `events`, each one chunk, ended by the last chunk.
+    fn stream(events: &[&str]) -> String {
+        let mut answer = STREAM_HEAD.to_owned();
+        for event in events {
+            answer.push_str(&chunk(event));
+        }
+        answer.push_str("0\r\n\r\n");
+        answer
+    }
+
+    /// The one record of a call on `wire` to `priced`, priced by `pricing`, whose upstream
+    /// answers `reply`; the client's answer is `200` and carries `expected` in its body.
+    fn relayed(
+        wire: Wire,
+        pricing: Arc<dyn CallPricing>,
+        body: &str,
+        reply: String,
+        expected: &str,
+    ) -> UsageRecord {
+        let upstream = Upstream::start(vec![Reply::Whole(reply)]);
+        let fixture = gateway(&upstream, vec![priced(wire, pricing)], |_| {});
+        let answered = post(fixture.address(), wire.path(), body, Some(OWNER));
+        assert_eq!(answered.status, 200, "{answered:?}");
+        assert!(answered.body.contains(expected), "{answered:?}");
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        records[0].clone()
+    }
+
+    const STREAMED: &str = r#"{"model":"priced","stream":true}"#;
+    const WHOLE: &str = r#"{"model":"priced"}"#;
+
+    // --- Terminal errors after the head ----------------------------------------------------------
+
+    /// The chat wire's terminal error is a chunk whose object carries `error`
+    /// (docs/gateway.md "The answer": `data: {"error":{…}}` and no `[DONE]`).
+    #[test]
+    fn a_relayed_chat_stream_ended_by_its_error_chunk_has_no_cost() {
+        let record = relayed(
+            Wire::Chat,
+            Arc::new(Half),
+            STREAMED,
+            stream(&[
+                "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"Hel\"}}],\"usage\":{\"prompt_tokens\":12,\"completion_tokens\":1}}\n\n",
+                "data: {\"error\":{\"code\":\"upstream-failed\",\"message\":\"the model target failed\"}}\n\n",
+            ]),
+            "upstream-failed",
+        );
+        assert_eq!(record.input_tokens, Some(12), "{record:?}");
+        assert_eq!(record.cost_usd, None, "{record:?}");
+    }
+
+    /// The responses wire's terminal error `response.failed`, here carrying the counters llm's
+    /// encoder carries when they are final.
+    #[test]
+    fn a_relayed_responses_stream_ended_by_response_failed_has_no_cost() {
+        let record = relayed(
+            Wire::Responses,
+            Arc::new(Half),
+            STREAMED,
+            stream(&[
+                "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"status\":\"in_progress\",\"error\":null,\"usage\":null}}\n\n",
+                "event: response.failed\ndata: {\"type\":\"response.failed\",\"response\":{\"id\":\"r\",\"status\":\"failed\",\"output\":[],\"error\":{\"code\":\"server_error\",\"message\":\"failed\"},\"usage\":{\"input_tokens\":12,\"output_tokens\":1}}}\n\n",
+            ]),
+            "response.failed",
+        );
+        assert_eq!(record.input_tokens, Some(12), "{record:?}");
+        assert_eq!(record.cost_usd, None, "{record:?}");
+    }
+
+    /// The responses wire's other terminal error, its `error` event, after an event that
+    /// reported counters.
+    #[test]
+    fn a_relayed_responses_stream_ended_by_its_error_event_has_no_cost() {
+        let record = relayed(
+            Wire::Responses,
+            Arc::new(Half),
+            STREAMED,
+            stream(&[
+                "event: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"r\",\"status\":\"in_progress\",\"error\":null,\"usage\":{\"input_tokens\":12,\"output_tokens\":1}}}\n\n",
+                "event: error\ndata: {\"type\":\"error\",\"code\":\"server_error\",\"message\":\"failed\",\"param\":null}\n\n",
+            ]),
+            "server_error",
+        );
+        assert_eq!(record.input_tokens, Some(12), "{record:?}");
+        assert_eq!(record.cost_usd, None, "{record:?}");
+    }
+
+    /// The messages wire's `error` event on a client-credential route (passthrough): the same
+    /// rule holds on every relay path.
+    #[test]
+    fn a_passthrough_stream_ended_by_its_wires_error_event_has_no_cost() {
+        let answer = stream(&[
+            "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":1}}}\n\n",
+            "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+        ]);
+        let upstream = Upstream::start(vec![Reply::Whole(answer)]);
+        let model = priced(Wire::Messages, Arc::new(Half)).with_client_credentials();
+        let fixture = gateway(&upstream, vec![model], |config| {
+            config.ingress_auth = IngressAuth::None;
+        });
+        let body = STREAMED;
+        let answered = send(
+            fixture.address(),
+            &format!(
+                "POST /v1/messages HTTP/1.1\r\nhost: g\r\nx-api-key: client-key\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                body.len()
+            ),
+        );
+        assert_eq!(answered.status, 200, "{answered:?}");
+        assert!(answered.body.contains("overloaded_error"), "{answered:?}");
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(records[0].input_tokens, Some(12), "{:?}", records[0]);
+        assert_eq!(records[0].cost_usd, None, "{:?}", records[0]);
+    }
+
+    /// A translation that writes its client wire's `error` event after `message_start` and
+    /// does not tell the relay (`TranslatedAnswer::failed`).
+    struct Untold;
+
+    struct UntoldRun;
+
+    impl Translator for Untold {
+        fn prepare(
+            &self,
+            _request: &TranslationRequest<'_>,
+        ) -> Result<Box<dyn Translation>, RefusalCode> {
+            Ok(Box::new(UntoldRun))
+        }
+    }
+
+    impl Translation for UntoldRun {
+        fn run(
+            self: Box<Self>,
+            _target: &dyn RelayTarget,
+            answer: &mut dyn TranslatedAnswer,
+        ) -> Result<(), TranslationFailure> {
+            answer.target_status(200);
+            if answer.head(200, "text/event-stream", AnswerFraming::Stream) {
+                answer.body(b"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":1}}}\n\n");
+                answer.body(b"event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"api_error\",\"message\":\"failed\"}}\n\n");
+            }
+            Ok(())
+        }
+    }
+
+    /// The translated path reads the bytes it wrote as the byte relay reads the upstream's: an
+    /// answer that carries its wire's terminal error has no cost, told or not.
+    #[test]
+    fn a_translated_answer_that_carries_its_wires_error_event_has_no_cost() {
+        let upstream = Upstream::start(Vec::new());
+        let kept = Arc::new(Kept::default());
+        let relay = Relay::new(
+            vec![priced(Wire::Chat, Arc::new(Half))],
+            Arc::new(Targets(upstream.authority.clone())),
+        )
+        .unwrap()
+        .with_translator(Arc::new(Untold))
+        .with_records(Arc::clone(&kept) as Arc<dyn UsageRecords>);
+        let verifier =
+            Arc::new(SharedSecretVerifier::new(OwnerToken::new(OWNER.into()).unwrap()).unwrap());
+        let handle = Gateway::bind_with_relay(
+            GatewayConfig::new("127.0.0.1:0".parse().unwrap()),
+            verifier,
+            RouteInventory::new(Vec::new()).unwrap(),
+            relay,
+        )
+        .unwrap();
+        handle.mark_ready();
+        let fixture = Fixture { handle, kept };
+        let answered = post(fixture.address(), "/v1/messages", STREAMED, Some(OWNER));
+        assert_eq!(answered.status, 200, "{answered:?}");
+        assert!(answered.body.contains("api_error"), "{answered:?}");
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(records[0].input_tokens, Some(12), "{:?}", records[0]);
+        assert_eq!(records[0].cost_usd, None, "{:?}", records[0]);
+    }
+
+    /// The terminal error is the event's own: an `error` or a `type` inside a tool call's
+    /// arguments, and a response's `error` of `null`, end nothing, and such an answer is priced.
+    #[test]
+    fn an_error_named_inside_an_answer_or_null_is_no_terminal_error_and_the_call_is_priced() {
+        let messages = r#"{"id":"m","type":"message","role":"assistant","content":[{"type":"tool_use","id":"toolu_1","name":"report","input":{"type":"error","error":{"type":"overloaded_error"}}}],"stop_reason":"tool_use","usage":{"input_tokens":20,"output_tokens":5}}"#;
+        let record = relayed(
+            Wire::Messages,
+            Arc::new(Half),
+            WHOLE,
+            json_answer(messages),
+            "toolu_1",
+        );
+        assert_eq!(record.cost_usd.as_deref(), Some("0.5"), "{record:?}");
+        let responses = r#"{"id":"r","object":"response","status":"completed","error":null,"output":[],"usage":{"input_tokens":20,"output_tokens":5}}"#;
+        let record = relayed(
+            Wire::Responses,
+            Arc::new(Half),
+            WHOLE,
+            json_answer(responses),
+            "completed",
+        );
+        assert_eq!(record.cost_usd.as_deref(), Some("0.5"), "{record:?}");
+    }
+
+    // --- A tool call's arguments are no usage ----------------------------------------------------
+
+    /// The counters and the cost of `record` are the 20 input and 5 output tokens the answer's
+    /// usage reported.
+    fn reads_the_usage_only(record: &UsageRecord) {
+        let counted = (
+            record.input_tokens,
+            record.output_tokens,
+            record.cached_input_tokens,
+            record.cache_creation_input_tokens,
+            record.cost_usd.as_deref(),
+        );
+        assert_eq!(
+            counted,
+            (Some(20), Some(5), None, None, Some("0.205")),
+            "the usage the answer reported is 20 input and 5 output tokens: {record:?}"
+        );
+    }
+
+    /// Arguments that name every counter the scanner reads, with values no usage has.
+    const ARGUMENTS: &str = r#"{"input_tokens":900000,"output_tokens":800000,"prompt_tokens":900000,"completion_tokens":800000,"cache_read_input_tokens":700000,"cache_creation_input_tokens":600000,"cached_tokens":700000,"usage":{"input_tokens":900000,"output_tokens":800000}}"#;
+
+    /// The same arguments as a JSON string, as chat and responses carry them.
+    fn quoted() -> String {
+        format!("\"{}\"", ARGUMENTS.replace('"', "\\\""))
+    }
+
+    /// A streamed messages answer whose tool call opens with its `input` as an object
+    /// (`content_block_start`) and streams more as `partial_json`.
+    #[test]
+    fn a_streamed_messages_tool_calls_input_is_not_the_answers_usage() {
+        let start = format!(
+            "event: content_block_start\ndata: {{\"type\":\"content_block_start\",\"index\":0,\"content_block\":{{\"type\":\"tool_use\",\"id\":\"toolu_1\",\"name\":\"set_budget\",\"input\":{ARGUMENTS}}}}}\n\n"
+        );
+        let delta = format!(
+            "event: content_block_delta\ndata: {{\"type\":\"content_block_delta\",\"index\":0,\"delta\":{{\"type\":\"input_json_delta\",\"partial_json\":{}}}}}\n\n",
+            quoted()
+        );
+        let record = relayed(
+            Wire::Messages,
+            Arc::new(Counts),
+            STREAMED,
+            stream(&[
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":20,\"output_tokens\":1}}}\n\n",
+                &start,
+                &delta,
+                "event: content_block_stop\ndata: {\"type\":\"content_block_stop\",\"index\":0}\n\n",
+                "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"},\"usage\":{\"output_tokens\":5}}\n\n",
+                "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
+            ]),
+            "toolu_1",
+        );
+        reads_the_usage_only(&record);
+    }
+
+    /// A non-streamed chat answer with two tool calls: one with its arguments as the wire
+    /// writes them, a string, and one with them as an object, as a lenient server may.
+    #[test]
+    fn a_chat_tool_calls_arguments_are_not_the_answers_usage() {
+        let answer = format!(
+            r#"{{"id":"c","object":"chat.completion","choices":[{{"index":0,"message":{{"role":"assistant","content":null,"tool_calls":[{{"id":"call_1","type":"function","function":{{"name":"set_budget","arguments":{}}}}},{{"id":"call_2","type":"function","function":{{"name":"set_budget","arguments":{ARGUMENTS}}}}}]}},"finish_reason":"tool_calls"}}],"usage":{{"prompt_tokens":20,"completion_tokens":5,"total_tokens":25}}}}"#,
+            quoted()
+        );
+        let record = relayed(
+            Wire::Chat,
+            Arc::new(Counts),
+            WHOLE,
+            json_answer(&answer),
+            "call_2",
+        );
+        reads_the_usage_only(&record);
+    }
+
+    /// A streamed chat answer whose tool call's arguments arrive in a delta, as a string and as
+    /// an object, and whose last chunk carries the usage.
+    #[test]
+    fn a_streamed_chat_tool_calls_arguments_are_not_the_answers_usage() {
+        let string = format!(
+            "data: {{\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[{{\"index\":0,\"delta\":{{\"tool_calls\":[{{\"index\":0,\"id\":\"call_1\",\"type\":\"function\",\"function\":{{\"name\":\"set_budget\",\"arguments\":{}}}}}]}}}}],\"usage\":null}}\n\n",
+            quoted()
+        );
+        let object = format!(
+            "data: {{\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[{{\"index\":0,\"delta\":{{\"tool_calls\":[{{\"index\":1,\"id\":\"call_2\",\"type\":\"function\",\"function\":{{\"name\":\"set_budget\",\"arguments\":{ARGUMENTS}}}}}]}}}}],\"usage\":null}}\n\n"
+        );
+        let record = relayed(
+            Wire::Chat,
+            Arc::new(Counts),
+            r#"{"model":"priced","stream":true,"stream_options":{"include_usage":true}}"#,
+            stream(&[
+                &string,
+                &object,
+                "data: {\"id\":\"c\",\"object\":\"chat.completion.chunk\",\"choices\":[],\"usage\":{\"prompt_tokens\":20,\"completion_tokens\":5,\"total_tokens\":25}}\n\n",
+                "data: [DONE]\n\n",
+            ]),
+            "call_2",
+        );
+        reads_the_usage_only(&record);
+    }
+
+    /// A non-streamed responses answer, the response object itself, whose usage is its own
+    /// `usage`; its function calls carry their arguments as a string and as an object, and its
+    /// `metadata` names a counter too.
+    #[test]
+    fn a_responses_function_calls_arguments_are_not_the_answers_usage() {
+        let answer = format!(
+            r#"{{"id":"r","object":"response","status":"completed","error":null,"metadata":{{"input_tokens":"900000"}},"output":[{{"type":"function_call","id":"fc_1","call_id":"call_1","name":"set_budget","arguments":{}}},{{"type":"function_call","id":"fc_2","call_id":"call_2","name":"set_budget","arguments":{ARGUMENTS}}}],"usage":{{"input_tokens":20,"output_tokens":5,"total_tokens":25}}}}"#,
+            quoted()
+        );
+        let record = relayed(
+            Wire::Responses,
+            Arc::new(Counts),
+            WHOLE,
+            json_answer(&answer),
+            "fc_2",
+        );
+        reads_the_usage_only(&record);
+    }
+
+    /// A streamed responses answer: the function call's item, done, carries its arguments as an
+    /// object, and `response.completed` carries them again in its output beside the usage.
+    #[test]
+    fn a_streamed_responses_function_calls_arguments_are_not_the_answers_usage() {
+        let done = format!(
+            "event: response.output_item.done\ndata: {{\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"set_budget\",\"arguments\":{ARGUMENTS}}}}}\n\n"
+        );
+        let completed = format!(
+            "event: response.completed\ndata: {{\"type\":\"response.completed\",\"response\":{{\"id\":\"r\",\"status\":\"completed\",\"error\":null,\"output\":[{{\"type\":\"function_call\",\"id\":\"fc_1\",\"call_id\":\"call_1\",\"name\":\"set_budget\",\"arguments\":{ARGUMENTS}}}],\"usage\":{{\"input_tokens\":20,\"output_tokens\":5,\"total_tokens\":25}}}}}}\n\n"
+        );
+        let record = relayed(
+            Wire::Responses,
+            Arc::new(Counts),
+            STREAMED,
+            stream(&[
+                "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"r\",\"status\":\"in_progress\",\"error\":null,\"usage\":null}}\n\n",
+                &done,
+                &completed,
+            ]),
+            "fc_1",
+        );
+        reads_the_usage_only(&record);
+    }
+}

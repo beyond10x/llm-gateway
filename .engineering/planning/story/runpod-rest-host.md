@@ -7,7 +7,7 @@ title: The Runpod REST client calls a host that resolves, and says which one it 
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
-revision: 9
+revision: 10
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 3}
@@ -48,8 +48,6 @@ logged the same account read failure on the same host before the switch. No pod 
 8. A management call that fails (no address, 5xx, 403) never hides the last balance and never
    breaks the inference route of a pod already running: a test fails the fake management API
    while a call relays through the fake proxy, and the call completes.
-9. A relayed answer cut by the proxy's 100 s bound (`524`, or the connection closed) is reported as
-   today's upstream cut, and the guide names the bound.
 9. Calls to a pod are streamed (section "The proxy's bound"): a client call without `stream` to a
    managed model reaches the fake proxy with `stream: true` and the client gets one body equal to
    what a non-streamed answer of the same events would be; a test has the fake send its first event

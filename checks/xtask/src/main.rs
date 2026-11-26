@@ -1,19 +1,18 @@
-//! The gate's test step, one command locally and in CI:
+//! The gate's test step, the same locally and in CI:
 //! `cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test`.
 //!
-//! `test` builds the workspace's test binaries first, outside the bound, then runs them with
-//! `cargo nextest run --workspace --locked` under `.config/nextest.toml`, which kills a test at
-//! 60 s and counts it failed, and ends the run at 120 s. It then reads the `JUnit` report the run
-//! wrote and prints the ten slowest tests, slowest first, and the time the run took by its own
-//! report, failing when that time is over 120 s. The time is read from the report, not from a
-//! clock around the command, so a build or a wait for a build slot is not counted.
-//!
-//! `report <JUnit report>` does the last part alone, over a report already written.
+//! `test` builds the workspace's test binaries first, untimed (`cargo nextest run --no-run`; a
+//! build is not the test step, and the gate runs it as a step of its own before this one), then
+//! runs them with `cargo nextest run --workspace --locked` under `.config/nextest.toml`, which
+//! kills a test at 60 s and counts it failed, and ends the run at 120 s. It times the run's wall
+//! clock, from its start to its exit, and fails when that is over 120 s (decision D89). It reads
+//! the `JUnit` report the run wrote and prints the ten slowest tests, slowest first.
 
 use std::{
     fmt, fs, io,
     path::{Path, PathBuf},
     process::{Command, ExitCode},
+    time::{Duration, Instant},
 };
 
 /// What the test run may take, in seconds.
@@ -26,16 +25,12 @@ const SLOWEST: usize = 10;
 /// directory (`.config/nextest.toml`).
 const JUNIT: &str = "nextest/default/junit.xml";
 
-const USAGE: &str = "usage: b10x-llm-gateway-xtask test\n       \
-                     b10x-llm-gateway-xtask report <JUnit report>";
+const USAGE: &str = "usage: b10x-llm-gateway-xtask test";
 
 fn main() -> ExitCode {
     let arguments: Vec<String> = std::env::args().skip(1).collect();
     let result = match arguments.as_slice() {
         [command] if command == "test" => test(),
-        [command, report] if command == "report" => {
-            read(Path::new(report)).and_then(|run| verdict(&run))
-        }
         _ => {
             eprintln!("{USAGE}");
             return ExitCode::from(2);
@@ -102,15 +97,18 @@ fn test() -> Result<(), Failure> {
         }
         _ => {}
     }
+    let started = Instant::now();
     let passed = cargo(&["nextest", "run", "--workspace", "--locked"])?;
+    let wall = started.elapsed();
     let run = read(&report)?;
     println!(
-        "tests: {} tests in {:.1} s, {}",
+        "tests: {} tests in {:.1} s of wall clock ({:.1} s by the report), {}",
         run.cases.len(),
+        wall.as_secs_f64(),
         run.seconds,
         if passed { "passed" } else { "failed" }
     );
-    let bound = verdict(&run);
+    let bound = verdict(&run, wall);
     if passed { bound } else { Err(Failure::Failed) }
 }
 
@@ -221,18 +219,19 @@ fn slowest(run: &Run) -> Vec<&Case> {
     cases
 }
 
-/// Prints the ten slowest tests of `run` and the time it took, and fails over the bound.
-fn verdict(run: &Run) -> Result<(), Failure> {
+/// Prints the ten slowest tests of `run` and the wall clock `wall` it took, and fails when
+/// `wall` is over the bound.
+fn verdict(run: &Run, wall: Duration) -> Result<(), Failure> {
     println!("tests: the {SLOWEST} slowest tests");
     for case in slowest(run) {
         println!("{:>10.3} s  {} {}", case.seconds, case.suite, case.name);
     }
+    let seconds = wall.as_secs_f64();
     println!(
-        "tests: the run took {:.1} s of its bound of {BOUND_SECONDS:.0} s",
-        run.seconds
+        "tests: the run took {seconds:.1} s of wall clock, of its bound of {BOUND_SECONDS:.0} s"
     );
-    if run.seconds > BOUND_SECONDS {
-        return Err(Failure::OverBound(run.seconds));
+    if seconds > BOUND_SECONDS {
+        return Err(Failure::OverBound(seconds));
     }
     Ok(())
 }
@@ -240,6 +239,7 @@ fn verdict(run: &Run) -> Result<(), Failure> {
 #[cfg(test)]
 mod tests {
     use super::{BOUND_SECONDS, Failure, parse, slowest, verdict};
+    use std::time::Duration;
 
     fn report(run: f64, cases: &[(f64, &str)]) -> String {
         use std::fmt::Write as _;
@@ -281,12 +281,22 @@ mod tests {
         assert_eq!(names, expected);
     }
 
+    /// Decision D89: the bound counts the wall clock of the run, from its start to its exit,
+    /// not the time the report names, which leaves out what nextest does before its first test
+    /// and after its last.
     #[test]
-    fn a_run_over_its_bound_fails_and_one_at_the_bound_passes() {
-        let at = parse(&report(BOUND_SECONDS, &[(1.0, "a")])).unwrap();
-        assert_eq!(verdict(&at), Ok(()));
-        let over = parse(&report(BOUND_SECONDS + 0.1, &[(1.0, "a")])).unwrap();
-        assert!(matches!(verdict(&over), Err(Failure::OverBound(_))));
+    fn the_bound_counts_the_runs_wall_clock_not_the_reports_time() {
+        let quick = parse(&report(1.0, &[(1.0, "a")])).unwrap();
+        assert_eq!(
+            verdict(&quick, Duration::from_secs_f64(BOUND_SECONDS)),
+            Ok(())
+        );
+        assert!(matches!(
+            verdict(&quick, Duration::from_secs_f64(BOUND_SECONDS + 0.1)),
+            Err(Failure::OverBound(_))
+        ));
+        let slow_report = parse(&report(BOUND_SECONDS + 30.0, &[(1.0, "a")])).unwrap();
+        assert_eq!(verdict(&slow_report, Duration::from_secs(5)), Ok(()));
     }
 
     #[test]

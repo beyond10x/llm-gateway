@@ -1,9 +1,12 @@
-//! The test step is one step and one task, the same locally and in CI, and runs cargo-nextest
-//! under `.config/nextest.toml`: a test over 60 s is killed and fails, and the run ends at 120 s.
+//! The test step is one task and two CI steps with the same commands: an untimed build of the
+//! tests, then the timed run under `.config/nextest.toml`, where a test over 60 s is killed and
+//! fails and the run ends at 120 s. Decision D89: the 120 s bound counts the run's wall clock;
+//! the build, and a wait for a build slot before it, are not the test step.
 
 use super::{read, workflow};
 use serde_yaml::Value;
 
+const BUILD_STEP: &str = "cargo nextest run --workspace --locked --no-run";
 const TEST_STEP: &str = "cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test";
 
 fn runs(steps: &Value) -> Vec<(String, String)> {
@@ -39,16 +42,25 @@ fn runs_tests(command: &str) -> bool {
 }
 
 #[test]
-fn the_test_step_is_one_command_in_the_local_gate_and_in_ci() {
+fn the_test_step_is_the_same_build_and_timed_run_in_the_local_gate_and_in_ci() {
     let workflow = workflow();
     let steps = runs(&workflow["jobs"]["serving-crates"]["steps"]);
-    let tests: Vec<&(String, String)> = steps.iter().filter(|(_, run)| runs_tests(run)).collect();
-    assert_eq!(tests.len(), 1, "{tests:?}");
-    assert_eq!(tests[0].0, "Rust tests");
-    assert_eq!(tests[0].1.trim(), TEST_STEP);
+    let tests: Vec<(&str, &str)> = steps
+        .iter()
+        .filter(|(_, run)| runs_tests(run))
+        .map(|(name, run)| (name.as_str(), run.trim()))
+        .collect();
+    assert_eq!(
+        tests,
+        [("Build the tests", BUILD_STEP), ("Rust tests", TEST_STEP)],
+        "CI builds the tests in a step of its own, then runs the timed step"
+    );
 
     let taskfile: Value = serde_yaml::from_str(&read("Taskfile.yml")).expect("Taskfile.yml");
-    assert_eq!(commands(&taskfile["tasks"]["test"]), [TEST_STEP]);
+    assert_eq!(
+        commands(&taskfile["tasks"]["test"]),
+        [BUILD_STEP, TEST_STEP]
+    );
     let rust = commands(&taskfile["tasks"]["rust"]);
     assert_eq!(
         rust.first().map(String::as_str),
@@ -77,6 +89,22 @@ fn a_test_over_60_s_is_killed_and_fails_and_the_run_ends_at_120_s() {
     assert_eq!(slow["terminate-after"].as_integer(), Some(1));
     assert_eq!(profile["global-timeout"].as_str(), Some("120s"));
     assert_eq!(profile["junit"]["path"].as_str(), Some("junit.xml"));
+}
+
+/// The nextest the configuration requires is the one CI pins, so an older one on a developer's
+/// `PATH` is refused before it runs a test.
+#[test]
+fn the_configuration_requires_the_nextest_ci_pins() {
+    let config: toml::Table = toml::from_str(&read(".config/nextest.toml")).expect("nextest.toml");
+    let workflow = workflow();
+    let pinned = workflow["jobs"]["serving-crates"]["steps"]
+        .as_sequence()
+        .expect("steps")
+        .iter()
+        .find(|step| step["name"].as_str() == Some("Install cargo-nextest"))
+        .and_then(|step| step["env"]["NEXTEST_VERSION"].as_str())
+        .expect("CI pins a version");
+    assert_eq!(config["nextest-version"].as_str(), Some(pinned));
 }
 
 #[test]

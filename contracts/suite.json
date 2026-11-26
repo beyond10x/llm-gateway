@@ -828,32 +828,32 @@
         "scenario": "llm-gateway.gateway/authored/liveness-is-served-without-a-credential-and-readiness-starts-unready"
       },
       "gateway/scenarios/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model.yaml": {
-        "digest": "sha256:f1268359feb702f725f206e1612fccdd5ed979af626e2bdc83541928ed1fcb7d",
+        "digest": "sha256:4a8e557a1aa15fe436122455dc44e8b1f0744479cb9604e3135ba7cba340d871",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-each-model-call-feeds-one-outcome-and-the-duration-histogram-of-its-model"
       },
       "gateway/scenarios/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else.yaml": {
-        "digest": "sha256:4fdd70ed40d4118236cfcd399783555346f9a705cedf76a9b4501556f734ad0c",
+        "digest": "sha256:9ab5c55fcd68d60ee60b100832dac425ede83f014096fd1d966c89532ba761f1",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-listener-serves-get-and-head-on-exactly-metrics-and-nothing-else"
       },
       "gateway/scenarios/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first.yaml": {
-        "digest": "sha256:58e78547e91d4d737749a77391ef05feaf7ff2feeb3737cc419fe2fc699eb01e",
+        "digest": "sha256:e364b989574e3b25cbab8d8d4c26f8d1c31d3bd2901be01845151bdda094f922",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/metrics-listener-with-a-scrape-token-takes-it-and-decides-the-path-first"
       },
       "gateway/scenarios/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series.yaml": {
-        "digest": "sha256:5ee15ff18fdb3f221ca12c4daf99073fc78962b47fa0ed930b084de5dcb71328",
+        "digest": "sha256:4932600d29233bcba398a2771ca998039828d6608cb32414642d78b322882817",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-relayed-answer-an-upstream-failure-and-a-refusal-each-make-one-record-and-feed-its-series"
       },
       "gateway/scenarios/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route.yaml": {
-        "digest": "sha256:526899d6c202299c335541c65e2f751680adf09405dc4c4acbe940c35929da26",
+        "digest": "sha256:bd48825f75cf976a4b12c22a1ab3ec5931859bb0ed8b7f0e96cde378daa5fc88",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-request-held-past-its-hold-budget-is-counted-as-a-cold-start-hold-on-its-route"
       },
       "gateway/scenarios/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure.yaml": {
-        "digest": "sha256:ecc9187d96184493ba507f87109a92b2b2d425dd4892afb0441442c382184a07",
+        "digest": "sha256:d54a70a9f8048300a678d5fa7e99a41806d1c33c3f9ab48d239a547996ae13c2",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/o1-o2-a-target-status-outside-2xx-is-a-status-failure-and-an-unanswered-call-an-upstream-failure"
       },
@@ -913,7 +913,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-codex-is-profiled-for-a-native-route-and-a-route-its-turn-translates-to"
       },
       "gateway/scenarios/r1-each-served-setup-instructions-answer-counts-one-instruction-view.yaml": {
-        "digest": "sha256:eb34b40cffc6db3f6ea4d9c092a3a3382a1a102fc72255112c802169c62e767e",
+        "digest": "sha256:b779236369b4904ae70de7191e2760bb3a95bae7022fafac5a72a708faefe7ec",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r1-each-served-setup-instructions-answer-counts-one-instruction-view"
       },
@@ -933,7 +933,7 @@
         "scenario": "llm-gateway.gateway/authored/r1-r5-before-readiness-the-public-routes-are-unavailable-and-take-no-body"
       },
       "gateway/scenarios/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero.yaml": {
-        "digest": "sha256:a93d00969da75023b6300b95e1c6b6e8b452636e8e208f193c78ff298adc7173",
+        "digest": "sha256:bf87a333ecc7566fe44e9e93dc013d9fa3b0fde11b5cb390c32d8491934871c4",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/r4-metrics-takes-the-owner-and-readiness-and-registers-every-declared-route-at-zero"
       },
@@ -11712,6 +11712,7 @@
                   "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_interaction_records_dropped_total 0",
                   "1 llmgw_interaction_records_skipped_total 0",
+                  "1 llmgw_interaction_records_failed_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 3",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 1",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 1",
@@ -11947,6 +11948,7 @@
                   "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_interaction_records_dropped_total 0",
                   "1 llmgw_interaction_records_skipped_total 0",
+                  "1 llmgw_interaction_records_failed_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -12108,6 +12110,7 @@
                   "4 llmgw_pod_start_spend_refusals_total 0",
                   "4 llmgw_interaction_records_dropped_total 0",
                   "4 llmgw_interaction_records_skipped_total 0",
+                  "4 llmgw_interaction_records_failed_total 0",
                   "4 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "4 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
                   "4 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -12272,6 +12275,7 @@
                   "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_interaction_records_dropped_total 0",
                   "1 llmgw_interaction_records_skipped_total 0",
+                  "1 llmgw_interaction_records_failed_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
@@ -12314,6 +12318,7 @@
                   "2 llmgw_pod_start_spend_refusals_total 0",
                   "2 llmgw_interaction_records_dropped_total 0",
                   "2 llmgw_interaction_records_skipped_total 0",
+                  "2 llmgw_interaction_records_failed_total 0",
                   "2 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
                   "2 llmgw_route_requests_total{model=\"code\",wire=\"responses\"} 1",
                   "2 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
@@ -12552,6 +12557,7 @@
                   "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_interaction_records_dropped_total 0",
                   "1 llmgw_interaction_records_skipped_total 0",
+                  "1 llmgw_interaction_records_failed_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 2",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
@@ -12785,6 +12791,7 @@
                   "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_interaction_records_dropped_total 0",
                   "1 llmgw_interaction_records_skipped_total 0",
+                  "1 llmgw_interaction_records_failed_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 3",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 1",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 2",
@@ -14244,6 +14251,7 @@
                   "1 llmgw_pod_start_spend_refusals_total 0",
                   "1 llmgw_interaction_records_dropped_total 0",
                   "1 llmgw_interaction_records_skipped_total 0",
+                  "1 llmgw_interaction_records_failed_total 0",
                   "1 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",
                   "1 llmgw_route_upstream_status_failures_total{model=\"code\",wire=\"chat\"} 0",
@@ -14702,6 +14710,7 @@
                   "3 llmgw_pod_start_spend_refusals_total 0",
                   "3 llmgw_interaction_records_dropped_total 0",
                   "3 llmgw_interaction_records_skipped_total 0",
+                  "3 llmgw_interaction_records_failed_total 0",
                   "3 llmgw_route_requests_total{model=\"code\",wire=\"chat\"} 0",
                   "3 llmgw_route_requests_total{model=\"code\",wire=\"messages\"} 0",
                   "3 llmgw_route_refusals_total{model=\"code\",wire=\"chat\"} 0",

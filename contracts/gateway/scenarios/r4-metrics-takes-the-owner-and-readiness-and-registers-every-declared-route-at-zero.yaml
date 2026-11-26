@@ -36,6 +36,7 @@ assert:
     - 3 llmgw_pod_start_spend_refusals_total 0
     - 3 llmgw_interaction_records_dropped_total 0
     - 3 llmgw_interaction_records_skipped_total 0
+    - 3 llmgw_interaction_records_failed_total 0
     - 3 llmgw_route_requests_total{model="code",wire="chat"} 0
     - 3 llmgw_route_requests_total{model="code",wire="messages"} 0
     - 3 llmgw_route_refusals_total{model="code",wire="chat"} 0

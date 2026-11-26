@@ -2,12 +2,15 @@
 format: aep.planning-md/3
 id: story:test-step-within-budget
 kind: story
-status: draft
+status: active
 title: The test step of the gate ends within its budget and kills a test at 60 s
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
-revision: 1
+revision: 3
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T02:02:41Z", actor: "human:operator", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-26T02:02:41Z", actor: "human:operator", revision: 3}
 ---
 ## Outcome
 

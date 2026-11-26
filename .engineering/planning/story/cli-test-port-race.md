@@ -2,12 +2,15 @@
 format: aep.planning-md/3
 id: story:cli-test-port-race
 kind: story
-status: draft
+status: active
 title: A binary test binds a port no other test can take first
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
-revision: 1
+revision: 3
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T02:02:41Z", actor: "human:operator", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-26T02:02:41Z", actor: "human:operator", revision: 3}
 ---
 ## Outcome
 

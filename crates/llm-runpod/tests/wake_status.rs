@@ -218,6 +218,29 @@ fn a_wake_of_a_ready_pod_renews_its_idle_window_and_a_status_does_not() {
     assert_eq!(transport.runpod.create_calls(), 1);
 }
 
+/// A woken pod that has not been ready yet is not idle: its start is bounded by the startup
+/// deadline, not by the idle window. Seen live: a pod woken with a 10-minute idle window and a
+/// 15-minute startup deadline was stopped as idle 606 s after the wake, still starting.
+#[test]
+fn a_woken_pod_still_starting_is_never_reaped_as_idle() {
+    let transport = Counted::default();
+    let clock = ManualClock::new(1_000);
+    let pool = pool(transport.clone(), &clock);
+    let qwen = id("qwen");
+    transport.runpod.ready_after(1_000);
+    assert_eq!(
+        pool.wake(&qwen, &authorization()).unwrap().phase,
+        ModelPhase::Starting
+    );
+    for _ in 0..3 {
+        clock.advance(IDLE_MS);
+        let reaped = pool.reap().unwrap();
+        assert!(reaped.idle.is_empty(), "reaped while starting: {reaped:?}");
+        assert_eq!(pool.status(&qwen).unwrap().phase, ModelPhase::Starting);
+    }
+    assert_eq!(transport.runpod.create_calls(), 1);
+}
+
 #[test]
 fn a_restarted_pool_reports_a_pod_it_has_not_observed_yet_as_starting_with_no_sub_phase() {
     let transport = Counted::default();

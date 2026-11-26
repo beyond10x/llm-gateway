@@ -1,68 +1,57 @@
 // One measurement of one scenario at one viewport in one theme: replays every state, probes the
-// layout after each, runs axe-core, walks the page by keyboard and replays again with reduced motion.
+// layout and runs axe-core after each, measures the token-flow canvas, walks the page by keyboard
+// and replays again with reduced motion.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import type { Browser, Page } from '@playwright/test';
 import type { Scenario } from '../ux/scenarios/index.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
-import { ALWAYS_ATTR, canvasPixels, focusStep, layoutProbe, markCandidates, motionProbe, type HeaderItem } from './probe.ts';
-import { AXE_TAGS, KEY_FONT_PX, type Theme, type Viewport } from './profiles.ts';
+import { axeRules, keyFontDeficit, mergeAxe, type AxeFinding, type Metrics } from './metrics.ts';
+import { runId } from './metrics-dir.ts';
+import { ALWAYS_ATTR, canvasPixels, flowProbe, focusStep, layoutProbe, markCandidates, motionProbe, type FlowProbe, type HeaderItem } from './probe.ts';
+import { AXE_TAGS, type Theme, type Viewport } from './profiles.ts';
 
-export interface Metrics {
-  'axe.serious_critical': number;
-  'overflow.x_px': number;
-  'overflow.elements': number;
-  'overflow.scrollers_unreachable': number;
-  'header.hidden_ratio': number;
-  'keyboard.unreachable': number;
-  'keyboard.focus_invisible': number;
-  'key_font.deficit_px': number;
-  'layout_shift.per_state_max': number;
-  'reduced_motion.violations': number;
-  'truncation.without_full_value': number;
-}
+export { METRIC_KEYS, type AxeFinding, type Metrics } from './metrics.ts';
 
-export const METRIC_KEYS: (keyof Metrics)[] = [
-  'axe.serious_critical',
-  'overflow.x_px',
-  'overflow.elements',
-  'overflow.scrollers_unreachable',
-  'header.hidden_ratio',
-  'keyboard.unreachable',
-  'keyboard.focus_invisible',
-  'key_font.deficit_px',
-  'layout_shift.per_state_max',
-  'reduced_motion.violations',
-  'truncation.without_full_value',
-];
-
-export interface AxeFinding {
-  id: string;
-  impact: string;
-  help: string;
-  nodes: number;
-  targets: string[];
+// An element found by a probe: its stable selector (the key known failures name) and a label.
+export interface Item {
+  key: string;
+  label: string;
 }
 
 export interface Measurement {
+  run: string;
   scenario: string;
   viewport: Viewport;
   theme: Theme;
   toggle: 'absent' | 'present';
+  // The emulated colour scheme shows its palette with the toggle on its default.
   theme_applied: boolean;
   states: number;
   metrics: Metrics;
-  key_font_min_px: number;
+  // Distinct nodes per axe rule over every scan.
+  axe_rules: Record<string, number>;
+  axe_scans: number;
+  // null when the page shows no key data.
+  key_font_min_px: number | null;
   key_font_at: string;
   header_min_visible_ratio: number;
   shifts: number[];
+  // The connection status text at every state.
+  status: string[];
+  snapshot_fetches: number;
   blocked_requests: number;
+  blocked: string[];
+  // The token-flow canvas at the last state, scrolled to the top.
+  flow: FlowProbe;
+  tools: { chromium: string; axe_core: string };
   details: {
     axe: AxeFinding[];
-    overflowing: string[];
+    overflowing: Item[];
+    scrollers: Item[];
     scrollers_unreachable: string[];
-    truncated: string[];
+    truncated: Item[];
     header: HeaderItem[];
     unreachable: string[];
     focus_invisible: string[];
@@ -80,11 +69,15 @@ async function markAlways(page: Page, replay: Replay): Promise<void> {
   if (replay.toggle) await replay.toggle.evaluate((el, a) => el.setAttribute(a, 'theme toggle'), ALWAYS_ATTR);
 }
 
-async function axe(page: Page): Promise<AxeFinding[]> {
+async function axe(page: Page): Promise<{ findings: AxeFinding[]; version: string }> {
   const result = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
-  return result.violations
+  const findings = result.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
-    .map((v) => ({ id: v.id, impact: v.impact ?? '', help: v.help, nodes: v.nodes.length, targets: v.nodes.slice(0, 3).map((n) => n.target.join(' ')) }));
+    .map((v) => {
+      const targets = [...new Set(v.nodes.map((n) => n.target.join(' ')))].sort();
+      return { id: v.id, impact: v.impact ?? '', help: v.help, nodes: targets.length, targets };
+    });
+  return { findings, version: result.testEngine.version };
 }
 
 async function keyboardWalk(page: Page): Promise<{ unreachable: string[]; invisible: string[]; scrollersUnreachable: string[] }> {
@@ -93,9 +86,9 @@ async function keyboardWalk(page: Page): Promise<{ unreachable: string[]; invisi
   // else moves the sequential focus starting point there, whatever was clicked before.
   await page.evaluate(() => {
     (document.activeElement as HTMLElement | null)?.blur();
-    const start = document.createElement("span");
+    const start = document.createElement('span');
     start.tabIndex = -1;
-    start.id = "ux-walk-start";
+    start.id = 'ux-walk-start';
     document.body.prepend(start);
     start.focus();
     window.scrollTo(0, 0);
@@ -117,9 +110,9 @@ async function keyboardWalk(page: Page): Promise<{ unreachable: string[]; invisi
       reached.add(step.index);
     }
     for (const p of step.inside) reached.add(-1 - p);
-    if (!step.visible) invisible.add(step.label);
+    if (!step.visible) invisible.add(`${step.label}: ${step.why}`);
   }
-  await page.evaluate(() => document.getElementById("ux-walk-start")?.remove());
+  await page.evaluate(() => document.getElementById('ux-walk-start')?.remove());
   const unreachable: string[] = [];
   const scrollersUnreachable: string[] = [];
   const groupsReached = new Set(candidates.filter((c) => c.group !== null && reached.has(c.index)).map((c) => c.group));
@@ -142,12 +135,12 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     const replay = await openReplay(page, scenario, theme);
     await markAlways(page, replay);
 
-    // Keyed by element path, so an element counts once over every state.
+    // Keyed by element selector, so an element counts once over every state.
     const overflowing = new Map<string, string>();
     const scrollers = new Map<string, string>();
     const truncated = new Map<string, string>();
     const keep = (into: Map<string, string>) => (entry: string) => {
-      const [key, label = entry] = entry.split(" | ");
+      const [key, label = entry] = entry.split(' | ');
       if (!into.has(key!)) into.set(key!, label);
     };
     const header = new Map<string, number>();
@@ -155,6 +148,10 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     let keyFont = Infinity;
     let keyFontAt = '';
     const shifts: number[] = [];
+    const status: string[] = [];
+    const axeFindings = new Map<string, AxeFinding>();
+    let axeScans = 0;
+    let axeVersion = '';
 
     const probe = async () => {
       for (const scrollTo of ['top', 'bottom'] as const) {
@@ -173,42 +170,47 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       }
       await page.evaluate(() => window.scrollTo(0, 0));
     };
-
-    await probe();
-    const axeFindings = new Map<string, AxeFinding>();
-    const addAxe = (list: AxeFinding[]) => {
-      for (const f of list) {
-        const had = axeFindings.get(f.id);
-        if (!had || had.nodes < f.nodes) axeFindings.set(f.id, f);
-      }
+    // axe-core after every state and every action; the union of nodes per rule.
+    const scan = async () => {
+      const r = await axe(page);
+      mergeAxe(axeFindings, r.findings);
+      axeVersion = r.version;
+      axeScans += 1;
     };
-    addAxe(await axe(page));
+
+    status.push(await replay.status());
+    await probe();
+    await scan();
     while (replay.index + 1 < replay.states.length) {
       await page.evaluate(() => window.scrollTo(0, 0));
       await replay.takeShift();
       await replay.advance();
       shifts.push(round3(await replay.takeShift()));
+      status.push(await replay.status());
       await probe();
+      await scan();
     }
+    await settle(page);
+    const flow = await page.evaluate(flowProbe);
     if (shotPath) {
       await page.waitForTimeout(750);
       mkdirSync(join(shotPath, '..'), { recursive: true });
       await page.screenshot({ path: shotPath, animations: 'allow' });
     }
-    if (replay.states.length > 1) addAxe(await axe(page));
     for (const action of scenario.actions ?? []) {
       await replay.act(action);
       await page.mouse.move(0, 0);
       await probe();
-      addAxe(await axe(page));
+      await scan();
     }
     const walk = await keyboardWalk(page);
     const motion = await reducedMotion(browser, scenario, viewport, theme);
 
     const headerItems = [...header.entries()].map(([name, visible_ratio]) => ({ name, visible_ratio: round3(visible_ratio) }));
     const headerMin = headerItems.length ? Math.min(...headerItems.map((h) => h.visible_ratio)) : 0;
-    const axeList = [...axeFindings.values()];
-    if (!Number.isFinite(keyFont)) keyFont = 0;
+    const axeList = [...axeFindings.values()].sort((a, b) => a.id.localeCompare(b.id));
+    const keyFontMin = Number.isFinite(keyFont) ? round3(keyFont) : null;
+    const items = (m: Map<string, string>): Item[] => [...m.entries()].map(([key, label]) => ({ key, label }));
     const metrics: Metrics = {
       'axe.serious_critical': axeList.reduce((a, f) => a + f.nodes, 0),
       'overflow.x_px': Math.round(overflowPx),
@@ -217,12 +219,13 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       'header.hidden_ratio': round3(1 - headerMin),
       'keyboard.unreachable': walk.unreachable.length,
       'keyboard.focus_invisible': walk.invisible.length,
-      'key_font.deficit_px': round3(Math.max(0, KEY_FONT_PX - keyFont)),
+      'key_font.deficit_px': keyFontDeficit(keyFontMin),
       'layout_shift.per_state_max': shifts.length ? Math.max(...shifts) : 0,
       'reduced_motion.violations': motion.length,
       'truncation.without_full_value': truncated.size,
     };
     return {
+      run: runId(),
       scenario: scenario.name,
       viewport,
       theme,
@@ -230,16 +233,24 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       theme_applied: replay.themeApplied,
       states: replay.states.length,
       metrics,
-      key_font_min_px: round3(keyFont),
+      axe_rules: axeRules(axeList),
+      axe_scans: axeScans,
+      key_font_min_px: keyFontMin,
       key_font_at: keyFontAt,
       header_min_visible_ratio: headerMin,
       shifts,
+      status,
+      snapshot_fetches: replay.snapshotFetches,
       blocked_requests: replay.blocked.length,
+      blocked: [...replay.blocked],
+      flow,
+      tools: { chromium: browser.version(), axe_core: axeVersion },
       details: {
         axe: axeList,
-        overflowing: [...overflowing.values()],
+        overflowing: items(overflowing),
+        scrollers: items(scrollers),
         scrollers_unreachable: walk.scrollersUnreachable,
-        truncated: [...truncated.values()],
+        truncated: items(truncated),
         header: headerItems,
         unreachable: walk.unreachable,
         focus_invisible: walk.invisible,

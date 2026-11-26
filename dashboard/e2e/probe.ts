@@ -11,9 +11,6 @@ export interface LayoutProbe {
   overflowing: string[];
   scrollers: string[];
   truncated: string[];
-  header: HeaderItem[];
-  key_font_min_px: number;
-  key_font_at: string;
 }
 
 // Marks the always-visible elements with data-ux-always before a probe.
@@ -117,9 +114,18 @@ export function layoutProbe(): LayoutProbe {
     }
   }
 
-  const header: HeaderItem[] = [];
+  return { overflow_x_px, overflowing, scrollers, truncated };
+}
+
+// The always-visible elements (marked with data-ux-always): the share of each that is inside the
+// viewport, and not more than the share of five sample points (centre and four corners) where a
+// hit test finds the element or a descendant.
+export function headerProbe(): HeaderItem[] {
+  const root = document.documentElement;
+  const vw = root.clientWidth;
   const vh = root.clientHeight;
-  for (const el of document.querySelectorAll(`[${'data-ux-always'}]`)) {
+  const header: HeaderItem[] = [];
+  for (const el of document.querySelectorAll('[data-ux-always]')) {
     const r = el.getBoundingClientRect();
     const area = r.width * r.height;
     const ix = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
@@ -137,27 +143,62 @@ export function layoutProbe(): LayoutProbe {
       const hit = x >= 0 && y >= 0 && x < vw && y < vh ? document.elementFromPoint(x, y) : null;
       if (hit && (hit === el || el.contains(hit))) uncovered += 1;
     }
-    header.push({ name: el.getAttribute('data-ux-always') ?? describe(el), visible_ratio: Math.min(inView, uncovered / points.length) });
+    const text = (el.textContent ?? '').trim().slice(0, 30);
+    header.push({ name: el.getAttribute('data-ux-always') ?? `${el.tagName.toLowerCase()} "${text}"`, visible_ratio: Math.min(inView, uncovered / points.length) });
   }
+  return header;
+}
 
-  let key_font_min_px = Infinity;
-  let key_font_at = '';
-  const keyData = document.querySelectorAll('main tbody td, main tbody th, main dd, .tile .value, [role="status"]');
-  for (const container of keyData) {
-    for (const el of [container, ...container.querySelectorAll('*')]) {
-      const cs = styles.get(el) ?? getComputedStyle(el);
-      if (!shown(el, cs)) continue;
-      const direct = [...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim());
-      if (!direct) continue;
-      const px = parseFloat(cs.fontSize);
-      if (px < key_font_min_px) {
-        key_font_min_px = px;
-        key_font_at = describe(el);
-      }
+export interface FontItem {
+  px: number;
+  at: string;
+}
+
+export interface KeyDataProbe {
+  // The smallest font of key data and of secondary text; null when the page shows none.
+  key: FontItem | null;
+  secondary: FontItem | null;
+  // Every element below its floor, keyed without its text so one element counts once.
+  key_below: string[];
+  secondary_below: string[];
+}
+
+// The one definition of key data, read by the key-font metric and by the gate on it. Key data is
+// the text of table body cells (token counts, rates, statuses, money, route names), definitions,
+// tile values and their second lines, and the connection status. Secondary text is a second line
+// under a name (`.small`), a badge, a caption, a column head, a tile or stat label: secondary text
+// inside a key-data cell is secondary, not key. The token-flow panel and the skip link are neither.
+// Key data must be KEY_PX or more, secondary text SECONDARY_PX or more.
+export function keyDataProbe(): KeyDataProbe {
+  const KEY_PX = 14;
+  const SECONDARY_PX = 12;
+  const KEY = 'main tbody td, main tbody th, main dd, .tile .value, .tile .sub, header [role="status"]';
+  const SECONDARY = '.small, .badge, caption, thead th, .tile .label, .stats dt';
+  const shape = (el: Element) => `${el.tagName.toLowerCase()}${el.classList.length ? `.${[...el.classList].join('.')}` : ''}`;
+  const describe = (el: Element) => `${shape(el)} "${(el.textContent ?? '').trim().replace(/\s+/g, ' ').slice(0, 30)}"`;
+  let key: FontItem | null = null;
+  let secondary: FontItem | null = null;
+  const keyBelow = new Set<string>();
+  const secondaryBelow = new Set<string>();
+  for (const el of document.querySelectorAll('main *, header [role="status"], header [role="status"] *')) {
+    if (el.closest('.flow-panel, .skip')) continue;
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    if (![...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())) continue;
+    const px = parseFloat(cs.fontSize);
+    const isSecondary = el.closest(SECONDARY) !== null;
+    const isKey = !isSecondary && el.closest(KEY) !== null;
+    if (isKey) {
+      if (!key || px < key.px) key = { px, at: describe(el) };
+      if (px < KEY_PX - 1e-6) keyBelow.add(`${px}px ${shape(el)}`);
+    } else if (isSecondary) {
+      if (!secondary || px < secondary.px) secondary = { px, at: describe(el) };
+      if (px < SECONDARY_PX - 1e-6) secondaryBelow.add(`${px}px ${shape(el)}`);
     }
   }
-  if (!Number.isFinite(key_font_min_px)) key_font_min_px = 0;
-  return { overflow_x_px, overflowing, scrollers, truncated, header, key_font_min_px, key_font_at };
+  return { key, secondary, key_below: [...keyBelow].sort(), secondary_below: [...secondaryBelow].sort() };
 }
 
 export interface Candidate {
@@ -429,4 +470,43 @@ export function canvasPixels(): string[] {
       return 'unreadable';
     }
   });
+}
+
+export interface StateProbe {
+  // At the top of the document and scrolled to its end.
+  views: { layout: LayoutProbe; header: HeaderItem[] }[];
+  key_data: KeyDataProbe;
+}
+
+// The probes of one state in one call: layout and always-visible elements at the top and at the end
+// of the document, then key data at the top. Scrolling changes layout synchronously, so the
+// probes read the scrolled page without waiting for a frame. Built from the probes' own source,
+// like page.evaluate(fn) does.
+export function stateProbeSource(): string {
+  return `(() => {
+    const layout = ${layoutProbe.toString()};
+    const header = ${headerProbe.toString()};
+    const keyData = ${keyDataProbe.toString()};
+    const views = [];
+    for (const y of [0, document.documentElement.scrollHeight]) {
+      window.scrollTo(0, y);
+      views.push({ layout: layout(), header: header() });
+    }
+    window.scrollTo(0, 0);
+    return { views, key_data: keyData() };
+  })()`;
+}
+
+// The always-visible elements at the top and at the end of the document, in one call.
+export function headerProbeSource(): string {
+  return `(() => {
+    const header = ${headerProbe.toString()};
+    const out = [];
+    for (const y of [0, document.documentElement.scrollHeight]) {
+      window.scrollTo(0, y);
+      out.push(...header());
+    }
+    window.scrollTo(0, 0);
+    return out;
+  })()`;
 }

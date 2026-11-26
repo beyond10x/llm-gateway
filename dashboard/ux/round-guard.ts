@@ -59,3 +59,8 @@ export function toolsOf(ms: Pick<Measurement, 'tools'>[]): Measurement['tools'] 
   if (!tools?.chromium || !tools.axe_core) throw new Error('a measurement names no Chromium or axe-core version');
   return tools;
 }
+
+// A trend row with its commit cut to 8 characters, the length every row is written with.
+export function shortCommit(row: string): string {
+  return row.replace(/^(\| [^|]+ \| [^|]+ \| )([0-9a-f]{8})[0-9a-f]+/, '$1$2');
+}

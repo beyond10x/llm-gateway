@@ -3,6 +3,8 @@
 import { expect, test, type Page } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
 import { openReplay, themeToggleProblems } from './harness.ts';
+import { reducedMotionReplay } from './measure.ts';
+import { flowProblems } from './metrics.ts';
 import { canvasPixels, flowProbe, focusStep } from './probe.ts';
 
 const scenario = (name: string) => SCENARIOS.find((s) => s.name === name)!;
@@ -74,6 +76,29 @@ test.describe('token-flow canvas metric', () => {
     );
     expect(flow).toMatchObject({ present: true, drawn: true });
     expect(flow.visible_ratio).toBeGreaterThanOrEqual(0.95);
+  });
+
+  test('break: a token-flow canvas that draws nothing under reduced motion fails the flow gate', async ({ browser }) => {
+    const run = async (blank: boolean) => {
+      const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
+      try {
+        const page = await context.newPage();
+        if (blank) {
+          await page.addInitScript(() => {
+            for (const k of ['stroke', 'fill', 'fillText'] as const) CanvasRenderingContext2D.prototype[k] = () => undefined;
+          });
+        }
+        return await reducedMotionReplay(page, scenario('token-flow'), 'light');
+      } finally {
+        await context.close();
+      }
+    };
+    const [drawn, blank] = await Promise.all([run(false), run(true)]);
+    expect(drawn.flow.drawn, 'the page draws a static canvas under reduced motion').toBe(true);
+    expect(drawn.violations).toEqual([]);
+    expect(blank.flow).toMatchObject({ present: true, drawn: false });
+    const shown = { present: true, at: 'canvas', visible_ratio: 1, drawn: true, drawn_share: 0.05 };
+    expect(flowProblems({ flow: shown, reduced_flow: blank.flow })).toEqual(['the canvas is blank under reduced motion (share drawn 0)']);
   });
 
   test('break: without reduced motion the canvas check sees a canvas that moves', async ({ page }) => {

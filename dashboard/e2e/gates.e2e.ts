@@ -1,21 +1,22 @@
 // The hard gates (1, 2 and 5 of the loop) on every scenario at the gating viewports in both
-// themes, the token-flow canvas, the replay's own soundness, the theme toggle, and the ratchet
+// themes, gate 2 also at the measured-only viewports, key data, the token-flow canvas in every
+// scenario with active sessions, the replay's own soundness, the theme toggle, and the ratchet
 // against ux/baseline.json. Reads what measure-gate wrote; the theme toggle drives a page itself.
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
-import { SCENARIOS } from '../ux/scenarios/index.ts';
+import { activeSessions } from '../src/flow.ts';
+import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
 import { aggregate, compare, describeProblem, type Baseline } from '../ux/ratchet.ts';
 import { openReplay, themeToggleProblems } from './harness.ts';
 import { stale, unexpected, wholeCheck, type Check } from './known-failures.ts';
-import type { Measurement } from './measure.ts';
-import { axeItems } from './metrics.ts';
+import { headersDir, type HeaderMeasurement, type Measurement } from './measure.ts';
+import { axeItems, flowProblems } from './metrics.ts';
 import { metricsDir, readMeasurements } from './metrics-dir.ts';
-import { GATING, THEMES, type Theme } from './profiles.ts';
+import { GATING, MEASURED_ONLY, THEMES, type Theme } from './profiles.ts';
 
 const BASELINE = fileURLToPath(new URL('../ux/baseline.json', import.meta.url));
-const FLOW_VISIBLE_MIN = 0.95;
 
 function load(scenario: string, viewport: string, theme: string): Measurement {
   const file = join(metricsDir('gate'), `${scenario}__${viewport}__${theme}.json`);
@@ -23,8 +24,22 @@ function load(scenario: string, viewport: string, theme: string): Measurement {
   return JSON.parse(readFileSync(file, 'utf8')) as Measurement;
 }
 
+function loadHeaders(scenario: string, theme: string): HeaderMeasurement {
+  const file = join(headersDir(metricsDir('gate')), `${scenario}__${theme}.json`);
+  expect(existsSync(file), `no header measurement ${file}`).toBe(true);
+  return JSON.parse(readFileSync(file, 'utf8')) as HeaderMeasurement;
+}
+
+// A scenario whose last state shows an active session: its token-flow canvas must be drawn.
+function withSessions(scenario: Scenario): boolean {
+  const states = scenario.states(Date.now());
+  return activeSessions(states[states.length - 1]!).size > 0;
+}
+
+type Itemised = Exclude<Check, 'flow'>;
+
 // The items of one replay per itemised check; the known-failure keys.
-function itemsOf(m: Measurement): Record<Exclude<Check, 'flow'>, string[]> {
+function itemsOf(m: Measurement): Record<Itemised, string[]> {
   return {
     overflow: [
       ...(m.metrics['overflow.x_px'] > 0 ? ['document scrolls sideways'] : []),
@@ -36,65 +51,83 @@ function itemsOf(m: Measurement): Record<Exclude<Check, 'flow'>, string[]> {
     axe: axeItems(m.details.axe),
     keyboard: [...m.details.unreachable.map((u) => `unreachable: ${u}`), ...m.details.focus_invisible.map((f) => `focus invisible: ${f}`)],
     'reduced-motion': m.details.reduced_motion,
+    'key-data': [...m.details.key_font_below.map((k) => `key ${k}`), ...m.details.secondary_font_below.map((k) => `secondary ${k}`)],
   };
 }
 
+const hiddenHeader = (items: { name: string; visible_ratio: number }[]) => items.filter((h) => h.visible_ratio < 1).map((h) => h.name);
+
 for (const scenario of SCENARIOS) {
+  const sessions = withSessions(scenario);
   for (const viewport of GATING) {
     for (const theme of THEMES) {
       const at = `${scenario.name} ${viewport.name} ${theme}`;
       const items = () => itemsOf(load(scenario.name, viewport.name, theme));
 
       test(`gate 1: no horizontal scroll, nothing past its box, scrollers keyboard-reachable — ${at}`, () => {
-        expect(unexpected('overflow', scenario.name, items().overflow)).toEqual([]);
+        expect(unexpected('overflow', scenario.name, items().overflow, undefined, viewport.name)).toEqual([]);
       });
 
       test(`gate 1: truncated text carries its full value — ${at}`, () => {
-        expect(unexpected('truncation', scenario.name, items().truncation)).toEqual([]);
+        expect(unexpected('truncation', scenario.name, items().truncation, undefined, viewport.name)).toEqual([]);
       });
 
       test(`gate 2: the header is fully in view and uncovered at every state — ${at}`, () => {
         const m = load(scenario.name, viewport.name, theme);
         expect(m.details.header.map((h) => h.name)).toEqual(expect.arrayContaining(['h1', 'connection status']));
         if (m.toggle === 'present') expect(m.details.header.map((h) => h.name)).toContain('theme toggle');
-        expect(unexpected('header', scenario.name, items().header)).toEqual([]);
+        expect(unexpected('header', scenario.name, items().header, undefined, viewport.name)).toEqual([]);
       });
 
       test(`gate 5: axe-core reports no serious or critical violation — ${at}`, () => {
-        expect(unexpected('axe', scenario.name, items().axe)).toEqual([]);
+        expect(unexpected('axe', scenario.name, items().axe, undefined, viewport.name)).toEqual([]);
       });
 
       test(`gate 5: Tab reaches every control with a visible focus — ${at}`, () => {
-        expect(unexpected('keyboard', scenario.name, items().keyboard)).toEqual([]);
+        expect(unexpected('keyboard', scenario.name, items().keyboard, undefined, viewport.name)).toEqual([]);
       });
 
       test(`gate 5: reduced motion stops animations, transitions and the canvas — ${at}`, () => {
-        expect(unexpected('reduced-motion', scenario.name, items()['reduced-motion'])).toEqual([]);
+        expect(unexpected('reduced-motion', scenario.name, items()['reduced-motion'], undefined, viewport.name)).toEqual([]);
       });
 
-      if (scenario.name === 'token-flow') {
-        test(`flow: the token-flow canvas is drawn and at least 95 % in view and uncovered — ${at}`, () => {
+      test(`key data: key values are 14 px or more and secondary text 12 px or more at every state — ${at}`, () => {
+        expect(unexpected('key-data', scenario.name, items()['key-data'], undefined, viewport.name)).toEqual([]);
+      });
+
+      if (sessions) {
+        test(`flow: the token-flow canvas is drawn, also under reduced motion, and at least 95 % in view and uncovered — ${at}`, () => {
           const finding = wholeCheck('flow', scenario.name);
           test.fail(finding !== null, finding ?? undefined);
-          const m = load(scenario.name, viewport.name, theme);
-          expect.soft(m.flow.present, 'a token-flow canvas').toBe(true);
-          expect.soft(m.flow.drawn, `drawn (share ${m.flow.drawn_share})`).toBe(true);
-          expect(m.flow.visible_ratio, 'share in view and uncovered').toBeGreaterThanOrEqual(FLOW_VISIBLE_MIN);
+          expect(flowProblems(load(scenario.name, viewport.name, theme))).toEqual([]);
         });
       }
     }
   }
 
+  for (const viewport of MEASURED_ONLY) {
+    for (const theme of THEMES) {
+      test(`gate 2: the header is fully in view and uncovered at every state — ${scenario.name} ${viewport.name} ${theme}`, () => {
+        const items = loadHeaders(scenario.name, theme).viewports[viewport.name];
+        expect(items, `${viewport.name} measured`).toBeDefined();
+        expect(items!.map((h) => h.name)).toEqual(expect.arrayContaining(['h1', 'connection status', 'theme toggle']));
+        expect(unexpected('header', scenario.name, hiddenHeader(items!), undefined, viewport.name)).toEqual([]);
+      });
+    }
+  }
+
   test(`known failures: every item listed for the scenario still occurs — ${scenario.name}`, () => {
     const seen: Record<string, Set<string>> = {};
-    for (const viewport of GATING) {
-      for (const theme of THEMES) {
-        for (const [check, list] of Object.entries(itemsOf(load(scenario.name, viewport.name, theme)))) {
-          for (const i of list) (seen[check] ??= new Set()).add(i);
-        }
+    const add = (check: string, list: string[]) => {
+      for (const i of list) (seen[check] ??= new Set()).add(i);
+    };
+    for (const theme of THEMES) {
+      for (const viewport of GATING) {
+        for (const [check, list] of Object.entries(itemsOf(load(scenario.name, viewport.name, theme)))) add(check, list);
       }
+      for (const items of Object.values(loadHeaders(scenario.name, theme).viewports)) add('header', hiddenHeader(items));
     }
-    const checks: Exclude<Check, 'flow'>[] = ['overflow', 'truncation', 'header', 'axe', 'keyboard', 'reduced-motion'];
+    const checks: Itemised[] = ['overflow', 'truncation', 'header', 'axe', 'keyboard', 'reduced-motion', 'key-data'];
     expect(checks.flatMap((c) => stale(c, scenario.name, seen[c] ?? new Set()))).toEqual([]);
   });
 

@@ -4,10 +4,11 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll, expect, test } from 'vitest';
 import { KNOWN_FAILURES, stale, unexpected, wholeCheck, type KnownFailure } from '../e2e/known-failures.ts';
-import { fmtKeyFont, keyFontDeficit, mergeAxe, METRIC_KEYS, type AxeFinding, type Metrics } from '../e2e/metrics.ts';
+import { flowProblems, fmtKeyFont, keyFontDeficit, mergeAxe, METRIC_KEYS, secondaryFontDeficit, type AxeFinding, type Metrics } from '../e2e/metrics.ts';
+import type { FlowProbe } from '../e2e/probe.ts';
 import { METRICS_ROOT, metricsDir, readMeasurements } from '../e2e/metrics-dir.ts';
-import { aggregate, baselineFrom, compare, type Baseline } from './ratchet.ts';
-import { baselineRefusal, missingGateReplays, roundDirRefusal, toolsOf } from './round-guard.ts';
+import { aggregate, baselineFrom, compare, toleranceOf, type Baseline } from './ratchet.ts';
+import { baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf } from './round-guard.ts';
 
 mkdirSync(METRICS_ROOT, { recursive: true });
 const scratch = mkdtempSync(join(METRICS_ROOT, 'unit-'));
@@ -100,4 +101,46 @@ test('break: a page without key data reads n/a and no deficit, not a deficit of 
   expect(fmtKeyFont(null)).toBe('n/a');
   expect(keyFontDeficit(10.4)).toBe(3.6);
   expect(keyFontDeficit(16)).toBe(0);
+  expect(secondaryFontDeficit(10.4)).toBe(1.6);
+  expect(secondaryFontDeficit(12.25)).toBe(0);
+});
+
+const flow = (drawn: boolean, visible = 1): FlowProbe => ({ present: true, at: 'canvas', visible_ratio: visible, drawn, drawn_share: drawn ? 0.05 : 0 });
+
+test('break: a blank token-flow canvas fails the flow gate, also when only the reduced-motion replay is blank', () => {
+  expect(flowProblems({ flow: flow(true), reduced_flow: flow(true) })).toEqual([]);
+  expect(flowProblems({ flow: flow(false), reduced_flow: flow(true) })).toEqual(['the canvas is blank (share drawn 0)']);
+  expect(flowProblems({ flow: flow(true), reduced_flow: flow(false) })).toEqual(['the canvas is blank under reduced motion (share drawn 0)']);
+  expect(flowProblems({ flow: flow(true, 0.5), reduced_flow: flow(true) })).toEqual(['0.5 of the canvas in view and uncovered, under 0.95']);
+});
+
+test('break: the ratchet holds the flow keys, higher is better: a blank or hidden canvas is worse, a better one must be taken', () => {
+  const m = (drawn: boolean, reducedDrawn: boolean, visible: number) => ({ scenario: 's', metrics: zeros, axe_rules: {}, flow: flow(drawn, visible), reduced_flow: flow(reducedDrawn) });
+  const measured = aggregate([m(true, true, 1), m(true, true, 0.98)]);
+  expect(measured.s).toMatchObject({ 'flow.visible_ratio': 0.98, 'flow.drawn': 1 });
+  const baseline = baselineFrom(measured, 'test');
+  expect(compare(baseline, measured)).toEqual([]);
+  const kinds = (ms: ReturnType<typeof m>[]) => compare(baseline, aggregate(ms)).map((p) => `${p.metric} ${p.kind}`);
+  expect(kinds([m(true, false, 0.98)])).toEqual(['flow.drawn worse']);
+  expect(kinds([m(true, true, 0.5)])).toEqual(['flow.visible_ratio worse']);
+  expect(kinds([m(true, true, 1)])).toEqual(['flow.visible_ratio improved-not-taken']);
+});
+
+test('break: the layout-shift tolerance is relative: 0.007 to 0.017 fails, noise of 0.001 passes', () => {
+  expect(toleranceOf('layout_shift.per_state_max', 0.007)).toBe(0.002);
+  expect(toleranceOf('layout_shift.per_state_max', 0.059)).toBe(0.0059);
+  expect(toleranceOf('overflow.elements', 3)).toBe(0);
+  const baseline: Baseline = { about: 'test', scenarios: { s: { 'layout_shift.per_state_max': { value: 0.007, tolerance: 0.002 } } }, tolerances: {} };
+  const kind = (v: number) => compare(baseline, { s: { 'layout_shift.per_state_max': v } }).map((p) => p.kind);
+  expect(kind(0.017)).toEqual(['worse']);
+  expect(kind(0.01)).toEqual(['worse']);
+  expect(kind(0.008)).toEqual([]);
+  expect(kind(0.006)).toEqual([]);
+  expect(kind(0.004)).toEqual(['improved-not-taken']);
+});
+
+test('trend rows carry 8 characters of the commit, also a row written with 12', () => {
+  expect(shortCommit('| R-03 | 2026-11-26 | 6bd91d70289c | present | 8/8 |')).toBe('| R-03 | 2026-11-26 | 6bd91d70 | present | 8/8 |');
+  expect(shortCommit('| R-04 | 2026-11-26 | 6bd91d70+changes | present |')).toBe('| R-04 | 2026-11-26 | 6bd91d70+changes | present |');
+  expect(shortCommit('| R-05 | 2026-11-26 | 0123456789ab+changes | present |')).toBe('| R-05 | 2026-11-26 | 01234567+changes | present |');
 });

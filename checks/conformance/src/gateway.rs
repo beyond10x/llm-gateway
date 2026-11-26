@@ -521,11 +521,10 @@ mod relay {
     use llm_gateway::{
         AnswerBytes, BasePath, CallBytes, CallEnding, CallerReview, CallerToken, CredentialHeader,
         CredentialHeaderError, Disposition, FinishedCall, FinishedCalls, Gateway, GatewayConfig,
-        GatewayHandle, Harness, IngressAuth, NoOwnerVerifier, OwnerToken, OwnerVerifier,
-        Principal, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget,
-        RelayTargets, Review, RouteInventory, SharedSecretVerifier, StaticHeader,
-        StaticHeaderError, TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords,
-        Wire,
+        GatewayHandle, Harness, IngressAuth, NoOwnerVerifier, OwnerToken, OwnerVerifier, Principal,
+        ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget, RelayTargets,
+        Review, RouteInventory, SharedSecretVerifier, StaticHeader, StaticHeaderError,
+        TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
     };
     use llm_gateway::{ModelKind, ModelPhase, ModelStatus};
     use llm_gateway_cli::TokenPrice;
@@ -1481,6 +1480,8 @@ mod relay {
         finished: Mutex<Vec<(FinishedCall, Option<CallBytes>)>>,
         /// Each fixture pod's name and authority, for the `finished` fact's `upstream`.
         pods: Vec<(String, String)>,
+        /// The call id of every usage record of the run so far.
+        call_ids: Mutex<Vec<String>>,
     }
 
     impl UsageRecords for Records {
@@ -1500,6 +1501,39 @@ mod relay {
     }
 
     impl Records {
+        /// The keeper of a run whose fixture pods `source` names.
+        fn of(source: &Source) -> Self {
+            Self {
+                pods: source
+                    .pods
+                    .iter()
+                    .map(|(name, authority, _)| (name.clone(), authority.clone()))
+                    .collect(),
+                ..Self::default()
+            }
+        }
+
+        /// The `records` and `finished` facts of what was handed out since the last call: each
+        /// record read `elapsed` after its request started, each finished call `run` into the
+        /// run. A finished call is handed out after its record, before the connection closes.
+        fn take_facts(&self, elapsed: Duration, run: Duration) -> (Vec<String>, Vec<String>) {
+            let made = self.take();
+            let recorded = made
+                .iter()
+                .map(|record| record_fact(record, elapsed) + &cost_fact(record))
+                .collect();
+            let Ok(mut call_ids) = self.call_ids.lock() else {
+                return (recorded, Vec::new());
+            };
+            call_ids.extend(made.iter().map(|record| record.call.clone()));
+            let finished = self
+                .take_finished()
+                .iter()
+                .map(|value| finished_fact(value, &call_ids, &self.pods, run))
+                .collect();
+            (recorded, finished)
+        }
+
         /// The records made since the last call.
         fn take(&self) -> Vec<UsageRecord> {
             self.usage
@@ -2720,14 +2754,7 @@ mod relay {
                 return facts;
             }
         };
-        let records = Arc::new(Records {
-            pods: source
-                .pods
-                .iter()
-                .map(|(name, authority, _)| (name.clone(), authority.clone()))
-                .collect(),
-            ..Records::default()
-        });
+        let records = Arc::new(Records::of(&source));
         let root = certificates
             .as_ref()
             .map(|certificates| certificates.root.as_slice());
@@ -2986,7 +3013,7 @@ mod relay {
         let (mut results, mut bodies, mut headers, mut retry_after, mut arrivals) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let (mut recorded, mut scrapes, mut scrape_number) = (Vec::new(), Vec::new(), 0);
-        let (mut call_ids, mut finished) = (Vec::new(), Vec::new());
+        let mut finished = Vec::new();
         // Per step, the body its answer carried, before any seal in it was redacted.
         let mut answered: Vec<Option<String>> = Vec::new();
         let mut calls = Calls::default();
@@ -3050,16 +3077,9 @@ mod relay {
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
             let elapsed = started.elapsed();
-            let made = records.take();
-            call_ids.extend(made.iter().map(|record| record.call.clone()));
-            recorded.extend(
-                made.iter()
-                    .map(|record| record_fact(record, elapsed) + &cost_fact(record)),
-            );
-            // A finished call is handed out after its record, before the connection is closed.
-            finished.extend(records.take_finished().iter().map(|value| {
-                finished_fact(value, &call_ids, &records.pods, run_started.elapsed())
-            }));
+            let (made, handed) = records.take_facts(elapsed, run_started.elapsed());
+            recorded.extend(made);
+            finished.extend(handed);
             let Some(received) = received else {
                 results.push("no-response".to_owned());
                 continue;

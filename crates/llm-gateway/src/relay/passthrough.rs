@@ -484,6 +484,7 @@ fn pass_answer(
         call.client_disconnected = true;
         return error.then(|| describe_body(head, &[], limits));
     }
+    call.copy_head(value(head, "content-type").as_deref(), encoded.is_some());
     let mut scanner = UsageScanner::default();
     let mut kept = Vec::new();
     // A copy of an encoded answer, `None` once it outgrew its bound.
@@ -503,18 +504,12 @@ fn pass_answer(
                 if error && encoded.is_none() && kept.len() < MAX_ERROR_BODY {
                     kept.extend_from_slice(&piece[..piece.len().min(MAX_ERROR_BODY - kept.len())]);
                 }
-                let framed = if rechunk {
-                    let mut framed = format!("{:x}\r\n", piece.len()).into_bytes();
-                    framed.extend_from_slice(&piece);
-                    framed.extend_from_slice(b"\r\n");
-                    framed
-                } else {
-                    piece
-                };
+                let (framed, body) = super::frame(piece, rechunk);
                 if !crate::server::write_by(stream, &framed, deadline()) {
                     call.client_disconnected = true;
                     break;
                 }
+                call.copy_answer(&framed[body]);
                 call.first_byte();
                 written = written.saturating_add(size);
             }

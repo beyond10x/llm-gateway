@@ -134,33 +134,185 @@ impl FinishedCalls for NoFinishedCalls {
 pub(crate) static COPY_ALLOCATIONS: std::sync::atomic::AtomicUsize =
     std::sync::atomic::AtomicUsize::new(0);
 
-/// The copy of one call's bytes while it runs.
+/// Notes a buffer of a copy whose allocation went from `before` to `after` bytes: what the
+/// allocation test counts.
+fn grew(before: usize, after: usize) {
+    #[cfg(test)]
+    if before != after {
+        COPY_ALLOCATIONS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+    #[cfg(not(test))]
+    let _ = (before, after);
+}
+
+/// Appends `bytes` to `buffer`, noting a grown allocation.
+fn append(buffer: &mut Vec<u8>, bytes: &[u8]) {
+    let before = buffer.capacity();
+    buffer.extend_from_slice(bytes);
+    grew(before, buffer.capacity());
+}
+
+/// Reads server-sent events as their bytes arrive, split anywhere (the event stream format of
+/// the HTML standard): the `data` of each event a blank line ends, several `data` lines of one
+/// event joined by a line feed. A line ends at CR, LF or CRLF; a line starting `:` is a
+/// comment; every field but `data` is passed over; an event with no `data` field is none.
+#[derive(Debug, Default)]
+struct EventReader {
+    line: Vec<u8>,
+    data: Vec<u8>,
+    /// The event being read has a `data` field, though perhaps an empty one.
+    has_data: bool,
+    /// The last byte was a CR, so an LF right after it ends no further line.
+    after_cr: bool,
+    events: Vec<Vec<u8>>,
+}
+
+impl EventReader {
+    fn feed(&mut self, bytes: &[u8]) {
+        let mut start = 0;
+        for (at, &byte) in bytes.iter().enumerate() {
+            if self.after_cr && byte == b'\n' {
+                self.after_cr = false;
+                start = at + 1;
+                continue;
+            }
+            self.after_cr = false;
+            if byte == b'\r' || byte == b'\n' {
+                append(&mut self.line, &bytes[start..at]);
+                self.end_line();
+                self.after_cr = byte == b'\r';
+                start = at + 1;
+            }
+        }
+        append(&mut self.line, &bytes[start..]);
+    }
+
+    fn end_line(&mut self) {
+        if self.line.is_empty() {
+            if self.has_data {
+                let before = self.events.capacity();
+                self.events.push(std::mem::take(&mut self.data));
+                grew(before, self.events.capacity());
+            }
+            self.has_data = false;
+            return;
+        }
+        if self.line[0] != b':' {
+            let (field, value) = match self.line.iter().position(|&byte| byte == b':') {
+                Some(colon) => (&self.line[..colon], &self.line[colon + 1..]),
+                None => (&self.line[..], &[][..]),
+            };
+            if field == b"data" {
+                let value = value.strip_prefix(b" ").unwrap_or(value);
+                if self.has_data {
+                    append(&mut self.data, b"\n");
+                }
+                append(&mut self.data, value);
+                self.has_data = true;
+            }
+        }
+        self.line.clear();
+    }
+}
+
+/// A copied answer while it arrives.
+#[derive(Debug)]
+enum Copying {
+    Body(Vec<u8>),
+    Events(EventReader),
+}
+
+/// The bytes a copy holds while the call is within its bound.
+#[derive(Debug, Default)]
+struct Held {
+    request: Vec<u8>,
+    /// `None` until an answer head was written to the client.
+    answer: Option<Copying>,
+}
+
+/// The copy of one call's bytes while it runs: the request body as read, and the answer body as
+/// the client received it, until the two together pass the bound, when the copy is dropped and
+/// only their sizes are counted.
 #[derive(Debug)]
 pub(crate) struct Tap {
     bound: usize,
+    request_bytes: u64,
+    answer_bytes: u64,
+    /// `None` once the call passed the bound.
+    held: Option<Held>,
 }
 
 impl Tap {
     pub(crate) fn new(bound: usize) -> Self {
-        Self { bound }
+        Self {
+            bound,
+            request_bytes: 0,
+            answer_bytes: 0,
+            held: Some(Held::default()),
+        }
+    }
+
+    /// Whether the bytes counted so far pass the bound; the copy is dropped when they do.
+    fn over(&mut self) -> bool {
+        let counted = self.request_bytes.saturating_add(self.answer_bytes);
+        if counted > u64::try_from(self.bound).unwrap_or(u64::MAX) {
+            self.held = None;
+        }
+        self.held.is_none()
     }
 
     /// The request body as the gateway read it.
-    pub(crate) fn request(&mut self, _body: &[u8]) {}
+    pub(crate) fn request(&mut self, body: &[u8]) {
+        self.request_bytes = u64::try_from(body.len()).unwrap_or(u64::MAX);
+        if self.over() {
+            return;
+        }
+        if let Some(held) = &mut self.held {
+            append(&mut held.request, body);
+        }
+    }
 
     /// An answer head was written to the client; `events` says its body is a server-sent event
     /// stream without a content coding.
-    pub(crate) fn head(&mut self, _events: bool) {}
+    pub(crate) fn head(&mut self, events: bool) {
+        if let Some(held) = &mut self.held {
+            held.answer = Some(if events {
+                Copying::Events(EventReader::default())
+            } else {
+                Copying::Body(Vec::new())
+            });
+        }
+    }
 
     /// Answer body bytes the client received.
-    pub(crate) fn answer(&mut self, _bytes: &[u8]) {}
+    pub(crate) fn answer(&mut self, bytes: &[u8]) {
+        self.answer_bytes = self
+            .answer_bytes
+            .saturating_add(u64::try_from(bytes.len()).unwrap_or(u64::MAX));
+        if self.over() {
+            return;
+        }
+        match self.held.as_mut().and_then(|held| held.answer.as_mut()) {
+            Some(Copying::Body(body)) => append(body, bytes),
+            Some(Copying::Events(reader)) => reader.feed(bytes),
+            None => {}
+        }
+    }
 
     /// The copy, or both sizes when it passed the bound.
     pub(crate) fn finish(self) -> CallBytes {
-        let _ = self.bound;
-        CallBytes::Copied {
-            request: Vec::new(),
-            answer: None,
+        match self.held {
+            Some(held) => CallBytes::Copied {
+                request: held.request,
+                answer: held.answer.map(|answer| match answer {
+                    Copying::Body(body) => AnswerBytes::Body(body),
+                    Copying::Events(reader) => AnswerBytes::Events(reader.events),
+                }),
+            },
+            None => CallBytes::OverBound {
+                request_bytes: self.request_bytes,
+                answer_bytes: self.answer_bytes,
+            },
         }
     }
 }
@@ -266,7 +418,7 @@ mod tests {
 
     impl RelayTargets for Answers {
         fn acquire(&self, alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
-            let answer = if alias == "json" { 0 } else { 1 };
+            let answer = usize::from(alias != "json");
             Ok(Box::new(Answer(self.0[answer].clone())))
         }
 
@@ -275,9 +427,11 @@ mod tests {
 
     /// A JSON call and a streamed call through a gateway whose relay copies with `call_bytes`.
     fn two_calls(call_bytes: Option<usize>) {
-        let json = b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}".to_vec();
-        let mut stream = b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: "
-            .to_vec();
+        let json =
+            b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\n\r\n{}"
+                .to_vec();
+        let mut stream =
+            b"HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ncontent-length: ".to_vec();
         stream.extend_from_slice(format!("{}\r\n\r\n", STREAM.len()).as_bytes());
         stream.extend_from_slice(STREAM);
         let models = ["json", "stream"]

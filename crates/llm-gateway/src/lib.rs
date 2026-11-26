@@ -57,6 +57,7 @@ mod metrics;
 mod relay;
 mod review;
 mod server;
+mod session;
 mod translate;
 mod usage;
 

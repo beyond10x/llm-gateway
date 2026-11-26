@@ -242,7 +242,9 @@ impl Translation for Run {
             .connect()
             .map_err(|_| TranslationFailure::UpstreamFailed)?;
         connection
-            .write_all(b"POST /v1/chat/completions HTTP/1.1\r\nhost: up\r\ncontent-length: 2\r\n\r\n{}")
+            .write_all(
+                b"POST /v1/chat/completions HTTP/1.1\r\nhost: up\r\ncontent-length: 2\r\n\r\n{}",
+            )
             .map_err(|_| TranslationFailure::UpstreamFailed)?;
         let mut upstream = Vec::new();
         drop(connection.read_to_end(&mut upstream));
@@ -263,9 +265,12 @@ impl Translation for Run {
     }
 }
 
+/// The finished calls a port was handed, each with its copy.
+type Held = Vec<(FinishedCall, Option<CallBytes>)>;
+
 /// Every value the port was handed, in order.
 #[derive(Default)]
-struct Port(Mutex<Vec<(FinishedCall, Option<CallBytes>)>>);
+struct Port(Mutex<Held>);
 
 impl FinishedCalls for Port {
     fn finished(&self, call: &FinishedCall, bytes: Option<&CallBytes>) {
@@ -275,7 +280,7 @@ impl FinishedCalls for Port {
 
 impl Port {
     /// The values once there are at least `count`, or what there is after [`WAIT`].
-    fn wait(&self, count: usize) -> Vec<(FinishedCall, Option<CallBytes>)> {
+    fn wait(&self, count: usize) -> Held {
         let deadline = Instant::now() + WAIT;
         loop {
             let held = self.0.lock().unwrap().clone();
@@ -445,7 +450,7 @@ impl Rig {
         String::from_utf8(self.raw(request.as_bytes(), None)).unwrap()
     }
 
-    fn finished(&self, count: usize) -> Vec<(FinishedCall, Option<CallBytes>)> {
+    fn finished(&self, count: usize) -> Held {
         let held = self.port.wait(count);
         assert_eq!(held.len(), count, "the port was handed {held:#?}");
         held
@@ -517,9 +522,15 @@ fn a_relayed_call_hands_one_value_with_its_record_s_id_path_route_and_times() {
     assert_eq!(call.path, CHAT);
     assert_eq!(call.wire, Wire::Chat);
     assert_eq!(call.route.as_deref(), Some("code"));
-    assert_eq!(call.upstream.as_deref(), Some(rig.upstream.authority.as_str()));
+    assert_eq!(
+        call.upstream.as_deref(),
+        Some(rig.upstream.authority.as_str())
+    );
     assert_eq!(call.attempts, 1);
-    assert!(call.queue_wait_ms.is_some() && call.ttft_ms.is_some(), "{call:?}");
+    assert!(
+        call.queue_wait_ms.is_some() && call.ttft_ms.is_some(),
+        "{call:?}"
+    );
     assert_eq!(call.ending, CallEnding::Complete);
     assert_eq!(call.finished_ms - call.started_ms, record.duration_ms);
     assert_eq!(*bytes, None, "no copy without with_call_bytes");
@@ -627,7 +638,8 @@ fn a_refused_call_hands_one_value_and_a_count_a_shed_and_an_unauthenticated_call
 
 /// The `session` of every finished call the dashboard's snapshot lists, oldest first.
 fn dashboard_sessions(snapshot: &str) -> Vec<String> {
-    let calls = &snapshot[snapshot.find("\"calls\":").unwrap()..snapshot.find("\"in_flight\":").unwrap()];
+    let calls =
+        &snapshot[snapshot.find("\"calls\":").unwrap()..snapshot.find("\"in_flight\":").unwrap()];
     let mut sessions: Vec<String> = calls
         .split("\"session\":\"")
         .skip(1)
@@ -642,7 +654,11 @@ fn the_session_hash_and_harness_are_the_dashboard_s_for_each_header() {
     // Each hash is sessionspec's `wire::session_hash(source, value)`: the first 12 hex digits of
     // SHA-256 over `llm-gateway.session/1\0<source>\0<value>`.
     let cases: [(&str, &str, Harness); 5] = [
-        ("x-claude-code-session-id: s-claude\r\n", "e5333c6d3823", Harness::ClaudeCode),
+        (
+            "x-claude-code-session-id: s-claude\r\n",
+            "e5333c6d3823",
+            Harness::ClaudeCode,
+        ),
         (
             "session-id: s-codex\r\nuser-agent: codex_cli_rs/0.63.0\r\n",
             "a32027201cc7",
@@ -662,7 +678,10 @@ fn the_session_hash_and_harness_are_the_dashboard_s_for_each_header() {
         rig.call(CHAT, r#"{"model":"code"}"#, headers);
     }
     let held = rig.finished(cases.len());
-    let hashes: Vec<&str> = held.iter().map(|(call, _)| call.session_hash.as_str()).collect();
+    let hashes: Vec<&str> = held
+        .iter()
+        .map(|(call, _)| call.session_hash.as_str())
+        .collect();
     let expected: Vec<&str> = cases.iter().map(|(_, hash, _)| *hash).collect();
     assert_eq!(hashes, expected);
     let harnesses: Vec<Harness> = held.iter().map(|(call, _)| call.harness).collect();
@@ -693,7 +712,12 @@ fn each_ending_is_named_and_the_cost_is_present_exactly_when_the_record_s_is() {
         Options::default(),
     );
     rig.call(CHAT, r#"{"model":"code"}"#, "");
-    let request = rig.request("HTTP/1.1", MESSAGES, r#"{"model":"code","stream":true}"#, "");
+    let request = rig.request(
+        "HTTP/1.1",
+        MESSAGES,
+        r#"{"model":"code","stream":true}"#,
+        "",
+    );
     let left = rig.raw(&request, Some(200));
     assert_eq!(status(&left), 200);
     rig.call(CHAT, r#"{"model":"code"}"#, "");
@@ -745,7 +769,7 @@ fn a_translated_answer_that_ends_in_its_wire_s_error_is_a_wire_error() {
 // --- The byte copy -----------------------------------------------------------------------------
 
 /// The answers a client receives on every wire and path, each with the copy `call_bytes`.
-fn every_path(call_bytes: Option<usize>) -> (Vec<Vec<u8>>, Vec<(FinishedCall, Option<CallBytes>)>) {
+fn every_path(call_bytes: Option<usize>) -> (Vec<Vec<u8>>, Held) {
     let options = Options {
         call_bytes,
         translated: Some(Translated::Stream(&TRANSLATED)),
@@ -766,7 +790,12 @@ fn every_path(call_bytes: Option<usize>) -> (Vec<Vec<u8>>, Vec<(FinishedCall, Op
         rig.call(MESSAGES, r#"{"model":"code","stream":true}"#, ""),
     ];
     // An HTTP/1.0 client is sent the stream unframed.
-    let old = rig.request("HTTP/1.0", MESSAGES, r#"{"model":"code","stream":true}"#, "");
+    let old = rig.request(
+        "HTTP/1.0",
+        MESSAGES,
+        r#"{"model":"code","stream":true}"#,
+        "",
+    );
     answers.push(rig.raw(&old, None));
     answers.push(rig.call(RESPONSES, r#"{"model":"code","input":"hi"}"#, ""));
     answers.push(rig.call(MESSAGES, r#"{"model":"chat-only","messages":[]}"#, ""));
@@ -788,7 +817,10 @@ fn every_path(call_bytes: Option<usize>) -> (Vec<Vec<u8>>, Vec<(FinishedCall, Op
     ));
     let mut held = held;
     held.extend(open.finished(1));
-    (answers.iter().map(|answer| without_id(answer)).collect(), held)
+    (
+        answers.iter().map(|answer| without_id(answer)).collect(),
+        held,
+    )
 }
 
 #[test]
@@ -797,7 +829,11 @@ fn the_client_s_answer_is_the_same_byte_for_byte_with_the_copy_on_on_every_wire_
     let (on, on_held) = every_path(Some(1 << 20));
     assert_eq!(off.len(), 7);
     for (index, (off, on)) in off.iter().zip(&on).enumerate() {
-        assert!(status(off) >= 200, "answer {index}: {}", String::from_utf8_lossy(off));
+        assert!(
+            status(off) >= 200,
+            "answer {index}: {}",
+            String::from_utf8_lossy(off)
+        );
         assert_eq!(
             String::from_utf8_lossy(off),
             String::from_utf8_lossy(on),
@@ -912,14 +948,26 @@ fn a_call_at_the_bound_is_copied_and_one_byte_over_it_is_over_bound_with_both_si
 fn the_two_interaction_record_series_start_at_zero_and_count_what_the_embedding_counts() {
     let rig = Rig::new(Vec::new(), Options::default());
     let before = rig.scrape();
-    assert!(before.contains("\nllmgw_interaction_records_dropped_total 0\n"), "{before}");
-    assert!(before.contains("\nllmgw_interaction_records_skipped_total 0\n"), "{before}");
+    assert!(
+        before.contains("\nllmgw_interaction_records_dropped_total 0\n"),
+        "{before}"
+    );
+    assert!(
+        before.contains("\nllmgw_interaction_records_skipped_total 0\n"),
+        "{before}"
+    );
     rig.metrics.count_interaction_record_dropped();
     rig.metrics.count_interaction_record_dropped();
     rig.metrics.count_interaction_record_skipped();
     let after = rig.scrape();
-    assert!(after.contains("\nllmgw_interaction_records_dropped_total 2\n"), "{after}");
-    assert!(after.contains("\nllmgw_interaction_records_skipped_total 1\n"), "{after}");
+    assert!(
+        after.contains("\nllmgw_interaction_records_dropped_total 2\n"),
+        "{after}"
+    );
+    assert!(
+        after.contains("\nllmgw_interaction_records_skipped_total 1\n"),
+        "{after}"
+    );
     let order = |text: &str, name: &str| text.find(&format!("# HELP {name} ")).unwrap();
     assert!(
         order(&after, "llmgw_pod_start_spend_refusals_total")

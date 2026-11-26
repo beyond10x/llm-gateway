@@ -4,14 +4,16 @@
 use crate::{
     auth::{Authenticated, OwnerToken, OwnerVerifier, Verdict},
     calls::{self, Calls},
-    dashboard::{Dashboard, Finished, Observed},
+    dashboard::{Dashboard, Finished},
     error::RefusalCode,
+    finished::{CallEnding, FinishedCall, Harness, Tap},
     guide,
     inventory::RouteInventory,
     listing::{self, InstructionAnswer},
     metrics::{self, Disposition, Metrics, UsageRecord},
     relay::{self, Admitted, Call, ModelStatus, Relay, Wire},
     review::{CallerToken, Principal, Review},
+    session::Observed,
 };
 use std::{
     io::{self, Read, Write},
@@ -557,12 +559,23 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
         )),
         _ => None,
     };
+    let tap = call_tap(shared, &decision, ticket.is_some());
     let mut call = Call {
         begun: Some(begun),
         ticket,
+        tap,
         ..Call::default()
     };
-    let mut observed = Observed::default();
+    let read = decision
+        .observed
+        .clone()
+        .at(stream.peer_addr().ok().map(|peer| peer.ip()));
+    let mut seen = Seen {
+        begun,
+        observed: Observed::default(),
+        read,
+        count_tokens: decision.count_tokens,
+    };
     let outcome = match (decision.outcome, &shared.relay) {
         (Outcome::Events, _) => {
             events(&mut stream, shared, decision.head_only, timeout);
@@ -570,11 +583,8 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
             return;
         }
         (Outcome::Relay(admitted), Some(relay)) => {
-            observed = admitted
-                .observed
-                .clone()
-                .at(stream.peer_addr().ok().map(|peer| peer.ip()));
-            call.progress = Some(shared.dashboard.begin(admitted.wire, &observed));
+            seen.observed = seen.read.clone();
+            call.progress = Some(shared.dashboard.begin(admitted.wire, &seen.observed));
             let limits = relay::Limits {
                 line_bytes: shared.config.max_head_bytes,
                 timeout,
@@ -589,7 +599,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
                         (decision.recorded, decision.principal),
                         call,
                         None,
-                        (begun, observed),
+                        seen,
                     );
                     drop(stream.shutdown(Shutdown::Both));
                     return;
@@ -623,7 +633,7 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
             (decision.recorded, decision.principal),
             call,
             Some(code),
-            (begun, observed),
+            seen,
         );
     }
     if decision.linger {
@@ -641,10 +651,16 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
 fn record(
     shared: &Shared,
     (wire, principal): (Option<Wire>, Option<Principal>),
-    call: Call,
+    mut call: Call,
     refusal: Option<RefusalCode>,
-    (begun, observed): (Instant, Observed),
+    seen: Seen,
 ) {
+    let Seen {
+        begun,
+        observed,
+        read,
+        count_tokens,
+    } = seen;
     let (Some(wire), Some(relay)) = (wire, &shared.relay) else {
         return;
     };
@@ -684,7 +700,7 @@ fn record(
             .as_ref()
             .map_or_else(String::new, |ticket| ticket.id().to_owned()),
         outcome: metrics::Outcome::of(ended_by, call.timed_out),
-        model: call.model,
+        model: call.model.take(),
         wire,
         target_status: call.target_status,
         disposition,
@@ -699,14 +715,21 @@ fn record(
         cost_usd,
         response_bytes,
         duration_ms,
-        profile: call.profile,
+        profile: call.profile.take(),
         principal: principal.map(|principal| principal.as_str().to_owned()),
     };
+    // The one finished-call value of the call, built where the call ends; the dashboard reads
+    // its finished call from it (story:finished-call-facts).
+    let finished = finished_call(&record, &call, &read, duration_ms);
     // Ended before the connection is closed, as the record is made.
-    if let Some(ticket) = call.ticket {
+    if let Some(ticket) = call.ticket.take() {
         ticket.end(&record);
     }
     relay.observe(&record);
+    if !count_tokens {
+        let bytes = call.tap.take().map(Tap::finish);
+        relay.finished(&finished, bytes.as_ref());
+    }
     // The in-flight entry goes only once the call is recorded as finished.
     shared.dashboard.finish(
         &record,
@@ -715,11 +738,11 @@ fn record(
                 .progress
                 .as_ref()
                 .map_or(0, crate::dashboard::Progress::id),
-            started_ms: crate::dashboard::now_ms().saturating_sub(duration_ms),
-            upstream: call.upstream,
+            started_ms: finished.started_ms,
+            upstream: finished.upstream,
             upstream_model: call.upstream_model,
-            queue_wait_ms: call.queue_wait_ms,
-            ttft_ms: call.ttft_ms,
+            queue_wait_ms: finished.queue_wait_ms,
+            ttft_ms: finished.ttft_ms,
             usage,
             body_digest: call.body_digest,
             client_disconnected: call.client_disconnected,
@@ -731,6 +754,79 @@ fn record(
         },
     );
     drop(call.progress);
+}
+
+/// The copy of a call's bytes: made only for a call that has an id, when the relay declares its
+/// bound, and never for a token count (story:finished-call-facts).
+fn call_tap(shared: &Shared, decision: &Decision, ticketed: bool) -> Option<Tap> {
+    shared
+        .relay
+        .as_ref()
+        .and_then(Relay::call_bytes)
+        .filter(|_| ticketed && !decision.count_tokens)
+        .map(Tap::new)
+}
+
+/// What `serve` saw of a request that `record` needs beside its call.
+struct Seen {
+    /// The end of the request head, where a record's duration starts.
+    begun: Instant,
+    /// The sender the dashboard is told of: the default for a request refused before it was
+    /// admitted to the relay.
+    observed: Observed,
+    /// The sender read from the request head, which the finished call names.
+    read: Observed,
+    /// The request is a token count, which hands no finished call.
+    count_tokens: bool,
+}
+
+/// The finished-call value of a recorded call (story:finished-call-facts): the record's id,
+/// route and cost, the call's upstream, attempts and times, and the sender read from its head.
+fn finished_call(
+    record: &UsageRecord,
+    call: &Call,
+    read: &Observed,
+    duration_ms: u64,
+) -> FinishedCall {
+    let finished_ms = crate::dashboard::now_ms();
+    let attempts = if call.attempts.is_empty() {
+        u32::from(call.upstream.is_some())
+    } else {
+        u32::try_from(call.attempts.len()).unwrap_or(u32::MAX)
+    };
+    FinishedCall {
+        call_id: record.call.clone(),
+        session_hash: read.session.clone(),
+        harness: Harness::of_label(&read.label),
+        path: record.wire.path().to_owned(),
+        wire: record.wire,
+        route: record.model.clone(),
+        upstream: call.upstream.clone(),
+        attempts,
+        queue_wait_ms: call.queue_wait_ms,
+        ttft_ms: call.ttft_ms,
+        declared_cost_usd: record.cost_usd.clone(),
+        ending: ending(record.refusal, call),
+        started_ms: finished_ms.saturating_sub(duration_ms),
+        finished_ms,
+    }
+}
+
+/// How a call ended, in the precedence `llm-gateway.telemetry.CallEnding` names.
+fn ending(refusal: Option<RefusalCode>, call: &Call) -> CallEnding {
+    if let Some(code) = refusal {
+        CallEnding::Refused(code)
+    } else if call.failed_after_head.is_some()
+        || matches!(call.unfinished, Some(relay::Unfinished::TerminalError))
+    {
+        CallEnding::WireError
+    } else if matches!(call.unfinished, Some(relay::Unfinished::CutShort)) {
+        CallEnding::UpstreamCut
+    } else if call.client_disconnected || call.target_status.is_none() {
+        CallEnding::ClientDisconnected
+    } else {
+        CallEnding::Complete
+    }
 }
 
 /// Closes a relay connection that was refused gracefully: the answer is already written, so
@@ -1210,6 +1306,11 @@ struct Decision {
     recorded: Option<Wire>,
     /// The service account a reviewed bearer named, which that record carries.
     principal: Option<Principal>,
+    /// The request is the messages wire's token count, which hands no finished call.
+    count_tokens: bool,
+    /// Who sent a request that makes a usage record, read from its head
+    /// (story:finished-call-facts); the default for every other request.
+    observed: Observed,
 }
 
 impl Decision {
@@ -1220,6 +1321,8 @@ impl Decision {
             linger: false,
             recorded: None,
             principal: None,
+            count_tokens: false,
+            observed: Observed::default(),
         }
     }
 }
@@ -1387,12 +1490,17 @@ fn dispatch(head: &str, shared: &Shared) -> Decision {
         && (relayed(request.path).is_some() || Lifecycle::of(request.path).is_some());
     let mut principal = None;
     let (outcome, recorded) = decide(&request, shared, &mut principal);
+    let observed = recorded
+        .map(|_| Observed::read(|name| request.header(name)))
+        .unwrap_or_default();
     Decision {
         outcome,
         head_only,
         linger,
         recorded,
         principal,
+        count_tokens: request.path == COUNT_TOKENS,
+        observed,
     }
 }
 
@@ -1781,7 +1889,6 @@ fn admit(request: &Request<'_>, shared: &Shared, wire: Wire, count_tokens: bool)
                     )
                 })
                 .flatten(),
-            observed: Observed::read(|name| request.header(name)),
             request_target: request.target.to_owned(),
             count_tokens,
         }),

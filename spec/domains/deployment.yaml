@@ -928,6 +928,41 @@ types:
       - {name: watchdog, type: 'Optional<llm-gateway.deployment.WatchdogDeclaration>'}
       - {name: token_review, type: 'Optional<llm-gateway.deployment.TokenReviewDeclaration>'}
       - {name: launch, type: 'Optional<llm-gateway.deployment.LaunchDeclaration>'}
+      - {name: interaction_records, type: 'Optional<llm-gateway.deployment.InteractionRecordsDeclaration>'}
+  # DECIDED 2026-11-26 (story:interaction-record-store; sessionspec docs/interaction-records.md
+  # sections 3 and 5): `[interaction_records]`, optional. With it the binary lifts every finished
+  # call (llm-gateway.telemetry FinishedCall and its CallBytes) into sessionspec's session records
+  # and appends them to the SQLite file `path`, which `sessionspec serve` reads. Keys:
+  #   `path`           required, not empty; a relative path is resolved from the working
+  #                    directory. Its directory must exist when the binary starts, and the file
+  #                    must open as a session store; either failure is `config:value` naming
+  #                    `interaction_records.path`, never the path itself
+  #   `queue`          1..=65536, default 1024: the finished calls waiting for the writer thread;
+  #                    a call that finds it full is dropped and counted in
+  #                    `llmgw_interaction_records_dropped_total`
+  #   `call_bytes`     1..=33554432, default 8388608 (8 MiB): the relay's CallBytesBound. A call
+  #                    over it (`OverBound`), or whose answer was not decoded (`Undecodable`), is
+  #                    not lifted and is counted in `llmgw_interaction_records_skipped_total`
+  #   `sessions_held`  1..=65536, default 4096: the sessions whose agents the lift remembers,
+  #                    the least recently used forgotten first; a forgotten session's next call
+  #                    opens it again and starts a new agent
+  # Any other key is `config:schema`; a value outside its rule `config:value` naming
+  # `interaction_records.<key>`. The lift runs on the connection's thread and never waits: the
+  # append goes to one writer thread behind the queue. A refused call is lifted as an incomplete
+  # turn (`refused`); a count-tokens call hands no finished call and makes no record. No message
+  # text is stored: prompts and tool inputs are a digest and a byte count. Without the table the
+  # relay copies no byte, no writer thread runs and no file is created.
+  # BOUNDARY: the records are sessionspec's domain `sessionspec.session`, written by its crate
+  # `sessionspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
+  # links by git tag. ESS has no cross-system relation, so this is a comment, not a reference.
+  # Proved by the `interaction_records` module of crates/llm-gateway-cli/tests/main.rs.
+  - name: llm-gateway.deployment.InteractionRecordsDeclaration
+    kind: struct
+    fields:
+      - {name: path, type: String}
+      - {name: queue, type: Integer}
+      - {name: call_bytes, type: Integer}
+      - {name: sessions_held, type: Integer}
   # DECIDED 2026-11-04 (story:live-dashboard): `[launch]`, optional, what `b10x-llm-gateway
   # claude` and `b10x-llm-gateway codex` start their agent with. Both read the running gateway's
   # `GET /v1/launch` and refuse a document whose `ingress_auth` is not `none`. `claude.main_model`

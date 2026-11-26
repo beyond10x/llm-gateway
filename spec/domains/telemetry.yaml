@@ -60,8 +60,9 @@ domain: llm-gateway.telemetry
 #                                                     queue (`Metrics::count_interaction_record_
 #                                                     dropped`)
 #     llmgw_interaction_records_skipped_total         each finished call whose bytes were over the
-#                                                     bound (`CallBytes` `OverBound`), whose record
-#                                                     the embedding left out
+#                                                     bound (`CallBytes` `OverBound`) or not decoded
+#                                                     (`Undecodable`), whose record the embedding
+#                                                     left out
 #                                                     (`Metrics::count_interaction_record_skipped`)
 #   DECIDED 2026-11-26 (story:finished-call-facts): both are process-wide counters after the
 #   spend-refusal series, registered at zero; the gateway counts neither itself.

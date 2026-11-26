@@ -1053,8 +1053,12 @@ types:
   #        or any other row with both versions, as before. Elsewhere above, sessionspec reads
   #        agentspec, `sessionspec_records` reads `agentspec_records` and `sessionspec serve`
   #        reads `agentspec serve`.
-  # BOUNDARY: the records are agentspec's domain `agentspec.session`, written by its crate
-  # `agentspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
+  # Amended 2026-11-26 (agenticspec 0.3.0, agentspec renamed; store schema 5 still): elsewhere
+  #   above, sessionspec and agentspec read agenticspec, `sessionspec_records` and
+  #   `agentspec_records` read `agenticspec_records`, and `sessionspec serve` and `agentspec
+  #   serve` read `agenticspec serve`. The rules are unchanged.
+  # BOUNDARY: the records are agenticspec's domain `agenticspec.session`, written by its crate
+  # `agenticspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
   # links by git tag. ESS has no cross-system relation, so this is a comment, not a reference.
   # Proved by the `interaction_records` module of crates/llm-gateway-cli/tests/main.rs.
   - name: llm-gateway.deployment.InteractionRecordsDeclaration

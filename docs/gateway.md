@@ -1540,7 +1540,7 @@ before its end, more than 16 MiB as received or 64 MiB decoded) arrives with
 `CallBytes::Undecodable`: no bytes, the request's size, the answer's size as received and its
 `content-encoding`.
 
-The value maps onto agentspec's `GatewayFacts` and `WireCall` by name, with three conversions
+The value maps onto agenticspec's `GatewayFacts` and `WireCall` by name, with three conversions
 the embedding makes: `attempts` to an `i64`, `declared_cost_usd` (a decimal string) to
 `declared_cost_microdollars`, and `ending` to `incomplete` (`Complete` is none). `wire` and the
 copy fill `WireCall`'s `wire`, `request` and `answer`. An embedding that cannot queue a value
@@ -1548,7 +1548,7 @@ counts `Metrics::count_interaction_record_dropped`, one that leaves out a call o
 not decoded or lifted to no step counts `Metrics::count_interaction_record_skipped`, and one
 that queued a value it then failed to store counts `Metrics::count_interaction_record_failed`.
 The binary is one such
-embedding: with `[interaction_records]` in its document it lifts each value with agentspec's
+embedding: with `[interaction_records]` in its document it lifts each value with agenticspec's
 `wire::lift_call` and appends the steps to a SQLite file on one writer thread
 (`spec/domains/deployment.yaml` `InteractionRecordsDeclaration`).
 

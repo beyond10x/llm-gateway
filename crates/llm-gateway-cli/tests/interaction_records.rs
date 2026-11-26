@@ -1492,7 +1492,7 @@ fn each_header_source_keys_the_store_by_agenticspecs_session_hash() {
 // --- Acceptance 10: the guide ----------------------------------------------------------------------
 
 #[test]
-fn the_guide_names_the_table_its_keys_the_session_bound_and_how_agentspec_reads_the_file() {
+fn the_guide_names_the_table_its_keys_the_session_bound_and_how_agenticspec_reads_the_file() {
     let guide = std::fs::read_to_string(
         Path::new(env!("CARGO_MANIFEST_DIR"))
             .join("../../website/docs/guides/record-agent-sessions.md"),
@@ -1516,7 +1516,7 @@ fn the_guide_names_the_table_its_keys_the_session_bound_and_how_agentspec_reads_
         "schema version",
         "calls not stored at stop",
         "`queue` times `call_bytes`",
-        "agentspec serve",
+        "agenticspec serve",
     ] {
         assert!(guide.contains(named), "the guide does not name {named}");
     }

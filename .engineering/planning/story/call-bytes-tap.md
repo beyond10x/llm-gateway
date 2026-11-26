@@ -2,13 +2,14 @@
 format: aep.planning-md/3
 id: story:call-bytes-tap
 kind: story
-status: draft
+status: archived
 title: A bounded copy of a call's request and answer bytes, off unless declared
 relations:
 - decomposes: epic:interaction-records
 - serves: vision:portable-model-inference
-- depends_on: story:finished-call-facts
-revision: 1
+revision: 2
+transitions:
+- {from: "draft", to: "archived", at: "2026-11-26T02:19:37Z", actor: "human:operator", revision: 2}
 ---
 ## Outcome
 

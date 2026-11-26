@@ -158,6 +158,10 @@ abbr { text-decoration: underline dotted; cursor: help; }
 .bad-text { color: var(--bad); font-weight: 600; }
 .flag { display: inline-block; margin-right: 0.3rem; padding: 0 0.35rem; border: 1px solid var(--line); border-radius: 4px; color: var(--warn); }
 .calls tbody tr:hover { background: var(--head); }
+.calls thead th { white-space: normal; vertical-align: bottom; }
+.calls td.flags { white-space: normal; }
+.calls .flag { white-space: nowrap; }
+.calls td.route .small { white-space: normal; }
 
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.6rem; }
 .tile { border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 6px; padding: 0.5rem 0.7rem; min-width: 0; }

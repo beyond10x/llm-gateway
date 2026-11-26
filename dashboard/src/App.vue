@@ -271,7 +271,7 @@ function yesNo(v: boolean | null): string {
             <template v-for="c in shownCalls" :key="c.id">
             <tr>
               <td class="mono" :title="ago(now, c.started_ms)">{{ clock(c.started_ms) }}</td>
-              <td>{{ c.route ?? DASH }}<div v-if="c.upstream_model && c.upstream_model !== c.route" class="muted small">{{ c.upstream_model }}</div><div v-if="c.upstream" class="muted small">{{ c.upstream }}</div></td>
+              <td class="route">{{ c.route ?? DASH }}<div v-if="c.upstream_model && c.upstream_model !== c.route" class="muted small">{{ c.upstream_model }}</div><div v-if="c.upstream" class="muted small">{{ c.upstream }}</div></td>
               <td>{{ c.wire }}</td>
               <td class="n"><span class="pill" :class="statusClass(c)" :title="c.outcome">{{ c.status }}</span></td>
               <td class="n">{{ ms(c.ttft_ms) }}</td>
@@ -281,7 +281,7 @@ function yesNo(v: boolean | null): string {
               <td class="n">{{ tokenPair(c.cache_read_tokens, c.cache_creation_tokens) }}</td>
               <td class="n">{{ tps(c.input_tps) }}</td>
               <td class="n">{{ tps(c.output_tps) }}</td>
-              <td><span v-for="f in flags(c)" :key="f" class="flag">{{ f }}</span></td>
+              <td class="flags"><span v-for="f in flags(c)" :key="f" class="flag">{{ f }}</span></td>
               <td>
                 <button v-if="c.attempts.length" type="button" class="expand" :aria-expanded="open.has(c.id)" @click="toggle(c.id)">
                   {{ open.has(c.id) ? '▾' : '▸' }} {{ c.attempts.length }}

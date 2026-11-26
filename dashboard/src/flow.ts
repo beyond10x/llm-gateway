@@ -143,13 +143,13 @@ export const INK_GROUND = '--panel';
 export const INK = {
   label: { colour: '--fg', alpha: 0.9, text: true },
   note: { colour: '--fg', alpha: 0.72, text: true },
-  idleString: { colour: '--muted', alpha: 0.3, text: false },
-  flightString: { colour: '--flow-in', alpha: 0.42, text: false },
-  node: { colour: '--muted', alpha: 0.7, text: false },
-  inDot: { colour: '--flow-in', alpha: 0.75, text: false },
-  outDot: { colour: '--flow-out', alpha: 0.75, text: false },
+  idleString: { colour: '--muted', alpha: 0.75, text: false },
+  flightString: { colour: '--flow-in', alpha: 0.8, text: false },
+  node: { colour: '--muted', alpha: 0.85, text: false },
+  inDot: { colour: '--flow-in', alpha: 0.9, text: false },
+  outDot: { colour: '--flow-out', alpha: 0.9, text: false },
 } as const;
-export const FLIGHT_PULSE = 0.25;
+export const FLIGHT_PULSE = 0.2;
 export type Mark = keyof typeof INK;
 
 export interface Point { x: number; y: number }

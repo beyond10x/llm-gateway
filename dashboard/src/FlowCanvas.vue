@@ -21,6 +21,7 @@ const media = (q: string) => (typeof matchMedia === 'function' ? matchMedia(q) :
 const reducedQuery = media(REDUCED_QUERY);
 const darkQuery = media(DARK_QUERY);
 const model = new FlowModel({ reduced: reducedQuery?.matches ?? false, seed: 0x5eed });
+const reduced = ref(model.reduced);
 
 const summary = computed(() => {
   if (!props.snap) return { sessions: 0, routes: 0 };
@@ -154,6 +155,7 @@ function onTheme() {
 
 function onReduced() {
   model.reduced = reducedQuery?.matches ?? false;
+  reduced.value = model.reduced;
   if (model.reduced) {
     stop();
     model.particles = [];
@@ -211,8 +213,14 @@ onUnmounted(() => {
       <p class="flow-count">{{ summary.sessions > 0 ? `${plural(summary.sessions, 'active session')} → ${plural(summary.routes, 'route')}` : 'no active session' }}</p>
     </div>
     <p class="flow-caption">
-      <span class="flow-key"><span class="swatch in" aria-hidden="true"></span>input tokens</span>
-      <span class="flow-key"><span class="swatch out" aria-hidden="true"></span>output tokens</span>
+      Each line joins a session (left) to a route it called in the last 5 minutes, blue and thicker
+      while a call is in flight.
+      <template v-if="reduced">Motion is off (reduced motion), so no tokens move; Recent calls lists each call's tokens.</template>
+      <template v-else>
+        Each call sends dots:
+        <span class="flow-key"><span class="swatch in" aria-hidden="true"></span>input tokens</span> left to right,
+        <span class="flow-key"><span class="swatch out" aria-hidden="true"></span>output tokens</span> right to left.
+      </template>
     </p>
     <div ref="box" class="flow-box">
       <canvas ref="canvas" aria-hidden="true"></canvas>

@@ -271,13 +271,11 @@ fn list_pods_is_get_v2_pods_with_the_bearer() {
     let partial = transport.list_pods().expect("listing");
     assert!(!partial.complete, "an unreadable entry makes it partial");
     assert_eq!(partial.pods.len(), 1);
-    let failed = transport.list_pods().expect("listing");
-    assert!(!failed.complete && failed.pods.is_empty());
-    let bare = transport.list_pods().expect("listing");
     assert!(
-        !bare.complete && bare.pods.is_empty(),
-        "a bare array is no v2 page"
+        transport.list_pods().is_err(),
+        "a first page that fails is a listing that failed outright"
     );
+    assert!(transport.list_pods().is_err(), "a bare array is no v2 page");
     let seen = server.seen();
     assert_eq!(seen.len(), 4);
     for request in &seen {
@@ -752,7 +750,7 @@ fn the_last_failure_names_the_host_and_the_status_or_the_connection_error() {
     let server = Server::start(vec![answer(503, &format!("{{\"error\":\"{KEY}\"}}"))]);
     let mut transport = server.transport();
     assert!(transport.last_failure().is_none(), "no call yet");
-    assert!(!transport.list_pods().expect("listing").complete);
+    assert!(transport.list_pods().is_err());
     let failure = transport.last_failure().expect("a failure");
     assert_eq!(failure.host, server.address);
     let text = failure.to_string();
@@ -764,7 +762,7 @@ fn the_last_failure_names_the_host_and_the_status_or_the_connection_error() {
 
     let mut transport = RestRunpod::new(RestBinding::runpod(), KEY.as_bytes().to_vec());
     transport.set_tls(Arc::new(Unresolved));
-    assert!(!transport.list_pods().expect("listing").complete);
+    assert!(transport.list_pods().is_err());
     let failure = transport.last_failure().expect("a failure");
     assert_eq!(failure.host, "api.runpod.io");
     let text = failure.to_string();
@@ -829,11 +827,7 @@ fn an_answer_past_eight_mebibytes_is_unreadable() {
     let mut transport = server.transport();
     let read = transport.list_pods().expect("listing");
     assert!(read.complete, "exactly 8 MiB is read");
-    let unread = transport.list_pods().expect("listing");
-    assert!(
-        !unread.complete && unread.pods.is_empty(),
-        "one byte more is not"
-    );
+    assert!(transport.list_pods().is_err(), "one byte more is not");
 }
 
 /// The key reaches only the `Authorization` header: never `Debug`, never an answer.
@@ -868,8 +862,7 @@ fn no_call_leaves_without_tls_or_to_a_non_loopback_http_host() {
             },
             KEY.as_bytes().to_vec(),
         );
-        let listing = transport.list_pods().expect("listing");
-        assert!(!listing.complete, "{base}");
+        assert!(transport.list_pods().is_err(), "{base}");
         assert_eq!(
             transport.create_pod(&request()),
             CreateAnswer::Lost,

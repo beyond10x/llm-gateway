@@ -285,7 +285,7 @@ export const BINDINGS: Record<string, Answer> = {
   'dashboard.Provider': (s, now) => {
     const p = s.provider;
     if (!p) return [];
-    return [{ name: p.name, other_pods: p.other_pods, heartbeat: heartbeat(p.watchdog_heartbeat_age_ms), read: ago(now, p.read_ms) }];
+    return [{ name: p.name, other_pods: p.other_pods, heartbeat: heartbeat(p.watchdog_heartbeat_age_ms), read: `${ago(now, p.read_ms)}${p.pods_unread ? ' · pods not read' : ''}` }];
   },
 
   'dashboard.Pods': (s, now) =>

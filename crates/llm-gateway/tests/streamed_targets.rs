@@ -308,6 +308,24 @@ fn body_of(answer: &str) -> &str {
     answer.split_once("\r\n\r\n").map_or("", |(_, body)| body)
 }
 
+/// A body the relay wrote chunked, as the relay writes every relayed answer to an HTTP/1.1
+/// client, decoded; a body that is not chunked, as it is.
+fn dechunked(whole: &str) -> String {
+    let mut body = whole;
+    let mut out = String::new();
+    while let Some((size, rest)) = body.split_once("\r\n") {
+        let Ok(size) = usize::from_str_radix(size, 16) else {
+            return whole.to_owned();
+        };
+        if size == 0 {
+            break;
+        }
+        out.push_str(&rest[..size]);
+        body = &rest[size + 2..];
+    }
+    out
+}
+
 /// A chat call without `stream` reaches a streamed target with `stream: true` and
 /// `stream_options.include_usage`, and its client gets the one assembled body, as JSON with a
 /// `content-length`, the call complete and its usage read from that body.
@@ -407,21 +425,20 @@ fn streamed_nothing_changes_without_a_streamed_target_an_assembler_or_for_a_coun
             r#"{"model":"m"}"#,
         );
         assert_eq!(run.sent, r#"{"model":"served"}"#, "{streamed} {assembles}");
-        assert_eq!(body_of(&run.answer), "{}");
+        assert_eq!(dechunked(body_of(&run.answer)), "{}");
     }
     let pieces = vec![
         b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 19\r\n\r\n{\"input_tokens\":12}"
             .to_vec(),
     ];
-    let run = run(
-        pieces,
-        true,
-        true,
-        "/v1/messages/count_tokens",
-        r#"{"model":"m"}"#,
-    );
-    assert_eq!(run.sent, r#"{"model":"served"}"#);
-    assert_eq!(body_of(&run.answer), "{\"input_tokens\":12}");
+    // A count hands no finished call, so it is run without waiting for one.
+    let upstream = Upstream::start(pieces);
+    let port = Arc::new(Port::default());
+    let handle = gateway(&upstream, true, true, &port);
+    let answer = call(&handle, "/v1/messages/count_tokens", r#"{"model":"m"}"#);
+    handle.shutdown();
+    assert_eq!(upstream.body(), r#"{"model":"served"}"#);
+    assert_eq!(dechunked(body_of(&answer)), "{\"input_tokens\":12}");
 }
 
 /// An answer that is not a 2xx event stream (a model's error) is relayed as it came.
@@ -439,7 +456,7 @@ fn streamed_an_answer_that_is_no_event_stream_is_relayed_as_it_came() {
         r#"{"model":"m"}"#,
     );
     assert!(run.answer.starts_with("HTTP/1.1 400 "), "{}", run.answer);
-    assert_eq!(body_of(&run.answer), "{\"error\":1}");
+    assert_eq!(dechunked(body_of(&run.answer)), "{\"error\":1}");
     assert_eq!(run.finished.ending, CallEnding::Complete);
 }
 

@@ -18,7 +18,7 @@ use crate::{
     watchdog::owned,
 };
 use llm_gateway::{Dashboard, PodPanel, ProviderPanel, WatchdogLimits};
-use llm_runpod::{AccountSnapshot, POD_NAME_PREFIX, RestBinding, RestRunpod, RunpodAccount};
+use llm_runpod::{AccountSnapshot, POD_NAME_PREFIX, RestRunpod, RunpodAccount};
 use std::{
     sync::{Arc, Condvar, Mutex, PoisonError},
     thread::{self, JoinHandle},
@@ -123,6 +123,7 @@ pub(crate) fn panel(
         balance_usd: snapshot.balance_usd,
         spend_per_hour_usd: snapshot.spend_per_hour_usd,
         other_pods: u64::try_from(others).unwrap_or(u64::MAX),
+        pods_unread: !snapshot.pods_read,
         pods,
         watchdog_heartbeat_ms: None,
     }
@@ -170,28 +171,85 @@ impl Drop for Polling {
 
 /// Starts reading the account every `every` into `dashboard`, through `transport`.
 pub(crate) fn start<T: RunpodAccount + Send + 'static>(
-    mut transport: T,
+    transport: T,
     provider: String,
     deployment: Deployment,
     dashboard: Arc<Dashboard>,
     period: Duration,
 ) -> Polling {
     dashboard.set_watchdog(Some(limits(&deployment)));
+    let mut reader = Reader::new(transport, provider, deployment, dashboard);
     every("runpod-account", period, move || {
-        if let Some(snapshot) = transport.account() {
-            dashboard.set_provider(Some(panel(
-                &provider,
-                &snapshot,
-                crate::heartbeat::unix_ms(),
-                &deployment,
-            )));
-        } else {
-            tracing::warn!(
-                provider = provider.as_str(),
-                "runpod account read failed; the dashboard keeps the last read"
-            );
-        }
+        reader.read(crate::heartbeat::unix_ms());
     })
+}
+
+/// One account's reads into the dashboard (story:runpod-rest-host): a read that lacks the
+/// balance shows the last balance read, a read whose pod list failed shows the balance with
+/// the pods marked unread, and a read of which nothing was read leaves the panel as it was.
+/// A read that failed in part or whole is warned about, naming the provider, the host and the
+/// HTTP status or connection error of the last call that failed, never the key.
+pub(crate) struct Reader<T> {
+    transport: T,
+    provider: String,
+    deployment: Deployment,
+    dashboard: Arc<Dashboard>,
+    last_balance: Option<f64>,
+}
+
+impl<T: RunpodAccount> Reader<T> {
+    pub(crate) fn new(
+        transport: T,
+        provider: String,
+        deployment: Deployment,
+        dashboard: Arc<Dashboard>,
+    ) -> Self {
+        Self {
+            transport,
+            provider,
+            deployment,
+            dashboard,
+            last_balance: None,
+        }
+    }
+
+    /// One read, at `read_ms`.
+    pub(crate) fn read(&mut self, read_ms: u64) {
+        let Some(mut snapshot) = self.transport.account() else {
+            self.warn();
+            return;
+        };
+        if snapshot.balance_usd.is_some() {
+            self.last_balance = snapshot.balance_usd;
+        } else {
+            snapshot.balance_usd = self.last_balance;
+        }
+        if !snapshot.pods_read || self.transport.last_failure().is_some() {
+            self.warn();
+        }
+        self.dashboard.set_provider(Some(panel(
+            &self.provider,
+            &snapshot,
+            read_ms,
+            &self.deployment,
+        )));
+    }
+
+    fn warn(&self) {
+        let failure = self.transport.last_failure();
+        let host = failure
+            .as_ref()
+            .map_or_else(String::new, |failure| failure.host.clone());
+        let cause = failure
+            .as_ref()
+            .map_or_else(String::new, |failure| failure.cause.to_string());
+        tracing::warn!(
+            provider = self.provider.as_str(),
+            host = host.as_str(),
+            cause = cause.as_str(),
+            "runpod account read failed; the dashboard keeps the last read"
+        );
+    }
 }
 
 /// Runs `tick` at once and then every `interval` on a thread named `name`, until the returned
@@ -233,7 +291,10 @@ pub(crate) fn start_for(
         return Ok(None);
     };
     let key = read_key(provider, reference)?;
-    let mut transport = RestRunpod::new(RestBinding::runpod(), key);
+    let mut transport = RestRunpod::new(
+        crate::relaying::rest_binding(&deployment.providers[provider]),
+        key,
+    );
     transport.set_tls(Arc::new(ProbeOver(Arc::new(pods.clone()))));
     Ok(Some(start(
         transport,
@@ -444,7 +505,7 @@ mod tests {
             cause: FailureCause::Status(403),
         };
         let (mut reader, _) = reader(vec![None], Some(failure));
-        let (_, log) = logged(|| reader.read(1_000));
+        let ((), log) = logged(|| reader.read(1_000));
         let warning = log
             .lines()
             .find(|line| line.contains("runpod account read failed"))

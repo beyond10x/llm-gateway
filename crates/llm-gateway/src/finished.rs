@@ -166,7 +166,7 @@ fn append(buffer: &mut Vec<u8>, bytes: &[u8]) {
 /// event joined by a line feed. A line ends at CR, LF or CRLF; a line starting `:` is a
 /// comment; every field but `data` is passed over; an event with no `data` field is none.
 #[derive(Debug, Default)]
-struct EventReader {
+pub struct EventReader {
     line: Vec<u8>,
     data: Vec<u8>,
     /// The event being read has a `data` field, though perhaps an empty one.
@@ -177,7 +177,8 @@ struct EventReader {
 }
 
 impl EventReader {
-    fn feed(&mut self, bytes: &[u8]) {
+    /// Reads `bytes`, the next bytes of the stream, split anywhere.
+    pub fn feed(&mut self, bytes: &[u8]) {
         let mut start = 0;
         for (at, &byte) in bytes.iter().enumerate() {
             if self.after_cr && byte == b'\n' {
@@ -194,6 +195,11 @@ impl EventReader {
             }
         }
         append(&mut self.line, &bytes[start..]);
+    }
+
+    /// The `data` of every event ended since the last take, in order.
+    pub fn take(&mut self) -> Vec<Vec<u8>> {
+        std::mem::take(&mut self.events)
     }
 
     fn end_line(&mut self) {

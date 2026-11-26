@@ -7,7 +7,7 @@
 //! * [`ConnectorsRunpod`] only through the `connectors` CLI and its Runpod catalog bundle
 //!   (`spec/domains/runpod.yaml`, `ConnectorsOperation`). It never holds the Runpod key, so it
 //!   is the transport for a gateway in a cluster.
-//! * [`RestRunpod`] calls Runpod's REST API (`https://rest.runpod.io/v1`) itself with an API
+//! * [`RestRunpod`] calls Runpod's REST API v2 (`https://api.runpod.io/v2`) itself with an API
 //!   key its embedding hands in, for a local gateway whose process reads the key through an OS
 //!   keychain reference. It speaks HTTP/1.1 over the [`PodTls`] connection the embedding hands
 //!   in, and also implements [`RunpodAccount`], the account view a watchdog reads.
@@ -26,7 +26,7 @@ use crate::{AccountSpend, CloudType};
 
 pub use connectors::{ConnectorsBinding, ConnectorsRunpod, POD_CREATE_BODY_KEYS, started_at_ms};
 pub use probe::{PodStream, PodTls};
-pub use rest::{RestBinding, RestRunpod};
+pub use rest::{CallFailure, FailureCause, RestBinding, RestRunpod};
 
 /// Runpod's own word for a pod's desired state.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -116,12 +116,22 @@ pub struct AccountSnapshot {
     pub balance_usd: Option<f64>,
     pub spend_per_hour_usd: Option<f64>,
     pub pods: Vec<PodSummary>,
+    /// Whether the whole pod listing was read. When it was not, `pods` is empty and says
+    /// nothing about the account's pods; the balance and spend rate may still be read.
+    pub pods_read: bool,
 }
 
 /// An account-wide read for an operator's watchdog or dashboard. Allocates nothing.
 pub trait RunpodAccount {
-    /// The account's balance, spend rate and pods; `None` when the read failed.
+    /// The account's balance, spend rate and pods; `None` only when nothing of it was read.
     fn account(&mut self) -> Option<AccountSnapshot>;
+
+    /// The last call of this account's reads that failed: the host it went to and the HTTP
+    /// status or the connection's error. `None` when no call failed, or the account does not
+    /// say.
+    fn last_failure(&self) -> Option<CallFailure> {
+        None
+    }
 }
 
 /// What a create call told us.

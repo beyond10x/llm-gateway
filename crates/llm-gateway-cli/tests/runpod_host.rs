@@ -26,10 +26,10 @@ const VLLM_KEY: &str = "vllm-key-from-the-test-keychain";
 const WAIT: Duration = Duration::from_secs(20);
 /// The longest the fake proxy lets its origin stay silent before it answers `524`, as Runpod's
 /// proxy does after its own bound.
-const IDLE: Duration = Duration::from_millis(600);
+const IDLE: Duration = Duration::from_millis(400);
 /// The gap between two events of a streamed answer: under `IDLE`, while the whole answer runs
 /// longer than it.
-const GAP: Duration = Duration::from_millis(250);
+const GAP: Duration = Duration::from_millis(150);
 
 struct FixedKeychain;
 
@@ -550,9 +550,10 @@ fn runpod_host_each_key_refuses_what_its_rule_does_not_admit() {
         assert!(text.contains(&format!("providers.runpod.{key}")), "{text}");
         assert!(!text.contains("secret"), "{text}");
     }
-    let without_key = "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\n\n[providers.runpod]\n\
-                       kind = \"runpod-vllm\"\nmanagement_url = \"https://api.runpod.io/v2\"\n";
-    let refusal = parse(without_key).unwrap_err();
+    // A management URL beside no api_key: nothing would call it.
+    let without_key = document("management_url = \"https://api.runpod.io/v2\"\n")
+        .replace("api_key = \"keychain:test-gateway/runpod\"\n", "");
+    let refusal = parse(&without_key).unwrap_err();
     assert_eq!(refusal.code(), "config:value");
     assert!(
         refusal
@@ -626,7 +627,7 @@ fn runpod_host_a_call_without_stream_reaches_the_proxy_streamed_and_is_answered_
     );
     for pair in written.windows(2) {
         assert!(
-            pair[1] - pair[0] < IDLE,
+            pair[1].saturating_sub(pair[0]) < IDLE,
             "no gap past the idle bound: {written:?}"
         );
     }

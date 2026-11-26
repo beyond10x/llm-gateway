@@ -1068,6 +1068,14 @@ impl RelayTargets for HostedTargets {
             None => self.rest.status(alias),
         }
     }
+
+    /// A hosted model has no target source of its own to explain; any other alias is `rest`'s.
+    fn unavailable_reason(&self, alias: &str) -> Option<String> {
+        if self.endpoints.contains_key(alias) {
+            return None;
+        }
+        self.rest.unavailable_reason(alias)
+    }
 }
 
 struct HostedTarget {

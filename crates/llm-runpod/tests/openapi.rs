@@ -7,7 +7,7 @@
 
 use serde_json::Value;
 use sha2::{Digest, Sha256};
-use std::sync::OnceLock;
+use std::{fmt::Write as _, sync::OnceLock};
 
 const DOCUMENT: &str = include_str!("fixture/runpod-openapi-v2.json");
 const DIGEST: &str = include_str!("fixture/runpod-openapi-v2.json.sha256");
@@ -112,7 +112,7 @@ fn conform(at: &str, value: &Value, schema: &'static Value) {
                 ) {
                     (Some(declared), _) => conform(&at, member, declared),
                     (None, Some(Value::Object(_))) => {
-                        conform(&at, member, additional.expect("additional"))
+                        conform(&at, member, additional.expect("additional"));
                     }
                     (None, _) => panic!("{at}: the document declares no such field"),
                 }
@@ -178,7 +178,10 @@ pub fn check_request(line: &str, body: &[u8]) {
 #[test]
 fn the_recorded_v2_document_matches_its_digest_and_says_how_it_was_made() {
     let digest = Sha256::digest(DOCUMENT.as_bytes());
-    let hex: String = digest.iter().map(|byte| format!("{byte:02x}")).collect();
+    let hex = digest.iter().fold(String::new(), |mut hex, byte| {
+        let _ = write!(hex, "{byte:02x}");
+        hex
+    });
     let recorded = DIGEST.split_whitespace().next().expect("a digest");
     assert_eq!(
         hex, recorded,

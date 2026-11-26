@@ -473,6 +473,36 @@ fn a_partial_listing_neither_discharges_nor_replaces_a_running_pod() {
     assert_eq!(stack.runpod.create_calls(), 1);
 }
 
+/// story:runpod-rest-host, Acceptance 8: a listing that fails outright (the management API down,
+/// refusing or unreachable) reads nothing of the account, so the pod ready at its last
+/// observation keeps serving: a call through it is handed the same endpoint, and nothing is
+/// created or terminated. Once the listing reads again, its answer decides as before.
+#[test]
+fn a_listing_that_fails_outright_keeps_a_ready_pod_serving() {
+    let stack = stack();
+    let first = ready(&stack);
+    let endpoint = first.endpoint().map(str::to_owned);
+    drop(first);
+    stack.runpod.listing_fails(true);
+    for _ in 0..3 {
+        stack.clock.advance(1_000);
+        let lease = stack
+            .pool
+            .ensure(&id(ALIAS), &authorization())
+            .expect("the last ready pod serves");
+        assert_eq!(lease.endpoint().map(str::to_owned), endpoint);
+    }
+    assert_eq!(stack.runpod.create_calls(), 1);
+    assert!(stack.runpod.terminations().is_empty());
+    stack.runpod.listing_fails(false);
+    stack.runpod.vanish("pod1");
+    stack.clock.advance(1_000);
+    assert!(
+        stack.pool.ensure(&id(ALIAS), &authorization()).is_err(),
+        "a listing that reads again decides: the vanished pod serves no more"
+    );
+}
+
 #[test]
 fn an_unreported_readiness_or_served_model_stays_unknown() {
     let stack = stack();

@@ -18,6 +18,9 @@ use support::{Fixture, OWNER_SECRET, document, no_spend, starts_on_request, with
 
 const WAIT: Duration = Duration::from_secs(20);
 const BODY: &str = "{\"model\":\"small\",\"messages\":[]}";
+/// [`BODY`] as the pod reads it: every call to a pod is sent streamed, with its usage
+/// (story:runpod-rest-host).
+const SENT: &str = "{\"model\":\"small\",\"messages\":[],\"stream\":true,\"stream_options\":{\"include_usage\":true}}";
 
 fn deployment(fixture: &Fixture, edit: impl Fn(String) -> String) -> Deployment {
     let secret = fixture.owner_secret();
@@ -38,7 +41,7 @@ fn pod() -> SocketAddr {
             connection.set_read_timeout(Some(WAIT)).unwrap();
             let mut seen = Vec::new();
             let mut chunk = [0_u8; 4096];
-            while !seen.ends_with(BODY.as_bytes()) {
+            while !seen.ends_with(SENT.as_bytes()) {
                 match connection.read(&mut chunk) {
                     Ok(0) | Err(_) => break,
                     Ok(read) => seen.extend_from_slice(&chunk[..read]),

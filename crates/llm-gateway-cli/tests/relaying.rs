@@ -226,7 +226,8 @@ fn b8_a_chat_request_reaches_the_pod_with_the_models_vllm_key_and_its_answer_rea
     assert_eq!(header(&request, "host"), Some("pod1-8000.proxy.runpod.net"));
     assert!(
         request.ends_with(
-            "{\"model\":\"small\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}]}"
+            // story:runpod-rest-host: every call to a pod is sent streamed, with its usage.
+            "{\"model\":\"small\",\"messages\":[{\"role\":\"user\",\"content\":\"hi\"}],\"stream\":true,\"stream_options\":{\"include_usage\":true}}"
         ),
         "{request}"
     );
@@ -980,7 +981,10 @@ fn tools_a_tool_request_is_refused_for_the_absent_model_and_reaches_the_pod_for_
     assert_eq!(received.len(), 1);
     let request = String::from_utf8(received[0].clone()).unwrap();
     assert!(
-        request.ends_with(&format!("{{\"model\":\"small\",\"messages\":[],{tools}}}")),
+        // story:runpod-rest-host: every call to a pod is sent streamed, with its usage.
+        request.ends_with(&format!(
+            "{{\"model\":\"small\",\"messages\":[],{tools},\"stream\":true,\"stream_options\":{{\"include_usage\":true}}}}"
+        )),
         "{request}"
     );
 }
@@ -1138,7 +1142,11 @@ fn effort_a_hosted_model_gives_its_declared_effort_and_a_runpod_model_never_does
         text.split_once("\r\n\r\n").unwrap().1.to_owned()
     };
     let runpod: Vec<String> = pod.received().iter().map(body).collect();
-    assert_eq!(runpod, ["{\"model\":\"small\",\"messages\":[]}"]);
+    // story:runpod-rest-host: every call to a pod is sent streamed.
+    assert_eq!(
+        runpod,
+        ["{\"model\":\"small\",\"messages\":[],\"stream\":true}"]
+    );
     let hosted: Vec<String> = endpoint.received().iter().map(body).collect();
     assert_eq!(
         hosted,
@@ -1227,7 +1235,16 @@ fn clamp_a_runpod_model_is_clamped_to_its_max_model_len_a_hosted_one_to_its_cont
             "POST /v1/messages HTTP/1.1 {{\"model\":\"{alias}\",\"max_tokens\":{max_tokens},\"messages\":[]}}"
         )
     };
-    assert_eq!(requests_so_far(&pod), [count("small"), relay("small", 24)]);
+    // story:runpod-rest-host: every call to a pod is sent streamed.
+    let streamed = |alias: &str, max_tokens: u32| {
+        format!(
+            "POST /v1/messages HTTP/1.1 {{\"model\":\"{alias}\",\"max_tokens\":{max_tokens},\"messages\":[],\"stream\":true}}"
+        )
+    };
+    assert_eq!(
+        requests_so_far(&pod),
+        [count("small"), streamed("small", 24)]
+    );
     assert_eq!(requests_so_far(&open), [count("open"), relay("open", 3096)]);
     assert_eq!(requests_so_far(&bare), [relay("bare", 32000)]);
 }

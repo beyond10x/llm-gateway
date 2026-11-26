@@ -687,6 +687,16 @@ pub trait RelayTarget: Send {
         None
     }
 
+    /// Whether every call to this target is sent streamed (story:runpod-rest-host): a target
+    /// behind a proxy that closes a connection silent past its bound, a Runpod pod. On a relay
+    /// that holds a [`StreamAssembler`] ([`Relay::with_assembler`]) such a target is sent
+    /// `stream: true`, and a call the client did not stream is answered with the one body the
+    /// assembler makes of the events. `false`, the default, sends the body as the client wrote
+    /// it.
+    fn streamed(&self) -> bool {
+        false
+    }
+
     /// Opens one connection to the target. Its read and write timeouts are the target's.
     ///
     /// # Errors
@@ -731,6 +741,33 @@ pub trait RelayTargets: Send + Sync {
     fn status(&self, _alias: &str) -> Option<ModelStatus> {
         None
     }
+
+    /// Why no target can be had for `alias`, when the source knows it (story:runpod-rest-host):
+    /// a `target-unavailable` answer to a call or a wake of `alias` carries it after its fixed
+    /// message, as `<message>: <reason>`. It names no secret and quotes nothing a client sent.
+    /// `None`, the default, keeps the fixed message.
+    fn unavailable_reason(&self, _alias: &str) -> Option<String> {
+        None
+    }
+}
+
+/// Makes the one answer body a non-streamed call would have been answered with out of the
+/// events of a streamed answer (story:runpod-rest-host). The embedding implements it, per wire.
+pub trait StreamAssembler: Send + Sync {
+    /// A new assembly of one answer on `wire`.
+    fn begin(&self, wire: Wire) -> Box<dyn Assembly>;
+}
+
+/// One answer being assembled from its event stream.
+pub trait Assembly: Send {
+    /// Reads the next bytes of the event stream, split anywhere. `false` when the stream has
+    /// passed the assembler's bound, or cannot be one answer: the relay stops reading it and
+    /// answers `upstream-failed`.
+    fn feed(&mut self, bytes: &[u8]) -> bool;
+
+    /// The assembled body, once the stream ended. `None` when the events made no whole answer
+    /// (no end event, an event that does not read): the relay answers `upstream-failed`.
+    fn finish(self: Box<Self>) -> Option<Vec<u8>>;
 }
 
 /// Where a model's target is, named by what a request for the model would meet
@@ -1235,6 +1272,9 @@ pub struct Relay {
     finished: Arc<dyn FinishedCalls>,
     /// The bound of a call's byte copy; `None`, the default, copies nothing.
     call_bytes: Option<usize>,
+    /// Who assembles a streamed target's events into one body for a client that did not
+    /// stream; without one no call is sent streamed (story:runpod-rest-host).
+    assembler: Option<Arc<dyn StreamAssembler>>,
 }
 
 impl Relay {
@@ -1268,6 +1308,7 @@ impl Relay {
             caller_review: None,
             finished: Arc::new(NoFinishedCalls),
             call_bytes: None,
+            assembler: None,
         };
         relay.register();
         Ok(relay)
@@ -1379,6 +1420,21 @@ impl Relay {
     pub fn with_call_bytes(mut self, bound: usize) -> Self {
         self.call_bytes = Some(bound);
         self
+    }
+
+    /// Sends every call to a [`RelayTarget::streamed`] target streamed, and answers a client
+    /// that did not stream with the one body `assembler` makes of the events
+    /// (story:runpod-rest-host). Without it every body is sent as the client wrote it.
+    #[must_use]
+    pub fn with_assembler(mut self, assembler: Arc<dyn StreamAssembler>) -> Self {
+        self.assembler = Some(assembler);
+        self
+    }
+
+    /// The target source's reason why no target can be had for `alias`
+    /// ([`RelayTargets::unavailable_reason`]).
+    pub(crate) fn unavailable_reason(&self, alias: &str) -> Option<String> {
+        self.targets.unavailable_reason(alias)
     }
 
     fn register(&self) {
@@ -2072,13 +2128,7 @@ impl Call {
     /// `content_type`; `coding` names the body's content coding when it carries one.
     pub(crate) fn copy_head(&mut self, content_type: Option<&str>, coding: Option<&str>) {
         if let Some(tap) = &mut self.tap {
-            let events = content_type.is_some_and(|value| {
-                value
-                    .split(';')
-                    .next()
-                    .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("text/event-stream"))
-            });
-            tap.head(events, coding);
+            tap.head(event_stream(content_type), coding);
         }
     }
 
@@ -2764,6 +2814,7 @@ pub(crate) fn serve(
         call,
     )?;
     drop(body);
+    let (rewritten, streaming) = streaming(relay, (model, target.as_ref()), admitted, rewritten)?;
     let failed = || {
         relay.targets.invalidate(alias, target.authority());
         relay.metrics.count_invalidation();
@@ -2822,14 +2873,13 @@ pub(crate) fn serve(
     if matches!(head.status, 502..=504) {
         return Err(failed());
     }
-    stream_answer(
+    answer(
         stream,
-        &mut input,
-        &mut head,
-        limits,
-        admitted.chunked_answer,
+        (&mut input, &mut head),
+        (limits, admitted),
+        &streaming,
         call,
-    );
+    )?;
     if admitted.count_tokens {
         // A count's `input_tokens` is no call's usage.
         call.usage = Usage::default();
@@ -2838,6 +2888,74 @@ pub(crate) fn serve(
     drop(input);
     drop(connection);
     drop(target);
+    Ok(())
+}
+
+/// How a call is sent to a streamed target (story:runpod-rest-host).
+struct Streaming<'r> {
+    /// The assembler of the answer, when the call was sent streamed: a
+    /// [`RelayTarget::streamed`] target, a relay with an assembler, and no token count.
+    assembler: Option<&'r Arc<dyn StreamAssembler>>,
+    /// The client asked for a stream itself.
+    client_streamed: bool,
+}
+
+/// `rewritten`, sent streamed when the target asks to be and the relay can assemble the events
+/// for a client that did not stream; a count and a model that authenticates the client itself
+/// are sent as they are.
+fn streaming<'r>(
+    relay: &'r Relay,
+    (model, target): (&RelayModel, &dyn RelayTarget),
+    admitted: &Admitted,
+    rewritten: Vec<u8>,
+) -> Result<(Vec<u8>, Streaming<'r>), RefusalCode> {
+    let assembler = relay
+        .assembler
+        .as_ref()
+        .filter(|_| target.streamed() && !admitted.count_tokens && !model.client_credentials);
+    let (bytes, client_streamed) = match assembler {
+        Some(_) => body::streamed(&rewritten, admitted.wire == Wire::Chat)?,
+        None => (rewritten, true),
+    };
+    Ok((
+        bytes,
+        Streaming {
+            assembler,
+            client_streamed,
+        },
+    ))
+}
+
+/// Writes the target's answer: the one assembled body of a 2xx event stream to a client that
+/// did not stream ([`assemble_answer`]), any other answer relayed ([`stream_answer`]). The
+/// proxy in front of a streamed target answers `524` when the target stayed silent past its
+/// bound: such a call ends cut upstream.
+fn answer(
+    stream: &mut TcpStream,
+    (input, head): (&mut Buffered<'_>, &mut Head),
+    (limits, admitted): (&Limits, &Admitted),
+    streaming: &Streaming<'_>,
+    call: &mut Call,
+) -> Result<(), RefusalCode> {
+    let whole = streaming.assembler.filter(|_| {
+        !streaming.client_streamed
+            && (200..300).contains(&head.status)
+            && event_stream(head.content_type.as_deref())
+    });
+    if let Some(assembler) = whole {
+        return assemble_answer(
+            stream,
+            input,
+            head,
+            (limits, admitted.chunked_answer),
+            call,
+            assembler.begin(admitted.wire),
+        );
+    }
+    stream_answer(stream, input, head, limits, admitted.chunked_answer, call);
+    if streaming.assembler.is_some() && head.status == PROXY_TIMEOUT_STATUS {
+        call.unfinished = Some(Unfinished::CutShort);
+    }
     Ok(())
 }
 
@@ -3026,6 +3144,103 @@ fn stream_answer(
     call.response_bytes = written;
     call.usage = scanner.usage();
     call.note_terminal_error(&scanner);
+}
+
+/// The status Runpod's proxy (Cloudflare) answers when the origin sent nothing within its
+/// bound: "A timeout occurred".
+const PROXY_TIMEOUT_STATUS: u16 = 524;
+
+/// Whether `content_type` is `text/event-stream`, parameters aside.
+fn event_stream(content_type: Option<&str>) -> bool {
+    content_type.is_some_and(|value| {
+        value
+            .split(';')
+            .next()
+            .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("text/event-stream"))
+    })
+}
+
+/// The answer to a call the client did not stream, of a target that was sent it streamed
+/// (story:runpod-rest-host): the whole event stream is read and handed to `assembly`, and the
+/// client gets the one body it makes, with the target's status, `content-type:
+/// application/json` and a `content-length`. An event stream whose read fails is the upstream
+/// cut: the head is written, framed as [`stream_answer`] frames it, and the answer ends without
+/// its body.
+///
+/// # Errors
+/// [`RefusalCode::UpstreamFailed`] for a stream the assembly refused or made no answer of;
+/// nothing was written then, and the target is kept.
+fn assemble_answer(
+    stream: &mut TcpStream,
+    input: &mut Buffered<'_>,
+    head: &mut Head,
+    (limits, chunked): (&Limits, bool),
+    call: &mut Call,
+    mut assembly: Box<dyn Assembly>,
+) -> Result<(), RefusalCode> {
+    loop {
+        match next_piece(input, &mut head.framing, limits.line_bytes) {
+            Ok(Some(piece)) => {
+                if !assembly.feed(&piece) {
+                    return Err(RefusalCode::UpstreamFailed);
+                }
+            }
+            Ok(None) => break,
+            Err(_) => {
+                let framing = if chunked {
+                    "transfer-encoding: chunked\r\n"
+                } else {
+                    ""
+                };
+                let start = assembled_head(head, call, framing);
+                if !crate::server::write_by(
+                    stream,
+                    start.as_bytes(),
+                    Instant::now() + limits.timeout,
+                ) {
+                    call.client_disconnected = true;
+                }
+                call.unfinished = Some(Unfinished::CutShort);
+                return Ok(());
+            }
+        }
+    }
+    let body = assembly.finish().ok_or(RefusalCode::UpstreamFailed)?;
+    let mut scanner = UsageScanner::default();
+    scanner.feed(&body);
+    let start = assembled_head(head, call, &format!("content-length: {}\r\n", body.len()));
+    let deadline = Instant::now() + limits.timeout;
+    if !crate::server::write_by(stream, start.as_bytes(), deadline) {
+        call.client_disconnected = true;
+        return Ok(());
+    }
+    call.copy_head(Some(ASSEMBLED_TYPE), None);
+    if !crate::server::write_by(stream, &body, deadline) {
+        call.client_disconnected = true;
+        return Ok(());
+    }
+    call.copy_answer(&body);
+    if !body.is_empty() {
+        call.first_byte();
+    }
+    call.response_bytes = u64::try_from(body.len()).unwrap_or(u64::MAX);
+    call.usage = scanner.usage();
+    call.note_terminal_error(&scanner);
+    Ok(())
+}
+
+/// The content type of an assembled answer.
+const ASSEMBLED_TYPE: &str = "application/json";
+
+/// The head of an assembled answer, with `framing`'s line.
+fn assembled_head(head: &Head, call: &Call, framing: &str) -> String {
+    format!(
+        "HTTP/1.1 {} {}\r\n{id}content-type: {ASSEMBLED_TYPE}\r\n{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+        head.status,
+        crate::server::relayed_phrase(head.status),
+        id = call.id_line(),
+        relayed = head.relayed,
+    )
 }
 
 /// `piece` as written to the client, one chunk of its own when `chunked`, and where in that the

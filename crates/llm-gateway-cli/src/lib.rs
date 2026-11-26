@@ -10,6 +10,7 @@
 //! startup failure is one [`StartupRefusal`] with a stable `<source>:<rule>` code.
 
 mod account;
+mod assemble;
 mod bedrock;
 pub mod cli;
 mod config;
@@ -35,6 +36,7 @@ mod trusted;
 mod vllm_stats;
 mod watchdog;
 
+pub use assemble::{EventAssembler, MAX_ASSEMBLED_BYTES};
 pub use config::{
     Bedrock, Deployment, Hosted, HostedKind, InteractionRecordsConfig, LaunchClaude, LaunchCodex,
     Model, OLLAMA_DEFAULT_BASE_URL, Provider, ProviderKind, TokenReviewConfig, WatchdogConfig,

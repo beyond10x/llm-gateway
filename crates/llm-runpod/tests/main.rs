@@ -15,6 +15,7 @@ mod openapi;
 mod profiles_fallback;
 mod refusing;
 mod rest;
+mod rest_pool;
 mod round2;
 mod runpod;
 mod security_w06_probe_buffer;

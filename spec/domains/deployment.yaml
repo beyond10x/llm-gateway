@@ -428,6 +428,22 @@ types:
   # `providers`), and once one does, every `[models.*]` model declares `price_per_hour_usd`
   # (ModelDeclaration; `config:value` naming the model otherwise). Proved by `spend_*` in
   # crates/llm-gateway-cli/tests/config.rs.
+  # DECIDED 2026-11-26 (story:spend-cap-counts-earlier-pods): `spend_ledger_file`, optional, is
+  # where the pool this provider's ceilings bind keeps its spend ledger
+  # (llm-gateway.runpod.SpendLedger), so a restarted gateway counts the pods it ran before. It
+  # stands only beside `daily_cap_usd` or `total_cap_usd` and is not empty (`config:value` naming
+  # `providers.<name>.spend_ledger_file` otherwise). Absent, the shipped composition
+  # (`start_connected`) keeps it at `spend-ledger.json` in the state directory,
+  # `$XDG_STATE_HOME/llm-gateway` when that is absolute, else `$HOME/.local/state/llm-gateway`
+  # (the heartbeat's directory), and refuses the start `config:value` naming the key when neither
+  # is set; the `start_relaying` and `pod_targets` seams keep a ledger only where the key names
+  # one. The file is read once, when the pool is composed, opened without following a final
+  # symlink, a regular file of this user or root, refused when group- or world-writable or past
+  # 1048576 bytes; a missing file is an empty ledger; one that breaks a rule, or is not a ledger,
+  # is never written over, logged with its rule and never its path, and every start under the
+  # ceiling is refused `spend-ceiling` (`unknown`). It is written whole after each recorded
+  # create and stop: to a temporary file beside it, mode 0600, renamed over it, its directory
+  # created mode 0700. Proved by `spend_ledger_*` in crates/llm-gateway-cli/tests/spend_ledger.rs.
   - name: llm-gateway.deployment.ProviderDeclaration
     kind: struct
     fields:
@@ -440,6 +456,7 @@ types:
       - {name: proxy_url, type: 'Optional<String>'}
       - {name: daily_cap_usd, type: 'Optional<Decimal>'}
       - {name: total_cap_usd, type: 'Optional<Decimal>'}
+      - {name: spend_ledger_file, type: 'Optional<String>'}
   # `[providers.<name>.connectors]`: how the binary reaches the connectors owner process that
   # holds the Runpod authorization (docs/design/runpod-clients.md § 4). It maps one to one onto
   # llm-gateway.runpod.ConnectorsBinding, `timeout_seconds` x 1000 being its `timeout_ms`. Every

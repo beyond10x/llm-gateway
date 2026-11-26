@@ -195,6 +195,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Relay",
+        "A spend ledger that survives a restart",
+        "Under a spend ceiling the gateway keeps its own pods' estimated spend (declared price times run time, from the create to the confirmed stop) in spend_ledger_file, and each ceiling counts the larger of the reported spend and the ledger's, so a pod already stopped, or started before a restart, counts until billing reports it. A ledger that cannot be read refuses every start. Tested over the emulator.",
+        "crates/llm-gateway-cli/tests/spend_ledger.rs::spend_ledger_a_started_gateway_reads_its_ledger_and_refuses_a_wake_it_puts_over_the_cap",
+        RELAY,
+    ),
+    shipped(
+        "Relay",
         "Model profiles with capacity fallback",
         "A model may declare ordered profiles, each GPU types with their vLLM settings; when Runpod refuses every create of a profile for capacity the start moves on to the next profile inside the same startup deadline and spend check, and the usage record names the profile that served. Tested over the emulator.",
         "crates/llm-gateway-cli/tests/relaying.rs::a_relayed_call_names_the_profile_of_the_pod_that_served",

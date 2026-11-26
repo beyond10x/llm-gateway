@@ -87,6 +87,16 @@ impl Heartbeat {
 /// `XDG_STATE_HOME` is an absolute path, else `$HOME/.local/state/llm-gateway/heartbeat.json`;
 /// `None` when neither is set.
 pub fn default_path(xdg_state_home: Option<OsString>, home: Option<OsString>) -> Option<PathBuf> {
+    state_directory(xdg_state_home, home).map(|directory| directory.join("heartbeat.json"))
+}
+
+/// The gateway's state directory: `$XDG_STATE_HOME/llm-gateway` when `XDG_STATE_HOME` is an
+/// absolute path, else `$HOME/.local/state/llm-gateway`; `None` when neither is set. The
+/// heartbeat and the spend ledger default to files in it.
+pub fn state_directory(
+    xdg_state_home: Option<OsString>,
+    home: Option<OsString>,
+) -> Option<PathBuf> {
     let base = xdg_state_home
         .map(PathBuf::from)
         .filter(|path| path.is_absolute())
@@ -95,7 +105,7 @@ pub fn default_path(xdg_state_home: Option<OsString>, home: Option<OsString>) ->
                 .filter(|path| path.is_absolute())
                 .map(|home| home.join(".local").join("state"))
         })?;
-    Some(base.join("llm-gateway").join("heartbeat.json"))
+    Some(base.join("llm-gateway"))
 }
 
 /// The heartbeat file `config` names, else [`default_path`] of this process's environment.
@@ -121,6 +131,17 @@ pub fn unix_ms() -> u64 {
 /// # Errors
 /// The file system's error.
 pub fn write(path: &Path, heartbeat: &Heartbeat) -> io::Result<()> {
+    let mut bytes = serde_json::to_vec(heartbeat).map_err(io::Error::other)?;
+    bytes.push(b'\n');
+    write_private(path, &bytes)
+}
+
+/// Writes `bytes` to `path` whole: to a temporary file beside it, mode 0600, then renamed over
+/// it. A missing directory is created, mode 0700.
+///
+/// # Errors
+/// The file system's error.
+pub(crate) fn write_private(path: &Path, bytes: &[u8]) -> io::Result<()> {
     let directory = path
         .parent()
         .filter(|parent| !parent.as_os_str().is_empty())
@@ -132,15 +153,13 @@ pub fn write(path: &Path, heartbeat: &Heartbeat) -> io::Result<()> {
     let mut name = path.file_name().map(OsString::from).unwrap_or_default();
     name.push(format!(".{}.tmp", std::process::id()));
     let temporary = directory.join(name);
-    let bytes = serde_json::to_vec(heartbeat).map_err(io::Error::other)?;
     let mut file = fs::OpenOptions::new()
         .write(true)
         .create(true)
         .truncate(true)
         .mode(0o600)
         .open(&temporary)?;
-    file.write_all(&bytes)?;
-    file.write_all(b"\n")?;
+    file.write_all(bytes)?;
     drop(file);
     fs::rename(&temporary, path)
 }

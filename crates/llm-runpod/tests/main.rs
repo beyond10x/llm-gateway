@@ -21,5 +21,6 @@ mod runpod;
 mod security_w06_probe_buffer;
 mod security_w12_spend;
 mod spend;
+mod spend_ledger;
 mod transport;
 mod wake_status;

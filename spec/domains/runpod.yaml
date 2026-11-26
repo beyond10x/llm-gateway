@@ -580,6 +580,12 @@ entities:
       # none. A running pod with no endpoint is observed `ready=false` whatever its probe
       # answers, so no ready lease is handed out without an endpoint and its startup deadline
       # retires it. The emulator issues the ids `pod1`, `pod2`, … in creation order.
+      # DECIDED 2026-11-26 (story:runpod-rest-host): a pool given a proxy URL
+      # (`RunpodPool::with_proxy_url`, the program's `proxy_url`, llm-gateway.deployment
+      # ProviderDeclaration `proxy_url`) builds a running pod's endpoint as that URL with
+      # `{pod_id}` and `{port}` filled (the pod's id and 8000), followed by `/v1/`, for a pod whose
+      # id the description accepts, and otherwise reports none, as above
+      # (`a-pods-endpoint-is-the-declared-proxy-url-filled-with-its-id-and-port`).
       - {name: leases, type: 'List<String>'}
       # The profile (ModelProfile `name`) of the pod behind each ready lease, in the order of
       # `leases`; `unknown` when the pod's GPU type is in no profile of its model.

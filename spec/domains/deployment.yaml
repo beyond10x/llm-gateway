@@ -93,7 +93,9 @@ domain: llm-gateway.deployment
 #     connection never changes under a running process.
 #   * DECIDED 2026-10-14 (story:pod-proxy-tls), the pod endpoint rule: a pod is reached only at
 #     the Runpod proxy's endpoint llm's Runpod description gives,
-#     `https://<pod id>-8000.proxy.runpod.net/v1/` (port 443 when the URL names none), over TLS
+#     `https://<pod id>-8000.proxy.runpod.net/v1/` (port 443 when the URL names none), or, since
+#     2026-11-26 (story:runpod-rest-host), at the provider's `proxy_url` filled with the pod's id
+#     and port and followed by `/v1/` (ProviderDeclaration), whose default is that endpoint, over TLS
 #     1.2 or 1.3, and the server's certificate is verified, chain and host name, against the
 #     shipped trust roots before any request byte is written. This holds for the readiness
 #     probe's `GET <endpoint>models` and for every relayed request: the handshake completes
@@ -386,6 +388,23 @@ types:
   # `credential` (`endpoint-credential`; refused beside `credential_file` and on a Bedrock model)
   # and a routes document endpoint's `auth.secret` take one too. No message names the reference or
   # the value.
+  # DECIDED 2026-11-26 (story:runpod-rest-host): two hosts, two keys. `management_url`, optional,
+  # is the base of Runpod's management API (REST API v2: pod list, create and terminate, the
+  # balance and the pod billing), default `https://api.runpod.io/v2`; it is an `https://` URL,
+  # or an `http://` URL of a loopback host (a test's fake), with no user information, query or
+  # fragment, at most 2048 bytes, a trailing `/` dropped, and it stands only beside `api_key`
+  # (`config:value` naming `providers.<name>.management_url` otherwise). The balance's GraphQL
+  # fallback stays at `https://api.runpod.io/graphql`. `proxy_url`, optional, is the inference
+  # route of each pod, default `https://{pod_id}-{port}.proxy.runpod.net`: an `https://` URL of
+  # a host and an optional port only (no path, query, fragment or user information), at most 512
+  # bytes, whose only placeholders are `{pod_id}` (the pod's id) and `{port}` (the pod's vLLM
+  # port, 8000), each anywhere in the host; any other brace is `config:value` naming
+  # `providers.<name>.proxy_url`. A pod's endpoint is the filled URL followed by `/v1/`; with the
+  # default it is exactly the endpoint llm's Runpod description builds. Every call the gateway
+  # relays to a pod is a streamed one (llm-gateway.gateway `Relay`, step 8). Proved by
+  # `runpod_host_*` in crates/llm-gateway-cli/tests/runpod_host.rs and the scenario
+  # `a-pods-endpoint-is-the-declared-proxy-url-filled-with-its-id-and-port` of
+  # llm-gateway.runpod.
   # DECIDED 2026-10-16 (story:spend-caps): `daily_cap_usd` and `total_cap_usd`, optional, are the
   # spend ceilings of this provider's own account in USD (llm-gateway.runpod.SpendLedger), binding
   # only a pool built for this provider (Deployment, SpendPolicy); absent is no ceiling of
@@ -401,6 +420,8 @@ types:
       - {name: cloud_type, type: llm-gateway.deployment.CloudType}
       - {name: connectors, type: 'Optional<llm-gateway.deployment.ConnectorsDeclaration>'}
       - {name: api_key, type: 'Optional<String>'}
+      - {name: management_url, type: 'Optional<String>'}
+      - {name: proxy_url, type: 'Optional<String>'}
       - {name: daily_cap_usd, type: 'Optional<Decimal>'}
       - {name: total_cap_usd, type: 'Optional<Decimal>'}
   # `[providers.<name>.connectors]`: how the binary reaches the connectors owner process that
@@ -487,7 +508,15 @@ types:
   # which never submits a create); a call to a model whose pod is `starting` is held as below, and
   # `model-cold-start` after the hold; a call to a `ready` model is relayed; a pod that fails while
   # a call is held starts no replacement, and the next call is `model-stopped`. The owner's wake
-  # starts the pod whatever the key says, under the spend check. With `start_on_request = true`
+  # starts the pod whatever the key says, under the spend check. DECIDED 2026-11-26
+  # (story:runpod-rest-host): a provider with `api_key` is reachable when one complete pod
+  # listing (every page) is read from its `management_url` at start; otherwise the binary writes
+  # the `Runpod REST API unreachable` event naming the provider, the host and the HTTP status or
+  # the connection's error (never the key), and every call and wake of its models is answered
+  # `target-unavailable` whose message is the fixed text, `: ` and `provider <name> was not
+  # reachable at start`. The account reader's `runpod account read failed` event names the same
+  # two facts. A failed management call never hides the last balance read and never ends a call
+  # relayed to a pod already running. With `start_on_request = true`
   # and the provider's `daily_cap_usd`, a call starts the pod as it did before the key existed
   # (rows L6, W6, K28 below). A model whose provider the binary does not run (no `connectors`
   # connection or `api_key`, or one unreachable at start) is `target-unavailable` either way: no

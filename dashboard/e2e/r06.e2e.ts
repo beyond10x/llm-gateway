@@ -55,3 +55,37 @@ test.describe('UXF-010', () => {
     }
   });
 });
+
+// The text of each matching element as a person reads it out or copies it: textContent with runs
+// of whitespace as one space.
+async function texts(page: Page, selector: string): Promise<string[]> {
+  return (await page.locator(selector).allTextContents()).map((t) => t.replace(/\s+/g, ' ').trim());
+}
+
+test.describe('UXF-016', () => {
+  for (const name of ['idle', 'busy', 'errors']) {
+    test(`a second line or note is set apart from the words before it by a space — ${name}`, async ({ browser }) => {
+      const page = await opened(browser, name);
+      try {
+        const windows = (await texts(page, '.tile .sub')).filter((t) => t.includes('last 60 s'));
+        expect(windows.length, 'the two token tiles name their window').toBe(2);
+        for (const t of windows) expect(t, 'the window is a word of its own').toMatch(/\S last 60 s$/);
+
+        if (name !== 'idle') {
+          const sessions = await texts(page, 'table.sessions tbody th');
+          expect(sessions.length).toBeGreaterThan(0);
+          for (const t of sessions) expect(t, 'the label and the id are two words').toMatch(/^\S+ [0-9a-f]{8,}$/);
+          const states = (await texts(page, 'table.inflight td.col-state')).filter((t) => t.includes('attempt'));
+          expect(states.length, 'a call in flight on its second attempt').toBeGreaterThan(0);
+          for (const t of states) expect(t, 'the attempt is a word of its own').toMatch(/\S attempt \d+$/);
+        }
+
+        const main = (await page.locator('main').textContent()) ?? '';
+        expect(main, 'no run-together window').not.toMatch(/tok\/slast|–last/);
+        expect(main, 'no run-together attempt').not.toMatch(/[a-z]attempt \d/);
+      } finally {
+        await page.context().close();
+      }
+    });
+  }
+});

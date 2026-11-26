@@ -366,13 +366,32 @@ test.describe('key data', () => {
     const none = await page.evaluate(keyDataProbe);
     expect(none.key).toBeNull();
     expect(keyDataItems({ key_font_min_px: none.key?.px ?? null, details: { key_font_below: none.key_below, heading_font_below: none.heading_below, secondary_font_below: none.secondary_below } })).toContain('no key text');
-    await page.setContent(`<main><h2 style="font-size:13.3px">Routes</h2><div class="card"><h3 style="font-size:14px">Limits <span class="mono" style="font-size:12.6px">3fa9c1d2</span></h3></div>
+    await page.setContent(`<main><h2 style="font-size:13.3px">Routes</h2><div class="card"><h3 style="font-size:12.6px">Limits <span class="mono">3fa9c1d2</span> <span class="small" style="font-size:11px">seen 5s ago</span></h3></div>
       <table><tbody><tr><td style="font-size:14px">qwen-coder</td></tr></tbody></table>
       <button style="font-size:11px">Show all 40</button><dl class="headers"><dt style="font-size:11.5px">status</dt><dd style="font-size:14px">allowed</dd></dl></main>`);
     const k = await page.evaluate(keyDataProbe);
     expect(k.key?.px).toBe(14);
-    expect(k.heading_below).toEqual(['12.6px span.mono', '13.3px h2']);
-    expect(k.secondary_below).toEqual(['11.5px dt', '11px button']);
+    expect(k.heading_below).toEqual(['12.6px h3', '12.6px span.mono', '13.3px h2']);
+    expect(k.secondary_below).toEqual(['11.5px dt', '11px button', '11px span.small']);
+  });
+
+  // The R-06 review's input: a tile value renamed `.metric-value` at 12 px read as 14 px key data.
+  // Here every class is one a secondary text would have; the roles still say what is a value.
+  const RENAMED = `<main>
+    <section><div class="kpi"><div class="value">Tokens in</div><div class="metric-value small" style="font-size:12px">4.76M</div><div class="badge" style="font-size:14px">1.86k tok/s</div></div>
+      <div class="kpi"><div class="sub"><abbr title="share of cached prompt tokens">Cache hit rate</abbr></div><div class="label" style="font-size:12px">88%</div></div></section>
+    <table><tbody><tr><td class="label"><span class="small" style="font-size:12.5px">qwen-coder</span> <span class="badge" style="font-size:12.25px">vLLM</span></td><td style="font-size:14px">1.2k</td></tr>
+      <tr><th class="badge" style="font-size:12px">claude-sonnet</th><td style="font-size:14px">3</td></tr></tbody></table>
+    <dl class="stats"><dt style="font-size:12.25px">Name</dt><dd class="small" style="font-size:12px">runpod</dd></dl></main>`;
+
+  test('break: a value at 12 px is key data by its role (a cell, a definition, what a metric shows), whatever its class', async ({ page }) => {
+    await page.setContent(RENAMED);
+    const labels = ['Tokens in', 'Cache hit rate', 'Name'];
+    const k = await page.evaluate(keyDataProbe, labels);
+    expect(k.key_below).toEqual(['12.5px span.small', '12px dd.small', '12px div.label', '12px div.metric-value.small', '12px th.badge']);
+    expect(k.secondary_below, 'the labels and the badge after a value are secondary, at or over 12 px').toEqual([]);
+    // Without the document's labels a metric's value is not known as one: the labels carry the role.
+    expect((await page.evaluate(keyDataProbe, [])).key_below).toEqual(['12.5px span.small', '12px dd.small', '12px th.badge']);
   });
 });
 

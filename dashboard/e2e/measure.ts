@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
 import type { Scenario } from '../ux/scenarios/index.ts';
 import { runAxe } from './axe.ts';
+import { documentLabels } from './document.ts';
 import { fontsLabel } from './fonts.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
 import { axeRules, headingFontDeficit, keyFontDeficit, mergeAxe, secondaryFontDeficit, type AxeFinding, type Metrics } from './metrics.ts';
@@ -103,7 +104,7 @@ export interface HeaderMeasurement {
 }
 
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
-const STATE_PROBE = stateProbeSource();
+const STATE_PROBE = stateProbeSource(documentLabels());
 const HEADER_PROBE = headerProbeSource();
 
 async function markAlways(page: Page, replay: Replay): Promise<void> {

@@ -1971,6 +1971,9 @@ pub(crate) struct Call {
     pub(crate) usage: Usage,
     /// The client stopped reading before the answer's last byte.
     pub(crate) client_disconnected: bool,
+    /// How the answer, its head written, fell short of its end, when it did: the call has no
+    /// cost, and its outcome is unchanged.
+    pub(crate) unfinished: Option<Unfinished>,
     /// The `retry-after` a 429 or 5xx answer of the target carried.
     pub(crate) retry_after: Option<String>,
     /// The authority of the acquired target.
@@ -1995,7 +1998,25 @@ pub(crate) struct Call {
     pub(crate) ticket: Option<crate::calls::Ticket>,
 }
 
+/// How an answer whose head was written fell short of its end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unfinished {
+    /// The upstream cut it short: a read of its body failed after the head was written
+    /// (docs/gateway.md, relay step 9: "an answer cut short").
+    CutShort,
+    /// It carried its wire's terminal error, read from its bytes on every relay path
+    /// ([`UsageScanner::terminal_error`]).
+    TerminalError,
+}
+
 impl Call {
+    /// Notes the terminal error `scanner` read, unless the answer already fell short otherwise.
+    pub(crate) fn note_terminal_error(&mut self, scanner: &UsageScanner) {
+        if scanner.terminal_error() {
+            self.unfinished.get_or_insert(Unfinished::TerminalError);
+        }
+    }
+
     /// The `x-llm-gateway-call` line every answer head written to this call carries, with its
     /// CRLF; empty for a request given no id.
     pub(crate) fn id_line(&self) -> String {
@@ -2159,6 +2180,7 @@ fn translate(
     answer.call.response_bytes = answer.written;
     answer.call.client_disconnected = answer.gone;
     answer.call.usage = answer.scanner.usage();
+    answer.call.note_terminal_error(&answer.scanner);
     // The target is released only now, after the last byte: row L12's hold.
     drop(target);
     Ok(())
@@ -2927,6 +2949,7 @@ fn stream_answer(
     let written = relay_pieces(stream, input, head, limits, chunked, call, &mut scanner);
     call.response_bytes = written;
     call.usage = scanner.usage();
+    call.note_terminal_error(&scanner);
 }
 
 /// [`stream_answer`]'s writing: the head, then every piece, scanned for usage as it passes.
@@ -2990,7 +3013,10 @@ fn relay_pieces(
                 }
                 return written;
             }
-            Err(_) => return written,
+            Err(_) => {
+                call.unfinished = Some(Unfinished::CutShort);
+                return written;
+            }
         }
     }
 }

@@ -166,7 +166,7 @@ scrape_configs:
 The binary writes each usage record as one `tracing` event at `info`, which is the default level:
 
 ```text
-2026-10-08T21:19:58.427410Z  INFO usage: usage record call=3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-a model="small" wire=chat disposition=Refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=0
+2026-10-08T21:19:58.427410Z  INFO usage: usage record call=3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-1 model="small" wire=chat disposition=Refused outcome=refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=0
 ```
 
 `call` is the id the call's answer carried in its `x-llm-gateway-call` header. A call whose
@@ -181,11 +181,11 @@ The owner reads one call's record, in flight or ended, by that id:
 
 ```bash
 curl -s -H "Authorization: Bearer $(cat owner-secret)" \
-  http://127.0.0.1:8080/v1/calls/3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-a
+  http://127.0.0.1:8080/v1/calls/3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-1
 ```
 
 ```json
-{"format":"llm-gateway.call/1","id":"3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-a","state":"ended","model":"small","wire":"chat","disposition":"refused","outcome":"refused","refusal":"target-unavailable","status":503,"response_bytes":0,"duration_ms":0}
+{"format":"llm-gateway.call/1","id":"3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-1","state":"ended","model":"small","wire":"chat","disposition":"refused","outcome":"refused","refusal":"target-unavailable","status":503,"response_bytes":0,"duration_ms":0}
 ```
 
 The gateway holds the last 1024 ended calls; an id it does not hold is `404 call-unknown`.

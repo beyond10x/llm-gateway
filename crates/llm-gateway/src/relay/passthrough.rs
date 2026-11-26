@@ -524,7 +524,10 @@ fn pass_answer(
                 }
                 break;
             }
-            Err(_) => break,
+            Err(_) => {
+                call.unfinished = Some(super::Unfinished::CutShort);
+                break;
+            }
         }
     }
     call.response_bytes = written;
@@ -550,6 +553,7 @@ fn pass_answer(
         }
     }
     call.usage = scanner.usage();
+    call.note_terminal_error(&scanner);
     if error && encoded.is_some() && !kept.is_empty() {
         return Some(redact(&String::from_utf8_lossy(&kept)));
     }

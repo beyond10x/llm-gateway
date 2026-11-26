@@ -667,8 +667,12 @@ fn record(
     // its client was answered `200` and it stays relayed.
     let ended_by = refusal.or(call.failed_after_head);
     // Only a relayed answer that ended as written has final counters to price
-    // (story:cost-per-call).
-    let priced = refusal.is_none() && call.failed_after_head.is_none() && !call.client_disconnected;
+    // (story:cost-per-call): not cut short by the client or by the upstream, and not ended in
+    // its wire's terminal error, told by a translator or read from the answer's bytes.
+    let priced = refusal.is_none()
+        && call.failed_after_head.is_none()
+        && !call.client_disconnected
+        && call.unfinished.is_none();
     let cost_usd = call
         .model
         .as_deref()

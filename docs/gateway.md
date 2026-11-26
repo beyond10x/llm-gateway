@@ -1205,6 +1205,16 @@ the counters, then leaves the crate through the `UsageRecords` port the embeddin
 the call record's names (`input_tokens`, `output_tokens`, `cache_read_tokens`,
 `cache_creation_tokens`); a counter the record does not carry is no field.
 
+The counters are read from the answer's usage object only, never from a member of the same name
+elsewhere in the body (a tool call's arguments, a text block, a metadata object). The usage
+object is the member `usage` of a top-level JSON object, or of its `message` or `response`:
+on the messages wire the message's `usage`, on a stream `message_start`'s `message.usage` and
+`message_delta`'s `usage`; on chat the `usage` of the answer or of the stream's last chunk, with
+`cached_tokens` and `cache_creation_input_tokens` in its `prompt_tokens_details`; on responses
+the response's `usage`, on a stream `response.usage`, with the same two in its
+`input_tokens_details`. A counter is a whole number; each keeps the largest value the answer
+reported (`message_delta` repeats the output count, cumulative).
+
 A streamed chat answer reports its usage only when the client asked for it: a chat client sends
 `"stream_options":{"include_usage":true}` in its request body, and the target then ends the stream
 with one event that carries `usage`. The gateway relays the body as the client sent it and adds
@@ -1273,13 +1283,27 @@ what remains. A cache class the answer did not report counts no tokens.
 estimate:
 
 - the call was relayed and its answer ended as written: no refusal, no `upstream-failed`, no
-  terminal error after the head, no client that went away;
+  terminal error after the head, no client that went away, no answer its upstream cut short (a
+  read of the answer's body that failed after its head was written, relay step 9); an answer
+  cut short keeps its outcome, `ok` on the byte relay and on a client-credential route, as
+  [call outcomes](#call-outcomes) names no other for it, and only its cost is left out;
 - its model declares a price;
 - the answer reported its input and its output tokens;
 - every class with a count above 0 has a rate: cache reads reported against a price without
   `cache_read` leave the call without a cost, while a count of 0 in a class without a rate costs
   nothing;
 - the counters agree with each other (no more cache tokens than prompt tokens).
+
+A terminal error after the head leaves the call without a cost on every relay path: the byte
+relay, a client-credential route and a translated answer. The gateway reads it from the answer's
+bytes as they pass, as it reads the usage, whether a translator told it
+(`TranslatedAnswer::failed`) or not: a top-level object whose `type` is `error` (the messages
+wire's `error` event, the responses wire's `error` event) or `response.failed` (responses), or
+whose `error` is an object (the chat wire's error chunk, `data: {"error":{…}}`). An `error` of
+`null`, as a completed response carries, and a `type` or `error` below the top level, such as
+inside a tool call's arguments, is none. Such a call's outcome is what [call
+outcomes](#call-outcomes) gives it: `upstream_error` for a translated answer that told it,
+`ok` for a relayed one.
 
 The binary writes it as the `cost_usd` field of its `usage` event, and the record `GET /v1/calls/{id}`
 answers carries it as its key `cost_usd`, after the token keys ([call ids and call

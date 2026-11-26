@@ -226,7 +226,8 @@ entities:
       # each class's line rounded up once to a nanodollar, the lines summed) and written as llm
       # writes an `Amount`: a decimal string without trailing zeros (`0.000135`, `0`). Present
       # only for a call that was relayed (no `refusal`) and whose answer ended as written (not
-      # cut by the client leaving, not ended in its wire's terminal error), whose model declares
+      # cut by the client leaving, not cut short by its upstream, not ended in its wire's
+      # terminal error), whose model declares
       # a price, whose answer reported both its input and its output tokens, and where every
       # token class the answer reported a non-zero count of has a rate. Otherwise absent: never
       # `0` in place of an unknown, never a lower bound, never an estimate. The classes are

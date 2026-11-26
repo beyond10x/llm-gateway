@@ -454,3 +454,65 @@ fn cost_the_binary_logs_the_cost_of_a_priced_call_and_none_for_an_unpriced_one()
     );
     assert!(!usage("plain").contains("cost_usd"), "{}", usage("plain"));
 }
+
+/// Adversary pass, wave 2026-11-25-w03. `website/docs/getting-started.md` and
+/// `website/docs/guides/scrape-the-counters.md` show one `usage` event and say it is "pasted
+/// from a run of the binary": the refused call of the getting-started run, the only model call
+/// it makes. The binary's event for that record, after its timestamp, must be the page's line
+/// field for field, and the id of a process's only call ends in its counter `1`.
+#[test]
+fn adv_w03_the_usage_event_the_site_pages_show_is_one_the_binary_writes() {
+    for (page, text) in [
+        (
+            "getting-started.md",
+            include_str!("../../../website/docs/getting-started.md"),
+        ),
+        (
+            "guides/scrape-the-counters.md",
+            include_str!("../../../website/docs/guides/scrape-the-counters.md"),
+        ),
+    ] {
+        let shown = text
+            .lines()
+            .find(|line| line.contains(" INFO usage: usage record "))
+            .unwrap_or_else(|| panic!("{page} shows no usage event"));
+        let (_, shown_fields) = shown.split_once(" INFO ").unwrap();
+        let id = shown_fields
+            .split(' ')
+            .find_map(|field| field.strip_prefix("call="))
+            .unwrap_or_else(|| panic!("{page}: the event names no call: {shown}"));
+        let refusal = Some(RefusalCode::TargetUnavailable);
+        let written = logged(
+            None,
+            &[UsageRecord {
+                call: id.to_owned(),
+                model: Some("small".to_owned()),
+                wire: Wire::Chat,
+                disposition: Disposition::Refused,
+                outcome: Outcome::of(refusal, false),
+                refusal,
+                status: 503,
+                target_status: None,
+                reported_model: None,
+                input_tokens: None,
+                output_tokens: None,
+                cached_input_tokens: None,
+                cache_creation_input_tokens: None,
+                reasoning_output_tokens: None,
+                cost_usd: None,
+                response_bytes: 0,
+                duration_ms: 0,
+                profile: None,
+                principal: None,
+            }],
+        );
+        let line = written.lines().next().unwrap();
+        let (_, written_fields) = line.split_once(" INFO ").unwrap();
+        let counter = id.rsplit_once('-').map(|(_, counter)| counter);
+        assert_eq!(
+            (shown_fields, counter),
+            (written_fields, Some("1")),
+            "{page}: the page's event against the binary's for the same record (left: the page)"
+        );
+    }
+}

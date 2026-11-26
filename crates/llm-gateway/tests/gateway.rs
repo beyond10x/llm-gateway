@@ -1097,8 +1097,9 @@ const NOT_A_BOUND: &[(&str, &str)] = &[
         "the length of the session hash the dashboard shows, a display width",
     ),
     (
-        "TAIL",
-        "how many bytes the usage scanner carries between pieces, an internal buffer",
+        "NAME_BYTES",
+        "the longest member name the usage scanner compares, an internal buffer: a longer name \
+         is no counter's, and nothing is refused",
     ),
     (
         "MIN_RATED_OUTPUT_TOKENS",

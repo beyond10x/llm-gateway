@@ -1,7 +1,11 @@
 {
-  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, from round R-01. Lower is better. Written by `pnpm ux:round R-01 --baseline`.",
+  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, from round R-01. Lower is better. Written by `pnpm ux:round R-01 --baseline`. The axe entries (axe.serious_critical and the per-rule axe.rule.*) were measured again after axe-core began scanning every state, on the page of round R-02.",
   "scenarios": {
     "busy": {
+      "axe.rule.scrollable-region-focusable": {
+        "value": 2,
+        "tolerance": 0
+      },
       "axe.serious_critical": {
         "value": 2,
         "tolerance": 0
@@ -48,6 +52,10 @@
       }
     },
     "errors": {
+      "axe.rule.scrollable-region-focusable": {
+        "value": 2,
+        "tolerance": 0
+      },
       "axe.serious_critical": {
         "value": 2,
         "tolerance": 0
@@ -94,6 +102,10 @@
       }
     },
     "idle": {
+      "axe.rule.scrollable-region-focusable": {
+        "value": 1,
+        "tolerance": 0
+      },
       "axe.serious_critical": {
         "value": 1,
         "tolerance": 0
@@ -140,8 +152,12 @@
       }
     },
     "token-flow": {
+      "axe.rule.scrollable-region-focusable": {
+        "value": 2,
+        "tolerance": 0
+      },
       "axe.serious_critical": {
-        "value": 1,
+        "value": 2,
         "tolerance": 0
       },
       "header.hidden_ratio": {

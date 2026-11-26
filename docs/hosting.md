@@ -438,7 +438,8 @@ an empty or unprintable value bound for the pod's command line or environment, o
 that is not 1 to 32 of `A-Za-z0-9-_`, `profile-conflict` when two profiles share a name or a GPU type, and `image-not-allowed` for an
 image that is not `vllm/vllm-openai:` and a tag. Every fallback profile is checked as the model is.
 After every create the adapter reads the pod's placement and terminates the pod at once, refusing
-its GPU type, unless it is on Secure Cloud and not interruptible.
+its GPU type, unless it is on Secure Cloud and not interruptible. Through REST API v2 the
+placement is the pod's `cloud`; v2 has no interruptible pod.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out. It does not carry it
@@ -709,12 +710,14 @@ account:
 - A pool pod that has been stopped leaves the running estimate when its record stops
   occupying a slot, which can be before the provider bills its last stretch. Until the reported
   spend holds that stretch, neither part counts it. This lag errs toward admitting.
-- The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`: each
-  entry's `amount` is taken as USD and its `time` as the bucket's start. Neither reading has been
-  checked against a live account.
-- The total is the sum of `billing.pods` over the provider's default time window, since the
-  read names none. If that window is bounded, spend billed before it is not counted and the
-  total ceiling is understated.
+- The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`.
+  Through `connectors` each entry's `amount` is taken as USD and its `time` as the bucket's
+  start; that reading has not been checked against a live account. The REST transport reads
+  REST API v2's answer, an object whose `records` are one pod's one day each: `totalAmount` in
+  USD and the bucket's `startTime`. That shape was read on the live API on 2026-11-26.
+- The total is the sum over the provider's default time window, since the read names none. For
+  REST API v2 that window is the 30 days up to now: spend billed before it is not counted, so
+  the total ceiling is a ceiling on the last 30 days, not on the account's whole history.
 - A `billing.pods` result is read only when it carries a 2xx `status`; one with no status is
   unanswered, never zero spend, and refuses the start.
 

@@ -305,12 +305,23 @@ test.describe('visible text (copy)', () => {
     ]);
   });
 
-  test('break: on the page, a space put back between the runs clears a run-together item', async ({ page }) => {
+  test('break: on the page, the space taken out between the runs makes a run-together item', async ({ page }) => {
     await openReplay(page, scenario('busy'), 'light');
-    const before = (await page.evaluate(copyProbe)).filter((i) => i.startsWith('run-together #h-kpi div.tile div.sub'));
-    expect(before.length, 'the Tokens tiles run "tok/s" into "last 60 s"').toBeGreaterThan(0);
-    await page.evaluate(() => document.querySelectorAll('.tile .sub .muted').forEach((m) => m.before(' ')));
-    expect((await page.evaluate(copyProbe)).filter((i) => i.startsWith('run-together #h-kpi div.tile div.sub'))).toEqual([]);
+    const tiles = () => page.evaluate(copyProbe).then((items) => items.filter((i) => i.startsWith('run-together #h-kpi div.tile div.sub')));
+    expect(await tiles(), 'the Tokens tiles set "last 60 s" apart from "tok/s"').toEqual([]);
+    const removed = await page.evaluate(() => {
+      let n = 0;
+      document.querySelectorAll('.tile .sub .muted').forEach((m) => {
+        const prev = m.previousSibling;
+        if (prev?.nodeType === Node.TEXT_NODE && /\s$/.test(prev.textContent ?? '')) {
+          prev.textContent = (prev.textContent ?? '').trimEnd();
+          n += 1;
+        }
+      });
+      return n;
+    });
+    expect(removed, 'a space before each window').toBeGreaterThan(0);
+    expect((await tiles()).length).toBeGreaterThan(0);
   });
 });
 

@@ -7,7 +7,7 @@ title: The Runpod REST client calls a host that resolves, and says which one it 
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
-revision: 5
+revision: 7
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 2}
 - {from: "proposed", to: "active", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 3}
@@ -43,6 +43,13 @@ logged the same account read failure on the same host before the switch. No pod 
    resolver error, never the key.
 6. No pod is started on the owner's account to prove it; the host check after install is the
    account read (balance and pod list) only.
+7. `management_url` and `proxy_url` (section "Two hosts"): a test each against the fake Runpod on
+   loopback, one pointing each value at it; the defaults are the documented hosts.
+8. A management call that fails (no address, 5xx, 403) never hides the last balance and never
+   breaks the inference route of a pod already running: a test fails the fake management API
+   while a call relays through the fake proxy, and the call completes.
+9. A relayed answer cut by the proxy's 100 s bound (`524`, or the connection closed) is reported as
+   today's upstream cut, and the guide names the bound.
 
 ## Documented route
 
@@ -72,3 +79,21 @@ The client moves to Runpod's REST API v2, base `https://api.runpod.io/v2`, as do
 
 The page the owner posted, https://agents.runpod.io/ (also docs.runpod.io/agent-setup.md), names
 Runpod's hosted MCP server, not a REST base; the gateway does not use MCP.
+
+## Two hosts
+
+Two hosts, two configuration values (the owner, 2026-11-26 about 07:00 CET: "this is the
+management rest endpoint, and then you get an llm endpoint dedicated proxy"):
+
+1. The management API: pod list, create, action and terminate, balance, pod billing.
+   `[providers.runpod] management_url`, default `https://api.runpod.io/v2` (pages under
+   "Documented route").
+2. The inference route of each pod: Runpod's HTTP proxy,
+   https://docs.runpod.io/pods/configuration/expose-ports.md: "https://[POD_ID]-[INTERNAL_PORT].proxy.runpod.net",
+   HTTPS only, the service is public (the gateway's pod keeps its own key), and "Cloudflare
+   enforces a maximum connection time of 100 seconds", after which the connection closes with
+   `524`. `[providers.runpod] proxy_url`, default `https://{pod_id}-{port}.proxy.runpod.net`,
+   `{pod_id}` and `{port}` its only placeholders, refused at start as `config:value` otherwise.
+
+Both declared in `spec/domains/deployment.yaml`. The GraphQL fallback for the balance stays at
+`https://api.runpod.io/graphql`.

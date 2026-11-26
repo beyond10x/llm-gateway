@@ -1,6 +1,6 @@
 // The regression assertions of change set R-07, each run against the
 // built page through the hermetic replay.
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type Browser, type Locator, type Page } from '@playwright/test';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
 import { HEADING_FONT_PX, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
@@ -156,6 +156,67 @@ test.describe('UXF-020', () => {
           const rows = new Set(tiles.map((t) => t.top));
           expect(rows.size, `${name} ${v.name}: rows of tiles ${JSON.stringify(tiles)}`).toBe(1);
         }
+      } finally {
+        await page.context().close();
+      }
+    });
+  }
+});
+
+// A table that scrolls sideways says so: a fade on the edge that hides columns and a "scroll" cue,
+// which the scrolling region also names as its accessible description. Scrolled to its end, the
+// right fade and the cue are gone and the left edge fades instead.
+interface Edge {
+  before: string;
+  after: string;
+}
+
+async function edges(region: Locator): Promise<Edge> {
+  return region.evaluate((el) => {
+    const host = el.parentElement!;
+    const shown = (which: '::before' | '::after') => {
+      const cs = getComputedStyle(host, which);
+      return cs.content !== 'none' && cs.display !== 'none' && /gradient|shadow/.test(cs.backgroundImage + cs.boxShadow) && parseFloat(cs.opacity) > 0.5 ? 'fade' : 'none';
+    };
+    return { before: shown('::before'), after: shown('::after') };
+  });
+}
+
+test.describe('UXF-017', () => {
+  for (const name of ['busy', 'errors']) {
+    test(`every table that scrolls sideways at 390x844 shows an edge fade and a scroll cue with an accessible description until it is scrolled to its end — ${name}`, async ({ browser }) => {
+      const { page } = await replayed(browser, name, viewport('390x844'));
+      try {
+        const scrolling = await page.evaluate(() =>
+          [...document.querySelectorAll('main *')]
+            .filter((el) => ['auto', 'scroll'].includes(getComputedStyle(el).overflowX) && el.scrollWidth > el.clientWidth + 1)
+            .map((el) => (el.getAttribute('role') === 'region' ? (el.getAttribute('aria-label') ?? '') : `${el.tagName.toLowerCase()}.${el.className}`)),
+        );
+        expect(scrolling.length, `${name}: tables that scroll sideways at 390 px`).toBeGreaterThanOrEqual(3);
+        for (const label of scrolling) {
+          const region = page.getByRole('region', { name: label, exact: true });
+          expect(await region.count(), `${name}: "${label}" is a named scrolling region`).toBe(1);
+          await region.evaluate((el) => el.scrollIntoView({ block: 'center' }));
+          await settle(page);
+          const cueId = await region.getAttribute('aria-describedby');
+          expect(cueId, `${name}, ${label}: the region names its cue`).toBeTruthy();
+          const cue = page.locator(`[id="${cueId}"]`);
+          await expect(cue, `${name}, ${label}: the cue is visible`).toBeVisible();
+          expect(await cue.innerText(), `${name}, ${label}: the cue says to scroll`).toMatch(/scroll/i);
+          await expect(region, `${name}, ${label}`).toHaveAccessibleDescription(/scroll/i);
+          expect(await edges(region), `${name}, ${label}: the right edge fades`).toEqual({ before: 'none', after: 'fade' });
+
+          await region.evaluate((el) => el.scrollTo({ left: el.scrollWidth, behavior: 'instant' }));
+          await settle(page);
+          await expect.poll(() => region.getAttribute('aria-describedby'), { message: `${name}, ${label}: no cue at the end`, timeout: 2_000 }).toBeNull();
+          await expect(cue, `${name}, ${label}: the cue is gone at the end`).toHaveCount(0);
+          await expect(region, `${name}, ${label}`).toHaveAccessibleDescription('');
+          expect(await edges(region), `${name}, ${label}: at the end only the left edge fades`).toEqual({ before: 'fade', after: 'none' });
+        }
+
+        await page.setViewportSize({ width: 1366, height: 768 });
+        await settle(page);
+        await expect(page.locator('main [role="region"][aria-describedby]'), `${name} 1366x768: no cue where nothing scrolls`).toHaveCount(0);
       } finally {
         await page.context().close();
       }

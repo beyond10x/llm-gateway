@@ -7,6 +7,11 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Added
+
+- The dashboard and the setup page have a Light, Dark and System theme switch in the header, kept in the browser's local storage and applied before the first paint; both palettes keep text at 4.5:1 and controls at 3:1, every control shows a focus ring, a "Skip to content" link leads each page, and reduced motion turns transitions off.
+- The dashboard draws the token flow behind its panels: a line from each active session (an in-flight call, or seen in the last five minutes) to each route it calls, each new call's input and output tokens moving along it on a log scale, a slow pulse while a call is in flight, at most 30 frames a second, paused in a hidden tab and still under reduced motion. It reads only the snapshot the page already receives.
+
 ## 0.25.0 (2026-11-26)
 
 ### Changed

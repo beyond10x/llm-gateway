@@ -15,6 +15,21 @@ const RESET_7D_S = Math.floor((T0 + 3 * 86_400_000 + 5 * 3600_000) / 1000);
 const RATE_LIMITED = '{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your rate limit."}}';
 const OVERLOADED = '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}';
 
+function m(a: number, b: number): number {
+  return ((a % b) + b) % b;
+}
+
+// The two agent sessions take turns; the curl session calls in a run of 12 out of every 48, so
+// in a replay it goes quiet, ends after five minutes and comes back.
+function sessionOf(q: number): number {
+  return m(Math.floor(q / 12), 4) === 3 ? 2 : m(q, 2);
+}
+
+// A session was last seen at its newest call in the list, or at `fallback` when that is later.
+function lastSeen(calls: CallRecord[], session: string, fallback: number): number {
+  return Math.max(fallback, ...calls.filter((c) => c.session === session).map((c) => c.started_ms));
+}
+
 function attempts(i: number, failed: boolean, route: string): AttemptRecord[] {
   if (failed) {
     return [
@@ -22,7 +37,7 @@ function attempts(i: number, failed: boolean, route: string): AttemptRecord[] {
       { attempt: 2, status: 429, duration_ms: 280, wait_ms: 30_000, retry_after: '30', headers: {}, error_body: RATE_LIMITED },
     ];
   }
-  if (route.startsWith('claude') && i % 7 === 2) {
+  if (route.startsWith('claude') && m(i, 7) === 2) {
     return [
       { attempt: 1, status: 529, duration_ms: 1_204, wait_ms: 0, retry_after: null, headers: {}, error_body: OVERLOADED },
       { attempt: 2, status: 200, duration_ms: 8_812, wait_ms: 2_000, retry_after: null, headers: {}, error_body: null },
@@ -31,41 +46,45 @@ function attempts(i: number, failed: boolean, route: string): AttemptRecord[] {
   return [];
 }
 
-export function fixture(now: number): Snapshot {
+// `tick` replays traffic: each tick adds one newer call (id 1000 + tick) and shifts the rest down,
+// so the page sees a new call every tick. A call's fields depend on its number `q`, never on its
+// position, and tick 0 is the snapshot the tests read.
+export function fixture(now: number, tick = 0): Snapshot {
   const calls: CallRecord[] = [];
   for (let i = 0; i < 40; i++) {
-    const route = ROUTES[i % 3]!;
-    const s = SESSIONS[i % 3]!;
-    const failed = i % 11 === 4;
-    const refused = i % 17 === 9;
+    const q = i - tick;
+    const route = ROUTES[m(q, 3)]!;
+    const s = SESSIONS[sessionOf(q)]!;
+    const failed = m(q, 11) === 4;
+    const refused = m(q, 17) === 9;
     const done = !refused && !failed;
     calls.push({
-      id: 1000 - i,
+      id: 1000 - q,
       started_ms: now - i * 37_000 - 2_000,
       route: refused ? null : route,
       upstream: refused ? null : route.startsWith('claude') ? 'anthropic' : 'runpod',
       upstream_model: refused ? null : route === 'claude-sonnet' ? 'claude-sonnet-4-5' : route === 'claude-haiku' ? 'claude-haiku-4-5' : 'Qwen/Qwen3-Coder-30B-A3B-Instruct',
-      wire: route.startsWith('claude') ? 'messages' : i % 2 ? 'responses' : 'chat',
+      wire: route.startsWith('claude') ? 'messages' : m(q, 2) ? 'responses' : 'chat',
       status: refused ? 401 : failed ? 429 : 200,
       target_status: refused ? null : failed ? 429 : 200,
       outcome: refused ? 'refused' : failed ? 'upstream_error' : 'ok',
       refusal: refused ? 'unknown model' : null,
-      queue_wait_ms: route === 'qwen-coder' ? 12 + (i % 5) * 40 : null,
-      ttft_ms: done ? 180 + ((i * 97) % 1400) : null,
-      duration_ms: refused ? 1 : 900 + ((i * 1311) % 24_000),
-      response_bytes: 4000 + i * 311,
-      input_tokens: done && i % 19 !== 6 ? 2_000 + ((i * 7919) % 90_000) : null,
-      output_tokens: done && i % 19 !== 6 ? 40 + ((i * 131) % 3_000) : null,
-      cache_read_tokens: route.startsWith('claude') && !failed ? 60_000 + i * 900 : null,
-      cache_creation_tokens: route.startsWith('claude') && !failed ? (i % 4 === 0 ? 2_400 : 0) : null,
-      input_tps: done && i % 19 !== 6 ? 3_000 + ((i * 4111) % 9_000) : null,
-      output_tps: done && i % 19 !== 6 ? 40 + ((i * 37) % 120) : null,
-      usage_note: done && i % 19 === 6 ? 'undecodable(br)' : null,
-      client_retry: i % 13 === 3 ? 2 : i % 5 === 0 ? 0 : null,
-      repeated_body: i % 13 === 3,
-      client_disconnected: i === 7,
+      queue_wait_ms: route === 'qwen-coder' ? 12 + m(q, 5) * 40 : null,
+      ttft_ms: done ? 180 + m(q * 97, 1400) : null,
+      duration_ms: refused ? 1 : 900 + m(q * 1311, 24_000),
+      response_bytes: 4000 + m(q, 40) * 311,
+      input_tokens: done && m(q, 19) !== 6 ? 2_000 + m(q * 7919, 90_000) : null,
+      output_tokens: done && m(q, 19) !== 6 ? 40 + m(q * 131, 3_000) : null,
+      cache_read_tokens: route.startsWith('claude') && !failed ? 60_000 + m(q, 40) * 900 : null,
+      cache_creation_tokens: route.startsWith('claude') && !failed ? (m(q, 4) === 0 ? 2_400 : 0) : null,
+      input_tps: done && m(q, 19) !== 6 ? 3_000 + m(q * 4111, 9_000) : null,
+      output_tps: done && m(q, 19) !== 6 ? 40 + m(q * 37, 120) : null,
+      usage_note: done && m(q, 19) === 6 ? 'undecodable(br)' : null,
+      client_retry: m(q, 13) === 3 ? 2 : m(q, 5) === 0 ? 0 : null,
+      repeated_body: m(q, 13) === 3,
+      client_disconnected: q === 7,
       upstream_retry_after: failed ? '30' : null,
-      attempts: attempts(i, failed, route),
+      attempts: attempts(q, failed, route),
       session: s.session,
       user_agent: s.label,
     });
@@ -84,7 +103,7 @@ export function fixture(now: number): Snapshot {
     sessions: [
       { session: '3f9a1c0e', label: 'claude-code', calls: 214, errors: 2, cancelled: 1, input_tokens: 1_840_221, output_tokens: 98_412, cache_read_tokens: 14_220_900, input_tps: 6120.4, output_tps: 71.3, last_ms: now - 4_000 },
       { session: '8b27d4aa', label: 'codex', calls: 88, errors: 0, cancelled: 0, input_tokens: 2_920_004, output_tokens: 140_881, cache_read_tokens: null, input_tps: 9412.8, output_tps: 118.6, last_ms: now - 2_400 },
-      { session: 'c01e5f72', label: 'curl/8.11', calls: 3, errors: 1, cancelled: 0, input_tokens: 120, output_tokens: 0, cache_read_tokens: 0, input_tps: null, output_tps: null, last_ms: now - 3 * 3600_000 },
+      { session: 'c01e5f72', label: 'curl/8.11', calls: 3, errors: 1, cancelled: 0, input_tokens: 120, output_tokens: 0, cache_read_tokens: 0, input_tps: null, output_tps: null, last_ms: lastSeen(calls, 'c01e5f72', now - 3 * 3600_000) },
     ],
     routes: [
       { route: 'qwen-coder', calls: 131, errors: 1, cancelled: 3, input_tokens: 3_010_442, output_tokens: 161_002, cache_read_tokens: 1_376_200, cache_creation_tokens: null, uncached_input_tokens: 1_635_200, cache_hit_rate: 1_376_200 / 3_011_400, cache_source: 'vllm', input_tps: 9_212.5, output_tps: 112.4, in_flight: 1, upstream_model: 'Qwen/Qwen3-Coder-30B-A3B-Instruct', upstream: { source: 'vllm', read_ms: now - 6_000, prefix_cache_hit_ratio: 0.457, prefix_cache_hit_tokens: 1_376_200, prefix_cache_query_tokens: 3_011_400, requests_running: 1, requests_waiting: 0, kv_cache_usage: 0.31, ready: true } },

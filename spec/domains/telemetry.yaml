@@ -70,8 +70,9 @@ domain: llm-gateway.telemetry
 #   DECIDED 2026-11-26 (story:finished-call-facts): the series are process-wide counters after
 #   the spend-refusal series, registered at zero; the gateway counts none of them itself.
 #   DECIDED 2026-11-26 (story:interaction-record-store, correction 1): the failed series is the
-#   third, after skipped; the binary reads it from its writer's own failure count and logs one
-#   warning per failure naming the series, never the path.
+#   third, after skipped; the binary reads it from its writer's own failure count and logs at most
+#   one warning per second naming how many calls failed since the last and the series, never
+#   the path (D98, correction 2); the series counts each call.
 # DECIDED 2026-10-16 (story:spend-caps): beside llmgw's 13 the gateway serves one series of its
 # own, `llmgw_pod_start_spend_refusals_total`, process-wide, after llmgw's eight; its prefix
 # keeps one scrape configuration for every series. llmgw had no spend ceiling to count.

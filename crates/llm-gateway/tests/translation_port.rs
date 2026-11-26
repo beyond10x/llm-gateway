@@ -522,23 +522,18 @@ fn translate_a_declared_wire_is_relayed_byte_for_byte_and_tools_are_refused_firs
 
 /// A client that has gone is reported to the translation by the writer: the write fails.
 ///
-/// The answer is larger than the socket buffers between the writer and the client together
-/// (64 KiB pieces, 256 MiB in all), so the writer cannot hand every piece to the kernel before
-/// the client's close is seen: once the buffers are full a write blocks until the reset arrives,
-/// and that write fails. A smaller answer fits the buffers of a host whose loopback buffers grew.
+/// The answer is sized from the host's socket buffer maxima: more than four times their sum,
+/// and at least 256 MiB (4096 pieces of 64 KiB). The writer cannot hand every piece to the
+/// kernel before the client's close is seen: once the buffers are full a write blocks until the
+/// reset arrives, and that write fails. A smaller answer fits the buffers of a host whose
+/// loopback buffers grew. One piece is allocated; the answer repeats it.
 #[test]
 fn translate_a_client_that_has_gone_is_reported_by_the_writer() {
     const PIECE: usize = 64 * 1024;
-    const PIECES: usize = 4096;
     let piece: &'static str =
         Box::leak(format!("data: {}\n\n", "x".repeat(PIECE - 8)).into_boxed_str());
-    let answer = PIECE * PIECES;
-    let buffers = socket_buffer_maxima();
-    assert!(
-        answer > 4 * buffers,
-        "the answer ({answer} bytes) is not larger than the socket buffers ({buffers} bytes)"
-    );
-    let pieces: Vec<&'static str> = std::iter::repeat_n(piece, PIECES).collect();
+    let pieces_count = (4 * socket_buffer_maxima() / PIECE + 1).max(4096);
+    let pieces: Vec<&'static str> = std::iter::repeat_n(piece, pieces_count).collect();
     let composed = compose(Some(fixture(None, sse(pieces))), false);
     let mut stream = TcpStream::connect(composed.handle.local_addr()).unwrap();
     let body = "{\"model\":\"two\"}";
@@ -560,7 +555,7 @@ fn translate_a_client_that_has_gone_is_reported_by_the_writer() {
         "{} writes, none failed",
         writes.len()
     );
-    assert!(writes.len() < PIECES);
+    assert!(writes.len() < pieces_count);
 }
 
 /// The most bytes the send buffer of one socket and the receive buffer of another may hold

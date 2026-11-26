@@ -1,0 +1,379 @@
+{
+  "view": "dashboard.Calls",
+  "rows": [
+    {
+      "id": 5010,
+      "time": {
+        "text": "09:00:14",
+        "mono": true,
+        "title": "0s ago"
+      },
+      "route": {
+        "text": "–",
+        "sub": []
+      },
+      "wire": "chat",
+      "status": {
+        "text": "refused",
+        "note": {
+          "text": "404"
+        },
+        "title": "refused"
+      },
+      "ttft": "–",
+      "duration": "1 ms",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "unknown model"
+      ],
+      "attempts": 0
+    },
+    {
+      "id": 5009,
+      "time": {
+        "text": "09:00:14",
+        "mono": true,
+        "title": "0s ago"
+      },
+      "route": {
+        "text": "claude-sonnet",
+        "sub": [
+          {
+            "text": "claude-sonnet-4-5"
+          },
+          {
+            "text": "anthropic"
+          }
+        ]
+      },
+      "wire": "messages",
+      "status": {
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
+        "title": "upstream_error"
+      },
+      "ttft": "–",
+      "duration": "30.6 s",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "retry-after 30"
+      ],
+      "attempts": 2
+    },
+    {
+      "id": 5008,
+      "time": {
+        "text": "09:00:13",
+        "mono": true,
+        "title": "1s ago"
+      },
+      "route": {
+        "text": "–",
+        "sub": []
+      },
+      "wire": "chat",
+      "status": {
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
+        "title": "refused"
+      },
+      "ttft": "–",
+      "duration": "1 ms",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "unknown credential"
+      ],
+      "attempts": 0
+    },
+    {
+      "id": 5007,
+      "time": {
+        "text": "09:00:09",
+        "mono": true,
+        "title": "5s ago"
+      },
+      "route": {
+        "text": "qwen-coder",
+        "sub": [
+          {
+            "text": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+          },
+          {
+            "text": "runpod"
+          }
+        ]
+      },
+      "wire": "chat",
+      "status": {
+        "text": "failed",
+        "note": {
+          "text": "504"
+        },
+        "title": "timeout"
+      },
+      "ttft": "–",
+      "duration": "10m 0s",
+      "queue": "20 ms",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [],
+      "attempts": 0
+    },
+    {
+      "id": 5006,
+      "time": {
+        "text": "09:00:09",
+        "mono": true,
+        "title": "5s ago"
+      },
+      "route": {
+        "text": "claude-sonnet",
+        "sub": [
+          {
+            "text": "claude-sonnet-4-5"
+          },
+          {
+            "text": "anthropic"
+          }
+        ]
+      },
+      "wire": "messages",
+      "status": {
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
+        "title": "upstream_error"
+      },
+      "ttft": "–",
+      "duration": "30.6 s",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "retry-after 30"
+      ],
+      "attempts": 2
+    },
+    {
+      "id": 5005,
+      "time": {
+        "text": "09:00:08",
+        "mono": true,
+        "title": "6s ago"
+      },
+      "route": {
+        "text": "–",
+        "sub": []
+      },
+      "wire": "chat",
+      "status": {
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
+        "title": "refused"
+      },
+      "ttft": "–",
+      "duration": "1 ms",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "unknown credential"
+      ],
+      "attempts": 0
+    },
+    {
+      "id": 5004,
+      "time": {
+        "text": "09:00:04",
+        "mono": true,
+        "title": "10s ago"
+      },
+      "route": {
+        "text": "–",
+        "sub": []
+      },
+      "wire": "chat",
+      "status": {
+        "text": "refused",
+        "note": {
+          "text": "404"
+        },
+        "title": "refused"
+      },
+      "ttft": "–",
+      "duration": "1 ms",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "unknown model"
+      ],
+      "attempts": 0
+    },
+    {
+      "id": 5003,
+      "time": {
+        "text": "09:00:04",
+        "mono": true,
+        "title": "10s ago"
+      },
+      "route": {
+        "text": "claude-sonnet",
+        "sub": [
+          {
+            "text": "claude-sonnet-4-5"
+          },
+          {
+            "text": "anthropic"
+          }
+        ]
+      },
+      "wire": "messages",
+      "status": {
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
+        "title": "upstream_error"
+      },
+      "ttft": "–",
+      "duration": "30.6 s",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "retry-after 30"
+      ],
+      "attempts": 2
+    },
+    {
+      "id": 5002,
+      "time": {
+        "text": "09:00:03",
+        "mono": true,
+        "title": "11s ago"
+      },
+      "route": {
+        "text": "–",
+        "sub": []
+      },
+      "wire": "chat",
+      "status": {
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
+        "title": "refused"
+      },
+      "ttft": "–",
+      "duration": "1 ms",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "unknown credential"
+      ],
+      "attempts": 0
+    },
+    {
+      "id": 5001,
+      "time": {
+        "text": "08:59:59",
+        "mono": true,
+        "title": "15s ago"
+      },
+      "route": {
+        "text": "claude-sonnet",
+        "sub": [
+          {
+            "text": "claude-sonnet-4-5"
+          },
+          {
+            "text": "anthropic"
+          }
+        ]
+      },
+      "wire": "messages",
+      "status": {
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
+        "title": "upstream_error"
+      },
+      "ttft": "–",
+      "duration": "30.6 s",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "retry-after 30"
+      ],
+      "attempts": 2
+    },
+    {
+      "id": 5000,
+      "time": {
+        "text": "08:59:58",
+        "mono": true,
+        "title": "16s ago"
+      },
+      "route": {
+        "text": "–",
+        "sub": []
+      },
+      "wire": "chat",
+      "status": {
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
+        "title": "refused"
+      },
+      "ttft": "–",
+      "duration": "1 ms",
+      "queue": "–",
+      "tokens": "– / –",
+      "cache": "– / –",
+      "input_tps": "–",
+      "output_tps": "–",
+      "flags": [
+        "unknown credential"
+      ],
+      "attempts": 0
+    }
+  ]
+}

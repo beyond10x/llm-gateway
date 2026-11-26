@@ -1,0 +1,15 @@
+{
+  "view": "dashboard.Provider",
+  "rows": [
+    {
+      "name": "runpod",
+      "other_pods": 0,
+      "heartbeat": {
+        "text": "11m 0s ago · stale (over 5 min)",
+        "key": "stale",
+        "title": "no heartbeat for over 5 min: pods may not be stopped on schedule"
+      },
+      "read": "9s ago"
+    }
+  ]
+}

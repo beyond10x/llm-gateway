@@ -1,0 +1,444 @@
+{
+  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, and the sideways scrollers at each measured-only viewport (overflow.scrollers.<viewport>, the worst over both themes). Re-taken by the harness at commit 015bb13c on the built page of round R-07 with sha256 a07c861bbc3a. Round R-07, at commit 193c83bb, measured the same values. Lower is better, except flow.visible_ratio, flow.drawn and screen_only.reached, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
+  "scenarios": {
+    "busy": {
+      "axe.serious_critical": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "copy.defects": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.drawn": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "header.hidden_ratio": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "key_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.focus_invisible": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout_shift.per_state_max": {
+        "value": 0,
+        "tolerance": 0.002
+      },
+      "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 5,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "overflow.scrollers_unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.x_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "screen_only.actions": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "screen_only.looks": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "screen_only.reached": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "truncation.without_full_value": {
+        "value": 0,
+        "tolerance": 0
+      }
+    },
+    "errors": {
+      "axe.serious_critical": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "copy.defects": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.drawn": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "header.hidden_ratio": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "key_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.focus_invisible": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout_shift.per_state_max": {
+        "value": 0.003,
+        "tolerance": 0.002
+      },
+      "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 5,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 2,
+        "tolerance": 0
+      },
+      "overflow.scrollers_unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.x_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "screen_only.actions": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "screen_only.looks": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "screen_only.reached": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "truncation.without_full_value": {
+        "value": 0,
+        "tolerance": 0
+      }
+    },
+    "idle": {
+      "axe.serious_critical": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "copy.defects": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.drawn": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "header.hidden_ratio": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "key_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.focus_invisible": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout_shift.per_state_max": {
+        "value": 0,
+        "tolerance": 0.002
+      },
+      "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 3,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers_unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.x_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "truncation.without_full_value": {
+        "value": 0,
+        "tolerance": 0
+      }
+    },
+    "offline": {
+      "axe.serious_critical": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "copy.defects": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.drawn": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "header.hidden_ratio": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "key_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.focus_invisible": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout_shift.per_state_max": {
+        "value": 0.023,
+        "tolerance": 0.0023
+      },
+      "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 4,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "overflow.scrollers_unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.x_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "truncation.without_full_value": {
+        "value": 0,
+        "tolerance": 0
+      }
+    },
+    "token-flow": {
+      "axe.serious_critical": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "copy.defects": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.drawn": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "header.hidden_ratio": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "heading_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "key_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.focus_invisible": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "keyboard.unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "layout_shift.per_state_max": {
+        "value": 0.039,
+        "tolerance": 0.0039
+      },
+      "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.1536x754": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers.390x844": {
+        "value": 4,
+        "tolerance": 0
+      },
+      "overflow.scrollers.960x1080": {
+        "value": 2,
+        "tolerance": 0
+      },
+      "overflow.scrollers_unreachable": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.x_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "truncation.without_full_value": {
+        "value": 0,
+        "tolerance": 0
+      }
+    }
+  },
+  "tolerances": {
+    "counts": 0,
+    "layout_shift.per_state_max.floor": 0.002,
+    "layout_shift.per_state_max.relative": 0.1
+  }
+}

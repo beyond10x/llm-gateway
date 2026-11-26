@@ -1,0 +1,31 @@
+{
+  "view": "dashboard.Pods",
+  "rows": [
+    {
+      "id": {
+        "text": "f0e1d2c3b4a5",
+        "mono": true,
+        "sub": [
+          {
+            "text": "b10x-llm-qwen-coder"
+          }
+        ]
+      },
+      "model": {
+        "text": "Qwen/Qwen3-Coder-30B-A3B-Instruct",
+        "wrap": true
+      },
+      "state": "RUNNING",
+      "gpu": "NVIDIA H100 80GB HBM3",
+      "cost_per_hour": "$2.390",
+      "uptime": "2h 10m",
+      "vllm_ready": true,
+      "last_call": "48s ago",
+      "in_flight": 0,
+      "shutdown": {
+        "text": "in 55s (balance floor)",
+        "key": "soon"
+      }
+    }
+  ]
+}

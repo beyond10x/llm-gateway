@@ -1,0 +1,95 @@
+{
+  "view": "dashboard.Overview",
+  "rows": [
+    {
+      "input_tokens": {
+        "text": "0",
+        "sub": [
+          {
+            "text": "0 tok/s"
+          }
+        ]
+      },
+      "output_tokens": {
+        "text": "0",
+        "sub": [
+          {
+            "text": "0 tok/s"
+          }
+        ]
+      },
+      "cache_hit_rate": {
+        "text": "–",
+        "about": "cache read / every prompt token, over every route: Anthropic's reported cache, and a vLLM server's prefix-cache hits over its queries",
+        "sub": [
+          {
+            "text": "read 0 · created 0 · uncached 0"
+          }
+        ],
+        "table": [
+          [
+            {
+              "text": "claude-sonnet"
+            },
+            {
+              "text": "–"
+            },
+            {
+              "text": "0 / 0"
+            }
+          ],
+          [
+            {
+              "text": "qwen-coder",
+              "tag": {
+                "text": "vLLM"
+              }
+            },
+            {
+              "text": "–"
+            },
+            {
+              "text": "0 / 0"
+            }
+          ]
+        ]
+      },
+      "throughput": {
+        "text": "",
+        "table": [
+          [
+            {
+              "text": "claude-sonnet"
+            },
+            {
+              "text": "in 0 tok/s"
+            },
+            {
+              "text": "out 0 tok/s"
+            }
+          ],
+          [
+            {
+              "text": "qwen-coder"
+            },
+            {
+              "text": "in 0 tok/s"
+            },
+            {
+              "text": "out 0 tok/s"
+            }
+          ]
+        ],
+        "empty": "Idle."
+      },
+      "balance": {
+        "text": "$3.208",
+        "sub": [
+          {
+            "text": "$2.390/h spend"
+          }
+        ]
+      }
+    }
+  ]
+}

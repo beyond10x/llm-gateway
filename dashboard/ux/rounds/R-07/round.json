@@ -1,0 +1,5289 @@
+{
+  "round": "R-07",
+  "date": "2026-11-26",
+  "commit": "193c83bb",
+  "page_sha256": "a07c861bbc3adc2f4e5b065b1d41aaba85bac9d6a3d4bcfb95735acd20907424",
+  "tools": {
+    "chromium": "158.0.8127.18",
+    "axe_core": "4.14.1",
+    "fonts": "pinned: IBM Plex Sans and IBM Plex Mono 1.1.0, Latin-1",
+    "axe_core_playwright": "4.14.1",
+    "playwright": "1.65.0",
+    "harness_commit": "193c83bb"
+  },
+  "toggle": "present",
+  "viewports": [
+    {
+      "name": "1366x768",
+      "width": 1366,
+      "height": 768,
+      "gating": true
+    },
+    {
+      "name": "1280x720",
+      "width": 1280,
+      "height": 720,
+      "gating": true
+    },
+    {
+      "name": "1536x754",
+      "width": 1536,
+      "height": 754,
+      "gating": false
+    },
+    {
+      "name": "960x1080",
+      "width": 960,
+      "height": 1080,
+      "gating": false
+    },
+    {
+      "name": "390x844",
+      "width": 390,
+      "height": 844,
+      "gating": false
+    }
+  ],
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "scenarios": [
+    {
+      "name": "idle",
+      "anchor": true,
+      "description": "A gateway just started: no calls, no sessions, no provider."
+    },
+    {
+      "name": "busy",
+      "anchor": true,
+      "description": "The page's development fixture: 40 calls, 3 in flight, limits, a provider with 3 pods."
+    },
+    {
+      "name": "token-flow",
+      "anchor": false,
+      "description": "8 states: calls with tokens appear for 3 sessions over 3 routes; sessions start, one ends."
+    },
+    {
+      "name": "errors",
+      "anchor": true,
+      "description": "Refusals, 429s with retries, a stale watchdog, a pod shutting down within a minute."
+    },
+    {
+      "name": "offline",
+      "anchor": false,
+      "description": "Two states of traffic, then the stream errors and the snapshot poll fails."
+    }
+  ],
+  "hard_gates": [
+    {
+      "gate": "gate 1 layout",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "overflow 0 px max, 0 elements past their box max, 0 scrollers Tab never reaches max (Chromium focuses a scrolling box itself; axe judges the markup)"
+    },
+    {
+      "gate": "gate 1 truncation",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 truncated without full value max"
+    },
+    {
+      "gate": "gate 2 always visible",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "header visible ratio 1 min; toggle present"
+    },
+    {
+      "gate": "gate 2 always visible, every viewport",
+      "theme": "light",
+      "passed": 25,
+      "of": 25,
+      "headline": "hidden: none"
+    },
+    {
+      "gate": "gate 5 axe",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 serious/critical nodes over 10 replays (none)"
+    },
+    {
+      "gate": "gate 5 keyboard",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 unreachable, 0 focus-invisible max"
+    },
+    {
+      "gate": "gate 5 reduced motion",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 violations max"
+    },
+    {
+      "gate": "key data",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "key 0 px short max (floor 14), headings 0 px short max (floor 14), secondary 0 px short max (floor 12); no key text in 0 replays; no failing replay is held by a known failure"
+    },
+    {
+      "gate": "copy",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 distinct items max (none)"
+    },
+    {
+      "gate": "gate 4 screen-only user",
+      "theme": "light",
+      "passed": 4,
+      "of": 4,
+      "headline": "8 of 8 tasks reached; actions 0 max, glance 1 max"
+    },
+    {
+      "gate": "flow (busy, token-flow, errors, offline)",
+      "theme": "light",
+      "passed": 8,
+      "of": 8,
+      "headline": "visible ratio 1 min (bar 0.95), drawn 8 of 8, drawn under reduced motion 8 of 8"
+    },
+    {
+      "gate": "replay hermetic, live, a lost connection in words",
+      "theme": "light",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 requests aborted; status after a lost connection: offline"
+    },
+    {
+      "gate": "gate 1 layout",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "overflow 0 px max, 0 elements past their box max, 0 scrollers Tab never reaches max (Chromium focuses a scrolling box itself; axe judges the markup)"
+    },
+    {
+      "gate": "gate 1 truncation",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 truncated without full value max"
+    },
+    {
+      "gate": "gate 2 always visible",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "header visible ratio 1 min; toggle present"
+    },
+    {
+      "gate": "gate 2 always visible, every viewport",
+      "theme": "dark",
+      "passed": 25,
+      "of": 25,
+      "headline": "hidden: none"
+    },
+    {
+      "gate": "gate 5 axe",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 serious/critical nodes over 10 replays (none)"
+    },
+    {
+      "gate": "gate 5 keyboard",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 unreachable, 0 focus-invisible max"
+    },
+    {
+      "gate": "gate 5 reduced motion",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 violations max"
+    },
+    {
+      "gate": "key data",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "key 0 px short max (floor 14), headings 0 px short max (floor 14), secondary 0 px short max (floor 12); no key text in 0 replays; no failing replay is held by a known failure"
+    },
+    {
+      "gate": "copy",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 distinct items max (none)"
+    },
+    {
+      "gate": "flow (busy, token-flow, errors, offline)",
+      "theme": "dark",
+      "passed": 8,
+      "of": 8,
+      "headline": "visible ratio 1 min (bar 0.95), drawn 8 of 8, drawn under reduced motion 8 of 8"
+    },
+    {
+      "gate": "replay hermetic, live, a lost connection in words",
+      "theme": "dark",
+      "passed": 10,
+      "of": 10,
+      "headline": "0 requests aborted; status after a lost connection: offline"
+    }
+  ],
+  "gating": {
+    "busy": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 0,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1,
+      "screen_only.actions": 0,
+      "screen_only.looks": 1,
+      "screen_only.reached": 1,
+      "overflow.scrollers.1536x754": 0,
+      "overflow.scrollers.390x844": 5,
+      "overflow.scrollers.960x1080": 3
+    },
+    "errors": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 0,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0.003,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1,
+      "screen_only.actions": 0,
+      "screen_only.looks": 1,
+      "screen_only.reached": 1,
+      "overflow.scrollers.1536x754": 0,
+      "overflow.scrollers.390x844": 5,
+      "overflow.scrollers.960x1080": 2
+    },
+    "idle": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 0,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 0,
+      "overflow.scrollers.1536x754": 0,
+      "overflow.scrollers.390x844": 3,
+      "overflow.scrollers.960x1080": 0
+    },
+    "offline": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 0,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0.023,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1,
+      "overflow.scrollers.1536x754": 0,
+      "overflow.scrollers.390x844": 4,
+      "overflow.scrollers.960x1080": 1
+    },
+    "token-flow": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 0,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0.039,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1,
+      "overflow.scrollers.1536x754": 0,
+      "overflow.scrollers.390x844": 4,
+      "overflow.scrollers.960x1080": 2
+    }
+  },
+  "all_viewports": {
+    "busy": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 5,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1,
+      "screen_only.actions": 0,
+      "screen_only.looks": 1,
+      "screen_only.reached": 1
+    },
+    "errors": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 5,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0.016,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1,
+      "screen_only.actions": 0,
+      "screen_only.looks": 1,
+      "screen_only.reached": 1
+    },
+    "idle": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 3,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 0
+    },
+    "offline": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 4,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0.06,
+      "reduced_motion.violations": 1,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1
+    },
+    "token-flow": {
+      "axe.serious_critical": 0,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers": 4,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 0,
+      "heading_font.deficit_px": 0,
+      "secondary_font.deficit_px": 0,
+      "layout_shift.per_state_max": 0.06,
+      "reduced_motion.violations": 1,
+      "truncation.without_full_value": 0,
+      "copy.defects": 0,
+      "flow.visible_ratio": 1,
+      "flow.drawn": 1
+    }
+  },
+  "ratchet_against_baseline": [],
+  "replays": [
+    {
+      "scenario": "busy",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0745
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0619
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0744
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0619
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 1 of 3 failed, 429 rate limited"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 7m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0749
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0621
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0742
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0621
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 1 of 3 failed, 429 rate limited"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 7m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.076
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0625
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0758
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0625
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 1 of 3 failed, 429 rate limited"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 7m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 5,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0843
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0733
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionqwen-co\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 5,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0836
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0733
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 1 of 3 failed, 429 rate limited"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 7m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionqwen-co\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0719
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0602
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 4,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0718
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0602
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 1 of 3 failed, 429 rate limited"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 7m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.002,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0416
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0379
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.002,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.002,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0417
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0379
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.002,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 4 of 4 failed, 429 rate limited; qwen-coder 1 of 1 failed, 504 timed out"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 11m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.003,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0413
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0376
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.003,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.003,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0412
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0376
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.003,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 4 of 4 failed, 429 rate limited; qwen-coder 1 of 1 failed, 504 timed out"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 11m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.002,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0411
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0372
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.002,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.002,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0411
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0372
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.002,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 4 of 4 failed, 429 rate limited; qwen-coder 1 of 1 failed, 504 timed out"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 11m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 5,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.016,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.065
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0631
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.016,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionclaude-\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 5,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.016,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.065
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0631
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.016,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 4 of 4 failed, 429 rate limited; qwen-coder 1 of 1 failed, 504 timed out"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 11m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionclaude-\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 2,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.008,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0426
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0396
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.008,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 2,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.008,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 5,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0427
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0396
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0,
+        0.008,
+        0
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [
+        {
+          "task": "failing-route",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Failed calls in the last 5 min: claude-sonnet 4 of 4 failed, 429 rate limited; qwen-coder 1 of 1 failed, 504 timed out"
+        },
+        {
+          "task": "watchdog",
+          "reached": true,
+          "actions": 0,
+          "looks": 1,
+          "steps": [
+            "look"
+          ],
+          "seen": "Watchdog heartbeat stale: last 11m 0s ago, over 5 min; pods may not be stopped on schedule"
+        }
+      ],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-provider\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"PodsPodModelStateGPU$/hUptimevLLM readyL\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 2,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": false,
+        "drawn_share": 0
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0
+      ],
+      "status": [
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.02,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0274
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0254
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.02
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.02,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0274
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0254
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.02
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.023,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0295
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0253
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.023
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.023,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0295
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0253
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.023
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.022,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0294
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.025
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.022
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.022,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0294
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.025
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.022
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 4,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.017,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0408
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0396
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.017
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionclaude-\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 4,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.017,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0412
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0396
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.017
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionclaude-\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.06,
+        "reduced_motion.violations": 1,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0294
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.026
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.06
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [
+          "transition opacity on div (0 ms)"
+        ],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "offline",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.06,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 3,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0294
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.026
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.06
+      ],
+      "status": [
+        "live",
+        "live",
+        "offline"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 2,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.034,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0646
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0575
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.02,
+        0.034,
+        0.022,
+        0.005,
+        0.006,
+        0.002,
+        0.002
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.034,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0645
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0575
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.02,
+        0.034,
+        0.022,
+        0.005,
+        0.006,
+        0.002,
+        0.002
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.039,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0644
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0574
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.023,
+        0.039,
+        0.025,
+        0.007,
+        0.013,
+        0.003,
+        0.004
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.039,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0644
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0574
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.023,
+        0.039,
+        0.025,
+        0.007,
+        0.013,
+        0.003,
+        0.004
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.038,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0634
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.057
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.022,
+        0.038,
+        0.024,
+        0.005,
+        0.009,
+        0.003,
+        0.004
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.038,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0632
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.057
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.022,
+        0.038,
+        0.024,
+        0.005,
+        0.009,
+        0.003,
+        0.004
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 4,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.017,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0985
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.082
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.017,
+        0.013,
+        0.014,
+        0,
+        0,
+        0,
+        0.006
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionclaude-\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 4,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.017,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0978
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.082
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.017,
+        0.013,
+        0.014,
+        0,
+        0,
+        0,
+        0.006
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-inflight\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteModelWireStateElapsedSessionclaude-\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-sessions\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"SessionCallsErrorsCancelledTokens in / o\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 2,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.06,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0676
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0584
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.06,
+        0.053,
+        0.057,
+        0.015,
+        0.025,
+        0.007,
+        0.012
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "present",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 0,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers": 2,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 0,
+        "heading_font.deficit_px": 0,
+        "secondary_font.deficit_px": 0,
+        "layout_shift.per_state_max": 0.06,
+        "reduced_motion.violations": 1,
+        "truncation.without_full_value": 0,
+        "copy.defects": 0
+      },
+      "axe_rules": {},
+      "axe_scans": 8,
+      "flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0677
+      },
+      "reduced_flow": {
+        "present": true,
+        "at": "canvas",
+        "visible_ratio": 1,
+        "drawn": true,
+        "drawn_share": 0.0584
+      },
+      "key_font_min_px": 14,
+      "key_font_at": "span.link.toned.tone-success \"live\"",
+      "secondary_font_min_px": 12.25,
+      "secondary_font_at": "div.label \"Tokens in\"",
+      "shifts": [
+        0.06,
+        0.053,
+        0.057,
+        0.015,
+        0.025,
+        0.007,
+        0.012
+      ],
+      "status": [
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live",
+        "live"
+      ],
+      "screen_only": [],
+      "snapshot_fetches": 1,
+      "blocked": [],
+      "details": {
+        "axe": [],
+        "overflowing": [],
+        "scrollers": [
+          {
+            "key": "section[aria-labelledby=\"h-calls\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"TimeRouteWireStatusTTFTDurationQueueToke\""
+          },
+          {
+            "key": "section[aria-labelledby=\"h-routes\"] > div.scroller > div.scroll",
+            "label": "div.scroll \"RouteFailed, last 5 minCallsErrorsCancel\""
+          }
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          },
+          {
+            "name": "theme toggle",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": [
+          "transition opacity on div (0 ms)"
+        ],
+        "key_font_below": [],
+        "heading_font_below": [],
+        "secondary_font_below": [],
+        "copy": []
+      }
+    }
+  ]
+}

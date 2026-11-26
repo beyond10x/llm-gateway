@@ -20,7 +20,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
 | `checks/xtask` | `b10x-llm-gateway-xtask`, the gate's test step: cargo-nextest under `.config/nextest.toml`, the 120-second bound and the ten slowest tests |
-| `dashboard/` | The dashboard page: Vue 3 and TypeScript, built with Vite and pnpm (`pnpm --dir dashboard build`) into one file, `crates/llm-gateway/src/dashboard.html`. Its record types `src/generated/snapshot.ts` are generated |
+| `dashboard/` | The dashboard page: Vue 3 and TypeScript, built with Vite and pnpm (`pnpm --dir dashboard build`) into one file, `crates/llm-gateway/src/dashboard.html`. Its UI is the ess-ui/1 document `ui/llm-gateway.ui.yaml` (`ess ui check --path dashboard/ui/llm-gateway.ui.yaml`), with fixtures under `ui/fixtures/`; `src/essui/` is the renderer that draws it: the loader, which refuses at build time a node kind, key or expression it does not draw, one component per node kind, and the binding `src/essui/bind.ts` that answers each placeholder from the snapshot. The token flow and the setup guide are host components (`src/hosts.ts`). Its record types `src/generated/snapshot.ts` are generated |
 | `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served at `https://beyond10x.github.io/llm-gateway/`, deployed by the `Documentation site` workflow |
 | `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters, the per-model `llmgw_requests_total{model,outcome}` counter and `llmgw_request_duration_seconds{model}` histogram, the metrics-only listener and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
 | `contracts/` | Authored scenarios, their manifest `ess-inputs.yaml`, `baseline.json`, and the generated `suite.json` and `schema/` |
@@ -122,6 +122,21 @@ build to its commit with `llm-gateway-docs provenance`; on a push to `main` it u
 as `b10x-project-site`, and `.github/workflows/b10x-docs-site.yml` (`Documentation site`) deploys
 it through the Website's `project-site.yml` when the push was the bot's.
 
+The Gate workflow's second job, `dashboard`, runs in `dashboard/` on Node 22 with the pnpm that
+`packageManager` pins (through corepack): `ess ui check` of the UI document (ess 0.99.4, installed as
+the `serving-crates` job does), type check, unit tests, the build compared with the
+committed `crates/llm-gateway/src/dashboard.html`, then the Playwright gate (`e2e --workers=2`,
+60 s per test, 120 s for the step, the ten slowest printed, the report uploaded on failure).
+On a pull request it runs only when `dashboard/ci/changed.sh` says the diff reaches the dashboard;
+`task dashboard-ux` runs the same commands locally, browser install aside.
+The page asks for `system-ui` and a monospace stack, which a build host and an Ubuntu runner
+resolve to different installed fonts of different widths (Noto Sans and DejaVu Sans): every replay
+therefore renders with the committed IBM Plex subsets in `dashboard/e2e/fonts/` (SIL OFL 1.1, the
+digests in `dashboard/e2e/fonts.ts`, checked by a unit test), so both measure the same widths and
+`dashboard/ux/baseline.json` holds what those fonts measure. `UX_FONTS=host` (or
+`UX_FONTS=host:<installed family>`, e.g. `host:DejaVu Sans` for the runner's widths) measures with
+host fonts instead; it is a check of the page, not the gate, and a round refuses `--baseline` with it.
+
 Every build writes the worktree's own `target/`; never set `CARGO_TARGET_DIR`. Check `df -h /`
 before a full gate. End a tree with `worktree finish --discard-cache --archive <tree>`, which
 removes the build cache it recognises, instead of deleting `target/` by hand.
@@ -136,6 +151,7 @@ Never edit these by hand; change `spec/` or the scenarios and regenerate:
 | `contracts/schema/schema/` | `ess generate --path spec --kind schema --out target/schema`, into a directory that does not exist yet, then replace `contracts/schema/schema/` with its `schema/` directory (`ess` refuses to write into a directory it holds no ledger for: "unowned output destination") |
 | `website/docs/reference/cli.md`, `website/docs/reference/crates.md`, `website/docs/reference/refusals.md`, `website/docs/status.mdx`, `website/data/status.json`, `dashboard/src/generated/snapshot.ts` | `cargo run --locked -p llm-gateway-docs -- generate` |
 | `crates/llm-gateway/src/dashboard.html` | `pnpm --dir dashboard install --frozen-lockfile && pnpm --dir dashboard build` |
+| `dashboard/ui/fixtures/*.json` (not `scripts/`) | `UPDATE_UI_FIXTURES=1 pnpm --dir dashboard test`: the binding's answers for the last state of the `errors` scenario |
 
 The CLI reference comes from `llm_gateway_cli::cli::Cli`, `ServeCli`, `WatchdogCli`, `CredentialCli`, `ClaudeCli` and `CodexCli`, the crate list from `cargo metadata`
 (each package's `description` is public text), the refusal reference from `RefusalCode::ALL`,
@@ -144,7 +160,7 @@ The CLI reference comes from `llm_gateway_cli::cli::Cli`, `ServeCli`, `WatchdogC
 `path::function`. A capability that ships, or a story that lands, changes that list.
 
 `ess` on `PATH` is what `task check` uses. CI installs the `ess` 0.99.4 release asset, checked
-against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`), and
+against the release's `SHA256SUMS` and a pinned SHA-256 (`.github/workflows/gate.yml`, in both jobs), and
 `checks/conformance/Cargo.toml` pins `ess-conformance` and `ess-primitives` to tag `0.99.4`. Move
 all three together, to the newest ESS release (workspace rule), and regenerate both files in the
 same commit. An `ess` on `PATH` that writes other bytes than the pinned release fails

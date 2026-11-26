@@ -1,0 +1,319 @@
+format: ess-ui/1
+app: llm-gateway
+title: llm-gateway
+model: llm-gateway
+actor: anonymous
+placement_profile: fat
+fixtures:
+  dir: fixtures
+  scripts: {events: scripts/events.json}
+
+tokens:
+  color:
+    bg: "#f7f7f8"
+    surface: "#ffffff"
+    text: "#1b1d21"
+    muted: "#5b616b"
+    line: "#dfe1e5"
+    head: "#f0f1f3"
+    success: "#17663a"
+    success_fill: "#dcf3e4"
+    warning: "#7a4a00"
+    warning_fill: "#fdefd2"
+    danger: "#a3191f"
+    danger_fill: "#fde0e0"
+    accent: "#2456c7"
+    info: "#2456c7"
+    on_accent: "#ffffff"
+    control: "#80868f"
+    flow_in: "#2456c7"
+    flow_out: "#c2410c"
+  space: {xs: 0.3rem, sm: 0.6rem, md: 1rem, lg: 1.2rem}
+  radius: {sm: 4px, md: 6px, pill: 999px}
+  type:
+    body: {family: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", size: 14px}
+    caption: {size: 0.875rem}
+    heading: {size: 0.95rem, weight: 700}
+    mono: {family: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace"}
+  tone:
+    neutral: {text: text, fill: head}
+    info: {text: accent, fill: head}
+    success: {text: success, fill: success_fill}
+    warning: {text: warning, fill: warning_fill}
+    danger: {text: danger, fill: danger_fill}
+
+themes:
+  light: {}
+  system: {}
+  dark:
+    color:
+      bg: "#121417"
+      surface: "#1a1d21"
+      text: "#e6e8eb"
+      muted: "#a0a6b0"
+      line: "#2d3238"
+      head: "#20242a"
+      success: "#6fdc9a"
+      success_fill: "#173826"
+      warning: "#f3c46b"
+      warning_fill: "#3a2c10"
+      danger: "#ff8b8b"
+      danger_fill: "#431a1c"
+      accent: "#8fb0ff"
+      info: "#8fb0ff"
+      on_accent: "#1a1d21"
+      control: "#737a85"
+      flow_in: "#8fb0ff"
+      flow_out: "#fb923c"
+
+theme: {default: system, chosen_by: shell.theme}
+
+tone_maps:
+  pod_state: {RUNNING: success}
+  ready: {"yes": success, "no": warning}
+  shutdown: {soon: warning}
+  heartbeat: {stale: danger, none: danger}
+  flight: {streaming: success}
+  call_result: {ok: success, refused: warning, failed: danger}
+  errors:
+    bands: [{from: 1, tone: danger}]
+  limit_status: {allowed: success, allowed_warning: warning, rejected: danger}
+
+label_maps:
+  limit_status: {allowed_warning: allowed (warning)}
+
+shells:
+  app:
+    regions:
+      main: {kind: page_outlet}
+    state:
+      theme:
+        type: {enum: [light, dark, system]}
+        class: preference
+        store: local_storage
+        pinned: true
+        default: system
+
+navigation:
+  home: setup
+  sections:
+    - {name: gateway, label: llm-gateway, pages: [setup, dashboard]}
+
+channels:
+  events:
+    carries: {view: dashboard.Snapshot}
+    direction: server_to_client
+    delivery: latest_value
+    resume: refetch
+    scope: account
+    lifecycle: [connecting, live, reconnecting, stale]
+    reconnect: {backoff: {from: 5s, to: 5s}}
+    stale_after: 5s
+    transport_today: "GET dashboard/events, one snapshot event per change; GET dashboard/snapshot every 5 s while the stream is down"
+
+pages:
+  setup:
+    kind: static_page
+    title: Setup
+    host: SetupGuide
+    reason: renders the gateway's llms.txt as a guide with a copy button per command; the text comes from the server inside the page, not from a view
+    stands_in_for: none
+
+  dashboard:
+    kind: dashboard_page
+    title: llm-gateway
+    header:
+      title: llm-gateway
+      live: [events]
+      actions:
+        - {name: setup, navigate: {to: setup}, label: Setup, as: link}
+        - name: theme
+          label: Theme
+          as: choice
+          sets: {shell.theme: shell.theme}
+          choice:
+            component: choice
+            binds: shell.theme
+            style: segmented
+            options:
+              - {value: light, label: Light}
+              - {value: dark, label: Dark}
+              - {value: system, label: System}
+      metrics:
+        - name: uptime
+          component: metric
+          reads: {placeholder: dashboard.Gateway, fixture: gateway.json}
+          live: {channel: events, effect: replace}
+          aggregate: max
+          field: uptime_ms
+          format: duration
+          unit: ms
+          label: up
+    layout:
+      areas:
+        grid: [[flow], [kpi], [provider], [inflight], [routes], [sessions], [calls]]
+        place:
+          flow: [flow]
+          kpi: {sections: [kpi, limits], frame: shared, title: Overview}
+          provider: {sections: [provider, pods], frame: shared, title: Provider}
+          inflight: [inflight]
+          routes: [routes]
+          sessions: [sessions]
+          calls: [calls]
+    sections:
+      - name: board
+        remove: true
+
+      - name: flow
+        host: TokenFlow
+        reason: draws each active session as a line to every route it called in the last five minutes and animates each call's input and output tokens along it on a canvas, with its own caption; no composite draws a live graph between two kinds of rows
+        stands_in_for: none
+        reads: {placeholder: dashboard.TokenFlow, fixture: token-flow.json}
+
+      - name: kpi
+        component: record
+        reads: {placeholder: dashboard.Overview, fixture: overview.json}
+        live: {channel: events, effect: replace}
+        item:
+          - {name: tokens_in, component: metric, from: row.input_tokens, label: Tokens in, window: 60s}
+          - {name: tokens_out, component: metric, from: row.output_tokens, label: Tokens out, window: 60s}
+          - {name: cache_hit_rate, component: metric, from: row.cache_hit_rate, format: percent, label: Cache hit rate}
+          - {name: throughput, component: metric, from: row.throughput, label: "Throughput, last 60 s"}
+          - {name: balance, component: metric, from: row.balance, label: Provider balance, visible: row.balance}
+
+      - name: limits
+        component: collection
+        style: cards
+        reads: {placeholder: dashboard.Limits, fixture: limits.json, key: credential}
+        live: {channel: events, effect: replace}
+        columns:
+          - {field: credential, label: Subscription limits}
+          - {field: status, label: Status, tone_by: limit_status, labels: limit_status}
+          - {field: window_5h, label: 5h utilization, tone_by: limit_status, visible: row.window_5h}
+          - {field: window_7d, label: 7d utilization, tone_by: limit_status, visible: row.window_7d}
+          - {field: overage, label: Overage, tone_by: limit_status, labels: limit_status, visible: row.overage}
+          - {field: claim, label: Representative claim, visible: row.claim, help: {text: the window that currently decides the status}}
+          - {field: headers, label: Other headers, as: map, visible: row.headers}
+
+      - name: provider
+        component: record
+        reads: {placeholder: dashboard.Provider, fixture: provider.json}
+        live: {channel: events, effect: replace}
+        visible: section.provider.row
+        fields:
+          - {field: name, label: Name}
+          - {field: other_pods, label: Other pods, as: number}
+          - {field: heartbeat, label: Watchdog heartbeat, tone_by: heartbeat}
+          - {field: read, label: Read}
+
+      - name: pods
+        title: Pods
+        component: collection
+        reads: {placeholder: dashboard.Pods, fixture: pods.json, key: id}
+        live: {channel: events, effect: replace}
+        visible: section.provider.row
+        columns:
+          - {field: id, label: Pod}
+          - {field: model, label: Model}
+          - {field: state, label: State, as: badge, tone_by: pod_state, tone: warning}
+          - {field: gpu, label: GPU}
+          - {field: cost_per_hour, label: $/h, as: number}
+          - {field: uptime, label: Uptime, as: duration}
+          - {field: vllm_ready, label: vLLM ready, tone_by: ready}
+          - {field: last_call, label: Last call, as: duration}
+          - {field: in_flight, label: In flight, as: number}
+          - {field: shutdown, label: Automatic shutdown, tone_by: shutdown}
+        states: {empty: {message: No pods.}}
+
+      - name: inflight
+        title: In flight
+        component: collection
+        reads: {placeholder: dashboard.InFlight, fixture: in-flight.json, key: id}
+        live: {channel: events, effect: replace}
+        columns:
+          - {field: route, label: Route}
+          - {field: model, label: Model}
+          - {field: wire, label: Wire}
+          - {field: state, label: State, as: badge, tone_by: flight, tone: warning}
+          - {field: elapsed, label: Elapsed, as: duration}
+          - {field: session, label: Session}
+        children:
+          - {name: total, component: metric, reads: {placeholder: dashboard.InFlight, fixture: in-flight.json}, aggregate: count}
+        states: {empty: {message: Idle.}}
+
+      - name: routes
+        title: Routes
+        component: collection
+        reads: {placeholder: dashboard.Routes, fixture: routes.json, key: route}
+        live: {channel: events, effect: replace}
+        columns:
+          - {field: route, label: Route}
+          - {field: calls, label: Calls, as: number}
+          - {field: errors, label: Errors, as: number, tone_by: errors}
+          - {field: cancelled, label: Cancelled, as: number, help: {text: "the client left before or while the answer was written: status 0, no refusal"}}
+          - {field: tokens, label: Tokens in / out, as: number}
+          - {field: cache, label: Cache r / w, as: number}
+          - {field: uncached, label: Uncached in, as: number}
+          - {field: cache_hit, label: Cache hit, as: percent, help: {text: "cache read / every prompt token; vLLM: the server's prefix-cache hits over its queries, in tokens, since the gateway began reading"}}
+          - {field: input_tps, label: In tok/s, as: number, help: {text: "average over the route's calls"}}
+          - {field: output_tps, label: Out tok/s, as: number, help: {text: "average over the route's calls"}}
+          - {field: in_flight, label: In flight, as: number}
+          - {field: server, label: Server run / wait, as: number, help: {text: requests running / waiting at the vLLM server}}
+          - {field: kv_cache, label: KV cache, as: percent, help: {text: "share of the vLLM server's KV cache in use"}}
+        states: {empty: {message: No routes yet.}}
+
+      - name: sessions
+        title: Sessions
+        component: collection
+        reads: {placeholder: dashboard.Sessions, fixture: sessions.json, key: session}
+        live: {channel: events, effect: replace}
+        columns:
+          - {field: session, label: Session}
+          - {field: calls, label: Calls, as: number}
+          - {field: errors, label: Errors, as: number, tone_by: errors}
+          - {field: cancelled, label: Cancelled, as: number, help: {text: "the client left before or while the answer was written: status 0, no refusal"}}
+          - {field: tokens, label: Tokens in / out, as: number}
+          - {field: cache_read, label: Cache read, as: number}
+          - {field: input_tps, label: In tok/s, as: number, help: {text: input tokens per second until the first token}}
+          - {field: output_tps, label: Out tok/s, as: number, help: {text: output tokens per second after the first token}}
+          - {field: last_seen, label: Last seen, as: duration}
+        states: {empty: {message: No sessions yet.}}
+
+      - name: calls
+        title: Recent calls
+        component: collection
+        reads:
+          placeholder: dashboard.Calls
+          fixture: calls.json
+          key: id
+          paging: client
+          pager: {sizes: [30]}
+        live: {channel: events, effect: replace}
+        columns:
+          - {field: time, label: Time}
+          - {field: route, label: Route}
+          - {field: wire, label: Wire}
+          - {field: status, label: Status, as: badge, tone_by: call_result}
+          - {field: ttft, label: TTFT, as: duration, help: {text: time to first token}}
+          - {field: duration, label: Duration, as: duration}
+          - {field: queue, label: Queue, as: duration}
+          - {field: tokens, label: Tokens in / out, as: number}
+          - {field: cache, label: Cache r / w, as: number}
+          - {field: input_tps, label: In tok/s, as: number}
+          - {field: output_tps, label: Out tok/s, as: number}
+          - {field: flags, label: Flags, as: tags}
+          - {field: attempts, label: Attempts}
+        expand:
+          name: attempts
+          component: collection
+          reads: {placeholder: dashboard.Attempts, fixture: attempts.json, key: attempt, params: {call: row.id}}
+          columns:
+            - {field: attempt, label: Attempt, as: number}
+            - {field: status, label: Status, as: badge, tone_by: call_result}
+            - {field: duration, label: Duration, as: duration}
+            - {field: wait, label: Wait before, as: duration}
+            - {field: retry_after, label: Retry-After}
+            - {field: error_body, label: Error body, as: json}
+        children:
+          - {name: total, component: metric, reads: {placeholder: dashboard.Calls, fixture: calls.json}, aggregate: count}
+        states: {empty: {message: No calls yet.}}

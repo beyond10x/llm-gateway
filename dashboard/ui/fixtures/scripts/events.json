@@ -1,0 +1,7 @@
+{
+  "channel": "events",
+  "events": [
+    { "at": "0s", "lifecycle": "connecting" },
+    { "at": "1s", "lifecycle": "live" }
+  ]
+}

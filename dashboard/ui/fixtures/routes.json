@@ -1,0 +1,56 @@
+{
+  "view": "dashboard.Routes",
+  "rows": [
+    {
+      "route": {
+        "text": "claude-sonnet",
+        "sub": [
+          {
+            "text": "claude-sonnet-4-5"
+          }
+        ]
+      },
+      "calls": 4,
+      "errors": 4,
+      "cancelled": 0,
+      "tokens": "0 / 0",
+      "cache": "0 / 0",
+      "uncached": 0,
+      "cache_hit": null,
+      "input_tps": "–",
+      "output_tps": "–",
+      "in_flight": 0,
+      "server": "–",
+      "kv_cache": null
+    },
+    {
+      "route": {
+        "text": "qwen-coder",
+        "sub": [
+          {
+            "text": "Qwen/Qwen3-Coder-30B-A3B-Instruct"
+          }
+        ]
+      },
+      "calls": 1,
+      "errors": 1,
+      "cancelled": 0,
+      "tokens": "0 / 0",
+      "cache": {
+        "text": "0 / –",
+        "title": "vLLM stores computed blocks automatically; not reported separately",
+        "tag": {
+          "text": "vLLM",
+          "title": "from the vLLM server's prefix-cache counters"
+        }
+      },
+      "uncached": 0,
+      "cache_hit": null,
+      "input_tps": "–",
+      "output_tps": "–",
+      "in_flight": 0,
+      "server": "–",
+      "kv_cache": null
+    }
+  ]
+}

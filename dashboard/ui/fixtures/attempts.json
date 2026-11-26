@@ -1,0 +1,101 @@
+{
+  "view": "dashboard.Attempts",
+  "rows": [
+    {
+      "call": 5009,
+      "attempt": 1,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "290 ms",
+      "wait": "0 ms",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    },
+    {
+      "call": 5009,
+      "attempt": 2,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "310 ms",
+      "wait": "30.0 s",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    },
+    {
+      "call": 5006,
+      "attempt": 1,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "290 ms",
+      "wait": "0 ms",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    },
+    {
+      "call": 5006,
+      "attempt": 2,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "310 ms",
+      "wait": "30.0 s",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    },
+    {
+      "call": 5003,
+      "attempt": 1,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "290 ms",
+      "wait": "0 ms",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    },
+    {
+      "call": 5003,
+      "attempt": 2,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "310 ms",
+      "wait": "30.0 s",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    },
+    {
+      "call": 5001,
+      "attempt": 1,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "290 ms",
+      "wait": "0 ms",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    },
+    {
+      "call": 5001,
+      "attempt": 2,
+      "status": {
+        "text": "429",
+        "key": "failed"
+      },
+      "duration": "310 ms",
+      "wait": "30.0 s",
+      "retry_after": "30",
+      "error_body": "{\"type\":\"error\",\"error\":{\"type\":\"rate_limit_error\",\"message\":\"This request would exceed your rate limit.\"}}"
+    }
+  ]
+}

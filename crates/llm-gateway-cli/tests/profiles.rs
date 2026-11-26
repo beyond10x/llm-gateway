@@ -194,8 +194,13 @@ fn secure_prices(text: &str) -> std::collections::BTreeMap<String, u64> {
         .map(|line| {
             let cells: Vec<&str> = line.split('|').map(str::trim).collect();
             let gpu = cells[1].trim_matches('`').to_string();
-            let price: f64 = cells[3].trim_start_matches('$').parse().unwrap();
-            (gpu, (price * 1_000_000.0).round() as u64)
+            let (whole, cents) = cells[3]
+                .trim_start_matches('$')
+                .split_once('.')
+                .expect("a price is written $<dollars>.<cents>");
+            let micro = whole.parse::<u64>().unwrap() * 1_000_000
+                + format!("{cents:0<6}").parse::<u64>().unwrap();
+            (gpu, micro)
         })
         .collect()
 }

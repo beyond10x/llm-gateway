@@ -38,6 +38,10 @@ export interface CallSpec {
 export const RATE_LIMITED =
   '{"type":"error","error":{"type":"rate_limit_error","message":"This request would exceed your rate limit."}}';
 
+// The words that name a 429 as a call's cause: the status (not a "429 ms" duration) or the
+// rate limit in words.
+export const CAUSE_429 = ['\\b429\\b(?!\\s?ms)', 'rate.?limit'];
+
 export function emptyKpi(): Kpi {
   return {
     input_tokens: 0,

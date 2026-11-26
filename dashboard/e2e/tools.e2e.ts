@@ -2,12 +2,14 @@
 // one way and asserts the tool reports it, so a gate that passes is not passing by construction.
 import { expect, test, type Page } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
+import { CANVAS_TEXT, canvasLabelProblems, canvasLabels, recordCanvasText } from './canvas-text.ts';
 import { copyProbe } from './copy.ts';
 import { fontMode, MONO_FAMILY } from './fonts.ts';
-import { openReplay, themeToggleProblems } from './harness.ts';
+import { openReplay, runHeldPolls, themeToggleProblems } from './harness.ts';
 import { reducedMotionReplay } from './measure.ts';
 import { flowProblems, keyDataItems } from './metrics.ts';
 import { canvasPixels, flowProbe, focusStep, headerProbe, keyDataProbe, layoutProbe } from './probe.ts';
+import { dropConnection, failStream } from './r06-problems.ts';
 import { playTask, type ScreenTask } from './screen-only.ts';
 
 const scenario = (name: string) => SCENARIOS.find((s) => s.name === name)!;
@@ -165,6 +167,53 @@ test.describe('token-flow canvas metric', () => {
     const before = await page.evaluate(canvasPixels);
     await page.waitForTimeout(500);
     expect(await page.evaluate(canvasPixels)).not.toEqual(before);
+  });
+});
+
+test.describe('token-flow canvas labels', () => {
+  test('break: a label under 14 px, a label cut with an ellipsis, a label past the edge and a label that leaves no paint are reported; whole labels inside pass', async ({ page }) => {
+    await page.setContent(`<section><h2>Token flow</h2><canvas width="300" height="120" style="width:300px;height:120px"></canvas></section>`);
+    await page.evaluate(CANVAS_TEXT);
+    await page.evaluate(() => {
+        const c = document.querySelector('canvas')!.getContext('2d')!;
+        c.clearRect(0, 0, 300, 120);
+        c.textBaseline = 'middle';
+        c.font = '14px monospace'; c.fillText('qwen-coder', 10, 20); c.fillText('claude-son…', 10, 40); c.fillText('far-route-name', 250, 60);
+        c.font = '12px monospace'; c.fillText('claude-haiku', 10, 80);
+        c.font = '14px monospace'; c.fillStyle = 'rgba(0, 0, 0, 0)'; c.fillText('ghost', 10, 100);
+    });
+    const shown = await page.evaluate(canvasLabels);
+    expect(shown.labels.map((l) => l.text)).toEqual(['qwen-coder', 'claude-son…', 'far-route-name', 'claude-haiku', 'ghost']);
+    expect(canvasLabelProblems(shown, ['qwen-coder', 'claude-sonnet', 'claude-haiku', 'far-route-name'], 14)).toEqual([
+      `"far-route-name" runs past the canvas (${Math.round(shown.labels[2]!.box.left)} to ${Math.round(shown.labels[2]!.box.right)} of 300 px)`,
+      '"claude-haiku" drawn at 12 px, under 14 px',
+      '"ghost" leaves no paint in its box',
+      'route "claude-sonnet" is cut to "claude-son…"',
+    ]);
+    expect(canvasLabelProblems({ ...shown, labels: shown.labels.slice(0, 1) }, ['qwen-coder'], 14)).toEqual([]);
+  });
+
+  test('break: on the built page, labels drawn at 12 px or cut short are reported', async ({ browser }) => {
+    const run = async (patch: string | null) => {
+      const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
+      try {
+        const page = await context.newPage();
+        await recordCanvasText(page);
+        if (patch) await page.addInitScript(patch);
+        const replay = await openReplay(page, scenario('busy'), 'light', { reducedMotion: true });
+        while (replay.index + 1 < replay.states.length) await replay.advance();
+        return canvasLabelProblems(await page.evaluate(canvasLabels), replay.states[replay.index]!.routes.map((r) => r.route), 14);
+      } finally {
+        await context.close();
+      }
+    };
+    const small = `(() => { const d = Object.getOwnPropertyDescriptor(CanvasRenderingContext2D.prototype, 'font'); Object.defineProperty(CanvasRenderingContext2D.prototype, 'font', { ...d, set(v) { d.set.call(this, String(v).replace(/\\b14px\\b/, '12px')); } }); })();`;
+    const cut = `(() => { const f = CanvasRenderingContext2D.prototype.fillText; CanvasRenderingContext2D.prototype.fillText = function (t, ...rest) { const s = String(t); return f.call(this, s.length > 6 ? s.slice(0, 5) + '…' : s, ...rest); }; })();`;
+    const [whole, smaller, shorter] = await Promise.all([run(null), run(small), run(cut)]);
+    expect(whole, 'the page as built').toEqual([]);
+    expect(smaller.length).toBeGreaterThan(0);
+    expect(smaller.every((p) => / drawn at 12 px, under 14 px$/.test(p))).toBe(true);
+    expect(shorter.some((p) => /^route "[^"]+" is cut to "[^"]{5}…"$/.test(p))).toBe(true);
   });
 });
 
@@ -465,5 +514,22 @@ test.describe('connection loss', () => {
     expect(await replay.status()).toMatch(/offline/i);
     expect(replay.snapshotFetches).toBe(2);
     expect(replay.blocked).toEqual([]);
+  });
+
+  test('break: a held poll runs at once and the header reads polling without waiting 5 s; a poll the harness does not hold cannot be run', async ({ page }) => {
+    const held = await openReplay(page, scenario('idle'), 'light', { holdPolls: true });
+    const start = Date.now();
+    await dropConnection(page);
+    expect(await held.status()).toMatch(/^polling every /);
+    expect(held.snapshotFetches).toBe(2);
+    expect(Date.now() - start, 'no wait for the poll interval').toBeLessThan(2_000);
+    const free = await page.context().newPage();
+    try {
+      await openReplay(free, scenario('idle'), 'light');
+      await failStream(free);
+      await expect(runHeldPolls(free)).rejects.toThrow('the page started no poll after its stream failed');
+    } finally {
+      await free.close();
+    }
   });
 });

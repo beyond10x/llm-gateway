@@ -16,6 +16,8 @@ import type { Measurement } from './measure.ts';
 import { activeSessions } from '../src/flow.ts';
 import { AXE_RULE_PREFIX, expectedFetches, flowProblems, fmtKeyFont, FLOW_VISIBLE_MIN, keyDataItems, METRIC_KEYS, SCREEN_ONLY_KEYS, screenOnlyProblems, statusProblems } from './metrics.ts';
 import { metricsDir, readMeasurements } from './metrics-dir.ts';
+import { fmt, worstMoments } from './report.ts';
+import { KNOWN_FAILURES, unexpected } from './known-failures.ts';
 import { FULL_PAGE_VIEWPORT, GATING, HEADING_FONT_PX, KEY_FONT_PX, SECONDARY_FONT_PX, THEMES, VIEWPORTS, type Theme } from './profiles.ts';
 
 // The scenarios whose last state shows an active session: their token-flow canvas is gated.
@@ -34,6 +36,15 @@ interface GateResult {
   passed: number;
   of: number;
   headline: string;
+}
+
+// Of the replays a gate fails, how many fail only on items a known failure holds, and the findings
+// that hold them, so a red row that the gate passes reads as what it is.
+function heldBy(check: 'key-data', ms: Measurement[], items: (m: Measurement) => string[]): string {
+  const failing = ms.filter((m) => items(m).length > 0);
+  const held = failing.filter((m) => unexpected(check, m.scenario, items(m), undefined, m.viewport.name).length === 0);
+  const findings = [...new Set(KNOWN_FAILURES.filter((k) => k.check === check && held.some((m) => !k.scenarios || k.scenarios.includes(m.scenario))).map((k) => k.finding))];
+  return held.length ? `${held.length} of the ${failing.length} failing replays fail only on known failures (${findings.join(', ')}, e2e/known-failures.ts), which the gate passes` : 'no failing replay is held by a known failure';
 }
 
 function hardGates(ms: Measurement[]): GateResult[] {
@@ -57,7 +68,7 @@ function hardGates(ms: Measurement[]): GateResult[] {
     g('gate 5 axe', mine, (m) => m.metrics['axe.serious_critical'] === 0, `${sum('axe.serious_critical')} serious/critical nodes over ${mine.length} replays (${[...new Set(mine.flatMap((m) => m.details.axe.map((a) => a.id)))].join(', ') || 'none'})`);
     g('gate 5 keyboard', mine, (m) => m.metrics['keyboard.unreachable'] === 0 && m.metrics['keyboard.focus_invisible'] === 0, `${max('keyboard.unreachable')} unreachable, ${max('keyboard.focus_invisible')} focus-invisible max`);
     g('gate 5 reduced motion', mine, (m) => m.metrics['reduced_motion.violations'] === 0, `${max('reduced_motion.violations')} violations max`);
-    g('key data', mine, (m) => keyDataItems(m).length === 0, `key ${max('key_font.deficit_px')} px short max (floor ${KEY_FONT_PX}), headings ${max('heading_font.deficit_px')} px short max (floor ${HEADING_FONT_PX}), secondary ${max('secondary_font.deficit_px')} px short max (floor ${SECONDARY_FONT_PX}); no key text in ${mine.filter((m) => m.key_font_min_px === null).length} replays`);
+    g('key data', mine, (m) => keyDataItems(m).length === 0, `key ${max('key_font.deficit_px')} px short max (floor ${KEY_FONT_PX}), headings ${max('heading_font.deficit_px')} px short max (floor ${HEADING_FONT_PX}), secondary ${max('secondary_font.deficit_px')} px short max (floor ${SECONDARY_FONT_PX}); no key text in ${mine.filter((m) => m.key_font_min_px === null).length} replays; ${heldBy('key-data', mine, keyDataItems)}`);
     g('copy', mine, (m) => m.metrics['copy.defects'] === 0, `${max('copy.defects')} distinct items max (${[...new Set(mine.flatMap((m) => m.details.copy.map((c) => c.key.split(' ')[0])))].join(', ') || 'none'})`);
     const played = mine.filter((m) => m.screen_only.length > 0);
     if (played.length > 0) g('gate 4 screen-only user', played, (m) => screenOnlyProblems(m.screen_only).length === 0, `${played.flatMap((m) => m.screen_only).filter((r) => r.reached).length} of ${played.flatMap((m) => m.screen_only).length} tasks reached; actions ${Math.max(...played.flatMap((m) => m.screen_only.map((r) => r.actions)))} max, glance ${Math.max(...played.flatMap((m) => m.screen_only.map((r) => r.looks)))} max`);
@@ -75,7 +86,6 @@ function packageVersion(name: string): string {
   return existsSync(file) ? (JSON.parse(readFileSync(file, 'utf8')) as { version: string }).version : 'unknown';
 }
 
-const fmt = (v: number | undefined) => (v === undefined || !Number.isFinite(v) ? '–' : Number.isInteger(v) ? String(v) : v.toFixed(3));
 
 test('write the round directory', async ({ page }) => {
   const id = process.env.UX_ROUND!;
@@ -225,32 +235,8 @@ test('write the round directory', async ({ page }) => {
     md.push(`| ${m.scenario} | ${m.viewport.name}${m.viewport.gating ? '' : ' (measured)'} | ${m.theme} | ${x['axe.serious_critical']} | ${x['overflow.x_px']} | ${x['overflow.elements']} | ${x['overflow.scrollers']} | ${m.header_min_visible_ratio} | ${x['keyboard.unreachable'] + x['overflow.scrollers_unreachable']} | ${x['keyboard.focus_invisible']} | ${fmtKeyFont(m.key_font_min_px)} | ${fmt(x['layout_shift.per_state_max'])} | ${x['reduced_motion.violations']} | ${x['truncation.without_full_value']} | ${fmt(m.flow.visible_ratio)} | ${m.flow.drawn ? 'yes' : 'no'} (${m.reduced_flow.drawn ? 'yes' : 'no'}) | ${status} |`);
   }
 
-  const worstMoments = (ms: Measurement[]) => {
-    const out: string[] = [];
-    for (const k of METRIC_KEYS) {
-      const worst = [...ms].sort((a, b) => b.metrics[k] - a.metrics[k])[0];
-      if (!worst || worst.metrics[k] <= 0) continue;
-      const d = worst.details;
-      const sample =
-        k === 'axe.serious_critical' ? d.axe.map((a) => `${a.id}: ${a.targets.join('; ')}`)
-        : k === 'overflow.elements' ? d.overflowing.map((o) => o.label)
-        : k === 'overflow.scrollers' ? d.scrollers.map((x) => x.label)
-        : k === 'overflow.scrollers_unreachable' ? d.scrollers_unreachable
-        : k === 'header.hidden_ratio' ? d.header.filter((h) => h.visible_ratio < 1).map((h) => `${h.name} visible ${h.visible_ratio}`)
-        : k === 'keyboard.unreachable' ? d.unreachable
-        : k === 'keyboard.focus_invisible' ? d.focus_invisible
-        : k === 'reduced_motion.violations' ? d.reduced_motion
-        : k === 'truncation.without_full_value' ? d.truncated.map((t) => t.label)
-        : k === 'key_font.deficit_px' ? [`${fmtKeyFont(worst.key_font_min_px)} px at ${worst.key_font_at}`]
-        : k === 'secondary_font.deficit_px' ? [`${fmtKeyFont(worst.secondary_font_min_px)} px at ${worst.secondary_font_at}`]
-        : k === 'layout_shift.per_state_max' ? [`per state: ${worst.shifts.join(', ')}`]
-        : [];
-      out.push(`- \`${k}\` = ${fmt(worst.metrics[k])} at ${worst.scenario} ${worst.viewport.name} ${worst.theme}: ${sample.slice(0, 3).join(' / ') || '–'}`);
-    }
-    return out.length ? out : ['- none above 0'];
-  };
   md.push('', '## Screen-only user (gate 4)', '');
-  md.push('Deterministic, no model (e2e/screen-only.ts): it plays each task on the last state in the light theme, using only controls fully in view and uncovered, found by role and name; a click, a key press or a scroll is one action. Glance 1: the truth in the upper half of the first screen; 2: elsewhere on the first screen; 3: it needed a scroll.', '');
+  md.push('Deterministic, no model (e2e/screen-only.ts): it plays each task on the last state in the light theme, using only controls fully in view and uncovered, found by role and name; a click, a key press or a scroll is one action. Glance 1: the truth in the upper half of the first screen; 2: elsewhere on the first screen; 3: it needed a scroll, or a click moved the page by more than half a viewport. Only text a person can read counts as seen: in the viewport, not cut by its box, opacity over 0.5, contrast 3:1 or more.', '');
   md.push('| scenario | viewport | task | reached | actions | glance | steps | seen |', '|---|---|---|---|---|---|---|---|');
   for (const m of all.filter((x) => x.viewport.gating && x.screen_only.length > 0)) {
     for (const r of m.screen_only) md.push(`| ${m.scenario} | ${m.viewport.name} | ${r.task} | ${r.reached ? 'yes' : 'no'} | ${r.actions} | ${r.looks} | ${r.steps.filter((x) => x !== 'look').join(', ') || 'none'} | ${r.seen.replace(/\|/g, '/').slice(0, 60)} |`);

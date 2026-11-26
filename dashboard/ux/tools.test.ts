@@ -24,6 +24,8 @@ import {
 } from '../e2e/metrics.ts';
 import type { FlowProbe } from '../e2e/probe.ts';
 import { METRICS_ROOT, metricsDir, readMeasurements } from '../e2e/metrics-dir.ts';
+import type { Measurement } from '../e2e/measure.ts';
+import { worstMoments } from '../e2e/report.ts';
 import { aggregate, baselineFrom, compare, describeProblem, measuredOnlyAggregate, mergeAggregates, toleranceOf, type Baseline } from './ratchet.ts';
 import { aboutRound, baselineAbout, baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf, treeStamp } from './round-guard.ts';
 
@@ -195,6 +197,42 @@ test('break: the layout-shift tolerance is relative and on the worse side only: 
   expect(compare(errors, { errors: { 'layout_shift.per_state_max': 0.001 } }).map(describeProblem)).toEqual([
     'errors layout_shift.per_state_max: better than the baseline: take it into ux/baseline.json in this change (baseline 0.003, measured 0.001)',
   ]);
+});
+
+test('break: every worst moment of the round report names where it is, the heading font included', () => {
+  const item = { key: 'k', label: 'an element' };
+  const m = {
+    scenario: 's',
+    viewport: { name: '1280x720', width: 1280, height: 720, gating: true },
+    theme: 'light',
+    metrics: Object.fromEntries(METRIC_KEYS.map((k) => [k, 1])),
+    key_font_min_px: 13,
+    key_font_at: 'td "a"',
+    heading_font_min_px: 13.3,
+    heading_font_at: 'h2 "Routes"',
+    secondary_font_min_px: 11,
+    secondary_font_at: 'span.small "b"',
+    shifts: [0.1],
+    details: {
+      axe: [{ id: 'color-contrast', impact: 'serious', help: 'h', nodes: 1, targets: ['td'] }],
+      overflowing: [item],
+      scrollers: [item],
+      scrollers_unreachable: ['div.scroll'],
+      truncated: [item],
+      header: [{ name: 'h1', visible_ratio: 0.5 }],
+      unreachable: ['button'],
+      focus_invisible: ['a'],
+      reduced_motion: ['animation'],
+      key_font_below: ['13px td'],
+      heading_font_below: ['13.3px h2'],
+      secondary_font_below: ['11px span.small'],
+      copy: [item],
+    },
+  } as unknown as Measurement;
+  const lines = worstMoments([m]);
+  expect(lines).toHaveLength(METRIC_KEYS.length);
+  expect(lines.filter((l) => l.endsWith(': –'))).toEqual([]);
+  expect(lines.find((l) => l.startsWith('- `heading_font.deficit_px`'))).toBe('- `heading_font.deficit_px` = 1 at s 1280x720 light: 13.3 px at h2 "Routes" / 13.3px h2');
 });
 
 test('trend rows carry 8 characters of the commit, also a row written with 12', () => {

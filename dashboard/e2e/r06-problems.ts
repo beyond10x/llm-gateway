@@ -3,7 +3,7 @@
 // not live, made by failing the replay's event stream.
 import type { Page } from '@playwright/test';
 import type { Snapshot } from '../src/extra.ts';
-import { settle } from './harness.ts';
+import { runHeldPolls, settle } from './harness.ts';
 
 export type Kind = 'connection' | 'route' | 'watchdog' | 'limit' | 'pod';
 
@@ -41,11 +41,13 @@ export async function failStream(page: Page): Promise<void> {
   await settle(page);
 }
 
-// The event stream fails and stays down through one poll interval (5 s): the header reads polling,
-// and the connection is no longer live.
+// The event stream fails and stays down through one poll interval: the header reads polling, and
+// the connection is no longer live. The page's poll is held by the harness (openReplay with
+// `holdPolls`) and run here once, as if its 5 s had passed, so no test waits them out.
 export async function dropConnection(page: Page): Promise<void> {
   await failStream(page);
-  await page.locator('header.top [role="status"]', { hasText: /^polling every / }).waitFor({ timeout: 8_000 });
+  await runHeldPolls(page);
+  await page.locator('header.top [role="status"]', { hasText: /^polling every / }).waitFor({ timeout: 2_000 });
   await settle(page);
 }
 

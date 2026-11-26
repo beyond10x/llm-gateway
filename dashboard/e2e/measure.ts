@@ -4,7 +4,7 @@
 // lighter pass of the measured-only viewports: the always-visible elements at every state.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Browser, Page } from '@playwright/test';
+import type { Browser, BrowserContext, Page } from '@playwright/test';
 import type { Scenario } from '../ux/scenarios/index.ts';
 import { runAxe } from './axe.ts';
 import { documentLabels } from './document.ts';
@@ -187,8 +187,9 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
   const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, timezoneId: 'UTC', locale: 'en-GB' });
   const page = await context.newPage();
   try {
-    // The reduced-motion replay runs in a context of its own beside this one; it mostly waits.
-    const reducedMotionRun = reducedMotion(browser, scenario, viewport, theme);
+    // The reduced-motion replay runs on a page of its own in this context, beside the replay; it
+    // mostly waits.
+    const reducedMotionRun = reducedMotion(context, scenario, theme);
     reducedMotionRun.catch(() => undefined);
     const screenOnlyRun = theme === 'light' ? screenOnly(browser, scenario, viewport, theme) : Promise.resolve([]);
     screenOnlyRun.catch(() => undefined);
@@ -384,12 +385,14 @@ export async function reducedMotionReplay(page: Page, scenario: Scenario, theme:
   return { violations: [...violations], flow: await page.evaluate(flowProbe) };
 }
 
-async function reducedMotion(browser: Browser, scenario: Scenario, viewport: Viewport, theme: Theme): Promise<ReducedMotion> {
-  const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, timezoneId: 'UTC', locale: 'en-GB', reducedMotion: 'reduce' });
+// A page of the replay's own context: the reduced motion is emulated per page (openReplay), and
+// each page holds its own routes, stream and layout-shift observer.
+async function reducedMotion(context: BrowserContext, scenario: Scenario, theme: Theme): Promise<ReducedMotion> {
+  const page = await context.newPage();
   try {
-    return await reducedMotionReplay(await context.newPage(), scenario, theme);
+    return await reducedMotionReplay(page, scenario, theme);
   } finally {
-    await context.close();
+    await page.close();
   }
 }
 

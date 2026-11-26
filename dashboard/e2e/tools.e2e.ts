@@ -168,6 +168,20 @@ test.describe('token-flow canvas metric', () => {
     await page.waitForTimeout(500);
     expect(await page.evaluate(canvasPixels)).not.toEqual(before);
   });
+
+  test('break: the reduced-motion replay shares the measured replay\'s context, and each page sees only its own motion preference', async ({ browser }) => {
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+    try {
+      const reduces = (p: Page) => p.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches);
+      const main = await context.newPage();
+      await openReplay(main, scenario('idle'), 'light');
+      const quiet = await context.newPage();
+      await openReplay(quiet, scenario('idle'), 'light', { reducedMotion: true });
+      expect([await reduces(main), await reduces(quiet)]).toEqual([false, true]);
+    } finally {
+      await context.close();
+    }
+  });
 });
 
 test.describe('token-flow canvas labels', () => {

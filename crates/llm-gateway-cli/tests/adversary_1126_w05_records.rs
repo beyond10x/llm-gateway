@@ -3,10 +3,10 @@
 //! a refused call whose body is not JSON, and the help text of the skipped series.
 //!
 //! Each test runs the shipped binary on port 0 against a fake messages endpoint on loopback and
-//! reads the store with `rusqlite` or with `agentspec-records`' own reader.
+//! reads the store with `rusqlite` or with `agenticspec-records`' own reader.
 
 use crate::support::{Fixture, OWNER_SECRET};
-use agentspec_records::{claude::Cmd, store::Store, wire::session_hash};
+use agenticspec_records::{claude::Cmd, store::Store, wire::session_hash};
 use std::{
     io::{BufRead, BufReader, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},

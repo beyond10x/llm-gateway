@@ -1,12 +1,12 @@
 //! story:interaction-record-store: with `[interaction_records]` the binary lifts every finished
-//! call into agentspec's session records and appends them to a SQLite file; without it the
+//! call into agenticspec's session records and appends them to a SQLite file; without it the
 //! relay copies nothing, no writer thread runs and no file is created.
 //!
 //! Every test runs the shipped binary on port 0 against a fake messages endpoint on loopback and
-//! reads the store back with `agentspec-records`' own reader (`Store::wire_steps`).
+//! reads the store back with `agenticspec-records`' own reader (`Store::wire_steps`).
 
 use crate::support::{Fixture, OWNER_SECRET};
-use agentspec_records::{
+use agenticspec_records::{
     claude::{Cmd, Step},
     store::{Store, command_text},
     wire::session_hash,
@@ -31,7 +31,7 @@ const STARTUP: Duration = Duration::from_secs(20);
 /// How long a test waits for the writer thread to store what it was handed.
 const STORED: Duration = Duration::from_secs(4);
 /// The name the writer thread carries, as `/proc` shows it (15 bytes).
-const WRITER_THREAD: &str = "agentspec-appen";
+const WRITER_THREAD: &str = "agenticspec-app";
 
 // --- The fake messages endpoint ------------------------------------------------------------------
 
@@ -401,11 +401,11 @@ fn stored_when(store: &Path, hash: &str, done: impl Fn(&[Step]) -> bool) -> Vec<
 fn names(steps: &[Step]) -> Vec<&'static str> {
     steps
         .iter()
-        .map(|step| agentspec_records::replay::command_name(&step.cmd))
+        .map(|step| agenticspec_records::replay::command_name(&step.cmd))
         .collect()
 }
 
-fn turns(steps: &[Step]) -> Vec<&agentspec_types::session::RecordModelTurn> {
+fn turns(steps: &[Step]) -> Vec<&agenticspec_types::session::RecordModelTurn> {
     steps
         .iter()
         .filter_map(|step| match &step.cmd {
@@ -415,7 +415,7 @@ fn turns(steps: &[Step]) -> Vec<&agentspec_types::session::RecordModelTurn> {
         .collect()
 }
 
-fn agents(steps: &[Step]) -> Vec<&agentspec_types::session::StartAgent> {
+fn agents(steps: &[Step]) -> Vec<&agenticspec_types::session::StartAgent> {
     steps
         .iter()
         .filter_map(|step| match &step.cmd {
@@ -548,7 +548,7 @@ fn refused_start(config: &Path) -> (bool, String) {
 }
 
 /// D94: a SQLite file that is no session store (another program's, here a table `notes` with
-/// one row) refuses the start by name and is left as it was; agentspec's own open would have
+/// one row) refuses the start by name and is left as it was; agenticspec's own open would have
 /// dropped every table named like one it derives and added its own.
 #[test]
 fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
@@ -578,10 +578,10 @@ fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
     assert_eq!(kept, 1);
 }
 
-/// A file agentspec's open began and did not finish (its `meta` table without a schema row,
-/// no other table) is a new store: agentspec's open completes it and loses nothing.
+/// A file agenticspec's open began and did not finish (its `meta` table without a schema row,
+/// no other table) is a new store: agenticspec's open completes it and loses nothing.
 #[test]
-fn a_file_with_only_agentspecs_meta_table_and_no_schema_row_is_a_new_store() {
+fn a_file_with_only_agenticspecs_meta_table_and_no_schema_row_is_a_new_store() {
     let fixture = Fixture::new("records-meta-only");
     let upstream = Upstream::start(Vec::new());
     let store = store_in(&fixture);
@@ -623,7 +623,7 @@ fn a_store_held_locked_at_start_is_refused_as_held_locked() {
         connection
             .execute(
                 "INSERT INTO meta VALUES ('schema', ?1)",
-                [agentspec_records::store::SCHEMA_VERSION.to_string()],
+                [agenticspec_records::store::SCHEMA_VERSION.to_string()],
             )
             .unwrap();
     }
@@ -731,7 +731,7 @@ fn a_store_of_a_later_schema_version_is_refused_naming_both_versions_and_an_empt
     let config = document(&fixture, &upstream, &records_table(&store, ""));
     let (refused, stderr) = refused_start(&config);
     assert!(refused, "{stderr}");
-    let ours = agentspec_records::store::SCHEMA_VERSION;
+    let ours = agenticspec_records::store::SCHEMA_VERSION;
     assert!(
         stderr.contains("refused config:value")
             && stderr.contains("interaction_records.path")
@@ -1429,7 +1429,7 @@ fn no_stored_command_holds_a_prompt_or_a_tool_input_and_a_planted_prompt_is_foun
 // --- Acceptance 8: the session hash -------------------------------------------------------------
 
 #[test]
-fn each_header_source_keys_the_store_by_agentspecs_session_hash() {
+fn each_header_source_keys_the_store_by_agenticspecs_session_hash() {
     let fixture = Fixture::new("records-session-hash");
     let upstream = Upstream::start(Vec::new());
     let store = store_in(&fixture);

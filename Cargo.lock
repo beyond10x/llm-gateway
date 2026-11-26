@@ -9,13 +9,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "agentspec-records"
-version = "0.2.0"
-source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+name = "agenticspec-records"
+version = "0.3.0"
+source = "git+https://github.com/beyond10x/agenticspec?tag=0.3.0#eec2f8caa8c9937b5c74709409a9daf80916bc26"
 dependencies = [
- "agentspec-server",
- "agentspec-system",
- "agentspec-types",
+ "agenticspec-server",
+ "agenticspec-system",
+ "agenticspec-types",
  "rayon",
  "regex",
  "rusqlite",
@@ -27,12 +27,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "agentspec-server"
+name = "agenticspec-server"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+source = "git+https://github.com/beyond10x/agenticspec?tag=0.3.0#eec2f8caa8c9937b5c74709409a9daf80916bc26"
 dependencies = [
- "agentspec-system",
- "agentspec-types",
+ "agenticspec-system",
+ "agenticspec-types",
  "clap",
  "session-ir",
  "session-view",
@@ -41,19 +41,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "agentspec-system"
+name = "agenticspec-system"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+source = "git+https://github.com/beyond10x/agenticspec?tag=0.3.0#eec2f8caa8c9937b5c74709409a9daf80916bc26"
 dependencies = [
- "agentspec-types",
+ "agenticspec-types",
  "session-ir",
  "session-view",
 ]
 
 [[package]]
-name = "agentspec-types"
+name = "agenticspec-types"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+source = "git+https://github.com/beyond10x/agenticspec?tag=0.3.0#eec2f8caa8c9937b5c74709409a9daf80916bc26"
 
 [[package]]
 name = "aho-corasick"
@@ -188,8 +188,8 @@ version = "0.26.0"
 name = "b10x-llm-gateway-cli"
 version = "0.26.0"
 dependencies = [
- "agentspec-records",
- "agentspec-types",
+ "agenticspec-records",
+ "agenticspec-types",
  "b10x-llm-gateway",
  "b10x-llm-gateway-cli",
  "b10x-llm-runpod",
@@ -1970,17 +1970,17 @@ dependencies = [
 [[package]]
 name = "session-ir"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+source = "git+https://github.com/beyond10x/agenticspec?tag=0.3.0#eec2f8caa8c9937b5c74709409a9daf80916bc26"
 dependencies = [
- "agentspec-types",
+ "agenticspec-types",
 ]
 
 [[package]]
 name = "session-view"
 version = "1.0.0"
-source = "git+https://github.com/beyond10x/agentspec?tag=0.2.0#61285700f5201f66e566a3ca5c23f9359cb78bd4"
+source = "git+https://github.com/beyond10x/agenticspec?tag=0.3.0#eec2f8caa8c9937b5c74709409a9daf80916bc26"
 dependencies = [
- "agentspec-types",
+ "agenticspec-types",
 ]
 
 [[package]]

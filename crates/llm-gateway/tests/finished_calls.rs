@@ -633,7 +633,7 @@ fn dashboard_sessions(snapshot: &str) -> Vec<String> {
 
 #[test]
 fn the_session_hash_and_harness_are_the_dashboard_s_for_each_header() {
-    // Each hash is agentspec's `wire::session_hash(source, value)`: the first 12 hex digits of
+    // Each hash is agenticspec's `wire::session_hash(source, value)`: the first 12 hex digits of
     // SHA-256 over `llm-gateway.session/1\0<source>\0<value>`.
     let cases: [(&str, &str, Harness); 5] = [
         (

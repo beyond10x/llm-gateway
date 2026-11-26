@@ -246,11 +246,13 @@ have their own deadline, and a relayed stream is waited for until it ends
 ## Build and check
 
 ```bash
-cargo test --workspace --locked
+task test
 task check
 ```
 
-`task check` adds formatting, Clippy, the documentation drift check, specification validation,
+`task test` runs every test with [cargo-nextest](https://nexte.st/) (on `PATH`), each in a process of its own:
+a test over 60 seconds is killed and fails, the run fails over 120 seconds, and it prints the ten
+slowest tests. `task check` adds formatting, Clippy, the documentation drift check, specification validation,
 the specification diff against the merge base with `origin/main` and the conformance suite. It needs [Task](https://taskfile.dev) and the `ess` command from
 [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) on `PATH`.
 [AGENTS.md](AGENTS.md) explains each step.

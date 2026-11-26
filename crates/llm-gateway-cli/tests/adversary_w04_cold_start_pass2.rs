@@ -3,14 +3,14 @@
 //! and a loopback address nothing answers on. No pod is started, no Runpod API is called and
 //! nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{Deployment, PodConnector, load, start_relaying};
 use llm_runpod::{EmulatedRunpod, ManualClock};
 use std::{
     io::{self, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    net::{SocketAddr, TcpStream},
     sync::Arc,
     thread,
     time::Duration,
@@ -36,21 +36,18 @@ fn deployment(fixture: &Fixture, lines: &str) -> Deployment {
     load(&fixture.config(&starts_on_request(&text))).unwrap()
 }
 
-struct Nowhere(SocketAddr);
+struct Nowhere(support::Refusing);
 
 impl PodConnector for Nowhere {
     fn connect(&self, _authority: &str) -> io::Result<Box<dyn RelayStream>> {
-        let stream = TcpStream::connect(self.0)?;
+        let stream = TcpStream::connect(self.0.address)?;
         stream.set_read_timeout(Some(WAIT))?;
         Ok(Box::new(stream))
     }
 }
 
 fn nowhere() -> Arc<dyn PodConnector> {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
-    drop(listener);
-    Arc::new(Nowhere(address))
+    Arc::new(Nowhere(support::Refusing::new()))
 }
 
 fn post(address: SocketAddr) -> String {

@@ -16,6 +16,7 @@ use std::{
 
 const GUIDE: &str = include_str!("../../../website/docs/guides/run-on-kubernetes.md");
 const LISTENING: &str = "b10x-llm-gateway: listening on ";
+const METRICS_LISTENING: &str = "b10x-llm-gateway: metrics listening on ";
 /// Long enough for the gateway's accept poll and for a signal to be acted on.
 const SETTLE: Duration = Duration::from_millis(300);
 
@@ -128,8 +129,7 @@ fn the_guides_document_starts_on_the_copy_and_prints_the_pasted_line() {
     let (input, output) = volumes(&dir);
     let first = run_init(&init_script(&input, &output));
     assert!(first.status.success(), "{first:?}");
-    let document = block_after("gateway.toml: |")
-        .replace("\"0.0.0.0:8080\"", "\"127.0.0.1:0\"")
+    let document = on_loopback(&block_after("gateway.toml: |"))
         .replace("\"/run/llm-gateway/", &format!("\"{}/", output.display()));
     let config = dir.join("gateway.toml");
     fs::write(&config, document).unwrap();
@@ -141,21 +141,44 @@ fn the_guides_document_starts_on_the_copy_and_prints_the_pasted_line() {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
-    let mut line = String::new();
-    BufReader::new(child.stderr.take().unwrap())
-        .read_line(&mut line)
-        .unwrap();
+    let mut stderr = BufReader::new(child.stderr.take().unwrap());
+    let mut lines = [String::new(), String::new()];
+    for line in &mut lines {
+        stderr.read_line(line).unwrap();
+    }
     drop(child.kill());
     drop(child.wait());
-    let address = line
-        .trim_end()
+    let [metrics, listening] = lines.map(|line| line.trim_end().to_owned());
+    let scrape = metrics
+        .strip_prefix(METRICS_LISTENING)
+        .unwrap_or_else(|| panic!("the page's document wrote no metrics line: {metrics:?}"));
+    let address = listening
         .strip_prefix(LISTENING)
-        .unwrap_or_else(|| panic!("the page's document did not start: {line:?}"));
-    let printed = line.trim_end().replace(address, "0.0.0.0:8080");
-    assert!(
-        GUIDE.lines().any(|candidate| candidate == printed),
-        "the guide must paste {printed:?} on a line of its own"
+        .unwrap_or_else(|| panic!("the page's document did not start: {listening:?}"));
+    // The page's addresses back in place of the ports the system picked.
+    let printed = format!(
+        "{}\n{}",
+        metrics.replace(scrape, "0.0.0.0:9090"),
+        listening.replace(address, "0.0.0.0:8080")
     );
+    assert!(
+        GUIDE.contains(&format!("\n{printed}\n")),
+        "the guide must paste {printed:?} on lines of their own"
+    );
+}
+
+/// The page's document with both of its listeners on loopback port 0: a test binds no port on
+/// every interface and none another test can hold.
+fn on_loopback(document: &str) -> String {
+    for address in ["\"0.0.0.0:8080\"", "\"0.0.0.0:9090\""] {
+        assert!(
+            document.contains(address),
+            "the page's document names {address}"
+        );
+    }
+    document
+        .replace("\"0.0.0.0:8080\"", "\"127.0.0.1:0\"")
+        .replace("\"0.0.0.0:9090\"", "\"127.0.0.1:0\"")
 }
 
 #[test]
@@ -183,12 +206,10 @@ fn serve(dir: &Path) -> Gateway {
     let config = dir.join("gateway.toml");
     fs::write(
         &config,
-        block_after("gateway.toml: |")
-            .replace("\"0.0.0.0:8080\"", "\"127.0.0.1:0\"")
-            .replace(
-                "\"/run/llm-gateway/owner-secret\"",
-                &format!("\"{}\"", secret.display()),
-            ),
+        on_loopback(&block_after("gateway.toml: |")).replace(
+            "\"/run/llm-gateway/owner-secret\"",
+            &format!("\"{}\"", secret.display()),
+        ),
     )
     .unwrap();
     fs::set_permissions(&config, fs::Permissions::from_mode(0o600)).unwrap();
@@ -199,10 +220,17 @@ fn serve(dir: &Path) -> Gateway {
         .stderr(Stdio::piped())
         .spawn()
         .unwrap();
+    // The metrics line comes first; the serving address is on the `listening on` line.
+    let mut stderr = BufReader::new(child.stderr.take().unwrap());
     let mut line = String::new();
-    BufReader::new(child.stderr.take().unwrap())
-        .read_line(&mut line)
-        .unwrap();
+    while !line.starts_with(LISTENING) {
+        line.clear();
+        assert_ne!(
+            stderr.read_line(&mut line).unwrap(),
+            0,
+            "did not start: {line:?}"
+        );
+    }
     let address = line
         .trim_end()
         .strip_prefix(LISTENING)

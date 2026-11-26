@@ -2,7 +2,7 @@
 //! attacks. Red cases assert what the matrix, the specification or the README promise; green
 //! cases pin a rule no other test in this crate would catch a mutation of.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::load;
 use rustix::process::{Pid, Signal, kill_process};

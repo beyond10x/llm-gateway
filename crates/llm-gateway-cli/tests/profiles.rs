@@ -5,7 +5,7 @@
 //! The blocks are taken out of the document itself, so the document cannot drift from what the
 //! loader accepts.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{Model, load};
 use llm_runpod::{NetworkVolume, Thinking};

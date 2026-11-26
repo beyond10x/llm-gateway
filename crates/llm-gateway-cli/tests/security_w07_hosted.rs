@@ -6,7 +6,7 @@
 //! Every endpoint is a loopback fixture; no credential is real and nothing leaves the loopback
 //! interface. `203.0.113.10` (TEST-NET-3) appears only in documents that are parsed, never served.
 
-mod support;
+use crate::support;
 
 use llm_gateway::{CredentialHeader, TargetBearer};
 use llm_gateway_cli::{EndpointCredential, HostedEndpoint, parse};

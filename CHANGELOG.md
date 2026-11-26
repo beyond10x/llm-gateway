@@ -7,6 +7,16 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+### Changed
+
+- `metrics_listen` may equal `listen` when both name port 0: the system picks a port for each. Any other equal pair is still `config:value`.
+- The gate's test step is `task test` (`cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test`), locally and in CI: it runs the tests with cargo-nextest, each in a process of its own, kills a test over 60 s and counts it failed, fails when the run takes over 120 s, and prints the ten slowest tests. It needs `cargo-nextest` on `PATH`; CI installs 0.9.143. Each crate builds one integration-test binary from `tests/main.rs`: 16 test executables where there were 128, and no doc-test run (the workspace has no doc test). `cargo test -p <crate> --test <file>` becomes `cargo nextest run --locked -p <crate> <file>::`; `cargo test` now runs a crate's tests in one process, where 4 tests that measure their process or a time bound fail.
+- No test of the binary chooses a port and releases it before use: a document names port 0 and the test reads the bound port from the binary's lines, and a test that needs a port where nothing answers holds that port.
+
+### Added
+
+- The binary writes `b10x-llm-gateway: metrics listening on <address>` once, before `listening on`, when the document sets `metrics_listen`, with the address that listener bound, so a `metrics_listen` on port 0 reports the port the system picked.
+
 ## 0.25.0 (2026-11-26)
 
 ### Changed

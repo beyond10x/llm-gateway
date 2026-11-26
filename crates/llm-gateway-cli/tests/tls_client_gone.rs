@@ -4,7 +4,7 @@
 //! an answer nobody reads until its read timeout. Everything is loopback; nothing leaves the
 //! machine.
 
-mod support;
+use crate::support;
 
 use llm_gateway::{
     Gateway, GatewayConfig, Label, OwnerToken, Relay, RelayModel, RelayStream, RelayTarget,

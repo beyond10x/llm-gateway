@@ -6,6 +6,7 @@ rust-version.workspace = true
 license.workspace = true
 publish = false
 description = "The ESS conformance runner: checks the generated suite and schemas against the specification and runs the scenarios against the crates."
+autotests = false
 
 [lints]
 workspace = true
@@ -27,3 +28,7 @@ serde_json.workspace = true
 sha2.workspace = true
 ess-conformance = { git = "https://github.com/beyond10x/ess.git", tag = "0.99.4" }
 ess-primitives = { git = "https://github.com/beyond10x/ess.git", tag = "0.99.4" }
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

@@ -8,7 +8,7 @@
 //! as its only trust root, and the shipped `b10x-llm-gateway` itself, which trusts only the roots
 //! compiled into it. Nothing leaves the loopback interface and no credential is real.
 
-mod support;
+use crate::support;
 
 use std::{
     ffi::OsString,

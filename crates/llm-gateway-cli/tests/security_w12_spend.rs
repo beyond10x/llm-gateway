@@ -8,7 +8,7 @@
 //! composition with the `connectors` fixture and a pod connector that opens no connection, so
 //! nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{PodConnector, load, start_connected};

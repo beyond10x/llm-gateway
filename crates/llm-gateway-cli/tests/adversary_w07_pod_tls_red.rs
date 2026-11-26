@@ -3,7 +3,7 @@
 //! makes. The guards of the same pass are in `adversary_w07_pod_tls.rs`. Every pod here is a
 //! loopback fixture; nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{PodConnector, ProxyConnector};
 use std::{

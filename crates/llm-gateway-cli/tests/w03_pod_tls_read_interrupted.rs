@@ -4,7 +4,7 @@
 //! interruption, and an `Interrupted` never reaches the relay. One case in this file, because
 //! the stops reach every thread of the test binary.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{PodConnector, ProxyConnector};
 use std::{

@@ -3,6 +3,8 @@
 //! was started with. No real Claude Code, no network beyond loopback, no file outside
 //! `CARGO_TARGET_TMPDIR`.
 
+use crate::support;
+
 use std::{
     fs,
     io::{Read as _, Write as _},
@@ -226,9 +228,9 @@ fn the_subagent_instruction_is_joined_to_the_users_appended_prompt() {
 #[test]
 fn no_agents_are_passed_by_default_and_a_silent_gateway_is_named() {
     let dir = directory("silent");
-    let unused = TcpListener::bind("127.0.0.1:0").unwrap();
-    let port = unused.local_addr().unwrap().port();
-    drop(unused);
+    // A port nothing answers on, held by the test so no other test can bind it.
+    let unused = support::Refusing::new();
+    let port = unused.address.port();
     let config = config(&dir, port, "");
     let output = launcher(&dir, &config, &[], "0");
     assert_eq!(output.status.code(), Some(1));

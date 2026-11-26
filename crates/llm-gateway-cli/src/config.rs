@@ -1284,8 +1284,9 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         .token_review
         .map(validate_token_review)
         .transpose()?;
+    // Two addresses on port 0 name no socket yet: the system picks a port for each.
     ensure(
-        document.metrics_listen != Some(document.listen),
+        document.metrics_listen != Some(document.listen) || document.listen.port() == 0,
         "metrics_listen",
         "must differ from listen",
     )?;

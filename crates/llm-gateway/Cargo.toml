@@ -7,9 +7,14 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 description = "The single-owner gateway library: owner authentication, probes, the public model listing, route inspection, the wire relay and its translation port, counters, drain and stop."
+autotests = false
 
 [lib]
 name = "llm_gateway"
 
 [lints]
 workspace = true
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

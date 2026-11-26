@@ -19,6 +19,7 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
 | `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
+| `checks/xtask` | `b10x-llm-gateway-xtask`, the gate's test step: cargo-nextest under `.config/nextest.toml`, the 120-second bound and the ten slowest tests |
 | `dashboard/` | The dashboard page: Vue 3 and TypeScript, built with Vite and pnpm (`pnpm --dir dashboard build`) into one file, `crates/llm-gateway/src/dashboard.html`. Its record types `src/generated/snapshot.ts` are generated |
 | `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served at `https://beyond10x.github.io/llm-gateway/`, deployed by the `Documentation site` workflow |
 | `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters, the per-model `llmgw_requests_total{model,outcome}` counter and `llmgw_request_duration_seconds{model}` histogram, the metrics-only listener and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
@@ -60,14 +61,28 @@ at all.
 | A service-account token is admitted only on the model calls, only when the review says authenticated, names the configured audience and a listed principal; every failed or missing review refuses, and no token or review body reaches a log | `crates/llm-gateway/tests/service_account_ingress.rs`, `crates/llm-gateway-cli/tests/token_review.rs` (a fake TokenReview API on loopback TLS; no test reaches a cluster) |
 | No test reads a real keychain or calls a live Anthropic or Runpod API | the in-memory `SecretSource` of `crates/llm-gateway-cli/src/keychain.rs`; loopback fixtures in `passthrough_encoded.rs`, `rest.rs` and `vllm_stats.rs` |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
+| The test step is one command locally and in CI, kills a test at 60 s, fails over 120 s and prints the ten slowest tests; every crate builds one integration-test binary from `tests/main.rs` | `checks/xtask/tests/budget.rs`, the unit tests of `checks/xtask/src/main.rs` |
 | No test makes a paid call or provisions an external resource. Tests run against `EmulatedRunpod` or a fixture, never a live API. | `crates/llm-runpod/tests/transport.rs` drives `ConnectorsRunpod` against the `connectors-fixture` binary and a loopback pod; `crates/llm-runpod/tests/rest.rs` drives `RestRunpod` against a loopback HTTP fixture; every other Runpod test drives `EmulatedRunpod` |
 
 ## Gate
 
 `task check` runs, in order:
 
-1. `task rust`: `cargo test --workspace --locked`, `cargo fmt --all --check`, then
-   `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`.
+1. `task rust`: `task test`, `cargo fmt --all --check`, then
+   `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. `task test` is
+   the test step, `cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test`: it builds the
+   tests, runs them with `cargo nextest run --workspace --locked` under `.config/nextest.toml`
+   (each test in a process of its own; a test over 60 s is killed and fails; the run ends at
+   120 s), prints the ten slowest tests from the run's `JUnit` report, and fails when the run
+   took over 120 s by that report. It needs `cargo-nextest` on `PATH` (CI installs 0.9.143,
+   checked by its SHA-256). Each crate builds one integration-test binary: `autotests = false`
+   and one `[[test]]` at `tests/main.rs`, whose modules are the other files of `tests/`; a new
+   test file is a `mod` line there (`checks/xtask/tests/budget.rs` holds all of this). The
+   workspace has no doc test, and nextest runs none. Run one crate's tests with
+   `cargo nextest run --locked -p <crate>`, not `cargo test`: `cargo test` runs all of a crate's
+   tests as threads of one process, where a test that measures its process or a time bound fails
+   (2026-11-26, on the build node: 4 of 1348 failed and the run took 265 s; the same tests pass
+   under nextest in 17 s).
 2. `task docs`: `cargo run --locked -p llm-gateway-docs -- generate --check`.
 3. `ess specify validate --path spec`.
 4. `task spec-diff`: `cargo run --locked -p b10x-llm-gateway-conformance -- diff`. It writes

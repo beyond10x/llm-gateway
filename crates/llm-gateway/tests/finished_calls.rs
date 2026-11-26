@@ -112,6 +112,21 @@ fn answer(connection: &mut TcpStream, reply: Reply) {
     }
 }
 
+/// A request to `authority` from no call of the rig, as a gateway of another test process whose
+/// target held that port before would send it, read to its end.
+fn foreign_request(authority: &str) {
+    let mut connection = TcpStream::connect(authority).unwrap();
+    connection.set_read_timeout(Some(WAIT)).unwrap();
+    connection
+        .write_all(
+            format!("POST /v1/messages HTTP/1.1\r\nhost: {authority}\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{{}}")
+                .as_bytes(),
+        )
+        .unwrap();
+    let mut answer = Vec::new();
+    drop(connection.read_to_end(&mut answer));
+}
+
 fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
     haystack
         .windows(needle.len())
@@ -280,13 +295,26 @@ impl Translation for Run {
 /// The finished calls a port was handed, each with its copy.
 type Held = Vec<(FinishedCall, Option<CallBytes>)>;
 
-/// Every value the port was handed, in order.
+/// Every value the port was handed, in the order the calls ended.
 #[derive(Default)]
-struct Port(Mutex<Held>);
+struct Port {
+    held: Mutex<Held>,
+    /// A value of this ending is handed on only after this pause, as when the thread of its call
+    /// is not scheduled for as long under load.
+    hold: Option<(CallEnding, Duration)>,
+}
 
 impl FinishedCalls for Port {
     fn finished(&self, call: &FinishedCall, bytes: Option<&CallBytes>) {
-        self.0.lock().unwrap().push((call.clone(), bytes.cloned()));
+        if let Some((ending, pause)) = self.hold
+            && call.ending == ending
+        {
+            thread::sleep(pause);
+        }
+        self.held
+            .lock()
+            .unwrap()
+            .push((call.clone(), bytes.cloned()));
     }
 }
 
@@ -295,7 +323,7 @@ impl Port {
     fn wait(&self, count: usize) -> Held {
         let deadline = Instant::now() + WAIT;
         loop {
-            let held = self.0.lock().unwrap().clone();
+            let held = self.held.lock().unwrap().clone();
             if held.len() >= count || Instant::now() > deadline {
                 return held;
             }
@@ -338,6 +366,8 @@ struct Options {
     /// `IngressAuth::None`: a client-credential model passes its client's request through.
     open: bool,
     max_concurrent_requests: Option<u64>,
+    /// [`Port::hold`].
+    hold: Option<(CallEnding, Duration)>,
 }
 
 /// A gateway over one fake upstream, its port and its usage records. Its models: `code` on every
@@ -370,7 +400,10 @@ impl Rig {
                 .unwrap()
                 .with_client_credentials(),
         ];
-        let port = Arc::new(Port::default());
+        let port = Arc::new(Port {
+            hold: options.hold,
+            ..Port::default()
+        });
         let records = Arc::new(Records::default());
         let metrics = Arc::new(Metrics::default());
         let mut relay = Relay::new(models, Arc::new(Source(upstream.authority.clone())))
@@ -743,7 +776,11 @@ fn each_ending_is_named_and_the_cost_is_present_exactly_when_the_record_s_is() {
             ]),
             Reply::Close,
         ],
-        Options::default(),
+        Options {
+            // The call whose client left ends on its own thread while the next call runs.
+            hold: Some((CallEnding::ClientDisconnected, Duration::from_millis(300))),
+            ..Options::default()
+        },
     );
     rig.call(CHAT, r#"{"model":"code"}"#, "");
     let request = rig.request(
@@ -755,6 +792,9 @@ fn each_ending_is_named_and_the_cost_is_present_exactly_when_the_record_s_is() {
     let left = rig.raw(&request, Some(200));
     assert_eq!(status(&left), 200);
     rig.call(CHAT, r#"{"model":"code"}"#, "");
+    // Another process on the host reaches the upstream's port, as a test whose own listener
+    // held that port before, or one that probes a port it chose, may.
+    foreign_request(&rig.upstream.authority);
     rig.call(MESSAGES, r#"{"model":"code","stream":true}"#, "");
     rig.call(CHAT, r#"{"model":"code"}"#, "");
     rig.call(CHAT, r#"{"model":"nobody"}"#, "");

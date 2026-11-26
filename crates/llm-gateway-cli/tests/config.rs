@@ -7,7 +7,7 @@
 //! `llm_runpod::VllmSettings` (K16-K22) and the volume keys onto `llm_runpod::NetworkVolume`
 //! (K24-K25).
 
-mod support;
+use crate::support;
 
 use llm_gateway::{
     AuthKind, BillingKind, CredentialHeader, IngressAuth, ReasoningEffort, ToolCalling,

@@ -6,7 +6,7 @@
 //! of a tool request to a model without tool calling before a pod starts (`tools_*`). No pod is
 //! started, no Runpod API is called and nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{Deployment, PodConnector, Refusal, StartupRefusal, load, start_relaying};

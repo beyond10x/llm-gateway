@@ -3,7 +3,7 @@
 //! manual pool clock and a loopback pod. No pod is started, no Runpod API is called and nothing
 //! leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{Deployment, PodConnector, load, start_relaying};

@@ -5,7 +5,7 @@
 //! Every refusal case has a positive control in the same file that serves from the same
 //! document with the one property changed back, so a refusal can be shown to fail.
 
-mod support;
+use crate::support;
 
 use rustix::process::{Pid, Signal, kill_process};
 use sha2::{Digest, Sha256};

@@ -11,7 +11,7 @@
 //! vLLM key handed to the transport by alias, the reachability check, the pool and the relay.
 //! Nothing leaves the loopback interface and no `connectors` but the fixture runs.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{PodConnector, load, start_connected};

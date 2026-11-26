@@ -6,7 +6,7 @@
 //! `https` fixture pod of `support::tls_pod` with a certificate a test root issued for
 //! `127.0.0.1`. No test reaches any other address, and no key is real.
 
-mod support;
+use crate::support;
 
 use std::{
     fs,

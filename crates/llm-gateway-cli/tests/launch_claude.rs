@@ -3,7 +3,7 @@
 //! was started with. No real Claude Code, no network beyond loopback, no file outside
 //! `CARGO_TARGET_TMPDIR`.
 
-mod support;
+use crate::support;
 
 use std::{
     fs,

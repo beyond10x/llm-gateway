@@ -3,7 +3,7 @@
 //! `spec/domains/telemetry.yaml` and the standard-error lines of `spec/domains/deployment.yaml`.
 //! Nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway::{Disposition, Outcome, RefusalCode, UsageRecord, UsageRecords, Wire};
 use llm_gateway_cli::{TracingRecords, log_filter};

@@ -4,7 +4,7 @@
 //! shipped binary admitting a reviewed token, recording its principal and logging no token.
 //! Nothing leaves the loopback interface and no cluster is reached.
 
-mod support;
+use crate::support;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use llm_gateway::{CallerReview, CallerToken, Principal, Review};

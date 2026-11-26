@@ -2,7 +2,7 @@
 //! the shipped binary runs (`start_connected` with the identity `wrap`). Nothing leaves the
 //! loopback interface and no `connectors` but the fixture runs.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{ProxyConnector, load, start_connected};
 use std::{

@@ -4,7 +4,7 @@
 //! `logging.rs` says a directive it cannot read is dropped. Nothing leaves the loopback
 //! interface.
 
-mod support;
+use crate::support;
 
 use rustix::process::{Pid, Signal, kill_process};
 use std::{

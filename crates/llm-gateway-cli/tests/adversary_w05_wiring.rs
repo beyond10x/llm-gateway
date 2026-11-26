@@ -4,7 +4,7 @@
 //! refusal.) Nothing leaves the loopback interface and no `connectors` but the fixture runs.
 //! The unreachable event is in `adversary_w05_wiring_event.rs`.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{ProxyConnector, load, start_connected};
 use std::sync::Arc;

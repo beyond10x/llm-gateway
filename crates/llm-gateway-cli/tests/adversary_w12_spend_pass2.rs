@@ -1,7 +1,7 @@
 //! Adversarial pass 2 over story:spend-caps: whose ceiling the shipped composition binds its
 //! pool with. Nothing leaves the loopback interface and no `connectors` but the fixture runs.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{PodConnector, load, start_connected};

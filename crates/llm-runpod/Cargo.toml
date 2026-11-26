@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 description = "Runpod vLLM adapter behind the hosting lifecycle contract: EmulatedRunpod for tests, and ConnectorsRunpod, which reaches Runpod only through the connectors CLI."
+autotests = false
 
 [lints]
 workspace = true
@@ -27,3 +28,7 @@ llm-provision = { package = "b10x-llm-provision", path = "../llm-provision" }
 llm-providers = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }
 serde_json.workspace = true
 rustix = { version = "1.1", features = ["process"] }
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

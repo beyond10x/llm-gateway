@@ -7,7 +7,7 @@
 //! host certificate store is read, nothing leaves the loopback interface, and no `connectors`
 //! but the fixture runs.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{PodConnector, ProxyConnector, load, start, start_connected};
 use rcgen::{

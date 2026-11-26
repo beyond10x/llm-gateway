@@ -12,7 +12,7 @@ source: Taskfile.yml, .github/workflows/gate.yml, .github/workflows/pages.yml, c
 task check
 ```
 
-It needs [Task](https://taskfile.dev) and the `ess` command of
+It needs [Task](https://taskfile.dev), [cargo-nextest](https://nexte.st/) and the `ess` command of
 [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) 0.99.4 on
 `PATH`. CI's `Gate` workflow runs the same five stages on Rust 1.98.0; run it on that toolchain
 (`RUSTUP_TOOLCHAIN=1.98.0 task check`), because a newer Clippy can add lints CI does not have.
@@ -20,10 +20,16 @@ It needs [Task](https://taskfile.dev) and the `ess` command of
 ## 1. Rust
 
 ```bash
-cargo test --workspace --locked
+cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test
 cargo fmt --all --check
 cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 ```
+
+The first command is `task test`. It builds the tests, runs them with
+`cargo nextest run --workspace --locked`, each test in a process of its own, kills a test that
+runs over 60 seconds and counts it failed, ends the run at 120 seconds, and prints the ten slowest
+tests and the time the run took; it fails when that time is over 120 seconds. Each crate builds
+one test binary from `tests/main.rs`.
 
 `task rust` runs this stage alone. The workspace forbids `unsafe`, and Clippy runs `all` plus
 `pedantic` at deny. No test calls Runpod or starts a pod: the Runpod tests drive `EmulatedRunpod`,

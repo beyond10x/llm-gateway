@@ -31,9 +31,24 @@ jobs:
           grep -F "  $asset" SHA256SUMS | sha256sum --check --strict
           tar -xzf "$asset"
           echo "$RUNNER_TEMP/ess-$ESS_VERSION-x86_64-unknown-linux-gnu" >> "$GITHUB_PATH"
-      - name: Rust crates
+      - name: Install cargo-nextest
+        env:
+          NEXTEST_VERSION: "0.9.143"
+          NEXTEST_SHA256: 66786b9abe23920d022a182d1416b1bbc8130dd4872a9553d76985a1708dcd1e
         run: |
-          cargo test --workspace --locked
+          set -euo pipefail
+          asset="cargo-nextest-$NEXTEST_VERSION-x86_64-unknown-linux-gnu.tar.gz"
+          curl --fail --silent --show-error --location --output "$RUNNER_TEMP/$asset" \
+            "https://github.com/nextest-rs/nextest/releases/download/cargo-nextest-$NEXTEST_VERSION/$asset"
+          echo "$NEXTEST_SHA256  $RUNNER_TEMP/$asset" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/nextest-bin"
+          tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP/nextest-bin" cargo-nextest
+          echo "$RUNNER_TEMP/nextest-bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/nextest-bin/cargo-nextest" --version | grep -F "cargo-nextest $NEXTEST_VERSION "
+      - name: Rust tests
+        run: cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test
+      - name: Rust format and lints
+        run: |
           cargo fmt --all --check
           cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Documentation pages

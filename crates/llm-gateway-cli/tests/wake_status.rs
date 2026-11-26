@@ -9,7 +9,7 @@
 //! records, against `FakeOllama`, a loopback server at port 0 answering as Ollama does. No test
 //! reaches a real Ollama, and none pulls or loads a model.
 
-mod support;
+use crate::support;
 
 use llm_gateway::{
     Gateway, GatewayConfig, Label, ModelKind, ModelPhase, ModelStatus, OwnerToken, Relay,

@@ -7,7 +7,7 @@
 //! `/api/v1`, beside a plain `[hosted.*]` endpoint. Nothing leaves the loopback interface and no
 //! credential is real.
 
-mod support;
+use crate::support;
 
 use std::{
     io::{BufRead, BufReader, Read, Write},

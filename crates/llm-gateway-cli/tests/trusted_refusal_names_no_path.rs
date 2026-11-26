@@ -9,7 +9,7 @@
 //! the container token, at start and at a fetch. Only loopback sockets and files under
 //! `CARGO_TARGET_TMPDIR` are used.
 
-mod support;
+use crate::support;
 
 use std::{
     io::{BufRead, BufReader, Read, Write},

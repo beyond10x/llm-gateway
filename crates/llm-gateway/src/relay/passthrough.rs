@@ -524,7 +524,10 @@ fn pass_answer(
                 }
                 break;
             }
-            Err(_) => break,
+            Err(_) => {
+                call.cut_short = true;
+                break;
+            }
         }
     }
     call.response_bytes = written;

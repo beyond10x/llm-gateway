@@ -1273,7 +1273,10 @@ what remains. A cache class the answer did not report counts no tokens.
 estimate:
 
 - the call was relayed and its answer ended as written: no refusal, no `upstream-failed`, no
-  terminal error after the head, no client that went away;
+  terminal error after the head, no client that went away, no answer its upstream cut short (a
+  read of the answer's body that failed after its head was written, relay step 9); an answer
+  cut short keeps its outcome, `ok` on the byte relay and on a client-credential route, as
+  [call outcomes](#call-outcomes) names no other for it, and only its cost is left out;
 - its model declares a price;
 - the answer reported its input and its output tokens;
 - every class with a count above 0 has a rate: cache reads reported against a price without

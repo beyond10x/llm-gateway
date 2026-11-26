@@ -1971,6 +1971,10 @@ pub(crate) struct Call {
     pub(crate) usage: Usage,
     /// The client stopped reading before the answer's last byte.
     pub(crate) client_disconnected: bool,
+    /// The upstream ended the answer before its end: a read of its body failed after the head
+    /// was written (docs/gateway.md, relay step 9: "an answer cut short"). The call has no cost;
+    /// its outcome is unchanged.
+    pub(crate) cut_short: bool,
     /// The `retry-after` a 429 or 5xx answer of the target carried.
     pub(crate) retry_after: Option<String>,
     /// The authority of the acquired target.
@@ -2990,7 +2994,10 @@ fn relay_pieces(
                 }
                 return written;
             }
-            Err(_) => return written,
+            Err(_) => {
+                call.cut_short = true;
+                return written;
+            }
         }
     }
 }

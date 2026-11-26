@@ -971,6 +971,17 @@ types:
   #   A call the writer fails to store is counted in `llmgw_interaction_records_failed_total`
   #   (read from the writer's own failure count) with one warning line naming the series, never
   #   the path.
+  # Amended 2026-11-26 (story:interaction-record-store, correction 2; D98):
+  #   D94  the schema row is compared as sessionspec compares it, as the string of
+  #        `SCHEMA_VERSION`; a refusal names the row's value, escaped, at most 32 characters. A
+  #        file whose only object is sessionspec's `meta` table without a schema row is a new
+  #        store. A store busy or locked past 2 s is refused as `interaction_records.path is held
+  #        locked by another process`, never as no session store.
+  #   D96  the stop's line counts the calls still queued after the wait plus the calls that
+  #        failed since the last warning, read once more after the wait.
+  #   D98  at most one failure warning per second, naming how many calls failed since the last
+  #        warning and the series; the series counts each call. When the writer's side is
+  #        dropped, a last read warns the failures no warning or stop line named.
   # BOUNDARY: the records are sessionspec's domain `sessionspec.session`, written by its crate
   # `sessionspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
   # links by git tag. ESS has no cross-system relation, so this is a comment, not a reference.

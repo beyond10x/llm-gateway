@@ -43,10 +43,14 @@ Before it writes, the gateway reads the file's schema version. The start is refu
 
 - the directory of `path` does not exist;
 - the file is no session store (another program's SQLite file, or not SQLite at all);
-- the file holds another schema version than the one this gateway writes. The message names
-  both versions.
+- the file holds another schema version than the one this gateway writes. The schema row must
+  read exactly as sessionspec writes it (`4`, not `04`). The message names both;
+- another process holds the file locked for longer than 2 s. The message says so: the file may
+  be a valid store.
 
-The file is then left as it was. A missing or empty file is created as a new store.
+The file is then left as it was. A missing or empty file is created as a new store, and so is a
+file that holds only sessionspec's `meta` table without a schema row, which a first start
+stopped during its setup leaves.
 
 Without the table the gateway copies no byte of any call, runs no writer thread and creates no
 file.
@@ -78,8 +82,9 @@ These calls make no record:
   `body-not-json`: its lift yields no step. It is counted in
   `llmgw_interaction_records_skipped_total` too.
 - A call the writer failed to store, for example because the file was removed or the disk is
-  full. It is counted in `llmgw_interaction_records_failed_total`, and the gateway logs one
-  warning per call naming that series, never the path.
+  full. It is counted in `llmgw_interaction_records_failed_total`, each call once. The gateway
+  logs at most one warning per second, naming how many calls failed since the last warning and
+  that series, never the path.
 - A call still queued 2 s after a stop began (below).
 
 The counters are on `GET /metrics` ([Scrape the counters](scrape-the-counters.md)).
@@ -109,7 +114,8 @@ active at once.
 
 At SIGINT or SIGTERM the gateway first answers every connection it accepted, as without the
 table. Then it waits at most 2 s for the writer to store what is queued. Calls still queued after
-that are not stored, and the gateway names them on one line before its stop line:
+that are not stored. The gateway counts them, and the calls that failed since its last warning,
+on one line before its stop line:
 
 ```text
 b10x-llm-gateway: interaction records: 3 calls not stored at stop

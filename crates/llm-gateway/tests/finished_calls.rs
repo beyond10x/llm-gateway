@@ -209,8 +209,9 @@ impl RelayTarget for Target {
 enum Translated {
     /// A head and these events, each one piece.
     Stream(&'static [&'static str]),
-    /// A head and one event, then its wire's terminal error under `upstream-failed`.
-    FailAfterHead,
+    /// A head and one event, then its wire's terminal error event, told to the relay under this
+    /// code, as the binary's translator ends an answer whose upstream failed after output.
+    FailAfterHead(RefusalCode),
 }
 
 /// The pieces a translated stream writes.
@@ -218,6 +219,16 @@ const TRANSLATED: [&str; 2] = [
     "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
     "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n",
 ];
+
+/// A translated stream that ends in the messages wire's error event, its upstream's own error,
+/// with no failure told to the relay.
+const TRANSLATED_ERROR: [&str; 2] = [
+    "event: message_start\ndata: {\"type\":\"message_start\"}\n\n",
+    WIRE_ERROR,
+];
+
+/// The messages wire's terminal error event.
+const WIRE_ERROR: &str = "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n";
 
 struct Fixture(Translated);
 
@@ -256,9 +267,10 @@ impl Translation for Run {
                     answer.body(piece.as_bytes());
                 }
             }
-            Translated::FailAfterHead => {
+            Translated::FailAfterHead(code) => {
                 answer.body(TRANSLATED[0].as_bytes());
-                answer.failed(RefusalCode::UpstreamFailed);
+                answer.body(WIRE_ERROR.as_bytes());
+                answer.failed(code);
             }
         }
         Ok(())
@@ -690,6 +702,28 @@ fn the_session_hash_and_harness_are_the_dashboard_s_for_each_header() {
     assert_eq!(dashboard_sessions(&rig.snapshot()), expected);
 }
 
+/// Decision D93: a call refused at admission, before its headers were read into the dashboard,
+/// still hands the session its header names; the dashboard shows it without one.
+#[test]
+fn a_call_refused_at_admission_hands_the_session_hash_of_its_header() {
+    let rig = Rig::new(Vec::new(), Options::default());
+    let request = format!(
+        "POST {CHAT} HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER}\r\nx-claude-code-session-id: s-claude\r\ncontent-length: 1\r\ntransfer-encoding: chunked\r\n\r\n"
+    );
+    let answer = rig.raw(request.as_bytes(), None);
+    assert_eq!(status(&answer), 400, "{}", String::from_utf8_lossy(&answer));
+    let held = rig.finished(1);
+    let call = &held[0].0;
+    assert!(
+        matches!(call.ending, CallEnding::Refused(_)),
+        "{:?}",
+        call.ending
+    );
+    assert_eq!(call.session_hash, "e5333c6d3823");
+    assert_eq!(call.harness, Harness::ClaudeCode);
+    assert_eq!(dashboard_sessions(&rig.snapshot()), [""]);
+}
+
 // --- How a call ended ---------------------------------------------------------------------------
 
 #[test]
@@ -750,20 +784,42 @@ fn each_ending_is_named_and_the_cost_is_present_exactly_when_the_record_s_is() {
     assert_eq!(held[4].0.attempts, 1);
 }
 
-#[test]
-fn a_translated_answer_that_ends_in_its_wire_s_error_is_a_wire_error() {
+/// The ending of one translated messages call whose translator writes `translated`.
+fn translated_ending(translated: Translated) -> FinishedCall {
     let rig = Rig::new(
         vec![json("{}")],
         Options {
-            translated: Some(Translated::FailAfterHead),
+            translated: Some(translated),
             ..Options::default()
         },
     );
     let answer = rig.call(MESSAGES, r#"{"model":"chat-only","messages":[]}"#, "");
     assert_eq!(status(&answer), 200);
-    let held = rig.finished(1);
-    assert_eq!(held[0].0.ending, CallEnding::WireError);
-    assert_eq!(held[0].0.declared_cost_usd, None);
+    let text = String::from_utf8_lossy(&answer).into_owned();
+    assert!(text.contains("overloaded_error"), "{text}");
+    let mut held = rig.finished(1);
+    held.remove(0).0
+}
+
+#[test]
+fn a_translated_answer_that_ends_in_its_wire_s_error_is_a_wire_error() {
+    for translated in [
+        Translated::Stream(&TRANSLATED_ERROR),
+        Translated::FailAfterHead(RefusalCode::TranslationTooLarge),
+    ] {
+        let call = translated_ending(translated);
+        assert_eq!(call.ending, CallEnding::WireError);
+        assert_eq!(call.declared_cost_usd, None);
+    }
+}
+
+/// Decision D91: the translator tells `upstream-failed` when its upstream failed after the answer's
+/// head, so the call was cut by its upstream, though the client read the wire's error event.
+#[test]
+fn a_translated_answer_whose_upstream_failed_after_its_head_is_an_upstream_cut() {
+    let call = translated_ending(Translated::FailAfterHead(RefusalCode::UpstreamFailed));
+    assert_eq!(call.ending, CallEnding::UpstreamCut);
+    assert_eq!(call.declared_cost_usd, None);
 }
 
 // --- The byte copy -----------------------------------------------------------------------------

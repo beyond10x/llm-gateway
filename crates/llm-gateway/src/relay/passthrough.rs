@@ -484,7 +484,7 @@ fn pass_answer(
         call.client_disconnected = true;
         return error.then(|| describe_body(head, &[], limits));
     }
-    call.copy_head(value(head, "content-type").as_deref(), encoded.is_some());
+    call.copy_head(value(head, "content-type").as_deref(), encoded.as_deref());
     let mut scanner = UsageScanner::default();
     let mut kept = Vec::new();
     // A copy of an encoded answer, `None` once it outgrew its bound.
@@ -533,6 +533,10 @@ fn pass_answer(
                 .as_ref()?
                 .decode(coding, bytes, MAX_DECODED_COPY)
         });
+        // The copy of the call's bytes holds the answer decoded, as its client reads it; one the
+        // client did not receive whole is not decoded whole (decision D92).
+        let received = !call.client_disconnected;
+        call.copy_decoded(decoded.as_ref().filter(|_| received));
         match decoded {
             Some(decoded) => {
                 scanner.feed(&decoded.bytes);

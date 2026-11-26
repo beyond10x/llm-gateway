@@ -1468,7 +1468,7 @@ the same value.
 | Field | Value |
 | --- | --- |
 | `call_id` | the usage record's `call` |
-| `session_hash` | the session the dashboard keys the call by: 12 hexadecimal digits of SHA-256 over `llm-gateway.session/1`, the header's source and its value, never the value itself |
+| `session_hash` | the session its headers name, as the dashboard keys a call: 12 hexadecimal digits of SHA-256 over `llm-gateway.session/1`, the header's source and its value, never the value itself. A call refused before its headers were read into the dashboard (a method, framing or readiness refusal) still carries it; the dashboard shows that call with no session |
 | `harness` | `ClaudeCode`, `Codex` or `Other`, as the dashboard labels the sender |
 | `path` | the wire's path the client called |
 | `wire` | the inbound wire; a translated call's upstream speaks another |
@@ -1477,19 +1477,26 @@ the same value.
 | `attempts` | each attempt of a passthrough call, 1 on the byte relay and the translated path once a target was handed out, 0 when none was |
 | `queue_wait_ms`, `ttft_ms` | the dashboard's queue wait and time to first byte |
 | `declared_cost_usd` | the record's `cost_usd`, present exactly when it is |
-| `ending` | `Refused(code)`, else `WireError` (the answer ended in its wire's terminal error), else `UpstreamCut`, else `ClientDisconnected`, else `Complete` |
+| `ending` | `Refused(code)`; else `UpstreamCut` when a translator told `upstream-failed` after the answer's head; else `WireError` when the answer carried its wire's terminal error, whether or not its upstream cut it afterwards; else `UpstreamCut` when the upstream cut the answer; else `ClientDisconnected`; else `Complete` |
 | `started_ms`, `finished_ms` | milliseconds since the Unix epoch; their difference is the record's `duration_ms` |
 
 The bytes of a call are copied only when the relay declares a bound with
 `Relay::with_call_bytes(bound)`; without it the port receives `None` and no byte is copied. With
 it, a call whose request body and answer body together are at most `bound` bytes arrives with
 `CallBytes::Copied`: the request body as the gateway read it, and the answer as the client
-received it, de-chunked (`AnswerBytes::Body`), or for a `text/event-stream` answer without a
-content coding the `data:` payload of each whole event in order (`AnswerBytes::Events`). A
-translated call's answer is the translated one the client received; a refusal has its request and
-no answer. A call over the bound arrives with `CallBytes::OverBound` and both sizes, its copy
-dropped the moment it passed the bound. The client's answer is the same byte for byte with the
-copy on or off.
+received it, de-chunked (`AnswerBytes::Body`), or for a `text/event-stream` answer the `data:`
+payload of each whole event in order (`AnswerBytes::Events`). A translated call's answer is the
+translated one the client received; a refusal has its request and no answer. A call over the
+bound arrives with `CallBytes::OverBound` and both sizes, its copy dropped the moment it passed
+the bound. The client's answer is the same byte for byte with the copy on or off.
+
+An answer with a content coding (a passthrough answer the client asked compressed) is copied as
+the client reads it, decoded by the relay's `BodyDecoder` (`Relay::with_decoder`; the binary's
+decodes gzip, deflate, br and zstd), and the bound counts its decoded bytes. One the decoder does
+not decode whole (no decoder, a coding it does not know, a decode error, a client that left
+before its end, more than 16 MiB as received or 64 MiB decoded) arrives with
+`CallBytes::Undecodable`: no bytes, the request's size, the answer's size as received and its
+`content-encoding`.
 
 The value maps onto sessionspec's `GatewayFacts` and `WireCall` by name, with three conversions
 the embedding makes: `attempts` to an `i64`, `declared_cost_usd` (a decimal string) to

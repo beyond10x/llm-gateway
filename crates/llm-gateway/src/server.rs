@@ -812,10 +812,14 @@ fn finished_call(
     }
 }
 
-/// How a call ended, in the precedence `llm-gateway.telemetry.CallEnding` names.
+/// How a call ended, in the precedence `llm-gateway.telemetry.CallEnding` names. A translator
+/// that tells `upstream-failed` after the answer's head had its upstream fail under it, so the
+/// call was cut by its upstream though its client read the wire's error event (decision D91).
 fn ending(refusal: Option<RefusalCode>, call: &Call) -> CallEnding {
     if let Some(code) = refusal {
         CallEnding::Refused(code)
+    } else if call.failed_after_head == Some(RefusalCode::UpstreamFailed) {
+        CallEnding::UpstreamCut
     } else if call.failed_after_head.is_some()
         || matches!(call.unfinished, Some(relay::Unfinished::TerminalError))
     {

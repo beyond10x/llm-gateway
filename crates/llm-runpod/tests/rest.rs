@@ -18,13 +18,15 @@ use std::{
 
 use llm_runpod::{
     AccountSpend, CloudType, CreateAnswer, PodPlacement, PodRequest, PodStatus, PodStream, PodTls,
-    RestBinding, RestRunpod, RunpodAccount, RunpodTransport, TerminateAnswer,
+    Probe, ProbeTarget, RestBinding, RestRunpod, RunpodAccount, RunpodTransport, TerminateAnswer,
 };
 use serde_json::{Value, json};
 
 use crate::openapi::{check_answer, check_request};
 
 pub(super) const KEY: &str = "rpa_TESTKEY0123456789abcdef";
+/// How long a log stream may stay quiet before a test's read of it ends.
+pub(super) const QUIET: Duration = Duration::from_millis(200);
 
 /// One scripted answer.
 enum Play {
@@ -92,15 +94,19 @@ impl Server {
         format!("http://{}/v2", self.address)
     }
 
+    /// This fixture's endpoints, a pod log read on every ask, and short bounds.
+    fn binding(&self) -> RestBinding {
+        RestBinding {
+            base_url: self.base(),
+            graphql_url: format!("http://{}/graphql", self.address),
+            timeout: Duration::from_millis(1_500),
+            log_quiet: QUIET,
+            log_every: Duration::ZERO,
+        }
+    }
+
     fn transport(&self) -> RestRunpod {
-        RestRunpod::new(
-            RestBinding {
-                base_url: self.base(),
-                graphql_url: format!("http://{}/graphql", self.address),
-                timeout: Duration::from_millis(1_500),
-            },
-            KEY.as_bytes().to_vec(),
-        )
+        RestRunpod::new(self.binding(), KEY.as_bytes().to_vec())
     }
 
     /// Every request received, each v2 one checked against the recorded document.
@@ -741,6 +747,73 @@ fn a_log_without_a_start_line_or_a_failed_read_reports_no_later_start() {
     assert_eq!(server.seen().len(), 6);
 }
 
+const LOGS: &str = "GET /v2/pods/abc123/logs?source=system&tail=100 HTTP/1.1";
+
+/// A pod's log is read at most once per `log_every`: an ask in between sends nothing and
+/// answers the start the last read found. The read is made under the pool's lock, so this keeps
+/// a starting pod from holding it on every ask.
+#[test]
+fn a_pods_log_is_read_at_most_once_per_log_every() {
+    let first = "2026-11-26T15:29:38Z";
+    let server = Server::start(vec![Play::Bytes(log_stream(&[container_start(first)]))]);
+    let mut transport = RestRunpod::new(
+        RestBinding {
+            log_every: Duration::from_secs(60),
+            ..server.binding()
+        },
+        KEY.as_bytes().to_vec(),
+    );
+    let at = llm_runpod::started_at_ms(first);
+    assert_eq!(transport.container_started_at("abc123"), at);
+    assert_eq!(transport.container_started_at("abc123"), at);
+    assert_eq!(server.lines(), [LOGS]);
+}
+
+/// A pod whose last probe found vLLM serving has its log left unread: a restart of a serving
+/// container shows first as a probe that fails, and the log is read again from then on.
+#[test]
+fn a_serving_pods_log_is_not_read_until_a_probe_finds_it_not_serving() {
+    let (first, second) = ("2026-11-26T15:29:38Z", "2026-11-26T15:30:11Z");
+    let server = Server::start(vec![
+        Play::Bytes(log_stream(&[container_start(first)])),
+        answer(200, r#"{"object":"list","data":[{"id":"qwen"}]}"#),
+        answer(503, "{}"),
+        Play::Bytes(log_stream(&[
+            container_start(first),
+            container_start(second),
+        ])),
+    ]);
+    let mut transport = server.transport();
+    let endpoint = format!("http://{}/v1/", server.address);
+    let target = ProbeTarget {
+        pod_id: "abc123",
+        model: None,
+        endpoint: Some(&endpoint),
+    };
+    let at = |stamp: &str| llm_runpod::started_at_ms(stamp);
+    assert_eq!(transport.container_started_at("abc123"), at(first));
+    assert!(matches!(
+        transport.probe_ready(&target),
+        Probe::Ready { .. }
+    ));
+    assert_eq!(
+        transport.container_started_at("abc123"),
+        at(first),
+        "serving: the log is not read"
+    );
+    assert_eq!(transport.probe_ready(&target), Probe::NotReady);
+    assert_eq!(transport.container_started_at("abc123"), at(second));
+    assert_eq!(
+        server.lines(),
+        [
+            LOGS,
+            "GET /v1/models HTTP/1.1",
+            "GET /v1/models HTTP/1.1",
+            LOGS
+        ]
+    );
+}
+
 /// The placement is the pod's `cloud` in the listing. v2 declares no `interruptible` and no
 /// way to ask for one, so it is never reported: every v2 pod is on demand.
 #[test]
@@ -1180,6 +1253,7 @@ fn no_call_leaves_without_tls_or_to_a_non_loopback_http_host() {
                 base_url: base.to_owned(),
                 graphql_url: "https://api.runpod.io/graphql".to_owned(),
                 timeout: Duration::from_millis(200),
+                ..RestBinding::runpod()
             },
             KEY.as_bytes().to_vec(),
         );

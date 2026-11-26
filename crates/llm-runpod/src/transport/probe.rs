@@ -253,19 +253,23 @@ fn complete(answer: &[u8]) -> bool {
         .is_some_and(|length| answer.len().saturating_sub(end) >= length)
 }
 
-/// The status code and the body of an HTTP/1.1 answer.
-pub(super) fn parse(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
-    let end = head_end(answer)?;
-    let head = std::str::from_utf8(answer.get(..end)?).ok()?;
-    let status: u16 = head
-        .lines()
+/// The status code of an HTTP/1.1 head.
+fn status_of(head: &str) -> Option<u16> {
+    head.lines()
         .next()?
         .strip_prefix("HTTP/1.")?
         .get(2..)?
         .split(' ')
         .next()?
         .parse()
-        .ok()?;
+        .ok()
+}
+
+/// The status code and the body of an HTTP/1.1 answer.
+pub(super) fn parse(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
+    let end = head_end(answer)?;
+    let head = std::str::from_utf8(answer.get(..end)?).ok()?;
+    let status = status_of(head)?;
     let rest = answer.get(end..)?;
     let body = if header(head, "transfer-encoding")
         .is_some_and(|coding| coding.eq_ignore_ascii_case("chunked"))
@@ -277,6 +281,48 @@ pub(super) fn parse(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
         rest.to_vec()
     };
     Some((status, body))
+}
+
+/// The status code and what arrived of the body of an HTTP/1.1 answer that was not read to its
+/// end, as a stream that stays open is not: a chunked body up to its last whole chunk, a sized
+/// one up to its length.
+pub(super) fn parse_open(answer: &[u8]) -> Option<(u16, Vec<u8>)> {
+    let end = head_end(answer)?;
+    let head = std::str::from_utf8(answer.get(..end)?).ok()?;
+    let status = status_of(head)?;
+    let rest = answer.get(end..)?;
+    let body = if header(head, "transfer-encoding")
+        .is_some_and(|coding| coding.eq_ignore_ascii_case("chunked"))
+    {
+        whole_chunks(rest)
+    } else if let Some(length) = header(head, "content-length") {
+        let length = length.parse::<usize>().ok()?;
+        rest.get(..length.min(rest.len()))?.to_vec()
+    } else {
+        rest.to_vec()
+    };
+    Some((status, body))
+}
+
+/// Every whole chunk of a chunked body, up to its last chunk or the first one that did not
+/// arrive whole.
+fn whole_chunks(mut rest: &[u8]) -> Vec<u8> {
+    let mut body = Vec::new();
+    while let Some(line_end) = rest.windows(2).position(|window| window == b"\r\n") {
+        let size = std::str::from_utf8(rest.get(..line_end).unwrap_or_default())
+            .ok()
+            .and_then(|text| usize::from_str_radix(text.split(';').next()?.trim(), 16).ok());
+        let start = line_end + 2;
+        let Some(chunk) = size
+            .filter(|&size| size > 0)
+            .and_then(|size| rest.get(start..start.checked_add(size)?))
+        else {
+            break;
+        };
+        body.extend_from_slice(chunk);
+        rest = rest.get(start + chunk.len() + 2..).unwrap_or_default();
+    }
+    body
 }
 
 fn dechunk(mut rest: &[u8]) -> Option<Vec<u8>> {

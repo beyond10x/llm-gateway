@@ -199,9 +199,10 @@ pub trait RunpodTransport {
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer;
     /// Probes the pod's vLLM server. Allocates nothing.
     fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe;
-    /// When the pod's container last started, in milliseconds since the Unix epoch (Runpod's
-    /// `lastStartedAt`), or `None` while that is unknown. A value later than the previous one
-    /// means the container restarted.
+    /// When the pod's container last started, in milliseconds since the Unix epoch, or `None`
+    /// while that is unknown. A value later than the previous one means the container restarted.
+    /// Over connectors it is the pod's `lastStartedAt`; over REST API v2 the last container start
+    /// the pod's system log names, since v2's `startedAt` does not move on a restart.
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64>;
     /// Where the pod was placed, read right after its create; `None` when the read failed or
     /// did not find exactly this pod. Allocates nothing. The provider terminates a pod at once

@@ -75,6 +75,8 @@ impl Fake {
             RestBinding {
                 base_url: format!("http://{}/v2", self.address),
                 graphql_url: format!("http://{}/graphql", self.address),
+                log_quiet: crate::rest::QUIET,
+                log_every: Duration::ZERO,
                 ..RestBinding::runpod()
             },
             KEY.as_bytes().to_vec(),

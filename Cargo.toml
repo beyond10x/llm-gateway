@@ -8,6 +8,7 @@ members = [
     "crates/llm-gateway-cli",
     "crates/llm-gateway-docs",
     "checks/conformance",
+    "checks/xtask",
 ]
 
 [workspace.package]

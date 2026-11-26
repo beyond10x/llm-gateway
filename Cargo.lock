@@ -197,6 +197,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "b10x-llm-gateway-xtask"
+version = "0.25.0"
+dependencies = [
+ "serde_json",
+ "serde_yaml",
+ "toml",
+]
+
+[[package]]
 name = "b10x-llm-modal"
 version = "0.25.0"
 

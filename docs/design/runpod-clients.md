@@ -241,8 +241,13 @@ start: the transport invokes connectors, and the key file story reads only the v
 DECIDED 2026-11-04 (story:keychain-references): A stays the path for a gateway in a cluster, where
 the process must never hold the Runpod key. A local gateway, run by one operator on their own
 machine, may instead hold the key in its own process through an OS keychain reference, and call
-Runpod's REST API (`https://rest.runpod.io/v1`) directly with `RestRunpod`
-(`crates/llm-runpod/src/transport/rest.rs`). The crate still links no TLS client: the embedding
+Runpod's REST API directly with `RestRunpod`
+(`crates/llm-runpod/src/transport/rest.rs`). That client called `https://rest.runpod.io/v1`
+until story:runpod-rest-host moved it to v2, `https://api.runpod.io/v2` or the provider's
+`management_url`: a cursor-paged `GET /pods`, `POST /pods` with `gpu: {id, count}`,
+`GET /billing/balance` (GraphQL `myself { clientBalance }` only on its 403 or 404). The v2
+document is not downloaded in this repository: its tests read a subset written by hand,
+`crates/llm-runpod/tests/fixture/runpod-openapi-v2.json`, marked NOT DOWNLOADED. The crate still links no TLS client: the embedding
 hands in the TLS connection, as it does for the readiness probe. The key is redacted in `Debug`,
 written only into the `Authorization` header of a request buffer that is overwritten when dropped,
 and never appears in an answer, error or log line. Both transports enforce Secure Cloud on-demand

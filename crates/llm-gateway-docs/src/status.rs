@@ -370,6 +370,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Binary",
+        "Runpod REST API v2 and streamed pod calls",
+        "A provider with an api_key manages its pods through Runpod's REST API v2 at management_url (default https://api.runpod.io/v2), and reaches a pod at proxy_url (default https://{pod_id}-{port}.proxy.runpod.net). Every call to a pod but a token count is sent streamed and answered whole to a client that did not stream, so an answer slower than the proxy's silence bound completes. A start that cannot reach the management host names the host and the cause, and its models answer target-unavailable with that reason; a failing management call keeps a running pod's route serving. Tested against a loopback fake of the management API and the proxy; no Runpod host is called.",
+        "crates/llm-gateway-cli/tests/runpod_host.rs::runpod_host_a_call_without_stream_reaches_the_proxy_streamed_and_is_answered_whole",
+        Some("/docs/reference/deployment-document"),
+    ),
+    shipped(
+        "Binary",
         "Model calls without a credential, on request",
         "ingress_auth = \"none\" serves the three wire paths without a credential, for a gateway behind something that authenticates already, and the binary warns before it listens. The counters and the route inventory still take the owner secret, and refuse everything when there is none. bearer, the default, is unchanged.",
         "crates/llm-gateway-cli/tests/hosted.rs::ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed",

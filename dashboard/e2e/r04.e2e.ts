@@ -136,3 +136,51 @@ test.describe('UXF-006', () => {
     });
   }
 });
+
+// The Watchdog heartbeat definition: its value text and whether it is marked as an alarm.
+async function heartbeat(page: Page): Promise<{ value: string; alarm: boolean } | null> {
+  return page.evaluate(() => {
+    const dt = [...document.querySelectorAll('.stats dt')].find((d) => (d.textContent ?? '').trim() === 'Watchdog heartbeat');
+    const dd = dt?.nextElementSibling;
+    if (!dt || !dd) return null;
+    return { value: (dd.textContent ?? '').replace(/\s+/g, ' ').trim(), alarm: dt.parentElement?.classList.contains('alarm') ?? false };
+  });
+}
+
+// The last state of errors with a heartbeat one minute old.
+const freshHeartbeat: Scenario = {
+  name: 'fresh-heartbeat',
+  description: 'errors with a watchdog heartbeat one minute old',
+  anchor: false,
+  states(base: number): Snapshot[] {
+    const states = scenario('errors').states(base);
+    const last: Snapshot = JSON.parse(JSON.stringify(states[states.length - 1]));
+    last.provider!.watchdog_heartbeat_age_ms = 60_000;
+    return [last];
+  },
+};
+
+test.describe('UXF-009', () => {
+  test('a stale watchdog heartbeat says "stale" in words beside its age; a fresh one does not', async ({ browser }) => {
+    const page = await pageAt(browser, VIEWPORTS[0]!);
+    try {
+      for (const [name, age] of [['errors', '11m 0s ago'], ['busy', '7m 0s ago']] as const) {
+        const p = await page.context().newPage();
+        const replay = await openReplay(p, scenario(name), 'light');
+        while (replay.index + 1 < replay.states.length) await replay.advance();
+        const h = await heartbeat(p);
+        expect(h, name).not.toBeNull();
+        expect(h!.alarm, `${name}: marked as an alarm`).toBe(true);
+        expect(h!.value, name).toContain(age);
+        expect(h!.value, `${name}: says it in words`).toMatch(/\bstale\b/i);
+        await p.close();
+      }
+      const fresh = await page.context().newPage();
+      await openReplay(fresh, freshHeartbeat, 'light');
+      const h = await heartbeat(fresh);
+      expect(h).toEqual({ value: '1m 0s ago', alarm: false });
+    } finally {
+      await page.context().close();
+    }
+  });
+});

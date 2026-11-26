@@ -32,7 +32,9 @@
 //! * `container_started_at` and `pod_placement`: the pod's `lastStartedAt`, and its
 //!   `machine.secureCloud` and `interruptible`, from the listing (v2 documents no read of one
 //!   pod).
-//! * `account_spend`: `GET /billing/pods?bucketSize=day`.
+//! * `account_spend`: `GET /billing/pods?bucketSize=day`, an object whose `records` are one
+//!   pod's one day each: `totalAmount` (USD) and the bucket's `startTime`. It covers Runpod's
+//!   default window, the 30 days up to now, so the total is those 30 days' spend.
 //! * [`RunpodAccount::account`]: the pods, the balance from `GET /billing/balance`
 //!   (`balanceAmount`) and the spend rate from Runpod's GraphQL `myself { currentSpendPerHr }`.
 //!   On a 403 or 404 balance (a key without `billing:read`, an organization without a billing
@@ -53,13 +55,13 @@ use std::{
 use serde_json::{Map, Value, json};
 
 use super::{
-    connectors::{create_body, placement_of, pod_of, spend_of, started_at_ms},
+    connectors::{create_body, placement_of, pod_of, started_at_ms},
     probe::{self, BearerKey, PodTls, Request},
 };
 use crate::{
     AccountSnapshot, AccountSpend, CreateAnswer, Pod, PodListing, PodPlacement, PodRequest,
     PodSummary, Probe, ProbeTarget, RunpodAccount, RunpodTransport, TAG_OWNER, TAG_REQUEST,
-    TerminateAnswer,
+    TerminateAnswer, spend::reported_micro_usd,
 };
 
 /// The most of one answer, head included, that is read before it is treated as unreadable.
@@ -571,6 +573,27 @@ fn rest_started_at_ms(stamp: &str) -> Option<u64> {
     }
 }
 
+/// The account's spend from v2's `GET /billing/pods?bucketSize=day` `records`
+/// (`PodBillingRecord`: one pod, one day bucket), read only when every record has a finite,
+/// non-negative `totalAmount` in USD and a `startTime` in RFC 3339 UTC. The total is every
+/// record's; the daily spend is the records whose bucket starts at or after `day_start_ms`. Each
+/// amount is rounded to the nearest micro-USD.
+fn spend_of_records(records: &[Value], day_start_ms: u64) -> Option<AccountSpend> {
+    let mut spend = AccountSpend {
+        daily_micro_usd: 0,
+        total_micro_usd: 0,
+    };
+    for record in records {
+        let amount = reported_micro_usd(record.get("totalAmount")?.as_f64()?)?;
+        let bucket = started_at_ms(record.get("startTime")?.as_str()?)?;
+        spend.total_micro_usd = spend.total_micro_usd.checked_add(amount)?;
+        if bucket >= day_start_ms {
+            spend.daily_micro_usd = spend.daily_micro_usd.checked_add(amount)?;
+        }
+    }
+    Some(spend)
+}
+
 /// Whether a refused create's answer says Runpod has no machine of the GPU type free.
 fn no_capacity(body: &[u8]) -> bool {
     String::from_utf8_lossy(body)
@@ -659,11 +682,13 @@ impl RunpodTransport for RestRunpod {
         self.listed(pod_id).as_ref().map(placement_of)
     }
 
+    /// `GET /billing/pods?bucketSize=day`, over Runpod's default window: the 30 days up to now,
+    /// today's bucket included. The total is that window's, not the account's whole history.
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
-        let entries = self
+        let answer = self
             .rest("GET", "/billing/pods?bucketSize=day", None)?
             .json()?;
-        spend_of(entries.as_array()?, day_start_ms)
+        spend_of_records(answer.get("records")?.as_array()?, day_start_ms)
     }
 }
 

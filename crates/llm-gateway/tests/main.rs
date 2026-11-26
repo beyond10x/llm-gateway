@@ -21,6 +21,7 @@ mod adversary_w10_static_headers_pass_2;
 mod adversary_w12_wake;
 mod client_credentials;
 mod dependency_boundary;
+mod finished_calls;
 mod gateway;
 mod index_page;
 mod lifecycle_routes;

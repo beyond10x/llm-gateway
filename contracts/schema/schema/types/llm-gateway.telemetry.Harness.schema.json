@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.Harness",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:576e6073ff23f7c3cec13752d5723ad390b333ba0db1ea485352d7225a5fd2e9",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.Harness": {
+      "title": "Harness",
+      "x-ess-name": "llm-gateway.telemetry.Harness",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "ClaudeCode",
+        "Codex",
+        "Other"
+      ]
+    }
+  }
+}

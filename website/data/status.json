@@ -427,6 +427,12 @@
     },
     {
       "area": "Observability",
+      "detail": "Every call with an id hands an embedding one finished-call value: its id, session hash, harness, path, wire, route, upstream, attempts, times, cost and how it ended, the facts sessionspec's GatewayFacts names. With a declared bound it also hands a copy of the request and the answer the client received, or both sizes when they pass the bound; without one no byte is copied. The library carries the port; the binary composes none yet.",
+      "label": "Finished calls",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
       "detail": "GET /dashboard shows calls with every attempt, sessions, routes, tokens per second, cache hit rates, subscription limits, the Runpod account and a vLLM server's prefix cache.",
       "href": "/docs/guides/local-gateway-for-claude-code",
       "label": "Dashboard",

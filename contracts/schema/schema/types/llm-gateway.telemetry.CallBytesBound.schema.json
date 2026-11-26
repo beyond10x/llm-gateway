@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.CallBytesBound",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:5c58629817a7e6429f8f8be0a13d8ab104d4ca7f0fdfe417da6607b4978e11d2",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.CallBytesBound": {
+      "title": "CallBytesBound",
+      "description": "The most request and answer body bytes one call's copy holds; declared by the embedding.",
+      "x-ess-name": "llm-gateway.telemetry.CallBytesBound",
+      "x-ess-kind": "newtype",
+      "type": "integer"
+    }
+  }
+}

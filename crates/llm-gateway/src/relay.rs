@@ -11,11 +11,12 @@
 
 use crate::{
     auth, body,
-    dashboard::{Observed, Progress},
+    dashboard::Progress,
     error::{
         BasePathError, CredentialHeaderError, RefusalCode, RelayError, StaticHeaderError,
         TargetRefusal, TokenError,
     },
+    finished::{CallBytes, FinishedCall, FinishedCalls, NoFinishedCalls, Tap},
     inventory::Label,
     metrics::{CallPricing, Metrics, NoRecords, UsageRecord, UsageRecords},
     review::{CallerReview, CallerToken, Review},
@@ -1230,6 +1231,10 @@ pub struct Relay {
     /// Who reviews a caller under `IngressAuth::ServiceAccountToken`; without one every caller
     /// but the owner is `credential-review-unavailable`.
     caller_review: Option<Arc<dyn CallerReview>>,
+    /// Where each finished call's value goes (story:finished-call-facts).
+    finished: Arc<dyn FinishedCalls>,
+    /// The bound of a call's byte copy; `None`, the default, copies nothing.
+    call_bytes: Option<usize>,
 }
 
 impl Relay {
@@ -1261,6 +1266,8 @@ impl Relay {
             newest: Mutex::default(),
             decoder: None,
             caller_review: None,
+            finished: Arc::new(NoFinishedCalls),
+            call_bytes: None,
         };
         relay.register();
         Ok(relay)
@@ -1357,6 +1364,23 @@ impl Relay {
         self
     }
 
+    /// Hands every call that was given a call id, but a count-tokens call, to `finished` once, as
+    /// a [`crate::FinishedCall`] (story:finished-call-facts).
+    #[must_use]
+    pub fn with_finished_calls(mut self, finished: Arc<dyn FinishedCalls>) -> Self {
+        self.finished = finished;
+        self
+    }
+
+    /// Hands each finished call's request and answer bytes beside its value, as a
+    /// [`crate::CallBytes`]: `Copied` while the request body and the answer body together are at
+    /// most `bound` bytes, `OverBound` with both sizes past it. Without it no byte is copied.
+    #[must_use]
+    pub fn with_call_bytes(mut self, bound: usize) -> Self {
+        self.call_bytes = Some(bound);
+        self
+    }
+
     fn register(&self) {
         for model in self.models.values() {
             for wire in &model.wires {
@@ -1439,6 +1463,16 @@ impl Relay {
         self.metrics.record(record);
         self.records.record(record);
     }
+
+    /// The bound of a call's byte copy, `None` when the relay copies nothing.
+    pub(crate) fn call_bytes(&self) -> Option<usize> {
+        self.call_bytes
+    }
+
+    /// Hands a finished call, and its copy when one was made, to the embedding.
+    pub(crate) fn finished(&self, call: &FinishedCall, bytes: Option<&CallBytes>) {
+        self.finished.finished(call, bytes);
+    }
 }
 
 impl fmt::Debug for Relay {
@@ -1475,9 +1509,6 @@ pub(crate) struct Admitted {
     /// The client's forwarded lines (every header but [`UNFORWARDED_HEADERS`]), read only when the gateway authenticates
     /// nobody; forwarded only to a model marked [`RelayModel::with_client_credentials`].
     pub(crate) client_credentials: Option<ClientCredentials>,
-    /// Who sent the call, for the dashboard: a session hash, a label, the user agent and the
-    /// client's retry count; no header value it reads is kept but the user agent.
-    pub(crate) observed: Observed,
     /// The request is `POST /v1/messages/count_tokens`: relayed to the same target as a
     /// messages call, at that path, with no output clamp and no token usage recorded.
     pub(crate) count_tokens: bool,
@@ -1996,6 +2027,9 @@ pub(crate) struct Call {
     /// The call's id and its `in-flight` record (story:call-id-and-usage-record); `None` for a
     /// request that makes no usage record.
     pub(crate) ticket: Option<crate::calls::Ticket>,
+    /// The copy of the call's bytes (story:finished-call-facts); `None` unless the relay was
+    /// declared [`Relay::with_call_bytes`] and the call hands a finished call.
+    pub(crate) tap: Option<Tap>,
 }
 
 /// How an answer whose head was written fell short of its end.
@@ -2023,6 +2057,34 @@ impl Call {
         self.ticket.as_ref().map_or_else(String::new, |ticket| {
             format!("{}: {}\r\n", crate::calls::HEADER, ticket.id())
         })
+    }
+
+    /// Hands the copy, when there is one, the request body as the gateway read it.
+    fn copy_request(&mut self, body: &[u8]) {
+        if let Some(tap) = &mut self.tap {
+            tap.request(body);
+        }
+    }
+
+    /// Tells the copy, when there is one, that an answer head was written to the client with
+    /// `content_type`; `encoded` says the body carries a content coding.
+    pub(crate) fn copy_head(&mut self, content_type: Option<&str>, encoded: bool) {
+        if let Some(tap) = &mut self.tap {
+            let events = content_type.is_some_and(|value| {
+                value
+                    .split(';')
+                    .next()
+                    .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("text/event-stream"))
+            });
+            tap.head(events && !encoded);
+        }
+    }
+
+    /// Hands the copy, when there is one, answer body bytes the client received.
+    pub(crate) fn copy_answer(&mut self, bytes: &[u8]) {
+        if let Some(tap) = &mut self.tap {
+            tap.answer(bytes);
+        }
     }
 
     /// Milliseconds since `begun`.
@@ -2236,14 +2298,12 @@ impl TranslatedAnswer for ClientAnswer<'_> {
         self.framing = Some((status, framing));
         let phrase = crate::server::relayed_phrase(status);
         // A content type that could end its line is not written.
-        let content_type = if content_type
+        let shown = content_type
             .bytes()
             .all(|byte| (0x20..0x7f).contains(&byte))
-        {
-            format!("content-type: {content_type}\r\n")
-        } else {
-            String::new()
-        };
+            .then_some(content_type);
+        let content_type =
+            shown.map_or_else(String::new, |value| format!("content-type: {value}\r\n"));
         let framing = match framing {
             AnswerFraming::Length(length) => format!("content-length: {length}\r\n"),
             AnswerFraming::Stream if self.chunked => "transfer-encoding: chunked\r\n".to_owned(),
@@ -2253,7 +2313,11 @@ impl TranslatedAnswer for ClientAnswer<'_> {
             "HTTP/1.1 {status} {phrase}\r\n{id}{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
             id = self.call.id_line(),
         );
-        self.write(head.as_bytes())
+        let there = self.write(head.as_bytes());
+        if there {
+            self.call.copy_head(shown, false);
+        }
+        there
     }
 
     /// [`client_closed`].
@@ -2303,6 +2367,7 @@ impl TranslatedAnswer for ClientAnswer<'_> {
             self.written = self.written.saturating_add(size);
             if size > 0 {
                 self.scanner.feed(bytes);
+                self.call.copy_answer(bytes);
                 self.call.first_byte();
             }
         }
@@ -2656,6 +2721,7 @@ pub(crate) fn serve(
     call: &mut Call,
 ) -> Result<(), RefusalCode> {
     let body = request_body(stream, leftover, admitted, limits)?;
+    call.copy_request(&body);
     call.body_digest = Some(auth::sha256(&body));
     let analysis = body::analyse(&body)?;
     let (model, translator) = served_model(relay, &analysis, admitted.wire, call)?;
@@ -2952,6 +3018,20 @@ fn stream_answer(
     call.note_terminal_error(&scanner);
 }
 
+/// `piece` as written to the client, one chunk of its own when `chunked`, and where in that the
+/// body bytes lie.
+fn frame(piece: Vec<u8>, chunked: bool) -> (Vec<u8>, std::ops::Range<usize>) {
+    if !chunked {
+        let body = 0..piece.len();
+        return (piece, body);
+    }
+    let mut framed = format!("{:x}\r\n", piece.len()).into_bytes();
+    let body = framed.len()..framed.len() + piece.len();
+    framed.extend_from_slice(&piece);
+    framed.extend_from_slice(b"\r\n");
+    (framed, body)
+}
+
 /// [`stream_answer`]'s writing: the head, then every piece, scanned for usage as it passes.
 fn relay_pieces(
     stream: &mut TcpStream,
@@ -2983,25 +3063,20 @@ fn relay_pieces(
         call.client_disconnected = true;
         return written;
     }
+    call.copy_head(head.content_type.as_deref(), false);
     loop {
         match next_piece(input, &mut head.framing, limits.line_bytes) {
             Ok(Some(piece)) => {
                 let size = u64::try_from(piece.len()).unwrap_or(u64::MAX);
                 scanner.feed(&piece);
-                let framed = if chunked {
-                    let mut framed = format!("{:x}\r\n", piece.len()).into_bytes();
-                    framed.extend_from_slice(&piece);
-                    framed.extend_from_slice(b"\r\n");
-                    framed
-                } else {
-                    piece
-                };
+                let (framed, body) = frame(piece, chunked);
                 // Each write has its own deadline: a stream may last as long as the model
                 // talks, but a client that stops reading cannot hold the connection.
                 if !crate::server::write_by(stream, &framed, Instant::now() + limits.timeout) {
                     call.client_disconnected = true;
                     return written;
                 }
+                call.copy_answer(&framed[body]);
                 if size > 0 {
                     call.first_byte();
                 }

@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.AnswerCopyKind",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:b372805d677a6281ed3cad13b1f35c4313b725c096738dc57d7b8ce14b44fc22",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.AnswerCopyKind": {
+      "title": "AnswerCopyKind",
+      "x-ess-name": "llm-gateway.telemetry.AnswerCopyKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Body",
+        "Events"
+      ]
+    }
+  }
+}

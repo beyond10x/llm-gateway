@@ -40,6 +40,7 @@ mod credential_namespace;
 mod credential_set;
 mod dockerfile;
 mod hosted;
+mod interaction_records;
 mod keychain;
 mod launch_claude;
 mod live_runpod;

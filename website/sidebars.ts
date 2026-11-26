@@ -30,6 +30,7 @@ const sidebars: SidebarsConfig = {
         'guides/admit-service-account-tokens',
         'guides/run-the-checks',
         'guides/store-an-upstream-key',
+        'guides/record-agent-sessions',
       ],
     },
     {

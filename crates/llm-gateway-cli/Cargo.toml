@@ -58,6 +58,10 @@ ruzstd = "0.8.3"
 serde.workspace = true
 serde_json.workspace = true
 serde_yaml = "0.9"
+# The interaction records (src/records.rs): sessionspec's wire lift and its SQLite writer.
+sessionspec-records = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.0" }
+# The IR types the lift takes (its harness and incomplete reason), at the same tag.
+sessionspec-types = { git = "https://github.com/beyond10x/sessionspec", tag = "0.1.0" }
 sha2.workspace = true
 signal-hook = "0.4"
 tokio = { version = "1.54", features = ["rt-multi-thread"] }
@@ -71,6 +75,9 @@ webpki-roots = "1.0.11"
 flate2 = { version = "1.1.10", default-features = false, features = ["rust_backend"] }
 # Test certificates for the loopback https fixture pods, on ring like the client.
 rcgen = { version = "0.14.10", default-features = false, features = ["ring"] }
+# Holds the interaction record store locked, so that its writer stops (tests/interaction_records.rs);
+# the version sessionspec-records already links.
+rusqlite = "0.41"
 rustix = { version = "1.1", features = ["net", "process"] }
 sha2.workspace = true
 # This package with `test-seam`, so that `cargo test` builds `gateway-tls-seam` for the process

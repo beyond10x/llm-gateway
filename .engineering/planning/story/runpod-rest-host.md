@@ -2,12 +2,15 @@
 format: aep.planning-md/3
 id: story:runpod-rest-host
 kind: story
-status: draft
+status: active
 title: The Runpod REST client calls a host that resolves, and says which one it could not reach
 relations:
 - decomposes: epic:hosting
 - serves: vision:portable-model-inference
-revision: 1
+revision: 3
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-26T05:48:10Z", actor: "human:operator", revision: 3}
 ---
 ## Outcome
 

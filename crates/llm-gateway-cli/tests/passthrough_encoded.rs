@@ -3,22 +3,27 @@
 //! streaming answer gzip-encoded, and a client that asks for gzip. The client receives the
 //! target's bytes unchanged; the call record carries the tokens read from a decoded copy, the
 //! decoded error text of a compressed 429, and the label of the credential, never the
-//! credential. No model is called.
+//! credential. The copy of the call's bytes (story:finished-call-facts) holds the answer decoded.
+//! No model is called.
 
 use flate2::{Compression, write::GzEncoder};
 use llm_gateway::{
-    Gateway, GatewayConfig, IngressAuth, Label, NoOwnerVerifier, Relay, RelayModel, RelayStream,
-    RelayTarget, RelayTargets, RouteInventory, StaticHeader, TargetBearer, TargetRefusal, Wire,
+    AnswerBytes, CallBytes, FinishedCall, FinishedCalls, Gateway, GatewayConfig, IngressAuth,
+    Label, NoOwnerVerifier, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    RouteInventory, StaticHeader, TargetBearer, TargetRefusal, Wire,
 };
 use llm_gateway_cli::Decoder;
 use std::{
     io::{self, Read, Write},
     net::TcpStream,
-    sync::Arc,
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
 const TOKEN: &str = "Bearer sk-ant-oat01-REDACTED-REDACTED-REDACTED";
+
+/// The Claude Code request every exchange sends.
+const REQUEST: &str = r#"{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"hi"}],"max_tokens":64,"stream":true}"#;
 
 /// A recorded streaming answer, trimmed to the events that carry usage.
 const SSE: &str = "event: message_start\n\
@@ -40,10 +45,16 @@ fn gzip(bytes: &[u8]) -> Vec<u8> {
     encoder.finish().unwrap()
 }
 
-/// A chunked answer whose body is `body`, cut into chunks of 64 bytes.
+/// A chunked gzip answer whose body is `body`, cut into chunks of 64 bytes.
 fn chunked(status: &str, lines: &str, body: &[u8]) -> Vec<u8> {
+    chunked_coded(status, "gzip", lines, body)
+}
+
+/// A chunked answer with the content coding `coding` whose body is `body`, cut into chunks of
+/// 64 bytes.
+fn chunked_coded(status: &str, coding: &str, lines: &str, body: &[u8]) -> Vec<u8> {
     let mut out = format!(
-        "HTTP/1.1 {status}\r\ncontent-encoding: gzip\r\n{lines}transfer-encoding: chunked\r\n\r\n"
+        "HTTP/1.1 {status}\r\ncontent-encoding: {coding}\r\n{lines}transfer-encoding: chunked\r\n\r\n"
     )
     .into_bytes();
     for piece in body.chunks(64) {
@@ -112,9 +123,14 @@ impl RelayTargets for Source {
     fn invalidate(&self, _alias: &str, _authority: &str) {}
 }
 
-/// A gateway with the binary's decoder whose one passthrough route answers `answer`; the
-/// gateway's whole answer to one Claude Code request, and the dashboard snapshot after it.
-fn exchange(answer: Vec<u8>) -> (Vec<u8>, String) {
+/// What one exchange left: the client's whole answer, the dashboard snapshot after it, and the
+/// finished calls the port was handed.
+type Exchanged = (Vec<u8>, String, Vec<(FinishedCall, Option<CallBytes>)>);
+
+/// A gateway with the binary's decoder whose one passthrough route answers `answer`, copying a
+/// call's bytes within `call_bytes` when it is given.
+fn exchange_copied(answer: Vec<u8>, call_bytes: Option<usize>) -> Exchanged {
+    let port = Arc::new(Port::default());
     let model = RelayModel::new(
         Label::new("claude").unwrap(),
         Label::new("claude-sonnet-4-5-20250929").unwrap(),
@@ -124,9 +140,13 @@ fn exchange(answer: Vec<u8>) -> (Vec<u8>, String) {
     .with_client_credentials()
     .with_model_prefix("claude-")
     .unwrap();
-    let relay = Relay::new(vec![model], Arc::new(Source(answer)))
+    let mut relay = Relay::new(vec![model], Arc::new(Source(answer)))
         .unwrap()
-        .with_decoder(Arc::new(Decoder));
+        .with_decoder(Arc::new(Decoder))
+        .with_finished_calls(Arc::clone(&port) as Arc<dyn FinishedCalls>);
+    if let Some(bound) = call_bytes {
+        relay = relay.with_call_bytes(bound);
+    }
     let mut config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
     config.ingress_auth = IngressAuth::None;
     let gateway = Gateway::bind_with_relay(
@@ -137,22 +157,120 @@ fn exchange(answer: Vec<u8>) -> (Vec<u8>, String) {
     )
     .unwrap();
     gateway.mark_ready();
-    let body = r#"{"model":"claude-sonnet-4-5-20250929","messages":[{"role":"user","content":"hi"}],"max_tokens":64,"stream":true}"#;
     let mut stream = TcpStream::connect(gateway.local_addr()).unwrap();
     stream
         .set_read_timeout(Some(Duration::from_secs(20)))
         .unwrap();
     write!(
         stream,
-        "POST /v1/messages HTTP/1.1\r\nhost: 127.0.0.1\r\naccept-encoding: gzip, deflate, br, zstd\r\nanthropic-version: 2023-06-01\r\nauthorization: {TOKEN}\r\ncontent-type: application/json\r\nx-stainless-retry-count: 0\r\ncontent-length: {}\r\n\r\n{body}",
-        body.len()
+        "POST /v1/messages HTTP/1.1\r\nhost: 127.0.0.1\r\naccept-encoding: gzip, deflate, br, zstd\r\nanthropic-version: 2023-06-01\r\nauthorization: {TOKEN}\r\ncontent-type: application/json\r\nx-stainless-retry-count: 0\r\ncontent-length: {}\r\n\r\n{REQUEST}",
+        REQUEST.len()
     )
     .unwrap();
     let mut answered = Vec::new();
     drop(stream.read_to_end(&mut answered));
     let snapshot = gateway.dashboard().snapshot();
     gateway.shutdown();
+    let held = port.0.lock().unwrap().clone();
+    (answered, snapshot, held)
+}
+
+/// A gateway with the binary's decoder whose one passthrough route answers `answer`; the
+/// gateway's whole answer to one Claude Code request, and the dashboard snapshot after it.
+fn exchange(answer: Vec<u8>) -> (Vec<u8>, String) {
+    let (answered, snapshot, _) = exchange_copied(answer, None);
     (answered, snapshot)
+}
+
+/// The finished calls a port was handed, each with its copy.
+#[derive(Default)]
+struct Port(Mutex<Vec<(FinishedCall, Option<CallBytes>)>>);
+
+impl FinishedCalls for Port {
+    fn finished(&self, call: &FinishedCall, bytes: Option<&CallBytes>) {
+        self.0.lock().unwrap().push((call.clone(), bytes.cloned()));
+    }
+}
+
+/// The one copy a call through a relay with the copy bound `bound` was handed.
+fn copy_of(answer: &[u8], bound: usize) -> CallBytes {
+    let (answered, _, held) = exchange_copied(answer.to_vec(), Some(bound));
+    assert_eq!(
+        body_of(&answered),
+        body_of(answer),
+        "the client's answer is unchanged"
+    );
+    assert_eq!(held.len(), 1, "one finished call");
+    held.into_iter().next().unwrap().1.expect("a copy")
+}
+
+/// Decision D92: the copy holds a gzip answer decoded, as its client reads it, a stream as its
+/// events' payloads, and the bound counts the decoded bytes.
+#[test]
+fn a_gzip_answer_is_copied_decoded_and_the_bound_counts_its_decoded_bytes() {
+    let decoded = SSE.len();
+    let encoded = gzip(SSE.as_bytes());
+    assert!(encoded.len() < decoded);
+    let target = chunked("200 OK", "content-type: text/event-stream\r\n", &encoded);
+    let payloads: Vec<Vec<u8>> = SSE
+        .split("\n\n")
+        .filter_map(|event| event.lines().find_map(|line| line.strip_prefix("data: ")))
+        .map(|data| data.as_bytes().to_vec())
+        .collect();
+    assert_eq!(payloads.len(), 6);
+    let at_the_bound = REQUEST.len() + decoded;
+    assert_eq!(
+        copy_of(&target, at_the_bound),
+        CallBytes::Copied {
+            request: REQUEST.as_bytes().to_vec(),
+            answer: Some(AnswerBytes::Events(payloads)),
+        }
+    );
+    assert_eq!(
+        copy_of(&target, at_the_bound - 1),
+        CallBytes::OverBound {
+            request_bytes: REQUEST.len() as u64,
+            answer_bytes: decoded as u64,
+        }
+    );
+
+    let json = br#"{"id":"msg_02","type":"message","usage":{"input_tokens":3,"output_tokens":4}}"#;
+    let target = chunked("200 OK", "content-type: application/json\r\n", &gzip(json));
+    assert_eq!(
+        copy_of(&target, 1 << 20),
+        CallBytes::Copied {
+            request: REQUEST.as_bytes().to_vec(),
+            answer: Some(AnswerBytes::Body(json.to_vec())),
+        }
+    );
+}
+
+/// Decision D92: an answer the relay's decoder cannot decode whole is handed without bytes, with
+/// the request's size, the answer's size as received and its coding.
+#[test]
+fn an_answer_that_does_not_decode_is_handed_its_sizes_and_its_coding() {
+    let mut cut = gzip(SSE.as_bytes());
+    cut.truncate(cut.len() - 8);
+    for (coding, body) in [
+        ("gzip", b"not gzip at all".to_vec()),
+        ("gzip", cut),
+        ("compress", gzip(SSE.as_bytes())),
+    ] {
+        let target = chunked_coded(
+            "200 OK",
+            coding,
+            "content-type: text/event-stream\r\n",
+            &body,
+        );
+        assert_eq!(
+            copy_of(&target, 1 << 20),
+            CallBytes::Undecodable {
+                request_bytes: REQUEST.len() as u64,
+                answer_bytes: body.len() as u64,
+                coding: coding.to_owned(),
+            }
+        );
+    }
 }
 
 fn body_of(answer: &[u8]) -> &[u8] {

@@ -23,6 +23,9 @@
     "events": {
       "type": "integer"
     },
+    "coding": {
+      "type": "string"
+    },
     "state": {
       "$ref": "#/$defs/llm-gateway.telemetry.CallBytes.State"
     }
@@ -38,7 +41,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:1825a68d3a116567d86fefe918f5e42cf89ba0ba2133b2c86f4b6f7b9cbe534e",
+    "contract_digest": "slice-sha256/2:a5ad33a5932f6986c217614ee3e358fb42ccd66e31c7882b700fae3721f641fb",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -68,7 +71,8 @@
       "type": "string",
       "enum": [
         "Copied",
-        "OverBound"
+        "OverBound",
+        "Undecodable"
       ]
     }
   }

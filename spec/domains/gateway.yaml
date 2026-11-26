@@ -1220,7 +1220,8 @@ entities:
       # `span` is `bounded` when `finished_ms - started_ms` is at most that time, and the two
       # values otherwise. `bytes` is `none` when the port was handed no CallBytes,
       # `copied request=<n> answer=<absent|body:<n>|events:<k>>` for `Copied` (`<n>` bytes,
-      # `<k>` events) and `over-bound request=<n> answer=<n>` for `OverBound`.
+      # `<k>` events), `over-bound request=<n> answer=<n>` for `OverBound` and
+      # `undecodable request=<n> answer=<n> coding=<coding>` for `Undecodable`.
       - {name: finished, type: 'List<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
 commands:
@@ -1378,7 +1379,10 @@ commands:
       #           current pod; once the gateway reports it failed, the next pod is current. A
       #           pod answers its connections with its script in order, and refuses a
       #           connection past its script. An answer is
-      #           `{status, content_type, chunks, framing, release, delay_ms}` (`delay_ms`,
+      #           `{status, content_type, content_encoding, chunks, framing, release,
+      #           delay_ms}` (`content_encoding`, letters, digits and `-`, is written as the
+      #           answer's `content-encoding` line while the chunks are sent as they are; the
+      #           runner composes no BodyDecoder, so no coding is decoded; `delay_ms`,
       #           at most 2000, holds the answer's head back that many milliseconds after the
       #           request is read; `framing` is `length`, the
       #           default, or `chunked`; with `release` `received`, the default, each chunk is

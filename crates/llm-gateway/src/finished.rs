@@ -106,10 +106,18 @@ pub enum CallBytes {
         request: Vec<u8>,
         answer: Option<AnswerBytes>,
     },
-    /// They were over the bound: no bytes, both sizes.
+    /// They were over the bound: no bytes, both sizes, the answer's decoded.
     OverBound {
         request_bytes: u64,
         answer_bytes: u64,
+    },
+    /// The answer carried a content coding the relay's [`crate::BodyDecoder`] did not decode
+    /// whole: no bytes, the request's size, the answer's size as the client received it
+    /// (encoded), and the coding (`content-encoding` as the target sent it).
+    Undecodable {
+        request_bytes: u64,
+        answer_bytes: u64,
+        coding: String,
     },
 }
 

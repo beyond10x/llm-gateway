@@ -153,6 +153,13 @@ domain: llm-gateway.telemetry
 # gets `Copied` with both; one over it gets `OverBound` with both sizes and no bytes, its copy
 # dropped the moment it passed the bound. The client's answer is the same byte for byte with the
 # copy on or off, on every wire and relay path.
+# DECIDED 2026-11-26 (decision D92, story:finished-call-facts): an answer with a content coding
+# is copied as its client reads it, decoded: the relay's BodyDecoder (`Relay::with_decoder`, the
+# one that reads the answer's usage) decodes the bytes the client received, and the bound counts
+# the decoded bytes. An answer the decoder does not decode whole (no decoder, a coding it does
+# not know, a decode error, a client that left before the answer's end, more than 16 MiB as
+# received or 64 MiB decoded) gets `Undecodable`: no bytes, the request's size, the answer's size
+# as received, and its coding.
 types:
   # Which harness named a call's session, read as the dashboard labels it: Claude Code by
   # `x-claude-code-session-id` or a `claude-cli` user agent, Codex by a `codex…` user agent or by
@@ -163,31 +170,34 @@ types:
     variants: [ClaudeCode, Codex, Other]
   # How a finished call ended, in this order of precedence: `Refused` when the client was answered
   # a refusal (the FinishedCall's `refusal` names its code, `upstream-failed` included); else
-  # `WireError` when the answer, its head written, ended in its wire's terminal error (told by a
-  # translator, or read from its bytes); else `UpstreamCut` when a read of the answer's body
-  # failed after its head was written; else `ClientDisconnected` when the client went away before
+  # `UpstreamCut` when a translator told `upstream-failed` after the answer's head (its upstream
+  # failed under it; DECIDED 2026-11-26, decision D91: the client read the wire's error event,
+  # and the call was still cut by its upstream); else `WireError` when the answer, its
+  # head written, ended in its wire's terminal error (told by a translator under another code,
+  # or read from its bytes, whether or not its upstream cut it afterwards); else `UpstreamCut`
+  # when a read of the answer's body failed after its head was written; else `ClientDisconnected` when the client went away before
   # the answer's last byte or before any answer was written; else `Complete`, whatever the
   # answer's status.
   - name: llm-gateway.telemetry.CallEnding
     kind: enum
     variants: [Complete, ClientDisconnected, UpstreamCut, WireError, Refused]
-  # Whether a call's bytes were copied or were over the bound.
+  # Whether a call's bytes were copied, were over the bound, or carried an answer whose content
+  # coding was not decoded whole.
   - name: llm-gateway.telemetry.CallBytesKind
     kind: enum
-    variants: [Copied, OverBound]
+    variants: [Copied, OverBound, Undecodable]
   # How a copied answer is held: `Body`, the answer's body bytes as the client received them,
-  # de-chunked; `Events`, for an answer whose content type is `text/event-stream` and that carries
-  # no content coding, the `data:` payload of each server-sent event the client received whole,
-  # in order (several `data:` lines of one event joined by a line feed; an event not ended by a
-  # blank line before the answer ended is not one). An answer with a content coding is copied as
-  # `Body` of the bytes the client received, encoded.
+  # de-chunked and decoded; `Events`, for an answer whose content type is `text/event-stream`,
+  # the `data:` payload of each server-sent event the client received whole, in order (several
+  # `data:` lines of one event joined by a line feed; an event not ended by a blank line before
+  # the answer ended is not one), read from the decoded bytes of an answer with a content coding.
   - name: llm-gateway.telemetry.AnswerCopyKind
     kind: enum
     variants: [Body, Events]
   # The bound a relay declares with `with_call_bytes`: the most bytes of request body and answer
   # body together that one call's copy holds. A call at the bound is copied; one byte over it is
-  # `OverBound`. The answer counts its body bytes as the client received them, de-chunked (a
-  # stream's whole text, not only its payloads).
+  # `OverBound`. The answer counts its body bytes as the client received them, de-chunked and
+  # decoded (a stream's whole text, not only its payloads).
   - name: llm-gateway.telemetry.CallBytesBound
     kind: newtype
     of: Integer
@@ -408,17 +418,22 @@ entities:
   # body was read) and the answer as the client received it, translated for the client on a
   # translated call; `answer` is absent when no answer head of the target's was written to the
   # client (a refusal, a client that left before one). `OverBound` holds no bytes, only both
-  # sizes.
+  # sizes. `Undecodable` holds no bytes: both sizes and the answer's content coding.
   - name: llm-gateway.telemetry.CallBytes
     identity: {name: call_id, type: String}
     fields:
       - {name: kind, type: llm-gateway.telemetry.CallBytesKind}
       # The request body's size in bytes.
       - {name: request_bytes, type: Integer}
-      # The answer body's size in bytes as the client received it; 0 with no answer.
+      # The answer body's size in bytes as the client received it, decoded; 0 with no answer.
+      # For `Undecodable`, its size as the client received it, encoded.
       - {name: answer_bytes, type: Integer}
-      # How a `Copied` answer is held; absent for `OverBound` and when no answer was written.
+      # How a `Copied` answer is held; absent for `OverBound`, `Undecodable` and when no answer
+      # was written.
       - {name: answer, type: 'Optional<llm-gateway.telemetry.AnswerCopyKind>'}
       # The number of events of an `Events` answer; absent otherwise.
       - {name: events, type: 'Optional<Integer>'}
+      # The answer's `content-encoding` as the target sent it, for `Undecodable`; absent
+      # otherwise.
+      - {name: coding, type: 'Optional<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}

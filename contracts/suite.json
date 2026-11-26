@@ -68,6 +68,7 @@
       "llm-gateway.gateway/authored/cost-an-unknown-token-price-key-composes-nothing",
       "llm-gateway.gateway/authored/cost-the-call-record-names-a-priced-calls-cost-and-an-unpriced-calls-none",
       "llm-gateway.gateway/authored/finished-calls-a-declared-bound-copies-a-call-within-it-and-names-the-sizes-of-one-over-it",
+      "llm-gateway.gateway/authored/finished-calls-a-passed-through-answer-whose-coding-is-not-decoded-is-handed-its-sizes-and-its-coding",
       "llm-gateway.gateway/authored/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none",
       "llm-gateway.gateway/authored/head-inspection-answers-without-a-body",
       "llm-gateway.gateway/authored/hosted-a-base-path-that-could-leave-its-prefix-composes-nothing",
@@ -655,6 +656,11 @@
         "digest": "sha256:042d4cfb974a7c6aa47b7cbeae5e1a88dbb4a65e47ac38f6f6351e89347fa2f6",
         "disposition": "accepted",
         "scenario": "llm-gateway.gateway/authored/finished-calls-a-declared-bound-copies-a-call-within-it-and-names-the-sizes-of-one-over-it"
+      },
+      "gateway/scenarios/finished-calls-a-passed-through-answer-whose-coding-is-not-decoded-is-handed-its-sizes-and-its-coding.yaml": {
+        "digest": "sha256:dbaeeb5e1379b2bef6de882b95cd851ec88a9e0b2407bde07c8da0ec84d80de4",
+        "disposition": "accepted",
+        "scenario": "llm-gateway.gateway/authored/finished-calls-a-passed-through-answer-whose-coding-is-not-decoded-is-handed-its-sizes-and-its-coding"
       },
       "gateway/scenarios/finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none.yaml": {
         "digest": "sha256:dba2c62653d7517bca3eb0e206de6040ea7523a2c073d9030236c6e5d0c0895e",
@@ -2033,7 +2039,7 @@
       }
     },
     "counts": {
-      "authored": 338,
+      "authored": 339,
       "generated": 94,
       "outside": 0,
       "refused": 0
@@ -2148,9 +2154,9 @@
     }
   },
   "provenance": {
-    "contract_digest": "c4a72517c60cac446d8a11603bf3c8d8595ee9d59ec0559cbffd16ed67db9fa7",
+    "contract_digest": "88cd90297aa82f043ad3a169c79dee59d23b91522269b75f3ec762633f6db85d",
     "scenario_initial_state": "empty",
-    "spec_digest": "7ccb44c758aa9ca91d4f85bbd45f4b27f8b9fb7e5955e046a35b8a04e3c3a550",
+    "spec_digest": "1bbc988bcb3c0b50e8bb5173aadb17d8d96e67fe17f594123a8a97c0f640d72f",
     "specification_version": "v1",
     "suite_version": "ess-conformance/35",
     "system": "llm-gateway"
@@ -8470,6 +8476,99 @@
                   "200 relayed",
                   "200 relayed",
                   "404 model-unknown",
+                  "200 relayed"
+                ]
+              },
+              "valid_program": {
+                "kind": "literal",
+                "value": true
+              }
+            }
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        }
+      ]
+    },
+    "llm-gateway.gateway/authored/finished-calls-a-passed-through-answer-whose-coding-is-not-decoded-is-handed-its-sizes-and-its-coding": {
+      "purpose": "with no decoder composed, a passed-through answer that carries a content coding is handed without bytes, with the request's size, the answer's size as received and its coding",
+      "source": [
+        {
+          "kind": "domain",
+          "name": "llm-gateway.gateway"
+        },
+        {
+          "kind": "command",
+          "name": "llm-gateway.gateway.Relay"
+        },
+        {
+          "kind": "outcome",
+          "name": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          }
+        },
+        {
+          "kind": "view",
+          "name": "llm-gateway.gateway.LastRelay"
+        }
+      ],
+      "steps": [
+        {
+          "command": "llm-gateway.gateway.Relay",
+          "input": {
+            "program_json": {
+              "kind": "literal",
+              "value": "{\"secret\":\"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\",\"ingress_auth\":\"none\",\"call_bytes\":1000,\"models\":[{\"alias\":\"subscription\",\"upstream_model\":\"vendor-sub\",\"wires\":[\"messages\"],\"endpoint\":{\"pod\":\"pod-1\",\"scheme\":\"http\",\"auth_kind\":\"client\"}}],\"pods\":[[{\"status\":200,\"content_type\":\"text/event-stream\",\"content_encoding\":\"gzip\",\"framing\":\"chunked\",\"chunks\":[\"not gzip\"]}]],\"steps\":[{\"step\":\"mark_ready\"},{\"step\":\"request\",\"path\":\"/v1/messages\",\"body\":\"{\\\"model\\\":\\\"subscription\\\",\\\"stream\\\":true}\",\"headers\":[\"x-api-key: sk-client-0123456789abcdef\",\"anthropic-version: 2023-06-01\"]}]}"
+            }
+          },
+          "step": "execute_command"
+        },
+        {
+          "outcome": {
+            "command": "llm-gateway.gateway.Relay",
+            "outcome": "observed"
+          },
+          "step": "expect_outcome"
+        },
+        {
+          "step": "expect_no_error"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "at_least": 1,
+            "at_most": 1,
+            "expect": "counts"
+          },
+          "step": "expect_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "step": "query_view",
+          "view": "llm-gateway.gateway.LastRelay"
+        },
+        {
+          "expectation": {
+            "expect": "contains",
+            "fields": {
+              "error_code": {
+                "kind": "literal",
+                "value": null
+              },
+              "finished": {
+                "kind": "literal",
+                "value": [
+                  "call=recorded path=/v1/messages wire=messages route=subscription upstream=pod-1 attempts=1 queue_wait_ms=bounded ttft_ms=bounded ending=Complete refusal=absent cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=undecodable request=38 answer=8 coding=gzip"
+                ]
+              },
+              "results": {
+                "kind": "literal",
+                "value": [
+                  "ok",
                   "200 relayed"
                 ]
               },

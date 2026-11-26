@@ -891,6 +891,10 @@ mod relay {
         status: Option<u16>,
         #[serde(default)]
         content_type: Option<String>,
+        /// The answer's `content-encoding` line, written as given; the chunks are sent as they
+        /// are, not encoded.
+        #[serde(default)]
+        content_encoding: Option<String>,
         #[serde(default)]
         chunks: Vec<String>,
         #[serde(default)]
@@ -976,11 +980,18 @@ mod relay {
                     matches!(transport.as_str(), "refused" | "closed")
                         && self.chunks.is_empty()
                         && self.content_type.is_none()
+                        && self.content_encoding.is_none()
                         && self.framing.is_none()
                         && self.delay_ms.is_none()
                 }
                 (None, Some(status)) => {
                     (200..=599).contains(&status)
+                        && self.content_encoding.as_deref().is_none_or(|coding| {
+                            !coding.is_empty()
+                                && coding
+                                    .bytes()
+                                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                        })
                         && matches!(self.framing.as_deref(), None | Some("length" | "chunked"))
                         && matches!(
                             self.release.as_deref(),
@@ -1328,8 +1339,14 @@ mod relay {
             .content_type
             .as_ref()
             .map_or(String::new(), |value| format!("content-type: {value}\r\n"));
+        let content_encoding = answer
+            .content_encoding
+            .as_ref()
+            .map_or(String::new(), |value| {
+                format!("content-encoding: {value}\r\n")
+            });
         let head = format!(
-            "HTTP/1.1 {status} Fixture\r\n{content_type}{framing}connection: close\r\n\r\n"
+            "HTTP/1.1 {status} Fixture\r\n{content_type}{content_encoding}{framing}connection: close\r\n\r\n"
         );
         if connection.write_all(head.as_bytes()).is_err() {
             return;
@@ -1601,6 +1618,13 @@ mod relay {
                 request_bytes,
                 answer_bytes,
             }) => format!("over-bound request={request_bytes} answer={answer_bytes}"),
+            Some(CallBytes::Undecodable {
+                request_bytes,
+                answer_bytes,
+                coding,
+            }) => {
+                format!("undecodable request={request_bytes} answer={answer_bytes} coding={coding}")
+            }
         };
         format!(
             "call={} path={} wire={} route={} upstream={upstream} attempts={} queue_wait_ms={} ttft_ms={} ending={ending} refusal={} cost_usd={} session={} harness={harness} span={span} bytes={bytes}",

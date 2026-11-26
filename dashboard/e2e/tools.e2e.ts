@@ -375,15 +375,30 @@ test.describe('screen-only user', () => {
     expect(await play(page, `${SPACER(1500)}<p>claude-sonnet failed: 429</p>${SPACER(3000)}`)).toMatchObject({ reached: true, actions: 2, looks: 3, steps: ['look', 'scroll', 'look', 'scroll', 'look'] });
   });
 
-  test('break: a visible link named for the task is one action; the same link covered is not used', async ({ page }) => {
+  test('break: a visible link named for the task is one action, and a link that jumps the page costs glance 3; the same link covered is not used', async ({ page }) => {
     const body = (cover: boolean) =>
       `<p><a href="#calls">claude-sonnet: 4 errors</a></p>${cover ? '<div style="position:fixed;left:0;top:0;width:100%;height:80px;background:#fff"></div>' : ''}${SPACER(2000)}<section id="calls"><table><tr><td>claude-sonnet</td><td>429</td></tr></table></section>${SPACER(2000)}`;
+    // The R-06 review's input: an anchor 2000 px down read actions 1, looks 1.
     const followed = await play(page, body(false));
-    expect(followed).toMatchObject({ reached: true, actions: 1, looks: 1 });
-    expect(followed.steps).toContain('click link claude-sonnet: 4 errors');
+    expect(followed).toMatchObject({ reached: true, actions: 1, looks: 3 });
+    expect(followed.steps).toContain('click link claude-sonnet: 4 errors (the page jumped)');
     const covered = await play(page, body(true));
     expect(covered.steps.some((s) => s.startsWith('click'))).toBe(false);
     expect(covered).toMatchObject({ reached: true, looks: 3 });
+    // A button that shows the truth where the person looks moves nothing: glance by position.
+    const inPlace = await play(page, `<button onclick="document.getElementById('x').hidden = false">Show errors</button><p id="x" hidden>claude-sonnet failed: 429</p>${SPACER(3000)}`);
+    expect(inPlace).toMatchObject({ reached: true, actions: 1, looks: 1, steps: ['look', 'click button Show errors', 'look'] });
+  });
+
+  test('break: a truth cut by an ellipsis, faded under 0.5 opacity or set in a colour under 3:1 on its background is not seen; the same text readable is', async ({ page }) => {
+    const truth = 'claude-sonnet failed: 429 rate limited';
+    const at = (style: string) => `<p style="${style}">${truth}</p>${SPACER(600)}`;
+    expect(await play(page, at('color:#1b1d21'))).toMatchObject({ reached: true, actions: 0, looks: 1 });
+    expect(await play(page, at('width:120px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'))).toMatchObject({ reached: false });
+    expect(await play(page, at('opacity:0.3'))).toMatchObject({ reached: false });
+    expect(await play(page, at('color:#ffffff'))).toMatchObject({ reached: false });
+    expect(await play(page, at('color:#c8c8c8'))).toMatchObject({ reached: false });
+    expect(await play(page, `<div style="background:#1b1d21">${at('color:#e6e8eb')}</div>`)).toMatchObject({ reached: true, looks: 1 });
   });
 
   test('break: a route and a cause in two different rows, or no truth at all, are not reached', async ({ page }) => {
@@ -397,13 +412,13 @@ test.describe('screen-only user', () => {
 test.describe('key data', () => {
   test('break: a page with no key text is refused, a heading under 14 px and any other text under 12 px are reported', async ({ page }) => {
     await page.setContent('<main><p>only a paragraph</p></main>');
-    const none = await page.evaluate(keyDataProbe);
+    const none = await page.evaluate(keyDataProbe, []);
     expect(none.key).toBeNull();
     expect(keyDataItems({ key_font_min_px: none.key?.px ?? null, details: { key_font_below: none.key_below, heading_font_below: none.heading_below, secondary_font_below: none.secondary_below } })).toContain('no key text');
     await page.setContent(`<main><h2 style="font-size:13.3px">Routes</h2><div class="card"><h3 style="font-size:12.6px">Limits <span class="mono">3fa9c1d2</span> <span class="small" style="font-size:11px">seen 5s ago</span></h3></div>
       <table><tbody><tr><td style="font-size:14px">qwen-coder</td></tr></tbody></table>
       <button style="font-size:11px">Show all 40</button><dl class="headers"><dt style="font-size:11.5px">status</dt><dd style="font-size:14px">allowed</dd></dl></main>`);
-    const k = await page.evaluate(keyDataProbe);
+    const k = await page.evaluate(keyDataProbe, []);
     expect(k.key?.px).toBe(14);
     expect(k.heading_below).toEqual(['12.6px h3', '12.6px span.mono', '13.3px h2']);
     expect(k.secondary_below).toEqual(['11.5px dt', '11px button', '11px span.small']);

@@ -1,10 +1,11 @@
 // The screen-only user of the loop (SKILL § 7): deterministic code, no model. It plays a task on the
 // last state of a hermetic replay using only what a person sees: controls fully inside the viewport
 // and not covered at their centre, found by accessible role and name. A click or a key press is one
-// action, and so is a scroll; once it has scrolled, every look costs glance 3.
+// action, and so is a scroll; once it has scrolled, or an action moved the page by more than half a
+// viewport (a link that jumps), every look costs glance 3.
 //
 // A task is reached when one element in view shows a match of every list of its truth (the
-// scenario's `truth`): the smallest element whose visible text matches them all, no taller than
+// scenario's `truth`): the smallest element whose readable text (truthInView) matches them all, no taller than
 // half the viewport, fully in the viewport and uncovered at its centre, and not a container of
 // several records (a table, a list, a section), so a route in one row and a cause in another do
 // not count. Each turn it looks; when the
@@ -13,7 +14,7 @@
 // gives up at the end of the page or after MAX_ACTIONS.
 //
 // Glance: 1 when the truth is in the upper half of the viewport without a scroll (the primary area
-// above the fold), 2 elsewhere in view without a scroll, 3 when it needed a scroll.
+// above the fold), 2 elsewhere in view without a scroll, 3 when it needed a scroll or a jump.
 import type { Browser, Page } from '@playwright/test';
 import type { Scenario, Truth } from '../ux/scenarios/index.ts';
 import { openReplay, settle } from './harness.ts';
@@ -60,20 +61,104 @@ export interface TruthView {
   text: string;
 }
 
-// Runs in the page: the smallest element in view that shows the truth.
+// Runs in the page: the smallest element in view that shows the truth. Only text a person can read
+// counts as shown: a text node whose box lies in the viewport and inside every ancestor that clips
+// its overflow (text cut by an ellipsis is not read whole), with an opacity over 0.5 (its own and
+// its ancestors' multiplied) and a colour contrast of at least 3:1 against the backgrounds behind it.
 export function truthInView(truth: string[][]): TruthView {
   const res = truth.map((list) => list.map((s) => new RegExp(s, 'i')));
   const all = (text: string) => res.every((list) => list.some((re) => re.test(text)));
   const vw = document.documentElement.clientWidth;
   const vh = document.documentElement.clientHeight;
   const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
-  // The rendered text (cells and lines apart) of every element that reaches into the viewport.
-  const touching = [...document.body.querySelectorAll('*')].filter((el) => {
-    if (el.closest('script, style, template')) return false;
+
+  type Rgba = [number, number, number, number];
+  const paint = document.createElement('canvas').getContext('2d')!;
+  const rgba = (c: string): Rgba => {
+    paint.fillStyle = '#000';
+    paint.fillStyle = c;
+    const v = String(paint.fillStyle);
+    if (v.startsWith('#')) return [parseInt(v.slice(1, 3), 16), parseInt(v.slice(3, 5), 16), parseInt(v.slice(5, 7), 16), 1];
+    const p = (v.match(/[\d.]+/g) ?? []).map(Number);
+    return [p[0] ?? 0, p[1] ?? 0, p[2] ?? 0, p[3] ?? 1];
+  };
+  const over = (top: Rgba, under: Rgba): Rgba => {
+    const a = top[3];
+    return [top[0] * a + under[0] * (1 - a), top[1] * a + under[1] * (1 - a), top[2] * a + under[2] * (1 - a), 1];
+  };
+  const lum = (c: Rgba): number => {
+    const ch = (v: number) => {
+      const s = v / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * ch(c[0]) + 0.7152 * ch(c[1]) + 0.0722 * ch(c[2]);
+  };
+  const contrast = (a: Rgba, b: Rgba): number => {
+    const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x) as [number, number];
+    return (hi + 0.05) / (lo + 0.05);
+  };
+  const readable = new Map<Element, boolean>();
+  // Whether the text an element holds itself can be read: its opacity, its colour on its backdrop.
+  const legible = (el: Element): boolean => {
+    const known = readable.get(el);
+    if (known !== undefined) return known;
+    const chain: Element[] = [];
+    for (let p: Element | null = el; p; p = p.parentElement) chain.unshift(p);
+    let opacity = 1;
+    let backdrop: Rgba = [255, 255, 255, 1];
+    for (const p of chain) {
+      const cs = getComputedStyle(p);
+      opacity *= parseFloat(cs.opacity);
+      const b = rgba(cs.backgroundColor);
+      if (b[3] > 0) backdrop = over(b, backdrop);
+    }
+    const cs = getComputedStyle(el);
+    const ink = rgba(cs.color);
+    const shown = over([ink[0], ink[1], ink[2], ink[3] * opacity], backdrop);
+    const ok = cs.visibility === 'visible' && opacity > 0.5 && contrast(shown, backdrop) >= 3;
+    readable.set(el, ok);
+    return ok;
+  };
+  // Whether a text box lies in the viewport and inside every ancestor that clips its overflow.
+  const uncut = (box: DOMRect, el: Element): boolean => {
+    if (box.top < -0.5 || box.left < -0.5 || box.bottom > vh + 0.5 || box.right > vw + 0.5) return false;
+    for (let p: Element | null = el; p && p !== document.body && p !== document.documentElement; p = p.parentElement) {
+      const cs = getComputedStyle(p);
+      if (cs.overflowX === 'visible' && cs.overflowY === 'visible') continue;
+      const r = p.getBoundingClientRect();
+      if (box.left < r.left - 0.5 || box.right > r.right + 0.5 || box.top < r.top - 0.5 || box.bottom > r.bottom + 0.5) return false;
+    }
+    return true;
+  };
+
+  // The text a person can read in each element: its readable text nodes in document order, two
+  // nodes with nothing but <wbr> or a comment between them read as one word.
+  const seen = new Map<Element, string[]>();
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  let last: Node | null = null;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const text = n.textContent ?? '';
+    const el = n.parentElement;
+    if (!text.trim() || !el || el.closest('script, style, template, noscript')) continue;
+    const range = document.createRange();
+    range.selectNodeContents(n);
+    const box = range.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0 || !uncut(box, el) || !legible(el)) continue;
+    let before = n.previousSibling;
+    while (before && (before.nodeName === 'WBR' || before.nodeType === Node.COMMENT_NODE || (before.nodeType === Node.TEXT_NODE && !before.textContent))) before = before.previousSibling;
+    const piece = last !== null && before === last ? text : ` ${text}`;
+    last = n;
+    for (let p: Element | null = el; p && p !== document.documentElement; p = p.parentElement) {
+      const list = seen.get(p);
+      if (list) list.push(piece);
+      else seen.set(p, [piece]);
+    }
+  }
+  const touching = [...seen.keys()].filter((el) => {
     const r = el.getBoundingClientRect();
     return r.width > 0 && r.height > 0 && r.bottom > 0 && r.top < vh && r.right > 0 && r.left < vw;
   });
-  const texts = new Map(touching.map((el) => [el, norm((el as HTMLElement).innerText ?? '')]));
+  const texts = new Map(touching.map((el) => [el, norm(seen.get(el)!.join(''))]));
   const matching = touching.filter((el) => all(texts.get(el)!));
   const smallest = matching.filter((el) => !matching.some((other) => other !== el && el.contains(other)));
   const CONTAINER = 'table, thead, tbody, tfoot, ul, ol, section, main, article, nav, header, footer, form';
@@ -138,10 +223,14 @@ export async function playTask(page: Page, task: ScreenTask): Promise<TaskResult
         const key = `${role} ${name}`;
         if (used.has(key) || !(await c.evaluate(inViewUncovered))) continue;
         used.add(key);
+        const before = await page.evaluate(() => window.scrollY);
         await c.click();
         await page.mouse.move(0, 0);
         await steady(page);
-        steps.push(`click ${key}`);
+        // A link that jumps the page moves the person's eyes like a scroll does.
+        const jump = await page.evaluate((y) => Math.abs(window.scrollY - y) > window.innerHeight / 2, before);
+        if (jump) scrolled = true;
+        steps.push(`click ${key}${jump ? ' (the page jumped)' : ''}`);
         actions += 1;
         clicked = true;
       }

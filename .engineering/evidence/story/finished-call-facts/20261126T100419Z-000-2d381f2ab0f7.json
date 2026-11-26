@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T10:04:19Z",
+  "actor": "human:operator",
+  "artifact": "story:finished-call-facts",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "at c2847290: test 1400 passed 1 skipped in 17.3 s; conformance 433 of 433; spec-diff passed (3 acknowledged). Red at f92e14c1 (no finished-call value and no byte copy), at 02a4d29a and 3e9760ee (a cut stream after its wire's error, a translated upstream failure, a coded answer). Every test runs against fakes on loopback; no test reaches a provider, a real Ollama or a pod.",
+    "reference": "wave/2026-11-26-w05@c2847290"
+  }
+}

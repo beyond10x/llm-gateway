@@ -1,0 +1,14 @@
+{
+  "at": "2026-11-26T10:04:18Z",
+  "actor": "human:operator",
+  "artifact": "story:finished-call-facts",
+  "kind": "story",
+  "revision": 6,
+  "change": {
+    "change": "evidence",
+    "kind": "review_outcome",
+    "source": "review-result:adversary-w05-finished-call-facts-pass-1",
+    "review": "review-result:adversary-w05-finished-call-facts-pass-1",
+    "outcome": "fixed"
+  }
+}

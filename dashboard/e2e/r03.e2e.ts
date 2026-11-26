@@ -277,3 +277,44 @@ test.describe('UXF-008', () => {
     await expect(panel.getByText('No active sessions')).toBeVisible();
   });
 });
+
+// Key values (token counts, rates, statuses, money) at 14 px or more; secondary text (second lines,
+// badges, column heads, captions, tile labels) at 12 px or more.
+function fontDeficits(): string[] {
+  const out: string[] = [];
+  const SECONDARY = '.small, .badge, caption, thead th, .tile .label, .stats dt';
+  const describe = (el: Element) => `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? `.${el.className.split(' ').join('.')}` : ''} "${(el.textContent ?? '').trim().slice(0, 30)}"`;
+  for (const el of document.querySelectorAll('main *, header [role="status"]')) {
+    const cs = getComputedStyle(el);
+    if (cs.display === 'none' || el.closest('.flow-panel, .skip')) continue;
+    const r = el.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) continue;
+    if (![...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())) continue;
+    const px = parseFloat(cs.fontSize);
+    const key = el.closest('tbody td, tbody th, dd, .tile .value, .tile .sub, [role="status"]') !== null && el.closest(SECONDARY) === null;
+    const secondary = el.closest(SECONDARY) !== null;
+    if (key && px < 14 - 1e-6) out.push(`key ${px}px ${describe(el)}`);
+    else if (secondary && px < 12 - 1e-6) out.push(`secondary ${px}px ${describe(el)}`);
+  }
+  return [...new Set(out)];
+}
+
+test.describe('UXF-004', () => {
+  test('key values are 14 px or more and secondary text 12 px or more', async ({ browser }) => {
+    const found = new Set<string>();
+    for (const name of ['busy', 'errors']) {
+      const page = await freshPage(browser, '1280x720');
+      const replay = await openReplay(page, scenario(name), 'light');
+      await eachState(replay, async () => {
+        for (const f of await page.evaluate(fontDeficits)) found.add(`${name}: ${f}`);
+      });
+      for (const action of scenario(name).actions ?? []) {
+        await replay.act(action);
+        for (const f of await page.evaluate(fontDeficits)) found.add(`${name}: ${f}`);
+      }
+      await page.context().close();
+    }
+    expect([...found]).toEqual([]);
+  });
+});
+

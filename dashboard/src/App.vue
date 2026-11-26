@@ -104,7 +104,6 @@ function yesNo(v: boolean | null): string {
 
 <template>
   <a class="skip" href="#content">Skip to content</a>
-  <FlowCanvas :snap="snap" />
   <header class="top">
     <h1>llm-gateway</h1>
     <nav class="nav"><a href="/">Setup</a></nav>
@@ -116,6 +115,7 @@ function yesNo(v: boolean | null): string {
   </header>
 
   <main v-if="snap" id="content" tabindex="-1">
+    <FlowCanvas :snap="snap" />
     <Kpis v-if="showKpis" :snap="snap" :now="now" />
 
     <section v-if="snap.provider" aria-labelledby="h-provider">

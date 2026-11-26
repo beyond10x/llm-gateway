@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref, watch } from 'vue';
-import { FlowModel, FONT_PX, NODE_R, type FlowCounts, type Scene } from './flow.ts';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
+import { FlowModel, FONT_PX, NODE_R, activeSessions, type FlowCounts, type Scene } from './flow.ts';
 import type { Snapshot } from './extra.ts';
 
-// The ambient token-flow layer: drawn behind the page, never focusable, never a target.
+// The token flow panel: a canvas the width of the page that draws each active session's strings to
+// the routes it calls. The canvas is decoration (aria-hidden, never focusable, never a target); the
+// caption above it says in words what it shows.
 const props = defineProps<{ snap: Snapshot | null }>();
 
 const FRAME_MS = 1000 / 30;
@@ -14,10 +16,23 @@ const DARK_QUERY = '(prefers-color-scheme: dark)';
 interface Colours { line: string; label: string; node: string; in: string; out: string }
 
 const canvas = ref<HTMLCanvasElement | null>(null);
+const box = ref<HTMLDivElement | null>(null);
 const media = (q: string) => (typeof matchMedia === 'function' ? matchMedia(q) : null);
 const reducedQuery = media(REDUCED_QUERY);
 const darkQuery = media(DARK_QUERY);
 const model = new FlowModel({ reduced: reducedQuery?.matches ?? false, seed: 0x5eed });
+
+const summary = computed(() => {
+  if (!props.snap) return { sessions: 0, routes: 0 };
+  const active = activeSessions(props.snap);
+  const routes = new Set<string>();
+  for (const a of active.values()) for (const r of a.routes.keys()) routes.add(r);
+  return { sessions: active.size, routes: routes.size };
+});
+
+function plural(n: number, word: string): string {
+  return `${n} ${word}${n === 1 ? '' : 's'}`;
+}
 
 let ctx: CanvasRenderingContext2D | null = null;
 let width = 0;
@@ -25,21 +40,25 @@ let height = 0;
 let raf = 0;
 let lastFrame = 0;
 let frames = 0;
-let colours: Colours = { line: '#5b616b', label: '#5b616b', node: '#5b616b', in: '#2456c7', out: '#c2410c' };
+let drawn = 0;
+let colours: Colours = { line: '#5b616b', label: '#1b1d21', node: '#5b616b', in: '#2456c7', out: '#c2410c' };
 let observer: MutationObserver | null = null;
+let sizer: ResizeObserver | null = null;
 
 function readColours() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
-  colours = { line: v('--muted', colours.line), label: v('--muted', colours.label), node: v('--muted', colours.node), in: v('--flow-in', colours.in), out: v('--flow-out', colours.out) };
+  colours = { line: v('--muted', colours.line), label: v('--fg', colours.label), node: v('--muted', colours.node), in: v('--flow-in', colours.in), out: v('--flow-out', colours.out) };
 }
 
 function resize() {
   const el = canvas.value;
-  if (!el) return;
+  const b = box.value;
+  if (!el || !b) return;
+  if (ctx && b.clientWidth === width && b.clientHeight === height) return;
   const dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1);
-  width = window.innerWidth;
-  height = window.innerHeight;
+  width = b.clientWidth;
+  height = b.clientHeight;
   el.width = Math.round(width * dpr);
   el.height = Math.round(height * dpr);
   ctx = el.getContext('2d');
@@ -52,7 +71,7 @@ function paint(c: CanvasRenderingContext2D, scene: Scene) {
   c.lineCap = 'round';
   for (const s of scene.strings) {
     const dx = (s.to.x - s.from.x) * 0.45;
-    c.globalAlpha = s.alpha * (0.22 + (s.inFlight ? 0.12 + 0.25 * s.pulse : 0));
+    c.globalAlpha = s.alpha * (0.3 + (s.inFlight ? 0.12 + 0.25 * s.pulse : 0));
     c.strokeStyle = s.inFlight ? colours.in : colours.line;
     c.lineWidth = s.inFlight ? 1.5 + s.pulse : 1.25;
     c.beginPath();
@@ -61,36 +80,41 @@ function paint(c: CanvasRenderingContext2D, scene: Scene) {
     c.stroke();
   }
   c.font = `${FONT_PX}px ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace`;
-  c.textBaseline = 'top';
-  c.fillStyle = colours.node;
-  for (const a of scene.sessions) {
-    c.globalAlpha = a.alpha * 0.55;
+  c.textBaseline = 'middle';
+  const node = (x: number, y: number, r: number, alpha: number) => {
+    c.fillStyle = colours.node;
+    c.globalAlpha = alpha * 0.7;
     c.beginPath();
-    c.arc(a.x, a.y, NODE_R - 1, 0, 2 * Math.PI);
+    c.arc(x, y, r, 0, 2 * Math.PI);
     c.fill();
-    c.globalAlpha = a.alpha * 0.75;
-    c.fillText(a.text, a.box.x, a.box.y);
+  };
+  const label = (text: string, x: number, y: number, alpha: number) => {
+    c.fillStyle = colours.label;
+    c.globalAlpha = alpha * 0.9;
+    c.fillText(text, x, y);
+  };
+  for (const a of scene.sessions) {
+    node(a.x, a.y, NODE_R - 1, a.alpha);
+    label(a.text, a.box.x, a.y, a.alpha);
   }
   for (const r of scene.routes) {
-    c.globalAlpha = 0.55;
-    c.beginPath();
-    c.arc(r.x, r.y, NODE_R, 0, 2 * Math.PI);
-    c.fill();
-    c.globalAlpha = 0.75;
-    c.fillText(r.text, r.box.x, r.box.y);
+    node(r.x, r.y, NODE_R, 1);
+    label(r.text, r.box.x, r.y, 1);
   }
+  for (const n of scene.notes) label(n.text, n.box.x, n.box.y + n.box.h / 2, 0.8);
   for (const p of scene.particles) {
-    c.globalAlpha = 0.6;
+    c.globalAlpha = 0.75;
     c.fillStyle = p.dir === 'in' ? colours.in : colours.out;
     c.beginPath();
     c.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
     c.fill();
   }
+  drawn += scene.particles.length;
   c.globalAlpha = 1;
 }
 
 function draw() {
-  if (!ctx || width === 0) return;
+  if (!ctx || width === 0 || height === 0) return;
   paint(ctx, model.scene(width, height));
   frames++;
 }
@@ -145,12 +169,16 @@ watch(
 );
 
 function counts(): FlowCounts {
-  return { strings: model.stringCount(), particles: model.particles.length, bursts: model.bursts, frames };
+  return { strings: model.stringCount(), particles: model.particles.length, drawn, bursts: model.bursts, frames };
 }
 
 onMounted(() => {
   readColours();
   resize();
+  if (typeof ResizeObserver === 'function' && box.value) {
+    sizer = new ResizeObserver(() => resize());
+    sizer.observe(box.value);
+  }
   window.addEventListener('resize', resize);
   document.addEventListener('visibilitychange', onVisibility);
   darkQuery?.addEventListener?.('change', onTheme);
@@ -163,6 +191,7 @@ onMounted(() => {
 
 onUnmounted(() => {
   stop();
+  sizer?.disconnect();
   window.removeEventListener('resize', resize);
   document.removeEventListener('visibilitychange', onVisibility);
   darkQuery?.removeEventListener?.('change', onTheme);
@@ -173,5 +202,18 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <canvas ref="canvas" class="flow" aria-hidden="true"></canvas>
+  <section class="flow-panel" aria-labelledby="h-flow">
+    <div class="flow-head">
+      <h2 id="h-flow">Token flow</h2>
+      <p class="flow-caption">
+        <span v-if="summary.sessions > 0">{{ plural(summary.sessions, 'active session') }} → {{ plural(summary.routes, 'route') }};</span>
+        <span class="flow-key"><span class="swatch in" aria-hidden="true"></span>input tokens</span>
+        <span class="flow-key"><span class="swatch out" aria-hidden="true"></span>output tokens</span>
+      </p>
+    </div>
+    <div ref="box" class="flow-box">
+      <canvas ref="canvas" aria-hidden="true"></canvas>
+      <p v-if="summary.sessions === 0" class="flow-empty">No active sessions.</p>
+    </div>
+  </section>
 </template>

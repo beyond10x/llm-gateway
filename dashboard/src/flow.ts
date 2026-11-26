@@ -1,4 +1,4 @@
-// The token-flow layer behind the dashboard: one string per active session and route, labelled
+// The token flow panel of the dashboard: one string per active session and route, labelled
 // with the session on the left and the route on the right, with particles for each new call's
 // tokens: input from the session to the route, output back. Everything here is pure: the snapshot
 // diff, the layout, and the model's step take the clock and the random source from the caller.
@@ -127,49 +127,71 @@ export function seeded(seed: number): () => number {
 // ---------------------------------------------------------------------------------------------
 // Layout
 
-export const FONT_PX = 11;
-export const CHAR_PX = 6.7;
-export const PAD = 12;
-export const TOP = 64;
-export const BOTTOM = 24;
+export const FONT_PX = 12;
+export const CHAR_PX = 7.3;
+export const PAD = 10;
+export const GAP = 8;
 export const NODE_R = 4;
+export const ROW_PX = FONT_PX + 2;
+export const LABEL_SHARE = 0.34;
 
 export interface Point { x: number; y: number }
 export interface Box { x: number; y: number; w: number; h: number }
 export interface Anchor extends Point { key: string; text: string; box: Box }
-export interface Layout { width: number; height: number; sessions: Map<string, Anchor>; routes: Map<string, Anchor> }
+export interface Note { text: string; box: Box }
+export interface Layout { width: number; height: number; sessions: Map<string, Anchor>; routes: Map<string, Anchor>; notes: Note[] }
 
 function fit(text: string, maxPx: number): string {
   const max = Math.max(1, Math.floor(maxPx / CHAR_PX));
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
-function rows(n: number, height: number): number[] {
-  const top = Math.min(TOP, height * 0.2);
-  const span = Math.max(0, height - top - BOTTOM);
-  return Array.from({ length: n }, (_, i) => top + ((i + 0.5) * span) / n);
+// The rows of ROW_PX that fit in `height`, at least one.
+export function capacity(height: number): number {
+  return Math.max(1, Math.floor((height - 2 * PAD) / ROW_PX));
 }
 
-// Session anchors on the left, route nodes on the right, each spread evenly down the page. A label
-// sits above its anchor and is cut to fit inside the canvas.
+function rows(n: number, height: number): number[] {
+  const span = Math.max(0, height - 2 * PAD);
+  return Array.from({ length: n }, (_, i) => PAD + ((i + 0.5) * span) / n);
+}
+
+// The items that get a row: all of them when they fit, else one row fewer than fit and a last row
+// that says how many more there are.
+function shown<T>(items: T[], height: number): { items: T[]; more: string | null } {
+  const cap = capacity(height);
+  if (items.length <= cap) return { items, more: null };
+  const kept = items.slice(0, Math.max(0, cap - 1));
+  return { items: kept, more: `+${items.length - kept.length} more` };
+}
+
+// Session labels in a column at the left with their nodes to the right of the widest label; route
+// nodes in a column at the right with their labels after them. Rows are spread evenly over the
+// height, at least ROW_PX apart, and a label is cut to fit in its column (LABEL_SHARE of the width).
 export function layout(sessions: { key: string; text: string }[], routes: string[], width: number, height: number): Layout {
-  const maxLabel = Math.max(CHAR_PX * 4, width * 0.45 - PAD);
-  const sy = rows(sessions.length, height);
-  const ry = rows(routes.length, height);
-  const out: Layout = { width, height, sessions: new Map(), routes: new Map() };
-  sessions.forEach((s, i) => {
-    const text = fit(s.text, maxLabel);
-    const x = PAD + NODE_R;
-    const y = sy[i]!;
-    out.sessions.set(s.key, { key: s.key, text, x, y, box: { x: PAD, y: y - NODE_R - 3 - FONT_PX, w: text.length * CHAR_PX, h: FONT_PX } });
+  const maxLabel = Math.max(CHAR_PX * 4, width * LABEL_SHARE - PAD - GAP - 2 * NODE_R);
+  const out: Layout = { width, height, sessions: new Map(), routes: new Map(), notes: [] };
+  const left = shown(sessions, height);
+  const right = shown(routes.map((r) => ({ key: r, text: r })), height);
+  const leftText = left.items.map((s) => fit(s.text, maxLabel));
+  const rightText = right.items.map((r) => fit(r.text, maxLabel));
+  const widest = (texts: (string | null)[]) => Math.max(0, ...texts.map((t) => (t === null ? 0 : t.length * CHAR_PX)));
+  const sx = PAD + widest([...leftText, left.more]) + GAP + NODE_R;
+  const rx = width - PAD - widest([...rightText, right.more]) - GAP - NODE_R;
+  const sy = rows(left.items.length + (left.more ? 1 : 0), height);
+  const ry = rows(right.items.length + (right.more ? 1 : 0), height);
+  const box = (x: number, y: number, text: string): Box => ({ x, y: y - FONT_PX / 2, w: text.length * CHAR_PX, h: FONT_PX });
+  left.items.forEach((s, i) => {
+    const text = leftText[i]!;
+    out.sessions.set(s.key, { key: s.key, text, x: sx, y: sy[i]!, box: box(PAD, sy[i]!, text) });
   });
-  routes.forEach((r, i) => {
-    const text = fit(r, maxLabel);
-    const x = width - PAD - NODE_R;
-    const y = ry[i]!;
-    const w = text.length * CHAR_PX;
-    out.routes.set(r, { key: r, text, x, y, box: { x: width - PAD - w, y: y - NODE_R - 3 - FONT_PX, w, h: FONT_PX } });
+  if (left.more) out.notes.push({ text: left.more, box: box(PAD, sy[left.items.length]!, left.more) });
+  const rl = rx + NODE_R + GAP;
+  right.items.forEach((r, i) => {
+    const text = rightText[i]!;
+    out.routes.set(r.key, { key: r.key, text, x: rx, y: ry[i]!, box: box(rl, ry[i]!, text) });
   });
+  if (right.more) out.notes.push({ text: right.more, box: box(rl, ry[right.items.length]!, right.more) });
   return out;
 }
 
@@ -206,10 +228,12 @@ export interface Scene {
   strings: { from: Point; to: Point; alpha: number; inFlight: boolean; pulse: number }[];
   sessions: (Anchor & { alpha: number })[];
   routes: Anchor[];
+  notes: Note[];
   particles: (Point & { r: number; dir: 'in' | 'out' })[];
 }
 
-export interface FlowCounts { strings: number; particles: number; bursts: number; frames: number }
+// `particles` is the number moving now, `drawn` the particles drawn in every frame so far.
+export interface FlowCounts { strings: number; particles: number; drawn: number; bursts: number; frames: number }
 
 export class FlowModel {
   readonly lanes = new Map<string, Lane>();
@@ -344,9 +368,10 @@ export class FlowModel {
   scene(width: number, height: number): Scene {
     const l = this.layout(width, height);
     const pulse = this.reduced ? 0 : 0.5 - 0.5 * Math.cos((2 * Math.PI * this.time) / PULSE_MS);
-    const scene: Scene = { strings: [], sessions: [], routes: [...l.routes.values()], particles: [] };
+    const scene: Scene = { strings: [], sessions: [], routes: [...l.routes.values()], notes: l.notes, particles: [] };
     for (const [key, lane] of this.lanes) {
-      const from = l.sessions.get(key)!;
+      const from = l.sessions.get(key);
+      if (!from) continue;
       scene.sessions.push({ ...from, alpha: lane.alpha });
       for (const [route, s] of lane.strings) {
         const to = l.routes.get(route);

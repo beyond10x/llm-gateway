@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest';
 import type { CallRecord, Snapshot } from './extra.ts';
 import { fixture } from './fixture.ts';
-import { FlowModel, SEED_BURSTS, diff, layout, particleCount, sessionLabel } from './flow.ts';
+import { FlowModel, NODE_R, SEED_BURSTS, capacity, diff, layout, particleCount, sessionLabel } from './flow.ts';
 
 const NOW = 1_800_000_000_000;
 
@@ -143,24 +143,62 @@ describe('layout', () => {
   });
   const routes = Array.from({ length: 10 }, (_, i) => `route-${i}-with-a-long-model-name-and-suffix`);
 
-  for (const [w, h] of [[1280, 720], [390, 844]] as const) {
-    test(`every label of 12 sessions and 10 routes lies inside a ${w}x${h} canvas`, () => {
+  const inside = (b: { x: number; y: number; w: number; h: number }, w: number, h: number) => {
+    expect(b.x).toBeGreaterThanOrEqual(0);
+    expect(b.y).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.w).toBeLessThanOrEqual(w);
+    expect(b.y + b.h).toBeLessThanOrEqual(h);
+  };
+  const apart = (boxes: { y: number; h: number }[]) => {
+    const ys = [...boxes].sort((a, b) => a.y - b.y);
+    for (let i = 1; i < ys.length; i++) expect(ys[i]!.y).toBeGreaterThanOrEqual(ys[i - 1]!.y + ys[i - 1]!.h);
+  };
+
+  // The panel's canvas: 1280 wide and 180 high on a desktop, 390 wide and 140 high on a phone.
+  for (const [w, h] of [[1280, 180], [390, 140]] as const) {
+    test(`12 sessions and 10 routes in a ${w}x${h} panel: rows that fit, labels inside and apart, the rest counted`, () => {
       const l = layout(sessions, routes, w, h);
-      expect(l.sessions.size).toBe(12);
-      expect(l.routes.size).toBe(10);
-      for (const a of [...l.sessions.values(), ...l.routes.values()]) {
-        expect(a.box.x).toBeGreaterThanOrEqual(0);
-        expect(a.box.y).toBeGreaterThanOrEqual(0);
-        expect(a.box.x + a.box.w).toBeLessThanOrEqual(w);
-        expect(a.box.y + a.box.h).toBeLessThanOrEqual(h);
-        expect(a.x).toBeGreaterThan(0);
-        expect(a.x).toBeLessThan(w);
-      }
-      const left = [...l.sessions.values()].map((a) => a.box.x + a.box.w);
-      const right = [...l.routes.values()].map((a) => a.box.x);
-      expect(Math.max(...left)).toBeLessThan(Math.min(...right));
+      const rows = capacity(h);
+      expect(rows).toBeLessThan(12);
+      const kept = (n: number) => (n <= rows ? n : rows - 1);
+      expect(l.sessions.size).toBe(kept(12));
+      expect(l.routes.size).toBe(kept(10));
+      const notes = [12 - kept(12), 10 - kept(10)].filter((n) => n > 0).map((n) => `+${n} more`);
+      expect(l.notes.map((n) => n.text)).toEqual(notes);
+      const ss = [...l.sessions.values()];
+      const rs = [...l.routes.values()];
+      for (const a of [...ss, ...rs]) inside(a.box, w, h);
+      for (const n of l.notes) inside(n.box, w, h);
+      const left = l.notes.filter((n) => n.box.x < w / 2).map((n) => n.box);
+      const right = l.notes.filter((n) => n.box.x >= w / 2).map((n) => n.box);
+      apart([...ss.map((a) => a.box), ...left]);
+      apart([...rs.map((a) => a.box), ...right]);
+      for (const a of ss) expect(a.box.x + a.box.w).toBeLessThan(a.x - NODE_R);
+      for (const a of rs) expect(a.box.x).toBeGreaterThan(a.x + NODE_R);
+      expect(Math.max(...ss.map((a) => a.x))).toBeLessThan(Math.min(...rs.map((a) => a.x)));
+      expect(ss[0]!.text.startsWith(sessions[0]!.text.slice(0, 9))).toBe(true);
     });
   }
+
+  test('three sessions and two routes all get a row in a 1280x180 panel, with their whole labels', () => {
+    const l = layout(sessions.slice(0, 3), routes.slice(0, 2), 1280, 180);
+    expect(l.sessions.size).toBe(3);
+    expect(l.routes.size).toBe(2);
+    expect(l.notes).toEqual([]);
+    expect([...l.sessions.values()].map((a) => a.text)).toEqual(sessions.slice(0, 3).map((s) => s.text));
+    expect([...l.routes.values()].map((a) => a.text)).toEqual(routes.slice(0, 2));
+    for (const a of [...l.sessions.values(), ...l.routes.values()]) inside(a.box, 1280, 180);
+  });
+
+  test('a scene in the panel draws only the sessions that have a row', () => {
+    const m = new FlowModel({ reduced: true, seed: 1 });
+    const many = Array.from({ length: 12 }, (_, i) => session(`${i}`.padStart(8, 'a'), 'codex', NOW));
+    m.apply(snap(NOW, { sessions: many, calls: many.map((s, i) => call(i + 1, s.session, 'qwen-coder', 10, 10, NOW)) }));
+    const scene = m.scene(390, 140);
+    expect(scene.sessions).toHaveLength(capacity(140) - 1);
+    expect(scene.strings).toHaveLength(capacity(140) - 1);
+    expect(scene.notes.map((n) => n.text)).toEqual([`+${12 - (capacity(140) - 1)} more`]);
+  });
 
   test('a session label is the first 8 characters of its id, then its label', () => {
     expect(sessionLabel('3f9a1c0e', 'claude-code')).toBe('3f9a1c0e · claude-code');

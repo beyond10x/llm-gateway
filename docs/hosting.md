@@ -680,8 +680,9 @@ The spend check, `RunpodProvider::admit_spend`, runs immediately before every cr
 provider sends, once per declared GPU type it tries, and needs no relayed request. Without a
 ceiling it reads nothing. With one it adds, at the pool clock's instant:
 
-- the account's reported spend, read afresh for each check: today's since the UTC day's start,
-  and the total;
+- for each ceiling, the larger of the account's reported spend, read afresh for each check
+  (today's since the UTC day's start, and the total), and the pool's own
+  spend ledger (below) (today's part, and the 30 days' part);
 - the running estimate of the pool's live pods: for every record of this controller that
   occupies a slot, its model's price times the time since its create was submitted, and never
   less than its price times its startup deadline, so a pod submitted moments ago counts what
@@ -705,11 +706,16 @@ account:
 
 - The running estimate counts a live pod's whole time since submission, so it may count again
   hours the reported spend already holds.
-- A pod this pool holds no record for (another controller's, or a previous run's before its
-  orphan sweep) is counted only once the reported spend holds it.
-- A pool pod that has been stopped leaves the running estimate when its record stops
-  occupying a slot, which can be before the provider bills its last stretch. Until the reported
-  spend holds that stretch, neither part counts it. This lag errs toward admitting.
+- A pod of another controller is counted only once the reported spend holds it. A pod this
+  gateway started, before or after a restart, is in the ledger.
+- The ledger is an estimate from the declared price and the gateway's own clock, from the create
+  to the confirmed stop. A pod whose stop the gateway never confirmed (it was terminated
+  elsewhere, or by the watchdog while the gateway was down) counts until a cleanup pass finds it
+  gone from a complete listing, so the ledger may count more than was billed.
+- With no ledger (a test composition that names no `spend_ledger_file`), a stopped pod leaves
+  the running estimate before the provider bills its last stretch, and a restart forgets every
+  pod: until the reported spend holds them, nothing counts them. This lag errs toward
+  admitting; it is what the ledger closes.
 - The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`.
   Through `connectors` each entry's `amount` is taken as USD and its `time` as the bucket's
   start; that reading has not been checked against a live account. The REST transport reads
@@ -720,6 +726,46 @@ account:
   the total ceiling is a ceiling on the last 30 days, not on the account's whole history.
 - A `billing.pods` result is read only when it carries a 2xx `status`; one with no status is
   unanswered, never zero spend, and refuses the start.
+
+**The spend ledger.** Runpod's billing reports a pod's spend hours after it ran: on 2026-11-26
+it reported 0.87 USD for a day on which the gateway's pods had run about 2.4 USD, and the gateway
+had restarted six times. So the pool of a provider with a spend ceiling keeps a ledger of its
+own pods (`RunpodPool::with_ledger`, `LedgerStore`):
+
+- One entry per create answered `created`, or whose answer was lost (it may have started a pod):
+  deployment, request id, pod id, model, the model's declared price per hour, the instant the
+  create was submitted, and the instant its stop was confirmed, none while it may still run.
+- A pod's spend over a stretch is its price times the part of its run inside the stretch, a pod
+  with no confirmed stop running up to now, rounded up to the next micro-USD. The daily ceiling
+  takes the UTC day's part, the total ceiling the 30 days' up to now, the window Runpod reports.
+- The pods a live record holds are left to the running estimate, so a live pod counts once.
+- Each cleanup pass records as stopped every running entry no live record holds that a complete
+  listing no longer shows (a pod from before a restart the orphan sweep terminated, or one that
+  ended on its own); a partial or failed listing settles nothing. An entry stopped more than 30
+  days ago is dropped.
+- The ledger is read once, when the pool is composed, and written whole after each recorded
+  create and stop. A ledger that cannot be read, or is not a ledger, is never written over, and
+  every start under the ceiling is refused `spend-ceiling` with the ceiling `unknown`; so is
+  every start after a write that failed, until a later write succeeds.
+
+The binary keeps it in the file `spend_ledger_file` of the provider that declares the ceiling,
+or else `spend-ledger.json` in the gateway's state directory: `$XDG_STATE_HOME/llm-gateway` when
+`XDG_STATE_HOME` is an absolute path, else `$HOME/.local/state/llm-gateway`, the heartbeat's
+directory. With neither set, and no `spend_ledger_file`, the start is refused `config:value`. The
+file is read by the trusted-file rules (no final symbolic link, a regular file of this user or
+root, not group- or world-writable, at most 1 MiB); a missing file is an empty ledger. It is
+written to a temporary file beside it, mode 0600, and renamed over it; its directory is created
+mode 0700. A refused read or a failed write is logged as a `warn` event naming the rule or the
+error kind, never the path. The file's format is `llm-gateway.spend-ledger/1`:
+
+```json
+{"format":"llm-gateway.spend-ledger/1","pods":[{"deployment":"qwen-1","request":"request-b10x-llm-gateway-qwen-1-…","pod":"abc123","model":"qwen","price_per_hour_micro_usd":2690000,"started_ms":1795964940000,"stopped_ms":1795968540000}]}
+```
+
+To start over after a ledger was refused, move the file away; the next start reads an empty
+ledger and counts only the reported spend for what came before.
+`crates/llm-runpod/tests/spend_ledger.rs`, the `ledger` unit tests of `crates/llm-runpod`, and
+`crates/llm-gateway-cli/tests/spend_ledger.rs` prove it.
 
 **The live spend read needs a connectors release.** `ConnectorsRunpod` reads the account's spend
 through the connectors operation `billing.pods`, which the connectors v0.37.0 Runpod catalog does

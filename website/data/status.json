@@ -123,6 +123,13 @@
     },
     {
       "area": "Relay",
+      "detail": "Under a spend ceiling the gateway keeps its own pods' estimated spend (declared price times run time, from the create to the confirmed stop) in spend_ledger_file, and each ceiling counts the larger of the reported spend and the ledger's, so a pod already stopped, or started before a restart, counts until billing reports it. A ledger that cannot be read refuses every start. Tested over the emulator.",
+      "href": "/docs/concepts/relay",
+      "label": "A spend ledger that survives a restart",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "A model may declare ordered profiles, each GPU types with their vLLM settings; when Runpod refuses every create of a profile for capacity the start moves on to the next profile inside the same startup deadline and spend check, and the usage record names the profile that served. Tested over the emulator.",
       "href": "/docs/concepts/relay",
       "label": "Model profiles with capacity fallback",

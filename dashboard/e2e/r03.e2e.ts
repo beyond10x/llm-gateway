@@ -1,11 +1,14 @@
 // The regression assertions of change set R-03 (UXF-002, 003, 004, 007, 008), each run against the
 // built page through the hermetic replay.
+import { mkdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import AxeBuilder from '@axe-core/playwright';
-import { expect, test, type Browser, type Page } from '@playwright/test';
+import { expect, test, type Browser, type Page, type Route } from '@playwright/test';
 import type { Snapshot } from '../src/extra.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
-import { openReplay, settle } from './harness.ts';
-import { VIEWPORTS } from './profiles.ts';
+import { PAGE_URL, openReplay, settle } from './harness.ts';
+import { VIEWPORTS, type Theme } from './profiles.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
 const viewport = (name: string) => {
@@ -144,4 +147,133 @@ test.describe('UXF-007', () => {
       expect([...cut]).toEqual([]);
     });
   }
+});
+
+// A replay of `name` on the page with ?flowdebug, so window.__flow() answers.
+async function flowReplay(page: Page, name: string, theme: Theme): Promise<{ advanceAll(): Promise<void> }> {
+  const states = scenario(name).states(Date.now());
+  const html = readFileSync(fileURLToPath(new URL('../../crates/llm-gateway/src/dashboard.html', import.meta.url)), 'utf8');
+  let index = 0;
+  let held: Route | null = null;
+  let waiting: (() => void) | null = null;
+  await page.emulateMedia({ colorScheme: theme, reducedMotion: 'no-preference' });
+  await page.addInitScript((t) => localStorage.setItem('llm-gateway.theme', t), theme);
+  await page.route('**/*', async (route) => {
+    const url = route.request().url();
+    if (url === `${PAGE_URL}?flowdebug`) await route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: html });
+    else if (url === `${PAGE_URL}/snapshot`) await route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(states[index]) });
+    else if (url === `${PAGE_URL}/events`) {
+      held = route;
+      const w = waiting;
+      waiting = null;
+      w?.();
+    } else await route.abort('blockedbyclient');
+  });
+  const first = new Promise<void>((r) => (waiting = r));
+  await page.goto(`${PAGE_URL}?flowdebug`);
+  await page.locator('main:not(.waiting)').first().waitFor();
+  await first;
+  await settle(page);
+  return {
+    async advanceAll() {
+      while (index + 1 < states.length) {
+        index += 1;
+        const route = held as Route | null;
+        held = null;
+        if (!route) throw new Error('no events connection held');
+        const next = new Promise<void>((r) => (waiting = r));
+        await route.fulfill({ status: 200, contentType: 'text/event-stream', body: `retry: 20\nevent: snapshot\ndata: ${JSON.stringify(states[index])}\n\n` });
+        await next;
+        await settle(page);
+      }
+    },
+  };
+}
+
+interface FlowCountsSeen { strings: number; particles: number; drawn?: number; frames: number }
+
+test.describe('UXF-008', () => {
+  for (const theme of ['light', 'dark'] as const) {
+    test(`the token flow has its own panel above Overview, in view and uncovered — ${theme}`, async ({ page }) => {
+      await page.setViewportSize(viewport('1366x768'));
+      const replay = await flowReplay(page, 'token-flow', theme);
+      await replay.advanceAll();
+      await page.waitForTimeout(400);
+
+      const order = await page.evaluate(() => {
+        const sections = [...document.querySelectorAll('main > section, main section')];
+        const flow = [...document.querySelectorAll('main h2')].find((h) => (h.textContent ?? '').trim() === 'Token flow')?.closest('section') ?? null;
+        const overview = document.querySelector('#h-kpi')?.closest('section') ?? null;
+        return {
+          flow: flow !== null,
+          first: flow !== null && sections[0] === flow,
+          above: !!flow && !!overview && flow.getBoundingClientRect().bottom <= overview.getBoundingClientRect().top,
+          fixedCanvas: [...document.querySelectorAll('canvas')].filter((c) => getComputedStyle(c).position === 'fixed').length,
+          caption: (flow?.querySelector('.flow-caption')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+        };
+      });
+      expect(order.flow, 'a section headed "Token flow"').toBe(true);
+      expect(order.first, 'the first section of main').toBe(true);
+      expect(order.above, 'above Overview').toBe(true);
+      expect(order.fixedCanvas, 'no fixed background canvas').toBe(0);
+      expect(order.caption).toMatch(/^\d+ active sessions? → \d+ routes?\b/);
+
+      for (const vp of GATING) {
+        await page.setViewportSize(viewport(vp));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await settle(page);
+        const probe = await page.evaluate(() => {
+          const canvas = document.querySelector('main section canvas') as HTMLCanvasElement | null;
+          if (!canvas) return null;
+          const cs = getComputedStyle(canvas);
+          const attrs = { hidden: canvas.getAttribute('aria-hidden'), tabindex: canvas.getAttribute('tabindex'), events: cs.pointerEvents };
+          const r = canvas.getBoundingClientRect();
+          const before = canvas.style.pointerEvents;
+          canvas.style.pointerEvents = 'auto';
+          const covered: string[] = [];
+          for (let i = 0; i < 5; i++) {
+            for (let j = 0; j < 5; j++) {
+              const x = r.left + ((i + 0.5) * r.width) / 5;
+              const y = r.top + ((j + 0.5) * r.height) / 5;
+              const hit = document.elementFromPoint(x, y);
+              if (hit !== canvas) covered.push(`${Math.round(x)},${Math.round(y)}: ${hit ? hit.tagName.toLowerCase() : 'nothing'}`);
+            }
+          }
+          canvas.style.pointerEvents = before;
+          return { attrs, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, height: r.height }, vw: innerWidth, vh: innerHeight, covered };
+        });
+        expect(probe, `${vp}: a canvas in a section of main`).not.toBeNull();
+        const p = probe!;
+        expect(p.attrs).toEqual({ hidden: 'true', tabindex: null, events: 'none' });
+        expect(p.box.left, vp).toBeGreaterThanOrEqual(0);
+        expect(p.box.top, vp).toBeGreaterThanOrEqual(0);
+        expect(p.box.right, vp).toBeLessThanOrEqual(p.vw);
+        expect(p.box.bottom, vp).toBeLessThanOrEqual(p.vh);
+        expect(p.box.height, vp).toBeGreaterThanOrEqual(120);
+        expect(p.covered, vp).toEqual([]);
+      }
+
+      const counts = await page.evaluate(() => (window as unknown as { __flow?: () => FlowCountsSeen }).__flow?.() ?? null);
+      expect(counts, 'window.__flow with ?flowdebug').not.toBeNull();
+      expect(counts!.strings).toBeGreaterThanOrEqual(1);
+      expect(counts!.drawn ?? 0, 'particles drawn').toBeGreaterThan(0);
+
+      const shots = process.env.R03_SHOTS;
+      if (shots) {
+        await page.setViewportSize(viewport('1366x768'));
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await settle(page);
+        mkdirSync(shots, { recursive: true });
+        await page.screenshot({ path: join(shots, `token-flow-1366x768-${theme}.png`) });
+      }
+    });
+  }
+
+  test('with no active session the panel says so in words', async ({ page }) => {
+    await page.setViewportSize(viewport('1280x720'));
+    await openReplay(page, scenario('idle'), 'light');
+    const panel = page.locator('main section', { has: page.getByRole('heading', { name: 'Token flow' }) });
+    await expect(panel).toHaveCount(1);
+    await expect(panel.getByText('No active sessions')).toBeVisible();
+  });
 });

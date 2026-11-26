@@ -7,7 +7,7 @@
 //! `llm_runpod::VllmSettings` (K16-K22) and the volume keys onto `llm_runpod::NetworkVolume`
 //! (K24-K25).
 
-mod support;
+use crate::support;
 
 use llm_gateway::{
     AuthKind, BillingKind, CredentialHeader, IngressAuth, ReasoningEffort, ToolCalling,
@@ -38,6 +38,40 @@ fn with_model_keys(text: &str, lines: &str) -> String {
         "max_model_len = 1024\n",
         &format!("max_model_len = 1024\n{lines}"),
     )
+}
+
+/// `metrics_listen` must not name the socket `listen` names (`config:value`). Two addresses on
+/// port 0 name no socket yet: the system picks a port for each, so they never meet, and the
+/// document is loaded.
+#[test]
+fn metrics_listen_equal_to_listen_is_refused_unless_both_take_any_port() {
+    let fixture = Fixture::new("metrics-listen-equal");
+    let with = |listen: &str, metrics: &str| {
+        let text = document(listen, &fixture.owner_secret());
+        fixture.config(&mutate(
+            &text,
+            "\n\n[providers.runpod]",
+            &format!("\nmetrics_listen = \"{metrics}\"\n\n[providers.runpod]"),
+        ))
+    };
+    let refusal = load(&with("127.0.0.1:9464", "127.0.0.1:9464")).unwrap_err();
+    assert_eq!(refusal.code(), "config:value", "{refusal}");
+    assert!(
+        refusal
+            .to_string()
+            .contains("metrics_listen must differ from listen"),
+        "{refusal}"
+    );
+    let any: SocketAddr = "127.0.0.1:0".parse().unwrap();
+    let loaded = load(&with("127.0.0.1:0", "127.0.0.1:0")).unwrap();
+    assert_eq!(loaded.gateway.bind, any);
+    assert_eq!(loaded.metrics_listen, Some(any));
+    for (listen, metrics) in [
+        ("127.0.0.1:0", "127.0.0.1:9464"),
+        ("127.0.0.1:8080", "127.0.0.1:0"),
+    ] {
+        assert!(load(&with(listen, metrics)).is_ok(), "{listen} {metrics}");
+    }
 }
 
 /// story:ingress-auth-optional: `ingress_auth = "none"` makes `owner_secret_file` optional;

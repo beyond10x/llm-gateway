@@ -7,9 +7,14 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 description = "Hosting lifecycle ports and resource ownership contracts."
+autotests = false
 
 [lints]
 workspace = true
 
 [lib]
 name = "llm_provision"
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

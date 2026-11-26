@@ -4,7 +4,7 @@
 //! module documentation of `crates/llm-gateway-cli/src/token_review.rs`, or of the guide.
 //! Nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use base64::{Engine as _, engine::general_purpose::URL_SAFE_NO_PAD};
 use llm_gateway::{

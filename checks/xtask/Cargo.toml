@@ -1,0 +1,27 @@
+[package]
+name = "b10x-llm-gateway-xtask"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+description = "Runs the gate's test step with cargo-nextest under its time bound and prints the ten slowest tests."
+autotests = false
+
+[lints]
+workspace = true
+
+[dependencies]
+serde_json.workspace = true
+
+[[bin]]
+name = "b10x-llm-gateway-xtask"
+path = "src/main.rs"
+
+[dev-dependencies]
+serde_yaml = "0.9"
+toml = "1"
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T04:20:22Z",
+  "actor": "human:operator",
+  "artifact": "dependency-blocker:sessionspec-records-release",
+  "kind": "dependency-blocker",
+  "revision": 1,
+  "change": {
+    "change": "evidence",
+    "kind": "verification",
+    "source": "sessionspec 0.1.0 is released (tag 0.1.0 on 39c551d6, https://github.com/beyond10x/sessionspec/releases/tag/0.1.0); its crate sessionspec-records exports wire::lift_call, wire::WireSession, wire::session_hash and append::Appender at that commit",
+    "reference": "https://github.com/beyond10x/sessionspec/releases/tag/0.1.0"
+  }
+}

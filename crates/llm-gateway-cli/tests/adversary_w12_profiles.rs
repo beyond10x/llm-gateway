@@ -2,7 +2,7 @@
 //! fallback profile. Composed in process through `start_relaying` with `EmulatedRunpod` and a
 //! loopback pod; nothing leaves the loopback interface and no Runpod API is called.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{PodConnector, load, start_relaying};

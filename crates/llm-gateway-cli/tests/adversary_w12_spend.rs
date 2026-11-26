@@ -1,7 +1,7 @@
 //! Adversarial pass over story:spend-caps: the spend ceiling in the composition the shipped
 //! binary runs. Nothing leaves the loopback interface and no `connectors` but the fixture runs.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{ProxyConnector, load, start_connected};
 use std::{

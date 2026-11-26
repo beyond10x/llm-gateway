@@ -1223,8 +1223,9 @@ and in its call record. A non-streamed chat answer, a responses answer and a mes
 their usage without being asked.
 
 `GET /metrics` serves llmgw's 13 counters under their llmgw names, so a scrape configured for
-llmgw keeps working, and one of the gateway's own, `llmgw_pod_start_spend_refusals_total`, after
-llmgw's eight process-wide series, and after the route series two per model: the outcome counter
+llmgw keeps working, and four of the gateway's own after llmgw's eight process-wide series
+(`llmgw_pod_start_spend_refusals_total`, `llmgw_interaction_records_dropped_total`,
+`llmgw_interaction_records_skipped_total`, `llmgw_interaction_records_failed_total`), and after the route series two per model: the outcome counter
 and the latency histogram ([latency and outcomes per model](#latency-and-outcomes-per-model)). Its
 prefix keeps one scrape configuration for every series. It takes the owner credential and readiness like inspection, and answers
 `content-type: text/plain; version=0.0.4; charset=utf-8`. The text is rendered inside this crate,
@@ -1241,6 +1242,9 @@ which takes no dependency for it.
 | `llmgw_endpoint_invalidations_total` | | each target reported to `invalidate` |
 | `llmgw_cold_start_wait_seconds_total` | | seconds `acquire` took for a request held for a starting target |
 | `llmgw_pod_start_spend_refusals_total` | | pod starts the embedding refused for a spend ceiling, each answered `spend-ceiling` (`Metrics::count_pod_start_spend_refusal`) |
+| `llmgw_interaction_records_dropped_total` | | finished calls the embedding could not queue for its interaction record (`Metrics::count_interaction_record_dropped`, [finished calls](#finished-calls)) |
+| `llmgw_interaction_records_skipped_total` | | finished calls whose record the embedding left out: bytes over the bound (`CallBytes::OverBound`) or not decoded (`CallBytes::Undecodable`), or a call that lifts to no step (`Metrics::count_interaction_record_skipped`) |
+| `llmgw_interaction_records_failed_total` | | finished calls the embedding queued for its interaction record and then failed to store (`Metrics::count_interaction_record_failed`) |
 | `llmgw_route_requests_total` | `model`, `wire` | records naming a relayed model on a wire it declares |
 | `llmgw_route_refusals_total` | `model`, `wire` | the same, refused or no target answered |
 | `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
@@ -1451,6 +1455,61 @@ does not say which. The gateway holds every call in flight and the last `MAX_END
 `ended-calls-held` in [bounds](#bounds)) ended ones, and drops the oldest ended one first. The store
 is in memory: a restart holds none. Reading a record asks no target, makes no usage record and
 counts no series, and the store is never locked while an answer is written or a target read.
+
+### Finished calls
+
+DECIDED 2026-11-26 (story:finished-call-facts). Every call that is given an id
+([call ids and call records](#call-ids-and-call-records)) hands one `FinishedCall` to the
+`FinishedCalls` port the embedding composes with `Relay::with_finished_calls`, once, where its
+usage record is made: relayed, translated, passthrough and refused calls alike. A token count
+(`POST /v1/messages/count_tokens`), a shed request and one that fails authentication or its review
+hand none. Without a port the value is made and dropped. The dashboard reads its finished call from
+the same value.
+
+| Field | Value |
+| --- | --- |
+| `call_id` | the usage record's `call` |
+| `session_hash` | the session its headers name, as the dashboard keys a call: 12 hexadecimal digits of SHA-256 over `llm-gateway.session/1`, the header's source and its value, never the value itself. A call refused before its headers were read into the dashboard (a method, framing or readiness refusal) still carries it; the dashboard shows that call with no session |
+| `harness` | `ClaudeCode`, `Codex` or `Other`, as the dashboard labels the sender |
+| `path` | the wire's path the client called |
+| `wire` | the inbound wire; a translated call's upstream speaks another |
+| `route` | the alias the body named (the record's `model`) |
+| `upstream` | the authority of the target the call was handed |
+| `attempts` | each attempt of a passthrough call, 1 on the byte relay and the translated path once a target was handed out, 0 when none was |
+| `queue_wait_ms`, `ttft_ms` | the dashboard's queue wait and time to first byte |
+| `declared_cost_usd` | the record's `cost_usd`, present exactly when it is |
+| `ending` | `Refused(code)`; else `UpstreamCut` when a translator told `upstream-failed` after the answer's head; else `WireError` when the answer carried its wire's terminal error, whether or not its upstream cut it afterwards; else `UpstreamCut` when the upstream cut the answer; else `ClientDisconnected`; else `Complete` |
+| `started_ms`, `finished_ms` | milliseconds since the Unix epoch; their difference is the record's `duration_ms` |
+
+The bytes of a call are copied only when the relay declares a bound with
+`Relay::with_call_bytes(bound)`; without it the port receives `None` and no byte is copied. With
+it, a call whose request body and answer body together are at most `bound` bytes arrives with
+`CallBytes::Copied`: the request body as the gateway read it, and the answer as the client
+received it, de-chunked (`AnswerBytes::Body`), or for a `text/event-stream` answer the `data:`
+payload of each whole event in order (`AnswerBytes::Events`). A translated call's answer is the
+translated one the client received; a refusal has its request and no answer. A call over the
+bound arrives with `CallBytes::OverBound` and both sizes, its copy dropped the moment it passed
+the bound. The client's answer is the same byte for byte with the copy on or off.
+
+An answer with a content coding (a passthrough answer the client asked compressed) is copied as
+the client reads it, decoded by the relay's `BodyDecoder` (`Relay::with_decoder`; the binary's
+decodes gzip, deflate, br and zstd), and the bound counts its decoded bytes. One the decoder does
+not decode whole (no decoder, a coding it does not know, a decode error, a client that left
+before its end, more than 16 MiB as received or 64 MiB decoded) arrives with
+`CallBytes::Undecodable`: no bytes, the request's size, the answer's size as received and its
+`content-encoding`.
+
+The value maps onto sessionspec's `GatewayFacts` and `WireCall` by name, with three conversions
+the embedding makes: `attempts` to an `i64`, `declared_cost_usd` (a decimal string) to
+`declared_cost_microdollars`, and `ending` to `incomplete` (`Complete` is none). `wire` and the
+copy fill `WireCall`'s `wire`, `request` and `answer`. An embedding that cannot queue a value
+counts `Metrics::count_interaction_record_dropped`, one that leaves out a call over the bound,
+not decoded or lifted to no step counts `Metrics::count_interaction_record_skipped`, and one
+that queued a value it then failed to store counts `Metrics::count_interaction_record_failed`.
+The binary is one such
+embedding: with `[interaction_records]` in its document it lifts each value with sessionspec's
+`wire::lift_call` and appends the steps to a SQLite file on one writer thread
+(`spec/domains/deployment.yaml` `InteractionRecordsDeclaration`).
 
 ### Scraping the counters
 

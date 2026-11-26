@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.InteractionRecordsDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:69fe531c44bfd384f1f4770cca24156a074a78a93d27d6dad7b5a1591ae49fd9",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.InteractionRecordsDeclaration": {
+      "title": "InteractionRecordsDeclaration",
+      "x-ess-name": "llm-gateway.deployment.InteractionRecordsDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "path": {
+          "type": "string"
+        },
+        "queue": {
+          "type": "integer"
+        },
+        "call_bytes": {
+          "type": "integer"
+        },
+        "sessions_held": {
+          "type": "integer"
+        }
+      },
+      "required": [
+        "path",
+        "queue",
+        "call_bytes",
+        "sessions_held"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

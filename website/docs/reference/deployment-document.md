@@ -3,7 +3,7 @@ title: The deployment document
 sidebar_position: 2
 description: Every key of the closed TOML document b10x-llm-gateway reads, with its default and its rule, and how each file it names is read.
 lede: One closed TOML document configures the binary; an unknown key at any level refuses the start, naming its line and the keys allowed there.
-source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/src/routes.rs, crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/hosted.rs and crates/llm-gateway-cli/tests/routes.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
+source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/src/routes.rs, crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/hosted.rs, crates/llm-gateway-cli/tests/routes.rs, crates/llm-gateway-cli/src/records.rs and crates/llm-gateway-cli/tests/interaction_records.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
 ---
 
 # The deployment document
@@ -30,13 +30,14 @@ why `runpod_api_key_file` above is refused ([keychain references](#keychain-refe
 | `ingress_auth` | no | `bearer`, the default: every model call takes the owner secret. `none`: model calls take no credential, and the binary says so on standard error before it listens ([model calls without a credential](../concepts/single-owner-gateway.md#model-calls-without-a-credential)). `service-account-token`: a model call takes the owner secret or a Kubernetes service-account token the cluster's TokenReview API admits ([`[token_review]`](#token-review)). Any other value is `config:schema`. |
 | `owner_secret_file` | with `bearer` | The file holding the owner's secret. A relative path is read from the working directory. Required only with `bearer` (`config:value`); without it, `/metrics` and `/v1/routes` refuse every request. |
 | `[token_review]` | with `service-account-token` | How a caller's service-account token is reviewed ([below](#token-review)). Required with `ingress_auth = "service-account-token"` and refused with any other value (`config:value`). |
-| `metrics_listen` | no | A top-level key beside `listen`: a socket address for a second listener that answers `GET /metrics` with the same counters and nothing else: it takes no owner secret, every other method or path is `404 path-unknown`, and no model route is reachable on it ([scrape without the owner secret](../guides/scrape-the-counters.md#scrape-without-the-owner-secret)). Absent by default, which binds none. It must differ from `listen` (`config:value`); an address that cannot be bound is refused as `listen:bind`, naming `metrics_listen`. It stops with the gateway. |
+| `metrics_listen` | no | A top-level key beside `listen`: a socket address for a second listener that answers `GET /metrics` with the same counters and nothing else: it takes no owner secret, every other method or path is `404 path-unknown`, and no model route is reachable on it ([scrape without the owner secret](../guides/scrape-the-counters.md#scrape-without-the-owner-secret)). Absent by default, which binds none. It must differ from `listen` (`config:value`) unless both name port 0, where the system picks a port for each; the binary writes `b10x-llm-gateway: metrics listening on <address>` with the address it bound, before `listening on`. An address that cannot be bound is refused as `listen:bind`, naming `metrics_listen`. It stops with the gateway. |
 | `metrics_bearer_file` | no | The file holding the token a scrape of `metrics_listen` must send as `authorization: Bearer`; without it that listener is open, so bind it only on an address a network policy guards. Allowed only with `metrics_listen` (`config:value`). Read once at start by the [credential-file rules](#credential-files), refused as `metrics-bearer:<rule>`; a token under 32 bytes, the owner secret's floor, is refused as `metrics-bearer:not-a-token`. |
 | `[providers.<name>]` | no | Providers models name. A name is 1 to 64 of `a-z`, `0-9`, `-`, `_`, `.`, without a leading dash. |
 | `routes` | no | The path of an llm `llm.routes/1` document whose routes are served beside the tables below ([`routes`](#routes)). A relative path is read from the working directory. |
 | `[models.<alias>]` | at least one model, here, in `hosted` or in `routes` | The models Runpod pods serve, under the same naming rule. |
 | `[hosted.<alias>]` | at least one model, here, in `models` or in `routes` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
 | `[watchdog]` | no | The heartbeat `serve` writes and the limits `b10x-llm-gateway watchdog` enforces ([`[watchdog]`](#watchdog)). Absent: no heartbeat, and `watchdog` refuses to start. |
+| `[interaction_records]` | no | The SQLite file every finished model call is appended to as session records ([`[interaction_records]`](#interaction-records)). Absent: no byte of a call is copied, no writer thread runs and no file is created. |
 
 ## `[providers.<name>]`
 
@@ -412,6 +413,30 @@ pod of the account is ever touched. For each such pod it terminates on the first
 under `min_balance_usd`, a stale heartbeat, the runtime past `max_runtime_hours`, the pod not
 ready for `not_ready_minutes`, or the heartbeat showing its model with no call in flight and
 its last call older than its `idle_timeout_minutes` (never less than `stale_minutes`).
+
+## `[interaction_records]` {#interaction-records}
+
+With this table the binary lifts every finished model call into sessionspec's session records
+(sessions, agents, prompts, model turns with the gateway's facts, tool calls; no message text)
+and appends them to one SQLite file, which `sessionspec serve` reads
+([Record agent sessions](../guides/record-agent-sessions.md)).
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `path` | required | The SQLite file, not empty. A relative path is read from the working directory. Its directory must exist at start, and the file must be missing, empty, only sessionspec's `meta` table without a schema row, or a session store whose schema row reads exactly the version the binary writes; any other, or a file another process holds locked past 2 s, is `config:value` naming `interaction_records.path` and the reason (both versions, or `held locked by another process`), never the path, and the file is left as it was. Give the binary a file of its own, never the `sessions.db` sessionspec keeps for its transcripts. |
+| `queue` | 1024 | 1 to 65536: finished calls waiting for the writer thread. A call that finds it full is not recorded and is counted in `llmgw_interaction_records_dropped_total`. |
+| `call_bytes` | 8388608 (8 MiB) | 1 to 33554432: the most bytes of request body and answer body together copied of one call. A call over it, or whose answer was not decoded, is not recorded and is counted in `llmgw_interaction_records_skipped_total`; its answer is unchanged. |
+| `sessions_held` | 4096 | 1 to 65536: sessions whose agents the binary remembers, the least recently used forgotten first. A forgotten session's next call continues under the same agent id, without the chain state of its earlier turns. |
+
+A value outside its range is `config:value` naming `interaction_records.<key>`; any other key
+is `config:schema`. A refused call is recorded as an incomplete turn; a token count is not
+recorded. A call whose request the lift cannot read (it yields no step) is not recorded and is
+counted in `llmgw_interaction_records_skipped_total`; a call the writer fails to store is counted
+in `llmgw_interaction_records_failed_total`, with at most one warning line per second naming how
+many failed since the last. At SIGINT or SIGTERM the binary waits at most 2 s for the writer,
+then counts the calls still queued and those failed since the last warning on one line,
+`b10x-llm-gateway: interaction records: <n> calls not stored at stop`, before its unchanged stop
+line.
 
 ## `routes` {#routes}
 

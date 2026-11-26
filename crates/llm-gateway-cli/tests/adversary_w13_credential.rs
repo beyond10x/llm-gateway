@@ -1,7 +1,7 @@
 //! Adversary pass 1 on story:credential-set-command: `b10x-llm-gateway credential set` handles a
 //! secret. Every endpoint here is a loopback fixture on 127.0.0.1; no key is real.
 
-mod support;
+use crate::support;
 
 use std::{
     fs,

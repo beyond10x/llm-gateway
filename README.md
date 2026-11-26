@@ -21,7 +21,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.25.0, released 2026-11-26 as a source release with the gateway image; tested
+**Status: 0.26.0, released 2026-11-26 as a source release with the gateway image; tested
 against in-process fakes and loopback; nothing is deployed or qualified.**
 [CHANGELOG.md](CHANGELOG.md) lists every release and what is unreleased.
 
@@ -197,6 +197,14 @@ resolved against `HOME`), and its `base_url` must name the API path, such as
 [deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/#routes)
 page.
 
+An `[interaction_records]` table names a SQLite file (`path`; its directory must exist) that the
+binary appends every finished model call to as
+[sessionspec](https://github.com/beyond10x/sessionspec)'s session records, with no message text,
+on one writer thread behind a queue of `queue` calls (default 1024); `sessionspec serve` reads it.
+A call over `call_bytes` (default 8 MiB) is counted skipped and a call that finds the queue full
+dropped, never stored. Without the table nothing is copied and no file is created
+([record agent sessions](https://beyond10x.github.io/llm-gateway/docs/guides/record-agent-sessions/)).
+
 The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model with its
 `max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,
 chosen by `User-Agent`) without a credential; the owner can read
@@ -229,6 +237,7 @@ lines below.
 
 | Event | Line on standard error | Exit status |
 | --- | --- | --- |
+| Metrics listener bound, once, before `listening on`, when the document sets `metrics_listen` | `b10x-llm-gateway: metrics listening on <address>`, the address it bound | none yet |
 | Serving | `b10x-llm-gateway: listening on <address>` | none yet |
 | Refused start | `b10x-llm-gateway: refused <source>:<rule>: <message>` | 1 |
 | SIGINT or SIGTERM | `b10x-llm-gateway: stopped by <signal> accepted=<n> completed=<n>` | 0 |
@@ -246,11 +255,13 @@ have their own deadline, and a relayed stream is waited for until it ends
 ## Build and check
 
 ```bash
-cargo test --workspace --locked
+task test
 task check
 ```
 
-`task check` adds formatting, Clippy, the documentation drift check, specification validation,
+`task test` runs every test with [cargo-nextest](https://nexte.st/) (on `PATH`), each in a process of its own:
+a test over 60 seconds is killed and fails, the run fails over 120 seconds, and it prints the ten
+slowest tests. `task check` adds formatting, Clippy, the documentation drift check, specification validation,
 the specification diff against the merge base with `origin/main` and the conformance suite. It needs [Task](https://taskfile.dev) and the `ess` command from
 [ESS](https://beyond10x.github.io/ess/) ([GitHub](https://github.com/beyond10x/ess)) on `PATH`.
 [AGENTS.md](AGENTS.md) explains each step.

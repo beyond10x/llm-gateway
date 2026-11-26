@@ -4,7 +4,7 @@
 //! The endpoint is a loopback fixture recording every request head it reads; nothing leaves the
 //! loopback interface and no credential is real.
 
-mod support;
+use crate::support;
 
 use std::{
     io::{BufRead, BufReader, Read, Write},

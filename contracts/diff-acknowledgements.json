@@ -1,15 +1,10 @@
 {
   "format": "ess-diff-acknowledgements/1",
-  "before": "3a93be29e547c0c83852d02a3be5ada2895834be3852ab9d65ceb7f8295dde0c",
-  "after": "87ddacf2fdc67b7660f6d2656ccb53b2675922e059a1fd54df9b1b0ee3709107",
+  "before": "87ddacf2fdc67b7660f6d2656ccb53b2675922e059a1fd54df9b1b0ee3709107",
+  "after": "589cb950cf45918d198e03c1b48303ce119fd90f72f79a0cbdd4ab58a773ceff",
   "acknowledged": [
-    "system/llm-gateway/unclassified-changed",
-    "type/llm-gateway.deployment.HostedDeclaration/field-added/token_price",
-    "type/llm-gateway.deployment.ModelDeclaration/field-added/token_price",
-    "type/llm-gateway.deployment.RouteDeclaration/field-added/price",
-    "entity/llm-gateway.gateway.RelayObservation/field-added/calls",
-    "entity/llm-gateway.telemetry.UsageRecord/field-added/call",
-    "entity/llm-gateway.telemetry.UsageRecord/field-added/cost_usd",
-    "view/llm-gateway.gateway.LastRelay/field-added/calls"
+    "entity/llm-gateway.gateway.RelayObservation/field-added/finished",
+    "type/llm-gateway.deployment.DeploymentConfiguration/field-added/interaction_records",
+    "view/llm-gateway.gateway.LastRelay/field-added/finished"
   ]
 }

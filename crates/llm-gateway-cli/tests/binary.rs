@@ -5,7 +5,7 @@
 //! Every refusal case has a positive control in the same file that serves from the same
 //! document with the one property changed back, so a refusal can be shown to fail.
 
-mod support;
+use crate::support;
 
 use rustix::process::{Pid, Signal, kill_process};
 use sha2::{Digest, Sha256};
@@ -20,11 +20,12 @@ use std::{
     time::{Duration, Instant},
 };
 use support::{
-    CONFIG_LIMIT, Fixture, OWNER_SECRET, SECRET_LIMIT, VLLM_KEY, document, mutate, padded,
+    CONFIG_LIMIT, Fixture, OWNER_SECRET, Refusing, SECRET_LIMIT, VLLM_KEY, document, mutate, padded,
 };
 
 const PREFIX: &str = "b10x-llm-gateway: ";
 const LISTENING: &str = "b10x-llm-gateway: listening on ";
+const METRICS_LISTENING: &str = "b10x-llm-gateway: metrics listening on ";
 const STARTUP: Duration = Duration::from_secs(20);
 const EXIT: Duration = Duration::from_secs(20);
 /// Long enough for the gateway's 2 ms accept poll and for a signal to be delivered and acted on.
@@ -121,10 +122,14 @@ fn assert_refused(finished: &Finished, code: &str) {
     );
 }
 
-/// A served process, read from its standard error line by line.
+/// A served process, read from its standard error line by line. Every address is the one the
+/// process reports it bound, so a document may name port 0 and no test chooses a port that
+/// another can take first.
 struct Server {
     child: Option<Child>,
     address: SocketAddr,
+    /// The metrics-only listener's address, from its `metrics listening on` line.
+    metrics: Option<SocketAddr>,
     lines: Receiver<String>,
 }
 
@@ -152,6 +157,7 @@ impl Server {
         });
         let deadline = Instant::now() + STARTUP;
         let mut seen = Vec::new();
+        let mut metrics = None;
         let address = loop {
             let left = deadline.saturating_duration_since(Instant::now());
             match lines.recv_timeout(left) {
@@ -160,6 +166,11 @@ impl Server {
                         break address.parse::<SocketAddr>().unwrap_or_else(|error| {
                             panic!("the listening line names no address ({error}): {line:?}")
                         });
+                    }
+                    if let Some(address) = line.strip_prefix(METRICS_LISTENING) {
+                        metrics = Some(address.parse::<SocketAddr>().unwrap_or_else(|error| {
+                            panic!("the metrics line names no address ({error}): {line:?}")
+                        }));
                     }
                     seen.push(line);
                 }
@@ -176,6 +187,7 @@ impl Server {
         Self {
             child: Some(child),
             address,
+            metrics,
             lines,
         }
     }
@@ -262,12 +274,62 @@ fn hex(bytes: &[u8]) -> String {
     out
 }
 
-/// A loopback address nothing is listening on at the moment of the call.
-fn free_address() -> SocketAddr {
-    TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
+/// What a document names to have the process bind a loopback port the system picks. A test
+/// reads the port from the line the process writes, never chooses one itself: a port chosen
+/// and released can be taken by another test before the process binds it (`listen:bind`).
+const ANY_PORT: &str = "127.0.0.1:0";
+
+/// Asserts that `bound` is a port the system picked on the loopback address a document named
+/// as [`ANY_PORT`].
+fn assert_picked(bound: SocketAddr, what: &str) {
+    assert_eq!(
+        bound.ip(),
+        std::net::Ipv4Addr::LOCALHOST,
+        "{what} listens on the document's address"
+    );
+    assert_ne!(bound.port(), 0, "{what} reports the port it bound");
+}
+
+/// The SHA-256 of `config`'s bytes as the route inspection names it.
+fn digest_of(config: &Path) -> String {
+    hex(&Sha256::digest(std::fs::read(config).unwrap()))
+}
+
+/// The ports `pid` holds a listening TCP socket on, read from `/proc`: its socket inodes, and
+/// the listening rows of its network namespace's tables that carry one of them.
+fn listening_ports(pid: u32) -> Vec<u16> {
+    let Ok(entries) = std::fs::read_dir(format!("/proc/{pid}/fd")) else {
+        return Vec::new();
+    };
+    let inodes: Vec<String> = entries
+        .filter_map(|entry| std::fs::read_link(entry.ok()?.path()).ok())
+        .filter_map(|target| {
+            let target = target.to_str()?;
+            Some(
+                target
+                    .strip_prefix("socket:[")?
+                    .strip_suffix(']')?
+                    .to_owned(),
+            )
+        })
+        .collect();
+    let mut ports = Vec::new();
+    for table in ["tcp", "tcp6"] {
+        let text = std::fs::read_to_string(format!("/proc/{pid}/net/{table}")).unwrap_or_default();
+        for row in text.lines().skip(1) {
+            let fields: Vec<&str> = row.split_whitespace().collect();
+            let (Some(local), Some(state), Some(inode)) =
+                (fields.get(1), fields.get(3), fields.get(9))
+            else {
+                continue;
+            };
+            if *state == "0A" && inodes.iter().any(|held| held == inode) {
+                let port = local.rsplit(':').next().unwrap_or_default();
+                ports.push(u16::from_str_radix(port, 16).unwrap());
+            }
+        }
+    }
+    ports
 }
 
 // --- C1: one binary, no subcommand; it reads config, refuses or serves -------------------------
@@ -339,23 +401,31 @@ fn c1_an_unknown_subcommand_is_refused() {
 #[test]
 fn c1_serve_with_the_config_flag_serves_the_document() {
     let fixture = Fixture::new("c1-serve-flag");
-    let address = free_address();
-    let config = fixture.valid_config(&address.to_string());
+    let config = fixture.valid_config(ANY_PORT);
     let server = Server::start_command(Command::new(binary()).args([
         "serve",
         "--config",
         config.to_str().unwrap(),
     ]));
-    assert_eq!(server.address, address);
-    assert_eq!(status(&get(address, "/health", None)), "200");
+    assert_picked(server.address, "the gateway");
+    assert_eq!(status(&get(server.address, "/health", None)), "200");
+    assert_serves(&server, &config);
     server.stop();
+}
+
+/// Asserts that `server` serves the document at `config`: its route inspection names the
+/// SHA-256 of exactly those bytes.
+fn assert_serves(server: &Server, config: &Path) {
+    let route = get(server.address, "/v1/routes/small", Some(OWNER_SECRET));
+    assert_eq!(status(&route), "200", "{route:?}");
+    let expected = format!("\"config_digest\":\"{}\"", digest_of(config));
+    assert!(body(&route).contains(&expected), "{expected} in {route:?}");
 }
 
 #[test]
 fn c1_serve_without_a_flag_reads_the_default_document() {
     let fixture = Fixture::new("c1-serve-default");
-    let address = free_address();
-    let config = fixture.valid_config(&address.to_string());
+    let config = fixture.valid_config(ANY_PORT);
     let home = fixture.path("xdg");
     std::fs::create_dir_all(home.join("llm-gateway")).unwrap();
     let default = home.join("llm-gateway/config.toml");
@@ -365,8 +435,10 @@ fn c1_serve_without_a_flag_reads_the_default_document() {
             .arg("serve")
             .env("XDG_CONFIG_HOME", &home),
     );
-    assert_eq!(server.address, address, "the default document is served");
-    assert_eq!(status(&get(address, "/health", None)), "200");
+    assert_picked(server.address, "the gateway");
+    assert_eq!(status(&get(server.address, "/health", None)), "200");
+    // The default document is served: the inspection names the digest of its bytes.
+    assert_serves(&server, &default);
     server.stop();
 }
 
@@ -421,15 +493,15 @@ fn c1_a_listen_address_in_use_is_refused() {
 #[test]
 fn c2_config_flag_loads_a_closed_toml() {
     let fixture = Fixture::new("c2-loads");
-    let address = free_address();
-    let config = fixture.valid_config(&address.to_string());
+    // The document names port 0 and the test reads the port the binary bound from its
+    // `listening on` line: a port the test chose and released could be taken by another test
+    // first, and the binary then refused `listen:bind`.
+    let config = fixture.valid_config(ANY_PORT);
     let server = Server::start(&config);
-    assert_eq!(
-        server.address, address,
-        "the gateway listens where the document says"
-    );
-    let health = get(address, "/health", None);
+    assert_picked(server.address, "the gateway");
+    let health = get(server.address, "/health", None);
     assert_eq!(status(&health), "200", "{health:?}");
+    assert_serves(&server, &config);
     server.stop();
 }
 
@@ -1155,6 +1227,48 @@ fn with_top_level(fixture: &Fixture, listen: &str, lines: &str) -> PathBuf {
     ))
 }
 
+/// `listen` and `metrics_listen` may both name port 0: the system picks two ports, so they
+/// never name one socket. The process writes `metrics listening on <address>` with the port it
+/// bound, before `listening on`, and the scrape answers there.
+#[test]
+fn metrics_listen_on_port_0_binds_a_port_of_its_own_and_reports_it() {
+    let fixture = Fixture::new("metrics-any-port");
+    let config = with_top_level(
+        &fixture,
+        ANY_PORT,
+        &format!("metrics_listen = \"{ANY_PORT}\"\n"),
+    );
+    let server = Server::start(&config);
+    let Some(scrape) = server.metrics else {
+        panic!("no {METRICS_LISTENING:?} line before {LISTENING:?}");
+    };
+    assert_picked(scrape, "the metrics listener");
+    assert_picked(server.address, "the gateway");
+    assert_ne!(scrape, server.address);
+    let pid = server.child.as_ref().unwrap().id();
+    let held = listening_ports(pid);
+    assert!(
+        held.contains(&scrape.port()) && held.contains(&server.address.port()),
+        "the process holds both reported ports: {held:?}"
+    );
+    let answered = get(scrape, "/metrics", None);
+    assert_eq!(status(&answered), "200", "{answered}");
+    assert!(
+        body(&answered).contains("llmgw_requests_total{model=\"small\",outcome=\"ok\"} 0\n"),
+        "{answered}"
+    );
+    server.stop();
+}
+
+/// Without `metrics_listen` the process writes no metrics line.
+#[test]
+fn no_metrics_line_without_metrics_listen() {
+    let fixture = Fixture::new("metrics-no-line");
+    let server = Server::start(&fixture.valid_config(ANY_PORT));
+    assert_eq!(server.metrics, None);
+    server.stop();
+}
+
 #[test]
 fn metrics_listen_serves_the_counters_without_the_owner_and_takes_its_scrape_token() {
     let fixture = Fixture::new("metrics-listen");
@@ -1163,16 +1277,16 @@ fn metrics_listen_serves_the_counters_without_the_owner_and_takes_its_scrape_tok
         format!("{SCRAPE_TOKEN}\n").as_bytes(),
         0o600,
     );
-    let scrape = free_address();
     let config = with_top_level(
         &fixture,
-        "127.0.0.1:0",
+        ANY_PORT,
         &format!(
-            "metrics_listen = \"{scrape}\"\nmetrics_bearer_file = \"{}\"\n",
+            "metrics_listen = \"{ANY_PORT}\"\nmetrics_bearer_file = \"{}\"\n",
             bearer.display()
         ),
     );
     let server = Server::start(&config);
+    let scrape = server.metrics.expect("a metrics listening line");
     let answered = get(scrape, "/metrics", Some(SCRAPE_TOKEN));
     assert_eq!(status(&answered), "200", "{answered}");
     for sample in [
@@ -1213,7 +1327,10 @@ fn metrics_listen_serves_the_counters_without_the_owner_and_takes_its_scrape_tok
 #[test]
 fn metrics_settings_that_break_a_rule_are_refused() {
     let fixture = Fixture::new("metrics-refused");
-    let listen = free_address();
+    // Held by the test for the whole case, so a document that got past its rule would be
+    // refused `listen:bind` instead, never served on a port another test bound.
+    let held = Refusing::new();
+    let listen = held.address;
     let same = with_top_level(
         &fixture,
         &listen.to_string(),
@@ -1270,8 +1387,7 @@ fn metrics_settings_that_break_a_rule_are_refused() {
             &fixture,
             "127.0.0.1:0",
             &format!(
-                "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
-                free_address(),
+                "metrics_listen = \"{listen}\"\nmetrics_bearer_file = \"{}\"\n",
                 token.display()
             ),
         );
@@ -1283,14 +1399,14 @@ fn metrics_settings_that_break_a_rule_are_refused() {
             finished.stderr
         );
     }
+    drop(held);
     // The positive control: the same document with a valid token file is served.
     let token = fixture.write("good-token", format!("{SCRAPE_TOKEN}\n").as_bytes(), 0o600);
     let config = with_top_level(
         &fixture,
         "127.0.0.1:0",
         &format!(
-            "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
-            free_address(),
+            "metrics_listen = \"{ANY_PORT}\"\nmetrics_bearer_file = \"{}\"\n",
             token.display()
         ),
     );
@@ -1315,20 +1431,26 @@ fn an_unexpected_argument_is_refused_without_echoing_it() {
 #[test]
 fn a_scrape_token_under_32_bytes_is_refused_at_startup() {
     let fixture = Fixture::new("short-scrape-token");
-    let scrape = |name: &str, bytes: &[u8]| {
+    // A refused document never binds: its metrics address is one the test holds, so one that
+    // got past the floor would be refused `listen:bind` instead.
+    let held = Refusing::new();
+    let scrape = |name: &str, bytes: &[u8], metrics: &str| {
         let token = fixture.write(name, bytes, 0o600);
         with_top_level(
             &fixture,
             "127.0.0.1:0",
             &format!(
-                "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
-                free_address(),
+                "metrics_listen = \"{metrics}\"\nmetrics_bearer_file = \"{}\"\n",
                 token.display()
             ),
         )
     };
     for (name, token) in [("one-byte", "a".to_owned()), ("31-bytes", "b".repeat(31))] {
-        let finished = run_config(&scrape(name, format!("{token}\n").as_bytes()));
+        let finished = run_config(&scrape(
+            name,
+            format!("{token}\n").as_bytes(),
+            &held.address.to_string(),
+        ));
         assert_refused(&finished, "metrics-bearer:not-a-token");
         assert!(
             finished.stderr.contains("metrics_bearer_file: ")
@@ -1340,6 +1462,7 @@ fn a_scrape_token_under_32_bytes_is_refused_at_startup() {
     Server::start(&scrape(
         "32-bytes",
         format!("{}\n", "c".repeat(32)).as_bytes(),
+        ANY_PORT,
     ))
     .stop();
 }
@@ -1352,8 +1475,7 @@ fn a_scrape_token_under_32_bytes_is_refused_at_startup() {
 fn the_ingress_auth_off_warning_is_written_before_the_listener_serves() {
     use rustix::fs::{OFlags, fcntl_getfl, fcntl_setfl};
     let fixture = Fixture::new("ingress-off-first");
-    let listen = free_address();
-    let config = with_top_level(&fixture, &listen.to_string(), "ingress_auth = \"none\"\n");
+    let config = with_top_level(&fixture, ANY_PORT, "ingress_auth = \"none\"\n");
 
     let (reader, mut writer) = std::io::pipe().unwrap();
     let flags = fcntl_getfl(&writer).unwrap();
@@ -1380,19 +1502,21 @@ fn the_ingress_auth_off_warning_is_written_before_the_listener_serves() {
     let mut child = command.spawn().unwrap();
     drop(command);
 
+    // The document names port 0, so the address is unknown until the line is read: the process
+    // is watched through `/proc` instead, and holds no listening socket while it is blocked.
     let held = Instant::now() + Duration::from_secs(5);
-    let mut served = None;
+    let mut served = Vec::new();
     while Instant::now() < held {
-        if TcpStream::connect(listen).is_ok() {
-            served = Some(get(listen, "/ready", None));
+        served = listening_ports(child.id());
+        if !served.is_empty() {
             break;
         }
         thread::sleep(Duration::from_millis(20));
     }
-    if let Some(ready) = served {
+    if !served.is_empty() {
         drop(child.kill());
         drop(child.wait());
-        panic!("the listener served before the warning was written: {ready:?}");
+        panic!("the process listened on {served:?} before the warning was written");
     }
 
     let mut lines = BufReader::new(reader).lines();
@@ -1403,7 +1527,10 @@ fn the_ingress_auth_off_warning_is_written_before_the_listener_serves() {
             written.push(line);
         }
     }
-    let ready = get(listen, "/ready", None);
+    let listen = written[1]
+        .strip_prefix(LISTENING)
+        .and_then(|address| address.parse::<SocketAddr>().ok());
+    let ready = listen.map(|listen| get(listen, "/ready", None));
     drop(child.kill());
     drop(child.wait());
     assert_eq!(
@@ -1411,7 +1538,9 @@ fn the_ingress_auth_off_warning_is_written_before_the_listener_serves() {
         format!("{PREFIX}{}", llm_gateway_cli::INGRESS_AUTH_OFF),
         "{written:?}"
     );
-    assert!(written[1].starts_with(LISTENING), "{written:?}");
+    let Some(ready) = ready else {
+        panic!("the second line names no listening address: {written:?}");
+    };
     assert_eq!(status(&ready), "200", "{ready:?}");
 }
 
@@ -1599,6 +1728,8 @@ fn sec_w01_a_token_shaped_target_name_is_not_echoed() {
 fn sec_w01_the_scrape_token_floor_counts_the_trimmed_token() {
     let fixture = Fixture::new("sec-w01-scrape-floor");
     let short = "s".repeat(31);
+    // Refused before any bind; a document that got past the floor meets a port the test holds.
+    let held = Refusing::new();
     for (name, bytes) in [
         ("lf", format!("{short}\n")),
         ("crlf", format!("{short}\r\n")),
@@ -1612,7 +1743,7 @@ fn sec_w01_the_scrape_token_floor_counts_the_trimmed_token() {
             "127.0.0.1:0",
             &format!(
                 "metrics_listen = \"{}\"\nmetrics_bearer_file = \"{}\"\n",
-                free_address(),
+                held.address,
                 token.display()
             ),
         );

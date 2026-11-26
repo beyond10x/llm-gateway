@@ -2,7 +2,7 @@
 //! code's own documentation, the matrix or the specification promise; green cases pin a rule no
 //! other test in this crate would catch a mutation of.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{load, vllm_keys};
 use std::{fs, os::unix::fs::symlink, path::Path};

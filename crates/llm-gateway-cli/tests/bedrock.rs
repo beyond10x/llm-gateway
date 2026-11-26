@@ -8,7 +8,7 @@
 //! Both Bedrock and the credentials endpoint are loopback fixtures; nothing leaves the machine,
 //! no credential is real and the model id is not checked against AWS.
 
-mod support;
+use crate::support;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use llm_bedrock::eventstream::{HeaderValue, Message, encode_message};

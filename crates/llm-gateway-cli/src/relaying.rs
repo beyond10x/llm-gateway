@@ -843,14 +843,24 @@ impl Cleanup {
 /// idle limit would have passed and the next run's startup sweep terminates it.
 pub struct Relaying {
     running: Running,
+    /// The address the metrics-only listener bound; `None` without `metrics_listen`.
+    metrics_addr: Option<SocketAddr>,
     /// The pool's cleanup pass; `None` when no pool is composed.
     cleanup: Option<Cleanup>,
     stopping: Arc<AtomicBool>,
+    /// The interaction records' writer the stop waits on; `None` without `[interaction_records]`.
+    records: Option<crate::records::Drain>,
 }
 
 impl Relaying {
     pub fn local_addr(&self) -> SocketAddr {
         self.running.local_addr()
+    }
+
+    /// The address the metrics-only listener bound, the port the system picked when
+    /// `metrics_listen` names port 0; `None` when the document sets no `metrics_listen`.
+    pub fn metrics_addr(&self) -> Option<SocketAddr> {
+        self.metrics_addr
     }
 
     /// The dashboard's state, for the account panel and the heartbeat's route activity.
@@ -859,12 +869,22 @@ impl Relaying {
     }
 
     /// Drains and stops the gateway gracefully now, then stops the cleanup pass. A request
-    /// still waiting for its pod is answered `target-unavailable` at once.
+    /// still waiting for its pod is answered `target-unavailable` at once. With
+    /// `[interaction_records]` it then waits at most 2 s for the writer to store its queue and
+    /// names the calls still queued on one line (D96).
     pub fn shutdown(self) -> ShutdownReport {
         self.stopping.store(true, Ordering::SeqCst);
         let report = self.running.shutdown();
         if let Some(cleanup) = self.cleanup {
             cleanup.stop();
+        }
+        if let Some(records) = self.records {
+            let left = records.finish();
+            if left > 0 {
+                crate::serve::report(format_args!(
+                    "interaction records: {left} calls not stored at stop"
+                ));
+            }
         }
         report
     }
@@ -1411,6 +1431,10 @@ fn compose(
         .with_metrics(Arc::clone(&metrics))
         .with_decoder(Arc::new(crate::decode::Decoder))
         .with_records(Arc::new(crate::logging::TracingRecords));
+    // Every finished call into the session store, when the document declares one
+    // (story:interaction-record-store).
+    let (relay, records) =
+        crate::records::compose(relay, deployment.interaction_records.as_ref(), &metrics)?;
     let relay = match reviewer {
         Some(reviewer) => relay.with_caller_review(Arc::new(reviewer)),
         None => relay,
@@ -1421,16 +1445,18 @@ fn compose(
         Gateway::bind_with_relay(deployment.gateway.clone(), verifier, inventory, relay).map_err(
             |error| Refusal::new(StartupRefusal::ListenBind, format!("{bind}: {error}")),
         )?;
-    if let Some(scrape) = deployment.metrics_listen {
-        handle
-            .serve_metrics(scrape, metrics_bearer)
-            .map_err(|error| {
-                Refusal::new(
-                    StartupRefusal::ListenBind,
-                    format!("metrics_listen {scrape}: {error}"),
-                )
-            })?;
-    }
+    let metrics_addr =
+        match deployment.metrics_listen {
+            Some(scrape) => Some(handle.serve_metrics(scrape, metrics_bearer).map_err(
+                |error| {
+                    Refusal::new(
+                        StartupRefusal::ListenBind,
+                        format!("metrics_listen {scrape}: {error}"),
+                    )
+                },
+            )?),
+            None => None,
+        };
     // One pass before serving: it sweeps the pods a previous run of this controller left. A
     // refused pass changes nothing, and the next one runs on time.
     let cleanup = pass.map(|pass| {
@@ -1440,8 +1466,10 @@ fn compose(
     handle.mark_ready();
     Ok(Relaying {
         running: Running::from_parts(handle, signals, vllm_keys),
+        metrics_addr,
         cleanup,
         stopping,
+        records,
     })
 }
 

@@ -519,12 +519,12 @@ mod relay {
     use super::{Observed, label, token_code, unavailable, verifier_code};
     use ess_conformance::target::TargetError;
     use llm_gateway::{
-        BasePath, CallerReview, CallerToken, CredentialHeader, CredentialHeaderError, Disposition,
-        Gateway, GatewayConfig, GatewayHandle, IngressAuth, NoOwnerVerifier, OwnerToken,
-        OwnerVerifier, Principal, ReasoningEffort, Relay, RelayError, RelayModel, RelayStream,
-        RelayTarget, RelayTargets, Review, RouteInventory, SharedSecretVerifier, StaticHeader,
-        StaticHeaderError, TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords,
-        Wire,
+        AnswerBytes, BasePath, CallBytes, CallEnding, CallerReview, CallerToken, CredentialHeader,
+        CredentialHeaderError, Disposition, FinishedCall, FinishedCalls, Gateway, GatewayConfig,
+        GatewayHandle, Harness, IngressAuth, NoOwnerVerifier, OwnerToken, OwnerVerifier, Principal,
+        ReasoningEffort, Relay, RelayError, RelayModel, RelayStream, RelayTarget, RelayTargets,
+        Review, RouteInventory, SharedSecretVerifier, StaticHeader, StaticHeaderError,
+        TargetBearer, TargetRefusal, ToolCalling, UsageRecord, UsageRecords, Wire,
     };
     use llm_gateway::{ModelKind, ModelPhase, ModelStatus};
     use llm_gateway_cli::TokenPrice;
@@ -623,6 +623,9 @@ mod relay {
         /// emulator, in place of [`Source`] (story:a-call-starts-no-pod).
         #[serde(default)]
         runpod: Option<RunpodInput>,
+        /// The relay copies each call's bytes within this bound (`Relay::with_call_bytes`).
+        #[serde(default)]
+        call_bytes: Option<usize>,
     }
 
     /// A deployment document whose models the binary's pool serves over `EmulatedRunpod`, and
@@ -888,6 +891,10 @@ mod relay {
         status: Option<u16>,
         #[serde(default)]
         content_type: Option<String>,
+        /// The answer's `content-encoding` line, written as given; the chunks are sent as they
+        /// are, not encoded.
+        #[serde(default)]
+        content_encoding: Option<String>,
         #[serde(default)]
         chunks: Vec<String>,
         #[serde(default)]
@@ -973,11 +980,18 @@ mod relay {
                     matches!(transport.as_str(), "refused" | "closed")
                         && self.chunks.is_empty()
                         && self.content_type.is_none()
+                        && self.content_encoding.is_none()
                         && self.framing.is_none()
                         && self.delay_ms.is_none()
                 }
                 (None, Some(status)) => {
                     (200..=599).contains(&status)
+                        && self.content_encoding.as_deref().is_none_or(|coding| {
+                            !coding.is_empty()
+                                && coding
+                                    .bytes()
+                                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
+                        })
                         && matches!(self.framing.as_deref(), None | Some("length" | "chunked"))
                         && matches!(
                             self.release.as_deref(),
@@ -1088,6 +1102,22 @@ mod relay {
         secret_upstream: AtomicBool,
         progress: Mutex<Arc<Progress>>,
         stopping: AtomicBool,
+        /// TLS handshakes a pod began and has not recorded yet. A pod whose certificate the
+        /// gateway refuses records `tls-refused` after the gateway already gave up on it, so the
+        /// run waits for that record before its next step ([`Shared::settle`]).
+        handshaking: AtomicUsize,
+    }
+
+    impl Shared {
+        /// Waits, at most [`WAIT`], until no pod is in a TLS handshake it has not recorded, so
+        /// the `connections` fact lists each pod's connection in the order the gateway opened
+        /// them, whichever thread ran first.
+        fn settle(&self) {
+            let deadline = Instant::now() + WAIT;
+            while self.handshaking.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
     }
 
     struct Pod {
@@ -1217,9 +1247,23 @@ mod relay {
         }
     }
 
+    /// The TLS handshake on `socket`, counted in [`Shared::handshaking`] from before the pod's
+    /// certificate is sent until a refusal is recorded or the handshake succeeded.
+    fn handshake(
+        socket: TcpStream,
+        config: &Arc<ServerConfig>,
+        pod: &str,
+        shared: &Shared,
+    ) -> Option<Connection> {
+        shared.handshaking.fetch_add(1, Ordering::SeqCst);
+        let connection = handshake_recorded(socket, config, pod, shared);
+        shared.handshaking.fetch_sub(1, Ordering::SeqCst);
+        connection
+    }
+
     /// The TLS handshake on `socket`; on failure the connection is recorded `tls-refused` with
     /// whatever request bytes were decrypted (none are expected) and `None` returned.
-    fn handshake(
+    fn handshake_recorded(
         socket: TcpStream,
         config: &Arc<ServerConfig>,
         pod: &str,
@@ -1325,8 +1369,14 @@ mod relay {
             .content_type
             .as_ref()
             .map_or(String::new(), |value| format!("content-type: {value}\r\n"));
+        let content_encoding = answer
+            .content_encoding
+            .as_ref()
+            .map_or(String::new(), |value| {
+                format!("content-encoding: {value}\r\n")
+            });
         let head = format!(
-            "HTTP/1.1 {status} Fixture\r\n{content_type}{framing}connection: close\r\n\r\n"
+            "HTTP/1.1 {status} Fixture\r\n{content_type}{content_encoding}{framing}connection: close\r\n\r\n"
         );
         if connection.write_all(head.as_bytes()).is_err() {
             return;
@@ -1469,26 +1519,160 @@ mod relay {
             .position(|window| window == needle)
     }
 
-    /// Keeps every usage record the gateway hands out (rows O1, O2).
+    /// Keeps every usage record the gateway hands out (rows O1, O2), and every finished call
+    /// with its copy (story:finished-call-facts).
     #[derive(Default)]
-    struct Records(Mutex<Vec<UsageRecord>>);
+    struct Records {
+        usage: Mutex<Vec<UsageRecord>>,
+        finished: Mutex<Vec<(FinishedCall, Option<CallBytes>)>>,
+        /// Each fixture pod's name and authority, for the `finished` fact's `upstream`.
+        pods: Vec<(String, String)>,
+        /// The call id of every usage record of the run so far.
+        call_ids: Mutex<Vec<String>>,
+    }
 
     impl UsageRecords for Records {
         fn record(&self, record: &UsageRecord) {
-            if let Ok(mut records) = self.0.lock() {
+            if let Ok(mut records) = self.usage.lock() {
                 records.push(record.clone());
             }
         }
     }
 
+    impl FinishedCalls for Records {
+        fn finished(&self, call: &FinishedCall, bytes: Option<&CallBytes>) {
+            if let Ok(mut finished) = self.finished.lock() {
+                finished.push((call.clone(), bytes.cloned()));
+            }
+        }
+    }
+
     impl Records {
+        /// The keeper of a run whose fixture pods `source` names.
+        fn of(source: &Source) -> Self {
+            Self {
+                pods: source
+                    .pods
+                    .iter()
+                    .map(|(name, authority, _)| (name.clone(), authority.clone()))
+                    .collect(),
+                ..Self::default()
+            }
+        }
+
+        /// The `records` and `finished` facts of what was handed out since the last call: each
+        /// record read `elapsed` after its request started, each finished call `run` into the
+        /// run. A finished call is handed out after its record, before the connection closes.
+        fn take_facts(&self, elapsed: Duration, run: Duration) -> (Vec<String>, Vec<String>) {
+            let made = self.take();
+            let recorded = made
+                .iter()
+                .map(|record| record_fact(record, elapsed) + &cost_fact(record))
+                .collect();
+            let Ok(mut call_ids) = self.call_ids.lock() else {
+                return (recorded, Vec::new());
+            };
+            call_ids.extend(made.iter().map(|record| record.call.clone()));
+            let finished = self
+                .take_finished()
+                .iter()
+                .map(|value| finished_fact(value, &call_ids, &self.pods, run))
+                .collect();
+            (recorded, finished)
+        }
+
         /// The records made since the last call.
         fn take(&self) -> Vec<UsageRecord> {
-            self.0
+            self.usage
                 .lock()
                 .map(|mut records| std::mem::take(&mut *records))
                 .unwrap_or_default()
         }
+
+        /// The finished calls handed out since the last call.
+        fn take_finished(&self) -> Vec<(FinishedCall, Option<CallBytes>)> {
+            self.finished
+                .lock()
+                .map(|mut finished| std::mem::take(&mut *finished))
+                .unwrap_or_default()
+        }
+    }
+
+    /// One finished call as the `finished` fact writes it. `recorded` holds the call id of every
+    /// usage record of the run so far, `pods` each fixture pod's name and authority, and `run`
+    /// how long the run has taken.
+    fn finished_fact(
+        (call, bytes): &(FinishedCall, Option<CallBytes>),
+        recorded: &[String],
+        pods: &[(String, String)],
+        run: Duration,
+    ) -> String {
+        let within = |value: u64| u128::from(value) <= run.as_millis();
+        let timed = |value: Option<u64>| match value {
+            None => "absent".to_owned(),
+            Some(value) if within(value) => "bounded".to_owned(),
+            Some(value) => value.to_string(),
+        };
+        let upstream = call.upstream.as_deref().map_or("absent", |authority| {
+            pods.iter()
+                .find(|(_, pod)| pod == authority)
+                .map_or("unknown", |(name, _)| name.as_str())
+        });
+        let (ending, refusal) = match call.ending {
+            CallEnding::Complete => ("Complete", None),
+            CallEnding::ClientDisconnected => ("ClientDisconnected", None),
+            CallEnding::UpstreamCut => ("UpstreamCut", None),
+            CallEnding::WireError => ("WireError", None),
+            CallEnding::Refused(code) => ("Refused", Some(code.wire())),
+        };
+        let harness = match call.harness {
+            Harness::ClaudeCode => "ClaudeCode",
+            Harness::Codex => "Codex",
+            Harness::Other => "Other",
+        };
+        let span = match call.finished_ms.checked_sub(call.started_ms) {
+            Some(span) if within(span) => "bounded".to_owned(),
+            _ => format!("{}..{}", call.started_ms, call.finished_ms),
+        };
+        let bytes = match bytes {
+            None => "none".to_owned(),
+            Some(CallBytes::Copied { request, answer }) => {
+                let answer = match answer {
+                    None => "absent".to_owned(),
+                    Some(AnswerBytes::Body(body)) => format!("body:{}", body.len()),
+                    Some(AnswerBytes::Events(events)) => format!("events:{}", events.len()),
+                };
+                format!("copied request={} answer={answer}", request.len())
+            }
+            Some(CallBytes::OverBound {
+                request_bytes,
+                answer_bytes,
+            }) => format!("over-bound request={request_bytes} answer={answer_bytes}"),
+            Some(CallBytes::Undecodable {
+                request_bytes,
+                answer_bytes,
+                coding,
+            }) => {
+                format!("undecodable request={request_bytes} answer={answer_bytes} coding={coding}")
+            }
+        };
+        format!(
+            "call={} path={} wire={} route={} upstream={upstream} attempts={} queue_wait_ms={} ttft_ms={} ending={ending} refusal={} cost_usd={} session={} harness={harness} span={span} bytes={bytes}",
+            if recorded.contains(&call.call_id) {
+                "recorded"
+            } else {
+                "unknown"
+            },
+            call.path,
+            call.wire.label(),
+            call.route.as_deref().unwrap_or("absent"),
+            call.attempts,
+            timed(call.queue_wait_ms),
+            timed(call.ttft_ms),
+            refusal.unwrap_or("absent"),
+            call.declared_cost_usd.as_deref().unwrap_or("absent"),
+            call.session_hash,
+        )
     }
 
     /// One record as the `records` fact writes it; `elapsed` is how long the client took from
@@ -2143,7 +2327,12 @@ mod relay {
         *counting = Some(Arc::clone(&targets));
         let relay = Relay::new(models, targets)
             .map_err(relay_error)?
-            .with_records(records);
+            .with_records(Arc::clone(&records) as Arc<dyn UsageRecords>)
+            .with_finished_calls(records);
+        let relay = match program.call_bytes {
+            Some(bound) => relay.with_call_bytes(bound),
+            None => relay,
+        };
         // The binary's translator, on a fixed clock so a translated answer's bytes are exact.
         let relay = match program.translation.as_deref() {
             None | Some("off") => relay,
@@ -2568,7 +2757,7 @@ mod relay {
             "headers": [], "retry_after": [], "arrivals": [], "upstream": [], "acquired": 0, "invalidated": [],
             "released": 0, "authorizations": [], "secret_upstream": false, "records": [],
             "scrapes": [], "connections": [], "received_heads": [], "upstream_ends": [],
-            "lifecycle_asks": [], "pod_creates": 0, "calls": []
+            "lifecycle_asks": [], "pod_creates": 0, "calls": [], "finished": []
         });
         if program_json.len() > MAX_PROGRAM_BYTES {
             return facts;
@@ -2619,7 +2808,7 @@ mod relay {
                 return facts;
             }
         };
-        let records = Arc::new(Records::default());
+        let records = Arc::new(Records::of(&source));
         let root = certificates
             .as_ref()
             .map(|certificates| certificates.root.as_slice());
@@ -2878,6 +3067,7 @@ mod relay {
         let (mut results, mut bodies, mut headers, mut retry_after, mut arrivals) =
             (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new());
         let (mut recorded, mut scrapes, mut scrape_number) = (Vec::new(), Vec::new(), 0);
+        let mut finished = Vec::new();
         // Per step, the body its answer carried, before any seal in it was redacted.
         let mut answered: Vec<Option<String>> = Vec::new();
         let mut calls = Calls::default();
@@ -2941,12 +3131,10 @@ mod relay {
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
             let elapsed = started.elapsed();
-            recorded.extend(
-                records
-                    .take()
-                    .iter()
-                    .map(|record| record_fact(record, elapsed) + &cost_fact(record)),
-            );
+            shared.settle();
+            let (made, handed) = records.take_facts(elapsed, run_started.elapsed());
+            recorded.extend(made);
+            finished.extend(handed);
             let Some(received) = received else {
                 results.push("no-response".to_owned());
                 continue;
@@ -2976,6 +3164,7 @@ mod relay {
         facts["records"] = json!(recorded);
         facts["scrapes"] = json!(scrapes);
         facts["calls"] = json!(calls.fact);
+        facts["finished"] = json!(finished);
         handle
     }
 

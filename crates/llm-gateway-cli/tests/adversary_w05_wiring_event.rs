@@ -2,7 +2,7 @@
 //! event. In its own test binary: `tracing` caches a callsite's interest, and another test that
 //! reaches the same callsite on a thread without a subscriber can leave a scoped one unasked.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{ProxyConnector, load, start_connected};
 use std::{

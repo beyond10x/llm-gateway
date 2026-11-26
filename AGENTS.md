@@ -13,12 +13,13 @@ client half (the neutral turn, protocol clients, credentials, routing, cost) bel
 | Path | What it is |
 | --- | --- |
 | `crates/llm-gateway` | `b10x-llm-gateway`, the gateway library. Declares no dependency; it holds the translation port (`Translator`) and translates nothing itself, the body-decoding port (`BodyDecoder`) and decodes nothing itself, the passthrough of a client-credential route (`relay/passthrough.rs`) and the dashboard (`dashboard.rs`, `dashboard/`), whose page `src/dashboard.html` is built from `dashboard/` |
-| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source, an Ollama server's status read included (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `llm-models`), the Bedrock models (`bedrock.rs`, over `llm-bedrock`, signed from the container credentials endpoint), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.24.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`; the keychain reader (`keychain.rs`), the watchdog and its heartbeat (`watchdog.rs`, `heartbeat.rs`), the launchers (`launch.rs`), the answer decoder (`decode.rs`: `flate2`, `brotli-decompressor`, `ruzstd`), the dashboard's Runpod account and vLLM server readers (`account.rs`, `vllm_stats.rs`), and the service-account token review (`token_review.rs`, `TokenReviewer`, the gateway crate's `CallerReview` port over the cluster's TokenReview API on the same TLS client, trusting only `token_review.ca_file`). It carries the dependencies the gateway crate must not have |
+| `crates/llm-gateway-cli` | `b10x-llm-gateway-cli`, the `b10x-llm-gateway` binary: the closed TOML document, the trusted-file reader, the signal-driven stop, the `tracing` subscriber (`RUST_LOG`), the hosted endpoints' target source, an Ollama server's status read included (`hosted.rs`), the `llm.routes/1` document a deployment may name (`routes.rs`, over `llm-models`), the Bedrock models (`bedrock.rs`, over `llm-bedrock`, signed from the container credentials endpoint), the `credential set` command that stores an upstream key in the file the document names (`credential.rs`, reached only when `credential` is the first argument, so the serving command line is unchanged), the pod connection's TLS client, which also reaches every `https` hosted endpoint (`rustls` on `ring`, trusting the `webpki-roots` Mozilla roots), and the translator (`translate.rs`, `LlmTranslator`, with the reasoning seal in `seal.rs` on `ring` and `base64`) over llm 0.24.0's client crates and a tokio runtime it owns, whose HTTP client is `reqwest` on rustls with `ring`; the keychain reader (`keychain.rs`), the watchdog and its heartbeat (`watchdog.rs`, `heartbeat.rs`), the launchers (`launch.rs`), the answer decoder (`decode.rs`: `flate2`, `brotli-decompressor`, `ruzstd`), the dashboard's Runpod account and vLLM server readers (`account.rs`, `vllm_stats.rs`), and the service-account token review (`token_review.rs`, `TokenReviewer`, the gateway crate's `CallerReview` port over the cluster's TokenReview API on the same TLS client, trusting only `token_review.ca_file`), and the interaction records (`records.rs`, the gateway crate's `FinishedCalls` port over sessionspec's `sessionspec-records`: the wire lift and its SQLite writer thread, composed only when the document declares `[interaction_records]`). It carries the dependencies the gateway crate must not have |
 | `crates/llm-provision` | `b10x-llm-provision`, the hosting lifecycle contract. Declares no dependency |
 | `crates/llm-runpod` | `b10x-llm-runpod`, the Runpod adapter over `RunpodTransport`: `EmulatedRunpod` for tests; `ConnectorsRunpod`, which reaches the control plane only through the `connectors` CLI (a cluster); `RestRunpod`, which calls Runpod's REST API with a key the process holds (a local gateway). Every created pod's placement is read back and a pod off Secure Cloud on-demand is terminated at once |
 | `crates/llm-modal` | `b10x-llm-modal`, exports nothing yet |
 | `crates/llm-gateway-docs` | `llm-gateway-docs`, the documentation generator: `generate`, `generate --check`, `provenance` |
 | `checks/conformance` | `b10x-llm-gateway-conformance`, the ESS conformance runner |
+| `checks/xtask` | `b10x-llm-gateway-xtask`, the gate's test step: cargo-nextest under `.config/nextest.toml`, the 120-second bound and the ten slowest tests |
 | `dashboard/` | The dashboard page: Vue 3 and TypeScript, built with Vite and pnpm (`pnpm --dir dashboard build`) into one file, `crates/llm-gateway/src/dashboard.html`. Its UI is the ess-ui/1 document `ui/llm-gateway.ui.yaml` (`ess ui check --path dashboard/ui/llm-gateway.ui.yaml`), with fixtures under `ui/fixtures/`; `src/essui/` is the renderer that draws it: the loader, which refuses at build time a node kind, key or expression it does not draw, one component per node kind, and the binding `src/essui/bind.ts` that answers each placeholder from the snapshot. The token flow and the setup guide are host components (`src/hosts.ts`). Its record types `src/generated/snapshot.ts` are generated |
 | `website/` | The Docusaurus documentation site on `@beyond10x/docs-system`, served at `https://beyond10x.github.io/llm-gateway/`, deployed by the `Documentation site` workflow |
 | `spec/` | The ESS system `llm-gateway` with seven domains: `llm-gateway.gateway`, `llm-gateway.hosting`, `llm-gateway.runpod`, `llm-gateway.deployment`, `llm-gateway.telemetry` (the counters, the per-model `llmgw_requests_total{model,outcome}` counter and `llmgw_request_duration_seconds{model}` histogram, the metrics-only listener and the usage record; its token fields are `PLANNED`), `llm-gateway.upstream` (its `HostedEndpoint` implemented by `crates/llm-gateway-cli/src/hosted.rs` and observed through the gateway scenarios, its `TargetAttempt` `PLANNED`), and the `PLANNED` `llm-gateway.clients`, which no code implements and no scenario observes yet |
@@ -47,7 +48,7 @@ at all.
 | Every refusal code and numeric bound in `docs/gateway.md` matches the code, and every bound flips at exactly the published number | `crates/llm-gateway/tests/gateway.rs` and `tests/adversary_pass_2.rs`, which `include_str!` the document |
 | Every scenario file under `contracts/` is listed in `contracts/ess-inputs.yaml` | `every_authored_scenario_is_declared` in `checks/conformance/src/gate.rs` |
 | `contracts/suite.json` and `contracts/schema/schema` equal what ESS generates from `spec/` | the drift step of `b10x-llm-gateway-conformance check` |
-| The suite answers at least 430 of at least 430 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
+| The suite answers at least 433 of at least 433 scenarios and skips none, with equal counts on three consecutive runs | `contracts/baseline.json`, enforced by the same command |
 | The generated site pages equal what `llm-gateway-docs` generates, and no hand-written page carries a raw admonition title, a story id or a `/home/` path | `crates/llm-gateway-docs/tests/generate.rs::check_fails_on_every_kind_of_drift` |
 | Every `shipped` item on the status page names a test that exists | `crates/llm-gateway-docs/src/status.rs::a_vanished_test_or_a_shipped_item_without_one_is_refused` |
 | The refusal reference lists every code `RefusalCode::ALL`, `StartupRefusal::ALL` and `CredentialRefusal::ALL` hold | `crates/llm-gateway-docs/tests/generate.rs::refusal_reference_lists_every_code_the_gateway_can_emit` |
@@ -60,14 +61,31 @@ at all.
 | A service-account token is admitted only on the model calls, only when the review says authenticated, names the configured audience and a listed principal; every failed or missing review refuses, and no token or review body reaches a log | `crates/llm-gateway/tests/service_account_ingress.rs`, `crates/llm-gateway-cli/tests/token_review.rs` (a fake TokenReview API on loopback TLS; no test reaches a cluster) |
 | No test reads a real keychain or calls a live Anthropic or Runpod API | the in-memory `SecretSource` of `crates/llm-gateway-cli/src/keychain.rs`; loopback fixtures in `passthrough_encoded.rs`, `rest.rs` and `vllm_stats.rs` |
 | No `unsafe` code; Clippy `all` and `pedantic` are errors | `[workspace.lints]` in `Cargo.toml`, `task rust` |
+| The test step is one command locally and in CI, kills a test at 60 s, fails over 120 s and prints the ten slowest tests; every crate builds one integration-test binary from `tests/main.rs` | `checks/xtask/tests/budget.rs`, the unit tests of `checks/xtask/src/main.rs` |
 | No test makes a paid call or provisions an external resource. Tests run against `EmulatedRunpod` or a fixture, never a live API. | `crates/llm-runpod/tests/transport.rs` drives `ConnectorsRunpod` against the `connectors-fixture` binary and a loopback pod; `crates/llm-runpod/tests/rest.rs` drives `RestRunpod` against a loopback HTTP fixture; every other Runpod test drives `EmulatedRunpod` |
 
 ## Gate
 
 `task check` runs, in order:
 
-1. `task rust`: `cargo test --workspace --locked`, `cargo fmt --all --check`, then
-   `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`.
+1. `task rust`: `task test`, `cargo fmt --all --check`, then
+   `cargo clippy --workspace --all-targets --all-features --locked -- -D warnings`. `task test` is
+   the test step, two commands, and CI runs the same two as two steps: `cargo nextest run
+   --workspace --locked --no-run` builds the tests, untimed (a build, and a wait for a build slot,
+   are not the test step), then `cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test`
+   runs `cargo nextest run --workspace --locked` under `.config/nextest.toml` (each test in a
+   process of its own; a test over 60 s is killed and fails; the run ends at 120 s), times the
+   run's wall clock from its start to its exit and fails over 120 s (decision D89, 2026-11-26),
+   and prints the ten slowest tests from the run's `JUnit` report. It needs `cargo-nextest`
+   0.9.143 on `PATH`: `.config/nextest.toml` requires that version and refuses an older one, and
+   CI installs it, checked by its SHA-256. Each crate builds one integration-test binary: `autotests = false`
+   and one `[[test]]` at `tests/main.rs`, whose modules are the other files of `tests/`; a new
+   test file is a `mod` line there (`checks/xtask/tests/budget.rs` holds all of this). The
+   workspace has no doc test, and nextest runs none. Run one crate's tests with
+   `cargo nextest run --locked -p <crate>`, not `cargo test`: `cargo test` runs all of a crate's
+   tests as threads of one process, where a test that measures its process or a time bound fails
+   (2026-11-26, on the build node: 4 of 1348 failed and the run took 265 s; the same tests pass
+   under nextest in 17 s).
 2. `task docs`: `cargo run --locked -p llm-gateway-docs -- generate --check`.
 3. `ess specify validate --path spec`.
 4. `task spec-diff`: `cargo run --locked -p b10x-llm-gateway-conformance -- diff`. It writes
@@ -189,6 +207,19 @@ the Bedrock encoders' rules. Keep it so: when llm can answer a question, ask llm
 translator made for that route since it started (`crates/llm-gateway-cli/src/seal.rs`, HMAC-SHA256
 on `ring`, encoded with `base64`); every other one is still refused `translation-opaque-state`
 (`crates/llm-gateway-cli/tests/translation.rs`).
+
+## Dependency on sessionspec
+
+`b10x-llm-gateway-cli` takes `sessionspec-records` and `sessionspec-types` at tag `0.1.1` of
+[beyond10x/sessionspec](https://github.com/beyond10x/sessionspec), by tag, never by path, for
+the interaction records (`src/records.rs`). Their `GatewayFacts`, `WireCall`, `lift_call`,
+`Appender::spawn`, `AppenderHandle::append` and `stats`, and `store::SCHEMA_VERSION` with the
+`meta` table it is read from, are a contract sessionspec keeps with this repository; a new tag
+moves both crates together. They bring `rusqlite` with a bundled SQLite and `zstd` (both compile
+C) into the binary; the gateway crate links neither. The binary reads the store's schema version
+with `rusqlite` before the writer opens it (sessionspec's open empties a store of another
+version), and the tests read the store with sessionspec's own reader and hold it locked with
+`rusqlite`, a dependency at the version `sessionspec-records` links.
 
 ## Documents
 

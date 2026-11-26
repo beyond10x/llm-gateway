@@ -5,7 +5,7 @@
 //! Every upstream is a loopback fixture recording what it receives; nothing leaves the machine
 //! and no credential is real.
 
-mod support;
+use crate::support;
 
 use std::{
     io::{BufRead, BufReader, Read, Write},

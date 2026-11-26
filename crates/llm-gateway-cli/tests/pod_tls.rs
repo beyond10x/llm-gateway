@@ -9,7 +9,7 @@
 //! the `connectors` fixture. Nothing leaves the loopback interface, no host certificate store is
 //! read, and no `connectors` but the fixture runs.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::{PodConnector, ProxyConnector};
 use std::{

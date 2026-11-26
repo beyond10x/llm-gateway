@@ -6,7 +6,7 @@
 //! Every endpoint is a loopback fixture; no credential is real and nothing leaves the loopback
 //! interface. `203.0.113.10` (TEST-NET-3) appears only in documents that are parsed, never served.
 
-mod support;
+use crate::support;
 
 use llm_gateway::{CredentialHeader, TargetBearer};
 use llm_gateway_cli::{EndpointCredential, HostedEndpoint, parse};
@@ -305,10 +305,9 @@ fn read_request(connection: &mut TcpStream) -> Option<Received> {
     Some(Received { head, raw })
 }
 
-/// A loopback address nothing listens on.
-fn closed_address() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    listener.local_addr().unwrap()
+/// A loopback address nothing listens on, held for as long as the value lives.
+fn closed_address() -> support::Refusing {
+    support::Refusing::new()
 }
 
 // --- Invariant 2: no client credential header, and no other endpoint's credential --------------
@@ -449,7 +448,7 @@ fn security_w07_trace_logs_and_failure_answers_withhold_credential_and_url() {
         ("keyed", keyed.base_url()),
         ("bad", bad.base_url()),
         ("silent", silent.base_url()),
-        ("closed", format!("http://{closed}")),
+        ("closed", format!("http://{}", closed.address)),
         ("tls", format!("https://{}", pod.address)),
     ];
     let mut tables = String::new();

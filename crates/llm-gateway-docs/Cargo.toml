@@ -7,6 +7,7 @@ license.workspace = true
 repository.workspace = true
 publish.workspace = true
 description = "Generates and drift-checks the derived pages of the llm-gateway documentation site, and binds a built site to its source commit."
+autotests = false
 
 [lints]
 workspace = true
@@ -16,3 +17,7 @@ clap = { version = "4.6", features = ["derive"] }
 llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
 llm-gateway-cli = { package = "b10x-llm-gateway-cli", path = "../llm-gateway-cli" }
 serde_json.workspace = true
+
+[[test]]
+name = "main"
+path = "tests/main.rs"

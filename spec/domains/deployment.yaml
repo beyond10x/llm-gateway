@@ -18,8 +18,14 @@ domain: llm-gateway.deployment
 #   `b10x-llm-gateway: warning ingress auth is off (ingress_auth = "none"): model calls are
 #   served without a credential`, once, before `listening on`, for a document whose
 #   `ingress_auth` is `none`;
+#   `b10x-llm-gateway: metrics listening on <address>` once, before `listening on`, for a
+#   document that sets `metrics_listen`, with the address that listener bound (amended
+#   2026-11-26: a document may name port 0 and a reader learns the port from this line);
 #   `b10x-llm-gateway: listening on <address>` once the gateway is bound and marked ready;
 #   `b10x-llm-gateway: refused <code>: <message>` when startup is refused (exit status 1);
+#   `b10x-llm-gateway: interaction records: <n> calls not stored at stop` once, before the
+#   stop line, when the writer of `[interaction_records]` has not stored every queued call 2 s
+#   after the gateway stopped (added 2026-11-26, story:interaction-record-store);
 #   `b10x-llm-gateway: stopped by <SIGINT|SIGTERM> accepted=<n> completed=<n>` after a graceful
 #   stop (exit status 0). A command-line error is clap's (exit status 2).
 # The gateway is bound with `GatewayConfig::new`'s bounds: an 8192-byte head, 64 concurrent
@@ -903,7 +909,9 @@ types:
   # `metrics_listen`, optional and absent by default, is a `<address>:<port>` the gateway binds a
   # second listener on, serving
   # `GET /metrics` without the owner credential and nothing else (llm-gateway.telemetry). It
-  # must differ from `listen` (`config:value` naming `metrics_listen`). `metrics_bearer_file`,
+  # must differ from `listen` (`config:value` naming `metrics_listen`), unless both name port 0
+  # (amended 2026-11-26): the system then picks a port for each, so they never name one socket,
+  # and the line `metrics listening on <address>` reports the one picked. `metrics_bearer_file`,
   # optional, names the trusted file of the token a scrape must send as `authorization: Bearer`
   # (StartupRefusal `metrics-bearer:*`); it is `config:value` without `metrics_listen`. Without
   # it the listener is open, and the guides say to bind it only on an address a network policy
@@ -923,6 +931,68 @@ types:
       - {name: watchdog, type: 'Optional<llm-gateway.deployment.WatchdogDeclaration>'}
       - {name: token_review, type: 'Optional<llm-gateway.deployment.TokenReviewDeclaration>'}
       - {name: launch, type: 'Optional<llm-gateway.deployment.LaunchDeclaration>'}
+      - {name: interaction_records, type: 'Optional<llm-gateway.deployment.InteractionRecordsDeclaration>'}
+  # DECIDED 2026-11-26 (story:interaction-record-store; sessionspec docs/interaction-records.md
+  # sections 3 and 5): `[interaction_records]`, optional. With it the binary lifts every finished
+  # call (llm-gateway.telemetry FinishedCall and its CallBytes) into sessionspec's session records
+  # and appends them to the SQLite file `path`, which `sessionspec serve` reads. Keys:
+  #   `path`           required, not empty; a relative path is resolved from the working
+  #                    directory. Its directory must exist when the binary starts, and the file
+  #                    must open as a session store; either failure is `config:value` naming
+  #                    `interaction_records.path`, never the path itself
+  #   `queue`          1..=65536, default 1024: the finished calls waiting for the writer thread;
+  #                    a call that finds it full is dropped and counted in
+  #                    `llmgw_interaction_records_dropped_total`
+  #   `call_bytes`     1..=33554432, default 8388608 (8 MiB): the relay's CallBytesBound. A call
+  #                    over it (`OverBound`), or whose answer was not decoded (`Undecodable`), is
+  #                    not lifted and is counted in `llmgw_interaction_records_skipped_total`
+  #   `sessions_held`  1..=65536, default 4096: the sessions whose agents the lift remembers,
+  #                    the least recently used forgotten first; a forgotten session's next call
+  #                    continues under the same agent id, without the chain state of its earlier
+  #                    turns
+  # Any other key is `config:schema`; a value outside its rule `config:value` naming
+  # `interaction_records.<key>`. The lift runs on the connection's thread and never waits: the
+  # append goes to one writer thread behind the queue. A refused call is lifted as an incomplete
+  # turn (`refused`); a count-tokens call hands no finished call and makes no record. No message
+  # text is stored: prompts and tool inputs are a digest and a byte count. Without the table the
+  # relay copies no byte, no writer thread runs and no file is created.
+  # DECIDED 2026-11-26 (story:interaction-record-store, correction 1; D94, D95, D96):
+  #   D94  before the writer opens `path`, the binary reads the file's schema version
+  #        (sessionspec's `meta` table). A file that holds another version than
+  #        `sessionspec_records::store::SCHEMA_VERSION`, or is no session store, refuses the start
+  #        with `config:value` naming `interaction_records.path` and both versions, never the
+  #        path, and is left as it was (sessionspec's own open would empty it). A missing or
+  #        empty file is a new store.
+  #   D95  a finished call whose lift yields no step (a request the lift cannot read) is counted
+  #        in `llmgw_interaction_records_skipped_total` and not queued.
+  #   D96  at SIGINT or SIGTERM, after the gateway has stopped, the binary waits at most 2 s for
+  #        the writer to store its queue, then names the calls still queued on one line before
+  #        the stop line, which is unchanged.
+  #   A call the writer fails to store is counted in `llmgw_interaction_records_failed_total`
+  #   (read from the writer's own failure count) with one warning line naming the series, never
+  #   the path.
+  # Amended 2026-11-26 (story:interaction-record-store, correction 2; D98):
+  #   D94  the schema row is compared as sessionspec compares it, as the string of
+  #        `SCHEMA_VERSION`; a refusal names the row's value, escaped, at most 32 characters. A
+  #        file whose only object is sessionspec's `meta` table without a schema row is a new
+  #        store. A store busy or locked past 2 s is refused as `interaction_records.path is held
+  #        locked by another process`, never as no session store.
+  #   D96  the stop's line counts the calls still queued after the wait plus the calls that
+  #        failed since the last warning, read once more after the wait.
+  #   D98  at most one failure warning per second, naming how many calls failed since the last
+  #        warning and the series; the series counts each call. When the writer's side is
+  #        dropped, a last read warns the failures no warning or stop line named.
+  # BOUNDARY: the records are sessionspec's domain `sessionspec.session`, written by its crate
+  # `sessionspec-records` (`wire::lift_call`, `append::Appender`), which `b10x-llm-gateway-cli`
+  # links by git tag. ESS has no cross-system relation, so this is a comment, not a reference.
+  # Proved by the `interaction_records` module of crates/llm-gateway-cli/tests/main.rs.
+  - name: llm-gateway.deployment.InteractionRecordsDeclaration
+    kind: struct
+    fields:
+      - {name: path, type: String}
+      - {name: queue, type: Integer}
+      - {name: call_bytes, type: Integer}
+      - {name: sessions_held, type: Integer}
   # DECIDED 2026-11-04 (story:live-dashboard): `[launch]`, optional, what `b10x-llm-gateway
   # claude` and `b10x-llm-gateway codex` start their agent with. Both read the running gateway's
   # `GET /v1/launch` and refuse a document whose `ingress_auth` is not `none`. `claude.main_model`

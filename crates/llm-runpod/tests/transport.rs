@@ -894,9 +894,8 @@ fn the_probe_maps_each_answer() {
     // Nobody listening, no address, and an `https://` endpoint this crate has no TLS client for.
     let fixture = Fixture::new("probe_unreachable");
     let mut transport = fixture.transport();
-    let closed = TcpListener::bind("127.0.0.1:0").expect("loopback");
-    let endpoint = format!("http://{}/v1/", closed.local_addr().expect("addr"));
-    drop(closed);
+    let closed = crate::refusing::Refusing::new();
+    let endpoint = format!("http://{}/v1/", closed.address);
     assert_eq!(probe(&mut transport, &endpoint), Probe::Unreachable);
     assert_eq!(
         transport.probe_ready(&ProbeTarget {

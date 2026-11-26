@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T10:04:20Z",
+  "actor": "human:operator",
+  "artifact": "story:interaction-record-store",
+  "kind": "story",
+  "revision": 5,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "at c2847290: test 1400 passed 1 skipped in 17.3 s; conformance 433 of 433; spec-diff passed (3 acknowledged). Red at 8fc1f238 (no session records), at b57d0d58 and 0f5bf6fe (an older store emptied, calls lost unseen), at e11fcaf4 and 601d2644 (a schema row read as a number, a locked store, failures during the stop, unbounded warnings). Every test runs against fakes on loopback; no test reaches a provider, a real Ollama or a pod.",
+    "reference": "wave/2026-11-26-w05@c2847290"
+  }
+}

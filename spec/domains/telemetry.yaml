@@ -54,6 +54,25 @@ domain: llm-gateway.telemetry
 #     llmgw_pod_start_spend_refusals_total            each `spend-ceiling` answer a request
 #                                                     received: a pod start the spend check
 #                                                     refused (story:spend-caps)
+#   counted by the embedding of the FinishedCalls port (below), through a public method of the
+#   gateway's `Metrics` (story:finished-call-facts):
+#     llmgw_interaction_records_dropped_total         each finished call the embedding could not
+#                                                     queue (`Metrics::count_interaction_record_
+#                                                     dropped`)
+#     llmgw_interaction_records_skipped_total         each finished call whose record the embedding
+#                                                     left out: its bytes were over the bound
+#                                                     (`CallBytes` `OverBound`) or not decoded
+#                                                     (`Undecodable`), or it lifts to no step
+#                                                     (`Metrics::count_interaction_record_skipped`)
+#     llmgw_interaction_records_failed_total          each finished call the embedding queued and
+#                                                     then failed to store
+#                                                     (`Metrics::count_interaction_record_failed`)
+#   DECIDED 2026-11-26 (story:finished-call-facts): the series are process-wide counters after
+#   the spend-refusal series, registered at zero; the gateway counts none of them itself.
+#   DECIDED 2026-11-26 (story:interaction-record-store, correction 1): the failed series is the
+#   third, after skipped; the binary reads it from its writer's own failure count and logs at most
+#   one warning per second naming how many calls failed since the last and the series, never
+#   the path (D98, correction 2); the series counts each call.
 # DECIDED 2026-10-16 (story:spend-caps): beside llmgw's 13 the gateway serves one series of its
 # own, `llmgw_pod_start_spend_refusals_total`, process-wide, after llmgw's eight; its prefix
 # keeps one scrape configuration for every series. llmgw had no spend ceiling to count.
@@ -110,7 +129,88 @@ domain: llm-gateway.telemetry
 # `tracing` event at `info` (row O3: level from `RUST_LOG`, default `info`). There is no
 # exporter. An unauthenticated or shed request makes no record. Tests read a record from the
 # `Relay` command's `records` fact.
+#
+# Finished calls. DECIDED 2026-11-26 (story:finished-call-facts; sessionspec
+# docs/interaction-records.md sections 2 and 6): every model call that was given a call id
+# (llm-gateway.gateway.CallHeader), except `POST /v1/messages/count_tokens`, hands the embedding
+# one FinishedCall through one port, `FinishedCalls::finished(&self, call, bytes)`, declared on
+# the relay (`Relay::with_finished_calls`) as UsageRecords is, and called once per call on the
+# connection's thread, after its UsageRecord and before the connection is closed. A relayed,
+# translated, passthrough or refused call hands one; a count-tokens call, a shed request and one
+# that failed authentication hand none (they have no call id or no model turn). The value is
+# built at the one place a call ends, where its UsageRecord is made; the dashboard's finished call
+# reads its start, upstream, queue wait, time to first token and session from it, so they are
+# gathered once.
+# BOUNDARY: sessionspec's `sessionspec_records::wire::GatewayFacts` (crate
+# `sessionspec-records`) takes these fields one to one: `call_id`, `session_hash`, `harness`,
+# `path`, `route`, `upstream`, `attempts`, `queue_wait_ms`, `ttft_ms`, `started_ms` and
+# `finished_ms` by name; `declared_cost_usd` becomes its `declared_cost_microdollars` and
+# `ending` its `incomplete` (`Complete` none, `ClientDisconnected` `client_disconnected`,
+# `UpstreamCut` `upstream_cut`, `WireError` `wire_error`, `Refused` `refused`), converted by the
+# embedding, which links llm's money type: the gateway does no arithmetic on money. Its
+# `WireCall` takes `wire` and CallBytes' copy (`request`, and `answer` as `Body` or `Events`).
+# ESS has no cross-system relation, so this is a comment, not a reference.
+# The session hash is the dashboard's, from one shared reader: SHA-256 of
+# `llm-gateway.session/1\0<source>\0<value>`, its first 6 bytes as 12 lower-case hex digits, where
+# `<source>` is `claude-code` for `x-claude-code-session-id`, `session-id` for `session-id`,
+# `session_id` and `x-opencode-session`, and `agent-address` for the user agent and the client's
+# address `<user agent>\0<address>` when no header names the session.
+# The byte copy. DECIDED 2026-11-26 (story:finished-call-facts): off unless the relay is declared
+# `with_call_bytes(<bound>)`; off, the port gets no CallBytes and no byte of the call is copied.
+# On, a call whose request body and answer body together are at most the bound (CallBytesBound)
+# gets `Copied` with both; one over it gets `OverBound` with both sizes and no bytes, its copy
+# dropped the moment it passed the bound. The client's answer is the same byte for byte with the
+# copy on or off, on every wire and relay path.
+# DECIDED 2026-11-26 (decision D92, story:finished-call-facts): an answer with a content coding
+# is copied as its client reads it, decoded: the relay's BodyDecoder (`Relay::with_decoder`, the
+# one that reads the answer's usage) decodes the bytes the client received, and the bound counts
+# the decoded bytes. An answer the decoder does not decode whole (no decoder, a coding it does
+# not know, a decode error, a client that left before the answer's end, more than 16 MiB as
+# received or 64 MiB decoded) gets `Undecodable`: no bytes, the request's size, the answer's size
+# as received, and its coding.
 types:
+  # Which harness named a call's session, read as the dashboard labels it: Claude Code by
+  # `x-claude-code-session-id` or a `claude-cli` user agent, Codex by a `codex…` user agent or by
+  # `session-id`, `session_id` or `x-opencode-session` sent without a user agent, every other
+  # client `Other`.
+  - name: llm-gateway.telemetry.Harness
+    kind: enum
+    variants: [ClaudeCode, Codex, Other]
+  # How a finished call ended, in this order of precedence: `Refused` when the client was answered
+  # a refusal (the FinishedCall's `refusal` names its code, `upstream-failed` included); else
+  # `UpstreamCut` when a translator told `upstream-failed` after the answer's head (its upstream
+  # failed under it; DECIDED 2026-11-26, decision D91: the client read the wire's error event,
+  # and the call was still cut by its upstream); else `WireError` when the answer, its
+  # head written, ended in its wire's terminal error (told by a translator under another code,
+  # or read from its bytes, whether or not its upstream cut it afterwards); else `UpstreamCut`
+  # when a read of the answer's body failed after its head was written; else `ClientDisconnected` when the client went away before
+  # the answer's last byte or before any answer was written; else `Complete`, whatever the
+  # answer's status.
+  - name: llm-gateway.telemetry.CallEnding
+    kind: enum
+    variants: [Complete, ClientDisconnected, UpstreamCut, WireError, Refused]
+  # Whether a call's bytes were copied, were over the bound, or carried an answer whose content
+  # coding was not decoded whole.
+  - name: llm-gateway.telemetry.CallBytesKind
+    kind: enum
+    variants: [Copied, OverBound, Undecodable]
+  # How a copied answer is held: `Body`, the answer's body bytes as the client received them,
+  # de-chunked and decoded; `Events`, for an answer whose content type is `text/event-stream`,
+  # the `data:` payload of each server-sent event the client received whole, in order (several
+  # `data:` lines of one event joined by a line feed; an event not ended by a blank line before
+  # the answer ended is not one), read from the decoded bytes of an answer with a content coding.
+  - name: llm-gateway.telemetry.AnswerCopyKind
+    kind: enum
+    variants: [Body, Events]
+  # The bound a relay declares with `with_call_bytes`: the most bytes of request body and answer
+  # body together that one call's copy holds. A call at the bound is copied; one byte over it is
+  # `OverBound`. The answer counts its body bytes as the client received them, de-chunked and
+  # decoded (a stream's whole text, not only its payloads).
+  - name: llm-gateway.telemetry.CallBytesBound
+    kind: newtype
+    of: Integer
+    naming:
+      summary: The most request and answer body bytes one call's copy holds; declared by the embedding.
   # `Process`: one series per gateway. `ModelWire`: one series per declared (model, wire) pair,
   # labelled `model` and `wire` (llmgw src/lib.rs:170-178).
   # `Model`: one series per relayed model, labelled `model` (and `outcome` for the outcome
@@ -282,4 +382,66 @@ entities:
       - {name: duration_ms, type: 'Optional<Integer>'}
       - {name: profile, type: 'Optional<String>'}
       - {name: principal, type: 'Optional<String>'}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+  # DECIDED 2026-11-26 (story:finished-call-facts): what the gateway knows of one finished model
+  # call, handed to the FinishedCalls port once (the Finished calls note above). Observed through
+  # the `Relay` command's `finished` fact (llm-gateway.gateway.RelayObservation).
+  - name: llm-gateway.telemetry.FinishedCall
+    identity: {name: call_id, type: String}
+    fields:
+      # The Harness's session, hashed by the shared reader; never a header's value.
+      - {name: session_hash, type: String}
+      - {name: harness, type: llm-gateway.telemetry.Harness}
+      # The request path the client called: one wire's path (llm-gateway.gateway.Wire).
+      - {name: path, type: String}
+      # The inbound wire, the one the client spoke; a translated call's upstream speaks another.
+      - {name: wire, type: llm-gateway.gateway.Wire}
+      # The relayed model's alias the body named; absent when it named none (UsageRecord `model`).
+      - {name: route, type: 'Optional<String>'}
+      # The authority of the target the call was handed; absent when none was.
+      - {name: upstream, type: 'Optional<String>'}
+      # Attempts at the target: each attempt of a passthrough call, 1 on the byte relay and the
+      # translated path once a target was handed out, 0 when none was.
+      - {name: attempts, type: Integer}
+      # Milliseconds from the end of the request head until the target's connection was open;
+      # absent when none was opened by the relay (a translated call, a refusal before it).
+      - {name: queue_wait_ms, type: 'Optional<Integer>'}
+      # Milliseconds from the end of the request head until the first answer body byte reached
+      # the client; absent when none did.
+      - {name: ttft_ms, type: 'Optional<Integer>'}
+      # The UsageRecord's `cost_usd`, the same decimal: present exactly when it is.
+      - {name: declared_cost_usd, type: 'Optional<Decimal>'}
+      - {name: ending, type: llm-gateway.telemetry.CallEnding}
+      # Present exactly when `ending` is `Refused`: the refusal the client was answered.
+      - {name: refusal, type: 'Optional<llm-gateway.gateway.Refusal>'}
+      # Milliseconds since the Unix epoch: the end of the request head, and the moment the call's
+      # last byte or refusal was written. `finished_ms - started_ms` is the UsageRecord's
+      # `duration_ms`.
+      - {name: started_ms, type: Integer}
+      - {name: finished_ms, type: Integer}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}
+  # DECIDED 2026-11-26 (story:finished-call-facts): the copy of one call's bytes the port is
+  # handed beside its FinishedCall when the relay declares a CallBytesBound. `Copied` holds the
+  # request body as the gateway read it (empty when it read none: a refusal before or while the
+  # body was read) and the answer as the client received it, translated for the client on a
+  # translated call; `answer` is absent when no answer head of the target's was written to the
+  # client (a refusal, a client that left before one). `OverBound` holds no bytes, only both
+  # sizes. `Undecodable` holds no bytes: both sizes and the answer's content coding.
+  - name: llm-gateway.telemetry.CallBytes
+    identity: {name: call_id, type: String}
+    fields:
+      - {name: kind, type: llm-gateway.telemetry.CallBytesKind}
+      # The request body's size in bytes.
+      - {name: request_bytes, type: Integer}
+      # The answer body's size in bytes as the client received it, decoded; 0 with no answer.
+      # For `Undecodable`, its size as the client received it, encoded.
+      - {name: answer_bytes, type: Integer}
+      # How a `Copied` answer is held; absent for `OverBound`, `Undecodable` and when no answer
+      # was written.
+      - {name: answer, type: 'Optional<llm-gateway.telemetry.AnswerCopyKind>'}
+      # The number of events of an `Events` answer; absent otherwise.
+      - {name: events, type: 'Optional<Integer>'}
+      # The answer's `content-encoding` as the target sent it, for `Undecodable`; absent
+      # otherwise.
+      - {name: coding, type: 'Optional<String>'}
     lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}

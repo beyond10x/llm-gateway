@@ -91,7 +91,14 @@ pub fn page_for(mut root: clap::Command) -> String {
          signal handlers | `b10x-llm-gateway: refused <source>:<rule>: <message>` |\n\
          | 2 | a usage error, which names its kind and never echoes an argument | ``b10x-llm-gateway: usage error (<kind>); Usage: b10x-llm-gateway \
          --config <CONFIG>; see `b10x-llm-gateway --help` `` |\n\n\
-         While it serves, the process writes `b10x-llm-gateway: listening on <address>` once. \
+         While it serves, the process writes `b10x-llm-gateway: listening on <address>` once, \
+         with the address it bound, so a `listen` on port 0 reports the port the system picked. \
+         A document that sets `metrics_listen` gets `b10x-llm-gateway: metrics listening on \
+         <address>` once before it, with the address that listener bound. \
+         With [`[interaction_records]`](./deployment-document.md#interaction-records), a stop \
+         that leaves calls unstored after waiting 2 s for the writer writes \
+         `b10x-llm-gateway: interaction records: <n> calls not stored at stop` once, just \
+         before the stop line. \
          `RUST_LOG` sets the level of the structured events it writes beside these lines \
          (default `info`).\n",
     );

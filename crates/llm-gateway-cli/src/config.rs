@@ -89,6 +89,68 @@ struct Document {
     /// (story:gateway-sa-token-ingress).
     #[serde(default)]
     token_review: Option<TokenReviewDocument>,
+    /// `[interaction_records]`: the session store every finished call is appended to
+    /// (story:interaction-record-store).
+    #[serde(default)]
+    interaction_records: Option<InteractionRecordsDocument>,
+}
+
+/// `[interaction_records]` (`llm-gateway.deployment.InteractionRecordsDeclaration`).
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct InteractionRecordsDocument {
+    path: PathBuf,
+    #[serde(default = "default_records_queue")]
+    queue: u64,
+    #[serde(default = "default_records_call_bytes")]
+    call_bytes: u64,
+    #[serde(default = "default_records_sessions_held")]
+    sessions_held: u64,
+}
+
+const fn default_records_queue() -> u64 {
+    1024
+}
+const fn default_records_call_bytes() -> u64 {
+    8 * 1024 * 1024
+}
+const fn default_records_sessions_held() -> u64 {
+    4096
+}
+
+/// `[interaction_records]`, checked: where the session store is and how much the binary holds
+/// for it. The path's directory is checked when the binary starts, not here.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct InteractionRecordsConfig {
+    /// The SQLite file, relative to the working directory unless absolute.
+    pub path: PathBuf,
+    /// Finished calls waiting for the writer thread: 1..=65536, 1024 by default.
+    pub queue: usize,
+    /// The relay's byte copy bound: 1..=33554432, 8 MiB by default.
+    pub call_bytes: usize,
+    /// Sessions whose agents the lift remembers: 1..=65536, 4096 by default.
+    pub sessions_held: usize,
+}
+
+fn validate_interaction_records(
+    declared: InteractionRecordsDocument,
+) -> Result<InteractionRecordsConfig, Refusal> {
+    let at = "interaction_records";
+    ensure(
+        !declared.path.as_os_str().is_empty(),
+        "interaction_records.path",
+        "must not be empty",
+    )?;
+    within(at, "queue", &declared.queue, &(1..=65_536))?;
+    within(at, "call_bytes", &declared.call_bytes, &(1..=33_554_432))?;
+    within(at, "sessions_held", &declared.sessions_held, &(1..=65_536))?;
+    let size = |count: u64| usize::try_from(count).unwrap_or(usize::MAX);
+    Ok(InteractionRecordsConfig {
+        path: declared.path,
+        queue: size(declared.queue),
+        call_bytes: size(declared.call_bytes),
+        sessions_held: size(declared.sessions_held),
+    })
 }
 
 /// `[token_review]` (`llm-gateway.deployment.TokenReviewDeclaration`).
@@ -1075,6 +1137,9 @@ pub struct Deployment {
     pub watchdog: Option<WatchdogConfig>,
     /// `[token_review]`: present exactly when `gateway.ingress_auth` is `ServiceAccountToken`.
     pub token_review: Option<TokenReviewConfig>,
+    /// `[interaction_records]` when declared: every finished call is then lifted into session
+    /// records and appended to its store (story:interaction-record-store).
+    pub interaction_records: Option<InteractionRecordsConfig>,
 }
 
 /// `[token_review]` (`llm-gateway.deployment.TokenReviewDeclaration`): how a caller's
@@ -1284,8 +1349,9 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         .token_review
         .map(validate_token_review)
         .transpose()?;
+    // Two addresses on port 0 name no socket yet: the system picks a port for each.
     ensure(
-        document.metrics_listen != Some(document.listen),
+        document.metrics_listen != Some(document.listen) || document.listen.port() == 0,
         "metrics_listen",
         "must differ from listen",
     )?;
@@ -1297,6 +1363,10 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
     let launch_claude = launch_claude(document.launch.claude)?;
     let launch_codex = launch_codex(document.launch.codex)?;
     let watchdog = document.watchdog.map(validate_watchdog).transpose()?;
+    let interaction_records = document
+        .interaction_records
+        .map(validate_interaction_records)
+        .transpose()?;
     let mut gateway = GatewayConfig::new(document.listen);
     gateway.ingress_auth = ingress_auth;
     Ok(Deployment {
@@ -1315,6 +1385,7 @@ pub fn parse(text: &str) -> Result<Deployment, Refusal> {
         routes: Routes::default(),
         digest,
         token_review,
+        interaction_records,
     })
 }
 

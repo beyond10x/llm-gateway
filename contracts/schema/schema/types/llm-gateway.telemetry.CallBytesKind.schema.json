@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.CallBytesKind",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:c53d6b55dc0f85c5f3d39eb540e23bbf9a8de5a940c8b4bc06b2ae93ea243764",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.CallBytesKind": {
+      "title": "CallBytesKind",
+      "x-ess-name": "llm-gateway.telemetry.CallBytesKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Copied",
+        "OverBound",
+        "Undecodable"
+      ]
+    }
+  }
+}

@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T10:04:16Z",
+  "actor": "human:operator",
+  "artifact": "story:cli-test-port-race",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "at c2847290: test 1400 passed 1 skipped in 17.3 s; conformance 433 of 433; spec-diff passed (3 acknowledged). Red at cfb52529 (the binary could not bind port 0 and report it) and 8e3d3a96 (a released port was still handed on). Every test runs against fakes on loopback; no test reaches a provider, a real Ollama or a pod.",
+    "reference": "wave/2026-11-26-w05@c2847290"
+  }
+}

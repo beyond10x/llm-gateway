@@ -1,7 +1,8 @@
 //! Structured logs (row O3): `tracing` events on standard error, at the level `RUST_LOG` sets,
 //! `info` by default, and one `info` event per usage record the gateway hands out.
 //!
-//! The process's own lines (`listening on`, `refused`, `stopped by`, `spec/domains/deployment.yaml`)
+//! The process's own lines (`metrics listening on`, `listening on`, `refused`, `stopped by`,
+//! `spec/domains/deployment.yaml`)
 //! are written as before and are not events, so they stay byte-identical at every level.
 
 use llm_gateway::{Disposition, UsageRecord, UsageRecords};

@@ -33,9 +33,14 @@ tasks:
       - cargo run --locked -p llm-gateway-docs -- generate --check
   rust:
     cmds:
-      - cargo test --workspace --locked
+      - task: test
       - cargo fmt --all --check
       - cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+  test:
+    desc: Build the tests, then run them with cargo-nextest (a test over 60 s is killed and fails), fail when the run takes over 120 s of wall clock, print the ten slowest
+    cmds:
+      - cargo nextest run --workspace --locked --no-run
+      - cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test
   spec-diff:
     desc: Fail on a breaking or unclassified specification change since the merge base with origin/main that contracts/diff-acknowledgements.json does not acknowledge
     cmds:

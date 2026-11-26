@@ -11,7 +11,7 @@
 //!
 //! Every upstream is a loopback fixture; nothing leaves the machine.
 
-mod support;
+use crate::support;
 
 use serde_json::{Value, json};
 use std::{

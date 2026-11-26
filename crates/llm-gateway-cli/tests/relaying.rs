@@ -6,7 +6,7 @@
 //! of a tool request to a model without tool calling before a pod starts (`tools_*`). No pod is
 //! started, no Runpod API is called and nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{Deployment, PodConnector, Refusal, StartupRefusal, load, start_relaying};
@@ -31,10 +31,21 @@ struct Pod {
     address: SocketAddr,
     received: Arc<Mutex<Vec<Vec<u8>>>>,
     thread: Option<JoinHandle<()>>,
+    /// A pod of no answers refuses every connection, on a port it holds for its whole life.
+    _refusing: Option<support::Refusing>,
 }
 
 impl Pod {
     fn start(answers: usize, body: &'static str) -> Self {
+        if answers == 0 {
+            let refusing = support::Refusing::new();
+            return Self {
+                address: refusing.address,
+                received: Arc::new(Mutex::new(Vec::new())),
+                thread: None,
+                _refusing: Some(refusing),
+            };
+        }
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let received = Arc::new(Mutex::new(Vec::new()));
@@ -58,6 +69,7 @@ impl Pod {
             address,
             received,
             thread: Some(thread),
+            _refusing: None,
         }
     }
 

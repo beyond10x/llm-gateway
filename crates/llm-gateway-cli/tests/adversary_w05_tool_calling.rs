@@ -2,7 +2,7 @@
 //! key. `spec/domains/deployment.yaml` says it is `parsed` or `absent` and that any other value is
 //! `config:schema`.
 
-mod support;
+use crate::support;
 
 use llm_gateway_cli::load;
 use support::{Fixture, document, mutate};

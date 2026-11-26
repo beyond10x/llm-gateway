@@ -2,7 +2,7 @@
 //! `RunpodPool::invalidate` as the relay composition calls it. No pod is started, no Runpod API
 //! is called and nothing leaves the loopback interface.
 
-mod support;
+use crate::support;
 
 use llm_gateway::RelayStream;
 use llm_gateway_cli::{Deployment, PodConnector, load, runpod_pool, start_relaying};

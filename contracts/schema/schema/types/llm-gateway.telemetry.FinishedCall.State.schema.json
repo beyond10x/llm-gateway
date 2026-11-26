@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.telemetry.FinishedCall.State",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:2e20180215429719ee262d697e5853dfba17dd3d1ce61331c3dd5000ba14406a",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.FinishedCall.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.telemetry.FinishedCall.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    }
+  }
+}

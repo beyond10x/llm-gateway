@@ -1,0 +1,79 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "CallBytes",
+  "x-ess-name": "llm-gateway.telemetry.CallBytes",
+  "x-ess-kind": "entity",
+  "type": "object",
+  "properties": {
+    "call_id": {
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/llm-gateway.telemetry.CallBytesKind"
+    },
+    "request_bytes": {
+      "type": "integer"
+    },
+    "answer_bytes": {
+      "type": "integer"
+    },
+    "answer": {
+      "$ref": "#/$defs/llm-gateway.telemetry.AnswerCopyKind"
+    },
+    "events": {
+      "type": "integer"
+    },
+    "coding": {
+      "type": "string"
+    },
+    "state": {
+      "$ref": "#/$defs/llm-gateway.telemetry.CallBytes.State"
+    }
+  },
+  "required": [
+    "call_id",
+    "kind",
+    "request_bytes",
+    "answer_bytes",
+    "state"
+  ],
+  "additionalProperties": false,
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:a5ad33a5932f6986c217614ee3e358fb42ccd66e31c7882b700fae3721f641fb",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.telemetry.AnswerCopyKind": {
+      "title": "AnswerCopyKind",
+      "x-ess-name": "llm-gateway.telemetry.AnswerCopyKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Body",
+        "Events"
+      ]
+    },
+    "llm-gateway.telemetry.CallBytes.State": {
+      "title": "State",
+      "x-ess-name": "llm-gateway.telemetry.CallBytes.State",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Observed"
+      ]
+    },
+    "llm-gateway.telemetry.CallBytesKind": {
+      "title": "CallBytesKind",
+      "x-ess-name": "llm-gateway.telemetry.CallBytesKind",
+      "x-ess-kind": "enum",
+      "type": "string",
+      "enum": [
+        "Copied",
+        "OverBound",
+        "Undecodable"
+      ]
+    }
+  }
+}

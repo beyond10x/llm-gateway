@@ -1,0 +1,32 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: finished-calls-each-call-with-an-id-hands-one-value-and-a-count-and-an-unauthenticated-call-none
+summary: a relayed and a refused call each hand the port one value naming their record's id, session hash and ending; a token count and an unauthenticated call hand none
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"code","upstream_model":"served-code","wires":["chat","messages"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"a\"}"]},{"status":200,"content_type":"application/json","chunks":["{\"input_tokens\":3}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}","headers":["x-claude-code-session-id: s-claude"]},{"step":"request","path":"/v1/messages/count_tokens","body":"{\"model\":\"code\",\"messages\":[]}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"nobody\"}"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"code\"}","credential":false}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - ok
+    - 200 relayed
+    - 200 relayed
+    - 404 model-unknown
+    - 401 credential-absent
+    records:
+    - model=code wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=10 duration_ms=bounded tokens=absent
+    - model=code wire=messages disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=18 duration_ms=bounded tokens=absent
+    - model=absent wire=chat disposition=Refused refusal=model-unknown status=404 target_status=absent response_bytes=0 duration_ms=bounded tokens=absent
+    finished:
+    - call=recorded path=/v1/chat/completions wire=chat route=code upstream=pod-1 attempts=1 queue_wait_ms=bounded ttft_ms=bounded ending=Complete refusal=absent cost_usd=absent session=e5333c6d3823 harness=ClaudeCode span=bounded bytes=none
+    - call=recorded path=/v1/chat/completions wire=chat route=absent upstream=absent attempts=0 queue_wait_ms=absent ttft_ms=absent ending=Refused refusal=model-unknown cost_usd=absent session=287f169e87d4 harness=Other span=bounded bytes=none

@@ -521,10 +521,19 @@ fn translate_a_declared_wire_is_relayed_byte_for_byte_and_tools_are_refused_firs
 }
 
 /// A client that has gone is reported to the translation by the writer: the write fails.
+///
+/// The answer is sized from the host's socket buffer maxima: more than four times their sum,
+/// and at least 256 MiB (4096 pieces of 64 KiB). The writer cannot hand every piece to the
+/// kernel before the client's close is seen: once the buffers are full a write blocks until the
+/// reset arrives, and that write fails. A smaller answer fits the buffers of a host whose
+/// loopback buffers grew. One piece is allocated; the answer repeats it.
 #[test]
 fn translate_a_client_that_has_gone_is_reported_by_the_writer() {
-    let pieces: Vec<&'static str> =
-        std::iter::repeat_n("data: chunk-of-an-answer\n\n", 4096).collect();
+    const PIECE: usize = 64 * 1024;
+    let piece: &'static str =
+        Box::leak(format!("data: {}\n\n", "x".repeat(PIECE - 8)).into_boxed_str());
+    let pieces_count = (4 * socket_buffer_maxima() / PIECE + 1).max(4096);
+    let pieces: Vec<&'static str> = std::iter::repeat_n(piece, pieces_count).collect();
     let composed = compose(Some(fixture(None, sse(pieces))), false);
     let mut stream = TcpStream::connect(composed.handle.local_addr()).unwrap();
     let body = "{\"model\":\"two\"}";
@@ -546,7 +555,21 @@ fn translate_a_client_that_has_gone_is_reported_by_the_writer() {
         "{} writes, none failed",
         writes.len()
     );
-    assert!(writes.len() < 4096);
+    assert!(writes.len() < pieces_count);
+}
+
+/// The most bytes the send buffer of one socket and the receive buffer of another may hold
+/// together, as Linux reports them (the third value of `tcp_wmem` and `tcp_rmem`, or the `core`
+/// maxima when larger); 0 where they cannot be read.
+fn socket_buffer_maxima() -> usize {
+    let most = |path: &str, field: usize| {
+        std::fs::read_to_string(path)
+            .ok()
+            .and_then(|text| text.split_whitespace().nth(field)?.parse::<usize>().ok())
+            .unwrap_or(0)
+    };
+    most("/proc/sys/net/ipv4/tcp_wmem", 2).max(most("/proc/sys/net/core/wmem_max", 0))
+        + most("/proc/sys/net/ipv4/tcp_rmem", 2).max(most("/proc/sys/net/core/rmem_max", 0))
 }
 
 /// The listing names every wire with a translator, and the declared ones as `upstream_wires`;

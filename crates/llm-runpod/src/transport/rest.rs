@@ -1,4 +1,4 @@
-//! The direct Runpod transport: Runpod's REST API, called by this process with an API key its
+//! The direct Runpod transport: Runpod's REST API v2, called by this process with an API key its
 //! embedding hands in.
 //!
 //! [`ConnectorsRunpod`](super::ConnectorsRunpod) never holds the Runpod key; this transport does,
@@ -14,34 +14,43 @@
 //! no call is made. An `http://` URL is accepted only for a loopback host, which only a test
 //! fixture is.
 //!
-//! The calls (Runpod REST `https://rest.runpod.io/v1`):
+//! The calls (Runpod REST API v2, `https://api.runpod.io/v2`, the documented route of
+//! 2026-11-26):
 //!
-//! * `list_pods`: `GET /pods`, each entry read as [`ConnectorsRunpod`](super::ConnectorsRunpod)
-//!   reads a `pods.list` entry.
-//! * `create_pod`: `POST /pods` with the same body `pod.create` carries, unwrapped. A 2xx is
-//!   `Created`; a 4xx whose answer says Runpod has no instance available is `NoCapacity`, any
-//!   other 4xx `Refused`. No answer, a 5xx or a timeout may have created the pod: one
-//!   `GET /pods?name=<name>` resolves it by its name and request tag, as connectors' `unknown`
-//!   is resolved; otherwise it is `Lost`. A create is never sent twice.
+//! * `list_pods`: `GET /pods`, `{"pods": [...], "pagination": {...}}`, followed page by page
+//!   through `?cursor=<pagination.nextCursor>` while `pagination.hasNextPage`, at most
+//!   [`MAX_PAGES`] pages. A first page that fails is a listing that failed outright (`Err`); a
+//!   later one leaves the listing partial. Each entry is read as [`ConnectorsRunpod`](super::ConnectorsRunpod)
+//!   reads a `pods.list` entry. The listing ignores query filters, so none is sent.
+//! * `create_pod`: `POST /pods` with v2's body: v1's keys, but `image` for `imageName` and one
+//!   GPU type as `gpu: {id, count}`. A 2xx is `Created`; a 4xx whose answer says Runpod has no
+//!   instance available is `NoCapacity`, any other 4xx `Refused`. No answer, a 5xx or a timeout
+//!   may have created the pod: one listing resolves it by its name and request tag, as
+//!   connectors' `unknown` is resolved; otherwise it is `Lost`. A create is never sent twice.
 //! * `terminate_pod`: `DELETE /pods/<id>`. A 2xx is `Terminated`, a 4xx `Refused`, anything
 //!   else `Lost`.
-//! * `container_started_at`: `GET /pods/<id>`, `lastStartedAt`.
-//! * `pod_placement`: `GET /pods/<id>?includeMachine=true`, `machine.secureCloud` and
-//!   `interruptible`.
+//! * `container_started_at` and `pod_placement`: the pod's `lastStartedAt`, and its
+//!   `machine.secureCloud` and `interruptible`, from the listing (v2 documents no read of one
+//!   pod).
 //! * `account_spend`: `GET /billing/pods?bucketSize=day`.
-//! * [`RunpodAccount::account`]: Runpod's GraphQL `myself { clientBalance currentSpendPerHr }`
-//!   for the balance and spend rate, and `GET /pods` for the pods.
+//! * [`RunpodAccount::account`]: the pods, the balance from `GET /billing/balance`
+//!   (`balanceAmount`) and the spend rate from Runpod's GraphQL `myself { currentSpendPerHr }`.
+//!   On a 403 or 404 balance (a key without `billing:read`, an organization without a billing
+//!   account) the balance is GraphQL's `clientBalance`, read in the same query.
+//!
+//! Each failed call is kept as the transport's [`last failure`](RestRunpod::last_failure): the
+//! host it went to and the HTTP status or the connection's own error, never the key.
 
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt,
     io::Write,
     net::{TcpStream, ToSocketAddrs},
-    sync::Arc,
+    sync::{Arc, Mutex, PoisonError},
     time::{Duration, Instant},
 };
 
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 
 use super::{
     connectors::{create_body, placement_of, pod_of, spend_of, started_at_ms},
@@ -55,6 +64,8 @@ use crate::{
 
 /// The most of one answer, head included, that is read before it is treated as unreadable.
 const MAX_ANSWER_BYTES: usize = 8 * 1024 * 1024;
+/// The most pages one pod listing reads; a listing with more is not complete.
+const MAX_PAGES: usize = 64;
 /// How long a probe of a pod may take, connect to last byte.
 const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Upper-case hexadecimal digits, for percent-encoding.
@@ -63,13 +74,16 @@ const HEX: &[u8; 16] = b"0123456789ABCDEF";
 const USER_AGENT: &str = "b10x-llm-gateway";
 /// Runpod's answer to a create no machine of the GPU type can take.
 const NO_CAPACITY: &str = "no instances currently available";
-/// The account query: only fields Runpod's GraphQL `myself` is known to answer.
+/// The spend-rate query, when the balance came from `GET /billing/balance`.
+const SPEND_QUERY: &str = "query { myself { currentSpendPerHr } }";
+/// The account query of the balance fallback: only fields Runpod's GraphQL `myself` is known to
+/// answer.
 const ACCOUNT_QUERY: &str = "query { myself { clientBalance currentSpendPerHr } }";
 
 /// Where the transport sends its calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RestBinding {
-    /// The REST API's base, without a trailing slash: `https://rest.runpod.io/v1`.
+    /// The REST API's base, without a trailing slash: `https://api.runpod.io/v2`.
     pub base_url: String,
     /// The GraphQL endpoint the account view reads: `https://api.runpod.io/graphql`.
     pub graphql_url: String,
@@ -81,10 +95,51 @@ impl RestBinding {
     /// Runpod's own endpoints and a 30 s bound.
     pub fn runpod() -> Self {
         Self {
-            base_url: "https://rest.runpod.io/v1".to_owned(),
+            base_url: "https://api.runpod.io/v2".to_owned(),
             graphql_url: "https://api.runpod.io/graphql".to_owned(),
             timeout: Duration::from_secs(30),
         }
+    }
+}
+
+/// Why one call failed.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum FailureCause {
+    /// The host answered this HTTP status.
+    Status(u16),
+    /// The connection failed: its own error, a resolver's included.
+    Connection(String),
+    /// An `https://` URL and no TLS connection was handed in.
+    NoTls,
+    /// Not an `https://` URL, nor an `http://` one to a loopback host.
+    NotAllowed,
+    /// No whole HTTP/1.1 answer arrived inside the bound.
+    NoAnswer,
+}
+
+impl fmt::Display for FailureCause {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Status(status) => write!(formatter, "HTTP {status}"),
+            Self::Connection(error) => formatter.write_str(error),
+            Self::NoTls => formatter.write_str("no TLS connection"),
+            Self::NotAllowed => formatter.write_str("not an https URL"),
+            Self::NoAnswer => formatter.write_str("no whole HTTP/1.1 answer in time"),
+        }
+    }
+}
+
+/// One failed call: the host it went to and why it failed. Carries no key and no answer body.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CallFailure {
+    /// The `host[:port]` the call went to.
+    pub host: String,
+    pub cause: FailureCause,
+}
+
+impl fmt::Display for CallFailure {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(formatter, "{}: {}", self.host, self.cause)
     }
 }
 
@@ -94,6 +149,7 @@ pub struct RestRunpod {
     api_key: BearerKey,
     keys: BTreeMap<String, BearerKey>,
     tls: Option<Arc<dyn PodTls>>,
+    failure: Mutex<Option<CallFailure>>,
 }
 
 impl fmt::Debug for RestRunpod {
@@ -104,7 +160,7 @@ impl fmt::Debug for RestRunpod {
             .field("api_key", &self.api_key)
             .field("keys", &self.keys.keys().collect::<Vec<_>>())
             .field("tls", &self.tls.is_some())
-            .finish()
+            .finish_non_exhaustive()
     }
 }
 
@@ -132,6 +188,12 @@ struct Target<'a> {
     tls: bool,
     authority: &'a str,
     path: String,
+}
+
+/// The `host[:port]` of an absolute URL, for a failure's text.
+fn authority_of(url: &str) -> &str {
+    let rest = url.split_once("://").map_or(url, |(_, rest)| rest);
+    rest.split(['/', '?', '#']).next().unwrap_or_default()
 }
 
 /// Splits an absolute URL. `None` for a scheme other than `https`, for `http` to a host other
@@ -189,6 +251,14 @@ fn encode(value: &str) -> String {
     encoded
 }
 
+/// Every pod entry a listing read, and whether it read every page.
+struct Entries {
+    pods: Vec<Value>,
+    whole: bool,
+    /// At least the first page was read.
+    read: bool,
+}
+
 impl RestRunpod {
     /// A transport calling `binding`'s endpoints with this Runpod API key. Calls nothing yet.
     pub fn new(binding: RestBinding, api_key: Vec<u8>) -> Self {
@@ -197,6 +267,7 @@ impl RestRunpod {
             api_key: BearerKey::new(api_key),
             keys: BTreeMap::new(),
             tls: None,
+            failure: Mutex::new(None),
         }
     }
 
@@ -213,11 +284,35 @@ impl RestRunpod {
         self.keys.insert(alias.to_owned(), BearerKey::new(key));
     }
 
+    /// The last call that failed, since the last listing or account read began: its host and
+    /// its HTTP status or connection error. A 2xx answer that did not parse is not a failure
+    /// here.
+    pub fn last_failure(&self) -> Option<CallFailure> {
+        self.failure
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    fn fail(&self, url: &str, cause: FailureCause) {
+        *self.failure.lock().unwrap_or_else(PoisonError::into_inner) = Some(CallFailure {
+            host: authority_of(url).to_owned(),
+            cause,
+        });
+    }
+
+    fn forget_failure(&self) {
+        *self.failure.lock().unwrap_or_else(PoisonError::into_inner) = None;
+    }
+
     /// One call to `url` with the Runpod key as a bearer. `None` when no whole answer arrived
     /// inside the binding's timeout, or the answer was not HTTP/1.1, or was longer than
-    /// [`MAX_ANSWER_BYTES`].
+    /// [`MAX_ANSWER_BYTES`]. A non-2xx answer is returned and kept as the last failure.
     fn call(&self, method: &str, url: &str, body: Option<&[u8]>) -> Option<Reply> {
-        let target = target(url)?;
+        let Some(target) = target(url) else {
+            self.fail(url, FailureCause::NotAllowed);
+            return None;
+        };
         let token = self.api_key.token()?;
         let mut head = format!(
             "{method} {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {USER_AGENT}\r\nAccept: application/json\r\nConnection: close\r\n",
@@ -237,84 +332,182 @@ impl RestRunpod {
         ]);
         let answer = self.exchange(&target, request.bytes());
         drop(request);
-        let (status, body) = probe::parse(&answer?)?;
-        Some(Reply { status, body })
+        let parsed = match answer {
+            Ok(answer) => probe::parse(&answer),
+            Err(cause) => {
+                self.fail(url, cause);
+                return None;
+            }
+        };
+        let Some((status, body)) = parsed else {
+            self.fail(url, FailureCause::NoAnswer);
+            return None;
+        };
+        let reply = Reply { status, body };
+        if !reply.success() {
+            self.fail(url, FailureCause::Status(status));
+        }
+        Some(reply)
     }
 
     /// Sends one request and reads its whole answer, all inside the binding's timeout.
-    fn exchange(&self, target: &Target<'_>, request: &[u8]) -> Option<Vec<u8>> {
+    fn exchange(&self, target: &Target<'_>, request: &[u8]) -> Result<Vec<u8>, FailureCause> {
         let timeout = self.binding.timeout;
         let deadline = Instant::now() + timeout;
+        let connection = |error: std::io::Error| FailureCause::Connection(error.to_string());
         if target.tls {
-            let mut stream = self.tls.as_ref()?.connect(target.authority, timeout).ok()?;
-            stream.write_all(request).ok()?;
-            stream.flush().ok()?;
-            return probe::read_answer(&mut *stream, deadline, MAX_ANSWER_BYTES, |_| Some(()));
+            let tls = self.tls.as_ref().ok_or(FailureCause::NoTls)?;
+            let mut stream = tls.connect(target.authority, timeout).map_err(connection)?;
+            stream.write_all(request).map_err(connection)?;
+            stream.flush().map_err(connection)?;
+            return probe::read_answer(&mut *stream, deadline, MAX_ANSWER_BYTES, |_| Some(()))
+                .ok_or(FailureCause::NoAnswer);
         }
         let address = if target.authority.contains(':') && !target.authority.ends_with(']') {
             target.authority.to_owned()
         } else {
             format!("{}:80", target.authority)
         };
-        let stream = address
-            .to_socket_addrs()
-            .ok()?
-            .find_map(|address| TcpStream::connect_timeout(&address, timeout).ok())?;
-        stream.set_write_timeout(Some(timeout)).ok()?;
-        (&stream).write_all(request).ok()?;
+        let mut last = FailureCause::NoAnswer;
+        let mut connected = None;
+        for address in address.to_socket_addrs().map_err(connection)? {
+            match TcpStream::connect_timeout(&address, timeout) {
+                Ok(stream) => {
+                    connected = Some(stream);
+                    break;
+                }
+                Err(error) => last = connection(error),
+            }
+        }
+        let stream = connected.ok_or(last)?;
+        stream
+            .set_write_timeout(Some(timeout))
+            .map_err(connection)?;
+        (&stream).write_all(request).map_err(connection)?;
         probe::read_answer(&mut &stream, deadline, MAX_ANSWER_BYTES, |left| {
             stream
                 .set_read_timeout(Some(left.max(Duration::from_millis(1))))
                 .ok()
         })
+        .ok_or(FailureCause::NoAnswer)
     }
 
     fn rest(&self, method: &str, path: &str, body: Option<&[u8]>) -> Option<Reply> {
         self.call(method, &format!("{}{path}", self.binding.base_url), body)
     }
 
-    /// `GET /pods<query>`: every entry, or `None` when the answer is not a 2xx array.
-    fn pods(&self, query: &str) -> Option<Vec<Value>> {
-        match self.rest("GET", &format!("/pods{query}"), None)?.json()? {
-            Value::Array(pods) => Some(pods),
-            _ => None,
+    /// One page of `GET /pods`: its entries and the cursor of the next page, `Some(None)` on
+    /// the last page. `None` when the answer is not a 2xx v2 page, or says there is a next page
+    /// without naming its cursor.
+    fn page(&self, cursor: Option<&str>) -> Option<(Vec<Value>, Option<String>)> {
+        let query = cursor.map_or_else(String::new, |cursor| format!("?cursor={}", encode(cursor)));
+        let page = self.rest("GET", &format!("/pods{query}"), None)?.json()?;
+        let pods = page.get("pods")?.as_array()?.clone();
+        let more = page
+            .pointer("/pagination/hasNextPage")
+            .and_then(Value::as_bool)
+            .unwrap_or(false);
+        if !more {
+            return Some((pods, None));
+        }
+        let next = page
+            .pointer("/pagination/nextCursor")
+            .and_then(Value::as_str)
+            .filter(|cursor| !cursor.is_empty())?;
+        Some((pods, Some(next.to_owned())))
+    }
+
+    /// Every pod entry of the account, page after page. `whole` only when every page was read:
+    /// a page that fails, a cursor that comes back, or more than [`MAX_PAGES`] pages end the
+    /// listing with what was read.
+    fn entries(&self) -> Entries {
+        let mut pods = Vec::new();
+        let mut cursor: Option<String> = None;
+        let mut seen = BTreeSet::new();
+        for _ in 0..MAX_PAGES {
+            let Some((page, next)) = self.page(cursor.as_deref()) else {
+                return Entries {
+                    pods,
+                    whole: false,
+                    read: cursor.is_some(),
+                };
+            };
+            pods.extend(page);
+            match next {
+                None => {
+                    return Entries {
+                        pods,
+                        whole: true,
+                        read: true,
+                    };
+                }
+                Some(next) if !seen.insert(next.clone()) => {
+                    return Entries {
+                        pods,
+                        whole: false,
+                        read: true,
+                    };
+                }
+                Some(next) => cursor = Some(next),
+            }
+        }
+        Entries {
+            pods,
+            whole: false,
+            read: true,
         }
     }
 
-    /// `GET /pods/<id><query>`: the pod, only when the answer names this id.
-    fn pod(&self, pod_id: &str, query: &str) -> Option<Value> {
-        let pod = self
-            .rest("GET", &format!("/pods/{}{query}", encode(pod_id)), None)?
-            .json()?;
-        (pod.get("id").and_then(Value::as_str) == Some(pod_id)).then_some(pod)
+    /// The listing's entry of `pod_id`, when the listing holds it.
+    fn listed(&self, pod_id: &str) -> Option<Value> {
+        self.entries()
+            .pods
+            .into_iter()
+            .find(|pod| pod.get("id").and_then(Value::as_str) == Some(pod_id))
     }
 
-    /// A create whose answer never said what happened: one read by its name, never a resend.
-    /// The name is per model alias, not per create: only a pod carrying this create's own
-    /// request tag was made by it.
+    /// A create whose answer never said what happened: one whole listing, read for the pod of
+    /// this create's name and request tag, never a resend. The name is per model alias, not
+    /// per create: only a pod carrying this create's own request tag was made by it.
     fn resolve_create(&self, request: &PodRequest) -> CreateAnswer {
         let Some(tag) = request.env.get(TAG_REQUEST) else {
             return CreateAnswer::Lost;
         };
-        let Some(entries) = self.pods(&format!("?name={}", encode(&request.name))) else {
+        let entries = self.entries();
+        if !entries.whole {
             return CreateAnswer::Lost;
-        };
-        let Some(pods) = entries.iter().map(pod_of).collect::<Option<Vec<Pod>>>() else {
+        }
+        let named = entries
+            .pods
+            .iter()
+            .filter(|pod| pod.get("name").and_then(Value::as_str) == Some(request.name.as_str()));
+        let Some(pods) = named.map(pod_of).collect::<Option<Vec<Pod>>>() else {
             return CreateAnswer::Lost;
         };
         let mut ours = pods
             .into_iter()
-            .filter(|pod| pod.name == request.name && pod.env.get(TAG_REQUEST) == Some(tag));
+            .filter(|pod| pod.env.get(TAG_REQUEST) == Some(tag));
         match (ours.next(), ours.next()) {
             (Some(pod), None) => CreateAnswer::Created(pod),
             _ => CreateAnswer::Lost,
         }
     }
 
-    /// The GraphQL account fields: `(clientBalance, currentSpendPerHr)`, each `None` when the
-    /// read failed or did not report it.
+    /// The balance and the spend rate: `balanceAmount` of `GET /billing/balance`, and GraphQL's
+    /// `currentSpendPerHr`. On a 403 or 404 balance the same GraphQL query also reads
+    /// `clientBalance`. Each is `None` when its read failed or did not report it.
     fn balance(&self) -> (Option<f64>, Option<f64>) {
-        let body = json!({ "query": ACCOUNT_QUERY }).to_string();
+        let reply = self.rest("GET", "/billing/balance", None);
+        let fallback = reply
+            .as_ref()
+            .is_some_and(|reply| matches!(reply.status, 403 | 404));
+        let balance = reply
+            .and_then(|reply| reply.json())
+            .as_ref()
+            .and_then(|answer| answer.get("balanceAmount"))
+            .and_then(number);
+        let query = if fallback { ACCOUNT_QUERY } else { SPEND_QUERY };
+        let body = json!({ "query": query }).to_string();
         let answer = self
             .call("POST", &self.binding.graphql_url, Some(body.as_bytes()))
             .and_then(|reply| reply.json());
@@ -324,7 +517,12 @@ impl RestRunpod {
                 .pointer(&format!("/data/myself/{name}"))
                 .and_then(number)
         };
-        (field("clientBalance"), field("currentSpendPerHr"))
+        let balance = if fallback {
+            field("clientBalance")
+        } else {
+            balance
+        };
+        (balance, field("currentSpendPerHr"))
     }
 }
 
@@ -380,16 +578,31 @@ fn no_capacity(body: &[u8]) -> bool {
         .contains(NO_CAPACITY)
 }
 
+/// Runpod v2's `POST /pods` body: [`create_body`]'s keys, with `image` for `imageName` and the
+/// one GPU type as `gpu: {id, count}` for `gpuTypeIds` and `gpuCount`.
+fn create_body_v2(request: &PodRequest) -> Map<String, Value> {
+    let mut body = create_body(request);
+    for v1 in ["imageName", "gpuTypeIds", "gpuCount"] {
+        body.remove(v1);
+    }
+    body.insert("image".to_owned(), json!(request.image));
+    body.insert(
+        "gpu".to_owned(),
+        json!({ "id": request.gpu_type, "count": request.gpu_count }),
+    );
+    body
+}
+
 impl RunpodTransport for RestRunpod {
     fn list_pods(&mut self) -> Result<PodListing, ()> {
-        let Some(entries) = self.pods("") else {
-            return Ok(PodListing {
-                pods: Vec::new(),
-                complete: false,
-            });
-        };
-        let parsed: Vec<Option<Pod>> = entries.iter().map(pod_of).collect();
-        let complete = parsed.iter().all(Option::is_some);
+        self.forget_failure();
+        let entries = self.entries();
+        // Not even the first page: the listing failed outright.
+        if !entries.read {
+            return Err(());
+        }
+        let parsed: Vec<Option<Pod>> = entries.pods.iter().map(pod_of).collect();
+        let complete = entries.whole && parsed.iter().all(Option::is_some);
         Ok(PodListing {
             pods: parsed.into_iter().flatten().collect(),
             complete,
@@ -397,7 +610,7 @@ impl RunpodTransport for RestRunpod {
     }
 
     fn create_pod(&mut self, request: &PodRequest) -> CreateAnswer {
-        let body = Value::Object(create_body(request)).to_string();
+        let body = Value::Object(create_body_v2(request)).to_string();
         match self.rest("POST", "/pods", Some(body.as_bytes())) {
             Some(reply) if reply.success() => reply
                 .json()
@@ -436,16 +649,14 @@ impl RunpodTransport for RestRunpod {
     }
 
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
-        self.pod(pod_id, "")?
+        self.listed(pod_id)?
             .get("lastStartedAt")
             .and_then(Value::as_str)
             .and_then(rest_started_at_ms)
     }
 
     fn pod_placement(&mut self, pod_id: &str) -> Option<PodPlacement> {
-        self.pod(pod_id, "?includeMachine=true")
-            .as_ref()
-            .map(placement_of)
+        self.listed(pod_id).as_ref().map(placement_of)
     }
 
     fn account_spend(&mut self, day_start_ms: u64) -> Option<AccountSpend> {
@@ -457,22 +668,38 @@ impl RunpodTransport for RestRunpod {
 }
 
 impl RunpodAccount for RestRunpod {
-    /// `None` when the pod listing failed; a failed balance read leaves only the balance and
-    /// spend rate unreported. A pod entry without an id or a name is left out.
+    /// A failed pod listing leaves the pods unread (`pods_read: false`, no pod), and a failed
+    /// balance read leaves only the balance and spend rate unreported. `None` only when neither
+    /// the pods, nor the balance, nor the spend rate was read. A pod entry without an id or a
+    /// name is left out.
     fn account(&mut self) -> Option<AccountSnapshot> {
-        let pods = self.pods("?includeMachine=true")?;
+        self.forget_failure();
+        let entries = self.entries();
+        let pods: Vec<PodSummary> = if entries.whole {
+            entries.pods.iter().filter_map(summary).collect()
+        } else {
+            Vec::new()
+        };
         let (balance_usd, spend_per_hour_usd) = self.balance();
+        if !entries.whole && balance_usd.is_none() && spend_per_hour_usd.is_none() {
+            return None;
+        }
         Some(AccountSnapshot {
             balance_usd,
             spend_per_hour_usd,
-            pods: pods.iter().filter_map(summary).collect(),
+            pods,
+            pods_read: entries.whole,
         })
+    }
+
+    fn last_failure(&self) -> Option<crate::CallFailure> {
+        RestRunpod::last_failure(self)
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{encode, loopback, rest_started_at_ms, target};
+    use super::{authority_of, encode, loopback, rest_started_at_ms, target};
 
     #[test]
     fn the_rest_start_stamp_is_read_in_utc() {
@@ -487,19 +714,29 @@ mod tests {
 
     #[test]
     fn plain_http_is_only_for_a_loopback_host() {
-        assert!(target("http://127.0.0.1:9/v1").is_some());
-        assert!(target("http://localhost:9/v1").is_some());
-        assert!(target("http://[::1]:9/v1").is_some());
-        assert!(target("http://rest.runpod.io/v1").is_none());
-        assert!(target("http://10.0.0.1/v1").is_none());
-        assert!(target("https://user@rest.runpod.io/v1").is_none());
+        assert!(target("http://127.0.0.1:9/v2").is_some());
+        assert!(target("http://localhost:9/v2").is_some());
+        assert!(target("http://[::1]:9/v2").is_some());
+        assert!(target("http://api.runpod.io/v2").is_none());
+        assert!(target("http://10.0.0.1/v2").is_none());
+        assert!(target("https://user@api.runpod.io/v2").is_none());
         assert!(target("ftp://127.0.0.1/").is_none());
         assert!(!loopback("127.0.0.1.example.com"));
-        let runpod = target("https://rest.runpod.io/v1").expect("https");
+        let runpod = target("https://api.runpod.io/v2").expect("https");
         assert_eq!(
             (runpod.authority, runpod.path.as_str()),
-            ("rest.runpod.io", "/v1")
+            ("api.runpod.io", "/v2")
         );
+    }
+
+    #[test]
+    fn a_failure_names_the_authority_of_its_url() {
+        assert_eq!(
+            authority_of("https://api.runpod.io/v2/pods"),
+            "api.runpod.io"
+        );
+        assert_eq!(authority_of("http://127.0.0.1:9/graphql"), "127.0.0.1:9");
+        assert_eq!(authority_of("https://h.example.test?x"), "h.example.test");
     }
 
     #[test]

@@ -187,7 +187,10 @@ fn adv_profiles_a_call_served_by_a_fallback_profile_is_clamped_to_that_profiles_
     let received = pod.received.lock().unwrap().clone();
     assert_eq!(
         received.last().map(String::as_str),
-        Some("POST /v1/messages HTTP/1.1 {\"model\":\"small\",\"max_tokens\":24,\"messages\":[]}"),
+        // story:runpod-rest-host: every call to a pod is sent streamed.
+        Some(
+            "POST /v1/messages HTTP/1.1 {\"model\":\"small\",\"max_tokens\":24,\"messages\":[],\"stream\":true}"
+        ),
         "every request the pod read: {received:?}"
     );
 }

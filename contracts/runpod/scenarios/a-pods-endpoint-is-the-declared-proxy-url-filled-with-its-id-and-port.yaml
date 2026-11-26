@@ -1,0 +1,25 @@
+type: ess-scenario/1
+domain: llm-gateway.runpod
+scenario: a-pods-endpoint-is-the-declared-proxy-url-filled-with-its-id-and-port
+summary: a pool given a proxy URL hands out each running pod at that URL, its pod id and port filled, followed by /v1/
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.runpod.Exercise
+  input:
+    program_json: '{"models":{"qwen":{}},"proxy_url":"https://{pod_id}-{port}.pods.example.test:8443","steps":[{"step":"until_ready","alias":"qwen"},{"step":"vanish","pod":"pod1"},{"step":"until_ready","alias":"qwen"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.runpod.LastExecution
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.runpod.LastExecution
+  contains:
+    results:
+    - ready
+    - ok
+    - ready
+    create_calls: 2
+    leases:
+    - https://pod1-8000.pods.example.test:8443/v1/ qwen
+    - https://pod2-8000.pods.example.test:8443/v1/ qwen

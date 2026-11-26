@@ -22,8 +22,9 @@ use llm_provision::{
 use llm_runpod::{
     CloudType, ConfigError, CreateAnswer, EmulatedRunpod, Hold, LEGACY_POD_NAME_PREFIX,
     ManualClock, NetworkVolume, POD_NAME_PREFIX, Pod, PodListing, PodRequest, PodStatus, PoolError,
-    Probe, ProbeTarget, RunpodModel, RunpodPool, RunpodProvider, RunpodTransport, SpendRefusal,
-    TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
+    Probe, ProbeTarget, ProxyUrl, ProxyUrlError, RunpodModel, RunpodPool, RunpodProvider,
+    RunpodTransport, SpendRefusal, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer, Thinking,
+    VllmSettings,
 };
 
 const ALIAS: &str = "qwen";
@@ -470,6 +471,36 @@ fn a_partial_listing_neither_discharges_nor_replaces_a_running_pod() {
         "absence from a partial listing says nothing"
     );
     assert_eq!(stack.runpod.create_calls(), 1);
+}
+
+/// story:runpod-rest-host, Acceptance 8: a listing that fails outright (the management API down,
+/// refusing or unreachable) reads nothing of the account, so the pod ready at its last
+/// observation keeps serving: a call through it is handed the same endpoint, and nothing is
+/// created or terminated. Once the listing reads again, its answer decides as before.
+#[test]
+fn a_listing_that_fails_outright_keeps_a_ready_pod_serving() {
+    let stack = stack();
+    let first = ready(&stack);
+    let endpoint = first.endpoint().map(str::to_owned);
+    drop(first);
+    stack.runpod.listing_fails(true);
+    for _ in 0..3 {
+        stack.clock.advance(1_000);
+        let lease = stack
+            .pool
+            .ensure(&id(ALIAS), &authorization())
+            .expect("the last ready pod serves");
+        assert_eq!(lease.endpoint().map(str::to_owned), endpoint);
+    }
+    assert_eq!(stack.runpod.create_calls(), 1);
+    assert!(stack.runpod.terminations().is_empty());
+    stack.runpod.listing_fails(false);
+    stack.runpod.vanish("pod1");
+    stack.clock.advance(1_000);
+    assert!(
+        stack.pool.ensure(&id(ALIAS), &authorization()).is_err(),
+        "a listing that reads again decides: the vanished pod serves no more"
+    );
 }
 
 #[test]
@@ -1078,6 +1109,89 @@ fn the_provider_source_holds_no_proxy_host() {
         !source.contains("proxy.runpod.net"),
         "the endpoint form lives in llm's Runpod description, not in this adapter"
     );
+}
+
+/// A pool given a proxy URL hands each running pod out at that URL, `{pod_id}` and `{port}`
+/// filled with its id and 8000, followed by `/v1/`.
+#[test]
+fn a_pool_given_a_proxy_url_hands_out_each_pod_at_it() {
+    let proxy =
+        ProxyUrl::new("https://{pod_id}-{port}.pods.example.test:8443").expect("a proxy url");
+    assert_eq!(
+        proxy.as_str(),
+        "https://{pod_id}-{port}.pods.example.test:8443"
+    );
+    assert_eq!(
+        proxy.endpoint("abc123"),
+        "https://abc123-8000.pods.example.test:8443/v1/"
+    );
+    let runpod = EmulatedRunpod::new();
+    let clock = ManualClock::new(1_000);
+    let pool = RunpodPool::new(
+        policy(),
+        Arc::new(LeaseRegistry::default()),
+        runpod.clone(),
+        models(),
+        Arc::new(clock.clone()),
+    )
+    .expect("pool")
+    .with_proxy_url(proxy);
+    let stack = Stack {
+        runpod,
+        clock,
+        leases: Arc::new(LeaseRegistry::default()),
+        pool: Arc::new(pool),
+    };
+    let lease = ready(&stack);
+    assert_eq!(
+        lease.endpoint(),
+        Some("https://pod1-8000.pods.example.test:8443/v1/")
+    );
+}
+
+/// A proxy URL is `https://` and a host with an optional port; its only placeholders are
+/// `{pod_id}` and `{port}`. Every other form is refused, naming the rule and quoting nothing.
+#[test]
+fn a_proxy_url_is_an_https_host_whose_only_placeholders_are_the_pod_id_and_port() {
+    for admitted in [
+        "https://{pod_id}-{port}.proxy.runpod.net",
+        "https://pods.example.test",
+        "https://{pod_id}.example.test:443",
+        "https://p-{port}-{pod_id}.example.test",
+    ] {
+        assert!(ProxyUrl::new(admitted).is_ok(), "{admitted}");
+    }
+    for (refused, error) in [
+        (
+            "http://{pod_id}-{port}.proxy.runpod.net",
+            ProxyUrlError::NotHttps,
+        ),
+        ("{pod_id}.proxy.runpod.net", ProxyUrlError::NotHttps),
+        ("https://", ProxyUrlError::NotAHost),
+        ("https://{pod_id}.example.test/v1", ProxyUrlError::NotAHost),
+        ("https://{pod_id}.example.test?x=1", ProxyUrlError::NotAHost),
+        (
+            "https://user@{pod_id}.example.test",
+            ProxyUrlError::NotAHost,
+        ),
+        ("https://{pod_id} .example.test", ProxyUrlError::NotAHost),
+        (
+            "https://{pod_id}.example.test:port",
+            ProxyUrlError::NotAHost,
+        ),
+        ("https://{pod}.example.test", ProxyUrlError::Placeholder),
+        ("https://{pod_id.example.test", ProxyUrlError::Placeholder),
+        ("https://pod_id}.example.test", ProxyUrlError::Placeholder),
+        (
+            "https://{{pod_id}}.example.test",
+            ProxyUrlError::Placeholder,
+        ),
+    ] {
+        assert_eq!(ProxyUrl::new(refused).err(), Some(error), "{refused}");
+        assert!(!error.to_string().contains("example"), "{error}");
+    }
+    let long = format!("https://{}.example.test", "a".repeat(512));
+    assert_eq!(ProxyUrl::new(&long).err(), Some(ProxyUrlError::Length));
 }
 
 /// A transport listing fixed running pods that all serve, for ids the emulator never issues.

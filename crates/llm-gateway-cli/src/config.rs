@@ -15,7 +15,7 @@ use llm_gateway::{
     StaticHeader, ToolCalling,
 };
 use llm_runpod::{
-    CloudType, ConnectorsBinding, NetworkVolume, RunpodProfile, Thinking, VllmSettings,
+    CloudType, ConnectorsBinding, NetworkVolume, ProxyUrl, RunpodProfile, Thinking, VllmSettings,
 };
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -747,6 +747,14 @@ struct ProviderDocument {
     /// calls Runpod's REST API itself (story:keychain-references).
     #[serde(default)]
     api_key: Option<String>,
+    /// Where the provider's Runpod REST API v2 is (story:runpod-rest-host); only beside
+    /// `api_key`.
+    #[serde(default)]
+    management_url: Option<String>,
+    /// Where a running pod serves inference, `{pod_id}` and `{port}` filled
+    /// (story:runpod-rest-host).
+    #[serde(default)]
+    proxy_url: Option<String>,
     #[serde(default)]
     daily_cap_usd: Option<f64>,
     #[serde(default)]
@@ -954,6 +962,13 @@ pub struct Provider {
     /// pods are then managed through Runpod's REST API by this process, never beside a
     /// `connectors` connection (story:keychain-references).
     pub api_key: Option<KeychainRef>,
+    /// The base of the Runpod REST API v2 the provider's pods are managed through with
+    /// `api_key`, without a trailing `/`: [`DEFAULT_MANAGEMENT_URL`] unless declared
+    /// (story:runpod-rest-host).
+    pub management_url: String,
+    /// Where a running pod of the provider serves inference: [`DEFAULT_PROXY_URL`] unless
+    /// declared (story:runpod-rest-host).
+    pub proxy_url: ProxyUrl,
     /// The account's daily spend ceiling in micro-USD (`daily_cap_usd`); `None` is none.
     pub daily_cap_micro_usd: Option<u64>,
     /// The account's total spend ceiling in micro-USD (`total_cap_usd`); `None` is none.
@@ -1449,6 +1464,15 @@ fn providers(
             "cannot stand beside a connectors connection: the provider's pods are managed \
              either through connectors or with its own key, not both",
         )?;
+        let management_url = management_url(
+            &format!("providers.{name}.management_url"),
+            provider.management_url.as_deref(),
+            api_key.is_some(),
+        )?;
+        let proxy_url = proxy_url(
+            &format!("providers.{name}.proxy_url"),
+            provider.proxy_url.as_deref(),
+        )?;
         let daily_cap_micro_usd = provider
             .daily_cap_usd
             .map(|usd| amount(&format!("providers.{name}.daily_cap_usd"), usd, MAX_CAP_USD))
@@ -1464,6 +1488,8 @@ fn providers(
                 cloud_type,
                 connectors,
                 api_key,
+                management_url,
+                proxy_url,
                 daily_cap_micro_usd,
                 total_cap_micro_usd,
             },
@@ -1490,6 +1516,75 @@ fn providers(
         "may declare a spend ceiling on at most one provider",
     )?;
     Ok((providers, metered))
+}
+
+/// Where Runpod's REST API v2 is, unless a provider declares `management_url`.
+pub const DEFAULT_MANAGEMENT_URL: &str = "https://api.runpod.io/v2";
+/// Where Runpod's proxy serves a pod's port, unless a provider declares `proxy_url`.
+pub const DEFAULT_PROXY_URL: &str = "https://{pod_id}-{port}.proxy.runpod.net";
+/// The longest `management_url`, in bytes.
+pub const MAX_MANAGEMENT_URL_BYTES: usize = 2048;
+
+/// A provider's `management_url` at `at`, or [`DEFAULT_MANAGEMENT_URL`]: `https://`, or
+/// `http://` to a loopback host; a host, no user information, query or fragment; at most
+/// [`MAX_MANAGEMENT_URL_BYTES`]; a trailing `/` dropped. Declared only beside `api_key`.
+fn management_url(at: &str, declared: Option<&str>, keyed: bool) -> Result<String, Refusal> {
+    let Some(text) = declared else {
+        return Ok(DEFAULT_MANAGEMENT_URL.to_owned());
+    };
+    ensure(
+        keyed,
+        at,
+        "is read only beside api_key: only a provider that manages its pods with its own key \
+         calls the management API",
+    )?;
+    ensure(
+        text.len() <= MAX_MANAGEMENT_URL_BYTES,
+        at,
+        "must be at most 2048 bytes",
+    )?;
+    let (https, rest) = match (text.strip_prefix("https://"), text.strip_prefix("http://")) {
+        (Some(rest), _) => (true, rest),
+        (None, Some(rest)) => (false, rest),
+        (None, None) => {
+            return Err(value(
+                at,
+                "must be an https:// URL, or http:// to a loopback host",
+            ));
+        }
+    };
+    let authority = rest.split('/').next().unwrap_or_default();
+    let host = authority
+        .strip_prefix('[')
+        .and_then(|bracketed| bracketed.split(']').next())
+        .unwrap_or_else(|| authority.split(':').next().unwrap_or_default());
+    ensure(
+        !host.is_empty()
+            && !rest.contains(['@', '?', '#'])
+            && !rest.chars().any(|c| c.is_whitespace() || c.is_control()),
+        at,
+        "must be a URL with a host and no user information, query or fragment",
+    )?;
+    ensure(
+        https || is_loopback_host(host),
+        at,
+        "must be an https:// URL, or http:// to a loopback host",
+    )?;
+    Ok(text.strip_suffix('/').unwrap_or(text).to_owned())
+}
+
+/// Whether `host` names this machine without a lookup: `localhost`, `127.0.0.0/8` or `::1`.
+fn is_loopback_host(host: &str) -> bool {
+    host.eq_ignore_ascii_case("localhost")
+        || host
+            .parse::<std::net::IpAddr>()
+            .is_ok_and(|address| address.is_loopback())
+}
+
+/// A provider's `proxy_url` at `at`, or [`DEFAULT_PROXY_URL`] ([`ProxyUrl::new`]'s rule).
+fn proxy_url(at: &str, declared: Option<&str>) -> Result<ProxyUrl, Refusal> {
+    ProxyUrl::new(declared.unwrap_or(DEFAULT_PROXY_URL))
+        .map_err(|error| value(at, &format!("{error}: it must be https:// and a host with an optional port, whose only placeholders are {{pod_id}} and {{port}}")))
 }
 
 /// `[hosted.<alias>]`, checked (`llm-gateway.deployment.HostedDeclaration`).

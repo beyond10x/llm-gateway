@@ -593,6 +593,47 @@ A request to a wire path is decided in this order:
    out of one `request-head-bytes` budget, and so does its trailer section, so a target cannot
    grow the gateway's memory.
 
+### A streamed target
+
+A target may ask to be sent every call streamed (`RelayTarget::streamed`); on a relay that holds
+an assembler (`Relay::with_assembler`, the embedding's `StreamAssembler`) it is. The binary's
+Runpod pods ask: Runpod's proxy closes a connection on which the pod sends nothing for its bound,
+100 seconds by Runpod's documentation and 125 seconds by Cloudflare's Proxy Read Timeout, which
+Runpod's proxy runs on. Neither page says whether the bound counts from the request, between
+two bytes, or over the whole connection, so the gateway assumes the worst a long silent answer
+can meet: a non-streamed answer is silent until its end, a streamed one sends its first event at
+once and then one per token.
+
+- Every call to such a target but a token count and a call to a model that authenticates the
+  client itself is sent with a top-level `stream: true` (each
+  `stream` member set to `true`, or the member added), and on the chat wire with
+  `stream_options: {"include_usage": true}` when the body names no `stream_options`, so the last
+  event carries the usage. Nothing else of the body changes.
+- A call the client streamed is relayed as step 9 says.
+- Of a call the client did not stream, a 2xx `text/event-stream` answer is read whole and handed
+  to the assembler, which makes the one body the same events' non-streamed answer is on the
+  client's wire. The client gets it with the target's status, `content-type: application/json`
+  and a `content-length`; its usage is read from that body. Any other answer (a model's error,
+  a JSON answer) is relayed as step 9 says.
+- An event stream whose read fails before its end is the upstream cut: the head is written, the
+  answer ends without its body (chunked, without its last chunk), the client sees it cut, and
+  the call ends `UpstreamCut` (`FinishedCall::ending`). A `524` answer of a streamed target,
+  the proxy's own answer to an origin silent past its bound, is relayed as step 9 says and ends
+  `UpstreamCut` too.
+- A stream the assembler makes no answer of (no end event, an `error` event, an event that does
+  not read) or that passes its bound is `upstream-failed` (502); the target is not invalidated.
+
+The binary's assembler (`EventAssembler`, `crates/llm-gateway-cli/src/assemble.rs`) reads at
+most `MAX_ASSEMBLED_BYTES`, 16 MiB of events, per answer. On the chat wire it merges every
+chunk's delta (content and reasoning concatenated, tool calls joined by their index, the last
+finish reason, the logprobs content joined, the usage chunk's usage) and needs `[DONE]`; on the
+responses wire the answer is the `response` of `response.completed`, `response.incomplete` or
+`response.failed`; on the messages wire it builds each content block from its start and deltas
+(a tool's `partial_json` read as its `input`), merges `message_delta`, and needs
+`message_stop`. `crates/llm-gateway/tests/streamed_targets.rs` and
+`crates/llm-gateway-cli/tests/runpod_host.rs` hold it: the fake proxy there sends its first event
+at once and the rest over a span longer than the silence it allows, and the call completes.
+
 A refused relay closes gracefully: the refusal is written, the write side closed, and what the
 client still sends is read and discarded (up to `request-body-bytes`, within `read_timeout`), so
 a reset cannot destroy the refusal before the client reads it.
@@ -1577,7 +1618,11 @@ record types are declared once in `dashboard.rs` (`SNAPSHOT_TYPES`);
   stopped or changed. Each owned pod's `shutdown` is the earliest of its model's idle stop (no
   call in flight, `idle_timeout_minutes` after the later of its last call and its start),
   `[watchdog].max_runtime_hours` after its start, and the time the balance falls under
-  `[watchdog].min_balance_usd` at the current spend rate.
+  `[watchdog].min_balance_usd` at the current spend rate. A read of the account that fails
+  keeps the last balance read on the page and logs one warning naming the provider, the host
+  and the HTTP status or the connection's error, never the key; a read that got the balance but
+  no complete pod listing sets the provider's `pods_unread`, shown as `pods not read` beside its
+  read time, with no pod row and no other pod counted until a listing reads whole.
 
 The page's series on `/metrics` follow the route series: token and cache counters, the
 time-to-first-token, queue-wait and retry-wait histograms, `llmgw_cache_hit_ratio`,
@@ -1649,6 +1694,12 @@ The lifecycle routes add no code of their own: a model with no lifecycle (a host
 Ollama model or a route of the routes document) is `path-unknown`, an alias no relayed model has
 `model-unknown`, and a wake the target source refuses `target-unavailable`, `spend-ceiling` or
 `model-cold-start`, as its acquisition would be ([the lifecycle routes](#the-lifecycle-routes)).
+
+A `target-unavailable` message may carry the target source's reason after the fixed text, as
+`no model target is available: <reason>` (`RelayTargets::unavailable_reason`): the binary's
+Runpod provider whose start read no complete pod listing answers `no model target is available:
+provider <name> was not reachable at start`. The reason names no secret and quotes nothing a
+client sent; the code and status do not change.
 
 This table is the published contract, and it is checked rather than maintained by hand.
 `RefusalCode`, `RefusalCode::ALL`, `wire`, `status` and `reason` are generated from a single

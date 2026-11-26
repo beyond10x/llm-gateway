@@ -46,6 +46,7 @@ mod config;
 mod emulated;
 mod pool;
 mod provider;
+mod proxy;
 mod request;
 mod spend;
 mod transport;
@@ -63,14 +64,15 @@ pub use pool::{
     StreamLease,
 };
 pub use provider::{RunpodProvider, Unserviceable};
+pub use proxy::{MAX_PROXY_URL_BYTES, ProxyUrl, ProxyUrlError, VLLM_PORT};
 pub use request::{
     LEGACY_POD_NAME_PREFIX, NON_THINKING_SAMPLING, POD_NAME_PREFIX, TAG_EPOCH, TAG_OWNER,
     TAG_REQUEST, Tags, in_namespace, pod_name, pod_request, vllm_entrypoint,
 };
 pub use spend::{AccountSpend, SpendCeiling, SpendPolicy, SpendRefusal, micro_usd, usd};
 pub use transport::{
-    AccountSnapshot, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, POD_CREATE_BODY_KEYS, Pod,
-    PodListing, PodPlacement, PodRequest, PodStatus, PodStream, PodSummary, PodTls, Probe,
-    ProbeTarget, RestBinding, RestRunpod, RunpodAccount, RunpodTransport, TerminateAnswer,
-    started_at_ms,
+    AccountSnapshot, CallFailure, ConnectorsBinding, ConnectorsRunpod, CreateAnswer, FailureCause,
+    POD_CREATE_BODY_KEYS, Pod, PodListing, PodPlacement, PodRequest, PodStatus, PodStream,
+    PodSummary, PodTls, Probe, ProbeTarget, RestBinding, RestRunpod, RunpodAccount,
+    RunpodTransport, TerminateAnswer, started_at_ms,
 };

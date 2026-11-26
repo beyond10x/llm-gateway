@@ -198,6 +198,10 @@ enum Slot {
     MaxTokens,
     /// The top-level `input_tokens` of a count answer.
     InputTokens,
+    /// The top-level `stream` of a request.
+    Stream,
+    /// The top-level `stream_options` of a request.
+    StreamOptions,
     Other,
 }
 
@@ -208,6 +212,8 @@ impl Slot {
             (Role::Top, "tools") => Self::Tools,
             (Role::Top, "max_tokens") => Self::MaxTokens,
             (Role::Top, "input_tokens") => Self::InputTokens,
+            (Role::Top, "stream") => Self::Stream,
+            (Role::Top, "stream_options") => Self::StreamOptions,
             (Role::Top, "output_config") => Self::OutputConfig,
             (Role::Top, "chat_template_kwargs") => Self::TemplateKwargs,
             (Role::OutputConfig, "effort") | (Role::TemplateKwargs, "reasoning_effort") => {
@@ -232,6 +238,8 @@ impl Slot {
             | Self::ToolType
             | Self::MaxTokens
             | Self::InputTokens
+            | Self::Stream
+            | Self::StreamOptions
             | Self::Other => Role::Other,
         }
     }
@@ -285,6 +293,19 @@ struct Found {
     top_end: Option<usize>,
     max_tokens: Integer,
     input_tokens: Integer,
+    stream: Stream,
+}
+
+/// What the scan has seen of a request's top-level `stream` and `stream_options`
+/// (story:runpod-rest-host).
+#[derive(Default)]
+struct Stream {
+    /// Every top-level `stream` value token, and whether it is `true`.
+    values: Vec<(Range<usize>, bool)>,
+    /// The top level names `stream_options`.
+    options: bool,
+    /// A top-level `stream` is an object or an array, which is no flag to set.
+    compound: bool,
 }
 
 /// What the scan has seen of one top-level member read as a count of tokens.
@@ -335,6 +356,11 @@ impl Found {
                 }
             }
             Slot::MaxTokens => self.max_tokens.named(span, raw),
+            Slot::Stream => {
+                self.stream.compound |= matches!(raw, b"{" | b"[");
+                self.stream.values.push((span, raw == b"true"));
+            }
+            Slot::StreamOptions => self.stream.options = true,
             Slot::InputTokens => self.input_tokens.named(span, raw),
             Slot::Model => {
                 self.models += 1;
@@ -449,6 +475,44 @@ pub(crate) fn analyse(body: &[u8]) -> Result<Analysis, RefusalCode> {
         effort_slot,
         max_tokens: found.max_tokens.once(),
     })
+}
+
+/// `body`, a request as the relay is about to send it, asked to stream (story:runpod-rest-host):
+/// every top-level `stream` value set to `true`, or `,"stream":true` added as the last member
+/// when it names none; and when `usage` and it names no `stream_options`,
+/// `,"stream_options":{"include_usage":true}` added after it. Nothing else changes. Also
+/// whether the client streamed: the last top-level `stream` was `true`.
+///
+/// # Errors
+/// [`RefusalCode::BodyNotJson`] for a body that is not one JSON object, or whose `stream` is an
+/// object or an array.
+pub(crate) fn streamed(body: &[u8], usage: bool) -> Result<(Vec<u8>, bool), RefusalCode> {
+    let found = scan(body)?;
+    if found.stream.compound {
+        return Err(NOT_JSON);
+    }
+    let client_streamed = found
+        .stream
+        .values
+        .last()
+        .is_some_and(|(_, streams)| *streams);
+    let end = found.top_end.ok_or(NOT_JSON)?;
+    let mut out = Vec::with_capacity(body.len());
+    let mut from = 0;
+    for (span, _) in &found.stream.values {
+        out.extend_from_slice(&body[from..span.start]);
+        out.extend_from_slice(b"true");
+        from = span.end;
+    }
+    out.extend_from_slice(&body[from..end]);
+    if found.stream.values.is_empty() {
+        out.extend_from_slice(b",\"stream\":true");
+    }
+    if usage && !found.stream.options {
+        out.extend_from_slice(b",\"stream_options\":{\"include_usage\":true}");
+    }
+    out.extend_from_slice(&body[end..]);
+    Ok((out, client_streamed))
 }
 
 /// The count a target answered `POST /v1/messages/count_tokens` with: the top-level

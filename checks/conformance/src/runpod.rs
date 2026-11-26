@@ -23,9 +23,9 @@ use ess_conformance::target::TargetError;
 use llm_provision::{ComputeAuthorization, HostingPolicy, Identifier, LeaseRegistry};
 use llm_runpod::{
     AccountSpend, CleanupReport, CloudType, CreateAnswer, EmulatedRunpod, ManualClock, ModelStatus,
-    NetworkVolume, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget, RunpodModel,
-    RunpodPool, RunpodProfile, RunpodTransport, SpendPolicy, SpendRefusal, StreamLease,
-    TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
+    NetworkVolume, PodListing, PodRequest, PodStatus, PoolError, Probe, ProbeTarget, ProxyUrl,
+    RunpodModel, RunpodPool, RunpodProfile, RunpodTransport, SpendPolicy, SpendRefusal,
+    StreamLease, TAG_REQUEST, TerminateAnswer, Thinking, VllmSettings,
 };
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -79,6 +79,10 @@ struct Program {
     /// The pool's spend ceilings in USD (`SpendLedger`); absent is no ceiling.
     #[serde(default)]
     spend: Option<SpendInput>,
+    /// The proxy URL the pool reaches each running pod at (`RunpodPool::with_proxy_url`);
+    /// absent keeps llm's Runpod description's address.
+    #[serde(default)]
+    proxy_url: Option<String>,
     steps: Vec<Step>,
 }
 
@@ -500,6 +504,14 @@ fn lease_fact(lease: &StreamLease) -> String {
     )
 }
 
+/// `pool`, reaching each running pod at `proxy` when one is declared.
+fn proxied(pool: RunpodPool<Fixture>, proxy: Option<&ProxyUrl>) -> RunpodPool<Fixture> {
+    match proxy {
+        Some(proxy) => pool.with_proxy_url(proxy.clone()),
+        None => pool,
+    }
+}
+
 struct Run {
     fixture: Fixture,
     clock: ManualClock,
@@ -507,6 +519,7 @@ struct Run {
     policy: HostingPolicy,
     models: BTreeMap<Identifier, RunpodModel>,
     spend: SpendPolicy,
+    proxy: Option<ProxyUrl>,
     pool: Arc<RunpodPool<Fixture>>,
     /// Pools a restart replaced. They stay alive, as a crashed process's claims would.
     replaced: Vec<Arc<RunpodPool<Fixture>>>,
@@ -613,7 +626,7 @@ impl Run {
             Arc::new(self.clock.clone()),
         ) {
             Ok(pool) => {
-                let pool = pool.with_spend(self.spend.clone());
+                let pool = proxied(pool.with_spend(self.spend.clone()), self.proxy.as_ref());
                 let previous = std::mem::replace(&mut self.pool, Arc::new(pool));
                 self.replaced.push(previous);
                 self.models = models;
@@ -863,9 +876,15 @@ fn run(program_json: &str) -> Value {
             models,
             policy(program.max_active.unwrap_or(16))?,
             spend_policy(program.spend.as_ref(), &program.models)?,
+            program
+                .proxy_url
+                .as_deref()
+                .map(ProxyUrl::new)
+                .transpose()
+                .map_err(|_| "proxy-url")?,
         ))
     });
-    let (models, policy, spend) = match setup {
+    let (models, policy, spend, proxy) = match setup {
         Ok(setup) => setup,
         Err(code) => {
             facts["error_code"] = json!(code);
@@ -882,7 +901,7 @@ fn run(program_json: &str) -> Value {
         models.clone(),
         Arc::new(clock.clone()),
     ) {
-        Ok(pool) => pool.with_spend(spend.clone()),
+        Ok(pool) => proxied(pool.with_spend(spend.clone()), proxy.as_ref()),
         Err(error) => {
             facts["error_code"] = json!(refusal(error));
             emulator_facts(&mut facts, &fixture.runpod);
@@ -896,6 +915,7 @@ fn run(program_json: &str) -> Value {
         policy,
         models,
         spend,
+        proxy,
         pool: Arc::new(pool),
         replaced: Vec::new(),
         held: Vec::new(),

@@ -63,8 +63,16 @@ implementer_route = "qwen"
   value in the file. Because its address is a Runpod proxy address, the dashboard reads the
   server's own `/metrics` for its prefix cache, queue and KV cache, and shows the pod read-only,
   marked external: the gateway never stops or changes it.
+- Runpod's proxy closes a connection on which the pod stays silent too long: 100 seconds by
+  Runpod's documentation, 125 seconds by Cloudflare's (it answers `524`). Neither says whether
+  that counts until the first byte, between two reads, or the whole connection. A pod the
+  gateway manages is therefore sent every call streamed and the gateway assembles the one answer
+  for a client that did not stream; a hosted pod such as `[hosted.qwen]` gets the client's call
+  as sent, so a long answer without `stream` may be cut there.
 - `[providers.runpod]` with a keychain `api_key` adds the account's balance and spend rate to the
-  dashboard. Leave it out and the gateway reads no account.
+  dashboard. Leave it out and the gateway reads no account. It reads Runpod's REST API v2 at
+  `https://api.runpod.io/v2` (`management_url`) and reaches the pods it manages at
+  `https://{pod_id}-{port}.proxy.runpod.net` (`proxy_url`).
 
 Start it:
 

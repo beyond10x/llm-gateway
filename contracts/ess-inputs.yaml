@@ -96,6 +96,7 @@ scenarios:
 - runpod/scenarios/a-pod-that-refuses-its-credential-is-terminated.yaml
 - runpod/scenarios/a-pod-that-stops-serving-after-it-served-is-retired-past-its-startup-deadline.yaml
 - runpod/scenarios/a-pod-that-vanishes-out-of-band-is-replaced-on-the-next-request.yaml
+- runpod/scenarios/a-pods-endpoint-is-the-declared-proxy-url-filled-with-its-id-and-port.yaml
 - runpod/scenarios/a-request-while-the-pod-starts-waits-on-it-instead-of-creating-another.yaml
 - runpod/scenarios/a-restarted-pool-adopts-its-own-pod-by-exact-identity-without-creating.yaml
 - runpod/scenarios/a-restarted-pool-does-not-adopt-a-pod-that-reused-its-name.yaml

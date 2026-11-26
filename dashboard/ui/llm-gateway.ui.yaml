@@ -33,7 +33,7 @@ tokens:
   type:
     body: {family: "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif", size: 14px}
     caption: {size: 0.875rem}
-    heading: {size: 0.95rem, weight: 700}
+    heading: {size: 1.1rem, weight: 700}
     mono: {family: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace"}
   tone:
     neutral: {text: text, fill: head}

@@ -16,13 +16,7 @@ export interface KnownFailure {
   items?: string[];
 }
 
-const ALL = ['idle', 'busy', 'token-flow', 'errors', 'offline'];
-
-export const KNOWN_FAILURES: KnownFailure[] = [
-  // Section headings at 13.3 px and limit card titles at 12.6 px, under the 14 px heading floor.
-  { finding: 'UXF-021', check: 'key-data', scenarios: ALL, items: ['heading 13.3px h2'] },
-  { finding: 'UXF-021', check: 'key-data', scenarios: ['busy', 'errors'], items: ['heading 12.6px h3', 'heading 12.6px span'] },
-];
+export const KNOWN_FAILURES: KnownFailure[] = [];
 
 function applies(k: KnownFailure, check: Check, scenario: string, viewport?: string): boolean {
   return k.check === check && (!k.scenarios || k.scenarios.includes(scenario)) && (!k.viewports || viewport === undefined || k.viewports.includes(viewport));

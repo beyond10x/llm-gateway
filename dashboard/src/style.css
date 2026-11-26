@@ -113,7 +113,7 @@ td.toned.tone-danger, th.toned.tone-danger { font-weight: 600; }
 .tile.tone-warning, .tile.tone-danger { background: var(--tone-fill); }
 .tile.toned .value { color: var(--tone-text); }
 .card { margin-top: 1rem; }
-.card h3 { margin: 0 0 0.5rem; font-size: 0.9rem; display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; align-items: baseline; }
+.card h3 { margin: 0 0 0.5rem; font-size: 1rem; display: flex; flex-wrap: wrap; gap: 0.2rem 0.6rem; align-items: baseline; }
 .headers { display: grid; grid-template-columns: fit-content(50%) minmax(0, 1fr); gap: 0.1rem 1rem; margin: 0.6rem 0 0; }
 .headers dt { color: var(--muted); overflow-wrap: anywhere; }
 .headers dd { margin: 0; overflow-wrap: anywhere; }

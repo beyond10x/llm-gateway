@@ -420,14 +420,14 @@ its last call older than its `idle_timeout_minutes` (never less than `stale_minu
 
 ## `[interaction_records]` {#interaction-records}
 
-With this table the binary lifts every finished model call into agentspec's session records
+With this table the binary lifts every finished model call into agenticspec's session records
 (sessions, agents, prompts, model turns with the gateway's facts, tool calls; no message text)
-and appends them to one SQLite file, which `agentspec serve` reads
+and appends them to one SQLite file, which `agenticspec serve` reads
 ([Record agent sessions](../guides/record-agent-sessions.md)).
 
 | Key | Default | Rule |
 | --- | --- | --- |
-| `path` | required | The SQLite file, not empty. A relative path is read from the working directory. Its directory must exist at start, and the file must be missing, empty, only agentspec's `meta` table without a schema row, or a session store whose schema row reads, as agentspec writes it, the version the binary writes (5) or an earlier one, which agentspec's open migrates, keeping its wire records; any other, or a file another process holds locked past 2 s, is `config:value` naming `interaction_records.path` and the reason (both versions, or `held locked by another process`), never the path, and the file is left as it was. Give the binary a file of its own, never the `sessions.db` agentspec keeps for its transcripts. |
+| `path` | required | The SQLite file, not empty. A relative path is read from the working directory. Its directory must exist at start, and the file must be missing, empty, only agenticspec's `meta` table without a schema row, or a session store whose schema row reads, as agenticspec writes it, the version the binary writes (5) or an earlier one, which agenticspec's open migrates, keeping its wire records; any other, or a file another process holds locked past 2 s, is `config:value` naming `interaction_records.path` and the reason (both versions, or `held locked by another process`), never the path, and the file is left as it was. Give the binary a file of its own, never the `sessions.db` agenticspec keeps for its transcripts. |
 | `queue` | 1024 | 1 to 65536: finished calls waiting for the writer thread. A call that finds it full is not recorded and is counted in `llmgw_interaction_records_dropped_total`. |
 | `call_bytes` | 8388608 (8 MiB) | 1 to 33554432: the most bytes of request body and answer body together copied of one call. A call over it, or whose answer was not decoded, is not recorded and is counted in `llmgw_interaction_records_skipped_total`; its answer is unchanged. |
 | `sessions_held` | 4096 | 1 to 65536: sessions whose agents the binary remembers, the least recently used forgotten first. A forgotten session's next call continues under the same agent id, without the chain state of its earlier turns. |

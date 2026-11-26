@@ -1,7 +1,7 @@
 //! The interaction records (story:interaction-record-store; `spec/domains/deployment.yaml`
-//! `InteractionRecordsDeclaration`): every finished call lifted into agentspec's session
-//! records (`agentspec_records::wire::lift_call`) and appended to a SQLite file by one writer
-//! thread (`agentspec_records::append::Appender`).
+//! `InteractionRecordsDeclaration`): every finished call lifted into agenticspec's session
+//! records (`agenticspec_records::wire::lift_call`) and appended to a SQLite file by one writer
+//! thread (`agenticspec_records::append::Appender`).
 //!
 //! The adapter implements the gateway's [`FinishedCalls`] port. It is called on the connection's
 //! thread and never waits: the lift is a pure function of the call and the session's state, and
@@ -20,12 +20,12 @@ use crate::{
     config::InteractionRecordsConfig,
     refusal::{Refusal, StartupRefusal},
 };
-use agentspec_records::{
+use agenticspec_records::{
     append::{Appender, AppenderHandle, Stats},
     store::SCHEMA_VERSION,
     wire::{self, Answer, GatewayFacts, WireCall, WireSession},
 };
-use agentspec_types::session as s;
+use agenticspec_types::session as s;
 use llm_gateway::{
     AnswerBytes, CallBytes, CallEnding, FinishedCall, FinishedCalls, Harness, Metrics, Relay, Wire,
 };
@@ -53,8 +53,8 @@ const WARNING_EVERY: Duration = Duration::from_secs(1);
 /// # Errors
 /// `config:value` naming `interaction_records.path`, never the path itself, when its directory
 /// does not exist, the file is no session store, holds a later schema version (or a schema row
-/// agentspec does not write) or is held locked by another process, or it does not open; an
-/// earlier schema version is migrated by agentspec's open.
+/// agenticspec does not write) or is held locked by another process, or it does not open; an
+/// earlier schema version is migrated by agenticspec's open.
 pub(crate) fn compose(
     relay: Relay,
     config: Option<&InteractionRecordsConfig>,
@@ -121,11 +121,11 @@ fn path_refusal(rule: &str) -> Refusal {
     )
 }
 
-/// D94: refuses a file at `path` that agentspec's open would change without migrating it: one
-/// that is no session store, or whose schema row is not a version agentspec migrates or writes
+/// D94: refuses a file at `path` that agenticspec's open would change without migrating it: one
+/// that is no session store, or whose schema row is not a version agenticspec migrates or writes
 /// ([`migrates`]). A missing or empty file is a new store, and so is a file whose only object is
-/// agentspec's `meta` table without a schema row (an open that did not finish its setup). A
-/// store of an earlier version is let through: agentspec's open fills its derived tables again
+/// agenticspec's `meta` table without a schema row (an open that did not finish its setup). A
+/// store of an earlier version is let through: agenticspec's open fills its derived tables again
 /// and keeps its wire rows. A store another process holds locked is refused for that. Only
 /// reads.
 fn check_store(path: &Path) -> Result<(), Refusal> {
@@ -176,7 +176,7 @@ fn check_store(path: &Path) -> Result<(), Refusal> {
 }
 
 /// Whether a schema row names [`SCHEMA_VERSION`] or an earlier version from 1, written as
-/// agentspec writes a version (`4`, never `04` or `+4`): agentspec's open keeps such a store or
+/// agenticspec writes a version (`4`, never `04` or `+4`): agenticspec's open keeps such a store or
 /// migrates it, keeping its wire rows.
 fn migrates(row: &str) -> bool {
     row.parse::<i64>()
@@ -408,7 +408,7 @@ impl FinishedCalls for InteractionRecords {
     }
 }
 
-/// agentspec's `GatewayFacts` of a finished call (`spec/domains/telemetry.yaml`, the
+/// agenticspec's `GatewayFacts` of a finished call (`spec/domains/telemetry.yaml`, the
 /// `BOUNDARY:` comment of `FinishedCall`).
 fn facts(call: &FinishedCall) -> GatewayFacts {
     GatewayFacts {
@@ -485,7 +485,7 @@ mod tests {
     }
 
     #[test]
-    fn only_this_schema_version_or_an_earlier_one_written_as_agentspec_writes_it_is_opened() {
+    fn only_this_schema_version_or_an_earlier_one_written_as_agenticspec_writes_it_is_opened() {
         assert_eq!(SCHEMA_VERSION, 5);
         for row in ["1", "2", "3", "4", "5"] {
             assert!(migrates(row), "{row}");

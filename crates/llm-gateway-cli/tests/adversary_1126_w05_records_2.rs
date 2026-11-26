@@ -238,7 +238,7 @@ fn a_session_store_held_locked_at_start_is_never_refused_as_no_session_store() {
         earlier
             .execute(
                 "INSERT INTO meta VALUES ('schema', ?1)",
-                [agentspec_records::store::SCHEMA_VERSION.to_string()],
+                [agenticspec_records::store::SCHEMA_VERSION.to_string()],
             )
             .unwrap();
     }
@@ -255,7 +255,7 @@ fn a_session_store_held_locked_at_start_is_never_refused_as_no_session_store() {
         !stderr.contains("no session store"),
         "a store of schema version {} held locked by another connection was refused as no \
          session store: {stderr}",
-        agentspec_records::store::SCHEMA_VERSION
+        agenticspec_records::store::SCHEMA_VERSION
     );
     assert_eq!(wire_records_kept(&store), 1);
 }

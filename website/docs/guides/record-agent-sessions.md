@@ -1,15 +1,15 @@
 ---
 title: Record agent sessions
 sidebar_position: 12
-description: Store every model call the gateway serves as session records in a SQLite file, the same records agentspec lifts from transcripts, and read them with agentspec serve.
-lede: With an [interaction_records] table the gateway lifts each finished model call into agentspec's session records (sessions, agents, prompts, model turns, tool calls) and appends them to one SQLite file, without message text and without slowing an answer.
+description: Store every model call the gateway serves as session records in a SQLite file, the same records agenticspec lifts from transcripts, and read them with agenticspec serve.
+lede: With an [interaction_records] table the gateway lifts each finished model call into agenticspec's session records (sessions, agents, prompts, model turns, tool calls) and appends them to one SQLite file, without message text and without slowing an answer.
 source: spec/domains/deployment.yaml (InteractionRecordsDeclaration), crates/llm-gateway-cli/src/records.rs, crates/llm-gateway-cli/tests/interaction_records.rs
 ---
 
 # Record agent sessions
 
 The gateway sees every model call an agent makes. With the table below it turns each finished
-call into the records [agentspec](https://github.com/beyond10x/agentspec) lifts from a
+call into the records [agenticspec](https://github.com/beyond10x/agenticspec) lifts from a
 harness's transcripts: the session, its agents and which agent spawned which, each prompt, each
 model turn with its usage, and each tool call. Every model turn also carries what only the
 gateway knows: the call id (`x-llm-gateway-call`), the route, the upstream, the attempts, the
@@ -44,18 +44,18 @@ Before it writes, the gateway reads the file's schema version. The start is refu
 - the directory of `path` does not exist;
 - the file is no session store (another program's SQLite file, or not SQLite at all);
 - the file holds a later schema version than the one this gateway writes (5), or a schema row
-  that does not read as agentspec writes a version (`4`, not `04`). The message names both;
+  that does not read as agenticspec writes a version (`4`, not `04`). The message names both;
 - another process holds the file locked for longer than 2 s. The message says so: the file may
   be a valid store.
 
 The file is then left as it was. A missing or empty file is created as a new store, and so is a
-file that holds only agentspec's `meta` table without a schema row, which a first start
+file that holds only agenticspec's `meta` table without a schema row, which a first start
 stopped during its setup leaves.
 
 A store of an earlier schema version, such as the schema 4 an earlier gateway wrote, is migrated
-when the gateway opens it at start: the tables agentspec derives are built again from the
+when the gateway opens it at start: the tables agenticspec derives are built again from the
 store's wire records, which are kept, and the next calls are appended after them. A store whose
-wire records are in a format this agentspec cannot read refuses the start, and nothing in it
+wire records are in a format this agenticspec cannot read refuses the start, and nothing in it
 changes.
 
 Without the table the gateway copies no byte of any call, runs no writer thread and creates no
@@ -64,12 +64,12 @@ file.
 ## A file of its own
 
 Give the gateway a file of its own, in a directory of its own. Never point it at the
-`sessions.db` agentspec keeps in its own state directory for the transcripts it lifts.
+`sessions.db` agenticspec keeps in its own state directory for the transcripts it lifts.
 
-The reason is the schema version. An agentspec of another schema version that opens the file
+The reason is the schema version. An agenticspec of another schema version that opens the file
 rebuilds the tables it derives in its own version and keeps the gateway's wire records. From
 then on the file holds that version: an earlier one the gateway migrates again at its next
-start, a later one it refuses, as above. Read the gateway's file with an agentspec of the same
+start, a later one it refuses, as above. Read the gateway's file with an agenticspec of the same
 schema version.
 
 ## What is held, and what is left out
@@ -135,14 +135,14 @@ b10x-llm-gateway: stopped by SIGTERM accepted=12 completed=12
 
 The stop line itself is unchanged, and so is the exit status 0.
 
-## Read the file with agentspec
+## Read the file with agenticspec
 
-`agentspec serve` shows the sessions of the store in its state directory, `sessions.db` there.
-Start an agentspec that writes the same schema version (agentspec 0.2.0, schema version 5, for
+`agenticspec serve` shows the sessions of the store in its state directory, `sessions.db` there.
+Start an agenticspec that writes the same schema version (agenticspec 0.3.0, schema version 5, for
 this gateway) on the gateway's own directory:
 
 ```bash
-agentspec --state-dir /srv/gateway-sessions serve
+agenticspec --state-dir /srv/gateway-sessions serve
 ```
 
 It serves its session list and session view on `http://127.0.0.1:7420`. A session the gateway

@@ -3,8 +3,8 @@
 //!
 //! A session is named by a hash of the header that identifies it (or of the user agent and
 //! client address), never by the header's value; a user agent is kept as printable ASCII of at
-//! most [`MAX_USER_AGENT_BYTES`]. agentspec computes the same hash from a transcript to join
-//! its records to the gateway's (`wire::session_hash` in `agentspec-records`).
+//! most [`MAX_USER_AGENT_BYTES`]. agenticspec computes the same hash from a transcript to join
+//! its records to the gateway's (`wire::session_hash` in `agenticspec-records`).
 
 use crate::dashboard::MAX_USER_AGENT_BYTES;
 use std::{fmt::Write as _, net::IpAddr};

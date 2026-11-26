@@ -141,9 +141,9 @@ domain: llm-gateway.telemetry
 # built at the one place a call ends, where its UsageRecord is made; the dashboard's finished call
 # reads its start, upstream, queue wait, time to first token and session from it, so they are
 # gathered once.
-# BOUNDARY: agentspec's (formerly sessionspec's) `agentspec_records::wire::GatewayFacts` (crate
-# `agentspec-records` 0.2.0) takes these fields one to one: `call_id`, `session_hash`, `harness`,
-# `path`, `route`, `upstream`, `attempts`, `queue_wait_ms`, `ttft_ms`, `started_ms` and
+# BOUNDARY: agenticspec's (formerly agentspec's and sessionspec's)
+# `agenticspec_records::wire::GatewayFacts` (crate `agenticspec-records` 0.3.0) takes these
+# fields one to one: `call_id`, `session_hash`, `harness`, `path`, `route`, `upstream`, `attempts`, `queue_wait_ms`, `ttft_ms`, `started_ms` and
 # `finished_ms` by name; `declared_cost_usd` becomes its `declared_cost_microdollars` and
 # `ending` its `incomplete` (`Complete` none, `ClientDisconnected` `client_disconnected`,
 # `UpstreamCut` `upstream_cut`, `WireError` `wire_error`, `Refused` `refused`), converted by the

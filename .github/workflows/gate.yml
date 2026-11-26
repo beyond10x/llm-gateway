@@ -45,6 +45,8 @@ jobs:
           tar -xzf "$RUNNER_TEMP/$asset" -C "$RUNNER_TEMP/nextest-bin" cargo-nextest
           echo "$RUNNER_TEMP/nextest-bin" >> "$GITHUB_PATH"
           "$RUNNER_TEMP/nextest-bin/cargo-nextest" --version | grep -F "cargo-nextest $NEXTEST_VERSION "
+      - name: Build the tests
+        run: cargo nextest run --workspace --locked --no-run
       - name: Rust tests
         run: cargo run --quiet --locked -p b10x-llm-gateway-xtask -- test
       - name: Rust format and lints

@@ -441,6 +441,25 @@ fn streamed_nothing_changes_without_a_streamed_target_an_assembler_or_for_a_coun
     assert_eq!(dechunked(body_of(&answer)), "{\"input_tokens\":12}");
 }
 
+/// Any process on the host reaches the upstream's loopback port: a request from no call of this
+/// test takes none of its pieces, and the gateway's call still gets them.
+#[test]
+fn streamed_a_foreign_connection_to_the_upstream_takes_none_of_its_pieces() {
+    let upstream = Upstream::start(events());
+    let foreign = crate::upstream::foreign_request(&upstream.authority);
+    let port = Arc::new(Port::default());
+    let handle = gateway(&upstream, true, true, &port);
+    let answer = call(&handle, "/v1/chat/completions", r#"{"model":"m"}"#);
+    handle.shutdown();
+    assert!(
+        foreign.is_empty(),
+        "a foreign connection took the upstream's pieces: {}",
+        String::from_utf8_lossy(&foreign)
+    );
+    assert!(answer.starts_with("HTTP/1.1 200 "), "{answer}");
+    assert_eq!(port.one().ending, CallEnding::Complete);
+}
+
 /// An answer that is not a 2xx event stream (a model's error) is relayed as it came.
 #[test]
 fn streamed_an_answer_that_is_no_event_stream_is_relayed_as_it_came() {

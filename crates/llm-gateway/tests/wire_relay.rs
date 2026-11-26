@@ -3782,3 +3782,51 @@ fn adversary_a_client_that_left_releases_a_target_whose_stream_names_its_socket(
         "a target over a named socket was still held 3 s after the client left"
     );
 }
+
+// --- A pod answers only its own test's calls (story:test-upstreams-bound-to-their-rig) ----------
+
+/// Any process on the host reaches a pod's loopback port: a request from no call of this test,
+/// as a gateway of another test whose target held that port before sends one, takes no scripted
+/// answer, and the gateway's own call still gets the answer scripted for it.
+#[test]
+fn a_foreign_connection_to_a_pod_takes_no_scripted_answer() {
+    let pod = Pod::start(vec![ok_json("{\"id\":\"rig\"}")]);
+    let foreign = crate::upstream::foreign_request(&pod.authority);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    let answer = gateway.post_text("/v1/chat/completions", "{\"model\":\"code\"}");
+    assert!(
+        foreign.is_empty(),
+        "a foreign connection took a scripted answer: {}",
+        String::from_utf8_lossy(&foreign)
+    );
+    assert_eq!(answer.status, 200, "{answer:?}");
+    assert_eq!(answer.text(), "{\"id\":\"rig\"}");
+    assert_eq!(pod.seen().len(), 1);
+}
+
+/// A dropped pod connects to no port it no longer holds: once its port is free another process
+/// may hold it, and a connection there is that process's, not the pod's.
+#[test]
+fn a_dropped_pod_connects_to_no_port_it_no_longer_holds() {
+    let pod = Pod::start(vec![ok_json("{}")]);
+    let source = Source::of(&[&pod]);
+    let gateway = Relayed::start(vec![code_model()], &source);
+    assert_eq!(
+        gateway
+            .post_text("/v1/chat/completions", "{\"model\":\"code\"}")
+            .status,
+        200
+    );
+    drop(gateway);
+    // Another process binds the port as soon as the pod lets it go.
+    let taken = crate::upstream::take_port(&pod.authority, Duration::from_millis(500));
+    drop(pod);
+    if let Some(listener) = taken {
+        listener.set_nonblocking(true).unwrap();
+        assert!(
+            listener.accept().is_err(),
+            "the dropped pod connected to a port another process held"
+        );
+    }
+}

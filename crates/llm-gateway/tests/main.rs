@@ -36,4 +36,5 @@ mod spec_declarations;
 mod streamed_targets;
 mod translation_port;
 mod unavailable_reason;
+mod upstream;
 mod wire_relay;

@@ -61,16 +61,19 @@ export function useFeed() {
         error.value = 'bad snapshot event';
       }
     });
+    // A stream that drops is first a reconnect the browser makes on its own: the page reads
+    // connecting until its first poll, one poll interval later, finds the stream still down.
     source.addEventListener('error', () => {
-      if (link.value === 'live' || link.value === 'connecting') {
-        link.value = snapshot.value ? 'polling' : 'offline';
-      }
+      if (link.value === 'live') link.value = snapshot.value ? 'connecting' : 'offline';
+      else if (link.value === 'connecting' && !snapshot.value) link.value = 'offline';
       startPolling();
     });
   }
 
+  // The first snapshot leaves the page connecting until the stream opens or fails: it does not poll
+  // yet, so it is neither polling nor a problem.
   async function start() {
-    link.value = (await fetchOnce()) ? 'polling' : 'offline';
+    link.value = (await fetchOnce()) ? 'connecting' : 'offline';
     openStream();
   }
 

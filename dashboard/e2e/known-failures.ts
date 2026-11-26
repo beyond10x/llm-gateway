@@ -19,20 +19,9 @@ export interface KnownFailure {
 const ALL = ['idle', 'busy', 'token-flow', 'errors', 'offline'];
 
 export const KNOWN_FAILURES: KnownFailure[] = [
-  // Words run together where the renderer drops the space before a second line or between tags.
-  { finding: 'UXF-016', check: 'copy', scenarios: ALL, items: ['run-together #h-kpi div.tile div.sub'] },
-  { finding: 'UXF-016', check: 'copy', scenarios: ['busy', 'errors', 'token-flow', 'offline'], items: ['run-together #h-sessions th.col-session'] },
-  { finding: 'UXF-016', check: 'copy', scenarios: ['busy', 'errors', 'token-flow'], items: ['run-together #h-kpi th', 'run-together #h-routes td.col-cache'] },
-  { finding: 'UXF-016', check: 'copy', scenarios: ['busy', 'errors'], items: ['run-together #h-inflight td.col-state span.pill'] },
-  { finding: 'UXF-016', check: 'copy', scenarios: ['busy'], items: ['run-together #h-calls td.col-flags span.flag'] },
-  // A limit card named by a hash, raw header names as labels, the attempts button named "▸ 2".
-  { finding: 'UXF-010', check: 'copy', scenarios: ['busy', 'errors'], items: ['hex-title #h-kpi h3 span.mono', 'glyph-control #h-calls button.expand'] },
-  { finding: 'UXF-010', check: 'copy', scenarios: ['busy'], items: ['header-name #h-kpi dt.mono'] },
-  // Raw header values shown as words ("five_hour", "out_of_credits"): a second vocabulary.
-  { finding: 'UXF-011', check: 'copy', scenarios: ['busy', 'errors'], items: ['snake-value #h-kpi div.tile div.value', 'snake-value #h-kpi div.tile div.sub'] },
   // Section headings at 13.3 px and limit card titles at 12.6 px, under the 14 px heading floor.
   { finding: 'UXF-021', check: 'key-data', scenarios: ALL, items: ['heading 13.3px h2'] },
-  { finding: 'UXF-021', check: 'key-data', scenarios: ['busy', 'errors'], items: ['heading 12.6px h3', 'heading 12.6px span.mono'] },
+  { finding: 'UXF-021', check: 'key-data', scenarios: ['busy', 'errors'], items: ['heading 12.6px h3', 'heading 12.6px span'] },
 ];
 
 function applies(k: KnownFailure, check: Check, scenario: string, viewport?: string): boolean {

@@ -133,7 +133,7 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.006,
+        "value": 0.003,
         "tolerance": 0.002
       },
       "overflow.elements": {

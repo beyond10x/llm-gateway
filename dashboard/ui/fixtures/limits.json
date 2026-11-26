@@ -2,9 +2,10 @@
   "view": "dashboard.Limits",
   "rows": [
     {
-      "credential": {
-        "text": "6b1d9e40",
-        "mono": true,
+      "credential": "6b1d9e40",
+      "limits": {
+        "text": "unified",
+        "title": "credential 6b1d9e40",
         "note": {
           "text": "seen 3s ago"
         }
@@ -38,13 +39,11 @@
       },
       "overage": {
         "text": "rejected",
-        "title": "rejected",
-        "sub": [
-          {
-            "text": "org_level_disabled",
-            "title": "org_level_disabled"
-          }
-        ]
+        "title": "rejected"
+      },
+      "overage_reason": {
+        "text": "org_level_disabled",
+        "title": "org_level_disabled"
       },
       "claim": {
         "text": "five_hour",

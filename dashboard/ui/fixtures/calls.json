@@ -14,8 +14,10 @@
       },
       "wire": "chat",
       "status": {
-        "text": "404",
-        "key": "refused",
+        "text": "refused",
+        "note": {
+          "text": "404"
+        },
         "title": "refused"
       },
       "ttft": "–",
@@ -50,8 +52,10 @@
       },
       "wire": "messages",
       "status": {
-        "text": "429",
-        "key": "failed",
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
         "title": "upstream_error"
       },
       "ttft": "–",
@@ -79,8 +83,10 @@
       },
       "wire": "chat",
       "status": {
-        "text": "401",
-        "key": "refused",
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
         "title": "refused"
       },
       "ttft": "–",
@@ -115,8 +121,10 @@
       },
       "wire": "chat",
       "status": {
-        "text": "504",
-        "key": "failed",
+        "text": "failed",
+        "note": {
+          "text": "504"
+        },
         "title": "timeout"
       },
       "ttft": "–",
@@ -149,8 +157,10 @@
       },
       "wire": "messages",
       "status": {
-        "text": "429",
-        "key": "failed",
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
         "title": "upstream_error"
       },
       "ttft": "–",
@@ -178,8 +188,10 @@
       },
       "wire": "chat",
       "status": {
-        "text": "401",
-        "key": "refused",
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
         "title": "refused"
       },
       "ttft": "–",
@@ -207,8 +219,10 @@
       },
       "wire": "chat",
       "status": {
-        "text": "404",
-        "key": "refused",
+        "text": "refused",
+        "note": {
+          "text": "404"
+        },
         "title": "refused"
       },
       "ttft": "–",
@@ -243,8 +257,10 @@
       },
       "wire": "messages",
       "status": {
-        "text": "429",
-        "key": "failed",
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
         "title": "upstream_error"
       },
       "ttft": "–",
@@ -272,8 +288,10 @@
       },
       "wire": "chat",
       "status": {
-        "text": "401",
-        "key": "refused",
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
         "title": "refused"
       },
       "ttft": "–",
@@ -308,8 +326,10 @@
       },
       "wire": "messages",
       "status": {
-        "text": "429",
-        "key": "failed",
+        "text": "failed",
+        "note": {
+          "text": "429"
+        },
         "title": "upstream_error"
       },
       "ttft": "–",
@@ -337,8 +357,10 @@
       },
       "wire": "chat",
       "status": {
-        "text": "401",
-        "key": "refused",
+        "text": "refused",
+        "note": {
+          "text": "401"
+        },
         "title": "refused"
       },
       "ttft": "–",

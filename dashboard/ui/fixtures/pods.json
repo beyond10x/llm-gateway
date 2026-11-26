@@ -19,7 +19,7 @@
       "gpu": "NVIDIA H100 80GB HBM3",
       "cost_per_hour": "$2.390",
       "uptime": "2h 10m",
-      "vllm_ready": "yes",
+      "vllm_ready": true,
       "last_call": "48s ago",
       "in_flight": 0,
       "shutdown": {

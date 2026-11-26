@@ -31,7 +31,7 @@ export function scopeOf(ctx: Ctx, row?: unknown): Scope {
     channel: (name) => ({ lifecycle: ctx.source.lifecycle(name) }),
     section: (name) => {
       const s = ctx.page.sections.find((x) => x.name === name);
-      return s ? readRows(ctx, (s as { reads?: Reads }).reads, { shell: ctx.shell.values }) : null;
+      return s ? readRows(ctx, (s as { reads?: Reads }).reads, { shell: ctx.shell.values, channel: (c) => ({ lifecycle: ctx.source.lifecycle(c) }) }) : null;
     },
   };
 }
@@ -52,6 +52,13 @@ export function wordsOf(v: Value | undefined, as: Field['as'] | undefined, label
   if (typeof v === 'boolean') return labels?.[String(v)] ?? (v ? 'yes' : 'no');
   if (typeof v === 'string') return labels?.[v] ?? v;
   return DASH;
+}
+
+// The raw value a label map gives words to, shown on hover beside those words.
+export function rawOf(v: Value | undefined, labels: Record<string, string> | undefined): string | undefined {
+  if (!labels || v === null || v === undefined) return undefined;
+  const key = isRich(v) ? v.text : typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : undefined;
+  return key !== undefined && Object.hasOwn(labels, key) ? key : undefined;
 }
 
 export function labelsOf(ctx: Ctx, labels: Field['labels']): Record<string, string> | undefined {
@@ -85,6 +92,12 @@ export function toneClass(tone: Tone | undefined): string[] {
 }
 
 export const NUMERIC: Field['as'][] = ['number', 'duration', 'percent'];
+
+// A count in words after the field's label: 2 under "Attempts" is "2 attempts", 1 is "1 attempt".
+export function counted(n: number, field: Pick<Field, 'label' | 'field'>): string {
+  const noun = (field.label ?? field.field).toLowerCase();
+  return `${n} ${n === 1 ? noun.replace(/s$/, '') : noun}`;
+}
 
 // The words of a primitive's `text`: an expression's value, or the string itself when it is no
 // expression (ess-ui/1 reads a string that does not parse as literal text).

@@ -28,9 +28,9 @@ test('the document loads, and every node in it is a kind the renderer draws', ()
   expect(doc.format).toBe('ess-ui/1');
   expect(Object.keys(doc.pages).sort()).toEqual(['dashboard', 'setup']);
   const kinds = new Set(nodes(doc).map(({ node }) => ('host' in node ? 'host' : 'primitive' in node ? node.primitive : node.component)));
-  expect([...kinds].sort()).toEqual(['collection', 'host', 'metric', 'record']);
+  expect([...kinds].sort()).toEqual(['collection', 'host', 'link', 'metric', 'record', 'text']);
   // The page kind's `board` section is removed; the layout places every section.
-  expect(doc.pages.dashboard!.sections.map((s) => s.name)).toEqual(['flow', 'kpi', 'limits', 'provider', 'pods', 'inflight', 'routes', 'sessions', 'calls']);
+  expect(doc.pages.dashboard!.sections.map((s) => s.name)).toEqual(['flow', 'kpi', 'limits', 'provider', 'pods', 'inflight', 'routes', 'sessions', 'calls', 'problems']);
 });
 
 test('a node kind, key, rendering or expression the renderer does not draw fails the load, named by its path', () => {
@@ -46,6 +46,8 @@ test('a node kind, key, rendering or expression the renderer does not draw fails
   expect(broken('visible: row.window_5h}', 'visible: row.window_5h > 1}')).toThrow('pages/dashboard/sections/limits/columns/window_5h/visible');
   expect(broken('live: {channel: events, effect: replace}', 'live: {channel: events, effect: insert_top}')).toThrow("effect 'insert_top' is not drawn");
   expect(broken('      - name: board\n        remove: true\n', '')).toThrow("pages/dashboard/sections/board: component 'board' is not drawn by this renderer");
+  expect(broken('        style: list\n', '        style: tree\n')).toThrow("pages/dashboard/sections/problems: style 'tree' is not drawn");
+  expect(broken('{name: say, primitive: text,', '{name: say, primitive: image,')).toThrow("pages/dashboard/sections/problems/item/say: primitive 'image' is not drawn by this renderer");
 });
 
 test('every host slot of the document is registered by the page, and the page registers no other', () => {

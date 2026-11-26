@@ -127,13 +127,17 @@ export function seeded(seed: number): () => number {
 // ---------------------------------------------------------------------------------------------
 // Layout
 
-export const FONT_PX = 12;
-export const CHAR_PX = 7.3;
+// Labels are drawn at the key-data size; a monospaced character is about 0.61 of the font size wide.
+export const FONT_PX = 14;
+export const CHAR_PX = FONT_PX * 0.61;
 export const PAD = 10;
 export const GAP = 8;
 export const NODE_R = 4;
 export const ROW_PX = FONT_PX + 2;
-export const LABEL_SHARE = 0.34;
+// The share of the width the strings keep between the two label columns, and the most of the rest
+// the route column may take.
+export const STRING_SHARE = 0.2;
+export const ROUTE_SHARE = 0.6;
 
 // How each mark of the panel is drawn: the custom property that gives its colour, and its opacity
 // over the panel (`--surface`) at full presence; a session that fades multiplies them by its own
@@ -159,7 +163,7 @@ export interface Note { text: string; box: Box }
 export interface Layout { width: number; height: number; sessions: Map<string, Anchor>; routes: Map<string, Anchor>; notes: Note[] }
 
 function fit(text: string, maxPx: number): string {
-  const max = Math.max(1, Math.floor(maxPx / CHAR_PX));
+  const max = Math.max(1, Math.floor(maxPx / CHAR_PX + 1e-6));
   return text.length <= max ? text : `${text.slice(0, Math.max(0, max - 1))}…`;
 }
 
@@ -184,15 +188,19 @@ function shown<T>(items: T[], height: number): { items: T[]; more: string | null
 
 // Session labels in a column at the left with their nodes to the right of the widest label; route
 // nodes in a column at the right with their labels after them. Rows are spread evenly over the
-// height, at least ROW_PX apart, and a label is cut to fit in its column (LABEL_SHARE of the width).
+// height, at least ROW_PX apart. The strings keep STRING_SHARE of the width; of the rest, the route
+// column takes what its longest name needs, up to ROUTE_SHARE, so a route name is cut only when it
+// cannot fit even then, and the session column takes what is left. A label is cut to its column.
 export function layout(sessions: { key: string; text: string }[], routes: string[], width: number, height: number): Layout {
-  const maxLabel = Math.max(CHAR_PX * 4, width * LABEL_SHARE - PAD - GAP - 2 * NODE_R);
   const out: Layout = { width, height, sessions: new Map(), routes: new Map(), notes: [] };
   const left = shown(sessions, height);
   const right = shown(routes.map((r) => ({ key: r, text: r })), height);
-  const leftText = left.items.map((s) => fit(s.text, maxLabel));
-  const rightText = right.items.map((r) => fit(r.text, maxLabel));
   const widest = (texts: (string | null)[]) => Math.max(0, ...texts.map((t) => (t === null ? 0 : t.length * CHAR_PX)));
+  const labels = Math.max(CHAR_PX * 8, width - 2 * (PAD + GAP + NODE_R) - width * STRING_SHARE);
+  const routeMax = Math.max(CHAR_PX * 4, Math.min(widest(right.items.map((r) => r.text)), labels * ROUTE_SHARE));
+  const sessionMax = Math.max(CHAR_PX * 4, labels - routeMax);
+  const leftText = left.items.map((s) => fit(s.text, sessionMax));
+  const rightText = right.items.map((r) => fit(r.text, routeMax));
   const sx = PAD + widest([...leftText, left.more]) + GAP + NODE_R;
   const rx = width - PAD - widest([...rightText, right.more]) - GAP - NODE_R;
   const sy = rows(left.items.length + (left.more ? 1 : 0), height);

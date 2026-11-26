@@ -20,7 +20,6 @@ const UNIFIED = 'anthropic-ratelimit-unified-';
 const IN_TILES = ['status', 'reset', 'representative-claim', 'overage-status', 'overage-disabled-reason', '5h-status', '5h-utilization', '5h-reset', '7d-status', '7d-utilization', '7d-reset'].map((k) => UNIFIED + k);
 
 const pair = (a: number | null, b: number | null) => `${count(a)} / ${count(b)}`;
-const yesNo = (v: boolean | null) => (v === null ? DASH : v ? 'yes' : 'no');
 const parts = (...lines: (string | null | undefined | false)[]): Part[] => lines.filter((l): l is string => !!l).map((text) => ({ text }));
 
 function unixMs(v: string | undefined): number | null {
@@ -52,12 +51,12 @@ export function flags(c: CallRecord): string[] {
   return out;
 }
 
-function inflightState(f: InFlight, now: number): string {
-  if (f.state === 'waiting-retry' && f.retry_at_ms !== null && f.retry_at_ms !== undefined) {
-    const left = Math.ceil((f.retry_at_ms - now) / 1000);
-    return left > 0 ? `waiting for retry, ${left} s left` : 'retrying now';
-  }
-  return f.state;
+// The state is the raw value, which the document's table of state words names; the countdown to a
+// retry and the attempt are its note.
+function inflightState(f: InFlight, now: number): Rich {
+  const left = f.state === 'waiting-retry' && f.retry_at_ms != null ? Math.ceil((f.retry_at_ms - now) / 1000) : null;
+  const note = [left === null ? null : left > 0 ? `${left} s left` : 'retrying now', f.attempt > 1 ? `attempt ${f.attempt}` : null].filter((x) => x !== null).join(' · ');
+  return { text: f.state, note: note ? { text: note } : undefined };
 }
 
 function shutdown(p: PodRow, now: number): Rich {
@@ -74,6 +73,21 @@ function heartbeat(age: number | null | undefined): Rich {
   return stale
     ? { text: `${span(age)} ago · stale (over ${mins} min)`, key: 'stale', title: `no heartbeat for over ${mins} min: pods may not be stopped on schedule` }
     : { text: `${span(age)} ago`, key: 'fresh' };
+}
+
+// A rate-limit header's name in words: `anthropic-ratelimit-input-tokens-remaining` is "Input
+// tokens remaining", `anthropic-ratelimit-unified-fallback` is "Fallback".
+export function headerLabel(name: string): string {
+  const words = name.replace(/^anthropic-ratelimit-/, '').replace(/^unified-/, '').replace(/-/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// What a credential's limits limit: Anthropic's unified subscription limits, or the request and
+// token limits its rate-limit headers name.
+function limited(names: string[]): string {
+  if (names.some((k) => k.startsWith(UNIFIED))) return 'unified';
+  const kinds = [...new Set(names.map((k) => /^anthropic-ratelimit-(.+)-(?:limit|remaining|reset)$/.exec(k)?.[1]).filter((k): k is string => !!k))];
+  return kinds.length > 0 ? kinds.map((k) => k.replace(/-/g, ' ')).join(', ') : 'other';
 }
 
 function limitRow(row: LimitRow, now: number): Row {
@@ -93,13 +107,15 @@ function limitRow(row: LimitRow, now: number): Row {
     .filter(([k]) => !IN_TILES.includes(k))
     .sort(([a], [b]) => a.localeCompare(b));
   return {
-    credential: { text: row.credential, mono: true, note: { text: `seen ${ago(now, row.seen_ms)}` } },
-    status: { text: status ?? DASH, title: status, sub: reset !== null ? parts(`resets ${countdown(now, reset)}`) : [] },
+    credential: row.credential,
+    limits: { text: limited(Object.keys(h)), title: `credential ${row.credential}`, note: { text: `seen ${ago(now, row.seen_ms)}` } },
+    status: status === undefined ? null : { text: status, title: status, sub: reset !== null ? parts(`resets ${countdown(now, reset)}`) : [] },
     window_5h: window('5h'),
     window_7d: window('7d'),
-    overage: overage === undefined ? null : { text: overage, title: overage, sub: reason ? [{ text: reason, title: reason }] : [] },
+    overage: overage === undefined ? null : { text: overage, title: overage },
+    overage_reason: reason === undefined ? null : { text: reason, title: reason },
     claim: claim === undefined ? null : { text: claim, title: claim },
-    headers: rest.length > 0 ? Object.fromEntries(rest) : null,
+    headers: rest.length > 0 ? { text: '', table: rest.map(([k, v]) => [{ text: headerLabel(k), title: k }, { text: v }]) } : null,
   };
 }
 
@@ -109,7 +125,7 @@ function callRow(c: CallRecord, now: number): Row {
     time: { text: clock(c.started_ms), mono: true, title: ago(now, c.started_ms) },
     route: { text: c.route ?? DASH, sub: parts(c.upstream_model !== c.route && c.upstream_model, c.upstream) },
     wire: c.wire,
-    status: { text: String(c.status), key: callResult(c), title: c.outcome },
+    status: { text: callResult(c), note: { text: String(c.status) }, title: c.outcome },
     ttft: ms(c.ttft_ms),
     duration: ms(c.duration_ms),
     queue: ms(c.queue_wait_ms),
@@ -120,6 +136,54 @@ function callRow(c: CallRecord, now: number): Row {
     flags: flags(c),
     attempts: c.attempts.length,
   };
+}
+
+// What is wrong now, one row per kind of problem in a fixed order, each worded and linked to the
+// section that shows it; none when nothing is wrong. `connection` is the lifecycle of the page's
+// channel, which the snapshot cannot say.
+export const PROBLEM_WINDOW_MS = 5 * 60_000;
+const LIFECYCLE_PROBLEM: Record<string, Row> = {
+  reconnecting: { kind: 'connection', level: 'warning', text: 'Connection: live updates stopped; the page polls the gateway', href: null },
+  stale: { kind: 'connection', level: 'error', text: 'Connection: the gateway does not answer; the page shows the last snapshot', href: null },
+};
+
+function problems(s: Snapshot, now: number, connection: unknown): Row[] {
+  const out: Row[] = [];
+  const lost = LIFECYCLE_PROBLEM[String(connection)];
+  if (lost) out.push(lost);
+
+  const recent = s.calls.filter((c) => c.route !== null && now - c.started_ms <= PROBLEM_WINDOW_MS);
+  const failing = [...new Set(recent.filter((c) => callResult(c) !== 'ok').map((c) => c.route!))];
+  if (failing.length > 0) {
+    const tally = failing.map((r) => `${r} ${recent.filter((c) => c.route === r && callResult(c) !== 'ok').length} of ${recent.filter((c) => c.route === r).length}`);
+    out.push({ kind: 'routes', level: 'error', text: `Failed calls in the last ${PROBLEM_WINDOW_MS / 60_000} min: ${tally.join(', ')}`, href: '#h-routes' });
+  }
+
+  const p = s.provider;
+  if (p) {
+    const age = p.watchdog_heartbeat_age_ms;
+    const mins = WATCHDOG_STALE_MS / 60_000;
+    if (age === null || age === undefined) out.push({ kind: 'watchdog', level: 'error', text: 'Watchdog heartbeat missing: pods may not be stopped on schedule', href: '#h-provider' });
+    else if (age > WATCHDOG_STALE_MS) out.push({ kind: 'watchdog', level: 'error', text: `Watchdog heartbeat stale: last ${span(age)} ago, over ${mins} min; pods may not be stopped on schedule`, href: '#h-provider' });
+  }
+
+  const limits = (s.limits ?? []).flatMap((l) => {
+    const h: Record<string, string> = {};
+    for (const [k, v] of Object.entries(l.headers)) h[k.toLowerCase()] = v;
+    const states = ['status', '5h-status', '7d-status'].map((k) => h[UNIFIED + k]);
+    const worst = states.includes('rejected') ? 'rejected' : states.includes('allowed_warning') ? 'allowed_warning' : null;
+    if (!worst) return [];
+    const reset = unixMs(h[UNIFIED + 'reset']);
+    return [{ worst, text: `Subscription limits · ${limited(Object.keys(h))}: ${worst === 'rejected' ? 'rejected' : 'allowed (warning)'}${reset !== null ? `, resets ${countdown(now, reset)}` : ''}` }];
+  });
+  if (limits.length > 0) out.push({ kind: 'limits', level: limits.some((l) => l.worst === 'rejected') ? 'error' : 'warning', text: limits.map((l) => l.text).join('; '), href: '#h-kpi' });
+
+  const ending = (p?.pods ?? []).filter((d) => !d.external && d.shutdown && d.shutdown.at_ms - now < SHUTDOWN_SOON_MS);
+  if (ending.length > 0) {
+    const text = ending.map((d) => `Pod ${d.name} shuts down ${countdown(now, d.shutdown!.at_ms)} (${SHUTDOWN_LIMIT[d.shutdown!.limit] ?? d.shutdown!.limit})`).join('; ');
+    out.push({ kind: 'pods', level: 'warning', text, href: '#h-provider' });
+  }
+  return out;
 }
 
 // Every placeholder the document reads, by name.
@@ -164,7 +228,7 @@ export const BINDINGS: Record<string, Answer> = {
       gpu: p.gpu ?? DASH,
       cost_per_hour: usd(p.cost_per_hour_usd),
       uptime: p.uptime_s === null ? DASH : span(p.uptime_s * 1000),
-      vllm_ready: yesNo(p.vllm_ready),
+      vllm_ready: p.vllm_ready,
       last_call: ago(now, p.last_call_ms),
       in_flight: p.in_flight,
       shutdown: shutdown(p, now),
@@ -176,7 +240,7 @@ export const BINDINGS: Record<string, Answer> = {
       route: f.route ?? DASH,
       model: { text: f.upstream_model ?? DASH, mono: true },
       wire: f.wire,
-      state: { text: inflightState(f, now), key: f.state, note: f.attempt > 1 ? { text: `attempt ${f.attempt}` } : undefined },
+      state: inflightState(f, now),
       elapsed: ms(f.elapsed_ms),
       session: { text: f.session, mono: true },
     })),
@@ -220,12 +284,14 @@ export const BINDINGS: Record<string, Answer> = {
     (s.calls.find((c) => c.id === params.call)?.attempts ?? []).map((a) => ({
       call: params.call as number,
       attempt: a.attempt,
-      status: { text: a.status === null ? 'no answer' : String(a.status), key: a.status !== null && a.status < 400 ? 'ok' : 'failed' },
+      status: { text: a.status !== null && a.status < 400 ? 'ok' : 'failed', note: { text: a.status === null ? 'no answer' : String(a.status) } },
       duration: ms(a.duration_ms),
       wait: ms(a.wait_ms),
       retry_after: a.retry_after ?? DASH,
       error_body: a.error_body ?? DASH,
     })),
+
+  'dashboard.Problems': (s, now, params) => problems(s, now, params.connection),
 };
 
 export function answer(placeholder: string, snap: Snapshot, now: number, params: Params = {}): Row[] {

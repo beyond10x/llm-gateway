@@ -9,4 +9,4 @@ nothing is wrong.
 No: the sections stay as they are; the reader scrolls to In flight, Routes and Provider.
 Default if unanswered by the next round: yes, because the failures are the page's most urgent
 content and today none of them is on the first screen.
-Answer: pending
+Answer: yes (2026-11-26). Built in R-06 as the section `problems` of the document and its binding `dashboard.Problems`; removing the section and its area reverts it.

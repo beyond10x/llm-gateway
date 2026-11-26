@@ -1,14 +1,15 @@
 <script setup lang="ts">
 // A collection: a table in a keyboard-reachable scrolling region named after its title, a mini
 // table when it is another collection's expanded detail, or cards (`style: cards`), one per row,
-// headed by the row's key and holding a tile per field and a definition list per map. In a table
+// headed by the row's key and holding a tile per field and a definition list per map, or a list
+// (`style: list`), one item per row: its columns, then its `item` nodes reading the row. In a table
 // the column that shows the read's key is each row's header. A column named like the collection's
 // `expand` node holds the button that opens that detail under the row. A client pager draws the
 // first page and a button that shows every row.
 import { computed, reactive, ref } from 'vue';
 import { holds } from '../expr.ts';
-import { NUMERIC, readRows, scopeOf, toneClass, toneOf, useCtx } from '../context.ts';
-import { isRich, type CollectionNode, type Field, type Row } from '../types.ts';
+import { NUMERIC, counted, readRows, scopeOf, toneClass, toneOf, useCtx } from '../context.ts';
+import { isRich, type CollectionNode, type Field, type Part, type Row } from '../types.ts';
 import CellValue from './CellValue.vue';
 import NodeView from './NodeView.vue';
 import Tile from './Tile.vue';
@@ -57,7 +58,7 @@ const cellTitle = (f: Field, r: Row) => {
 const keyColumn = computed(() => props.node.columns.find((f) => f.field === key.value) ?? props.node.columns[0]!);
 const tileColumns = computed(() => props.node.columns.filter((f) => f !== keyColumn.value && f.as !== 'map'));
 const mapColumns = computed(() => props.node.columns.filter((f) => f.as === 'map'));
-const entries = (v: unknown) => (v && typeof v === 'object' ? Object.entries(v as Record<string, string>) : []);
+const entries = (v: unknown): [Part, Part][] => (isRich(v) ? (v.table ?? []).map((r) => [r[0] ?? { text: '' }, r[1] ?? { text: '' }]) : v && typeof v === 'object' ? Object.entries(v as Record<string, string>).map(([k, x]) => [{ text: k, mono: true }, { text: x }]) : []);
 </script>
 
 <template>
@@ -74,7 +75,7 @@ const entries = (v: unknown) => (v && typeof v === 'object' ? Object.entries(v a
 
   <template v-else-if="node.style === 'cards'">
     <div v-for="(r, i) in shown" :key="keyOf(r, i)" class="card">
-      <h3>{{ keyColumn.label }} <CellValue :value="r[keyColumn.field]" :field="keyColumn" /></h3>
+      <h3>{{ keyColumn.label ? `${keyColumn.label} · ` : '' }}<CellValue :value="r[keyColumn.field]" :field="keyColumn" /></h3>
       <div class="tiles">
         <template v-for="c in tileColumns" :key="c.name">
           <Tile v-if="cellShown(c, r)" :field="c" :value="r[c.field]" />
@@ -82,14 +83,21 @@ const entries = (v: unknown) => (v && typeof v === 'object' ? Object.entries(v a
       </div>
       <template v-for="c in mapColumns" :key="c.name">
         <dl v-if="cellShown(c, r) && entries(r[c.field]).length" class="headers">
-          <template v-for="[k, v] in entries(r[c.field])" :key="k">
-            <dt class="mono">{{ k }}</dt>
-            <dd class="mono">{{ v }}</dd>
+          <template v-for="[k, v] in entries(r[c.field])" :key="k.title ?? k.text">
+            <dt :class="{ mono: k.mono }" :title="k.title">{{ k.text }}</dt>
+            <dd class="mono" :title="v.title">{{ v.text }}</dd>
           </template>
         </dl>
       </template>
     </div>
   </template>
+
+  <ul v-else-if="node.style === 'list'" class="list" :class="node.name">
+    <li v-for="(r, i) in shown" :key="keyOf(r, i)">
+      <template v-for="c in columns" :key="c.name"><CellValue v-if="cellShown(c, r)" :value="r[c.field]" :field="c" />{{ ' ' }}</template>
+      <NodeView v-for="n in node.item ?? []" :key="(n as { name?: string }).name" :node="n" :row="r" />
+    </li>
+  </ul>
 
   <template v-else>
     <div class="scroll" tabindex="0" role="region" :aria-label="`${title ?? node.name} table`">
@@ -108,7 +116,7 @@ const entries = (v: unknown) => (v && typeof v === 'object' ? Object.entries(v a
               <component :is="c.field === key ? 'th' : 'td'" v-for="c in columns" :key="c.name" :scope="c.field === key ? 'row' : undefined" :class="cellClass(c, r)" :title="cellTitle(c, r)">
                 <template v-if="c.name === expandName">
                   <button v-if="Number(r[c.field]) > 0" type="button" class="expand" :aria-expanded="open.has(keyOf(r, i))" @click="toggle(keyOf(r, i))">
-                    {{ open.has(keyOf(r, i)) ? '▾' : '▸' }} {{ r[c.field] }}
+                    <span aria-hidden="true">{{ open.has(keyOf(r, i)) ? '▾' : '▸' }}</span>{{ ` ${counted(Number(r[c.field]), c)}` }}
                   </button>
                   <span v-else class="muted">–</span>
                 </template>

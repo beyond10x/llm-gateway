@@ -16,7 +16,7 @@ const tags = computed(() => (Array.isArray(props.value) ? props.value : []));
 </script>
 
 <template>
-  <template v-if="field.as === 'tags'"><span v-for="t in tags" :key="t" class="flag">{{ t }}</span></template>
+  <template v-if="field.as === 'tags'"><template v-for="(t, i) in tags" :key="t">{{ i > 0 ? ' ' : '' }}<span class="flag">{{ t }}</span></template></template>
   <template v-else>
     <span v-if="field.as === 'badge'" class="pill" :class="`tone-${tone}`" :title="title">{{ words }}</span>
     <span v-else-if="rich?.mono || title" :class="{ mono: rich?.mono }" :title="title">{{ words }}</span>

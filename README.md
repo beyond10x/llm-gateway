@@ -229,6 +229,7 @@ lines below.
 
 | Event | Line on standard error | Exit status |
 | --- | --- | --- |
+| Metrics listener bound, once, before `listening on`, when the document sets `metrics_listen` | `b10x-llm-gateway: metrics listening on <address>`, the address it bound | none yet |
 | Serving | `b10x-llm-gateway: listening on <address>` | none yet |
 | Refused start | `b10x-llm-gateway: refused <source>:<rule>: <message>` | 1 |
 | SIGINT or SIGTERM | `b10x-llm-gateway: stopped by <signal> accepted=<n> completed=<n>` | 0 |

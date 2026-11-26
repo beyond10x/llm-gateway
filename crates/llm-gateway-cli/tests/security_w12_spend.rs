@@ -72,7 +72,10 @@ fn sec_the_shipped_composition_checks_the_ceiling_before_any_create() {
     let text = mutate(
         &text,
         "kind = \"runpod-vllm\"\n",
-        "kind = \"runpod-vllm\"\ndaily_cap_usd = 1\n",
+        &format!(
+            "kind = \"runpod-vllm\"\ndaily_cap_usd = 1\nspend_ledger_file = \"{}\"\n",
+            fixture.path("spend-ledger.json").display()
+        ),
     );
     let text = mutate(
         &text,

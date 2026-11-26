@@ -762,6 +762,10 @@ struct ProviderDocument {
     daily_cap_usd: Option<f64>,
     #[serde(default)]
     total_cap_usd: Option<f64>,
+    /// Where the pool keeps its spend ledger (story:spend-cap-counts-earlier-pods); only beside
+    /// a spend ceiling.
+    #[serde(default)]
+    spend_ledger_file: Option<PathBuf>,
 }
 
 /// `[providers.<name>.connectors]` (`llm-gateway.deployment.ConnectorsDeclaration`).
@@ -980,6 +984,10 @@ pub struct Provider {
     pub daily_cap_micro_usd: Option<u64>,
     /// The account's total spend ceiling in micro-USD (`total_cap_usd`); `None` is none.
     pub total_cap_micro_usd: Option<u64>,
+    /// The file the pool keeps its spend ledger in (`spend_ledger_file`), declared only beside a
+    /// spend ceiling; `None` is the default in the state directory, which only the shipped
+    /// compositions use (story:spend-cap-counts-earlier-pods).
+    pub spend_ledger_file: Option<PathBuf>,
 }
 
 /// `[models.<alias>]`, with every default applied and every rule checked.
@@ -1500,6 +1508,11 @@ fn providers(
             .total_cap_usd
             .map(|usd| amount(&format!("providers.{name}.total_cap_usd"), usd, MAX_CAP_USD))
             .transpose()?;
+        let spend_ledger_file = spend_ledger_file(
+            &name,
+            provider.spend_ledger_file,
+            daily_cap_micro_usd.is_some() || total_cap_micro_usd.is_some(),
+        )?;
         providers.insert(
             name,
             Provider {
@@ -1512,6 +1525,7 @@ fn providers(
                 proxy_url,
                 daily_cap_micro_usd,
                 total_cap_micro_usd,
+                spend_ledger_file,
             },
         );
     }
@@ -1540,6 +1554,25 @@ fn providers(
         "may declare a spend ceiling on at most one provider",
     )?;
     Ok((providers, metered))
+}
+
+/// Provider `name`'s `spend_ledger_file`: declared only beside a spend ceiling (`capped`), and
+/// not empty (story:spend-cap-counts-earlier-pods).
+fn spend_ledger_file(
+    name: &str,
+    declared: Option<PathBuf>,
+    capped: bool,
+) -> Result<Option<PathBuf>, Refusal> {
+    if let Some(path) = &declared {
+        let at = format!("providers.{name}.spend_ledger_file");
+        ensure(
+            capped,
+            &at,
+            "needs daily_cap_usd or total_cap_usd: only a spend ceiling counts the ledger",
+        )?;
+        ensure(!path.as_os_str().is_empty(), &at, "must not be empty")?;
+    }
+    Ok(declared)
 }
 
 /// Where Runpod's REST API v2 is, unless a provider declares `management_url`.

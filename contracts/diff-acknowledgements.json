@@ -1,8 +1,8 @@
 {
   "format": "ess-diff-acknowledgements/1",
-  "before": "b061758e951bd7b03b5982d19bd2cc0d82a1efeca0f4cbe3222b7f0d3916c209",
-  "after": "a08875dfc67735bd8c54827eb5ed0e6f945eb5e9238a7be4d4e4a8a9b8b181df",
+  "before": "a08875dfc67735bd8c54827eb5ed0e6f945eb5e9238a7be4d4e4a8a9b8b181df",
+  "after": "f08efc6094b4c0616930061a954909b70e11ea531d35114cff109bc7252f2370",
   "acknowledged": [
-    "type/llm-gateway.deployment.ProviderDeclaration/field-added/api_key_file"
+    "type/llm-gateway.deployment.ProviderDeclaration/field-added/spend_ledger_file"
   ]
 }

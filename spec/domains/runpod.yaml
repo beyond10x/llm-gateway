@@ -507,9 +507,12 @@ entities:
   # every create the provider sends, once per declared GPU type it tries, of every profile it
   # tries, and before nothing else. With no ceiling declared it reads nothing and admits (`without-a-ceiling-no-spend-is-read`).
   # Otherwise it computes, at the pool clock's instant:
-  #   spend = the account's reported spend (`RunpodTransport::account_spend`, read afresh for
-  #           each check: today's, everything billed at or after the UTC day's start, and the
-  #           total; `spend-billed-before-the-utc-days-start-is-not-todays`)
+  #   spend = the larger of
+  #             the account's reported spend (`RunpodTransport::account_spend`, read afresh for
+  #             each check: today's, everything billed at or after the UTC day's start, and the
+  #             total; `spend-billed-before-the-utc-days-start-is-not-todays`)
+  #           and the pool's own ledger, when it keeps one (DECIDED 2026-11-26 below), each
+  #           ceiling on its own: today's part for the daily one, the 30 days' for the total
   #         + the running estimate of the pool's live pods: for every record of this
   #           controller whose phase occupies a slot (llm-gateway.hosting `Phase`) and that has
   #           a submission instant, the larger of its model's price per hour times the time
@@ -538,6 +541,29 @@ entities:
   # only once the reported spend holds it. The check errs toward refusing; docs/hosting.md says
   # so. The binary (llm-gateway.deployment) declares the ledger and authorizes each create under
   # the reservation `spend-ceiling` instead of `unmetered` when a ceiling is declared.
+  # DECIDED 2026-11-26 (story:spend-cap-counts-earlier-pods): billing reports a pod's spend
+  # hours after it ran (observed 0.87 USD reported against about 2.4 USD run that day), and a
+  # stopped pod leaves the running estimate while a restart forgets every pod, so the pool keeps
+  # a ledger of its own pods in a store that survives a restart (`RunpodPool::with_ledger`,
+  # `LedgerStore`; the binary's is a file, llm-gateway.deployment ProviderDeclaration
+  # `spend_ledger_file`). One entry per create the provider sent that was answered `Created`, or
+  # whose answer was lost: its deployment, request id, pod id (none for a lost answer), model,
+  # the model's declared price per hour, the instant the create was submitted and the instant
+  # its stop was confirmed (a terminate answered `terminated`), none while it may run. A pod's
+  # spend over a stretch is its price times the part of [submitted, stopped or now] inside the
+  # stretch, rounded up to the next micro-USD. The ledger's spend excludes the pods a live
+  # record holds (by request id), which the running estimate counts, so a live pod counts once.
+  # Each cleanup pass's orphan sweep records as stopped, at its instant, every running entry no
+  # live record holds that a complete listing does not show running (by pod id, or by request
+  # id for a lost answer); a partial or failed listing settles nothing. A stopped entry older
+  # than the 30 days is dropped. The store is read once, when the pool is given it; a store
+  # that cannot be read, or holds no ledger of `llm-gateway.spend-ledger/1`, is never written
+  # over and every metered check is refused `Unknown`; a write that fails refuses `Unknown`
+  # until a later write succeeds. ESS-LIMIT: no scenario program gives the pool a ledger; the
+  # crate tests in crates/llm-runpod/tests/spend_ledger.rs
+  # (`a_stopped_pod_counts_until_the_reported_spend_holds_at_least_as_much`,
+  # `a_restarted_pool_reads_the_ledger_and_refuses_a_start_it_puts_over_the_ceiling`,
+  # `a_ledger_that_cannot_be_read_refuses_every_start_as_unknown`) prove it.
   - name: llm-gateway.runpod.SpendLedger
     identity: {name: id, type: String}
     fields:

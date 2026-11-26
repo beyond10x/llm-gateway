@@ -29,6 +29,7 @@ mod relaying;
 mod routes;
 mod seal;
 pub(crate) mod serve;
+mod spend_ledger;
 mod tls;
 mod token_review;
 mod translate;
@@ -70,6 +71,7 @@ pub use serve::{
     INGRESS_AUTH_OFF, Running, StopSignal, Stopped, inventory, main_with, metrics_bearer,
     owner_verifier, start, start_with,
 };
+pub use spend_ledger::{FileLedger, LEDGER_FILE_NAME, MAX_LEDGER_BYTES};
 pub use tls::ProxyConnector;
 pub use token_review::{Clock, ReviewBounds, TOKEN_REVIEW_PATH, TokenReviewer, token_reviewer};
 pub use translate::{

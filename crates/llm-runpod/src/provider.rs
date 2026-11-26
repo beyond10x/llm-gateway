@@ -19,9 +19,11 @@ use llm_provision::{
 };
 
 use crate::{
-    Clock, CreateAnswer, Pod, PodStatus, Probe, ProbeTarget, ProxyUrl, RunpodModel,
-    RunpodTransport, SpendPolicy, SpendRefusal, TAG_EPOCH, TAG_OWNER, TAG_REQUEST, TerminateAnswer,
+    AccountSpend, Clock, CreateAnswer, LedgerEntry, LedgerStore, Pod, PodStatus, Probe,
+    ProbeTarget, ProxyUrl, RunpodModel, RunpodTransport, SpendPolicy, SpendRefusal, TAG_EPOCH,
+    TAG_OWNER, TAG_REQUEST, TOTAL_WINDOW_MS, TerminateAnswer,
     config::image_allowed,
+    ledger::Ledger,
     request::{Tags, in_namespace, pod_request},
     spend::{DAY_MS, admit, estimate},
 };
@@ -63,8 +65,11 @@ pub struct RunpodProvider<T> {
     proxy: Option<ProxyUrl>,
     /// The account's spend ceilings and the declared prices; `None` checks nothing.
     spend: Option<SpendPolicy>,
-    /// The pool's live pods the spend check estimates: model alias and submission instant.
-    live: Vec<(Identifier, u64)>,
+    /// The pool's live pods the spend check estimates: model alias, submission instant and
+    /// request id.
+    live: Vec<(Identifier, u64, Identifier)>,
+    /// The pool's own record of what its pods cost; `None` keeps none.
+    ledger: Option<Ledger>,
     /// Why the last create was refused by the spend check, until taken.
     spend_refusal: Option<SpendRefusal>,
     /// The GPU type of each pod by incarnation, as its create or a listing reported it: a GPU
@@ -115,6 +120,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             proxy: None,
             spend: None,
             live: Vec::new(),
+            ledger: None,
             spend_refusal: None,
             gpus: BTreeMap::new(),
             condemned: BTreeSet::new(),
@@ -151,11 +157,83 @@ impl<T: RunpodTransport> RunpodProvider<T> {
         self.spend = spend;
     }
 
-    /// The live pods the spend check counts, as `(model alias, submission instant)`: every
-    /// record of the controller whose phase occupies a slot. The pool sets them before each
-    /// provision.
-    pub fn set_live(&mut self, live: Vec<(Identifier, u64)>) {
+    /// Keeps the pool's spend ledger in `store`, read now (`spec/domains/runpod.yaml`,
+    /// `SpendLedger`): every create sent is recorded in it, every confirmed stop closes its
+    /// pod, and the spend check counts it. A store that cannot be read, or holds no ledger,
+    /// makes every metered spend check [`SpendRefusal::Unknown`]; `None` keeps no ledger.
+    pub fn set_ledger(&mut self, store: Option<Box<dyn LedgerStore>>) {
+        self.ledger = store.map(Ledger::open);
+    }
+
+    /// The live pods the spend check counts, as `(model alias, submission instant, request
+    /// id)`: every record of the controller whose phase occupies a slot. The pool sets them
+    /// before each provision. Their ledger entries are left to the running estimate, so a live
+    /// pod counts once.
+    pub fn set_live(&mut self, live: Vec<(Identifier, u64, Identifier)>) {
         self.live = live;
+    }
+
+    /// Records as stopped now every running pod of the ledger that is neither held by a live
+    /// record (`live`, request ids) nor listed running by a complete `inventory`: a pod from
+    /// before a restart, or one that ended without this pool's stop. A partial inventory
+    /// settles nothing.
+    pub fn settle_ledger(&mut self, inventory: &Inventory, live: &BTreeSet<Identifier>) {
+        if inventory.completeness != llm_provision::Completeness::Complete {
+            return;
+        }
+        let now = self.clock.now_ms();
+        let Some(ledger) = self.ledger.as_mut() else {
+            return;
+        };
+        let running: Vec<_> = inventory
+            .resources
+            .iter()
+            .filter(|resource| resource.state != ProviderState::Terminated)
+            .collect();
+        ledger.close_where(now, |entry| {
+            let held = live.iter().any(|request| request.as_str() == entry.request);
+            let listed = running.iter().any(|resource| match &entry.pod {
+                Some(pod) => resource.key.incarnation.as_str() == pod,
+                None => resource
+                    .request_id
+                    .as_ref()
+                    .is_some_and(|request| request.as_str() == entry.request),
+            });
+            !held && !listed
+        });
+    }
+
+    /// Records a create that may have started a pod in the ledger, at its model's declared
+    /// price. Nothing without a ledger or a price.
+    fn record_create(&mut self, request: &CreateRequest, pod: Option<&str>, submitted_ms: u64) {
+        let price = self
+            .spend
+            .as_ref()
+            .and_then(|policy| policy.price_per_hour_micro_usd.get(&request.spec.model))
+            .copied();
+        let (Some(ledger), Some(price)) = (self.ledger.as_mut(), price) else {
+            return;
+        };
+        ledger.open_pod(
+            LedgerEntry {
+                deployment: request.spec.id.as_str().to_owned(),
+                request: request.request_id.as_str().to_owned(),
+                pod: pod.map(str::to_owned),
+                model: request.spec.model.as_str().to_owned(),
+                price_per_hour_micro_usd: price,
+                started_ms: submitted_ms,
+                stopped_ms: None,
+            },
+            submitted_ms,
+        );
+    }
+
+    /// Records the confirmed stop of the pod `pod_id` in the ledger.
+    fn record_stop(&mut self, pod_id: &str) {
+        let now = self.clock.now_ms();
+        if let Some(ledger) = self.ledger.as_mut() {
+            ledger.close_pod(pod_id, now);
+        }
     }
 
     /// Why the spend check refused the last create, once: taking it clears it.
@@ -166,15 +244,19 @@ impl<T: RunpodTransport> RunpodProvider<T> {
     /// The spend check (`spec/domains/runpod.yaml`, `SpendLedger`), run immediately before
     /// every create: whether a pod of the model `alias` may start now without passing a spend
     /// ceiling. With no ceiling declared it reads nothing and admits. Otherwise it reads the
-    /// account's spend once, adds the running estimate of the live pods ([`Self::set_live`]),
-    /// each at least its own startup estimate, and the estimate of this one over its startup deadline, and compares the sum with each
-    /// ceiling, the daily one first. It needs no relayed request, so any start path may call it.
+    /// account's spend once and takes, for each ceiling, the larger of the reported spend and
+    /// the ledger's ([`Self::set_ledger`]: the pods no live record holds, today's part for the
+    /// daily ceiling and the 30 days' for the total one); it adds the running estimate of the
+    /// live pods ([`Self::set_live`]), each at least its own startup estimate, and the
+    /// estimate of this one over its startup deadline, and compares the sum with each ceiling,
+    /// the daily one first. It needs no relayed request, so any start path may call it.
     ///
     /// # Errors
     ///
     /// [`SpendRefusal::Over`] when a ceiling would be passed, and [`SpendRefusal::Unknown`]
-    /// when the spend read failed or answered nothing, or a live pod's model or this one has
-    /// no declared price, or this model is not declared.
+    /// when the spend read failed or answered nothing, the ledger could not be read or its last
+    /// write failed, or a live pod's model or this one has no declared price, or this model is
+    /// not declared.
     pub fn admit_spend(&mut self, alias: &Identifier) -> Result<(), SpendRefusal> {
         let Some(policy) = self.spend.as_ref().filter(|policy| policy.is_metered()) else {
             return Ok(());
@@ -190,7 +272,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             price(alias).ok_or(SpendRefusal::Unknown)?,
             startup_ms(alias).ok_or(SpendRefusal::Unknown)?,
         );
-        for (live, submitted_at) in &self.live {
+        for (live, submitted_at, _) in &self.live {
             let price = price(live).ok_or(SpendRefusal::Unknown)?;
             // A pod counts at least what its own start was admitted at: one submitted moments
             // ago would otherwise add nothing, and two starts in a row would share one headroom.
@@ -200,12 +282,36 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             ));
             estimated = estimated.saturating_add(running);
         }
+        let day_start = now - now % DAY_MS;
+        // The ledger's pods that no live record holds: stopped ones, and ones from before a
+        // restart. A live pod is the running estimate's, so it counts once.
+        let ledgered = match &self.ledger {
+            None => None,
+            Some(ledger) if !ledger.sound() => return Err(SpendRefusal::Unknown),
+            Some(ledger) => {
+                let live: BTreeSet<String> = self
+                    .live
+                    .iter()
+                    .map(|(_, _, request)| request.as_str().to_owned())
+                    .collect();
+                Some(AccountSpend {
+                    daily_micro_usd: ledger.spent(day_start, now, &live),
+                    total_micro_usd: ledger.spent(now.saturating_sub(TOTAL_WINDOW_MS), now, &live),
+                })
+            }
+        };
         let policy = policy.clone();
         let reported = self
             .transport
-            .account_spend(now - now % DAY_MS)
+            .account_spend(day_start)
             .ok_or(SpendRefusal::Unknown)?;
-        admit(&policy, reported, estimated)
+        // Billing reports a pod's spend hours after it ran: until it holds at least what the
+        // ledger does, the ledger counts instead.
+        let spent = ledgered.map_or(reported, |ledgered| AccountSpend {
+            daily_micro_usd: reported.daily_micro_usd.max(ledgered.daily_micro_usd),
+            total_micro_usd: reported.total_micro_usd.max(ledgered.total_micro_usd),
+        });
+        admit(&policy, spent, estimated)
     }
 
     fn model_of(&self, key: &ResourceKey) -> Option<&RunpodModel> {
@@ -355,7 +461,10 @@ impl<T: RunpodTransport> RunpodProvider<T> {
     fn condemn(&mut self, pod_id: &str) {
         for _ in 0..CONDEMNED_TERMINATE_ATTEMPTS {
             match self.transport.terminate_pod(pod_id) {
-                TerminateAnswer::Terminated => return,
+                TerminateAnswer::Terminated => {
+                    self.record_stop(pod_id);
+                    return;
+                }
                 TerminateAnswer::Refused => break,
                 TerminateAnswer::Lost => {}
             }
@@ -398,7 +507,19 @@ impl<T: RunpodTransport> RunpodProvider<T> {
                 self.spend_refusal = Some(refusal);
                 return not_sent;
             }
-            match self.transport.create_pod(&body) {
+            let submitted_ms = self.clock.now_ms();
+            let answer = self.transport.create_pod(&body);
+            // A pod is billed from its create on, whatever happens to it next: the ledger
+            // counts it from here until its stop is confirmed. A lost answer may have started
+            // one, so it is counted too, until a complete listing shows none.
+            match &answer {
+                CreateAnswer::Created(pod) => {
+                    self.record_create(request, Some(&pod.id), submitted_ms);
+                }
+                CreateAnswer::Lost => self.record_create(request, None, submitted_ms),
+                CreateAnswer::NoCapacity | CreateAnswer::Refused => {}
+            }
+            match answer {
                 CreateAnswer::Created(pod) => {
                     // Secure Cloud, on demand, or not at all: a pod placed anywhere else, or
                     // whose placement cannot be read, is terminated before anything can use it,
@@ -514,6 +635,7 @@ impl<T: RunpodTransport> HostingProvider for RunpodProvider<T> {
         // before this is reached.
         let dispatch = match self.transport.terminate_pod(key.incarnation.as_str()) {
             TerminateAnswer::Terminated => {
+                self.record_stop(key.incarnation.as_str());
                 self.health.remove(key.incarnation.as_str());
                 self.gpus.remove(key.incarnation.as_str());
                 self.condemned.remove(key.incarnation.as_str());

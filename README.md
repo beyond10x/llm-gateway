@@ -226,7 +226,11 @@ any request byte is sent; no document key or option adds a root or turns verific
 model call starts no pod: while the pod is stopped it is answered `503` `model-stopped`, and the
 owner starts it with `POST /v1/models/<alias>/wake`, unless the model sets
 `start_on_request = true` under its provider's `daily_cap_usd`, which needs
-`price_per_hour_usd` on every model the document declares under `[models]`. A model whose provider
+`price_per_hour_usd` on every model the document declares under `[models]`. Under a spend cap the
+gateway keeps its own pods' estimated spend in the provider's `spend_ledger_file` (by default
+`spend-ledger.json` in `$XDG_STATE_HOME/llm-gateway`, else `$HOME/.local/state/llm-gateway`), and
+each cap counts the larger of Runpod's reported spend, which lags by hours, and that ledger, so
+pods already stopped and pods started before a restart count. A model whose provider
 declares no `connectors` is answered `503` `target-unavailable`.
 
 The command line is `--config <file>`, `--help` and `--version`, and nothing else; any other

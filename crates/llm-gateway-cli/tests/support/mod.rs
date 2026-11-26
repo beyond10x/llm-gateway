@@ -119,18 +119,36 @@ pub fn with_vllm_key(text: &str, key: &Path) -> String {
 /// `text` (a [`document`]) whose `[models.small]` call starts its pod, as every call did before
 /// `start_on_request` existed: the key, with the `daily_cap_usd` of 10 USD on `[providers.runpod]`
 /// it needs and the model's `price_per_hour_usd` of 2 USD the cap needs. A pool over the emulator
-/// then reads the account's spend before each create: [`no_spend`] admits it.
+/// then reads the account's spend before each create: [`no_spend`] admits it. The provider keeps
+/// its spend ledger in [`spend_ledger_file`], so no test reads or writes the state directory's.
 pub fn starts_on_request(text: &str) -> String {
     let text = mutate(
         text,
         "kind = \"runpod-vllm\"\n",
-        "kind = \"runpod-vllm\"\ndaily_cap_usd = 10\n",
+        &format!(
+            "kind = \"runpod-vllm\"\ndaily_cap_usd = 10\nspend_ledger_file = \"{}\"\n",
+            spend_ledger_file().display()
+        ),
     );
     mutate(
         &text,
         "[models.small]\n",
         "[models.small]\nprice_per_hour_usd = 2\nstart_on_request = true\n",
     )
+}
+
+/// A spend ledger file of this test process alone, new to it: named by the process id and the
+/// instant it was first asked for, so no earlier run's file is ever read.
+pub fn spend_ledger_file() -> PathBuf {
+    static FILE: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+    FILE.get_or_init(|| {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |since| since.as_nanos());
+        Path::new(env!("CARGO_TARGET_TMPDIR"))
+            .join(format!("spend-ledger-{}-{nanos}.json", std::process::id()))
+    })
+    .clone()
 }
 
 /// `text` with `start_on_request = true` in its `[models.small]` table and nothing else, for a

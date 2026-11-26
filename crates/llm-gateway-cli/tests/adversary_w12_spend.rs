@@ -53,7 +53,10 @@ fn adversary_w12_the_shipped_composition_refuses_a_start_past_the_ceiling() {
     let text = mutate(
         &text,
         "kind = \"runpod-vllm\"\n",
-        "kind = \"runpod-vllm\"\ntotal_cap_usd = 10\n",
+        &format!(
+            "kind = \"runpod-vllm\"\nspend_ledger_file = \"{}\"\ntotal_cap_usd = 10\n",
+            fixture.path("spend-ledger.json").display()
+        ),
     );
     let text = mutate(
         &text,

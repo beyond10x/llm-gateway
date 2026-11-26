@@ -47,6 +47,10 @@ The pool it composes:
   ones on it; a request starts it only for a model that sets `start_on_request = true` under a
   `daily_cap_usd`, and otherwise only the owner's wake does, a request to a stopped pod being
   refused `model-stopped`;
+- under a spend ceiling, **keeps a ledger** of its own pods' estimated spend in
+  [`spend_ledger_file`](../reference/deployment-document.md), so a pod already stopped, or
+  started before a restart, counts against the ceiling until Runpod's billing, which lags by
+  hours, reports at least as much;
 - tries the declared GPU types **in order**, but ends the attempt when a create's answer is lost,
   because Runpod takes no idempotency key and a second create could pay twice;
 - **terminates** a pod that crash-loops, refuses its vLLM key or misses its startup deadline, and

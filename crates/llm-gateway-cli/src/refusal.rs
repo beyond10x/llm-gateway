@@ -154,6 +154,19 @@ pub(crate) enum FileRule {
 }
 
 impl FileRule {
+    /// The rule's name, as every source's refusal code ends: `unreadable`, `symlink`, ….
+    pub(crate) const fn code(self) -> &'static str {
+        match self {
+            Self::Unreadable => "unreadable",
+            Self::Symlink => "symlink",
+            Self::NotRegular => "not-regular",
+            Self::UntrustedOwner => "untrusted-owner",
+            Self::UnsafeMode => "unsafe-mode",
+            Self::TooLarge => "too-large",
+            Self::NotUtf8 => "not-utf8",
+        }
+    }
+
     pub(crate) const fn refusal(self, source: Source) -> StartupRefusal {
         match (source, self) {
             (Source::Config, Self::Unreadable) => StartupRefusal::ConfigUnreadable,

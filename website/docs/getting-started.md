@@ -140,7 +140,7 @@ The gateway answers what it accepted, writes one line and exits 0. At the defaul
 also writes one `usage` event per authenticated model call, here the refused one:
 
 ```text
-2026-10-08T21:19:58.427410Z  INFO usage: usage record model="small" wire=chat disposition=Refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=0
+2026-10-08T21:19:58.427410Z  INFO usage: usage record call=3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-1 model="small" wire=chat disposition=Refused outcome=refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=0
 b10x-llm-gateway: stopped by SIGTERM accepted=10 completed=10
 ```
 

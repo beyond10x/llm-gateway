@@ -4,7 +4,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:5bcd8d23756e9d325aae9a197ebe2a1c54762eaaccbb917caf1be94b670e791c",
+    "contract_digest": "slice-sha256/2:75b06759c57c0e0c034a997a1f8fd4341fd4d79b8f3fb7971fee687a58f32291",
     "regenerate": "ess generate"
   },
   "$defs": {
@@ -114,6 +114,9 @@
         },
         "compact_window": {
           "type": "integer"
+        },
+        "token_price": {
+          "$ref": "#/$defs/llm-gateway.deployment.TokenPriceDeclaration"
         }
       },
       "required": [
@@ -136,6 +139,31 @@
         "Medium",
         "Xhigh"
       ]
+    },
+    "llm-gateway.deployment.TokenPriceDeclaration": {
+      "title": "TokenPriceDeclaration",
+      "x-ess-name": "llm-gateway.deployment.TokenPriceDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        },
+        "cache_read": {
+          "type": "string"
+        },
+        "cache_creation": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "input",
+        "output"
+      ],
+      "additionalProperties": false
     },
     "llm-gateway.deployment.Wire": {
       "title": "Wire",
@@ -189,7 +217,8 @@
       "type": "string",
       "enum": [
         "Endpoint",
-        "Bedrock"
+        "Bedrock",
+        "Ollama"
       ]
     }
   }

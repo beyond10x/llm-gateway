@@ -151,6 +151,13 @@
     },
     {
       "area": "Relay",
+      "detail": "A [hosted.<alias>] table with kind = \"ollama\" is relayed to the Ollama server's own chat, responses and messages paths, sent no credential. Its status is read from GET /api/tags and GET /api/ps: ready, stopped not-loaded (a call loads it), unreachable model-not-pulled or no-answer. A call to a model that is not pulled is refused 503 model-not-pulled naming the alias, and the gateway never asks the server to pull, create, copy, delete or push. Tested against a fake Ollama on loopback, not against an Ollama server.",
+      "href": "/docs/guides/serve-a-local-ollama-model",
+      "label": "A model on a local Ollama server",
+      "status": "shipped"
+    },
+    {
+      "area": "Relay",
       "detail": "The binary starts a model's pod through the connectors CLI and relays to its https proxy URL, verifying the certificate against the Mozilla roots compiled in before any request byte. Tested against a connectors fixture and a loopback https pod, not against Runpod.",
       "href": "/docs/concepts/relay",
       "label": "Relay to a Runpod pod from the binary over verified TLS",
@@ -367,7 +374,7 @@
     },
     {
       "area": "Observability",
-      "detail": "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
+      "detail": "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info, naming the call's id.",
       "href": "/docs/guides/scrape-the-counters",
       "label": "One usage record per authenticated wire request",
       "status": "shipped"
@@ -404,6 +411,18 @@
       "area": "Observability",
       "detail": "Each usage record carries the input, output, cache read and cache creation tokens the answer reported, read from a decoded copy when it is content-encoded; a count it did not report stays absent.",
       "label": "Token counts in usage records",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "Every answer to an authenticated model call carries x-llm-gateway-call with the call's id, and the owner reads that call's record, in flight or ended, at GET /v1/calls/<id>: its outcome, statuses, token counts, bytes and duration, an absent value left out. The gateway holds the last 1024 ended calls.",
+      "label": "Call ids and call records",
+      "status": "shipped"
+    },
+    {
+      "area": "Observability",
+      "detail": "A Runpod model, every hosted model and a route of the routes document may declare a price per 1000000 tokens for input, output, cache reads and cache writes; each call's usage record, its usage event and its record at GET /v1/calls/<id> then name what the call cost in USD, priced by llm's own pricing code. A call without a declared price, without reported tokens or with a counted class that has no rate names no cost. Tested against a loopback upstream, not against a vendor's bill.",
+      "label": "The cost of a call",
       "status": "shipped"
     },
     {

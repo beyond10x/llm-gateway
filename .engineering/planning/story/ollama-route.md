@@ -2,13 +2,17 @@
 format: aep.planning-md/3
 id: story:ollama-route
 kind: story
-status: draft
+status: implemented
 title: A model on a local Ollama server, with its status and never a pull
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
 - depends_on: story:route-status-for-every-model
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-25T21:53:17Z", actor: "human:operator", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-25T21:53:18Z", actor: "human:operator", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-26T01:05:38Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":2,"verification":1}}}
 ---
 ## Outcome
 

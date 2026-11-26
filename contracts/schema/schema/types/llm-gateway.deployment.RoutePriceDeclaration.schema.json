@@ -1,0 +1,39 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$ref": "#/$defs/llm-gateway.deployment.RoutePriceDeclaration",
+  "x-ess-provenance": {
+    "system": "llm-gateway",
+    "specification_version": "v1",
+    "contract_digest": "slice-sha256/2:31a66021fbd5c9554864ca67bffb90e2d8795498f4dbc25c1c3ce872f8cf7f7f",
+    "regenerate": "ess generate"
+  },
+  "$defs": {
+    "llm-gateway.deployment.RoutePriceDeclaration": {
+      "title": "RoutePriceDeclaration",
+      "x-ess-name": "llm-gateway.deployment.RoutePriceDeclaration",
+      "x-ess-kind": "struct",
+      "type": "object",
+      "properties": {
+        "currency": {
+          "type": "string"
+        },
+        "input": {
+          "type": "string"
+        },
+        "cached_input": {
+          "type": "string"
+        },
+        "cache_creation_input": {
+          "type": "string"
+        },
+        "output": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "currency"
+      ],
+      "additionalProperties": false
+    }
+  }
+}

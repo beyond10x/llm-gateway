@@ -70,6 +70,7 @@ const RELAY: Option<&str> = Some("/docs/concepts/relay");
 const HOSTING: Option<&str> = Some("/docs/concepts/hosting");
 const DOCUMENT: Option<&str> = Some("/docs/reference/deployment-document");
 const BEDROCK: Option<&str> = Some("/docs/guides/serve-a-bedrock-model");
+const OLLAMA: Option<&str> = Some("/docs/guides/serve-a-local-ollama-model");
 
 /// Every capability the site claims, in the order the status table lists them.
 pub const CAPABILITIES: &[Capability] = &[
@@ -219,6 +220,13 @@ pub const CAPABILITIES: &[Capability] = &[
         "GET /v1/models/<alias>/status of a hosted model or a route probes its endpoint only when read, at most once per model at a time, within 5 s, reused for 10 s: ready on a 2xx answer, otherwise unreachable with no-answer, credential-refused or status-<code>. GET /v1/status lists every model in alias order with its kind, wires, status and whether a call is answered now, asking all of them side by side. A Bedrock model has no status. Tested against loopback endpoints, not against a vendor API.",
         "crates/llm-gateway-cli/tests/wake_status.rs::route_status_the_binary_lists_a_pod_a_hosted_model_and_a_route_with_their_kinds",
         RELAY,
+    ),
+    shipped(
+        "Relay",
+        "A model on a local Ollama server",
+        "A [hosted.<alias>] table with kind = \"ollama\" is relayed to the Ollama server's own chat, responses and messages paths, sent no credential. Its status is read from GET /api/tags and GET /api/ps: ready, stopped not-loaded (a call loads it), unreachable model-not-pulled or no-answer. A call to a model that is not pulled is refused 503 model-not-pulled naming the alias, and the gateway never asks the server to pull, create, copy, delete or push. Tested against a fake Ollama on loopback, not against an Ollama server.",
+        "crates/llm-gateway-cli/tests/wake_status.rs::ollama_the_binary_sends_the_server_only_its_lists_and_the_wire_calls",
+        OLLAMA,
     ),
     shipped(
         "Relay",
@@ -440,7 +448,7 @@ pub const CAPABILITIES: &[Capability] = &[
     shipped(
         "Observability",
         "One usage record per authenticated wire request",
-        "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info. Token counts are always absent.",
+        "Relayed, refused or upstream-failed, each request makes one record; the binary writes it as one tracing event at info, naming the call's id.",
         "crates/llm-gateway/tests/observability.rs::o1_o2_a_relayed_answer_a_refusal_and_an_upstream_failure_each_make_one_record",
         Some("/docs/guides/scrape-the-counters"),
     ),
@@ -477,6 +485,20 @@ pub const CAPABILITIES: &[Capability] = &[
         "Token counts in usage records",
         "Each usage record carries the input, output, cache read and cache creation tokens the answer reported, read from a decoded copy when it is content-encoded; a count it did not report stays absent.",
         "crates/llm-gateway-cli/tests/passthrough_encoded.rs::a_gzip_streamed_answer_reaches_the_client_unchanged_and_its_tokens_are_recorded",
+        None,
+    ),
+    shipped(
+        "Observability",
+        "Call ids and call records",
+        "Every answer to an authenticated model call carries x-llm-gateway-call with the call's id, and the owner reads that call's record, in flight or ended, at GET /v1/calls/<id>: its outcome, statuses, token counts, bytes and duration, an absent value left out. The gateway holds the last 1024 ended calls.",
+        "crates/llm-gateway/tests/observability/calls.rs::a2_the_owner_reads_an_ended_calls_record_by_its_id_with_its_keys_in_order",
+        None,
+    ),
+    shipped(
+        "Observability",
+        "The cost of a call",
+        "A Runpod model, every hosted model and a route of the routes document may declare a price per 1000000 tokens for input, output, cache reads and cache writes; each call's usage record, its usage event and its record at GET /v1/calls/<id> then name what the call cost in USD, priced by llm's own pricing code. A call without a declared price, without reported tokens or with a counted class that has no rate names no cost. Tested against a loopback upstream, not against a vendor's bill.",
+        "crates/llm-gateway-cli/tests/observability.rs::cost_the_binary_logs_the_cost_of_a_priced_call_and_none_for_an_unpriced_one",
         None,
     ),
     shipped(

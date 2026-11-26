@@ -461,6 +461,9 @@ types:
   #                         costs per hour on any of its GPU types, which the spend check
   #                         prices its pods by (llm-gateway.runpod.SpendLedger). Required once a
   #                         provider declares a spend ceiling (ProviderDeclaration)
+  #   token_price           optional table `[models.<alias>.token_price]`: what the model's
+  #                         tokens cost, which each call's usage record prices
+  #                         (TokenPriceDeclaration). Unrelated to `price_per_hour_usd`
   #   vllm_api_key_file     optional; the file holding the key the model's pod's vLLM server
   #                         expects, read through the trusted-file reader (`vllm-api-key:<rule>`)
   #   tool_calling          `parsed` or `absent` (llm-gateway.clients.ToolCalling), default
@@ -530,6 +533,31 @@ types:
       - {name: tool_calling, type: llm-gateway.clients.ToolCalling}
       - {name: price_per_hour_usd, type: 'Optional<Decimal>'}
       - {name: start_on_request, type: Boolean}
+      - {name: token_price, type: 'Optional<llm-gateway.deployment.TokenPriceDeclaration>'}
+  # DECIDED 2026-11-26 (story:cost-per-call): a `[models.<alias>]` model and a `[hosted.<alias>]`
+  # model of every kind may declare the table `token_price`, what its tokens cost in USD per
+  # 1000000 tokens, written as llm's TOML amounts are: each value a quoted decimal string, read by
+  # llm 0.24.0's `llm_cost::Amount::parse` (no sign, no exponent, no leading zero, at most nine
+  # decimal places). Each call to the model then carries what its reported tokens cost
+  # (llm-gateway.telemetry.UsageRecord `cost_usd`). The rules, each a `config:value` naming
+  # `<table>.<alias>.token_price.<key>` and quoting no value:
+  #   input           required: per 1000000 input tokens neither read from nor written to a
+  #                   cache
+  #   output          required: per 1000000 output tokens
+  #   cache_read      optional: per 1000000 input tokens read from a cache
+  #   cache_creation  optional: per 1000000 input tokens written to a cache
+  # A value that is not a string, or that `Amount::parse` refuses (a negative one included), is
+  # refused by its key; a missing `input` or `output` is refused by its key; any other key in the
+  # table is refused by its own name. A table that is not a table is `config:schema`. Proved by
+  # `token_price_*` in crates/llm-gateway-cli/tests/config.rs and the `cost-*` scenarios of
+  # llm-gateway.gateway.
+  - name: llm-gateway.deployment.TokenPriceDeclaration
+    kind: struct
+    fields:
+      - {name: input, type: String}
+      - {name: output, type: String}
+      - {name: cache_read, type: 'Optional<String>'}
+      - {name: cache_creation, type: 'Optional<String>'}
   # One `[[models.<alias>.profiles]]` entry (story:model-profile-fallback): the
   # llm-gateway.runpod.ModelProfile it becomes. Every rule is `config:value`, a missing
   # required key or an unknown key `config:schema`.
@@ -629,10 +657,27 @@ types:
   #                      by default; any other string, `high` and `max` included, is
   #                      `config:value`. A messages-wire request that names no effort reaches
   #                      the endpoint with this one (llm-gateway.gateway `Relay`, step 6)
-  #   kind               `endpoint` (default) or `bedrock` (llm-gateway.upstream.HostedKind);
-  #                      any other string is `config:schema`. Every rule above is an
-  #                      `endpoint`'s; each key below is a `bedrock` model's, and is
-  #                      `config:value` naming `hosted.<alias>.<key>` on an endpoint
+  #   kind               `endpoint` (default), `bedrock` or `ollama`
+  #                      (llm-gateway.upstream.HostedKind); any other string is
+  #                      `config:schema`. Every rule above is an `endpoint`'s; each key below
+  #                      is a `bedrock` model's, and is `config:value` naming
+  #                      `hosted.<alias>.<key>` on an endpoint
+  # A `kind = "ollama"` model (DECIDED 2026-11-25, story:ollama-route) takes an endpoint's keys
+  # and rules, with these differences, each refusal `config:value` naming the key:
+  #   base_url           optional, default `http://127.0.0.1:11434`: the Ollama server's root,
+  #                      an endpoint's `base_url` with no base path (a path, `/v1` included, is
+  #                      refused); a host that is not loopback is admitted over `http` as for
+  #                      any `anonymous` endpoint
+  #   wires              optional, default `["chat", "responses", "messages"]`
+  #   auth_kind          optional, `anonymous` only; `credential_file`, `credential` and
+  #                      `credential_header` are refused
+  #   upstream_model     the Ollama model name the alias is sent as, default the alias; without
+  #                      a tag it matches `<name>:latest` in the server's lists
+  #   model_prefix       refused (DECIDED 2026-11-25, correction of story:ollama-route): the
+  #                      model's status and `model-not-pulled` are read for `upstream_model`
+  #                      alone, and a prefix would send names that status does not describe
+  #   billing_kind       default `self-hosted`
+  #   each `bedrock` key is refused as on an endpoint
   # A `kind = "bedrock"` model (DECIDED 2026-10-23, story:bedrock-hosted-target): `wires`,
   # `base_url`, `auth_kind`, `credential_file`, `credential_header`, `upstream_model`,
   # `reasoning_effort` and `headers` are each `config:value` naming the key. Its rules, each a
@@ -672,11 +717,12 @@ types:
   #                      outside the list is `translation-unsupported`. `config:value` on an
   #                      endpoint, on a model whose `api` is `converse`, and for another name
   #   tool_calling       as an endpoint's, default `parsed`
+  # Every kind takes `token_price` (TokenPriceDeclaration), as a `[models.<alias>]` model does.
   - name: llm-gateway.deployment.HostedDeclaration
     kind: struct
     fields:
       - {name: kind, type: llm-gateway.upstream.HostedKind}
-      # Required for an `endpoint`, absent for a `bedrock` model.
+      # Required for an `endpoint`, optional for an `ollama` model, absent for a `bedrock` model.
       - {name: wires, type: 'Optional<List<llm-gateway.deployment.Wire>>'}
       - {name: base_url, type: 'Optional<String>'}
       - {name: auth_kind, type: 'Optional<llm-gateway.upstream.AuthKind>'}
@@ -703,6 +749,7 @@ types:
       - {name: retry_max_attempts, type: 'Optional<Integer>'}
       - {name: retry_max_wait, type: 'Optional<Integer>'}
       - {name: compact_window, type: 'Optional<Integer>'}
+      - {name: token_price, type: 'Optional<llm-gateway.deployment.TokenPriceDeclaration>'}
   # One endpoint of a routes document (RoutesDeclaration), as llm 0.24.0 reads it
   # (`llm_models::routes::EndpointDeclaration`): `base_url` as llm normalises it (one final `/`),
   # `protocol` `messages`, `responses` or `chat-completions` (Wire `Messages`, `Responses`,
@@ -729,6 +776,27 @@ types:
       - {name: tools, type: Boolean}
       - {name: context_window, type: Integer}
       - {name: max_output_tokens, type: Integer}
+      - {name: price, type: 'Optional<llm-gateway.deployment.RoutePriceDeclaration>'}
+  # A route's `price`, as llm 0.24.0 writes and reads it (`llm_models::routes::RoutePrice`):
+  # `currency`, three upper-case letters, and per 1000000 tokens `input` (uncached input),
+  # `cached_input`, `cache_creation_input` and `output`, each optional and a quoted decimal string
+  # `llm_cost::Amount::parse` reads; llm refuses any other key and any value outside that rule
+  # (`config:value`, `routes <llm's message>`). A class it leaves out has no rate.
+  # DECIDED 2026-11-26 (story:cost-per-call): the gateway reads it onto TokenPriceDeclaration's
+  # four classes, `input` onto `input`, `cached_input` onto `cache_read`,
+  # `cache_creation_input` onto `cache_creation` and `output` onto `output`, and prices each call
+  # of the route by it as it prices a `[hosted.<alias>]` model's. A `currency` other than `USD`
+  # has no class here, since a call's cost is recorded in USD: it is `config:value` naming
+  # `routes.<route>.price.currency`, quoting no value. Before, a route's `price` was refused by
+  # its key.
+  - name: llm-gateway.deployment.RoutePriceDeclaration
+    kind: struct
+    fields:
+      - {name: currency, type: String}
+      - {name: input, type: 'Optional<String>'}
+      - {name: cached_input, type: 'Optional<String>'}
+      - {name: cache_creation_input, type: 'Optional<String>'}
+      - {name: output, type: 'Optional<String>'}
   # The `llm.routes/1` document a deployment's `routes` key names (story:routes-document).
   # ESS-LIMIT: the rules are not struct invariants, for the reason ModelDeclaration gives; the
   # crate tests named `routes_*` in crates/llm-gateway-cli/tests/routes.rs prove them.

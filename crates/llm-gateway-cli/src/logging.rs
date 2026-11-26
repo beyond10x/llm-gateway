@@ -56,6 +56,7 @@ impl UsageRecords for TracingRecords {
     fn record(&self, record: &UsageRecord) {
         tracing::info!(
             target: "usage",
+            call = %record.call,
             model = record.model.as_deref(),
             wire = %record.wire.label(),
             disposition = %disposition(record.disposition),
@@ -63,10 +64,15 @@ impl UsageRecords for TracingRecords {
             refusal = record.refusal.map(|code| tracing::field::display(code.wire())),
             status = record.status,
             target_status = record.target_status,
+            input_tokens = record.input_tokens,
+            output_tokens = record.output_tokens,
+            cache_read_tokens = record.cached_input_tokens,
+            cache_creation_tokens = record.cache_creation_input_tokens,
             response_bytes = record.response_bytes,
             duration_ms = record.duration_ms,
             profile = record.profile.as_deref(),
             principal = record.principal.as_deref(),
+            cost_usd = record.cost_usd.as_deref(),
             "usage record"
         );
     }

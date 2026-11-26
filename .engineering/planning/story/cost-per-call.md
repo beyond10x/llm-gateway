@@ -2,13 +2,17 @@
 format: aep.planning-md/3
 id: story:cost-per-call
 kind: story
-status: draft
+status: implemented
 title: A model may declare a price, and a call record names its cost
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
 - depends_on: story:call-id-and-usage-record
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-25T23:13:55Z", actor: "human:operator", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-25T23:13:55Z", actor: "human:operator", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-26T01:05:39Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":1,"verification":1}}}
 ---
 ## Outcome
 

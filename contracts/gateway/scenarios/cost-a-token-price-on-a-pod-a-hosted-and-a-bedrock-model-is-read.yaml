@@ -1,0 +1,21 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: cost-a-token-price-on-a-pod-a-hosted-and-a-bedrock-model-is-read
+summary: the binary reads a document whose pod model, hosted endpoint and Bedrock model each declare a token_price table of quoted decimal strings, the cache keys optional, and composes it
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\n\n[models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n\n[models.small.token_price]\ninput = \"0.2\"\noutput = \"0.6\"\n\n[hosted.remote]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\nauth_kind = \"anonymous\"\n\n[hosted.remote.token_price]\ninput = \"3\"\noutput = \"15\"\ncache_read = \"0.3\"\ncache_creation = \"3.75\"\n\n[hosted.haiku]\nkind = \"bedrock\"\nregion = \"eu-central-1\"\nmodel_id = \"eu.anthropic.claude-fixture-v1:0\"\ncredential_source = \"container\"\n\n[hosted.haiku.token_price]\ninput = \"1\"\noutput = \"5\"\n","steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'

@@ -158,6 +158,12 @@ refusal_codes! {
     /// passed (row W6). The only refusal with a `retry-after`.
     ModelColdStart => "model-cold-start", 503,
         "the model is still starting; ask again after the retry-after delay";
+    /// The model is an Ollama server's, and its last status read found it not pulled: the
+    /// server's `GET /api/tags` did not list it. Answered at once, without a `retry-after`; the
+    /// body's message is this text, `: ` and the alias the call was matched to. The gateway
+    /// pulls no model.
+    ModelNotPulled => "model-not-pulled", 503,
+        "the model is not pulled on its Ollama server, and the gateway pulls no model";
     /// The embedding refused to start the model's pod because the start would pass a spend
     /// ceiling of its provider account, or that account's spend is unknown. Answered at once,
     /// without a `retry-after`; the message names neither the ceiling nor the amount.
@@ -193,6 +199,10 @@ refusal_codes! {
     /// No such resource on this gateway.
     PathUnknown => "path-unknown", 404,
         "no such gateway resource";
+    /// The gateway holds no call with the id `GET /v1/calls/{id}` names: of another form, never
+    /// given out, or no longer held.
+    CallUnknown => "call-unknown", 404,
+        "the gateway holds no call with that id";
     /// The request is not HTTP this gateway parses: its head, or the chunked framing of a relayed
     /// body.
     RequestMalformed => "request-malformed", 400,
@@ -338,7 +348,8 @@ closed_enum! {
 
 closed_enum! {
     /// Why [`crate::RelayTargets::acquire`] handed out no target. Each is answered with its own
-    /// refusal: `target-unavailable`, `model-cold-start`, `spend-ceiling` or `model-stopped`.
+    /// refusal: `target-unavailable`, `model-cold-start`, `spend-ceiling`, `model-not-pulled` or
+    /// `model-stopped`.
     TargetRefusal {
         /// No target can be had: the model is down, failed to start, or the embedding is
         /// stopping.
@@ -349,6 +360,9 @@ closed_enum! {
         /// Starting the model's pod would pass a spend ceiling of its provider account, or that
         /// account's spend is unknown. The pod was not started; the request is not held.
         SpendCeiling => "the model's pod was not started for a spend ceiling";
+        /// The model's Ollama server answered its list without the model: it is not pulled, and
+        /// the gateway pulls none.
+        NotPulled => "the model is not pulled on its Ollama server";
         /// The model's pod is not running, and the embedding starts none for a request: only
         /// the owner's wake does. The request is not held.
         Stopped => "the model's pod is not running and a request does not start it";
@@ -362,6 +376,7 @@ impl TargetRefusal {
             Self::Unavailable => RefusalCode::TargetUnavailable,
             Self::ColdStart => RefusalCode::ModelColdStart,
             Self::SpendCeiling => RefusalCode::SpendCeiling,
+            Self::NotPulled => RefusalCode::ModelNotPulled,
             Self::Stopped => RefusalCode::ModelStopped,
         }
     }

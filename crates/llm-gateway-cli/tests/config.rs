@@ -12,7 +12,9 @@ mod support;
 use llm_gateway::{
     AuthKind, BillingKind, CredentialHeader, IngressAuth, ReasoningEffort, ToolCalling,
 };
-use llm_gateway_cli::{Wire, load, vllm_keys};
+use llm_gateway_cli::{
+    HostedKind, OLLAMA_DEFAULT_BASE_URL, TokenPrice, Wire, load, parse, vllm_keys,
+};
 use llm_runpod::{CloudType, ConnectorsBinding, NetworkVolume, Thinking};
 use std::{
     fmt::Write as _,
@@ -2572,4 +2574,332 @@ fn sec_w01_type_mistakes(control: &str) -> Vec<(&'static str, String)> {
             ),
         ),
     ]
+}
+
+// --- Token prices (story:cost-per-call) ----------------------------------------------------------
+
+/// A pod model `small`, an anonymous endpoint `remote` and a Bedrock model `haiku`, each with
+/// the `token_price` lines given (none for an empty string).
+fn priced(small: &str, remote: &str, haiku: &str) -> String {
+    let table = |alias: &str, lines: &str| {
+        if lines.is_empty() {
+            String::new()
+        } else {
+            format!("\n[{alias}.token_price]\n{lines}")
+        }
+    };
+    format!(
+        "listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n\
+         [providers.runpod]\nkind = \"runpod-vllm\"\n\n\
+         [models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\n\
+         hf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\n\
+         gpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n{}\n\
+         [hosted.remote]\nwires = [\"chat\"]\nbase_url = \"http://127.0.0.1:9/v1\"\n\
+         auth_kind = \"anonymous\"\n{}\n\
+         [hosted.haiku]\nkind = \"bedrock\"\nregion = \"eu-central-1\"\n\
+         model_id = \"eu.anthropic.claude-fixture-v1:0\"\ncredential_source = \"container\"\n{}",
+        table("models.small", small),
+        table("hosted.remote", remote),
+        table("hosted.haiku", haiku),
+    )
+}
+
+/// The price `pairs` declare, read by the binary's own reader.
+fn token_price(at: &str, pairs: &[(&str, &str)]) -> TokenPrice {
+    let table = pairs
+        .iter()
+        .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+        .collect();
+    TokenPrice::from_table(at, &table).unwrap()
+}
+
+#[test]
+fn token_price_a_pod_a_hosted_and_a_bedrock_model_each_read_their_table() {
+    let deployment = parse(&priced(
+        "input = \"0.2\"\noutput = \"0.6\"\n",
+        "input = \"3\"\noutput = \"15\"\ncache_read = \"0.3\"\ncache_creation = \"3.75\"\n",
+        "input = \"1\"\noutput = \"5\"\ncache_read = \"0.1\"\n",
+    ))
+    .unwrap();
+    assert_eq!(
+        deployment.models["small"].token_price,
+        Some(token_price(
+            "models.small.token_price",
+            &[("input", "0.2"), ("output", "0.6")]
+        ))
+    );
+    assert_eq!(
+        deployment.hosted["remote"].token_price,
+        Some(token_price(
+            "hosted.remote.token_price",
+            &[
+                ("input", "3"),
+                ("output", "15"),
+                ("cache_read", "0.3"),
+                ("cache_creation", "3.75")
+            ]
+        ))
+    );
+    assert_eq!(
+        deployment.bedrock["haiku"].token_price,
+        Some(token_price(
+            "hosted.haiku.token_price",
+            &[("input", "1"), ("output", "5"), ("cache_read", "0.1")]
+        ))
+    );
+    // `price_per_hour_usd` is another key, and neither implies the other.
+    assert_eq!(deployment.models["small"].price_per_hour_micro_usd, None);
+    let unpriced = parse(&priced("", "", "")).unwrap();
+    assert_eq!(unpriced.models["small"].token_price, None);
+    assert_eq!(unpriced.hosted["remote"].token_price, None);
+    assert_eq!(unpriced.bedrock["haiku"].token_price, None);
+}
+
+/// Every value outside the rule is `config:value` naming `<table>.<alias>.token_price.<key>`
+/// and quoting no value: one llm's `Amount::parse` refuses, a negative one, one that is not a
+/// string, a missing `input` or `output`, and a key the table does not have.
+#[test]
+fn token_price_every_value_outside_its_rule_is_refused_by_its_key_and_quoted_nowhere() {
+    let ok = "input = \"3\"\noutput = \"15\"\n";
+    let cases: &[(&str, String, &str, &str)] = &[
+        (
+            "negative",
+            priced("", "input = \"-3.25\"\noutput = \"15\"\n", ""),
+            "hosted.remote.token_price.input ",
+            "-3.25",
+        ),
+        (
+            "ten decimal places",
+            priced("", ok, "input = \"1\"\noutput = \"5.0000000001\"\n"),
+            "hosted.haiku.token_price.output ",
+            "5.0000000001",
+        ),
+        (
+            "exponent",
+            priced("input = \"2e-7\"\noutput = \"1\"\n", "", ""),
+            "models.small.token_price.input ",
+            "2e-7",
+        ),
+        (
+            "leading zero",
+            priced("", "input = \"3\"\noutput = \"015\"\n", ""),
+            "hosted.remote.token_price.output ",
+            "015",
+        ),
+        (
+            "space",
+            priced(
+                "",
+                "input = \"3\"\noutput = \"15\"\ncache_read = \" 0.375\"\n",
+                "",
+            ),
+            "hosted.remote.token_price.cache_read ",
+            "0.375",
+        ),
+        (
+            "empty",
+            priced(
+                "",
+                "input = \"3\"\noutput = \"15\"\ncache_creation = \"\"\n",
+                "",
+            ),
+            "hosted.remote.token_price.cache_creation ",
+            "\"\"",
+        ),
+        (
+            "a number, not a string",
+            priced("input = 0.875\noutput = \"1\"\n", "", ""),
+            "models.small.token_price.input ",
+            "0.875",
+        ),
+        (
+            "a boolean, not a string",
+            priced("", "input = \"3\"\noutput = true\n", ""),
+            "hosted.remote.token_price.output ",
+            "true",
+        ),
+        (
+            "missing output",
+            priced("", "input = \"3\"\n", ""),
+            "hosted.remote.token_price.output ",
+            "\"3\"",
+        ),
+        (
+            "missing input",
+            priced("output = \"1\"\n", "", ""),
+            "models.small.token_price.input ",
+            "\"1\"",
+        ),
+        (
+            "llm's route key, which a token_price table does not have",
+            priced(
+                "",
+                "input = \"3\"\noutput = \"15\"\ncached_input = \"0.625\"\n",
+                "",
+            ),
+            "hosted.remote.token_price.cached_input ",
+            "0.625",
+        ),
+    ];
+    for (case, text, key, value) in cases {
+        let refusal = parse(text).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{case}: {refusal}");
+        assert!(refusal.message().starts_with(key), "{case}: {refusal}");
+        assert!(!refusal.message().contains(value), "{case}: {refusal}");
+    }
+    // A `token_price` that is not a table is outside the closed document.
+    let scalar = priced("", "", "").replace(
+        "auth_kind = \"anonymous\"\n",
+        "auth_kind = \"anonymous\"\ntoken_price = \"3\"\n",
+    );
+    assert_eq!(parse(&scalar).unwrap_err().code(), "config:schema");
+}
+
+// --- Ollama models (story:ollama-route) --------------------------------------------------------
+
+/// A document serving the Runpod model `small` of the base document and `[hosted.local]` with
+/// `kind = "ollama"` and `keys`.
+fn ollama(fixture: &Fixture, keys: &str) -> String {
+    format!(
+        "{}\n[hosted.local]\nkind = \"ollama\"\n{keys}",
+        base(fixture)
+    )
+}
+
+/// Acceptance 1: an Ollama table needs nothing but its kind. Its `base_url` is the server's root
+/// `http://127.0.0.1:11434`, it is served on all three wires, sent as its alias, sent no
+/// credential and billed `self-hosted`; `upstream_model` names the Ollama model the alias is
+/// sent as, and every default can be written.
+#[test]
+fn ollama_a_model_needs_only_its_kind_and_takes_the_servers_root_and_every_wire() {
+    let fixture = Fixture::new("ollama-defaults");
+    let deployment = load(&fixture.config(&ollama(&fixture, ""))).unwrap();
+    let local = &deployment.hosted["local"];
+    assert_eq!(local.kind, HostedKind::Ollama);
+    assert_eq!(local.base_url, "http://127.0.0.1:11434");
+    assert_eq!(local.base_url, OLLAMA_DEFAULT_BASE_URL);
+    assert_eq!(
+        local.wires,
+        vec![Wire::Chat, Wire::Responses, Wire::Messages]
+    );
+    assert_eq!(local.auth_kind, AuthKind::Anonymous);
+    assert_eq!(local.credential_file, None);
+    assert_eq!(local.credential_header, None);
+    assert_eq!(local.billing_kind, BillingKind::SelfHosted);
+    assert_eq!(local.upstream_model, "local");
+    assert_eq!(local.tool_calling, ToolCalling::Absent);
+    let written = load(&fixture.config(&ollama(
+        &fixture,
+        "base_url = \"http://127.0.0.1:11434/\"\nwires = [\"messages\", \"chat\"]\n\
+         auth_kind = \"anonymous\"\nbilling_kind = \"metered\"\nupstream_model = \"qwen2.5:1.5b\"\n\
+         context_window = 32768\ntool_calling = \"parsed\"\n",
+    )))
+    .unwrap();
+    let local = &written.hosted["local"];
+    assert_eq!(local.kind, HostedKind::Ollama);
+    assert_eq!(local.wires, vec![Wire::Messages, Wire::Chat]);
+    assert_eq!(local.billing_kind, BillingKind::Metered);
+    assert_eq!(local.upstream_model, "qwen2.5:1.5b");
+    assert_eq!(local.context_window, Some(32_768));
+    assert_eq!(local.tool_calling, ToolCalling::Parsed);
+    // An endpoint is still `endpoint`, billed `metered` unless it says otherwise.
+    let credential = fixture.endpoint_credential();
+    let endpoint = load(&fixture.config(&hosted(&fixture, &bearer_keys(&credential)))).unwrap();
+    assert_eq!(endpoint.hosted["remote"].kind, HostedKind::Endpoint);
+    assert_eq!(endpoint.hosted["remote"].billing_kind, BillingKind::Metered);
+}
+
+/// Acceptance 1: a `base_url` on a host that is not loopback follows a hosted model's rule for
+/// an endpoint sent no credential: `http` and `https` to any host are admitted. The root has no
+/// path: `/v1` and any other path are refused, as is a malformed URL, each `config:value`
+/// naming `hosted.local.base_url`.
+#[test]
+fn ollama_a_base_url_is_a_root_on_any_host_and_a_path_is_refused() {
+    let fixture = Fixture::new("ollama-base-url");
+    for url in [
+        "http://127.0.0.1:11434",
+        "http://localhost:11434/",
+        "http://[::1]:11434",
+        "http://ollama.internal.example:11434",
+        "http://10.0.0.7:11434",
+        "https://ollama.example.test",
+    ] {
+        let text = ollama(&fixture, &format!("base_url = \"{url}\"\n"));
+        let loaded = load(&fixture.config(&text));
+        assert!(loaded.is_ok(), "{url}: {:?}", loaded.err());
+    }
+    for url in [
+        "http://127.0.0.1:11434/v1",
+        "http://127.0.0.1:11434/api",
+        "http://127.0.0.1:11434/ollama/v1",
+        "ftp://127.0.0.1:11434",
+        "http://127.0.0.1:11434?x=1",
+        "http://user@127.0.0.1:11434",
+    ] {
+        let text = ollama(&fixture, &format!("base_url = \"{url}\"\n"));
+        let refusal = load(&fixture.config(&text)).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{url}: {refusal}");
+        assert!(
+            refusal.message().starts_with("hosted.local.base_url"),
+            "{url}: {}",
+            refusal.message()
+        );
+    }
+}
+
+/// Acceptance 1: an Ollama server is sent no credential. A credential key, a
+/// `credential_header` or an `auth_kind` other than `anonymous` is refused as an endpoint's keys
+/// are refused on a Bedrock model, `config:value` naming the key and quoting no value; a Bedrock
+/// key is refused as on an endpoint.
+#[test]
+fn ollama_a_credential_another_auth_kind_or_a_bedrock_key_is_refused_naming_the_key() {
+    let fixture = Fixture::new("ollama-refused-keys");
+    let credential = fixture.endpoint_credential();
+    let file = format!("credential_file = \"{}\"\n", credential.display());
+    for (key, lines) in [
+        ("credential_file", file.clone()),
+        (
+            "credential",
+            "credential = \"keychain:ollama/local\"\n".to_owned(),
+        ),
+        (
+            "credential_header",
+            "credential_header = \"x-api-key\"\n".to_owned(),
+        ),
+        ("auth_kind", "auth_kind = \"bearer\"\n".to_owned()),
+        ("auth_kind", format!("auth_kind = \"bearer\"\n{file}")),
+        ("auth_kind", "auth_kind = \"client\"\n".to_owned()),
+        ("auth_kind", "auth_kind = \"api-key\"\n".to_owned()),
+        ("region", "region = \"eu-central-1\"\n".to_owned()),
+        ("model_id", "model_id = \"qwen\"\n".to_owned()),
+        ("reasoning_efforts", "reasoning_efforts = []\n".to_owned()),
+        ("newest", "newest = \"qwen\"\n".to_owned()),
+    ] {
+        let refusal = load(&fixture.config(&ollama(&fixture, &lines))).unwrap_err();
+        assert_eq!(refusal.code(), "config:value", "{lines}: {refusal}");
+        assert!(
+            refusal
+                .message()
+                .starts_with(&format!("hosted.local.{key}")),
+            "{lines}: {}",
+            refusal.message()
+        );
+        assert!(
+            !refusal
+                .message()
+                .contains(&credential.display().to_string()),
+            "{}",
+            refusal.message()
+        );
+    }
+    // An unknown kind is outside the closed document.
+    let text = mutate(
+        &ollama(&fixture, ""),
+        "kind = \"ollama\"",
+        "kind = \"llama\"",
+    );
+    assert_eq!(
+        load(&fixture.config(&text)).unwrap_err().code(),
+        "config:schema"
+    );
 }

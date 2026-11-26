@@ -166,9 +166,29 @@ scrape_configs:
 The binary writes each usage record as one `tracing` event at `info`, which is the default level:
 
 ```text
-2026-10-08T21:19:58.427410Z  INFO usage: usage record model="small" wire=chat disposition=Refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=0
+2026-10-08T21:19:58.427410Z  INFO usage: usage record call=3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-1 model="small" wire=chat disposition=Refused outcome=refused refusal=target-unavailable status=503 response_bytes=0 duration_ms=0
 ```
 
-`RUST_LOG=warn` or `RUST_LOG=off` silences them; the lines the binary writes itself
-(`listening on`, `refused`, `stopped by`) stay. Token counts are always absent from a record for
-now; carrying the counts the target reported is planned.
+`call` is the id the call's answer carried in its `x-llm-gateway-call` header. A call whose
+answer reported its usage also carries `input_tokens`, `output_tokens`, `cache_read_tokens` and
+`cache_creation_tokens`, each only when reported; a refused call, like the one above, has none.
+A call to a model that declares a [token price](../reference/deployment-document.md#token-prices)
+also carries `cost_usd`, what it cost in USD, in its event and in its record.
+A streamed chat answer reports its usage only when the client sent
+`"stream_options":{"include_usage":true}`.
+
+The owner reads one call's record, in flight or ended, by that id:
+
+```bash
+curl -s -H "Authorization: Bearer $(cat owner-secret)" \
+  http://127.0.0.1:8080/v1/calls/3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-1
+```
+
+```json
+{"format":"llm-gateway.call/1","id":"3f9c0e5a7d1b42c8a6e4f0b9d2c71a85-1","state":"ended","model":"small","wire":"chat","disposition":"refused","outcome":"refused","refusal":"target-unavailable","status":503,"response_bytes":0,"duration_ms":0}
+```
+
+The gateway holds the last 1024 ended calls; an id it does not hold is `404 call-unknown`.
+
+`RUST_LOG=warn` or `RUST_LOG=off` silences the usage events; the lines the binary writes itself
+(`listening on`, `refused`, `stopped by`) stay.

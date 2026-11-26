@@ -36,6 +36,8 @@ llm-bedrock = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }
 llm-blocking = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }
 llm-chat = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }
 llm-core = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }
+# A call's cost (src/pricing.rs): llm's own price book, priced by llm's own rule.
+llm-cost = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }
 llm-credentials = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }
 llm-gateway = { package = "b10x-llm-gateway", path = "../llm-gateway" }
 llm-http = { git = "https://github.com/beyond10x/llm", tag = "0.24.0" }

@@ -33,12 +33,14 @@ types:
   - name: llm-gateway.upstream.AuthKind
     kind: enum
     variants: [Anonymous, Bearer, ApiKey, AwsSigv4, Client]
-  # What serves a hosted model: `Endpoint`, an endpoint speaking one of the three wires, or
-  # `Bedrock`, Amazon Bedrock Runtime reached through llm's Bedrock client (wire names
-  # `endpoint`, `bedrock`; the deployment document's `kind`, default `endpoint`).
+  # What serves a hosted model: `Endpoint`, an endpoint speaking one of the three wires,
+  # `Bedrock`, Amazon Bedrock Runtime reached through llm's Bedrock client, or `Ollama`, a model
+  # on an Ollama server, whose status is read from the server's own API (story:ollama-route)
+  # (wire names `endpoint`, `bedrock`, `ollama`; the deployment document's `kind`, default
+  # `endpoint`).
   - name: llm-gateway.upstream.HostedKind
     kind: enum
-    variants: [Endpoint, Bedrock]
+    variants: [Endpoint, Bedrock, Ollama]
   # The Bedrock Runtime operation a Bedrock model is called with (wire names `anthropic-invoke`,
   # `converse`). `AnthropicInvoke` is `InvokeModelWithResponseStream` with an Anthropic Messages
   # body, whose opaque state is that of llm's `messages` protocol; `Converse` is
@@ -135,6 +137,23 @@ entities:
   # tool calls on `Converse`, and thinking on a model id that is not Anthropic's. Prompt and
   # answer text are never logged. A request without an output token limit is given half the
   # context window (200000 when none is declared), at most 16384.
+  #
+  # DECIDED 2026-11-25 (story:ollama-route): a `[hosted.<alias>]` table with `kind = "ollama"`
+  # is a HostedEndpoint on an Ollama server: `base_url` the server's root (default
+  # `http://127.0.0.1:11434`, no path), `auth_kind` `Anonymous`, `wires` all three unless
+  # declared, `upstream_model` the Ollama model name the alias is sent as, `billing_kind`
+  # `SelfHosted` unless declared. Each declared wire is relayed byte for byte to Ollama's own
+  # path of it (`/v1/chat/completions`, `/v1/responses`, `/v1/messages`); a wire it does not
+  # declare is translated onto its first declared wire, as any endpoint's is. The gateway sends
+  # the server nothing but `GET /api/tags`, `GET /api/ps` (its status, llm-gateway.gateway
+  # LifecycleRoute), the declared wires' calls and, on the messages wire, the output clamp's
+  # `POST /v1/messages/count_tokens` (only for a model with a `context_window` and a request
+  # with `max_tokens`) or a client's own `POST /v1/messages/count_tokens`; never a request that
+  # pulls, creates, copies, deletes or pushes a model. A call to a model the server's
+  # `GET /api/tags` does not name is refused `model-not-pulled` before it is relayed. Its route
+  # inventory targets name provider `ollama` and account `local`. Observed through the `Relay`
+  # command's endpoint `kind` (llm-gateway.gateway) and by `ollama_*` in
+  # crates/llm-gateway-cli/src/hosted.rs and crates/llm-gateway-cli/tests/wake_status.rs.
   - name: llm-gateway.upstream.HostedEndpoint
     identity: {name: endpoint_id, type: String}
     fields:
@@ -206,7 +225,8 @@ entities:
       # empty (every wire is translated), `upstream_model` is the alias, `base_url` is
       # `https://bedrock-runtime.<region>.amazonaws.com` or the declared `endpoint`,
       # `auth_kind` is `AwsSigv4`, and it has no `credential_file`, `credential_header` or
-      # `headers`.
+      # `headers`. For an `Ollama` model `auth_kind` is `Anonymous`, and it has no
+      # `credential_file` or `credential_header`.
       - {name: kind, type: llm-gateway.upstream.HostedKind}
       # A Bedrock model's AWS Region, model or inference-profile id, and operation; absent for
       # an `Endpoint`.

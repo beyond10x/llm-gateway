@@ -3,6 +3,7 @@
 
 use crate::{
     auth::{Authenticated, OwnerToken, OwnerVerifier, Verdict},
+    calls::{self, Calls},
     dashboard::{Dashboard, Finished, Observed},
     error::RefusalCode,
     guide,
@@ -148,6 +149,8 @@ struct Shared {
     in_flight: AtomicU64,
     /// Every relayed call, in flight and finished, for `/dashboard` and `/metrics`.
     dashboard: Arc<Dashboard>,
+    /// Every model call by its id, in flight and the last ended ones, for `/v1/calls/{id}`.
+    calls: Arc<Calls>,
 }
 
 /// Composes and starts the gateway.
@@ -209,6 +212,7 @@ impl Gateway {
             completed: AtomicU64::new(0),
             in_flight: AtomicU64::new(0),
             dashboard: Arc::new(Dashboard::default()),
+            calls: Arc::new(Calls::default()),
         });
         let accepting = Arc::clone(&shared);
         let accept = thread::spawn(move || accept_loop(&listener, &accepting));
@@ -444,7 +448,7 @@ fn serve_scrape(mut stream: TcpStream, scraper: &Scraper) {
     };
     write_outcome(
         &mut stream,
-        &outcome,
+        (&outcome, None, None),
         head_only,
         Instant::now() + config.read_timeout,
     );
@@ -540,8 +544,22 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
         };
     // A usage record's duration runs from the end of the head (llm-gateway.telemetry).
     let begun = Instant::now();
+    // A request that will make a usage record is given its id now, before its body is read,
+    // and every answer head written to it carries the id (llm-gateway.gateway.CallHeader).
+    let ticket = match (decision.recorded, &shared.relay) {
+        (Some(wire), Some(_)) => Some(Calls::begin(
+            &shared.calls,
+            wire,
+            decision
+                .principal
+                .as_ref()
+                .map(|principal| principal.as_str().to_owned()),
+        )),
+        _ => None,
+    };
     let mut call = Call {
         begun: Some(begun),
+        ticket,
         ..Call::default()
     };
     let mut observed = Observed::default();
@@ -584,7 +602,11 @@ fn serve(mut stream: TcpStream, shared: &Shared) {
     };
     write_outcome(
         &mut stream,
-        &outcome,
+        (
+            &outcome,
+            call.model.as_deref(),
+            call.ticket.as_ref().map(calls::Ticket::id),
+        ),
         decision.head_only,
         Instant::now() + timeout,
     );
@@ -644,7 +666,23 @@ fn record(
     // A relayed answer that ended in its wire's terminal error failed under that code, though
     // its client was answered `200` and it stays relayed.
     let ended_by = refusal.or(call.failed_after_head);
+    // Only a relayed answer that ended as written has final counters to price
+    // (story:cost-per-call): not cut short by the client or by the upstream, and not ended in
+    // its wire's terminal error, told by a translator or read from the answer's bytes.
+    let priced = refusal.is_none()
+        && call.failed_after_head.is_none()
+        && !call.client_disconnected
+        && call.unfinished.is_none();
+    let cost_usd = call
+        .model
+        .as_deref()
+        .filter(|_| priced)
+        .and_then(|alias| relay.cost_usd(alias, wire, usage));
     let record = UsageRecord {
+        call: call
+            .ticket
+            .as_ref()
+            .map_or_else(String::new, |ticket| ticket.id().to_owned()),
         outcome: metrics::Outcome::of(ended_by, call.timed_out),
         model: call.model,
         wire,
@@ -658,11 +696,16 @@ fn record(
         cached_input_tokens: usage.cache_read_tokens,
         cache_creation_input_tokens: usage.cache_creation_tokens,
         reasoning_output_tokens: None,
+        cost_usd,
         response_bytes,
         duration_ms,
         profile: call.profile,
         principal: principal.map(|principal| principal.as_str().to_owned()),
     };
+    // Ended before the connection is closed, as the record is made.
+    if let Some(ticket) = call.ticket {
+        ticket.end(&record);
+    }
     relay.observe(&record);
     // The in-flight entry goes only once the call is recorded as finished.
     shared.dashboard.finish(
@@ -1447,10 +1490,31 @@ fn decide(
     if request.path == STATUS_LIST {
         return (status_list(request, shared), None);
     }
+    if let Some(id) = request.path.strip_prefix(calls::PREFIX) {
+        return (call_record(request, shared, id), None);
+    }
     if request.path == METRICS {
         return (scrape(request, shared), None);
     }
     (inspect(request, shared, &owner), None)
+}
+
+/// `GET /v1/calls/{id}` (llm-gateway.gateway.CallRoute): the owner's record of call `id`, with
+/// or without a relay and whatever the readiness. An id the gateway does not hold, whatever
+/// the reason, is `call-unknown`. The record is copied out of the store before it is written.
+fn call_record(request: &Request<'_>, shared: &Shared, id: &str) -> Outcome {
+    if !request.is_read() {
+        return Outcome::NotAllowed("GET, HEAD");
+    }
+    if declares_body(request) {
+        return Outcome::Refused(RefusalCode::BodyNotAllowed);
+    }
+    shared
+        .calls
+        .render(id)
+        .map_or(Outcome::Refused(RefusalCode::CallUnknown), |record| {
+            Outcome::Public(JSON, record)
+        })
 }
 
 /// `GET /metrics` (row R4): the owner's counters, under inspection's method, body and
@@ -1810,8 +1874,16 @@ fn status_body(status: &str) -> String {
     writer.finish()
 }
 
-fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, deadline: Instant) {
-    let refused = |code: RefusalCode| (code.status(), refusal_body(code), None);
+/// Writes `outcome`, the answer to a call on the relayed model `alias` when one is known: a
+/// `model-not-pulled` refusal names it (story:ollama-route). A call with an id (`call`) names it
+/// in the call header.
+fn write_outcome(
+    stream: &mut TcpStream,
+    (outcome, alias, call): (&Outcome, Option<&str>, Option<&str>),
+    head_only: bool,
+    deadline: Instant,
+) {
+    let refused = |code: RefusalCode| (code.status(), refusal_body(code, alias), None);
     let (status, body, allow) = match outcome {
         Outcome::Served(body) | Outcome::Metrics(body) | Outcome::Public(_, body) => {
             (200, body.clone(), None)
@@ -1822,7 +1894,7 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
         Outcome::Refused(code) => refused(*code),
         Outcome::NotAllowed(allow) => {
             let code = RefusalCode::MethodNotAllowed;
-            (code.status(), refusal_body(code), Some(*allow))
+            (code.status(), refusal_body(code, None), Some(*allow))
         }
         // `serve` relays an admitted request before anything is written; one that reaches
         // here had no relay to go to.
@@ -1840,7 +1912,14 @@ fn write_outcome(stream: &mut TcpStream, outcome: &Outcome, head_only: bool, dea
     head.push_str(&status.to_string());
     head.push(' ');
     head.push_str(reason_phrase(status));
-    head.push_str("\r\ncontent-type: ");
+    head.push_str("\r\n");
+    if let Some(call) = call {
+        head.push_str(calls::HEADER);
+        head.push_str(": ");
+        head.push_str(call);
+        head.push_str("\r\n");
+    }
+    head.push_str("content-type: ");
     head.push_str(content_type);
     head.push_str("\r\n");
     head.push_str("content-length: ");
@@ -1886,7 +1965,10 @@ pub(crate) fn write_by(stream: &mut TcpStream, mut bytes: &[u8], deadline: Insta
     true
 }
 
-fn refusal_body(code: RefusalCode) -> String {
+/// The refusal body of `code`: its code and its fixed message. A `model-not-pulled` refusal of a
+/// call on `alias` names the alias after the fixed message, as `<message>: <alias>`; no other
+/// refusal carries more than its fixed message.
+fn refusal_body(code: RefusalCode, alias: Option<&str>) -> String {
     let mut writer = crate::json::Writer::new();
     writer.begin_object();
     writer.key("error");
@@ -1894,7 +1976,10 @@ fn refusal_body(code: RefusalCode) -> String {
     writer.key("code");
     writer.string(code.wire());
     writer.key("message");
-    writer.string(code.reason());
+    match alias.filter(|_| code == RefusalCode::ModelNotPulled) {
+        Some(alias) => writer.string(&format!("{}: {alias}", code.reason())),
+        None => writer.string(code.reason()),
+    }
     writer.end_object();
     writer.end_object();
     writer.finish()

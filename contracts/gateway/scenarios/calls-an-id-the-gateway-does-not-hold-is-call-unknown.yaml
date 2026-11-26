@@ -1,0 +1,45 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: calls-an-id-the-gateway-does-not-hold-is-call-unknown
+summary: an id of another form, an id never given out, an empty id and an id an earlier gateway gave out are each call-unknown with one answer that does not say which
+timeline:
+- at: '2026-11-25T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[{"alias":"small","upstream_model":"served-small","wires":["chat"]}],"pods":[[{"status":200,"content_type":"application/json","chunks":["{\"id\":\"chat-1\"}"]}]],"steps":[{"step":"mark_ready"},{"step":"request","path":"/v1/chat/completions","body":"{\"model\":\"small\",\"messages\":[]}"},{"step":"request","method":"GET","path":"/v1/calls/<call>x","body":"","call_from":1},{"step":"request","method":"GET","path":"/v1/calls/a.b","body":""},{"step":"request","method":"GET","path":"/v1/calls/","body":""},{"step":"request","method":"GET","path":"/v1/calls/<call>/more","body":"","call_from":1},{"step":"restart"},{"step":"mark_ready"},{"step":"request","method":"GET","path":"/v1/calls/<call>","body":"","call_from":1}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: null
+    results:
+    - 'ok'
+    - '200 relayed'
+    - '404 call-unknown'
+    - '404 call-unknown'
+    - '404 call-unknown'
+    - '404 call-unknown'
+    - 'ok'
+    - 'ok'
+    - '404 call-unknown'
+    calls:
+    - 'new'
+    - 'absent'
+    - 'absent'
+    - 'absent'
+    - 'absent'
+    - 'absent'
+    bodies:
+    - '{"id":"chat-1"}'
+    - '{"error":{"code":"call-unknown","message":"the gateway holds no call with that id"}}'
+    - '{"error":{"code":"call-unknown","message":"the gateway holds no call with that id"}}'
+    - '{"error":{"code":"call-unknown","message":"the gateway holds no call with that id"}}'
+    - '{"error":{"code":"call-unknown","message":"the gateway holds no call with that id"}}'
+    - '{"error":{"code":"call-unknown","message":"the gateway holds no call with that id"}}'
+    records:
+    - 'model=small wire=chat disposition=Relayed refusal=absent status=200 target_status=200 response_bytes=15 duration_ms=bounded tokens=absent'

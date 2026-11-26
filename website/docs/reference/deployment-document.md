@@ -13,7 +13,7 @@ any level is refused as `config:schema`, naming the line and the keys allowed th
 outside its rule is refused as `config:value`. Either refusal exits 1 before anything is bound.
 
 ```text
-b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `profiles`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `vllm_api_key`, `tool_calling`, `price_per_hour_usd`, `start_on_request`
+b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_file`, expected one of `provider`, `wires`, `context_window`, `hf_model`, `image`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util`, `profiles`, `disk_gb`, `thinking`, `reasoning_effort`, `sampling`, `extra_vllm_args`, `network_volume_id`, `volume_mount_path`, `data_center_ids`, `idle_timeout_minutes`, `start_wait_seconds`, `request_hold_seconds`, `vllm_api_key_file`, `vllm_api_key`, `tool_calling`, `price_per_hour_usd`, `start_on_request`, `token_price`
 ```
 
 The document holds no Runpod API key: with a `connectors` table that key stays in the connectors
@@ -92,6 +92,7 @@ a provider that declares a ceiling starts no pod and every start is refused `spe
 | `vllm_api_key` | absent | A [`keychain:<service>/<account>`](#keychain-references) reference to that key, in place of the file: refused beside `vllm_api_key_file`, and as `vllm-api-key:<rule>` when the entry cannot be read. |
 | `price_per_hour_usd` | absent | Above 0, at most 1000: the most the model's pod costs per hour on any of its GPU types, which the spend check prices it by. Required once a provider declares a spend ceiling. |
 | `start_on_request` | `false` | `true` or `false`. `false`: a model call never starts the model's pod; a call while the pod is stopped or stopping is refused `model-stopped` (503) at once, and only the owner's wake starts it. `true`: a call starts the pod as a wake would and is held while it starts. `true` is refused `config:value`, naming the model and the missing cap, unless the model's provider declares `daily_cap_usd`. |
+| `[models.<alias>.token_price]` | absent | What the model's tokens cost, which each call's usage record names as `cost_usd` ([token prices](#token-prices)). Unrelated to `price_per_hour_usd`. |
 
 Without `profiles`, `gpu_types`, `max_model_len`, `max_num_seqs`, `gpu_util` and
 `extra_vllm_args` are the model's one profile, named `default`. With it, each
@@ -141,6 +142,7 @@ when a status is read: `GET <base path>/models` with its credential, `ready` on 
 | `retry_max_attempts` | 4 | On a `client` endpoint only, 1 to 10: the most attempts a call makes on a 429, 502, 503 or 529. A client that sends `x-stainless-retry-count` retries on its own and gets one attempt. |
 | `retry_max_wait` | 60 | On a `client` endpoint only, 0 to 600 seconds: the most a call waits for its retries in all. |
 | `compact_window` | absent | 100000 to 1000000 tokens: the auto-compact window `b10x-llm-gateway claude` gives Claude Code for this model. |
+| `[hosted.<alias>.token_price]` | absent | What the model's tokens cost, on every kind of hosted model ([token prices](#token-prices)). |
 
 Every wire path starts `/v1/`. A `base_url` without a path, or with only `/`, is asked on the
 wire path itself. A base path replaces the wire path's leading `/v1`, so a `base_url` written
@@ -222,7 +224,8 @@ upstream_model = "vendor-large-2"
 
 ### `kind = "bedrock"` {#bedrock-models}
 
-`kind` is `endpoint` by default. A table with `kind = "bedrock"` declares a model Amazon Bedrock
+`kind` is `endpoint` by default, or `bedrock` or [`ollama`](#ollama-models). A table with
+`kind = "bedrock"` declares a model Amazon Bedrock
 serves instead: it takes `region`, `model_id` and `credential_source = "container"`, and
 optionally `api`, `endpoint`, `billing_kind`, `context_window`, `max_output_tokens` (1 to the
 window, which it is when undeclared; it bounds the output a turn naming none is given),
@@ -246,6 +249,37 @@ credential_source = "container"
 
 The model id above is an example and is unverified.
 
+### `kind = "ollama"` {#ollama-models}
+
+A table with `kind = "ollama"` declares a model on an Ollama server. It is a hosted endpoint
+with these keys and defaults; every other endpoint key keeps its rule above, and a Bedrock key is
+refused as on an endpoint.
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `base_url` | `http://127.0.0.1:11434` | The server's root: `http://` or `https://` and a `host[:port]`, on any host, with no path. A path, `/v1` included, is `config:value`: the gateway adds `/v1` and `/api` itself. |
+| `wires` | all three | Each named wire is relayed to Ollama's own path: `/v1/chat/completions`, `/v1/responses`, `/v1/messages`. A wire left out is translated onto the first one named. |
+| `upstream_model` | the alias | The Ollama model name, such as `qwen2.5:1.5b`. A name without a tag is `<name>:latest`. |
+| `auth_kind` | `anonymous` | `anonymous` only: an Ollama server is sent no credential. |
+| `credential_file`, `credential`, `credential_header` | absent | Refused. |
+| `model_prefix` | absent | Refused: the model's status is read for `upstream_model` alone, so the model serves its alias alone. |
+| `billing_kind` | `self-hosted` | As for an endpoint. |
+
+Every refusal is `config:value` naming the key, and quotes no value. The model's status is read
+from the server's own lists, never `/v1/models`: `GET /api/tags`, then `GET /api/ps` when the
+tags list the model. It is `ready` when the running models list it, `stopped` `not-loaded` when
+only the tags do (a call loads it), `unreachable` `model-not-pulled` when the tags do not, and
+`unreachable` `no-answer` when the server does not answer. A call to a model that is not pulled is
+refused `503 model-not-pulled`, its message naming the alias. The gateway never asks the server to
+pull, create, copy, delete or push a model. [Serve a local Ollama
+model](../guides/serve-a-local-ollama-model.md) walks through it.
+
+```toml
+[hosted.local]
+kind = "ollama"
+upstream_model = "qwen2.5:1.5b"
+```
+
 ### The client's own credential {#client-routes}
 
 `auth_kind = "client"` is admitted only for `base_url = "https://api.anthropic.com"`, on
@@ -263,6 +297,40 @@ billing_kind = "subscription"
 tool_calling = "parsed"
 model_prefix = "claude-"
 ```
+
+## `token_price` {#token-prices}
+
+`[models.<alias>.token_price]` and `[hosted.<alias>.token_price]` (every kind) declare what the
+model's tokens cost, in USD per 1000000 tokens. Each call's usage record then names what the
+call cost, `cost_usd`, priced by llm's own pricing code; the binary writes it as the `cost_usd`
+field of its `usage` event, and the record `GET /v1/calls/{id}` answers names it as `cost_usd`, a
+JSON string such as `"0.000138"`, after its token keys.
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `input` | required | Uncached input tokens. |
+| `output` | required | Output tokens, reasoning included. |
+| `cache_read` | absent | Input tokens read from the cache. |
+| `cache_creation` | absent | Input tokens written to the cache. |
+
+Each value is a quoted decimal string llm's `Amount` reads: no sign, no exponent, no leading
+zero, no space, at most nine decimal places. A value outside that rule, a number that is not a
+string, a missing `input` or `output` and any other key are refused `config:value` naming
+`<table>.<alias>.token_price.<key>`, never quoting the value; a `token_price` that is not a table
+is `config:schema`.
+
+```toml
+[hosted.remote.token_price]
+input = "3"
+output = "15"
+cache_read = "0.3"
+cache_creation = "3.75"
+```
+
+A call has a cost only when its answer ended as written, its answer reported its input and its
+output tokens, and every class with a count above 0 has a rate. Otherwise `cost_usd` is absent,
+never `0` and never an estimate: cache reads reported against a price without `cache_read`
+leave the call without a cost, while a count of 0 in a class without a rate costs nothing.
 
 ## `[token_review]` {#token-review}
 
@@ -360,7 +428,8 @@ A changed routes document takes a restart.
 | --- | --- |
 | The file is read through the trusted-file reader (below): at most 2 MiB, llm's own bound, and not group- or world-writable. | `config:<rule>`, its message starting `routes:` and naming the rule, never the path |
 | A document llm refuses: malformed YAML, an unknown field, a repeated key, an unknown format, protocol, auth kind or secret source, a literal secret, a relative `file:` path, a route to an undeclared endpoint. | `config:value`, its message `routes <llm's message>`, which names a field, endpoint or route and never a value |
-| A Bedrock endpoint (`bedrock: {region: ..}`), a route's `aliases` and a route's `price`, which llm admits and the gateway does not serve, are refused, never ignored: a Bedrock model is a [`kind = "bedrock"`](#bedrock-models) hosted model, and the gateway prices no routed call. | `config:value` naming `routes.<endpoint>`, `routes.<route>.aliases` or `routes.<route>.price` |
+| A Bedrock endpoint (`bedrock: {region: ..}`) and a route's `aliases`, which llm admits and the gateway does not serve, are refused, never ignored: a Bedrock model is a [`kind = "bedrock"`](#bedrock-models) hosted model. | `config:value` naming `routes.<endpoint>` or `routes.<route>.aliases` |
+| A route's `price` is read as llm writes it, per 1000000 tokens: `input`, `cached_input`, `cache_creation_input` and `output` are the [token price](#token-prices)'s `input`, `cache_read`, `cache_creation` and `output`, and a class it leaves out has no rate. Its `currency` is `USD`. | `config:value` naming `routes.<route>.price.currency`, quoting no value |
 | A credentialed endpoint's `auth.secret` is a `file:` reference, an absolute path or `~/<path>` resolved against `HOME`, or a [`keychain:<service>/<account>`](#keychain-references) reference. An `env:` secret is refused: the gateway reads credentials from trusted files and the OS keychain only. | `config:value` naming `routes.<endpoint>.auth.secret` |
 | The key file or keychain entry is read once at start, as a hosted model's `credential_file` or `credential` is. | `endpoint-credential:<rule>`, its message starting `routes.<endpoint>.auth.secret:` and naming the rule, never the path |
 | `base_url` names the endpoint's API path, such as `https://api.anthropic.com/v1`: llm appends the wire path to it, and the gateway replaces the wire path's leading `/v1` with it, and the two agree only when the URL has a path. A URL without a path, a path outside the base-path rule of [`[hosted.<alias>]`](#hosted-models), or a credential over `http` to a host that is not loopback is refused. | `config:value` naming `routes.<endpoint>.base_url` |

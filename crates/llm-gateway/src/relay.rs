@@ -17,7 +17,7 @@ use crate::{
         TargetRefusal, TokenError,
     },
     inventory::Label,
-    metrics::{Metrics, NoRecords, UsageRecord, UsageRecords},
+    metrics::{CallPricing, Metrics, NoRecords, UsageRecord, UsageRecords},
     review::{CallerReview, CallerToken, Review},
     translate::{
         AnswerFraming, TranslatedAnswer, TranslationFailure, TranslationRequest, Translator,
@@ -795,11 +795,19 @@ pub enum ModelKind {
     Route,
     /// A Bedrock model.
     Bedrock,
+    /// A model on an Ollama server, declared as a hosted model of `kind = "ollama"`.
+    Ollama,
 }
 
 impl ModelKind {
     /// Every kind, in declaration order.
-    pub const ALL: [Self; 4] = [Self::Pod, Self::Hosted, Self::Route, Self::Bedrock];
+    pub const ALL: [Self; 5] = [
+        Self::Pod,
+        Self::Hosted,
+        Self::Route,
+        Self::Bedrock,
+        Self::Ollama,
+    ];
 
     /// The code `GET /v1/status` answers.
     pub const fn code(self) -> &'static str {
@@ -808,6 +816,7 @@ impl ModelKind {
             Self::Hosted => "hosted",
             Self::Route => "route",
             Self::Bedrock => "bedrock",
+            Self::Ollama => "ollama",
         }
     }
 }
@@ -897,6 +906,26 @@ pub struct RelayModel {
     compact_window: Option<u64>,
     kind: ModelKind,
     no_call_start: bool,
+    pricing: Option<Pricing>,
+}
+
+/// A model's [`CallPricing`], compared by identity: two declarations are equal when they name
+/// the same pricing.
+#[derive(Clone)]
+struct Pricing(Arc<dyn CallPricing>);
+
+impl PartialEq for Pricing {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Eq for Pricing {}
+
+impl fmt::Debug for Pricing {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter.write_str("Pricing")
+    }
 }
 
 impl RelayModel {
@@ -932,7 +961,23 @@ impl RelayModel {
             compact_window: None,
             kind: ModelKind::default(),
             no_call_start: false,
+            pricing: None,
         })
+    }
+
+    /// Declares what the model's calls cost: each call relayed whose answer ended as written
+    /// is priced by `pricing`, and its [`UsageRecord::cost_usd`] is what it answers
+    /// (story:cost-per-call). Undeclared, no record of the model carries a cost.
+    #[must_use]
+    pub fn with_pricing(mut self, pricing: Arc<dyn CallPricing>) -> Self {
+        self.pricing = Some(Pricing(pricing));
+        self
+    }
+
+    /// What a call of the model on `wire` whose answer reported `usage` cost, by its declared
+    /// pricing; `None` without one.
+    pub(crate) fn cost_usd(&self, wire: Wire, usage: Usage) -> Option<String> {
+        self.pricing.as_ref()?.0.cost_usd(wire, usage)
     }
 
     /// Declares what serves the model, which `GET /v1/status` names
@@ -1380,6 +1425,13 @@ impl Relay {
                 })
                 .collect()
         })
+    }
+
+    /// What a call of `alias` on `wire` whose answer reported `usage` cost, by the pricing the
+    /// model declares ([`RelayModel::with_pricing`]); `None` for an alias no model has and a
+    /// model that declares none.
+    pub(crate) fn cost_usd(&self, alias: &str, wire: Wire, usage: Usage) -> Option<String> {
+        self.models.get(alias)?.cost_usd(wire, usage)
     }
 
     /// Feeds a record to the counters, then hands it to the embedding.
@@ -1919,6 +1971,9 @@ pub(crate) struct Call {
     pub(crate) usage: Usage,
     /// The client stopped reading before the answer's last byte.
     pub(crate) client_disconnected: bool,
+    /// How the answer, its head written, fell short of its end, when it did: the call has no
+    /// cost, and its outcome is unchanged.
+    pub(crate) unfinished: Option<Unfinished>,
     /// The `retry-after` a 429 or 5xx answer of the target carried.
     pub(crate) retry_after: Option<String>,
     /// The authority of the acquired target.
@@ -1938,9 +1993,38 @@ pub(crate) struct Call {
     /// The code under which a translated answer, its head already written, ended in its wire's
     /// terminal error ([`TranslatedAnswer::failed`]): the call's outcome is that code's.
     pub(crate) failed_after_head: Option<RefusalCode>,
+    /// The call's id and its `in-flight` record (story:call-id-and-usage-record); `None` for a
+    /// request that makes no usage record.
+    pub(crate) ticket: Option<crate::calls::Ticket>,
+}
+
+/// How an answer whose head was written fell short of its end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Unfinished {
+    /// The upstream cut it short: a read of its body failed after the head was written
+    /// (docs/gateway.md, relay step 9: "an answer cut short").
+    CutShort,
+    /// It carried its wire's terminal error, read from its bytes on every relay path
+    /// ([`UsageScanner::terminal_error`]).
+    TerminalError,
 }
 
 impl Call {
+    /// Notes the terminal error `scanner` read, unless the answer already fell short otherwise.
+    pub(crate) fn note_terminal_error(&mut self, scanner: &UsageScanner) {
+        if scanner.terminal_error() {
+            self.unfinished.get_or_insert(Unfinished::TerminalError);
+        }
+    }
+
+    /// The `x-llm-gateway-call` line every answer head written to this call carries, with its
+    /// CRLF; empty for a request given no id.
+    pub(crate) fn id_line(&self) -> String {
+        self.ticket.as_ref().map_or_else(String::new, |ticket| {
+            format!("{}: {}\r\n", crate::calls::HEADER, ticket.id())
+        })
+    }
+
     /// Milliseconds since `begun`.
     fn since_begun(&self) -> Option<u64> {
         self.begun
@@ -1989,6 +2073,9 @@ fn served_model<'r>(
     call.model = Some(model.alias.as_str().to_string());
     if let Some(progress) = &call.progress {
         progress.route(model.alias.as_str());
+    }
+    if let Some(ticket) = &call.ticket {
+        ticket.model(model.alias.as_str());
     }
     let translator = if model.wires.contains(&wire) && !model.translated_only {
         None
@@ -2093,6 +2180,7 @@ fn translate(
     answer.call.response_bytes = answer.written;
     answer.call.client_disconnected = answer.gone;
     answer.call.usage = answer.scanner.usage();
+    answer.call.note_terminal_error(&answer.scanner);
     // The target is released only now, after the last byte: row L12's hold.
     drop(target);
     Ok(())
@@ -2162,7 +2250,8 @@ impl TranslatedAnswer for ClientAnswer<'_> {
             AnswerFraming::Stream => String::new(),
         };
         let head = format!(
-            "HTTP/1.1 {status} {phrase}\r\n{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n"
+            "HTTP/1.1 {status} {phrase}\r\n{id}{content_type}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+            id = self.call.id_line(),
         );
         self.write(head.as_bytes())
     }
@@ -2860,6 +2949,7 @@ fn stream_answer(
     let written = relay_pieces(stream, input, head, limits, chunked, call, &mut scanner);
     call.response_bytes = written;
     call.usage = scanner.usage();
+    call.note_terminal_error(&scanner);
 }
 
 /// [`stream_answer`]'s writing: the head, then every piece, scanned for usage as it passes.
@@ -2883,8 +2973,9 @@ fn relay_pieces(
         ""
     };
     let start = format!(
-        "HTTP/1.1 {} {phrase}\r\n{content_type}{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
+        "HTTP/1.1 {} {phrase}\r\n{id}{content_type}{relayed}cache-control: no-store\r\nconnection: close\r\n{framing}\r\n",
         head.status,
+        id = call.id_line(),
         relayed = head.relayed,
     );
     let mut written: u64 = 0;
@@ -2922,7 +3013,10 @@ fn relay_pieces(
                 }
                 return written;
             }
-            Err(_) => return written,
+            Err(_) => {
+                call.unfinished = Some(Unfinished::CutShort);
+                return written;
+            }
         }
     }
 }
@@ -2957,6 +3051,7 @@ mod tests {
                 TargetRefusal::Unavailable => RefusalCode::TargetUnavailable,
                 TargetRefusal::ColdStart => RefusalCode::ModelColdStart,
                 TargetRefusal::SpendCeiling => RefusalCode::SpendCeiling,
+                TargetRefusal::NotPulled => RefusalCode::ModelNotPulled,
                 TargetRefusal::Stopped => RefusalCode::ModelStopped,
             };
             assert_eq!(refusal.refusal(), expected);

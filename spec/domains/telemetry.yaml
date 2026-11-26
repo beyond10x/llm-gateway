@@ -151,6 +151,16 @@ types:
   - name: llm-gateway.telemetry.Outcome
     kind: enum
     variants: [Ok, UpstreamError, Timeout, Refused]
+  # DECIDED 2026-11-25 (story:call-id-and-usage-record): where a CallRecord is. `in-flight` from
+  # the moment its id is given out until the last byte of its answer or its refusal is written,
+  # then `ended`. Written as the `state` key of the record.
+  - name: llm-gateway.telemetry.CallState
+    kind: enum
+    attributes:
+      - {name: label, type: String}
+    variants:
+      - {name: InFlight, attributes: {label: in-flight}}
+      - {name: Ended, attributes: {label: ended}}
 entities:
   - name: llm-gateway.telemetry.MetricSeries
     identity: {name: name, type: String}
@@ -162,6 +172,12 @@ entities:
   - name: llm-gateway.telemetry.UsageRecord
     identity: {name: record_id, type: String}
     fields:
+      # DECIDED 2026-11-25 (story:call-id-and-usage-record): the id the call was given
+      # (llm-gateway.gateway.CallHeader), which every answer to it carried and its CallRecord
+      # is read by. The binary writes it as the `call` field of the record's `usage` event, with
+      # `input_tokens`, `output_tokens`, `cache_read_tokens` and `cache_creation_tokens` under
+      # the CallRecord's names, each left out when absent.
+      - {name: call, type: String}
       # The relayed model's alias, as the client named it in the body's top-level `model`.
       # Absent when the body named no relayed model: a refusal before the body was read, and
       # `body-incomplete`, `body-not-json`, `model-absent` and `model-unknown`. A name no model
@@ -204,9 +220,66 @@ entities:
       - {name: cached_input_tokens, type: 'Optional<Integer>'}
       - {name: cache_creation_input_tokens, type: 'Optional<Integer>'}
       - {name: reasoning_output_tokens, type: 'Optional<Integer>'}
+      # DECIDED 2026-11-26 (story:cost-per-call): what the call cost in USD, by the token price
+      # its model declares (llm-gateway.deployment.TokenPriceDeclaration, or a route's
+      # RoutePriceDeclaration), computed by llm 0.24.0's own pricing (`llm_cost::PriceBook::quote`,
+      # each class's line rounded up once to a nanodollar, the lines summed) and written as llm
+      # writes an `Amount`: a decimal string without trailing zeros (`0.000135`, `0`). Present
+      # only for a call that was relayed (no `refusal`) and whose answer ended as written (not
+      # cut by the client leaving, not cut short by its upstream, not ended in its wire's
+      # terminal error), whose model declares
+      # a price, whose answer reported both its input and its output tokens, and where every
+      # token class the answer reported a non-zero count of has a rate. Otherwise absent: never
+      # `0` in place of an unknown, never a lower bound, never an estimate. The classes are
+      # llm's: input not read from or written to a cache, cache read, cache creation, output.
+      # On the messages wire `input_tokens` leaves the cache classes out; on chat and responses
+      # it counts them in. A cache class the answer did not report counts no tokens. The binary writes it as the `cost_usd` field of
+      # the record's `usage` event.
+      - {name: cost_usd, type: 'Optional<Decimal>'}
       # Decoded body bytes of the target's answer relayed to the client (llmgw
       # `route_response_bytes_total`); 0 for a refusal, whose body is the gateway's own.
       - {name: response_bytes, type: Integer}
       # From the end of the request head to the last byte relayed or the refusal written.
       - {name: duration_ms, type: Integer}
     lifecycle: {initial: Recorded, states: [Recorded], terminal: [Recorded]}
+  # DECIDED 2026-11-25 (story:call-id-and-usage-record): one model call as the owner reads it by
+  # its id at `GET /v1/calls/{id}` (llm-gateway.gateway.CallRoute), one JSON object
+  # `{"format":"llm-gateway.call/1", …}` with its keys in the order of these fields. A value the
+  # call's UsageRecord does not carry is an absent key, never 0 and never an estimate.
+  # `in-flight`: `id`, `state`, `model` once the body named a relayed model, `wire` and
+  # `principal`. `ended`: the UsageRecord's values, with `cache_read_tokens` from its
+  # `cached_input_tokens` and `cache_creation_tokens` from its `cache_creation_input_tokens`;
+  # `reasoning_output_tokens` and `reported_model` are not in the record. The gateway holds every
+  # in-flight call and the last 1024 ended ones (bound `ended-calls-held`), the oldest ended one
+  # dropped first; a dropped call is `call-unknown`. A gateway composed again holds none of the
+  # earlier calls (`a1_a_gateway_composed_again_gives_out_no_earlier_id_and_holds_none` in
+  # crates/llm-gateway/tests/observability/calls.rs).
+  # DECIDED 2026-11-26 (story:cost-per-call): `cost_usd`, after the token keys, is the
+  # UsageRecord's `cost_usd` written as a JSON string, the decimal llm writes for an amount
+  # (`"0.0001299"`), so no reader parses money as a float; absent when the UsageRecord has none
+  # and on an `in-flight` record (`a2_a_priced_calls_record_names_its_cost_after_the_token_keys_
+  # and_an_unpriced_ones_none` in crates/llm-gateway/tests/observability/calls.rs).
+  # ESS-LIMIT: an entity's lifecycle takes the wire name `state`, so the field that the record
+  # writes as its key `state` is declared `call_state` here; the record is observed, never moved
+  # by a command, and its lifecycle is that of an observation.
+  - name: llm-gateway.telemetry.CallRecord
+    identity: {name: id, type: String}
+    fields:
+      - {name: call_state, type: llm-gateway.telemetry.CallState}
+      - {name: model, type: 'Optional<String>'}
+      - {name: wire, type: llm-gateway.gateway.Wire}
+      - {name: disposition, type: 'Optional<llm-gateway.telemetry.Disposition>'}
+      - {name: outcome, type: 'Optional<llm-gateway.telemetry.Outcome>'}
+      - {name: refusal, type: 'Optional<llm-gateway.gateway.Refusal>'}
+      - {name: status, type: 'Optional<Integer>'}
+      - {name: target_status, type: 'Optional<Integer>'}
+      - {name: input_tokens, type: 'Optional<Integer>'}
+      - {name: output_tokens, type: 'Optional<Integer>'}
+      - {name: cache_read_tokens, type: 'Optional<Integer>'}
+      - {name: cache_creation_tokens, type: 'Optional<Integer>'}
+      - {name: cost_usd, type: 'Optional<Decimal>'}
+      - {name: response_bytes, type: 'Optional<Integer>'}
+      - {name: duration_ms, type: 'Optional<Integer>'}
+      - {name: profile, type: 'Optional<String>'}
+      - {name: principal, type: 'Optional<String>'}
+    lifecycle: {initial: Observed, states: [Observed], terminal: [Observed]}

@@ -21,7 +21,7 @@ The contracts live in this tree:
 it can replace llmgw, row by row). [docs/model-profiles.md](docs/model-profiles.md) holds two proven
 model declarations, and the root `Dockerfile` builds a distroless, non-root image of the binary.
 
-**Status: 0.24.0, released 2026-11-21 as a source release with the gateway image; tested
+**Status: 0.25.0, released 2026-11-26 as a source release with the gateway image; tested
 against in-process fakes and loopback; nothing is deployed or qualified.**
 [CHANGELOG.md](CHANGELOG.md) lists every release and what is unreleased.
 
@@ -44,7 +44,7 @@ never against Runpod. It also relays a model declared as `[hosted.<alias>]` to a
 at an `http` or `https` base URL; that path has run only against loopback endpoints, never
 against a vendor API. A `[hosted.<alias>] kind = "bedrock"` model is translated and sent to
 Amazon Bedrock with llm's Bedrock client, signed from the container credentials endpoint (Amazon EKS Pod
-Identity), carrying a messages client's `anthropic-beta` names to InvokeModel only when the model's `anthropic_beta` list allows them and a client's reasoning effort as `output_config.effort` when the model's `reasoning_efforts` holds it (refused otherwise, never dropped); that path has run only against a fixture Bedrock Runtime, never against AWS. The hosting contract opens no socket and allocates nothing. The Runpod
+Identity), carrying a messages client's `anthropic-beta` names to InvokeModel only when the model's `anthropic_beta` list allows them and a client's reasoning effort as `output_config.effort` when the model's `reasoning_efforts` holds it (refused otherwise, never dropped); that path has run only against a fixture Bedrock Runtime, never against AWS. A `[hosted.<alias>] kind = "ollama"` model is relayed to an Ollama server's own chat, responses and messages paths, its status read from the server's lists of pulled and loaded models, and never pulled by the gateway; that path has run only against a fake Ollama on loopback, never against an Ollama server. The hosting contract opens no socket and allocates nothing. The Runpod
 adapter's production transport reaches Runpod only through the `connectors` CLI; its tests run
 against `EmulatedRunpod` or a fixture of that CLI, and the Modal adapter exports nothing. No test makes a paid call or
 provisions a resource.
@@ -175,6 +175,9 @@ credential in its named header. An `https` endpoint is verified against the same
 roots as a pod. A credential goes over plain `http` only to a loopback host (`127.0.0.0/8`,
 `::1`, `localhost`); any other `http` endpoint that is not `anonymous` is refused as
 `config:value`.
+A table with `kind = "ollama"` needs nothing more: `base_url` defaults to
+`http://127.0.0.1:11434`, `wires` to all three, and no credential is sent
+([serve a local Ollama model](https://beyond10x.github.io/llm-gateway/docs/guides/serve-a-local-ollama-model/)).
 
 To store a hosted endpoint's key, run
 `b10x-llm-gateway credential set --config gateway.toml --model <alias>` (or `--route <name>` for
@@ -219,7 +222,10 @@ argument is refused with exit status 2.
 
 `RUST_LOG` sets the level of the structured log events the process writes to standard error
 beside the lines below (default `info`). At the default level those events are one `usage` event
-per authenticated model call; `RUST_LOG=warn` leaves only the lines below.
+per authenticated model call, whose field `call` is the id its answer carried in
+`x-llm-gateway-call`; `GET /v1/calls/<id>` with the owner secret reads that call's record
+([`docs/gateway.md`](docs/gateway.md#call-ids-and-call-records)). `RUST_LOG=warn` leaves only the
+lines below.
 
 | Event | Line on standard error | Exit status |
 | --- | --- | --- |

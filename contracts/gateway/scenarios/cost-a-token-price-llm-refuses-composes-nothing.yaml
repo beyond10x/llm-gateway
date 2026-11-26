@@ -1,0 +1,20 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: cost-a-token-price-llm-refuses-composes-nothing
+summary: the binary refuses a document whose pod model declares a token price with more decimal places than llm's amounts hold as config:value, and nothing is composed
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.gateway.Exchange
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","document":"listen = \"127.0.0.1:0\"\nowner_secret_file = \"/run/owner-secret\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\n\n[models.small]\nprovider = \"runpod\"\nwires = [\"chat\"]\ncontext_window = 65536\nhf_model = \"example/small-model\"\nimage = \"vllm/vllm-openai:v0.27.1\"\ngpu_types = [\"NVIDIA L40S\"]\nmax_model_len = 1024\n\n[models.small.token_price]\ninput = \"0.2\"\noutput = \"0.6000000001\"\n","steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastExchange
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastExchange
+  contains:
+    valid_program: true
+    error_code: 'config:value'
+    results: []

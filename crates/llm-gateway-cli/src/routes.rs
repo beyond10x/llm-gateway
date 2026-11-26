@@ -20,6 +20,7 @@ use crate::{
     config::{Wire, hex_digest},
     hosted::{BaseUrlError, EndpointCredential, HostedEndpoint},
     keys::read_token,
+    pricing::TokenPrice,
     refusal::{Refusal, StartupRefusal},
     relaying::relay_wire,
     translate::LlmTranslator,
@@ -151,9 +152,15 @@ pub struct Route {
     endpoint: String,
     upstream_model: String,
     capabilities: Capabilities,
+    token_price: Option<TokenPrice>,
 }
 
 impl Route {
+    /// The route's `price`, read onto the four token classes (story:cost-per-call).
+    pub fn token_price(&self) -> Option<&TokenPrice> {
+        self.token_price.as_ref()
+    }
+
     /// The route's name: the model alias it is served under.
     pub fn name(&self) -> &str {
         &self.name
@@ -238,12 +245,6 @@ impl Routes {
                 "is not served: the gateway serves a route under its own name only",
             ));
         }
-        if let Some(route) = parsed.routes().find(|route| route.price().is_some()) {
-            return Err(value(
-                &format!("routes.{}.price", route.name().as_str()),
-                "is not read: the gateway prices no routed call",
-            ));
-        }
         let mut endpoints = BTreeMap::new();
         for declaration in parsed.endpoints() {
             let name = declaration.name().as_str();
@@ -257,6 +258,10 @@ impl Routes {
         for route in parsed.routes() {
             let name = route.name().as_str().to_owned();
             route_name(&name)?;
+            let token_price = route
+                .price()
+                .map(|price| TokenPrice::from_route(&name, price))
+                .transpose()?;
             routes.insert(
                 name.clone(),
                 Route {
@@ -264,6 +269,7 @@ impl Routes {
                     endpoint: route.endpoint().as_str().to_owned(),
                     upstream_model: route.upstream_model().as_str().to_owned(),
                     capabilities: route.capabilities().clone(),
+                    token_price,
                 },
             );
         }
@@ -323,14 +329,18 @@ impl Routes {
                     vec![relay_wire(endpoint.wire)],
                 )
                 .map_err(|error| value(&at, &error.to_string()))?;
-                Ok(model
+                let model = model
                     .with_tool_calling(if route.capabilities.tools {
                         ToolCalling::Parsed
                     } else {
                         ToolCalling::Absent
                     })
                     .with_context_window(route.capabilities.context_window)
-                    .with_kind(llm_gateway::ModelKind::Route))
+                    .with_kind(llm_gateway::ModelKind::Route);
+                Ok(match &route.token_price {
+                    Some(price) => model.with_pricing(price.pricing()),
+                    None => model,
+                })
             })
             .collect()
     }
@@ -673,17 +683,18 @@ pub(crate) fn load(path: &Path) -> Result<Routes, Refusal> {
 
 #[cfg(test)]
 mod tests {
-    use super::{Routes, SecretFile};
-    use crate::trusted;
+    use super::{Route, Routes, SecretFile};
+    use crate::{pricing::TokenPrice, trusted};
     use std::path::{Path, PathBuf};
 
     const DOCUMENT: &str = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: lab/small\n";
 
     /// What llm 0.12.0 and 0.14.0 added to `llm.routes/1` and the gateway does not serve is
-    /// refused by key, never ignored: a Bedrock endpoint (an `aws-process` one too), a route's
-    /// `aliases` and a route's `price`.
+    /// refused by key, never ignored: a Bedrock endpoint (an `aws-process` one too) and a
+    /// route's `aliases`. A route's `price` is read since story:cost-per-call
+    /// (`a_routes_price_is_read_onto_the_four_token_classes_and_another_currency_is_refused`).
     #[test]
-    fn a_bedrock_endpoint_or_a_route_alias_or_price_is_refused_by_its_key() {
+    fn a_bedrock_endpoint_or_a_route_alias_is_refused_by_its_key() {
         let bedrock = "format: llm.routes/1\nendpoints:\n  eu: {protocol: messages, bedrock: {region: eu-central-1}, auth: {kind: aws-container}}\nroutes:\n  opus: eu/eu.anthropic.claude-fixture-v1\n";
         let refused = Routes::parse(bedrock).unwrap_err();
         assert_eq!(refused.code(), "config:value");
@@ -699,13 +710,66 @@ mod tests {
             refused.message().starts_with("routes.small.aliases "),
             "{refused}"
         );
-        let priced = "format: llm.routes/1\nendpoints:\n  lab: {base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {kind: anonymous}}\nroutes:\n  small: {model: lab/small, price: {currency: USD, input: '1', output: '5'}}\n";
-        let refused = Routes::parse(priced).unwrap_err();
-        assert_eq!(refused.code(), "config:value");
-        assert!(
-            refused.message().starts_with("routes.small.price "),
-            "{refused}"
+    }
+
+    /// story:cost-per-call: a route's `price` is read as llm writes it, each of llm's four
+    /// classes onto the gateway's own (`cached_input` onto `cache_read`,
+    /// `cache_creation_input` onto `cache_creation`); a class it leaves out has no rate. A
+    /// currency other than USD has no class here and is refused by its key, quoting no value.
+    #[test]
+    fn a_routes_price_is_read_onto_the_four_token_classes_and_another_currency_is_refused() {
+        let document = |price: &str| {
+            format!(
+                "format: llm.routes/1\nendpoints:\n  lab: {{base_url: http://127.0.0.1:8000/v1, protocol: chat-completions, auth: {{kind: anonymous}}}}\nroutes:\n  small: {{model: lab/small, price: {price}}}\n  plain: lab/plain\n"
+            )
+        };
+        let table = |pairs: &[(&str, &str)]| {
+            let table = pairs
+                .iter()
+                .map(|(key, value)| ((*key).to_owned(), (*value).to_owned()))
+                .collect();
+            TokenPrice::from_table("routes.small.price", &table).unwrap()
+        };
+        let every = document(
+            "{currency: USD, input: '3', cached_input: '0.3', cache_creation_input: '3.75', output: '15'}",
         );
+        let routes = Routes::parse(&every).unwrap();
+        let declared: Vec<(&str, Option<&TokenPrice>)> = routes
+            .routes()
+            .map(|route| (route.name(), route.token_price()))
+            .collect();
+        let expected = table(&[
+            ("input", "3"),
+            ("output", "15"),
+            ("cache_read", "0.3"),
+            ("cache_creation", "3.75"),
+        ]);
+        assert_eq!(declared, [("plain", None), ("small", Some(&expected))]);
+        // A route pricing only output: a call reporting input tokens has no cost, one reporting
+        // none does.
+        let output_only = Routes::parse(&document("{currency: USD, output: '15'}")).unwrap();
+        let pricing = output_only
+            .routes()
+            .find_map(Route::token_price)
+            .expect("the priced route")
+            .pricing();
+        let usage = |input: u64| llm_gateway::Usage {
+            input_tokens: Some(input),
+            output_tokens: Some(1_000_000),
+            cache_read_tokens: None,
+            cache_creation_tokens: None,
+        };
+        let wire = llm_gateway::Wire::Chat;
+        assert_eq!(pricing.cost_usd(wire, usage(0)).as_deref(), Some("15"));
+        assert_eq!(pricing.cost_usd(wire, usage(100)), None);
+        let euro =
+            Routes::parse(&document("{currency: EUR, input: '3', output: '15'}")).unwrap_err();
+        assert_eq!(euro.code(), "config:value");
+        assert!(
+            euro.message().starts_with("routes.small.price.currency "),
+            "{euro}"
+        );
+        assert!(!euro.message().contains("EUR"), "{euro}");
     }
 
     /// The routes document's bound is llm's own: a document of exactly the bound parses, and

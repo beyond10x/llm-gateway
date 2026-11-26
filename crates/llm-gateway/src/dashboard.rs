@@ -1798,6 +1798,7 @@ mod tests {
 
     fn record(model: &str, duration_ms: u64) -> UsageRecord {
         UsageRecord {
+            call: "call-1".to_owned(),
             model: Some(model.to_owned()),
             wire: Wire::Messages,
             disposition: Disposition::Relayed,
@@ -1811,6 +1812,7 @@ mod tests {
             cached_input_tokens: None,
             cache_creation_input_tokens: None,
             reasoning_output_tokens: None,
+            cost_usd: None,
             response_bytes: 10,
             duration_ms,
             profile: None,

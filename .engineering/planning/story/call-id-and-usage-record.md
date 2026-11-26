@@ -2,12 +2,16 @@
 format: aep.planning-md/3
 id: story:call-id-and-usage-record
 kind: story
-status: draft
+status: implemented
 title: Every model call has an id in its answer and a record the owner reads by it
 relations:
 - decomposes: epic:gateway-features
 - serves: vision:portable-model-inference
-revision: 1
+revision: 4
+transitions:
+- {from: "draft", to: "proposed", at: "2026-11-25T22:37:22Z", actor: "human:operator", revision: 2}
+- {from: "proposed", to: "active", at: "2026-11-25T22:37:22Z", actor: "human:operator", revision: 3}
+- {from: "active", to: "implemented", at: "2026-11-26T01:05:38Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"test_result":1,"review_outcome":1,"verification":1}}}
 ---
 ## Outcome
 

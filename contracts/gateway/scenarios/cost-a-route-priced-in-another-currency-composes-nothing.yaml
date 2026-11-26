@@ -1,0 +1,22 @@
+type: ess-scenario/1
+domain: llm-gateway.gateway
+scenario: cost-a-route-priced-in-another-currency-composes-nothing
+summary: a routes document whose route is priced in a currency other than USD, which llm admits and a cost in USD cannot carry, is refused config:value and nothing is composed
+timeline:
+- at: '2026-11-26T12:00:00Z'
+  command: llm-gateway.gateway.Relay
+  input:
+    program_json: '{"secret":"owner-token-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","models":[],"routes_document":"format: llm.routes/1\nendpoints:\n  lab: {base_url: \"http://pod-1/v1\", protocol: messages, auth: {kind: anonymous}}\nroutes:\n  small: {model: lab/small-model, price: {currency: EUR, input: \"3\", output: \"15\"}}\n","pods":[[]],"steps":[{"step":"mark_ready"}]}'
+  outcome: observed
+assert:
+- view: llm-gateway.gateway.LastRelay
+  counts:
+    at_least: 1
+    at_most: 1
+- view: llm-gateway.gateway.LastRelay
+  contains:
+    valid_program: true
+    error_code: 'config:value'
+    results: []
+    upstream: []
+    acquired: 0

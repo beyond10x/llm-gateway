@@ -1,0 +1,13 @@
+{
+  "at": "2026-11-26T01:05:39Z",
+  "actor": "human:operator",
+  "artifact": "story:cost-per-call",
+  "kind": "story",
+  "revision": 3,
+  "change": {
+    "change": "evidence",
+    "kind": "test_result",
+    "source": "at f277e016: cargo test --workspace --locked --no-fail-fast 1338 passed, 0 failed, 1 ignored, 133 test binaries; cargo fmt --all --check; clippy --workspace --all-targets --all-features -D warnings; docs generate --check; ess specify validate 8 files valid; spec-diff passed (8 acknowledged); conformance 430 of 430 in each of three runs; aep plan artifact validate valid; each exit 0. Red at f4d9ffa7 (no price keys and no cost), at d0fd322 (the call record named no cost), at 1d7ac8a and 6647c90 (an answer cut short by its upstream, or ended in its wire's terminal error, was priced on the byte relay, the client-credential route and the translated path). Every test runs against fakes on loopback; no test reaches a provider, a real Ollama or a pod.",
+    "reference": "wave/2026-11-25-w03@f277e016"
+  }
+}

@@ -104,6 +104,20 @@ build to its commit with `llm-gateway-docs provenance`; on a push to `main` it u
 as `b10x-project-site`, and `.github/workflows/b10x-docs-site.yml` (`Documentation site`) deploys
 it through the Website's `project-site.yml` when the push was the bot's.
 
+The Gate workflow's second job, `dashboard`, runs in `dashboard/` on Node 22 with the pnpm that
+`packageManager` pins (through corepack): type check, unit tests, the build compared with the
+committed `crates/llm-gateway/src/dashboard.html`, then the Playwright gate (`e2e --workers=2`,
+60 s per test, 120 s for the step, the ten slowest printed, the report uploaded on failure).
+On a pull request it runs only when `dashboard/ci/changed.sh` says the diff reaches the dashboard;
+`task dashboard-ux` runs the same commands locally, browser install aside.
+The page asks for `system-ui` and a monospace stack, which a build host and an Ubuntu runner
+resolve to different installed fonts of different widths (Noto Sans and DejaVu Sans): every replay
+therefore renders with the committed IBM Plex subsets in `dashboard/e2e/fonts/` (SIL OFL 1.1, the
+digests in `dashboard/e2e/fonts.ts`, checked by a unit test), so both measure the same widths and
+`dashboard/ux/baseline.json` holds what those fonts measure. `UX_FONTS=host` (or
+`UX_FONTS=host:<installed family>`, e.g. `host:DejaVu Sans` for the runner's widths) measures with
+host fonts instead; it is a check of the page, not the gate, and a round refuses `--baseline` with it.
+
 Every build writes the worktree's own `target/`; never set `CARGO_TARGET_DIR`. Check `df -h /`
 before a full gate. End a tree with `worktree finish --discard-cache --archive <tree>`, which
 removes the build cache it recognises, instead of deleting `target/` by hand.

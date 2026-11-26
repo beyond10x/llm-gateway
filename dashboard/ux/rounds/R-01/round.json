@@ -1,0 +1,2670 @@
+{
+  "round": "R-01",
+  "date": "2026-11-26",
+  "commit": "021daa85",
+  "page_sha256_12": "29e64cd48b65",
+  "toggle": "absent",
+  "viewports": [
+    {
+      "name": "1366x768",
+      "width": 1366,
+      "height": 768,
+      "gating": true
+    },
+    {
+      "name": "1280x720",
+      "width": 1280,
+      "height": 720,
+      "gating": true
+    },
+    {
+      "name": "1536x754",
+      "width": 1536,
+      "height": 754,
+      "gating": false
+    },
+    {
+      "name": "960x1080",
+      "width": 960,
+      "height": 1080,
+      "gating": false
+    },
+    {
+      "name": "390x844",
+      "width": 390,
+      "height": 844,
+      "gating": false
+    }
+  ],
+  "themes": [
+    "light",
+    "dark"
+  ],
+  "scenarios": [
+    {
+      "name": "idle",
+      "anchor": true,
+      "description": "A gateway just started: no calls, no sessions, no provider."
+    },
+    {
+      "name": "busy",
+      "anchor": true,
+      "description": "The page's development fixture: 40 calls, 3 in flight, limits, a provider with 3 pods."
+    },
+    {
+      "name": "token-flow",
+      "anchor": false,
+      "description": "8 states: calls with tokens appear for 3 sessions over 3 routes; sessions start, one ends."
+    },
+    {
+      "name": "errors",
+      "anchor": true,
+      "description": "Refusals, 429s with retries, a stale watchdog, a pod shutting down within a minute."
+    }
+  ],
+  "hard_gates": [
+    {
+      "gate": "gate 1 layout",
+      "theme": "light",
+      "passed": 2,
+      "of": 8,
+      "headline": "overflow 0 px max, 1 elements past their box max, 0 scrollers without keyboard access max"
+    },
+    {
+      "gate": "gate 1 truncation",
+      "theme": "light",
+      "passed": 8,
+      "of": 8,
+      "headline": "0 truncated without full value max"
+    },
+    {
+      "gate": "gate 2 always visible",
+      "theme": "light",
+      "passed": 8,
+      "of": 8,
+      "headline": "header visible ratio 1 min; toggle absent"
+    },
+    {
+      "gate": "gate 5 axe",
+      "theme": "light",
+      "passed": 0,
+      "of": 8,
+      "headline": "12 serious/critical nodes over 8 replays (scrollable-region-focusable)"
+    },
+    {
+      "gate": "gate 5 keyboard",
+      "theme": "light",
+      "passed": 8,
+      "of": 8,
+      "headline": "0 unreachable, 0 focus-invisible max"
+    },
+    {
+      "gate": "gate 5 reduced motion",
+      "theme": "light",
+      "passed": 8,
+      "of": 8,
+      "headline": "0 violations max"
+    },
+    {
+      "gate": "gate 1 layout",
+      "theme": "dark",
+      "passed": 2,
+      "of": 8,
+      "headline": "overflow 0 px max, 1 elements past their box max, 0 scrollers without keyboard access max"
+    },
+    {
+      "gate": "gate 1 truncation",
+      "theme": "dark",
+      "passed": 8,
+      "of": 8,
+      "headline": "0 truncated without full value max"
+    },
+    {
+      "gate": "gate 2 always visible",
+      "theme": "dark",
+      "passed": 8,
+      "of": 8,
+      "headline": "header visible ratio 1 min; toggle absent"
+    },
+    {
+      "gate": "gate 5 axe",
+      "theme": "dark",
+      "passed": 0,
+      "of": 8,
+      "headline": "12 serious/critical nodes over 8 replays (scrollable-region-focusable)"
+    },
+    {
+      "gate": "gate 5 keyboard",
+      "theme": "dark",
+      "passed": 8,
+      "of": 8,
+      "headline": "0 unreachable, 0 focus-invisible max"
+    },
+    {
+      "gate": "gate 5 reduced motion",
+      "theme": "dark",
+      "passed": 8,
+      "of": 8,
+      "headline": "0 violations max"
+    }
+  ],
+  "gating": {
+    "busy": {
+      "axe.serious_critical": 2,
+      "overflow.x_px": 0,
+      "overflow.elements": 1,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 3.6,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    },
+    "errors": {
+      "axe.serious_critical": 2,
+      "overflow.x_px": 0,
+      "overflow.elements": 1,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 3.6,
+      "layout_shift.per_state_max": 0.059,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    },
+    "idle": {
+      "axe.serious_critical": 1,
+      "overflow.x_px": 0,
+      "overflow.elements": 0,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 1,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    },
+    "token-flow": {
+      "axe.serious_critical": 1,
+      "overflow.x_px": 0,
+      "overflow.elements": 1,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 3.6,
+      "layout_shift.per_state_max": 0.074,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    }
+  },
+  "all_viewports": {
+    "busy": {
+      "axe.serious_critical": 4,
+      "overflow.x_px": 0,
+      "overflow.elements": 5,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 3.6,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    },
+    "errors": {
+      "axe.serious_critical": 4,
+      "overflow.x_px": 0,
+      "overflow.elements": 3,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 3.6,
+      "layout_shift.per_state_max": 0.095,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    },
+    "idle": {
+      "axe.serious_critical": 3,
+      "overflow.x_px": 0,
+      "overflow.elements": 2,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 1,
+      "layout_shift.per_state_max": 0,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    },
+    "token-flow": {
+      "axe.serious_critical": 4,
+      "overflow.x_px": 0,
+      "overflow.elements": 3,
+      "overflow.scrollers_unreachable": 0,
+      "header.hidden_ratio": 0,
+      "keyboard.unreachable": 0,
+      "keyboard.focus_invisible": 0,
+      "key_font.deficit_px": 3.6,
+      "layout_shift.per_state_max": 0.102,
+      "reduced_motion.violations": 0,
+      "truncation.without_full_value": 0
+    }
+  },
+  "ratchet_against_baseline": [],
+  "replays": [
+    {
+      "scenario": "busy",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 4,
+        "overflow.x_px": 0,
+        "overflow.elements": 5,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 4,
+            "targets": [
+              "section[aria-labelledby=\"h-provider\"] > .scroll",
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\"",
+          "dd.mono \"available\" past dl.headers \"anthropic-ratelimit-unified-fallbackavai\"",
+          "dd.mono \"0.5\" past dl.headers \"anthropic-ratelimit-unified-fallbackavai\"",
+          "section \"In flight 3RouteModelWireStateElapsedSes\" past div.grid \"In flight 3RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 3RouteModelWireStateElapsedSes\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 4,
+        "overflow.x_px": 0,
+        "overflow.elements": 5,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 4,
+            "targets": [
+              "section[aria-labelledby=\"h-provider\"] > .scroll",
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\"",
+          "dd.mono \"available\" past dl.headers \"anthropic-ratelimit-unified-fallbackavai\"",
+          "dd.mono \"0.5\" past dl.headers \"anthropic-ratelimit-unified-fallbackavai\"",
+          "section \"In flight 3RouteModelWireStateElapsedSes\" past div.grid \"In flight 3RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 3RouteModelWireStateElapsedSes\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 3,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 3,
+            "targets": [
+              "section[aria-labelledby=\"h-provider\"] > .scroll",
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "busy",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 3,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "span.badge \"vLLM\"",
+      "shifts": [
+        0,
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 3,
+            "targets": [
+              "section[aria-labelledby=\"h-provider\"] > .scroll",
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-haiku 98%1.78M / 1.81Mclaude-sonn\" past div.tile \"Cache hit rate88% read 15.6M · created 4\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.059,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.001,
+        0.059,
+        0.004
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.059,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.001,
+        0.059,
+        0.004
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.057,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.001,
+        0.057,
+        0.004
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.057,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.001,
+        0.057,
+        0.004
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.05,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.001,
+        0.05,
+        0.003
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.05,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.001,
+        0.05,
+        0.003
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 4,
+        "overflow.x_px": 0,
+        "overflow.elements": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.029,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0,
+        0.029,
+        0.001
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 4,
+            "targets": [
+              "section[aria-labelledby=\"h-provider\"] > .scroll",
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\"",
+          "section \"In flight 1RouteModelWireStateElapsedSes\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 4,
+        "overflow.x_px": 0,
+        "overflow.elements": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.029,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0,
+        0.029,
+        0.001
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 4,
+            "targets": [
+              "section[aria-labelledby=\"h-provider\"] > .scroll",
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\"",
+          "section \"In flight 1RouteModelWireStateElapsedSes\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.095,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.011,
+        0.095,
+        0.047
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "errors",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 2,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.095,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"b10x-llm-qwen-coder\"",
+      "shifts": [
+        0.011,
+        0.095,
+        0.047
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 2,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet –0 / 0\" past div.tile \"Cache hit rate– read 0 · created 0 · unc\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 3,
+        "overflow.x_px": 0,
+        "overflow.elements": 2,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 3,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll",
+              "section[aria-labelledby=\"h-sessions\"] > .scroll",
+              "section[aria-labelledby=\"h-calls\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "section \"In flight 0RouteModelWireStateElapsedSes\" past div.grid \"In flight 0RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 0RouteModelWireStateElapsedSes\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 3,
+        "overflow.x_px": 0,
+        "overflow.elements": 2,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 3,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll",
+              "section[aria-labelledby=\"h-sessions\"] > .scroll",
+              "section[aria-labelledby=\"h-calls\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "section \"In flight 0RouteModelWireStateElapsedSes\" past div.grid \"In flight 0RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 0RouteModelWireStateElapsedSes\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "idle",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 0,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 1,
+        "layout_shift.per_state_max": 0,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 13,
+      "key_font_at": "span.link.polling \"polling every 5 s\"",
+      "shifts": [
+        0
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.074,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.074,
+        0.051,
+        0.059,
+        0.016,
+        0.016,
+        0.007,
+        0.016
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1280x720",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.074,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.074,
+        0.051,
+        0.059,
+        0.016,
+        0.016,
+        0.007,
+        0.016
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.07,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.07,
+        0.037,
+        0.057,
+        0.017,
+        0.019,
+        0.008,
+        0.019
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1366x768",
+      "gating": true,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.07,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.07,
+        0.037,
+        0.057,
+        0.017,
+        0.019,
+        0.008,
+        0.019
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.072,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.072,
+        0.034,
+        0.052,
+        0.014,
+        0.016,
+        0.007,
+        0.016
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "1536x754",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 1,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.072,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.072,
+        0.034,
+        0.052,
+        0.014,
+        0.016,
+        0.007,
+        0.016
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 1,
+            "targets": [
+              "section[aria-labelledby=\"h-routes\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 4,
+        "overflow.x_px": 0,
+        "overflow.elements": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.102,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.102,
+        0.084,
+        0.072,
+        0.025,
+        0.038,
+        0.011,
+        0.019
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 4,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll",
+              "section[aria-labelledby=\"h-sessions\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "section \"In flight 1RouteModelWireStateElapsedSes\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\"",
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "390x844",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 4,
+        "overflow.x_px": 0,
+        "overflow.elements": 3,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.102,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.102,
+        0.084,
+        0.072,
+        0.025,
+        0.038,
+        0.011,
+        0.019
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 4,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll",
+              "section[aria-labelledby=\"h-sessions\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "section \"In flight 1RouteModelWireStateElapsedSes\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\"",
+          "section \"RoutesRouteCallsErrorsCancelledTokens in\" past div.grid \"In flight 1RouteModelWireStateElapsedSes\"",
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "dark",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 3,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.064,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.043,
+        0.051,
+        0.064,
+        0.025,
+        0.046,
+        0.021,
+        0.046
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 3,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll",
+              "section[aria-labelledby=\"h-calls\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    },
+    {
+      "scenario": "token-flow",
+      "viewport": "960x1080",
+      "gating": false,
+      "theme": "light",
+      "toggle": "absent",
+      "theme_applied": true,
+      "metrics": {
+        "axe.serious_critical": 3,
+        "overflow.x_px": 0,
+        "overflow.elements": 1,
+        "overflow.scrollers_unreachable": 0,
+        "header.hidden_ratio": 0,
+        "keyboard.unreachable": 0,
+        "keyboard.focus_invisible": 0,
+        "key_font.deficit_px": 3.6,
+        "layout_shift.per_state_max": 0.064,
+        "reduced_motion.violations": 0,
+        "truncation.without_full_value": 0
+      },
+      "key_font_min_px": 10.4,
+      "key_font_at": "div.muted.small \"claude-sonnet-4-5\"",
+      "shifts": [
+        0.043,
+        0.051,
+        0.064,
+        0.025,
+        0.046,
+        0.021,
+        0.046
+      ],
+      "details": {
+        "axe": [
+          {
+            "id": "scrollable-region-focusable",
+            "impact": "serious",
+            "help": "Scrollable region must have keyboard access",
+            "nodes": 3,
+            "targets": [
+              "section[aria-labelledby=\"h-inflight\"] > .scroll",
+              "section[aria-labelledby=\"h-routes\"] > .scroll",
+              "section[aria-labelledby=\"h-calls\"] > .scroll"
+            ]
+          }
+        ],
+        "overflowing": [
+          "table.mini \"claude-sonnet 69%41.0k / 59.4k\" past div.tile \"Cache hit rate69% read 41.0k · created 0\""
+        ],
+        "scrollers_unreachable": [],
+        "truncated": [],
+        "header": [
+          {
+            "name": "h1",
+            "visible_ratio": 1
+          },
+          {
+            "name": "connection status",
+            "visible_ratio": 1
+          }
+        ],
+        "unreachable": [],
+        "focus_invisible": [],
+        "reduced_motion": []
+      }
+    }
+  ]
+}

@@ -1,0 +1,268 @@
+// Break tests of the measuring tools: each feeds a probe or the harness a page that is wrong in
+// one way and asserts the tool reports it, so a gate that passes is not passing by construction.
+import { expect, test, type Page } from '@playwright/test';
+import { SCENARIOS } from '../ux/scenarios/index.ts';
+import { fontMode, MONO_FAMILY } from './fonts.ts';
+import { openReplay, themeToggleProblems } from './harness.ts';
+import { reducedMotionReplay } from './measure.ts';
+import { flowProblems } from './metrics.ts';
+import { canvasPixels, flowProbe, focusStep, headerProbe } from './probe.ts';
+
+const scenario = (name: string) => SCENARIOS.find((s) => s.name === name)!;
+
+test.describe('theme toggle check', () => {
+  test('break: under the scheme it asks for, the check refuses to count the toggle', async ({ page }) => {
+    const replay = await openReplay(page, scenario('idle'), 'dark');
+    expect(await themeToggleProblems(replay, 'dark')).toContain('the page shows dark before the choice: emulate the other colour scheme first');
+  });
+
+  test('break: a toggle whose choice does nothing fails', async ({ page }) => {
+    const replay = await openReplay(page, scenario('idle'), 'light');
+    await page.evaluate(() => document.addEventListener('change', (e) => e.stopPropagation(), true));
+    const problems = await themeToggleProblems(replay, 'dark');
+    expect(problems).toContain('choosing dark shows light');
+  });
+
+  test('break: a choice that is not stored fails after the reload', async ({ page }) => {
+    await page.addInitScript(() => {
+      Storage.prototype.setItem = () => undefined;
+    });
+    const replay = await openReplay(page, scenario('idle'), 'light');
+    expect(await themeToggleProblems(replay, 'dark')).toEqual(['after a reload the page shows light, not the stored dark']);
+  });
+});
+
+// The fonts Chromium drew each element's own text with, by CDP, and how wide the token-flow
+// canvas's monospace stack is against the pinned mono face and the host's monospace.
+async function renderedFonts(page: Page, selectors: string[]): Promise<{ text: Record<string, string[]>; canvas: { stack: number; pinned: number; host: number } }> {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('DOM.enable');
+  await cdp.send('CSS.enable');
+  const { root } = await cdp.send('DOM.getDocument', { depth: -1 });
+  const text: Record<string, string[]> = {};
+  for (const selector of selectors) {
+    const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: root.nodeId, selector });
+    if (!nodeId) throw new Error(`no element ${selector}`);
+    const { fonts } = await cdp.send('CSS.getPlatformFontsForNode', { nodeId });
+    text[selector] = fonts.map((f) => `${f.familyName.replace(/ SmBld$/, '')}${f.isCustomFont ? '' : ' (host)'}`);
+  }
+  const canvas = await page.evaluate(({ stack, pinned }) => {
+    const c = document.createElement('canvas').getContext('2d')!;
+    const w = (font: string) => {
+      c.font = `12px ${font}`;
+      return c.measureText('0123456789 abcdef 12:34:56').width;
+    };
+    return { stack: w(stack), pinned: w(`'${pinned}'`), host: w('monospace') };
+  }, { stack: "ui-monospace, 'SFMono-Regular', Menlo, Consolas, monospace", pinned: MONO_FAMILY });
+  return { text, canvas };
+}
+
+test.describe('pinned fonts', () => {
+  const SELECTORS = ['h1', 'section[aria-labelledby="h-calls"] thead th', 'section[aria-labelledby="h-calls"] tbody td.mono', 'section[aria-labelledby="h-calls"] tbody td:nth-child(3)'];
+  const PINNED = { 'h1': ['IBM Plex Sans'], [SELECTORS[1]!]: ['IBM Plex Sans'], [SELECTORS[2]!]: ['IBM Plex Mono'], [SELECTORS[3]!]: ['IBM Plex Sans'] };
+
+  test('every replay draws the page and its canvas with the committed fonts, not the host\'s', async ({ page }) => {
+    test.skip(fontMode().kind !== 'pinned', 'UX_FONTS measures with host fonts');
+    await openReplay(page, scenario('busy'), 'light');
+    const { text, canvas } = await renderedFonts(page, SELECTORS);
+    expect(text).toEqual(PINNED);
+    expect(canvas.stack).toBe(canvas.pinned);
+    expect(canvas.stack).not.toBe(canvas.host);
+  });
+
+  test('break: a replay with the host\'s fonts is told apart', async ({ page }) => {
+    const before = process.env.UX_FONTS;
+    process.env.UX_FONTS = 'host';
+    try {
+      await openReplay(page, scenario('busy'), 'light');
+    } finally {
+      if (before === undefined) delete process.env.UX_FONTS;
+      else process.env.UX_FONTS = before;
+    }
+    const { text, canvas } = await renderedFonts(page, SELECTORS);
+    expect(text).not.toEqual(PINNED);
+    expect(Object.values(text).flat().every((f) => f.endsWith('(host)'))).toBe(true);
+    expect(canvas.stack).toBe(canvas.host);
+  });
+});
+
+// A canvas of `w` x `h` with a diagonal stroke, or blank.
+const canvasHtml = (attrs: string, drawn: boolean) => `
+  <canvas id="c" ${attrs}></canvas>
+  <script>
+    const c = document.getElementById('c');
+    c.width = c.clientWidth; c.height = c.clientHeight;
+    if (${drawn}) { const x = c.getContext('2d'); x.strokeStyle = '#2456c7'; x.lineWidth = 3; x.beginPath(); x.moveTo(0, 0); x.lineTo(c.width, c.height); x.stroke(); }
+  </script>`;
+
+async function flowOf(page: Page, body: string) {
+  await page.setContent(`<!doctype html><html><body style="margin:0;background:#f7f7f8">${body}</body></html>`);
+  return page.evaluate(flowProbe);
+}
+
+test.describe('token-flow canvas metric', () => {
+  test('break: a drawn canvas fixed behind opaque panels is drawn but not visible', async ({ page }) => {
+    const flow = await flowOf(
+      page,
+      `${canvasHtml('class="flow" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:0"', true)}
+       <main style="position:relative;z-index:1;padding:16px"><section style="background:#fff;height:1600px">panels</section></main>`,
+    );
+    expect(flow.present).toBe(true);
+    expect(flow.drawn).toBe(true);
+    expect(flow.visible_ratio).toBeLessThan(0.2);
+  });
+
+  test('break: a blank canvas in its own panel is visible but not drawn', async ({ page }) => {
+    const flow = await flowOf(page, `<section><h2>Token flow</h2>${canvasHtml('aria-hidden="true" style="display:block;width:600px;height:180px"', false)}</section>`);
+    expect(flow.visible_ratio).toBeGreaterThanOrEqual(0.95);
+    expect(flow.drawn).toBe(false);
+  });
+
+  test('break: a drawn panel below the fold is not visible', async ({ page }) => {
+    const flow = await flowOf(page, `<div style="height:2000px"></div><section><h2>Token flow</h2>${canvasHtml('aria-hidden="true" style="display:block;width:600px;height:180px"', true)}</section>`);
+    expect(flow.drawn).toBe(true);
+    expect(flow.visible_ratio).toBe(0);
+  });
+
+  test('a drawn canvas in its own panel at the top passes', async ({ page }) => {
+    const flow = await flowOf(
+      page,
+      `<section><h2>Token flow</h2>${canvasHtml('aria-hidden="true" style="display:block;width:600px;height:180px;pointer-events:none"', true)}</section><section style="background:#fff;height:1600px">panels</section>`,
+    );
+    expect(flow).toMatchObject({ present: true, drawn: true });
+    expect(flow.visible_ratio).toBeGreaterThanOrEqual(0.95);
+  });
+
+  test('break: a token-flow canvas that draws nothing under reduced motion fails the flow gate', async ({ browser }) => {
+    const run = async (blank: boolean) => {
+      const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
+      try {
+        const page = await context.newPage();
+        if (blank) {
+          await page.addInitScript(() => {
+            for (const k of ['stroke', 'fill', 'fillText'] as const) CanvasRenderingContext2D.prototype[k] = () => undefined;
+          });
+        }
+        return await reducedMotionReplay(page, scenario('token-flow'), 'light');
+      } finally {
+        await context.close();
+      }
+    };
+    const [drawn, blank] = await Promise.all([run(false), run(true)]);
+    expect(drawn.flow.drawn, 'the page draws a static canvas under reduced motion').toBe(true);
+    expect(drawn.violations).toEqual([]);
+    expect(blank.flow).toMatchObject({ present: true, drawn: false });
+    const shown = { present: true, at: 'canvas', visible_ratio: 1, drawn: true, drawn_share: 0.05 };
+    expect(flowProblems({ flow: shown, reduced_flow: blank.flow })).toEqual(['the canvas is blank under reduced motion (share drawn 0)']);
+  });
+
+  test('break: without reduced motion the canvas check sees a canvas that moves', async ({ page }) => {
+    const replay = await openReplay(page, scenario('token-flow'), 'dark');
+    test.skip((await page.locator('canvas').count()) === 0, 'the page has no canvas');
+    while (replay.index + 1 < replay.states.length) await replay.advance();
+    const before = await page.evaluate(canvasPixels);
+    await page.waitForTimeout(500);
+    expect(await page.evaluate(canvasPixels)).not.toEqual(before);
+  });
+});
+
+// A header with one always-visible control: a segmented control with rounded ends that clips its
+// segments (as the page's theme toggle does), placed at `left` px, optionally under an overlay.
+const headerHtml = (left: number, overlay: boolean) => `<!doctype html><html><body style="margin:0;background:#fff">
+  <header style="position:relative;height:60px;background:#fff">
+    <div data-ux-always="toggle" style="position:absolute;left:${left}px;top:12.5px;display:inline-flex;border:1px solid #80868f;border-radius:12px;overflow:hidden">
+      <label style="display:block;padding:4px 12px;background:#2456c7;color:#fff">Light</label><label style="display:block;padding:4px 12px">Dark</label><label style="display:block;padding:4px 12px">System</label>
+    </div>
+    ${overlay ? '<div style="position:absolute;left:0;top:0;width:100%;height:60px;background:rgba(0,0,0,0.6)"></div>' : ''}
+  </header></body></html>`;
+
+test.describe('always-visible elements', () => {
+  test('break: a rounded control fully in view and uncovered reads 1; one past the right edge or under an overlay reads less', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const ratio = async (left: number, overlay = false) => {
+      await page.setContent(headerHtml(left, overlay));
+      return (await page.evaluate(headerProbe))[0]!.visible_ratio;
+    };
+    expect(await ratio(16)).toBe(1);
+    expect(await ratio(16.4)).toBe(1);
+    const past = await ratio(260);
+    expect(past).toBeGreaterThan(0);
+    expect(past).toBeLessThanOrEqual(0.8);
+    expect(await ratio(16, true)).toBe(0);
+  });
+});
+
+test.describe('visible focus', () => {
+  const PAGE = `<!doctype html><html><body style="background:#ffffff;margin:20px">
+    <style>
+      button { outline: none; margin: 8px; }
+      #none:focus { outline: none; }
+      #resting { box-shadow: 0 0 0 0 transparent; }
+      #resting:focus { outline: none; }
+      #faint:focus { outline: 2px solid #f0f0f0; }
+      #clear:focus { outline: 2px solid rgba(36, 86, 199, 0); }
+      #ghost { opacity: 0; }
+      #ghost:focus { outline: 2px solid #2456c7; }
+      #ring:focus { outline: 2px solid #2456c7; outline-offset: 2px; }
+      #shadow:focus { box-shadow: 0 0 0 3px #1b1d21; }
+      .radio { position: relative; display: inline-block; }
+      .radio input { position: absolute; inset: 0; margin: 0; opacity: 0; }
+      .radio span { display: block; padding: 2px 8px; }
+      .radio input:focus + span { outline: 2px solid #2456c7; outline-offset: -4px; }
+    </style>
+    <button id="none">none</button><button id="resting">resting shadow</button><button id="faint">faint</button>
+    <button id="clear">clear</button><button id="ghost">ghost</button><button id="ring">ring</button>
+    <button id="shadow">shadow</button>
+    <label class="radio"><input id="radio" type="radio" name="t"><span>Light</span></label>
+  </body></html>`;
+
+  test('break: no ring, a resting transparent shadow, a faint ring, a clear ring and an invisible control are invisible; a contrasting ring is visible', async ({ page }) => {
+    await page.setContent(PAGE);
+    const visible: Record<string, boolean> = {};
+    for (const id of ['none', 'resting', 'faint', 'clear', 'ghost', 'ring', 'shadow', 'radio']) {
+      await page.focus(`#${id}`);
+      visible[id] = (await page.evaluate(focusStep)).visible;
+    }
+    expect(visible).toEqual({ none: false, resting: false, faint: false, clear: false, ghost: false, ring: true, shadow: true, radio: true });
+  });
+});
+
+test.describe('replay', () => {
+  test('break: the per-state layout shift does not depend on a click just before the states', async ({ browser }) => {
+    const run = async (clickFirst: boolean) => {
+      const context = await browser.newContext({ viewport: { width: 1280, height: 720 }, timezoneId: 'UTC', locale: 'en-GB' });
+      try {
+        const page = await context.newPage();
+        const replay = await openReplay(page, scenario('token-flow'), 'light');
+        if (clickFirst) await replay.click(page.getByRole('radio', { name: /^System/ }));
+        const shifts: number[] = [];
+        while (replay.index + 1 < replay.states.length) {
+          await replay.takeShift();
+          await replay.advance();
+          shifts.push(await replay.takeShift());
+        }
+        return shifts;
+      } finally {
+        await context.close();
+      }
+    };
+    const [plain, clicked] = await Promise.all([run(false), run(true)]);
+    expect(Math.max(...plain)).toBeGreaterThan(0.02);
+    expect(clicked.length).toBe(plain.length);
+    clicked.forEach((v, i) => expect(Math.abs(v - plain[i]!), `state ${i + 1}: ${v} against ${plain[i]}`).toBeLessThan(0.005));
+  });
+
+  test('break: the replay reads live on the stream, and a failed stream reads otherwise', async ({ page }) => {
+    const replay = await openReplay(page, scenario('token-flow'), 'light');
+    const seen = [await replay.status()];
+    while (replay.index + 1 < replay.states.length) {
+      await replay.advance();
+      seen.push(await replay.status());
+    }
+    expect(seen.every((s) => s === 'live'), seen.join(', ')).toBe(true);
+    expect(replay.snapshotFetches).toBe(1);
+    expect(replay.blocked).toEqual([]);
+    await page.evaluate(() => (window as unknown as { __uxStream: { fail(): void } }).__uxStream.fail());
+    await expect.poll(() => replay.status()).not.toBe('live');
+  });
+});

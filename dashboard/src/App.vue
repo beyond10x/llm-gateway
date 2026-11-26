@@ -128,7 +128,7 @@ function yesNo(v: boolean | null): string {
         </div>
         <div><dt>Read</dt><dd>{{ ago(now, snap.provider.read_ms) }}</dd></div>
       </dl>
-      <div class="scroll">
+      <div class="scroll" tabindex="0" role="region" aria-label="Pods table">
         <table>
           <caption>Pods</caption>
           <thead>
@@ -161,7 +161,7 @@ function yesNo(v: boolean | null): string {
     <div class="grid">
       <section aria-labelledby="h-inflight">
         <h2 id="h-inflight">In flight <span class="badge">{{ snap.in_flight.length }}</span></h2>
-        <div class="scroll">
+        <div class="scroll" tabindex="0" role="region" aria-label="In flight table">
           <table>
             <thead>
               <tr><th scope="col">Route</th><th scope="col">Model</th><th scope="col">Wire</th><th scope="col">State</th><th scope="col" class="n">Elapsed</th><th scope="col">Session</th></tr>
@@ -186,7 +186,7 @@ function yesNo(v: boolean | null): string {
 
       <section aria-labelledby="h-routes">
         <h2 id="h-routes">Routes</h2>
-        <div class="scroll">
+        <div class="scroll" tabindex="0" role="region" aria-label="Routes table">
           <table>
             <thead>
               <tr>
@@ -223,7 +223,7 @@ function yesNo(v: boolean | null): string {
 
     <section aria-labelledby="h-sessions">
       <h2 id="h-sessions">Sessions</h2>
-      <div class="scroll">
+      <div class="scroll" tabindex="0" role="region" aria-label="Sessions table">
         <table>
           <thead>
             <tr>
@@ -252,7 +252,7 @@ function yesNo(v: boolean | null): string {
 
     <section aria-labelledby="h-calls">
       <h2 id="h-calls">Recent calls <span class="badge">{{ snap.calls.length }}</span></h2>
-      <div class="scroll">
+      <div class="scroll" tabindex="0" role="region" aria-label="Recent calls table">
         <table class="calls">
           <thead>
             <tr>

@@ -16,7 +16,6 @@ export interface KnownFailure {
 }
 
 export const KNOWN_FAILURES: KnownFailure[] = [
-  { gate: 'gate5-axe', finding: 'UXF-002' },
   { gate: 'gate1-overflow', finding: 'UXF-003', scenarios: ['busy', 'token-flow', 'errors'] },
 ];
 

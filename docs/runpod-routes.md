@@ -82,7 +82,8 @@ extra_vllm_args = [
 Two lines are left out of the block because the test cannot hold real credentials; the running
 document adds them:
 
-- `api_key` in `[providers.runpod]`: the account's Runpod API key (see "The account key").
+- `api_key` or `api_key_file` in `[providers.runpod]`: the account's Runpod API key (see "The
+  account key").
 - `vllm_api_key_file` in each model: the file holding the key the model's pod expects. Its value
   is also stored in the Runpod account as the secret `vllm_<alias>` with every `-` and `.` written
   `_`: `vllm_inkling_pod` and `vllm_qwen`.
@@ -147,9 +148,16 @@ When no 80 GB card is free, the start falls back to the 32k profile on the 48 GB
 
 ## The account key
 
-The gateway reads the Runpod API key once at start from the reference in `[providers.runpod]
-api_key`. Until the key is there and the owner says so, no call reaches the Runpod API from this
-document: with no `api_key` both models answer `target-unavailable`.
+The gateway reads the Runpod API key once at start, from one of two places in
+`[providers.runpod]`: `api_key`, a `keychain:<service>/<account>` reference to an OS keychain
+entry, or `api_key_file`, the path of a file the owner fills with the key. The file is read
+under the rules of `vllm_api_key_file`: not a symbolic link, a regular file owned by the owner or
+root, no group or world permission (mode `0600` or `0400`), at most 4096 bytes of one printable
+token once a trailing newline is trimmed. A file that breaks a rule refuses the start before any
+request reaches Runpod, as `endpoint-credential:<rule>` naming
+`providers.runpod.api_key_file` and neither the path nor the key. The two keys are refused
+together. Until the key is there and the owner says so, no call reaches the Runpod API from this
+document: with neither key both models answer `target-unavailable`.
 
 ## Choosing a route
 

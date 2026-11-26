@@ -156,7 +156,9 @@ bytes is accepted; a broken rule refuses the start as `vllm-api-key:<rule>`. The
 Runpod API key and refuses `runpod_api_key_file`: with a `connectors` table that key stays in
 connectors' keyring, and a gateway on an operator's own machine may instead name it as
 `[providers.<name>] api_key = "keychain:<service>/<account>"`, an OS keychain entry read once at
-start, and then calls Runpod's REST API v2 itself, at `https://api.runpod.io/v2` unless the
+start, or as `api_key_file`, the path of a file the operator fills with the key, read once at
+start under the rules of `vllm_api_key_file` (`endpoint-credential:<rule>` otherwise), and then
+calls Runpod's REST API v2 itself, at `https://api.runpod.io/v2` unless the
 provider names another `management_url`
 ([docs/design/runpod-clients.md](docs/design/runpod-clients.md) § 4, D1). The same reference
 names a model's `vllm_api_key`, a hosted model's `credential` and a route endpoint's

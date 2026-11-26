@@ -167,7 +167,7 @@ pub fn page() -> String {
     ));
     out.push_str(
         "\n`watchdog` reads the same document as `serve` and needs its `[watchdog]` table and one \
-         provider whose `api_key` is a keychain reference. It polls Runpod every `poll_seconds` and terminates only a \
+         provider that names its Runpod API key, as a keychain `api_key` or an `api_key_file`. It polls Runpod every `poll_seconds` and terminates only a \
          pod the gateway owns (its name starts `b10x-llm-` and its owner tag names the gateway), \
          writing one JSON line of format `llm-gateway.watchdog/1` on standard error for each, \
          naming the pod and the rule. It stops on SIGINT or SIGTERM with exit status 0; a \

@@ -1,7 +1,7 @@
 //! The Runpod account panel `serve` shows on its dashboard (story:live-dashboard).
 //!
-//! When a provider names its Runpod API key by a keychain reference (`providers.<name>.api_key`),
-//! `serve` reads the account every [`POLL`]: its balance, its spend rate and its pods. The pods
+//! When a provider names its Runpod API key by a keychain reference (`providers.<name>.api_key`)
+//! or a file (`providers.<name>.api_key_file`, story:runpod-key-file), `serve` reads the account every [`POLL`]: its balance, its spend rate and its pods. The pods
 //! the gateway owns (by name prefix and owner tag, as the watchdog decides) become the panel's
 //! rows; every other pod is only counted. The read is the watchdog's own read
 //! (`RunpodAccount::account`) and changes nothing on the account.
@@ -13,13 +13,16 @@
 use crate::{
     config::Deployment,
     keychain::{KeychainRef, read_keychain_token},
+    keys::read_token,
     refusal::{Refusal, StartupRefusal},
     relaying::{ProbeOver, idle_timeout_ms},
+    trusted,
     watchdog::owned,
 };
 use llm_gateway::{Dashboard, PodPanel, ProviderPanel, WatchdogLimits};
 use llm_runpod::{AccountSnapshot, POD_NAME_PREFIX, RestRunpod, RunpodAccount};
 use std::{
+    path::Path,
     sync::{Arc, Condvar, Mutex, PoisonError},
     thread::{self, JoinHandle},
     time::Duration,
@@ -28,26 +31,51 @@ use std::{
 /// How often `serve` reads the account.
 pub const POLL: Duration = Duration::from_secs(60);
 
-/// The first provider that names its Runpod API key by a keychain reference, and that reference.
-pub(crate) fn keyed_provider(deployment: &Deployment) -> Option<(&str, &KeychainRef)> {
-    deployment
-        .providers
-        .iter()
-        .find_map(|(name, provider)| Some((name.as_str(), provider.api_key.as_ref()?)))
+/// Where a provider's Runpod API key is: a keychain entry (`api_key`) or a file the owner fills
+/// (`api_key_file`). The document admits at most one of them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProviderKey<'a> {
+    Keychain(&'a KeychainRef),
+    File(&'a Path),
 }
 
-/// The Runpod API key of `provider`, read from the keychain; the refusal names
-/// `providers.<name>.api_key` and quotes nothing read.
-pub(crate) fn read_key(provider: &str, reference: &KeychainRef) -> Result<Vec<u8>, Refusal> {
-    read_keychain_token(
-        reference,
-        &format!("providers.{provider}.api_key"),
-        (
-            StartupRefusal::EndpointCredentialUnreadable,
-            StartupRefusal::EndpointCredentialTooLarge,
-            StartupRefusal::EndpointCredentialNotAToken,
+/// The first provider that names its Runpod API key, and where the key is.
+pub(crate) fn keyed_provider(deployment: &Deployment) -> Option<(&str, ProviderKey<'_>)> {
+    deployment.providers.iter().find_map(|(name, provider)| {
+        let key = provider
+            .api_key
+            .as_ref()
+            .map(ProviderKey::Keychain)
+            .or_else(|| provider.api_key_file.as_deref().map(ProviderKey::File))?;
+        Some((name.as_str(), key))
+    })
+}
+
+/// The Runpod API key of `provider`, read once from the keychain or through the trusted-file
+/// reader under a model's `vllm_api_key_file` rules: the refusal is `endpoint-credential:<rule>`
+/// naming `providers.<name>.api_key` or `providers.<name>.api_key_file`, and quotes neither the
+/// reference, the path nor anything read.
+pub(crate) fn read_key(provider: &str, key: ProviderKey<'_>) -> Result<Vec<u8>, Refusal> {
+    match key {
+        ProviderKey::Keychain(reference) => read_keychain_token(
+            reference,
+            &format!("providers.{provider}.api_key"),
+            (
+                StartupRefusal::EndpointCredentialUnreadable,
+                StartupRefusal::EndpointCredentialTooLarge,
+                StartupRefusal::EndpointCredentialNotAToken,
+            ),
         ),
-    )
+        ProviderKey::File(path) => read_token(
+            path,
+            &format!("providers.{provider}.api_key_file"),
+            &trusted::ENDPOINT_CREDENTIAL,
+            (
+                StartupRefusal::EndpointCredentialTooLarge,
+                StartupRefusal::EndpointCredentialNotAToken,
+            ),
+        ),
+    }
 }
 
 /// The panel for one account read at `read_ms`.
@@ -281,16 +309,16 @@ pub(crate) fn every(
 }
 
 /// The account panel for `deployment`, when a provider names its Runpod API key by a keychain
-/// reference; `None` otherwise. The key is read once, here.
+/// reference or a file; `None` otherwise. The key is read once, here.
 pub(crate) fn start_for(
     deployment: &Deployment,
     pods: &crate::ProxyConnector,
     dashboard: Arc<Dashboard>,
 ) -> Result<Option<Polling>, Refusal> {
-    let Some((provider, reference)) = keyed_provider(deployment) else {
+    let Some((provider, where_key)) = keyed_provider(deployment) else {
         return Ok(None);
     };
-    let key = read_key(provider, reference)?;
+    let key = read_key(provider, where_key)?;
     let mut transport = RestRunpod::new(
         crate::relaying::rest_binding(&deployment.providers[provider]),
         key,
@@ -536,5 +564,54 @@ mod tests {
         let value = tracing::subscriber::with_default(subscriber, run);
         let text = String::from_utf8_lossy(&captured.0.lock().unwrap()).into_owned();
         (value, text)
+    }
+
+    /// What this proves: a provider whose key is a file is the keyed provider the dashboard's
+    /// account read and the watchdog take, and its key is read through the trusted-file reader,
+    /// its trailing newline trimmed; a refusal names `providers.<name>.api_key_file` and neither
+    /// the path nor the key (story:runpod-key-file).
+    #[test]
+    fn a_key_file_is_the_keyed_providers_key_for_the_account_read() {
+        use super::{ProviderKey, keyed_provider, read_key};
+        use std::{fs, os::unix::fs::PermissionsExt, path::Path};
+        let dir = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../target/tmp")
+            .join(format!(
+                "gateway-cli-unit-account-key-{}",
+                std::process::id()
+            ));
+        drop(fs::remove_dir_all(&dir));
+        fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("runpod-key");
+        fs::write(&path, b"rpa_account-key-from-a-test-file\n").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o600)).unwrap();
+        let document = DOCUMENT.replace(
+            "kind = \"runpod-vllm\"\n",
+            &format!(
+                "kind = \"runpod-vllm\"\napi_key_file = \"{}\"\n",
+                path.display()
+            ),
+        );
+        let deployment = crate::parse(&document).expect("the test document parses");
+        let (provider, key) = keyed_provider(&deployment).expect("a keyed provider");
+        assert_eq!(provider, "runpod");
+        assert_eq!(key, ProviderKey::File(&path));
+        assert_eq!(
+            read_key(provider, key).unwrap(),
+            b"rpa_account-key-from-a-test-file"
+        );
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        let refusal = read_key(provider, key).unwrap_err();
+        assert_eq!(refusal.code(), "endpoint-credential:unsafe-mode");
+        assert!(
+            refusal
+                .message()
+                .starts_with("providers.runpod.api_key_file: "),
+            "{refusal}"
+        );
+        let shown = refusal.to_string();
+        assert!(!shown.contains(&dir.display().to_string()), "{shown}");
+        assert!(!shown.contains("rpa_account-key"), "{shown}");
+        drop(fs::remove_dir_all(&dir));
     }
 }

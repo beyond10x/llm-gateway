@@ -377,6 +377,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Binary",
+        "The Runpod API key from a file",
+        "[providers.<name>] api_key_file names a file the owner fills with the account's Runpod API key, in place of the keychain api_key. It is read once at start under the rules of a model's vllm_api_key_file; a file that breaks one refuses the start as endpoint-credential:<rule> before any request reaches Runpod, naming the setting and neither the path nor the key. It is refused beside api_key and beside connectors. Tested against fixture files and a loopback fake of the management API; no Runpod host is called.",
+        "crates/llm-gateway-cli/tests/runpod_key_file.rs::runpod_key_file_a_key_read_from_the_file_reaches_the_rest_api_as_a_bearer",
+        Some("/docs/reference/deployment-document"),
+    ),
+    shipped(
+        "Binary",
         "Model calls without a credential, on request",
         "ingress_auth = \"none\" serves the three wire paths without a credential, for a gateway behind something that authenticates already, and the binary warns before it listens. The counters and the route inventory still take the owner secret, and refuse everything when there is none. bearer, the default, is unchanged.",
         "crates/llm-gateway-cli/tests/hosted.rs::ingress_none_relays_without_a_credential_and_keeps_the_owner_surface_closed",

@@ -747,8 +747,11 @@ struct ProviderDocument {
     /// calls Runpod's REST API itself (story:keychain-references).
     #[serde(default)]
     api_key: Option<String>,
+    /// The file holding the Runpod API key, in place of `api_key` (story:runpod-key-file).
+    #[serde(default)]
+    api_key_file: Option<PathBuf>,
     /// Where the provider's Runpod REST API v2 is (story:runpod-rest-host); only beside
-    /// `api_key`.
+    /// `api_key` or `api_key_file`.
     #[serde(default)]
     management_url: Option<String>,
     /// Where a running pod serves inference, `{pod_id}` and `{port}` filled
@@ -962,6 +965,10 @@ pub struct Provider {
     /// pods are then managed through Runpod's REST API by this process, never beside a
     /// `connectors` connection (story:keychain-references).
     pub api_key: Option<KeychainRef>,
+    /// The file holding the account's Runpod API key, in place of `api_key`: only the path is
+    /// loaded here; the key is read once at start through the trusted-file reader
+    /// (story:runpod-key-file).
+    pub api_key_file: Option<PathBuf>,
     /// The base of the Runpod REST API v2 the provider's pods are managed through with
     /// `api_key`, without a trailing `/`: [`DEFAULT_MANAGEMENT_URL`] unless declared
     /// (story:runpod-rest-host).
@@ -1464,10 +1471,22 @@ fn providers(
             "cannot stand beside a connectors connection: the provider's pods are managed \
              either through connectors or with its own key, not both",
         )?;
+        let api_key_file = provider.api_key_file;
+        ensure(
+            !(api_key_file.is_some() && api_key.is_some()),
+            &format!("providers.{name}.api_key_file"),
+            "cannot stand beside api_key: name the key once",
+        )?;
+        ensure(
+            !(api_key_file.is_some() && connectors.is_some()),
+            &format!("providers.{name}.api_key_file"),
+            "cannot stand beside a connectors connection: the provider's pods are managed \
+             either through connectors or with its own key, not both",
+        )?;
         let management_url = management_url(
             &format!("providers.{name}.management_url"),
             provider.management_url.as_deref(),
-            api_key.is_some(),
+            api_key.is_some() || api_key_file.is_some(),
         )?;
         let proxy_url = proxy_url(
             &format!("providers.{name}.proxy_url"),
@@ -1488,6 +1507,7 @@ fn providers(
                 cloud_type,
                 connectors,
                 api_key,
+                api_key_file,
                 management_url,
                 proxy_url,
                 daily_cap_micro_usd,
@@ -1498,11 +1518,15 @@ fn providers(
     ensure(
         providers
             .values()
-            .filter(|provider| provider.connectors.is_some() || provider.api_key.is_some())
+            .filter(|provider| {
+                provider.connectors.is_some()
+                    || provider.api_key.is_some()
+                    || provider.api_key_file.is_some()
+            })
             .count()
             <= 1,
         "providers",
-        "may declare at most one connectors connection or api_key",
+        "may declare at most one connectors connection, api_key or api_key_file",
     )?;
     let metered = providers
         .values()

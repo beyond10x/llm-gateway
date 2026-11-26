@@ -17,8 +17,8 @@ b10x-llm-gateway: refused config:schema: line 16: unknown field `runpod_api_key_
 ```
 
 The document holds no Runpod API key: with a `connectors` table that key stays in the connectors
-keyring, and a local gateway names it by an OS keychain entry, never a value or a file, which is
-why `runpod_api_key_file` above is refused ([keychain references](#keychain-references)). The specification of the document is the domain
+keyring, and a local gateway names it by an OS keychain entry or a file of its own (a provider's `api_key` or `api_key_file`), never a value, and never as
+`runpod_api_key_file` in a model, which is refused above ([keychain references](#keychain-references)). The specification of the document is the domain
 `llm-gateway.deployment`, in
 [`spec/domains/deployment.yaml`](https://github.com/beyond10x/llm-gateway/blob/main/spec/domains/deployment.yaml).
 
@@ -45,9 +45,10 @@ why `runpod_api_key_file` above is refused ([keychain references](#keychain-refe
 | --- | --- | --- |
 | `kind` | required | `runpod-vllm` |
 | `cloud_type` | `SECURE` | Only `SECURE`. `COMMUNITY` is refused `config:schema`: every pod is a Secure Cloud, on-demand pod, and a created pod placed anywhere else is terminated at once. |
-| `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one, or an `api_key`. |
+| `[providers.<name>.connectors]` | absent | The `connectors` connection for the Runpod transport. At most one provider declares one, or an `api_key` or `api_key_file`. |
 | `api_key` | absent | A [`keychain:<service>/<account>`](#keychain-references) reference to the account's Runpod API key: the binary then calls Runpod's REST API v2 (at `management_url`) itself, over TLS verified against the roots compiled into it, and reads the balance from `GET /v2/billing/balance`, falling back to Runpod's GraphQL `myself { clientBalance }` when that answers 403 or 404. Refused beside a `connectors` table, and on more than one provider. The key is read once at start and refused as `endpoint-credential:<rule>`, its message starting `providers.<name>.api_key:`. A start that cannot read one complete pod listing (every page) serves the provider's models `target-unavailable`, as for an unreachable connectors connection; the start's warning names the provider, the host and the HTTP status or the resolver's error, never the key, and each `target-unavailable` message ends `: provider <name> was not reachable at start`. |
-| `management_url` | `https://api.runpod.io/v2` | Where Runpod's REST API v2 is: `https://`, or `http://` to a loopback host (a test fixture); a host, no user information, query or fragment; at most 2048 bytes; a trailing `/` is dropped. Read only beside `api_key`: declared without one it is refused `config:value`, as is any value outside the rule, the message naming `providers.<name>.management_url` and quoting nothing written. A failed management call never hides the last balance read and never ends a call relayed to a running pod. |
+| `api_key_file` | absent | The file holding the account's Runpod API key, in place of `api_key`: the key is read once at start under the rules of `vllm_api_key_file` (see [the files it reads](#the-files-it-reads)) and used as `api_key` is. Refused beside `api_key`, beside a `connectors` table, and on more than one provider, each as `config:value` naming `providers.<name>.api_key_file`. A file that breaks a rule refuses the start before any request reaches Runpod, as `endpoint-credential:<rule>`, its message starting `providers.<name>.api_key_file:` and naming neither the path nor the key. |
+| `management_url` | `https://api.runpod.io/v2` | Where Runpod's REST API v2 is: `https://`, or `http://` to a loopback host (a test fixture); a host, no user information, query or fragment; at most 2048 bytes; a trailing `/` is dropped. Read only beside `api_key` or `api_key_file`: declared without one it is refused `config:value`, as is any value outside the rule, the message naming `providers.<name>.management_url` and quoting nothing written. A failed management call never hides the last balance read and never ends a call relayed to a running pod. |
 | `proxy_url` | `https://{pod_id}-{port}.proxy.runpod.net` | Where a running pod serves inference: `https://` and a host with an optional port, at most 512 bytes, whose only placeholders are `{pod_id}` (the pod's id) and `{port}` (8000, the port vLLM serves on). The pod's endpoint is the URL filled, then `/v1/`; the default fills to the address llm's Runpod description builds. Anything else is refused `config:value` at start, naming `providers.<name>.proxy_url`. |
 | `daily_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in one UTC day. A pod start of one of this provider's models that would pass it is refused `spend-ceiling`; a ceiling binds no other provider's pods. |
 | `total_cap_usd` | absent | Above 0, at most 1000000: the most this provider's account may spend in all, as Runpod reports its pod billing over its default window. With `api_key` that window is the 30 days up to now, so this is a ceiling on the last 30 days. At most one provider declares a spend ceiling, and then every model declares `price_per_hour_usd`. |
@@ -503,6 +504,7 @@ file must lie inside the directory the token path names; one outside it is refus
 | `owner_secret_file` | 32 to 4096 bytes | no group or other permission at all | one printable token; trailing ASCII whitespace is trimmed |
 | `vllm_api_key_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | `credential_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
+| `api_key_file` | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | a route endpoint's `file:` secret | at most 4096 bytes | no group or other permission at all | one non-empty printable token |
 | `metrics_bearer_file` | 32 to 4096 bytes | no group or other permission at all | one printable token; trailing ASCII whitespace is trimmed |
 | `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE` (a Bedrock model only) | at most 16386 bytes | not group- or world-writable | one line of printable ASCII, at most 16384 bytes after one line end |
@@ -510,7 +512,7 @@ file must lie inside the directory the token path names; one outside it is refus
 A broken rule is refused as `<source>:<rule>`, the source being `config`, `owner-secret`,
 `vllm-api-key`, `endpoint-credential`, `metrics-bearer` or `container-token` (a routes document is a `config` file, a route's key file an `endpoint-credential` one).
 The message names the setting that gave the path (`routes`, `owner_secret_file`,
-`models.<alias>.vllm_api_key_file`, `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`, ...; the document's
+`models.<alias>.vllm_api_key_file`, `providers.<name>.api_key_file`, `AWS_CONTAINER_AUTHORIZATION_TOKEN_FILE`, ...; the document's
 own refusals need none) and the rule's detail. It never quotes the path or the file a link
 resolves to, so a secret written into `--config` or a path setting by mistake is not printed:
 
@@ -522,7 +524,7 @@ b10x-llm-gateway: refused owner-secret:unsafe-mode: owner_secret_file: has mode 
 
 ### Credential files {#credential-files}
 
-A hosted model's `credential_file`, a route endpoint's `file:` secret and `metrics_bearer_file`
+A hosted model's `credential_file`, a route endpoint's `file:` secret, a provider's `api_key_file` and `metrics_bearer_file`
 are read by the same rules (`metrics_bearer_file` refused as `metrics-bearer:<rule>`). Anything that writes one, by hand,
 [`b10x-llm-gateway credential set`](../guides/store-an-upstream-key.md) or another tool, aims at
 this reader:

@@ -1,5 +1,6 @@
 // The round command's refusals and the stamp of the tools a round was measured with. Pure, so
-// ux/round-guard.test.ts can feed them bad input.
+// ux/tools.test.ts can feed them bad input; treeStamp reads git.
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { PINNED_LABEL } from '../e2e/fonts.ts';
@@ -38,9 +39,18 @@ export function missingGateReplays(ms: Pick<Measurement, 'scenario' | 'viewport'
   return missing;
 }
 
-// --baseline is refused unless every gate replay was measured with the pinned fonts, and a value
-// made worse (or no longer measured) needs a decision id.
-export function baselineRefusal(missing: string[], problems: Problem[], decision: string | undefined, fonts: string = PINNED_LABEL): string | null {
+// --baseline is refused unless every gate replay was measured with the pinned fonts on a page and
+// a harness that are committed (`stamp`, from treeStamp: no `+changes`, so the commit the baseline
+// names reproduces it), and a value made worse (or no longer measured) needs a decision id.
+export function baselineRefusal(
+  missing: string[],
+  problems: Problem[],
+  decision: string | undefined,
+  fonts: string = PINNED_LABEL,
+  stamp: TreeStamp = { page: 'committed', harness: 'committed' },
+): string | null {
+  const dirty = Object.entries(stamp).filter(([, v]) => v.endsWith('+changes') || v === 'unknown');
+  if (dirty.length > 0) return `--baseline refused: the ${dirty.map(([k, v]) => `${k} (${v})`).join(' and the ')} differ from a commit; commit them first, so the baseline names the commit it was taken on`;
   if (fonts !== PINNED_LABEL) return `--baseline refused: the round was measured with the fonts "${fonts}"; the baseline holds what the pinned fonts measure (unset UX_FONTS)`;
   if (missing.length > 0) return `--baseline refused: ${missing.length} gate replay(s) not measured: ${missing.slice(0, 5).join(', ')}`;
   const worse = problems.filter((p) => p.kind === 'worse' || p.kind === 'missing-measured');
@@ -66,4 +76,49 @@ export function toolsOf(ms: Pick<Measurement, 'tools'>[]): Measurement['tools'] 
 // A trend row with its commit cut to 8 characters, the length every row is written with.
 export function shortCommit(row: string): string {
   return row.replace(/^(\| [^|]+ \| [^|]+ \| )([0-9a-f]{8})[0-9a-f]+/, '$1$2');
+}
+
+// What the page is built from: a change under any of these marks the page `+changes`, whether the
+// built page was rebuilt or not.
+export const PAGE_PATHS = ['dashboard/src', 'dashboard/ui', 'dashboard/index.html', 'dashboard/vite.config.ts', 'crates/llm-gateway/src/dashboard.html'];
+// What measures it. The round directories and the baseline are what a round writes.
+export const HARNESS_PATHS = [
+  'dashboard/e2e',
+  'dashboard/ux',
+  'dashboard/playwright.config.ts',
+  'dashboard/package.json',
+  'dashboard/pnpm-lock.yaml',
+  ':(exclude)dashboard/ux/rounds',
+  ':(exclude)dashboard/ux/baseline.json',
+];
+
+export interface TreeStamp {
+  page: string;
+  harness: string;
+}
+
+// The commit of the page and of the harness in the repository at `repo`, each marked `+changes`
+// when the tree differs from it (an untracked file counts); `unknown` without git.
+export function treeStamp(repo: string): TreeStamp {
+  const git = (args: string[]) => execFileSync('git', args, { encoding: 'utf8', cwd: repo }).trim();
+  try {
+    const head = git(['rev-parse', '--short=8', 'HEAD']);
+    const page = git(['status', '--porcelain', '--', ...PAGE_PATHS]);
+    const harness = git(['status', '--porcelain', '--', ...HARNESS_PATHS]);
+    return { page: page ? `${head}+changes` : head, harness: harness ? `${head}+changes` : head };
+  } catch {
+    return { page: 'unknown', harness: 'unknown' };
+  }
+}
+
+// The baseline's `about`: what it holds, and the round and the commit it was taken on.
+export function baselineAbout(gating: string[], round: string, commit: string, pageDigest: string): string {
+  return `Worst value per scenario over the gating viewports (${gating.join(', ')}) and both themes, and the sideways scrollers at each measured-only viewport (overflow.scrollers.<viewport>, the worst over both themes). Taken by round ${round} at commit ${commit} on the built page with sha256 ${pageDigest.slice(0, 12)}. Lower is better, except flow.visible_ratio, flow.drawn and screen_only.reached, where higher is better. Written by \`pnpm ux:round R-nn --baseline\`.`;
+}
+
+// The round, the commit and the page digest a baseline's `about` names; null when it names none,
+// or a commit with changes.
+export function aboutRound(about: string): { round: string; commit: string; page: string } | null {
+  const m = about.match(/Taken by round (R-[0-9A-Za-z-]+) at commit ([0-9a-f]{8}) on the built page with sha256 ([0-9a-f]{12})\./);
+  return m ? { round: m[1]!, commit: m[2]!, page: m[3]! } : null;
 }

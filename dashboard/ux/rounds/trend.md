@@ -1,6 +1,6 @@
 # Trend
 
-One row per round: hard-gate replays passing at the gating viewports (light / dark), and the worst values over every scenario at the gating viewports only (the ratchet's basis). "key font px" is the smallest key-data font there, n/a when no replay shows key data.
+One row per round: hard-gate replays passing at the gating viewports (light / dark), and the worst values over every scenario at the gating viewports only (the ratchet's basis). "key font px" is the smallest key-data font there, n/a when no replay shows key data. Not like for like: R-01 to R-04 were measured with the host's fonts, R-05 on with the pinned fonts; R-05 also moved to the renderer and merged the Recent calls wrapping (R-05/notes.md). From R-06 the scenarios include `offline`.
 
 | round | date | commit | toggle | gate 1 | gate 2 | gate 5 axe | gate 5 keyboard | gate 5 motion | axe nodes | past box | key font px | layout shift |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|

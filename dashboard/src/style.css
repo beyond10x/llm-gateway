@@ -100,7 +100,7 @@ td.toned.tone-danger, th.toned.tone-danger { font-weight: 600; }
 .flag { display: inline-block; margin-right: 0.3rem; padding: 0 0.35rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--warning); }
 .calls tbody tr:hover { background: var(--head); }
 
-.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr)); gap: 0.6rem; }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr)); gap: 0.6rem; }
 .tile { border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: var(--radius-md); padding: 0.5rem 0.7rem; min-width: 0; }
 .tile.wide { grid-column: span 2; }
 @media (max-width: 600px) { .tile.wide { grid-column: 1 / -1; } }

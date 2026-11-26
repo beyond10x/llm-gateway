@@ -578,6 +578,140 @@ fn a_file_that_is_no_session_store_is_refused_at_start_and_kept() {
     assert_eq!(kept, 1);
 }
 
+/// A file sessionspec's open began and did not finish (its `meta` table without a schema row,
+/// no other table) is a new store: sessionspec's open completes it and loses nothing.
+#[test]
+fn a_file_with_only_sessionspecs_meta_table_and_no_schema_row_is_a_new_store() {
+    let fixture = Fixture::new("records-meta-only");
+    let upstream = Upstream::start(Vec::new());
+    let store = store_in(&fixture);
+    rusqlite::Connection::open(&store)
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )
+        .unwrap();
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let gateway = Gateway::start(&config, &fixture.dir);
+    let answer = post(
+        &gateway,
+        "/v1/messages",
+        &claude_session("meta-only"),
+        &first_turn("hello"),
+    );
+    assert_eq!(answer.status, 200);
+    stored_when(&store, &session_hash("claude-code", "meta-only"), |steps| {
+        turns(steps).len() == 1
+    });
+}
+
+/// A store of this gateway's version that another process holds locked past the check's wait
+/// refuses the start with its own reason, never "no session store", and is kept.
+#[test]
+fn a_store_held_locked_at_start_is_refused_as_held_locked() {
+    let fixture = Fixture::new("records-locked-at-start");
+    let upstream = Upstream::start(Vec::new());
+    let store = store_in(&fixture);
+    {
+        let connection = rusqlite::Connection::open(&store).unwrap();
+        connection
+            .execute_batch(
+                "CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL); \
+                 CREATE TABLE notes (text TEXT); INSERT INTO notes VALUES ('kept');",
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO meta VALUES ('schema', ?1)",
+                [sessionspec_records::store::SCHEMA_VERSION.to_string()],
+            )
+            .unwrap();
+    }
+    let lock = rusqlite::Connection::open(&store).unwrap();
+    lock.execute_batch("PRAGMA locking_mode = EXCLUSIVE; BEGIN EXCLUSIVE;")
+        .unwrap();
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let (refused, stderr) = refused_start(&config);
+    lock.execute_batch("COMMIT;").unwrap();
+    drop(lock);
+    assert!(refused, "{stderr}");
+    assert!(
+        stderr.contains(
+            "refused config:value: interaction_records.path is held locked by another process"
+        ),
+        "{stderr}"
+    );
+    assert!(!stderr.contains(&*store.to_string_lossy()), "{stderr}");
+    let kept: i64 = rusqlite::Connection::open(&store)
+        .unwrap()
+        .query_row("SELECT count(*) FROM notes", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(kept, 1);
+}
+
+/// D98: with the store removed, 50 calls answered within a second fail to store; the failed
+/// series counts each of them, and at most two warning lines name the series.
+#[test]
+fn a_removed_store_under_load_warns_at_most_once_a_second_and_counts_every_call() {
+    const CALLS: u64 = 50;
+    let fixture = Fixture::new("records-failures-rate");
+    let upstream = Upstream::start(Vec::new());
+    let store = store_in(&fixture);
+    let config = document(&fixture, &upstream, &records_table(&store, ""));
+    let gateway = Gateway::start(&config, &fixture.dir);
+    for suffix in ["", "-wal", "-shm"] {
+        drop(std::fs::remove_file(format!("{}{suffix}", store.display())));
+    }
+    let address = gateway.address;
+    let body = first_turn("hello");
+    let started = Instant::now();
+    let calls: Vec<_> = (0..CALLS)
+        .map(|n| {
+            let raw = format!(
+                "POST /v1/messages HTTP/1.1\r\nhost: gateway\r\nauthorization: Bearer {OWNER_SECRET}\r\n{}content-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{body}",
+                claude_session(&format!("gone-{n}")),
+                body.len()
+            );
+            thread::spawn(move || exchange(address, &raw).status)
+        })
+        .collect();
+    for call in calls {
+        assert_eq!(call.join().unwrap(), 200);
+    }
+    let answered = started.elapsed();
+    assert!(answered < Duration::from_secs(1), "{answered:?}");
+    let deadline = Instant::now() + STORED;
+    while gateway.counter("llmgw_interaction_records_failed_total") < CALLS {
+        assert!(
+            Instant::now() < deadline,
+            "the series never reached {CALLS}"
+        );
+        thread::sleep(Duration::from_millis(20));
+    }
+    // Long enough for a warning the one-second rate held back to be written.
+    thread::sleep(Duration::from_millis(1500));
+    assert_eq!(
+        gateway.counter("llmgw_interaction_records_failed_total"),
+        CALLS
+    );
+    let warnings: Vec<String> = gateway
+        .lines
+        .try_iter()
+        .filter(|line| line.contains("llmgw_interaction_records_failed_total"))
+        .collect();
+    assert!(
+        (1..=2).contains(&warnings.len()),
+        "{} warning lines: {warnings:?}",
+        warnings.len()
+    );
+    assert!(
+        warnings
+            .iter()
+            .all(|line| !line.contains(&*store.to_string_lossy())),
+        "{warnings:?}"
+    );
+}
+
 /// D94: a store of another schema version refuses the start naming both versions, never the
 /// path; an empty file is a new store, as a missing one is.
 #[test]

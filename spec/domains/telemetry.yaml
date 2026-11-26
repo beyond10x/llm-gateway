@@ -253,7 +253,11 @@ entities:
   # dropped first; a dropped call is `call-unknown`. A gateway composed again holds none of the
   # earlier calls (`a1_a_gateway_composed_again_gives_out_no_earlier_id_and_holds_none` in
   # crates/llm-gateway/tests/observability/calls.rs).
-  # PLANNED (story:cost-per-call): `cost_usd`, after the token keys.
+  # DECIDED 2026-11-26 (story:cost-per-call): `cost_usd`, after the token keys, is the
+  # UsageRecord's `cost_usd` written as a JSON string, the decimal llm writes for an amount
+  # (`"0.0001299"`), so no reader parses money as a float; absent when the UsageRecord has none
+  # and on an `in-flight` record (`a2_a_priced_calls_record_names_its_cost_after_the_token_keys_
+  # and_an_unpriced_ones_none` in crates/llm-gateway/tests/observability/calls.rs).
   # ESS-LIMIT: an entity's lifecycle takes the wire name `state`, so the field that the record
   # writes as its key `state` is declared `call_state` here; the record is observed, never moved
   # by a command, and its lifecycle is that of an observation.
@@ -272,6 +276,7 @@ entities:
       - {name: output_tokens, type: 'Optional<Integer>'}
       - {name: cache_read_tokens, type: 'Optional<Integer>'}
       - {name: cache_creation_tokens, type: 'Optional<Integer>'}
+      - {name: cost_usd, type: 'Optional<Decimal>'}
       - {name: response_bytes, type: 'Optional<Integer>'}
       - {name: duration_ms, type: 'Optional<Integer>'}
       - {name: profile, type: 'Optional<String>'}

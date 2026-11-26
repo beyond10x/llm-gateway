@@ -44,6 +44,11 @@
     "cache_creation_tokens": {
       "type": "integer"
     },
+    "cost_usd": {
+      "type": "string",
+      "format": "decimal",
+      "pattern": "^-?(0|[1-9][0-9]*)(\\.[0-9]+)?$"
+    },
     "response_bytes": {
       "type": "integer"
     },
@@ -70,7 +75,7 @@
   "x-ess-provenance": {
     "system": "llm-gateway",
     "specification_version": "v1",
-    "contract_digest": "slice-sha256/2:f904c39936a60b43b868afc51ea3f115be5bf36ffd440e2f71de8f972249301e",
+    "contract_digest": "slice-sha256/2:1e91f102070bb3d62cc5609da68787041d331403d59efb81466c580e3f994f20",
     "regenerate": "ess generate"
   },
   "$defs": {

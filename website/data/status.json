@@ -421,7 +421,7 @@
     },
     {
       "area": "Observability",
-      "detail": "A Runpod model, every hosted model and a route of the routes document may declare a price per 1000000 tokens for input, output, cache reads and cache writes; each call's usage record and usage event then name what the call cost in USD, priced by llm's own pricing code. A call without a declared price, without reported tokens or with a counted class that has no rate names no cost. Tested against a loopback upstream, not against a vendor's bill.",
+      "detail": "A Runpod model, every hosted model and a route of the routes document may declare a price per 1000000 tokens for input, output, cache reads and cache writes; each call's usage record, its usage event and its record at GET /v1/calls/<id> then name what the call cost in USD, priced by llm's own pricing code. A call without a declared price, without reported tokens or with a counted class that has no rate names no cost. Tested against a loopback upstream, not against a vendor's bill.",
       "label": "The cost of a call",
       "status": "shipped"
     },

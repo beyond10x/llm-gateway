@@ -303,7 +303,8 @@ model_prefix = "claude-"
 `[models.<alias>.token_price]` and `[hosted.<alias>.token_price]` (every kind) declare what the
 model's tokens cost, in USD per 1000000 tokens. Each call's usage record then names what the
 call cost, `cost_usd`, priced by llm's own pricing code; the binary writes it as the `cost_usd`
-field of its `usage` event.
+field of its `usage` event, and the record `GET /v1/calls/{id}` answers names it as `cost_usd`, a
+JSON string such as `"0.000138"`, after its token keys.
 
 | Key | Default | Rule |
 | --- | --- | --- |

@@ -1281,7 +1281,9 @@ estimate:
   nothing;
 - the counters agree with each other (no more cache tokens than prompt tokens).
 
-The binary writes it as the `cost_usd` field of its `usage` event.
+The binary writes it as the `cost_usd` field of its `usage` event, and the record `GET /v1/calls/{id}`
+answers carries it as its key `cost_usd`, after the token keys ([call ids and call
+records](#call-ids-and-call-records)).
 
 ### Latency and outcomes per model
 
@@ -1402,6 +1404,7 @@ absent key, never 0 and never an estimate:
 | `output_tokens` | the output tokens it reported |
 | `cache_read_tokens` | the cache read tokens it reported (`UsageRecord::cached_input_tokens`) |
 | `cache_creation_tokens` | the cache creation tokens it reported (`UsageRecord::cache_creation_input_tokens`) |
+| `cost_usd` | what the call cost in USD, a JSON string as llm writes an amount (`"0.0001299"`), when its model declares a token price ([the cost of a call](#the-cost-of-a-call)) |
 | `response_bytes` | the decoded body bytes relayed |
 | `duration_ms` | from the end of the request head to the last byte or the refusal written |
 | `profile` | the profile of the pod that served the call |

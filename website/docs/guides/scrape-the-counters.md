@@ -172,6 +172,8 @@ The binary writes each usage record as one `tracing` event at `info`, which is t
 `call` is the id the call's answer carried in its `x-llm-gateway-call` header. A call whose
 answer reported its usage also carries `input_tokens`, `output_tokens`, `cache_read_tokens` and
 `cache_creation_tokens`, each only when reported; a refused call, like the one above, has none.
+A call to a model that declares a [token price](../reference/deployment-document.md#token-prices)
+also carries `cost_usd`, what it cost in USD, in its event and in its record.
 A streamed chat answer reports its usage only when the client sent
 `"stream_options":{"include_usage":true}`.
 

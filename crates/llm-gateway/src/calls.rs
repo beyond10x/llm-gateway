@@ -178,6 +178,7 @@ fn ended(writer: &mut json::Writer, record: &UsageRecord) {
         "cache_creation_tokens",
         record.cache_creation_input_tokens,
     );
+    optional_string(writer, "cost_usd", record.cost_usd.as_deref());
     writer.key("response_bytes");
     writer.number(record.response_bytes);
     writer.key("duration_ms");

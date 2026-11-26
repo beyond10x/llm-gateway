@@ -7,6 +7,7 @@ import { join } from 'node:path';
 import type { Browser, Page } from '@playwright/test';
 import type { Scenario } from '../ux/scenarios/index.ts';
 import { runAxe } from './axe.ts';
+import { fontsLabel } from './fonts.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
 import { axeRules, keyFontDeficit, mergeAxe, secondaryFontDeficit, type AxeFinding, type Metrics } from './metrics.ts';
 import { runId } from './metrics-dir.ts';
@@ -63,7 +64,8 @@ export interface Measurement {
   // reduced-motion replay.
   flow: FlowProbe;
   reduced_flow: FlowProbe;
-  tools: { chromium: string; axe_core: string };
+  // The fonts the replay rendered with (e2e/fonts.ts).
+  tools: { chromium: string; axe_core: string; fonts: string };
   details: {
     axe: AxeFinding[];
     overflowing: Item[];
@@ -292,7 +294,7 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       blocked: [...replay.blocked],
       flow,
       reduced_flow: motion.flow,
-      tools: { chromium: browser.version(), axe_core: axeVersion },
+      tools: { chromium: browser.version(), axe_core: axeVersion, fonts: fontsLabel() },
       details: {
         axe: axeList,
         overflowing: items(overflowing),

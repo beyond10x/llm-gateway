@@ -32,9 +32,20 @@
 //!   connectors' `unknown` is resolved; otherwise it is `Lost`. A create is never sent twice.
 //! * `terminate_pod`: `DELETE /pods/<id>`. A 2xx is `Terminated`, a 4xx `Refused`, anything
 //!   else `Lost`.
-//! * `container_started_at` and `pod_placement`: the pod's `startedAt`, and its `cloud`, from
-//!   the listing. v2 declares no `interruptible` and no way to ask for one, so a placement never
-//!   reports it.
+//! * `container_started_at`: the `ts` of the last `start container for <image>: begin` line of
+//!   the pod's system log, `GET /pods/<id>/logs?source=system&tail=100`. Not the pod's
+//!   `startedAt`: on the live API that stays put while the container restarts (2026-11-26, a vLLM
+//!   engine failing again and again), so the crash-loop rule never fired. Nor `runtime.uptime`
+//!   of `GET /pods/<id>`, the one single answer that might reveal a restart: no restart has been
+//!   seen to reset it, while the system log's start line was seen at each one. The log is a
+//!   Server-Sent Events stream that stays open, so one read ends when the stream has been quiet
+//!   for [`RestBinding::log_quiet`], after 5 s or after 1 MiB, whichever
+//!   comes first. A pod's log is read at most once per [`RestBinding::log_every`], and not while
+//!   its last probe found it serving: a restart of a serving container shows first as a failed
+//!   probe. Each read is made under the pool's lock, so these bounds keep it off the relayed
+//!   requests.
+//! * `pod_placement`: the pod's `cloud` from the listing. v2 declares no `interruptible` and no
+//!   way to ask for one, so a placement never reports it.
 //! * `account_spend`: `GET /billing/pods?bucketSize=day`, an object whose `records` are one
 //!   pod's one day each: `totalAmount` (USD) and the bucket's `startTime`. It covers Runpod's
 //!   default window, the 30 days up to now, so the total is those 30 days' spend.
@@ -49,7 +60,7 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
-    io::Write,
+    io::{Read, Write},
     net::{TcpStream, ToSocketAddrs},
     sync::{Arc, Mutex, PoisonError},
     time::{Duration, Instant},
@@ -84,6 +95,17 @@ const SPEND_QUERY: &str = "query { myself { currentSpendPerHr } }";
 /// The account query of the balance fallback: only fields Runpod's GraphQL `myself` is known to
 /// answer.
 const ACCOUNT_QUERY: &str = "query { myself { clientBalance currentSpendPerHr } }";
+/// The most of one log read, head included; what arrived before it is read.
+const MAX_LOG_BYTES: usize = 1024 * 1024;
+/// The longest one log read lasts, however much the stream still sends.
+const LOG_BOUND: Duration = Duration::from_secs(5);
+/// How many of the pod's last system lines one log read asks for: v2's own default, written
+/// out. A start older than the last 100 system lines is not the last start.
+const LOG_TAIL: u32 = 100;
+/// The system line Runpod writes each time a pod's container starts:
+/// `start container for <image>: begin`.
+const START_PREFIX: &str = "start container for ";
+const START_SUFFIX: &str = ": begin";
 
 /// Where the transport sends its calls.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -94,17 +116,38 @@ pub struct RestBinding {
     pub graphql_url: String,
     /// The bound on one call, connect to last byte.
     pub timeout: Duration,
+    /// How long a pod's log stream may stay quiet before one read of it ends. Over `https` it
+    /// also bounds the connection's setup, which the TLS connection takes one bound for.
+    pub log_quiet: Duration,
+    /// The least time between two reads of one pod's log; a read in between answers the start
+    /// the last one found.
+    pub log_every: Duration,
 }
 
 impl RestBinding {
-    /// Runpod's own endpoints and a 30 s bound.
+    /// Runpod's own endpoints, a 30 s bound, a log read that ends after 1 s of quiet, and one
+    /// log read per pod per 15 s: a crash loop's restarts come tens of seconds apart (33 s on
+    /// 2026-11-26), and the crash window is minutes long.
     pub fn runpod() -> Self {
         Self {
             base_url: "https://api.runpod.io/v2".to_owned(),
             graphql_url: "https://api.runpod.io/graphql".to_owned(),
             timeout: Duration::from_secs(30),
+            log_quiet: Duration::from_secs(1),
+            log_every: Duration::from_secs(15),
         }
     }
+}
+
+/// What the transport knows of one pod's container starts.
+#[derive(Debug, Default)]
+struct StartWatch {
+    /// The latest container start any log read found.
+    started_at: Option<u64>,
+    /// When its log was last read.
+    read_at: Option<Instant>,
+    /// Its last probe found vLLM serving.
+    serving: bool,
 }
 
 /// Why one call failed.
@@ -155,6 +198,7 @@ pub struct RestRunpod {
     keys: BTreeMap<String, BearerKey>,
     tls: Option<Arc<dyn PodTls>>,
     failure: Mutex<Option<CallFailure>>,
+    starts: BTreeMap<String, StartWatch>,
 }
 
 impl fmt::Debug for RestRunpod {
@@ -273,6 +317,7 @@ impl RestRunpod {
             keys: BTreeMap::new(),
             tls: None,
             failure: Mutex::new(None),
+            starts: BTreeMap::new(),
         }
     }
 
@@ -368,26 +413,7 @@ impl RestRunpod {
             return probe::read_answer(&mut *stream, deadline, MAX_ANSWER_BYTES, |_| Some(()))
                 .ok_or(FailureCause::NoAnswer);
         }
-        let address = if target.authority.contains(':') && !target.authority.ends_with(']') {
-            target.authority.to_owned()
-        } else {
-            format!("{}:80", target.authority)
-        };
-        let mut last = FailureCause::NoAnswer;
-        let mut connected = None;
-        for address in address.to_socket_addrs().map_err(connection)? {
-            match TcpStream::connect_timeout(&address, timeout) {
-                Ok(stream) => {
-                    connected = Some(stream);
-                    break;
-                }
-                Err(error) => last = connection(error),
-            }
-        }
-        let stream = connected.ok_or(last)?;
-        stream
-            .set_write_timeout(Some(timeout))
-            .map_err(connection)?;
+        let stream = Self::connect_plain(target, timeout)?;
         (&stream).write_all(request).map_err(connection)?;
         probe::read_answer(&mut &stream, deadline, MAX_ANSWER_BYTES, |left| {
             stream
@@ -395,6 +421,101 @@ impl RestRunpod {
                 .ok()
         })
         .ok_or(FailureCause::NoAnswer)
+    }
+
+    /// A plain connection to a loopback `target`, its connect and its writes bound by `timeout`.
+    fn connect_plain(target: &Target<'_>, timeout: Duration) -> Result<TcpStream, FailureCause> {
+        let connection = |error: std::io::Error| FailureCause::Connection(error.to_string());
+        let address = if target.authority.contains(':') && !target.authority.ends_with(']') {
+            target.authority.to_owned()
+        } else {
+            format!("{}:80", target.authority)
+        };
+        let mut last = FailureCause::NoAnswer;
+        for address in address.to_socket_addrs().map_err(connection)? {
+            match TcpStream::connect_timeout(&address, timeout) {
+                Ok(stream) => {
+                    stream
+                        .set_write_timeout(Some(timeout))
+                        .map_err(connection)?;
+                    return Ok(stream);
+                }
+                Err(error) => last = connection(error),
+            }
+        }
+        Err(last)
+    }
+
+    /// One read of a stream that stays open, with the Runpod key as a bearer: what arrived
+    /// until it was quiet for [`RestBinding::log_quiet`], until [`LOG_BOUND`], or up to
+    /// [`MAX_LOG_BYTES`], decoded as far as it arrived whole. `None`, kept as the last failure,
+    /// for no answer or a non-2xx one.
+    fn stream(&self, url: &str) -> Option<Vec<u8>> {
+        let Some(target) = target(url) else {
+            self.fail(url, FailureCause::NotAllowed);
+            return None;
+        };
+        let token = self.api_key.token()?;
+        let head = format!(
+            "GET {} HTTP/1.1\r\nHost: {}\r\nUser-Agent: {USER_AGENT}\r\nAccept: text/event-stream\r\nConnection: close\r\n",
+            target.path, target.authority
+        );
+        let request = Request::of(&[
+            head.as_bytes(),
+            b"Authorization: Bearer ",
+            token.as_bytes(),
+            b"\r\n\r\n",
+        ]);
+        let answer = self.read_open(&target, request.bytes());
+        drop(request);
+        let answer = match answer {
+            Ok(answer) => answer,
+            Err(cause) => {
+                self.fail(url, cause);
+                return None;
+            }
+        };
+        let Some((status, body)) = probe::parse_open(&answer) else {
+            self.fail(url, FailureCause::NoAnswer);
+            return None;
+        };
+        if !(200..300).contains(&status) {
+            self.fail(url, FailureCause::Status(status));
+            return None;
+        }
+        Some(body)
+    }
+
+    /// Sends one request and reads what its open answer sends until it is quiet, or until the
+    /// read's bound in time or bytes. Over `https` the quiet bound also bounds the connection's
+    /// setup: [`PodTls::connect`] takes one bound for both.
+    fn read_open(&self, target: &Target<'_>, request: &[u8]) -> Result<Vec<u8>, FailureCause> {
+        let quiet = self.binding.log_quiet;
+        let deadline = Instant::now() + LOG_BOUND;
+        let connection = |error: std::io::Error| FailureCause::Connection(error.to_string());
+        if target.tls {
+            let tls = self.tls.as_ref().ok_or(FailureCause::NoTls)?;
+            let mut stream = tls.connect(target.authority, quiet).map_err(connection)?;
+            stream.write_all(request).map_err(connection)?;
+            stream.flush().map_err(connection)?;
+            return Ok(read_until_quiet(&mut *stream, deadline));
+        }
+        let stream = Self::connect_plain(target, self.binding.timeout)?;
+        stream
+            .set_read_timeout(Some(quiet.max(Duration::from_millis(1))))
+            .map_err(connection)?;
+        (&stream).write_all(request).map_err(connection)?;
+        Ok(read_until_quiet(&mut &stream, deadline))
+    }
+
+    /// The latest container start the pod's system log names, read once now.
+    fn logged_start(&self, pod_id: &str) -> Option<u64> {
+        let body = self.stream(&format!(
+            "{}/pods/{}/logs?source=system&tail={LOG_TAIL}",
+            self.binding.base_url,
+            encode(pod_id)
+        ))?;
+        last_container_start(&body)
     }
 
     fn rest(&self, method: &str, path: &str, body: Option<&[u8]>) -> Option<Reply> {
@@ -593,6 +714,42 @@ fn pod_started_at_ms(value: &Value) -> Option<u64> {
         .and_then(rest_started_at_ms)
 }
 
+/// Reads `stream` until it ends, fails, or a read waits past the stream's own read bound (the
+/// quiet bound), until `deadline`, or until [`MAX_LOG_BYTES`] arrived; what arrived before is
+/// kept.
+fn read_until_quiet(stream: &mut dyn Read, deadline: Instant) -> Vec<u8> {
+    let mut answer = Vec::new();
+    let mut buffer = [0_u8; 8192];
+    while Instant::now() < deadline && answer.len() < MAX_LOG_BYTES {
+        match stream.read(&mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(read) => answer.extend_from_slice(buffer.get(..read).unwrap_or_default()),
+        }
+    }
+    answer.truncate(MAX_LOG_BYTES);
+    answer
+}
+
+/// The latest `ts` of a `system` event whose line is `start container for <image>: begin`, in a
+/// log stream's Server-Sent Events (`data: {"source", "line", "ts"}`, one JSON object per `data`
+/// line). An event that is not such a line, or whose `ts` is not RFC 3339 UTC, names no start.
+fn last_container_start(body: &[u8]) -> Option<u64> {
+    String::from_utf8_lossy(body)
+        .lines()
+        .filter_map(|line| line.strip_prefix("data:"))
+        .filter_map(|data| serde_json::from_str::<Value>(data.trim()).ok())
+        .filter(|event| event.get("source").and_then(Value::as_str) == Some("system"))
+        .filter(|event| {
+            event
+                .get("line")
+                .and_then(Value::as_str)
+                .map(str::trim)
+                .is_some_and(|line| line.starts_with(START_PREFIX) && line.ends_with(START_SUFFIX))
+        })
+        .filter_map(|event| started_at_ms(event.get("ts")?.as_str()?))
+        .max()
+}
+
 /// One pod of a `GET /pods` answer for the account view, or `None` without an id and a name.
 /// The uptime is `runtime.uptime`, which the listing leaves null.
 fn summary(value: &Value) -> Option<PodSummary> {
@@ -733,7 +890,10 @@ impl RunpodTransport for RestRunpod {
 
     fn terminate_pod(&mut self, pod_id: &str) -> TerminateAnswer {
         match self.rest("DELETE", &format!("/pods/{}", encode(pod_id)), None) {
-            Some(reply) if reply.success() => TerminateAnswer::Terminated,
+            Some(reply) if reply.success() => {
+                self.starts.remove(pod_id);
+                TerminateAnswer::Terminated
+            }
             // Including 404: nothing was terminated by this call.
             Some(reply) if (400..500).contains(&reply.status) && reply.status != 408 => {
                 TerminateAnswer::Refused
@@ -742,16 +902,35 @@ impl RunpodTransport for RestRunpod {
         }
     }
 
+    /// Also remembers whether the pod served, which spares a serving pod its log reads.
     fn probe_ready(&mut self, target: &ProbeTarget<'_>) -> Probe {
-        let Some(endpoint) = target.endpoint else {
-            return Probe::Unreachable;
-        };
-        let key = target.model.and_then(|model| self.keys.get(model));
-        probe::models(endpoint, key, PROBE_TIMEOUT, self.tls.as_deref())
+        let probe = target.endpoint.map_or(Probe::Unreachable, |endpoint| {
+            let key = target.model.and_then(|model| self.keys.get(model));
+            probe::models(endpoint, key, PROBE_TIMEOUT, self.tls.as_deref())
+        });
+        self.starts
+            .entry(target.pod_id.to_owned())
+            .or_default()
+            .serving = matches!(probe, Probe::Ready { .. });
+        probe
     }
 
+    /// The latest container start the pod's system log named. The log is read when the pod's
+    /// last probe did not find it serving and no read of it was made in the last
+    /// [`RestBinding::log_every`]; otherwise the start the last read found is answered. A read
+    /// that finds no start, or an earlier one, leaves the start found before.
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
-        pod_started_at_ms(&self.listed(pod_id)?)
+        let every = self.binding.log_every;
+        let due = self.starts.get(pod_id).is_none_or(|watch| {
+            !watch.serving && watch.read_at.is_none_or(|at| at.elapsed() >= every)
+        });
+        if due {
+            let logged = self.logged_start(pod_id);
+            let watch = self.starts.entry(pod_id.to_owned()).or_default();
+            watch.read_at = Some(Instant::now());
+            watch.started_at = watch.started_at.max(logged);
+        }
+        self.starts.get(pod_id).and_then(|watch| watch.started_at)
     }
 
     fn pod_placement(&mut self, pod_id: &str) -> Option<PodPlacement> {

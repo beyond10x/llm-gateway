@@ -327,7 +327,7 @@ impl<T: RunpodTransport> RunpodProvider<T> {
             .key(pod)
             .and_then(|key| self.model_of(&key).map(|model| model.crash_window_ms));
         let health = self.health.entry(pod.id.clone()).or_default();
-        // Runpod reports no uptime, only `lastStartedAt`: a start later than the last one seen is
+        // The transport reports when the container last started: a start later than the last one seen is
         // one restart. The first value, an equal or an earlier one, or none, is not.
         if let (Some(now), Some(before)) = (started_at, health.last_started_at)
             && now > before

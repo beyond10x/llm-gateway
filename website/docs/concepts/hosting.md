@@ -50,7 +50,11 @@ The pool it composes:
 - tries the declared GPU types **in order**, but ends the attempt when a create's answer is lost,
   because Runpod takes no idempotency key and a second create could pay twice;
 - **terminates** a pod that crash-loops, refuses its vLLM key or misses its startup deadline, and
-  replaces it on the next request that may start one, or the next wake;
+  replaces it on the next request that may start one, or the next wake. A crash loop is two
+  container restarts inside ten minutes; a provider reached with its own Runpod API key counts
+  them from the pod's system log, where Runpod writes `start container for <image>: begin` at
+  every container start. A missed deadline is found by the next request or by the cleanup pass
+  that runs every 60 seconds;
 - **reaps** a pod idle past `idle_timeout_minutes`, never below its measured cold start and never
   with a request in flight;
 - does not stop a pod with a request in flight when its ownership lease expires: the stop waits

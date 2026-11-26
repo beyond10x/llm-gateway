@@ -182,6 +182,52 @@ fn chunk(piece: &str) -> Vec<u8> {
     format!("{:x}\r\n{piece}\r\n", piece.len()).into_bytes()
 }
 
+/// The `created`th pod as Runpod REST API v2's `Pod` writes it, running, from the create `body`.
+fn v2_pod(created: u32, body: &Value) -> Value {
+    json!({
+        "id": format!("pod{created}"),
+        "name": body["name"],
+        "image": body["image"],
+        "args": "",
+        "disk": body["disk"],
+        "ports": body["ports"],
+        "env": body["env"],
+        "registry": null,
+        "status": "RUNNING",
+        "actions": ["stop", "restart", "terminate"],
+        "mounts": {},
+        "gpu": {"id": body["gpu"]["id"], "count": body["gpu"]["count"], "vcpuCount": 16, "memory": 62},
+        "cloud": body["cloud"],
+        "dataCenterId": "EU-RO-1",
+        "cudaVersion": "12.8",
+        "ssh": {"proxy": null, "direct": null},
+        "template": null,
+        "cost": 0.79,
+        "locked": false,
+        "globalNetworking": {"enabled": false},
+        "runtime": null,
+        "createdAt": "2026-11-26T07:59:00Z",
+        "startedAt": "2026-11-26T08:00:00Z",
+    })
+}
+
+/// `GET /v2/billing/pods?bucketSize=day` in the shape the live API answered on 2026-11-26: one
+/// record per pod per day.
+fn pod_billing() -> Value {
+    json!({
+        "metadata": {
+            "query": {"bucketSize": "day", "startTime": "2026-10-27T00:00:00Z", "endTime": "2026-11-27T00:00:00Z"},
+            "recordCount": 1,
+            "totals": {"cpuAmount": 0, "diskAmount": 0.0046, "gpuAmount": 1.29, "totalAmount": 1.295},
+            "uniquePodCount": 1,
+        },
+        "records": [{
+            "podId": "29ppsonrj1f9ot", "startTime": "2026-10-30T00:00:00Z", "endTime": "2026-10-31T00:00:00Z",
+            "cpuAmount": 0, "diskAmount": 0.0046, "gpuAmount": 1.29, "totalAmount": 1.295,
+        }],
+    })
+}
+
 fn serve(mut connection: TcpStream, state: &Arc<Mutex<State>>) {
     let Some(seen) = read_request(&mut connection) else {
         return;
@@ -210,35 +256,10 @@ fn serve(mut connection: TcpStream, state: &Arc<Mutex<State>>) {
             &json!({"pods": pods, "pagination": {"hasNextPage": false, "nextCursor": null}}),
         )
     } else if line.starts_with("POST /v2/pods ") {
-        // Runpod REST API v2's `Pod`: answered `PROVISIONING`, listed `RUNNING` from then on.
-        let body = seen.json();
+        // Answered `PROVISIONING`, listed `RUNNING` from then on.
         let mut held = state.lock().unwrap();
         held.created += 1;
-        let mut pod = json!({
-            "id": format!("pod{}", held.created),
-            "name": body["name"],
-            "image": body["image"],
-            "args": "",
-            "disk": body["disk"],
-            "ports": body["ports"],
-            "env": body["env"],
-            "registry": null,
-            "status": "RUNNING",
-            "actions": ["stop", "restart", "terminate"],
-            "mounts": {},
-            "gpu": {"id": body["gpu"]["id"], "count": body["gpu"]["count"], "vcpuCount": 16, "memory": 62},
-            "cloud": body["cloud"],
-            "dataCenterId": "EU-RO-1",
-            "cudaVersion": "12.8",
-            "ssh": {"proxy": null, "direct": null},
-            "template": null,
-            "cost": 0.79,
-            "locked": false,
-            "globalNetworking": {"enabled": false},
-            "runtime": null,
-            "createdAt": "2026-11-26T07:59:00Z",
-            "startedAt": "2026-11-26T08:00:00Z",
-        });
+        let mut pod = v2_pod(held.created, &seen.json());
         held.pods.push(pod.clone());
         pod["status"] = json!("PROVISIONING");
         pod["startedAt"] = Value::Null;
@@ -255,22 +276,7 @@ fn serve(mut connection: TcpStream, state: &Arc<Mutex<State>>) {
             &json!({"balanceAmount": 25.5, "billingMode": "PREPAID"}),
         )
     } else if line.starts_with("GET /v2/billing/pods") {
-        // The shape the live API answered on 2026-11-26: one record per pod per day.
-        json_answer(
-            200,
-            &json!({
-                "metadata": {
-                    "query": {"bucketSize": "day", "startTime": "2026-10-27T00:00:00Z", "endTime": "2026-11-27T00:00:00Z"},
-                    "recordCount": 1,
-                    "totals": {"cpuAmount": 0, "diskAmount": 0.0046, "gpuAmount": 1.29, "totalAmount": 1.295},
-                    "uniquePodCount": 1,
-                },
-                "records": [{
-                    "podId": "29ppsonrj1f9ot", "startTime": "2026-10-30T00:00:00Z", "endTime": "2026-10-31T00:00:00Z",
-                    "cpuAmount": 0, "diskAmount": 0.0046, "gpuAmount": 1.29, "totalAmount": 1.295,
-                }],
-            }),
-        )
+        json_answer(200, &pod_billing())
     } else if line.starts_with("POST /graphql ") {
         json_answer(
             200,

@@ -15,6 +15,7 @@ mod adversary_w03_refusal_paths;
 mod adversary_w04_cold_start;
 mod adversary_w04_cold_start_pass2;
 mod adversary_w04_observability;
+mod adversary_w05_port_race;
 mod adversary_w05_tool_calling;
 mod adversary_w05_wiring;
 mod adversary_w05_wiring_event;

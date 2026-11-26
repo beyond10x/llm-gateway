@@ -1057,3 +1057,357 @@ fn a6_a_streamed_chat_call_whose_client_asked_no_usage_is_relayed_unchanged_and_
         with.body
     );
 }
+
+// --- Adversary pass, wave 2026-11-25-w03 ----------------------------------------------------------
+
+/// Cases of the adversary pass on the joined wave (story:cost-per-call and
+/// story:call-id-and-usage-record): what a call's record and its cost say when the answer did
+/// not end as written, and which counts reach the pricing. Every target is the fake upstream on
+/// loopback, port 0.
+mod adversary_w03 {
+    use super::*;
+
+    /// A pricing that answers a cost for every call whose answer reported its input and output
+    /// tokens, and keeps what it was asked: a cost in the record is a cost the gateway asked for.
+    #[derive(Default)]
+    struct Asked(Mutex<Vec<Usage>>);
+
+    impl CallPricing for Asked {
+        fn cost_usd(&self, _wire: Wire, usage: Usage) -> Option<String> {
+            self.0.lock().unwrap().push(usage);
+            usage.input_tokens?;
+            usage.output_tokens?;
+            Some("0.5".to_owned())
+        }
+    }
+
+    /// `priced` on the messages wire, priced by `pricing`.
+    fn priced(pricing: &Arc<Asked>) -> RelayModel {
+        RelayModel::new(label("priced"), label("priced"), vec![Wire::Messages])
+            .unwrap()
+            .with_pricing(Arc::clone(pricing) as Arc<dyn CallPricing>)
+    }
+
+    /// A messages stream's first two events: `message_start`, which reports the input tokens
+    /// and the first output token, and one text delta.
+    fn started_stream() -> String {
+        format!(
+            "{STREAM_HEAD}{}{}",
+            chunk(
+                "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":1}}}\n\n"
+            ),
+            chunk(
+                "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Hel\"}}\n\n"
+            ),
+        )
+    }
+
+    /// The raw answer bytes of one request, read to the close, unparsed.
+    fn raw(address: SocketAddr, request: &str) -> String {
+        let mut stream = TcpStream::connect(address).unwrap();
+        stream.set_read_timeout(Some(WAIT)).unwrap();
+        stream.write_all(request.as_bytes()).unwrap();
+        let mut answer = Vec::new();
+        drop(stream.read_to_end(&mut answer));
+        String::from_utf8_lossy(&answer).into_owned()
+    }
+
+    /// docs/gateway.md "The cost of a call": `cost_usd` is present only when "the call was
+    /// relayed and its answer ended as written"; `UsageRecord::cost_usd`: "`None` for a call
+    /// that was refused, cut short or ended in its wire's terminal error". docs/gateway.md, relay
+    /// step 9: "An answer cut short on either side ends without its last chunk". Here the
+    /// upstream closes a streamed messages answer after `message_start` and one delta: the
+    /// client gets the answer without its last chunk, and the record must carry no cost.
+    #[test]
+    fn adv_w03_a_stream_the_upstream_cuts_short_has_no_cost() {
+        let upstream = Upstream::start(vec![Reply::Whole(started_stream())]);
+        let pricing = Arc::new(Asked::default());
+        let fixture = gateway(&upstream, vec![priced(&pricing)], |_| {});
+        let address = fixture.address();
+        let body = r#"{"model":"priced","stream":true}"#;
+        let answered = raw(
+            address,
+            &format!(
+                "POST /v1/messages HTTP/1.1\r\nhost: g\r\n{}content-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                bearer(Some(OWNER)),
+                body.len()
+            ),
+        );
+        assert!(answered.starts_with("HTTP/1.1 200 "), "{answered}");
+        assert!(
+            !answered.ends_with("0\r\n\r\n"),
+            "the client was shown the answer cut short: {answered:?}"
+        );
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(
+            records[0].cost_usd,
+            None,
+            "a stream the upstream cut short after message_start was priced: {:?}; the pricing was asked {:?}",
+            records[0],
+            pricing.0.lock().unwrap()
+        );
+        let read = record(address, &records[0].call);
+        assert!(!read.body.contains("cost_usd"), "{}", read.body);
+    }
+
+    /// The same cut on a client-credential route (passthrough): the gateway relays the upstream's
+    /// answer as it came, and an answer the upstream cut short ended no more as written there.
+    #[test]
+    fn adv_w03_a_passthrough_stream_the_upstream_cuts_short_has_no_cost() {
+        let upstream = Upstream::start(vec![Reply::Whole(started_stream())]);
+        let pricing = Arc::new(Asked::default());
+        let model = priced(&pricing).with_client_credentials();
+        let fixture = gateway(&upstream, vec![model], |config| {
+            config.ingress_auth = IngressAuth::None;
+        });
+        let body = r#"{"model":"priced","stream":true}"#;
+        let answered = raw(
+            fixture.address(),
+            &format!(
+                "POST /v1/messages HTTP/1.1\r\nhost: g\r\nx-api-key: client-key\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+                body.len()
+            ),
+        );
+        assert!(answered.starts_with("HTTP/1.1 200 "), "{answered}");
+        assert!(
+            !answered.ends_with("0\r\n\r\n"),
+            "the client was shown the answer cut short: {answered:?}"
+        );
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(
+            records[0].cost_usd,
+            None,
+            "a passthrough stream the upstream cut short was priced: {:?}; the pricing was asked {:?}",
+            records[0],
+            pricing.0.lock().unwrap()
+        );
+    }
+
+    /// `UsageRecord::cost_usd`: "`None` for a call that ... ended in its wire's terminal error".
+    /// A relayed messages stream that the upstream ends with the wire's `error` event (an
+    /// `overloaded_error` after output) and a well-framed last chunk ended in its wire's
+    /// terminal error, and has no cost.
+    #[test]
+    fn adv_w03_a_relayed_stream_ended_by_the_wires_error_event_has_no_cost() {
+        let ended = format!(
+            "{}{}0\r\n\r\n",
+            started_stream(),
+            chunk(
+                "event: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n"
+            )
+        );
+        let upstream = Upstream::start(vec![Reply::Whole(ended)]);
+        let pricing = Arc::new(Asked::default());
+        let fixture = gateway(&upstream, vec![priced(&pricing)], |_| {});
+        let answered = post(
+            fixture.address(),
+            "/v1/messages",
+            r#"{"model":"priced","stream":true}"#,
+            Some(OWNER),
+        );
+        assert_eq!(answered.status, 200, "{answered:?}");
+        assert!(answered.body.contains("overloaded_error"), "{answered:?}");
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(
+            records[0].cost_usd, None,
+            "a stream ended by the wire's error event was priced: {:?}",
+            records[0]
+        );
+    }
+
+    /// A pricing that writes the counts it was asked about into its answer: `0.<input><output>`.
+    struct Counts;
+
+    impl CallPricing for Counts {
+        fn cost_usd(&self, _wire: Wire, usage: Usage) -> Option<String> {
+            Some(format!("0.{}{}", usage.input_tokens?, usage.output_tokens?))
+        }
+    }
+
+    /// docs/gateway.md "Counters and usage records": the token counters "come from the usage the
+    /// answer carried"; story:cost-per-call Acceptance 2 prices "a call whose ... answer
+    /// reported tokens". A non-streamed messages answer whose model called a tool with
+    /// arguments named `input_tokens` and `output_tokens` reported 20 input and 5 output
+    /// tokens in its `usage`; the tool's arguments are no usage, and neither the record nor
+    /// the cost may read them.
+    #[test]
+    fn adv_w03_a_tool_calls_arguments_are_not_the_answers_usage_and_are_not_priced() {
+        let answer = r#"{"id":"m","type":"message","role":"assistant","model":"priced","content":[{"type":"tool_use","id":"toolu_1","name":"set_budget","input":{"input_tokens":900000,"output_tokens":800000}}],"stop_reason":"tool_use","usage":{"input_tokens":20,"output_tokens":5}}"#;
+        let upstream = Upstream::start(vec![Reply::Whole(json_answer(answer))]);
+        let model = RelayModel::new(label("priced"), label("priced"), vec![Wire::Messages])
+            .unwrap()
+            .with_pricing(Arc::new(Counts));
+        let fixture = gateway(&upstream, vec![model], |_| {});
+        let answered = post(
+            fixture.address(),
+            "/v1/messages",
+            r#"{"model":"priced"}"#,
+            Some(OWNER),
+        );
+        assert_eq!(answered.status, 200, "{answered:?}");
+        assert_eq!(answered.body, answer);
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        let counted = (
+            records[0].input_tokens,
+            records[0].output_tokens,
+            records[0].cost_usd.as_deref(),
+        );
+        assert_eq!(
+            counted,
+            (Some(20), Some(5), Some("0.205")),
+            "the usage the answer reported is 20 input and 5 output tokens: {:?}",
+            records[0]
+        );
+    }
+}
+
+/// Two cases of the same adversary pass that hold the two other conditions of a call's cost,
+/// which no case of the suite held: each is green on the tree it was written against, and red
+/// when its condition is dropped from the record (`crates/llm-gateway/src/server.rs`, `priced`).
+mod adversary_w03_cost_conditions {
+    use super::*;
+
+    /// A messages `message_start` reporting 12 input tokens and the first output token.
+    const STARTED: &str = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"m\",\"type\":\"message\",\"role\":\"assistant\",\"content\":[],\"usage\":{\"input_tokens\":12,\"output_tokens\":1}}}\n\n";
+
+    /// A pricing that answers a cost whenever input and output were reported.
+    struct Half;
+
+    impl CallPricing for Half {
+        fn cost_usd(&self, _wire: Wire, usage: Usage) -> Option<String> {
+            usage.input_tokens?;
+            usage.output_tokens?;
+            Some("0.5".to_owned())
+        }
+    }
+
+    /// What the translation does after the head and `message_start` are written.
+    #[derive(Clone, Copy)]
+    enum Then {
+        /// Ends the answer in its wire's terminal error (`TranslatedAnswer::failed`).
+        Fails,
+        /// Waits until the client has closed its connection, then ends.
+        WaitsForTheClientToLeave,
+    }
+
+    struct Scripted(Then);
+
+    struct ScriptedRun(Then);
+
+    impl Translator for Scripted {
+        fn prepare(
+            &self,
+            _request: &TranslationRequest<'_>,
+        ) -> Result<Box<dyn Translation>, RefusalCode> {
+            Ok(Box::new(ScriptedRun(self.0)))
+        }
+    }
+
+    impl Translation for ScriptedRun {
+        fn run(
+            self: Box<Self>,
+            _target: &dyn RelayTarget,
+            answer: &mut dyn TranslatedAnswer,
+        ) -> Result<(), TranslationFailure> {
+            answer.target_status(200);
+            if !answer.head(200, "text/event-stream", AnswerFraming::Stream)
+                || !answer.body(STARTED.as_bytes())
+            {
+                return Ok(());
+            }
+            match self.0 {
+                Then::Fails => {
+                    answer.failed(RefusalCode::UpstreamFailed);
+                    Err(TranslationFailure::UpstreamFailed)
+                }
+                Then::WaitsForTheClientToLeave => {
+                    let deadline = Instant::now() + WAIT;
+                    while !answer.gone() && Instant::now() < deadline {
+                        thread::sleep(Duration::from_millis(10));
+                    }
+                    Ok(())
+                }
+            }
+        }
+    }
+
+    /// A gateway whose `priced` model is served on chat, priced by [`Half`], and translated by
+    /// `then` on the messages wire.
+    fn translating(upstream: &Upstream, then: Then) -> Fixture {
+        let kept = Arc::new(Kept::default());
+        let model = RelayModel::new(label("priced"), label("priced"), vec![Wire::Chat])
+            .unwrap()
+            .with_pricing(Arc::new(Half));
+        let relay = Relay::new(vec![model], Arc::new(Targets(upstream.authority.clone())))
+            .unwrap()
+            .with_translator(Arc::new(Scripted(then)))
+            .with_records(Arc::clone(&kept) as Arc<dyn UsageRecords>);
+        let config = GatewayConfig::new("127.0.0.1:0".parse().unwrap());
+        let verifier =
+            Arc::new(SharedSecretVerifier::new(OwnerToken::new(OWNER.into()).unwrap()).unwrap());
+        let handle = Gateway::bind_with_relay(
+            config,
+            verifier,
+            RouteInventory::new(Vec::new()).unwrap(),
+            relay,
+        )
+        .unwrap();
+        handle.mark_ready();
+        Fixture { handle, kept }
+    }
+
+    /// docs/gateway.md "The cost of a call": no cost after "terminal error after the head".
+    #[test]
+    fn adv_w03_a_translated_answer_ended_in_its_wires_terminal_error_has_no_cost() {
+        let upstream = Upstream::start(Vec::new());
+        let fixture = translating(&upstream, Then::Fails);
+        let answered = post(
+            fixture.address(),
+            "/v1/messages",
+            r#"{"model":"priced","stream":true}"#,
+            Some(OWNER),
+        );
+        assert_eq!(answered.status, 200, "{answered:?}");
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(records[0].input_tokens, Some(12), "{:?}", records[0]);
+        assert_eq!(records[0].cost_usd, None, "{:?}", records[0]);
+    }
+
+    /// docs/gateway.md "The cost of a call": no cost for a call with "a client that went away".
+    #[test]
+    fn adv_w03_a_call_whose_client_left_mid_answer_has_no_cost() {
+        let upstream = Upstream::start(Vec::new());
+        let fixture = translating(&upstream, Then::WaitsForTheClientToLeave);
+        let body = r#"{"model":"priced","stream":true}"#;
+        let mut client = TcpStream::connect(fixture.address()).unwrap();
+        client.set_read_timeout(Some(WAIT)).unwrap();
+        write!(
+            client,
+            "POST /v1/messages HTTP/1.1\r\nhost: g\r\n{}content-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+            bearer(Some(OWNER)),
+            body.len()
+        )
+        .unwrap();
+        let mut raw = Vec::new();
+        let mut piece = [0_u8; 4096];
+        while !String::from_utf8_lossy(&raw).contains("message_start") {
+            let read = client.read(&mut piece).unwrap();
+            assert!(read > 0, "the answer ended early: {raw:?}");
+            raw.extend_from_slice(&piece[..read]);
+        }
+        drop(client);
+        let deadline = Instant::now() + WAIT;
+        while fixture.records().is_empty() && Instant::now() < deadline {
+            thread::sleep(Duration::from_millis(10));
+        }
+        let records = fixture.records();
+        assert_eq!(records.len(), 1, "{records:?}");
+        assert_eq!(records[0].input_tokens, Some(12), "{:?}", records[0]);
+        assert_eq!(records[0].cost_usd, None, "{:?}", records[0]);
+    }
+}

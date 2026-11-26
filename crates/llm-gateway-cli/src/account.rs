@@ -246,9 +246,11 @@ pub(crate) fn start_for(
 
 #[cfg(test)]
 mod tests {
-    use super::{Polling, panel, start};
+    use super::{Polling, Reader, panel, start};
     use llm_gateway::Dashboard;
-    use llm_runpod::{AccountSnapshot, POD_NAME_PREFIX, PodSummary, RunpodAccount};
+    use llm_runpod::{
+        AccountSnapshot, CallFailure, FailureCause, POD_NAME_PREFIX, PodSummary, RunpodAccount,
+    };
     use std::{sync::Arc, time::Duration};
 
     const DOCUMENT: &str = "listen = \"127.0.0.1:0\"\ningress_auth = \"none\"\n\n[providers.runpod]\nkind = \"runpod-vllm\"\n\n\
@@ -283,6 +285,7 @@ mod tests {
                 pod("p3", "theirs", None, "RUNNING"),
                 pod("p4", &ours, Some(crate::CONTROLLER), "TERMINATED"),
             ],
+            pods_read: true,
         }
     }
 
@@ -362,5 +365,115 @@ mod tests {
             snapshot_text.contains("\"id\":\"p3\"") && snapshot_text.contains("\"external\":true"),
             "{snapshot_text}"
         );
+    }
+
+    /// An account whose reads are scripted: each read takes the next answer, the last one
+    /// repeats. Its last failure is the one given.
+    struct Scripted {
+        reads: Vec<Option<AccountSnapshot>>,
+        failure: Option<CallFailure>,
+    }
+
+    impl RunpodAccount for Scripted {
+        fn account(&mut self) -> Option<AccountSnapshot> {
+            if self.reads.len() > 1 {
+                self.reads.remove(0)
+            } else {
+                self.reads.first().cloned().flatten()
+            }
+        }
+
+        fn last_failure(&self) -> Option<CallFailure> {
+            self.failure.clone()
+        }
+    }
+
+    fn reader(
+        reads: Vec<Option<AccountSnapshot>>,
+        failure: Option<CallFailure>,
+    ) -> (Reader<Scripted>, Arc<Dashboard>) {
+        let dashboard = Arc::new(Dashboard::default());
+        let reader = Reader::new(
+            Scripted { reads, failure },
+            "runpod".to_owned(),
+            deployment(),
+            Arc::clone(&dashboard),
+        );
+        (reader, dashboard)
+    }
+
+    /// story:runpod-rest-host, Acceptance 3: a read whose pod list failed shows the balance it
+    /// read, with no pod rows, the pods marked unread.
+    #[test]
+    fn a_failed_pod_list_shows_the_balance_with_the_pods_marked_unread() {
+        let mut unread = snapshot();
+        unread.pods.clear();
+        unread.pods_read = false;
+        let (mut reader, dashboard) = reader(vec![Some(unread)], None);
+        reader.read(1_000);
+        let text = dashboard.snapshot();
+        assert!(text.contains("\"balance_usd\":42"), "{text}");
+        assert!(text.contains("\"pods_unread\":true"), "{text}");
+        let full = panel("runpod", &snapshot(), 1_000, &deployment());
+        assert!(!full.pods_unread);
+    }
+
+    /// Acceptance 3 and 8: a read that has the pods but no balance, and a read that failed
+    /// whole, never hide the last balance.
+    #[test]
+    fn a_read_without_the_balance_keeps_the_last_balance() {
+        let mut without = snapshot();
+        without.balance_usd = None;
+        let (mut reader, dashboard) = reader(vec![Some(snapshot()), Some(without), None], None);
+        for read_ms in [1_000, 2_000, 3_000] {
+            reader.read(read_ms);
+            let text = dashboard.snapshot();
+            assert!(
+                text.contains("\"balance_usd\":42"),
+                "read {read_ms}: {text}"
+            );
+        }
+    }
+
+    /// Acceptance 5: the warning of a failed read names the provider, the host and the HTTP
+    /// status of the call that failed.
+    #[test]
+    fn a_failed_read_warns_naming_the_host_and_the_status() {
+        let failure = CallFailure {
+            host: "api.runpod.io".to_owned(),
+            cause: FailureCause::Status(403),
+        };
+        let (mut reader, _) = reader(vec![None], Some(failure));
+        let (_, log) = logged(|| reader.read(1_000));
+        let warning = log
+            .lines()
+            .find(|line| line.contains("runpod account read failed"))
+            .unwrap_or_else(|| panic!("no warning in {log}"));
+        assert!(warning.contains("api.runpod.io"), "{warning}");
+        assert!(warning.contains("HTTP 403"), "{warning}");
+        assert!(warning.contains("runpod"), "{warning}");
+    }
+
+    fn logged<T>(run: impl FnOnce() -> T) -> (T, String) {
+        #[derive(Clone, Default)]
+        struct Captured(Arc<std::sync::Mutex<Vec<u8>>>);
+        impl std::io::Write for Captured {
+            fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(buffer);
+                Ok(buffer.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let captured = Captured::default();
+        let writer = captured.clone();
+        let subscriber = tracing_subscriber::fmt()
+            .with_ansi(false)
+            .with_writer(move || writer.clone())
+            .finish();
+        let value = tracing::subscriber::with_default(subscriber, run);
+        let text = String::from_utf8_lossy(&captured.0.lock().unwrap()).into_owned();
+        (value, text)
     }
 }

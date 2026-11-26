@@ -1,10 +1,15 @@
 //! `RestRunpod` against a loopback HTTP fixture: a `std` listener on `127.0.0.1` that records
 //! each request and plays a scripted answer. No call leaves the machine, no pod is created and
 //! no keychain is read; the API key is a test literal.
+//!
+//! The client speaks Runpod's REST API v2 (`https://api.runpod.io/v2`). Every scripted answer of
+//! a v2 path is checked against the recorded v2 document before it is played, and every v2
+//! request the client sends is checked against it when the test reads what was sent
+//! (`tests/openapi.rs`).
 
 use std::{
     collections::BTreeMap,
-    io::{Read, Write},
+    io::{self, Read, Write},
     net::{TcpListener, TcpStream},
     sync::{Arc, Mutex},
     thread,
@@ -16,6 +21,8 @@ use llm_runpod::{
     RestBinding, RestRunpod, RunpodAccount, RunpodTransport, TerminateAnswer,
 };
 use serde_json::{Value, json};
+
+use crate::openapi::{check_answer, check_request};
 
 const KEY: &str = "rpa_TESTKEY0123456789abcdef";
 
@@ -76,7 +83,7 @@ impl Server {
     }
 
     fn base(&self) -> String {
-        format!("http://{}/v1", self.address)
+        format!("http://{}/v2", self.address)
     }
 
     fn transport(&self) -> RestRunpod {
@@ -90,8 +97,15 @@ impl Server {
         )
     }
 
+    /// Every request received, each v2 one checked against the recorded document.
     fn seen(&self) -> Vec<Seen> {
-        self.seen.lock().expect("seen").clone()
+        let seen = self.seen.lock().expect("seen").clone();
+        for request in &seen {
+            if request.line.contains(" /v2/") {
+                check_request(&request.line, &request.body);
+            }
+        }
+        seen
     }
 
     fn lines(&self) -> Vec<String> {
@@ -147,6 +161,25 @@ fn answer(status: u16, body: &str) -> Play {
         )
         .into_bytes(),
     )
+}
+
+/// A v2 answer, checked against the recorded document before it is played.
+fn v2(method: &str, path: &str, status: u16, body: &Value) -> Play {
+    check_answer(method, path, status, body);
+    answer(status, &body.to_string())
+}
+
+/// One page of `GET /v2/pods`: `{"pods": [...], "pagination": {...}}`.
+fn page(pods: &[Value], next: Option<&str>) -> Value {
+    json!({
+        "pods": pods,
+        "pagination": {"hasNextPage": next.is_some(), "nextCursor": next},
+    })
+}
+
+/// The whole listing on one page, played as a checked v2 answer.
+fn listing(pods: &[Value]) -> Play {
+    v2("GET", "/v2/pods", 200, &page(pods, None))
 }
 
 fn pod(id: &str, request: &str) -> Value {
@@ -206,23 +239,26 @@ fn assert_headers(seen: &Seen) {
     assert!(seen.headers.contains_key("host"));
 }
 
+/// Acceptance 1: the management API is Runpod's REST API v2; the balance's GraphQL fallback
+/// stays where it was.
 #[test]
-fn the_binding_names_runpods_endpoints() {
+fn the_binding_names_runpods_v2_api_and_the_graphql_fallback() {
     let binding = RestBinding::runpod();
-    assert_eq!(binding.base_url, "https://rest.runpod.io/v1");
+    assert_eq!(binding.base_url, "https://api.runpod.io/v2");
     assert_eq!(binding.graphql_url, "https://api.runpod.io/graphql");
     assert_eq!(binding.timeout, Duration::from_secs(30));
 }
 
 #[test]
-fn list_pods_is_get_pods_with_the_bearer() {
-    let good = json!([pod("abc123", "req-1"), pod("def456", "req-2")]).to_string();
+fn list_pods_is_get_v2_pods_with_the_bearer() {
     let partly =
-        json!([pod("abc123", "req-1"), {"id": "x", "desiredStatus": "WHATEVER"}]).to_string();
+        json!({"pods": [pod("abc123", "req-1"), {"id": "x", "desiredStatus": "TERMINATED"}]});
     let server = Server::start(vec![
-        answer(200, &good),
-        answer(200, &partly),
+        listing(&[pod("abc123", "req-1"), pod("def456", "req-2")]),
+        v2("GET", "/v2/pods", 200, &partly),
         answer(500, "{}"),
+        // A v1 answer, a bare array, is not a v2 listing.
+        answer(200, &json!([pod("abc123", "req-1")]).to_string()),
     ]);
     let mut transport = server.transport();
     let listing = transport.list_pods().expect("listing");
@@ -237,18 +273,76 @@ fn list_pods_is_get_pods_with_the_bearer() {
     assert_eq!(partial.pods.len(), 1);
     let failed = transport.list_pods().expect("listing");
     assert!(!failed.complete && failed.pods.is_empty());
+    let bare = transport.list_pods().expect("listing");
+    assert!(
+        !bare.complete && bare.pods.is_empty(),
+        "a bare array is no v2 page"
+    );
     let seen = server.seen();
-    assert_eq!(seen.len(), 3);
+    assert_eq!(seen.len(), 4);
     for request in &seen {
-        assert_eq!(request.line, "GET /v1/pods HTTP/1.1");
+        assert_eq!(request.line, "GET /v2/pods HTTP/1.1");
         assert_headers(request);
         assert!(request.body.is_empty());
     }
 }
 
+/// Acceptance 2: the pod list follows `pagination.nextCursor` while `pagination.hasNextPage`,
+/// and a listing two pages long sees every pod. A page that fails, or a cursor that comes back,
+/// leaves the listing partial.
 #[test]
-fn create_pod_posts_the_unwrapped_body_and_maps_a_2xx_to_created() {
-    let server = Server::start(vec![answer(201, &pod("abc123", "req-1").to_string())]);
+fn the_pod_list_follows_every_page() {
+    let first = page(
+        &[pod("abc123", "req-1"), pod("def456", "req-2")],
+        Some("c2"),
+    );
+    let second = page(&[pod("ghi789", "req-3")], None);
+    let server = Server::start(vec![
+        v2("GET", "/v2/pods", 200, &first),
+        v2("GET", "/v2/pods", 200, &second),
+        v2("GET", "/v2/pods", 200, &first),
+        answer(503, "{}"),
+        v2("GET", "/v2/pods", 200, &first),
+        v2(
+            "GET",
+            "/v2/pods",
+            200,
+            &page(&[pod("ghi789", "req-3")], Some("c2")),
+        ),
+    ]);
+    let mut transport = server.transport();
+    let listing = transport.list_pods().expect("listing");
+    assert!(listing.complete, "{listing:?}");
+    let ids: Vec<&str> = listing.pods.iter().map(|pod| pod.id.as_str()).collect();
+    assert_eq!(ids, ["abc123", "def456", "ghi789"]);
+    let failed_page = transport.list_pods().expect("listing");
+    assert!(
+        !failed_page.complete,
+        "a failed second page leaves it partial"
+    );
+    let looped = transport.list_pods().expect("listing");
+    assert!(
+        !looped.complete,
+        "a cursor that comes back ends the listing partial"
+    );
+    assert_eq!(
+        server.lines(),
+        [
+            "GET /v2/pods HTTP/1.1",
+            "GET /v2/pods?cursor=c2 HTTP/1.1",
+            "GET /v2/pods HTTP/1.1",
+            "GET /v2/pods?cursor=c2 HTTP/1.1",
+            "GET /v2/pods HTTP/1.1",
+            "GET /v2/pods?cursor=c2 HTTP/1.1",
+        ]
+    );
+}
+
+/// Acceptance 1: a create is `POST /v2/pods` with v2's nested body: `image`, and one GPU type as
+/// `gpu: {id, count}`, never v1's `imageName`, `gpuTypeIds` or `gpuCount`.
+#[test]
+fn create_pod_posts_the_v2_body_and_maps_a_2xx_to_created() {
+    let server = Server::start(vec![v2("POST", "/v2/pods", 201, &pod("abc123", "req-1"))]);
     let answer = server.transport().create_pod(&request());
     let CreateAnswer::Created(created) = answer else {
         panic!("{answer:?}");
@@ -256,7 +350,7 @@ fn create_pod_posts_the_unwrapped_body_and_maps_a_2xx_to_created() {
     assert_eq!(created.id, "abc123");
     let seen = server.seen();
     assert_eq!(seen.len(), 1);
-    assert_eq!(seen[0].line, "POST /v1/pods HTTP/1.1");
+    assert_eq!(seen[0].line, "POST /v2/pods HTTP/1.1");
     assert_headers(&seen[0]);
     assert_eq!(
         seen[0].headers.get("content-type").map(String::as_str),
@@ -264,18 +358,20 @@ fn create_pod_posts_the_unwrapped_body_and_maps_a_2xx_to_created() {
     );
     let body = seen[0].json();
     assert!(body.get("body").is_none(), "not wrapped: {body}");
+    assert_eq!(body["name"], "b10x-llm-qwen");
+    assert_eq!(body["image"], "vllm/vllm-openai:v0.27.1");
+    assert_eq!(body["gpu"], json!({"id": "NVIDIA L40S", "count": 1}));
+    assert!(
+        body.get("cpu").is_none(),
+        "exactly one of gpu or cpu: {body}"
+    );
+    for v1 in ["imageName", "gpuTypeIds", "gpuCount"] {
+        assert!(body.get(v1).is_none(), "{v1} is v1's: {body}");
+    }
     assert_eq!(body["cloudType"], "SECURE");
     assert_eq!(body["interruptible"], false);
-    assert_eq!(body["imageName"], "vllm/vllm-openai:v0.27.1");
-    assert_eq!(body["gpuTypeIds"], json!(["NVIDIA L40S"]));
-    assert_eq!(body["name"], "b10x-llm-qwen");
+    assert_eq!(body["ports"], json!(["8000/http"]));
     assert_eq!(body["env"]["VLLM_API_KEY"], "{{ RUNPOD_SECRET_qwen_key }}");
-    for key in body.as_object().expect("object").keys() {
-        assert!(
-            llm_runpod::POD_CREATE_BODY_KEYS.contains(&key.as_str()),
-            "{key}"
-        );
-    }
 }
 
 #[test]
@@ -283,19 +379,15 @@ fn a_refused_create_is_no_capacity_only_for_runpods_capacity_answer() {
     for (status, body, expected) in [
         (
             400,
-            r#"{"error":"create pod: There are no instances currently available"}"#,
+            json!({"error": "create pod: There are no instances currently available"}),
             CreateAnswer::NoCapacity,
         ),
-        (
-            400,
-            r#"{"error":"invalid gpuTypeIds"}"#,
-            CreateAnswer::Refused,
-        ),
-        (401, r#"{"error":"unauthorized"}"#, CreateAnswer::Refused),
-        (403, "", CreateAnswer::Refused),
-        (429, "", CreateAnswer::Refused),
+        (400, json!({"error": "invalid gpu"}), CreateAnswer::Refused),
+        (401, json!({"error": "unauthorized"}), CreateAnswer::Refused),
+        (403, json!({}), CreateAnswer::Refused),
+        (429, json!({}), CreateAnswer::Refused),
     ] {
-        let server = Server::start(vec![answer(status, body)]);
+        let server = Server::start(vec![answer(status, &body.to_string())]);
         assert_eq!(
             server.transport().create_pod(&request()),
             expected,
@@ -305,30 +397,30 @@ fn a_refused_create_is_no_capacity_only_for_runpods_capacity_answer() {
     }
 }
 
-/// No answer, a 5xx or a timeout: one `GET /pods?name=…` resolves the create by its request
-/// tag; nothing is ever sent twice.
+/// No answer, a 5xx or a timeout: one listing resolves the create by its name and request tag
+/// (the v2 listing ignores a filter in its query, so none is sent); nothing is ever sent twice.
 #[test]
-fn a_lost_create_is_resolved_once_by_name_and_request_tag() {
-    let ours = json!([pod("abc123", "req-1"), pod("zzz999", "req-other")]).to_string();
-    let none = json!([pod("zzz999", "req-other")]).to_string();
-    let two = json!([pod("abc123", "req-1"), pod("abd124", "req-1")]).to_string();
+fn a_lost_create_is_resolved_once_by_a_listing_of_its_name_and_request_tag() {
+    let ours = [pod("abc123", "req-1"), pod("zzz999", "req-other")];
+    let none = [pod("zzz999", "req-other")];
+    let two = [pod("abc123", "req-1"), pod("abd124", "req-1")];
     let cases: Vec<(&str, Play, Play, CreateAnswer)> = vec![
         (
             "5xx, found",
             answer(502, ""),
-            answer(200, &ours),
+            listing(&ours),
             CreateAnswer::Lost,
         ),
         (
             "closed, absent",
             Play::Close,
-            answer(200, &none),
+            listing(&none),
             CreateAnswer::Lost,
         ),
         (
             "5xx, two",
             answer(500, ""),
-            answer(200, &two),
+            listing(&two),
             CreateAnswer::Lost,
         ),
         (
@@ -340,15 +432,14 @@ fn a_lost_create_is_resolved_once_by_name_and_request_tag() {
         (
             "timeout, found",
             Play::Stall(Duration::from_millis(2_500)),
-            answer(200, &ours),
+            listing(&ours),
             CreateAnswer::Lost,
         ),
     ];
     for (case, first, second, mut expected) in cases {
         if case.ends_with("found") {
-            let found = serde_json::from_str::<Value>(&ours).expect("json")[0].clone();
             expected = CreateAnswer::Created(llm_runpod::Pod {
-                id: found["id"].as_str().expect("id").to_owned(),
+                id: "abc123".to_owned(),
                 name: "b10x-llm-qwen".to_owned(),
                 status: PodStatus::Running,
                 env: BTreeMap::from([
@@ -365,13 +456,9 @@ fn a_lost_create_is_resolved_once_by_name_and_request_tag() {
             expected,
             "{case}"
         );
-        let lines = server.lines();
         assert_eq!(
-            lines,
-            [
-                "POST /v1/pods HTTP/1.1",
-                "GET /v1/pods?name=b10x-llm-qwen HTTP/1.1"
-            ],
+            server.lines(),
+            ["POST /v2/pods HTTP/1.1", "GET /v2/pods HTTP/1.1"],
             "{case}"
         );
     }
@@ -380,12 +467,20 @@ fn a_lost_create_is_resolved_once_by_name_and_request_tag() {
 #[test]
 fn terminate_is_delete_by_id() {
     for (play, expected) in [
-        (answer(200, "{}"), TerminateAnswer::Terminated),
         (
             Play::Bytes(b"HTTP/1.1 204 No Content\r\nConnection: close\r\n\r\n".to_vec()),
             TerminateAnswer::Terminated,
         ),
-        (answer(404, "{}"), TerminateAnswer::Refused),
+        (answer(200, "{}"), TerminateAnswer::Terminated),
+        (
+            v2(
+                "DELETE",
+                "/v2/pods/abc123",
+                404,
+                &json!({"error": "not found"}),
+            ),
+            TerminateAnswer::Refused,
+        ),
         (answer(400, "{}"), TerminateAnswer::Refused),
         (answer(500, "{}"), TerminateAnswer::Lost),
         (Play::Close, TerminateAnswer::Lost),
@@ -393,20 +488,25 @@ fn terminate_is_delete_by_id() {
         let server = Server::start(vec![play]);
         assert_eq!(server.transport().terminate_pod("abc123"), expected);
         let seen = server.seen();
-        assert_eq!(seen[0].line, "DELETE /v1/pods/abc123 HTTP/1.1");
+        assert_eq!(seen[0].line, "DELETE /v2/pods/abc123 HTTP/1.1");
         assert_headers(&seen[0]);
     }
     // A pod id is one path segment, whatever it holds.
     let server = Server::start(vec![answer(404, "{}")]);
     let _ = server.transport().terminate_pod("a/../b?c");
-    assert_eq!(server.lines(), ["DELETE /v1/pods/a%2F..%2Fb%3Fc HTTP/1.1"]);
+    assert_eq!(
+        server.seen.lock().expect("seen")[0].line,
+        "DELETE /v2/pods/a%2F..%2Fb%3Fc HTTP/1.1"
+    );
 }
 
+/// The start time is the pod's `lastStartedAt` in the listing: only the documented v2 calls are
+/// made.
 #[test]
-fn the_start_time_is_last_started_at_of_get_pod() {
+fn the_start_time_is_last_started_at_of_the_pod_in_the_listing() {
     let server = Server::start(vec![
-        answer(200, &pod("abc123", "req-1").to_string()),
-        answer(200, &pod("other", "req-1").to_string()),
+        listing(&[pod("other", "req-0"), pod("abc123", "req-1")]),
+        listing(&[pod("other", "req-0")]),
     ]);
     let mut transport = server.transport();
     assert_eq!(
@@ -416,20 +516,23 @@ fn the_start_time_is_last_started_at_of_get_pod() {
     assert_eq!(
         transport.container_started_at("abc123"),
         None,
-        "an answer about another pod"
+        "a listing without the pod"
     );
-    assert_eq!(server.lines()[0], "GET /v1/pods/abc123 HTTP/1.1");
+    assert_eq!(
+        server.lines(),
+        ["GET /v2/pods HTTP/1.1", "GET /v2/pods HTTP/1.1"]
+    );
 }
 
 #[test]
-fn the_placement_is_read_with_the_machine() {
+fn the_placement_is_read_from_the_pods_machine_in_the_listing() {
     let with = |machine: Value, interruptible: Option<bool>| {
         let mut pod = pod("abc123", "req-1");
         pod["machine"] = machine;
         if let Some(interruptible) = interruptible {
             pod["interruptible"] = json!(interruptible);
         }
-        answer(200, &pod.to_string())
+        listing(&[pod])
     };
     let cases = [
         (
@@ -457,47 +560,38 @@ fn the_placement_is_read_with_the_machine() {
             }),
         ),
         (
-            answer(200, &pod("abc123", "req-1").to_string()),
+            listing(&[pod("abc123", "req-1")]),
             Some(PodPlacement {
                 secure_cloud: None,
                 interruptible: None,
             }),
         ),
-        (answer(404, "{}"), None),
+        (listing(&[pod("other", "req-1")]), None),
+        (answer(500, "{}"), None),
         (Play::Close, None),
     ];
     for (at, (play, expected)) in cases.into_iter().enumerate() {
         let server = Server::start(vec![play]);
         let placement = server.transport().pod_placement("abc123");
         assert_eq!(placement, expected, "case {at}");
-        assert_eq!(
-            server.lines(),
-            ["GET /v1/pods/abc123?includeMachine=true HTTP/1.1"],
-            "case {at}"
-        );
+        assert_eq!(server.lines(), ["GET /v2/pods HTTP/1.1"], "case {at}");
     }
-    assert!(
-        PodPlacement {
-            secure_cloud: Some(true),
-            interruptible: None
-        }
-        .is_secure_on_demand()
-    );
 }
 
 #[test]
-fn spend_is_read_from_billing_pods_by_day() {
+fn spend_is_read_from_v2_billing_pods_by_day() {
     let billed = json!([
         {"amount": 1.5, "time": "2026-11-03T00:00:00.000Z"},
         {"amount": 0.25, "time": "2026-11-04T00:00:00.000Z"},
-    ])
-    .to_string();
+    ]);
     let day_start = llm_runpod::started_at_ms("2026-11-04T00:00:00.000Z").expect("day");
     let server = Server::start(vec![
-        answer(200, &billed),
-        answer(
+        v2("GET", "/v2/billing/pods", 200, &billed),
+        v2(
+            "GET",
+            "/v2/billing/pods",
             200,
-            r#"[{"amount": -1, "time": "2026-11-04T00:00:00.000Z"}]"#,
+            &json!([{"amount": -1, "time": "2026-11-04T00:00:00.000Z"}]),
         ),
         answer(500, "[]"),
     ]);
@@ -517,17 +611,28 @@ fn spend_is_read_from_billing_pods_by_day() {
     assert_eq!(transport.account_spend(day_start), None, "a 5xx");
     assert_eq!(
         server.lines()[0],
-        "GET /v1/billing/pods?bucketSize=day HTTP/1.1"
+        "GET /v2/billing/pods?bucketSize=day HTTP/1.1"
     );
 }
 
+/// Acceptance 3: the balance is `balanceAmount` of `GET /v2/billing/balance`; the spend rate
+/// is still GraphQL's `currentSpendPerHr`, which asks no balance.
 #[test]
-fn the_account_is_the_pods_and_the_graphql_balance() {
-    let pods = json!([pod("abc123", "req-1"), {"id": "foreign", "name": "someone-else", "desiredStatus": "EXITED", "costPerHr": "0.44", "machine": {"gpuTypeId": "NVIDIA RTX PRO 6000 Blackwell Server Edition"}, "lastStartedAt": "2026-11-04 13:43:01.245 +0000 UTC"}])
-        .to_string();
-    let balance = r#"{"data":{"myself":{"clientBalance":12.5,"currentSpendPerHr":0.99}}}"#;
-    let server = Server::start(vec![answer(200, &pods), answer(200, balance)]);
+fn the_account_is_the_pods_the_v2_balance_and_the_graphql_spend_rate() {
+    let foreign = json!({"id": "foreign", "name": "someone-else", "desiredStatus": "EXITED", "costPerHr": "0.44", "machine": {"gpuTypeId": "NVIDIA RTX PRO 6000 Blackwell Server Edition"}, "lastStartedAt": "2026-11-04 13:43:01.245 +0000 UTC"});
+    let spend = r#"{"data":{"myself":{"currentSpendPerHr":0.99}}}"#;
+    let server = Server::start(vec![
+        listing(&[pod("abc123", "req-1"), foreign]),
+        v2(
+            "GET",
+            "/v2/billing/balance",
+            200,
+            &json!({"balanceAmount": 12.5, "billingMode": "PREPAID"}),
+        ),
+        answer(200, spend),
+    ]);
     let account = server.transport().account().expect("account");
+    assert!(account.pods_read);
     assert_eq!(account.balance_usd, Some(12.5));
     assert_eq!(account.spend_per_hour_usd, Some(0.99));
     assert_eq!(account.pods.len(), 2);
@@ -547,39 +652,147 @@ fn the_account_is_the_pods_and_the_graphql_balance() {
     assert_eq!(
         foreign.gpu.as_deref(),
         Some("NVIDIA RTX PRO 6000 Blackwell Server Edition"),
-        "the REST listing names the GPU under machine.gpuTypeId"
+        "the listing names the GPU under machine.gpuTypeId"
     );
     assert_eq!(
         foreign.last_started_at_ms,
         llm_runpod::started_at_ms("2026-11-04T13:43:01.245Z"),
-        "the REST listing writes the start as `<date> <time> +0000 UTC`"
+        "the listing writes the start as `<date> <time> +0000 UTC`"
     );
     assert_eq!(foreign.cost_per_hour_usd, Some(0.44));
     let seen = server.seen();
-    assert_eq!(seen[0].line, "GET /v1/pods?includeMachine=true HTTP/1.1");
-    assert_eq!(seen[1].line, "POST /graphql HTTP/1.1");
+    assert_eq!(seen[0].line, "GET /v2/pods HTTP/1.1");
+    assert_eq!(seen[1].line, "GET /v2/billing/balance HTTP/1.1");
     assert_headers(&seen[1]);
-    let query = seen[1].json()["query"].as_str().expect("query").to_owned();
-    assert!(query.contains("myself"), "{query}");
-    assert!(query.contains("clientBalance") && query.contains("currentSpendPerHr"));
+    assert_eq!(seen[2].line, "POST /graphql HTTP/1.1");
+    assert_headers(&seen[2]);
+    let query = seen[2].json()["query"].as_str().expect("query").to_owned();
+    assert!(
+        query.contains("myself") && query.contains("currentSpendPerHr"),
+        "{query}"
+    );
+    assert!(
+        !query.contains("clientBalance"),
+        "the balance came from v2: {query}"
+    );
+}
 
-    // A failed balance read leaves only the balance unreported; a failed listing is no answer.
+/// Acceptance 3: on 403 (no `billing:read`) or 404 (an organization without a billing account)
+/// the balance is GraphQL's `clientBalance`, as before v2; any other failure leaves it unread.
+#[test]
+fn a_403_or_404_balance_falls_back_to_graphql_client_balance() {
+    let both = r#"{"data":{"myself":{"clientBalance":7.25,"currentSpendPerHr":0.5}}}"#;
+    for status in [403, 404] {
+        let server = Server::start(vec![
+            listing(&[]),
+            v2(
+                "GET",
+                "/v2/billing/balance",
+                status,
+                &json!({"error": "no"}),
+            ),
+            answer(200, both),
+        ]);
+        let account = server.transport().account().expect("account");
+        assert_eq!(account.balance_usd, Some(7.25), "{status}");
+        assert_eq!(account.spend_per_hour_usd, Some(0.5), "{status}");
+        let seen = server.seen();
+        let query = seen[2].json()["query"].as_str().expect("query").to_owned();
+        assert!(
+            query.contains("clientBalance") && query.contains("currentSpendPerHr"),
+            "{query}"
+        );
+    }
     let server = Server::start(vec![
-        answer(200, "[]"),
-        answer(200, r#"{"errors":[{"message":"no"}]}"#),
+        listing(&[]),
+        answer(500, "{}"),
+        answer(200, r#"{"data":{"myself":{"currentSpendPerHr":0.5}}}"#),
     ]);
     let account = server.transport().account().expect("account");
-    assert_eq!(
-        (account.balance_usd, account.spend_per_hour_usd),
-        (None, None)
+    assert_eq!(account.balance_usd, None, "a 5xx is no fallback");
+    assert_eq!(account.spend_per_hour_usd, Some(0.5));
+    let query = server.seen()[2].json()["query"]
+        .as_str()
+        .expect("query")
+        .to_owned();
+    assert!(!query.contains("clientBalance"), "{query}");
+}
+
+/// Acceptance 3 and 8: a failed pod list no longer hides the balance: the snapshot carries it,
+/// with the pods marked unread. Only an account of which nothing was read is no answer.
+#[test]
+fn a_failed_pod_list_keeps_the_balance_and_marks_the_pods_unread() {
+    let server = Server::start(vec![
+        answer(503, "{}"),
+        v2(
+            "GET",
+            "/v2/billing/balance",
+            200,
+            &json!({"balanceAmount": 3.5}),
+        ),
+        answer(200, r#"{"errors":[{"message":"no"}]}"#),
+    ]);
+    let account = server.transport().account().expect("the balance was read");
+    assert!(!account.pods_read);
+    assert!(account.pods.is_empty());
+    assert_eq!(account.balance_usd, Some(3.5));
+    assert_eq!(account.spend_per_hour_usd, None);
+    let server = Server::start(vec![
+        answer(500, "{}"),
+        answer(500, "{}"),
+        answer(500, "{}"),
+    ]);
+    assert!(server.transport().account().is_none(), "nothing was read");
+}
+
+/// Acceptance 5: the last failed call names the host it went to and the HTTP status, or the
+/// connection's own error (a resolver's), never the key.
+#[test]
+fn the_last_failure_names_the_host_and_the_status_or_the_connection_error() {
+    let server = Server::start(vec![answer(503, &format!("{{\"error\":\"{KEY}\"}}"))]);
+    let mut transport = server.transport();
+    assert!(transport.last_failure().is_none(), "no call yet");
+    assert!(!transport.list_pods().expect("listing").complete);
+    let failure = transport.last_failure().expect("a failure");
+    assert_eq!(failure.host, server.address);
+    let text = failure.to_string();
+    assert!(
+        text.contains(&server.address) && text.contains("HTTP 503"),
+        "{text}"
     );
-    let server = Server::start(vec![answer(500, "{}")]);
-    assert!(server.transport().account().is_none());
+    assert!(!text.contains(KEY), "{text}");
+
+    let mut transport = RestRunpod::new(RestBinding::runpod(), KEY.as_bytes().to_vec());
+    transport.set_tls(Arc::new(Unresolved));
+    assert!(!transport.list_pods().expect("listing").complete);
+    let failure = transport.last_failure().expect("a failure");
+    assert_eq!(failure.host, "api.runpod.io");
+    let text = failure.to_string();
+    assert!(text.contains("api.runpod.io"), "{text}");
+    assert!(
+        text.contains("failed to lookup address information"),
+        "{text}"
+    );
+    assert!(
+        !text.contains(KEY) && !format!("{failure:?}").contains(KEY),
+        "{text}"
+    );
+}
+
+/// A `PodTls` whose every host does not resolve, as `getaddrinfo` reports it.
+struct Unresolved;
+
+impl PodTls for Unresolved {
+    fn connect(&self, _authority: &str, _timeout: Duration) -> io::Result<Box<dyn PodStream>> {
+        Err(io::Error::other(
+            "failed to lookup address information: Name or service not known",
+        ))
+    }
 }
 
 #[test]
 fn a_chunked_answer_is_decoded() {
-    let body = json!([pod("abc123", "req-1")]).to_string();
+    let body = page(&[pod("abc123", "req-1")], None).to_string();
     let (first, second) = body.split_at(10);
     let chunked = format!(
         "HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\nConnection: close\r\n\r\n{:x}\r\n{first}\r\n{:x}\r\n{second}\r\n0\r\n\r\n",
@@ -595,7 +808,7 @@ fn a_chunked_answer_is_decoded() {
 /// An answer is read up to 8 MiB, head included, and not one byte more.
 #[test]
 fn an_answer_past_eight_mebibytes_is_unreadable() {
-    let small = json!([pod("abc123", "req-1")]).to_string();
+    let small = page(&[pod("abc123", "req-1")], None).to_string();
     let head = |length: usize| {
         format!("HTTP/1.1 200 OK\r\nContent-Length: {length}\r\nConnection: close\r\n\r\n")
     };
@@ -639,13 +852,14 @@ fn the_key_is_never_in_debug_text() {
     let answer = transport.create_pod(&request());
     assert_eq!(answer, CreateAnswer::Refused);
     assert!(!format!("{answer:?}").contains(KEY));
+    assert!(!format!("{transport:?}").contains(KEY));
 }
 
 /// Plain HTTP only to a loopback host, and `https://` only over the embedding's TLS: without
 /// one, nothing is sent at all.
 #[test]
 fn no_call_leaves_without_tls_or_to_a_non_loopback_http_host() {
-    for base in ["https://rest.runpod.io/v1", "http://192.0.2.1/v1"] {
+    for base in ["https://api.runpod.io/v2", "http://192.0.2.1/v2"] {
         let mut transport = RestRunpod::new(
             RestBinding {
                 base_url: base.to_owned(),
@@ -674,7 +888,7 @@ struct LoopbackTls {
 }
 
 impl PodTls for LoopbackTls {
-    fn connect(&self, authority: &str, timeout: Duration) -> std::io::Result<Box<dyn PodStream>> {
+    fn connect(&self, authority: &str, timeout: Duration) -> io::Result<Box<dyn PodStream>> {
         self.asked.lock().expect("asked").push(authority.to_owned());
         let stream = TcpStream::connect(&self.address)?;
         stream.set_read_timeout(Some(timeout))?;
@@ -684,8 +898,8 @@ impl PodTls for LoopbackTls {
 }
 
 #[test]
-fn an_https_call_goes_over_the_embeddings_tls() {
-    let server = Server::start(vec![answer(200, "[]")]);
+fn an_https_call_goes_over_the_embeddings_tls_to_api_runpod_io() {
+    let server = Server::start(vec![listing(&[])]);
     let asked = Arc::new(Mutex::new(Vec::new()));
     let mut transport = RestRunpod::new(RestBinding::runpod(), KEY.as_bytes().to_vec());
     transport.set_tls(Arc::new(LoopbackTls {
@@ -694,12 +908,12 @@ fn an_https_call_goes_over_the_embeddings_tls() {
     }));
     let listing = transport.list_pods().expect("listing");
     assert!(listing.complete);
-    assert_eq!(*asked.lock().expect("asked"), ["rest.runpod.io"]);
+    assert_eq!(*asked.lock().expect("asked"), ["api.runpod.io"]);
     let seen = server.seen();
-    assert_eq!(seen[0].line, "GET /v1/pods HTTP/1.1");
+    assert_eq!(seen[0].line, "GET /v2/pods HTTP/1.1");
     assert_eq!(
         seen[0].headers.get("host").map(String::as_str),
-        Some("rest.runpod.io")
+        Some("api.runpod.io")
     );
     assert_headers(&seen[0]);
 }

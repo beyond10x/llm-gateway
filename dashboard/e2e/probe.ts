@@ -119,7 +119,9 @@ export function layoutProbe(): LayoutProbe {
 
 // The always-visible elements (marked with data-ux-always): the share of each that is inside the
 // viewport, and not more than the share of five sample points (centre and four corners) where a
-// hit test finds the element or a descendant.
+// hit test finds the element or a descendant. A corner point lies 2 px inside the element's shape:
+// with a rounded corner of radius r it moves r (1 - 1/√2) further in along the diagonal, onto the
+// curve, since the corner of the box outside the curve is not the element's.
 export function headerProbe(): HeaderItem[] {
   const root = document.documentElement;
   const vw = root.clientWidth;
@@ -131,12 +133,22 @@ export function headerProbe(): HeaderItem[] {
     const ix = Math.max(0, Math.min(r.right, vw) - Math.max(r.left, 0));
     const iy = Math.max(0, Math.min(r.bottom, vh) - Math.max(r.top, 0));
     const inView = area > 0 ? (ix * iy) / area : 0;
+    const cs = getComputedStyle(el);
+    const inset = (radius: string): number => {
+      const v = parseFloat(radius) || 0;
+      const px = radius.trim().endsWith('%') ? (v / 100) * Math.min(r.width, r.height) : v;
+      return 2 + Math.min(px, r.width / 2, r.height / 2) * (1 - Math.SQRT1_2);
+    };
+    const tl = inset(cs.borderTopLeftRadius);
+    const tr = inset(cs.borderTopRightRadius);
+    const bl = inset(cs.borderBottomLeftRadius);
+    const br = inset(cs.borderBottomRightRadius);
     const points: [number, number][] = [
       [r.left + r.width / 2, r.top + r.height / 2],
-      [r.left + 2, r.top + 2],
-      [r.right - 2, r.top + 2],
-      [r.left + 2, r.bottom - 2],
-      [r.right - 2, r.bottom - 2],
+      [r.left + tl, r.top + tl],
+      [r.right - tr, r.top + tr],
+      [r.left + bl, r.bottom - bl],
+      [r.right - br, r.bottom - br],
     ];
     let uncovered = 0;
     for (const [x, y] of points) {

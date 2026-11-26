@@ -172,3 +172,82 @@ fn the_fallback_block_loads_as_two_ordered_profiles() {
             .contains(&"--speculative-config".to_string())
     );
 }
+
+fn runpod_routes() -> String {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../docs/runpod-routes.md");
+    std::fs::read_to_string(&path)
+        .unwrap_or_else(|error| panic!("reading {}: {error}", path.display()))
+}
+
+/// The Secure Cloud price in micro-USD of each GPU type the "Prices" table lists.
+fn secure_prices(text: &str) -> std::collections::BTreeMap<String, u64> {
+    let start = text
+        .find("## Prices\n")
+        .expect("docs/runpod-routes.md has ## Prices");
+    let section = &text[start..];
+    let section = &section[..section[1..]
+        .find("\n## ")
+        .map_or(section.len(), |end| end + 1)];
+    section
+        .lines()
+        .filter(|line| line.starts_with("| `"))
+        .map(|line| {
+            let cells: Vec<&str> = line.split('|').map(str::trim).collect();
+            let gpu = cells[1].trim_matches('`').to_string();
+            let price: f64 = cells[3].trim_start_matches('$').parse().unwrap();
+            (gpu, (price * 1_000_000.0).round() as u64)
+        })
+        .collect()
+}
+
+#[test]
+fn the_runpod_routes_block_loads_with_two_woken_models_under_one_daily_cap() {
+    let text = runpod_routes();
+    let fixture = Fixture::new("runpod-routes");
+    let secret = fixture.owner_secret();
+    let document = format!(
+        "listen = \"127.0.0.1:0\"\nowner_secret_file = \"{}\"\n\n{}",
+        secret.display(),
+        block(&text, "The block")
+    );
+    let deployment = load(&fixture.config(&document))
+        .unwrap_or_else(|refusal| panic!("the runpod routes block refused: {refusal:?}"));
+    assert_eq!(
+        deployment.providers["runpod"].daily_cap_micro_usd,
+        Some(3_330_000)
+    );
+    assert_eq!(
+        deployment.models.keys().collect::<Vec<_>>(),
+        ["inkling-pod", "qwen"]
+    );
+    let prices = secure_prices(&text);
+    for (alias, model) in &deployment.models {
+        assert!(!model.start_on_request, "{alias} starts only on a wake");
+        assert_eq!(model.idle_timeout_minutes, 10, "{alias}");
+        let mut gpus = model.gpu_types.clone();
+        for fallback in &model.fallbacks {
+            gpus.extend(fallback.gpu_types.iter().cloned());
+        }
+        let most = gpus
+            .iter()
+            .map(|gpu| {
+                *prices
+                    .get(gpu)
+                    .unwrap_or_else(|| panic!("{alias}: {gpu} has no price in the table"))
+            })
+            .max()
+            .unwrap();
+        assert_eq!(
+            model.price_per_hour_micro_usd,
+            Some(most),
+            "{alias}: price_per_hour_usd is the most its GPU types cost"
+        );
+    }
+    let fast = &deployment.models["inkling-pod"];
+    assert_eq!(fast.hf_model, "thinkingmachines/Inkling-2-Mini");
+    assert_eq!(fast.vllm.thinking, Thinking::On);
+    let strong = &deployment.models["qwen"];
+    assert_eq!(strong.profile, "h100-64k");
+    assert_eq!(strong.fallbacks.len(), 1);
+    assert_eq!(strong.fallbacks[0].name, "l40s-32k");
+}

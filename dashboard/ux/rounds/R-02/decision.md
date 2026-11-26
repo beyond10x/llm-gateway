@@ -8,4 +8,4 @@ No: the canvas stays fixed behind the page and shows in the gaps between panels.
 Other options put: translucent panels over the background canvas (costs text contrast), or no change.
 Default if unanswered by the next round: yes, because only the panel keeps text contrast and shows
 the session labels.
-Answer: yes, taken on default (no answer within 15 minutes), 2026-11-26
+Answer: yes, 2026-11-26 (taken on default after 15 minutes, then confirmed by the owner)

@@ -2,9 +2,10 @@
   "view": "dashboard.Limits",
   "rows": [
     {
-      "credential": {
-        "text": "6b1d9e40",
-        "mono": true,
+      "credential": "6b1d9e40",
+      "limits": {
+        "text": "unified",
+        "title": "credential 6b1d9e40",
         "note": {
           "text": "seen 3s ago"
         }

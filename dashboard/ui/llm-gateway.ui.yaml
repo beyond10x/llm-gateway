@@ -187,7 +187,7 @@ pages:
         reads: {placeholder: dashboard.Limits, fixture: limits.json, key: credential}
         live: {channel: events, effect: replace}
         columns:
-          - {field: credential, label: Subscription limits}
+          - {field: limits, label: Subscription limits}
           - {field: status, label: Status, tone_by: limit_status, labels: limit_status}
           - {field: window_5h, label: 5h utilization, tone_by: limit_status, visible: row.window_5h}
           - {field: window_7d, label: 7d utilization, tone_by: limit_status, visible: row.window_7d}

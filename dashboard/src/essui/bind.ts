@@ -76,6 +76,21 @@ function heartbeat(age: number | null | undefined): Rich {
     : { text: `${span(age)} ago`, key: 'fresh' };
 }
 
+// A rate-limit header's name in words: `anthropic-ratelimit-input-tokens-remaining` is "Input
+// tokens remaining", `anthropic-ratelimit-unified-fallback` is "Fallback".
+export function headerLabel(name: string): string {
+  const words = name.replace(/^anthropic-ratelimit-/, '').replace(/^unified-/, '').replace(/-/g, ' ');
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// What a credential's limits limit: Anthropic's unified subscription limits, or the request and
+// token limits its rate-limit headers name.
+function limited(names: string[]): string {
+  if (names.some((k) => k.startsWith(UNIFIED))) return 'unified';
+  const kinds = [...new Set(names.map((k) => /^anthropic-ratelimit-(.+)-(?:limit|remaining|reset)$/.exec(k)?.[1]).filter((k): k is string => !!k))];
+  return kinds.length > 0 ? kinds.map((k) => k.replace(/-/g, ' ')).join(', ') : 'other';
+}
+
 function limitRow(row: LimitRow, now: number): Row {
   const h: Record<string, string> = {};
   for (const [k, v] of Object.entries(row.headers)) h[k.toLowerCase()] = v;
@@ -93,13 +108,14 @@ function limitRow(row: LimitRow, now: number): Row {
     .filter(([k]) => !IN_TILES.includes(k))
     .sort(([a], [b]) => a.localeCompare(b));
   return {
-    credential: { text: row.credential, mono: true, note: { text: `seen ${ago(now, row.seen_ms)}` } },
+    credential: row.credential,
+    limits: { text: limited(Object.keys(h)), title: `credential ${row.credential}`, note: { text: `seen ${ago(now, row.seen_ms)}` } },
     status: { text: status ?? DASH, title: status, sub: reset !== null ? parts(`resets ${countdown(now, reset)}`) : [] },
     window_5h: window('5h'),
     window_7d: window('7d'),
     overage: overage === undefined ? null : { text: overage, title: overage, sub: reason ? [{ text: reason, title: reason }] : [] },
     claim: claim === undefined ? null : { text: claim, title: claim },
-    headers: rest.length > 0 ? Object.fromEntries(rest) : null,
+    headers: rest.length > 0 ? { text: '', table: rest.map(([k, v]) => [{ text: headerLabel(k), title: k }, { text: v }]) } : null,
   };
 }
 

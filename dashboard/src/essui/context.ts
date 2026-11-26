@@ -86,6 +86,12 @@ export function toneClass(tone: Tone | undefined): string[] {
 
 export const NUMERIC: Field['as'][] = ['number', 'duration', 'percent'];
 
+// A count in words after the field's label: 2 under "Attempts" is "2 attempts", 1 is "1 attempt".
+export function counted(n: number, field: Pick<Field, 'label' | 'field'>): string {
+  const noun = (field.label ?? field.field).toLowerCase();
+  return `${n} ${n === 1 ? noun.replace(/s$/, '') : noun}`;
+}
+
 // The words of a primitive's `text`: an expression's value, or the string itself when it is no
 // expression (ess-ui/1 reads a string that does not parse as literal text).
 export function textOf(ctx: Ctx, src: string, row?: unknown): string {

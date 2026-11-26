@@ -154,3 +154,12 @@ ul.list a { color: var(--accent); }
 section:has(> ul.problems) { border-left: 4px solid var(--danger); }
 section:has(> ul.problems) h2 { margin-bottom: 0.4rem; }
 h2[id] { scroll-margin-top: 4rem; }
+
+/* A table that scrolls sideways: the edge that hides columns fades, and while columns are hidden to
+   the right a cue on the line above it says to scroll (ScrollRegion). */
+.scroller { position: relative; }
+.scroller::before, .scroller::after { content: ''; position: absolute; top: 0; bottom: 0; width: 1.6rem; pointer-events: none; opacity: 0; z-index: 1; }
+.scroller::before { left: 0; background-image: linear-gradient(to right, var(--surface), transparent); }
+.scroller::after { right: 0; background-image: linear-gradient(to left, var(--surface) 20%, transparent); }
+.scroller.more-left::before, .scroller.more-right::after { opacity: 1; }
+.scroll-cue { margin: 0 0 0.2rem; min-height: 1.4em; text-align: right; color: var(--muted); }

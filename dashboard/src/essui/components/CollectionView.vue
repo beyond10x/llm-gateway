@@ -1,17 +1,17 @@
 <script setup lang="ts">
-// A collection: a table in a keyboard-reachable scrolling region named after its title, a mini
-// table when it is another collection's expanded detail, or cards (`style: cards`), one per row,
-// headed by the row's key and holding a tile per field and a definition list per map, or a list
-// (`style: list`), one item per row: its columns, then its `item` nodes reading the row. In a table
-// the column that shows the read's key is each row's header. A column named like the collection's
-// `expand` node holds the button that opens that detail under the row. A client pager draws the
-// first page and a button that shows every row.
+// A collection: a table in a scrolling region named after its title (ScrollRegion), a mini table
+// when it is another collection's expanded detail, or cards (`style: cards`), one per row, headed by
+// the row's key and holding a tile per field and a definition list per map, or a list (`style:
+// list`), one item per row: its columns, then its `item` nodes reading the row. In a table the key
+// column is each row's header. A column named like the collection's `expand` node holds the button
+// that opens that detail under the row. A client pager draws the first page and a button for all.
 import { computed, reactive, ref } from 'vue';
 import { holds } from '../expr.ts';
 import { NUMERIC, counted, readRows, scopeOf, toneClass, toneOf, useCtx } from '../context.ts';
 import { isRich, type CollectionNode, type Field, type Part, type Row } from '../types.ts';
 import CellValue from './CellValue.vue';
 import NodeView from './NodeView.vue';
+import ScrollRegion from './ScrollRegion.vue';
 import Tile from './Tile.vue';
 
 const props = defineProps<{ node: CollectionNode; row?: Row; title?: string; caption?: string; empty?: string; nested?: boolean }>();
@@ -100,7 +100,7 @@ const entries = (v: unknown): [Part, Part][] => (isRich(v) ? (v.table ?? []).map
   </ul>
 
   <template v-else>
-    <div class="scroll" tabindex="0" role="region" :aria-label="`${title ?? node.name} table`">
+    <ScrollRegion :label="`${title ?? node.name} table`">
       <table :class="node.name">
         <caption v-if="caption">{{ caption }}</caption>
         <thead>
@@ -130,7 +130,7 @@ const entries = (v: unknown): [Part, Part][] => (isRich(v) ? (v.table ?? []).map
           <tr v-if="rows.length === 0 && empty"><td :colspan="columns.length" class="empty">{{ empty }}</td></tr>
         </tbody>
       </table>
-    </div>
+    </ScrollRegion>
     <p v-if="pageSize !== undefined && rows.length > pageSize" class="more">
       <button type="button" @click="showAll = !showAll">{{ showAll ? `Show the last ${pageSize}` : `Show all ${rows.length}` }}</button>
     </p>

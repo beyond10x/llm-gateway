@@ -78,7 +78,8 @@ pub struct PodRequest {
 }
 
 /// Where Runpod placed a pod: its machine's `secureCloud` and the pod's `interruptible`, as
-/// `GET /pods/<id>?includeMachine=true` answers them. `None` is a field Runpod did not report.
+/// v1's `GET /pods/<id>?includeMachine=true` answers them, or REST API v2's `cloud`, which
+/// reports no `interruptible`. `None` is a field Runpod did not report.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PodPlacement {
     pub secure_cloud: Option<bool>,
@@ -99,12 +100,13 @@ impl PodPlacement {
 pub struct PodSummary {
     pub id: String,
     pub name: String,
-    /// Runpod's `desiredStatus` as it answered it (`RUNNING`, `EXITED`, …).
+    /// Runpod's status as it answered it (`RUNNING`, `EXITED`, …): REST API v2's `status`.
     pub desired_status: String,
     pub cost_per_hour_usd: Option<f64>,
     pub gpu: Option<String>,
     pub uptime_seconds: Option<u64>,
-    /// Runpod's `lastStartedAt`, in milliseconds since the Unix epoch.
+    /// When the pod last started (REST API v2's `startedAt`), in milliseconds since the Unix
+    /// epoch.
     pub last_started_at_ms: Option<u64>,
     /// The pod's [`TAG_OWNER`](crate::TAG_OWNER) environment value, if it carries one.
     pub env_owner: Option<String>,

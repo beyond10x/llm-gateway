@@ -157,8 +157,8 @@ pub(crate) fn panel(
     }
 }
 
-/// How long `pod` has run: Runpod's `uptimeSeconds`, else the time since its `lastStartedAt` while it
-/// runs (the REST listing writes no uptime).
+/// How long `pod` has run: Runpod's reported uptime, else the time since its start while it runs
+/// (the REST listing's `runtime` is null, so it reports no uptime).
 fn uptime(pod: &llm_runpod::PodSummary, read_ms: u64) -> Option<u64> {
     pod.uptime_seconds.or_else(|| {
         pod.last_started_at_ms

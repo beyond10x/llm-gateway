@@ -389,7 +389,7 @@ through `b10x-llm-providers`, and uses neither: it calls only `descriptions::run
 | GPU choice | ordered; each refusal tries the next | the same within a profile, except that a **lost** create answer ends the attempt — Runpod takes no idempotency key, so trying the next GPU could pay twice, and `honours_idempotency_key` is `false`. A model may declare ordered profiles (below); the next profile is tried only when every create of the one before was refused for capacity |
 | crash recovery | two decreasing uptimes during startup terminate the pod | Runpod reports no uptime, so a restart is the pod's `lastStartedAt` (read by `pods.list` with `id`) moving forward: a value later than the last one seen is one restart, and the first value, an equal or an earlier one, or none, is not. The same count, at any time, but only restarts inside the model's declared `crash_window_ms` count (window end inclusive), so sparse restarts over a long life are not a loop; a pod refusing its vLLM key is terminated too; the next request starts a new deployment |
 | startup deadline | the caller's hold budget; the pod keeps starting | the pod's deadline is separate from a request's hold budget (`request_hold_seconds`, row K28): a pod that has not served within its declared deadline is terminated, because it is a billed resource serving nobody. A pod that served and then answers a definite "not ready" gets the same bound, counted from the last time it was seen ready (`stopped-serving`); unknown readiness neither starts nor ends that clock |
-| idle reaper | idle past the timeout, never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement. A lease expiry does not stop a pod with a request in flight either (see below) |
+| idle reaper | idle past the timeout, counted from the first time the pod was found ready (a pod still starting is bounded by its startup deadline), never below the measured cold start, never with a request in flight | the same rules, on the explicit clock; a `StreamLease` holds the pod until the stream ends, and in-flight accounting is per deployment, so a lease still open on a retired pod does not hold its replacement. A lease expiry does not stop a pod with a request in flight either (see below) |
 | orphan sweep | `llmgw-*` pods whose alias left the registry | pods in `b10x-llm-` carrying **this controller's** owner tag that no live record holds, by exact key, or by request id for a record that holds no key yet; records whose model left the registry are stopped through the controller |
 | request id | none | a readable prefix of at most 64 bytes (`request-<controller>-<alias>-<generation>-`, cut short when long) followed by a 128-bit digest of a length-prefixed encoding of controller, alias, generation, instant and a per-process nonce: at most 96 bytes, so it always fits the identifier limit. Two different tuples never share an encoding — `c-qwen`/`x` and `c`/`qwen-x` do not — so two request ids agree only if the digest collides. The digest is the standard library's hasher run twice, not a cryptographic hash; it has to avoid accidents, not an adversary |
 | pod status | — | only `TERMINATED` ends a resource. `EXITED` is a stopped pod that still exists and is billed: it is reported present-but-not-running, terminated, and replaced (`pod-exited`). An endpoint is reported only for a `RUNNING` pod; otherwise it is `None` |
@@ -438,7 +438,8 @@ an empty or unprintable value bound for the pod's command line or environment, o
 that is not 1 to 32 of `A-Za-z0-9-_`, `profile-conflict` when two profiles share a name or a GPU type, and `image-not-allowed` for an
 image that is not `vllm/vllm-openai:` and a tag. Every fallback profile is checked as the model is.
 After every create the adapter reads the pod's placement and terminates the pod at once, refusing
-its GPU type, unless it is on Secure Cloud and not interruptible.
+its GPU type, unless it is on Secure Cloud and not interruptible. Through REST API v2 the
+placement is the pod's `cloud`; v2 has no interruptible pod.
 
 The pool must be stepped (`ensure` or `reap`) more often than the policy's `lease_ms`: an expired
 lease is a stop obligation under this contract, and the pool carries it out. It does not carry it
@@ -709,12 +710,14 @@ account:
 - A pool pod that has been stopped leaves the running estimate when its record stops
   occupying a slot, which can be before the provider bills its last stretch. Until the reported
   spend holds that stretch, neither part counts it. This lag errs toward admitting.
-- The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`: each
-  entry's `amount` is taken as USD and its `time` as the bucket's start. Neither reading has been
-  checked against a live account.
-- The total is the sum of `billing.pods` over the provider's default time window, since the
-  read names none. If that window is bounded, spend billed before it is not counted and the
-  total ceiling is understated.
+- The reported spend is Runpod's `GET /billing/pods` (`PodBilling`) with `bucketSize=day`.
+  Through `connectors` each entry's `amount` is taken as USD and its `time` as the bucket's
+  start; that reading has not been checked against a live account. The REST transport reads
+  REST API v2's answer, an object whose `records` are one pod's one day each: `totalAmount` in
+  USD and the bucket's `startTime`. That shape was read on the live API on 2026-11-26.
+- The total is the sum over the provider's default time window, since the read names none. For
+  REST API v2 that window is the 30 days up to now: spend billed before it is not counted, so
+  the total ceiling is a ceiling on the last 30 days, not on the account's whole history.
 - A `billing.pods` result is read only when it carries a 2xx `status`; one with no status is
   unanswered, never zero spend, and refuses the start.
 

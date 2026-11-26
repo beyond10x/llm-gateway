@@ -172,4 +172,5 @@ Three routes for a client that picks a model per task:
 
 A client reads `GET /v1/status` before a call: `callable: false` with phase `stopped` means the
 pod needs a wake, and a call would be refused `model-stopped`. A wake refused `spend-ceiling`
-means the day's budget is used; fall back to `inkling-2-mini`.
+means the day's budget is used, or the account's spend could not be read; fall back to
+`inkling-2-mini`.

@@ -9,8 +9,8 @@
 
 use llm_gateway::{
     CallBytes, CallEnding, FinishedCall, FinishedCalls, Gateway, GatewayConfig, GatewayHandle,
-    IngressAuth, Label, NoOwnerVerifier, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, RouteInventory, TargetRefusal, Wire,
+    IngressAuth, Label, NoOwnerVerifier, Relay, RelayModel, RelayStream, RelayTarget, RelayTargets,
+    RouteInventory, TargetRefusal, Wire,
 };
 use std::{
     io::{self, Read, Write},
@@ -220,8 +220,7 @@ fn a_byte_relayed_stream_that_carried_its_wire_error_before_its_upstream_cut_is_
 
 /// The client-credential passthrough: the same answer, the same precedence.
 #[test]
-fn a_passed_through_stream_that_carried_its_wire_error_before_its_upstream_cut_is_a_wire_error()
-{
+fn a_passed_through_stream_that_carried_its_wire_error_before_its_upstream_cut_is_a_wire_error() {
     let (answer, finished) = ending_of(
         r#"{"model":"sub","stream":true}"#,
         "x-api-key: client-key\r\nx-stainless-retry-count: 0\r\n",

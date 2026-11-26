@@ -3,6 +3,7 @@
 
 mod adversary;
 mod adversary_1126_w05_records;
+mod adversary_1126_w05_records_2;
 mod adversary_ess_0_69_opencode;
 mod adversary_k8s_guide;
 mod adversary_w02;

@@ -20,8 +20,8 @@ const tags = computed(() => (Array.isArray(props.value) ? props.value : []));
     <span v-if="field.as === 'badge'" class="pill" :class="`tone-${tone}`" :title="rich?.title">{{ words }}</span>
     <span v-else-if="rich?.mono || rich?.title" :class="{ mono: rich?.mono }" :title="rich?.title">{{ words }}</span>
     <template v-else>{{ words }}</template>
-    <template v-if="rich?.note"> <span class="muted small" :class="{ mono: rich.note.mono }">{{ rich.note.text }}</span></template>
-    <template v-if="rich?.tag"> <span class="badge" :title="rich.tag.title">{{ rich.tag.text }}</span></template>
+    <template v-if="rich?.note">{{ ' ' }}<span class="muted small" :class="{ mono: rich.note.mono }">{{ rich.note.text }}</span></template>
+    <template v-if="rich?.tag">{{ ' ' }}<span class="badge" :title="rich.tag.title">{{ rich.tag.text }}</span></template>
     <div v-for="(s, i) in rich?.sub ?? []" :key="i" class="muted small" :class="{ mono: s.mono }" :title="s.title">{{ s.text }}</div>
   </template>
 </template>

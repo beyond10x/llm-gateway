@@ -6,17 +6,18 @@
 //! request it read and answers from a script; the gateway listens on loopback too. Nothing else
 //! is opened.
 
+use crate::upstream::{self, Upstream as Shared};
 use llm_gateway::{
     AnswerFraming, CallPricing, CallerReview, CallerToken, Gateway, GatewayConfig, GatewayHandle,
-    IngressAuth, Label, OwnerToken, Principal, RefusalCode, Relay, RelayModel, RelayStream,
-    RelayTarget, RelayTargets, Review, RouteInventory, SharedSecretVerifier, TargetRefusal,
-    TranslatedAnswer, Translation, TranslationFailure, TranslationRequest, Translator, Usage,
-    UsageRecord, UsageRecords, Wire,
+    IngressAuth, Label, OwnerToken, Principal, RefusalCode, Relay, RelayModel, RelayTarget,
+    RelayTargets, Review, RouteInventory, SharedSecretVerifier, TargetRefusal, TranslatedAnswer,
+    Translation, TranslationFailure, TranslationRequest, Translator, Usage, UsageRecord,
+    UsageRecords, Wire,
 };
 use std::{
-    collections::{BTreeSet, VecDeque},
-    io::{self, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    collections::BTreeSet,
+    io::{Read, Write},
+    net::{SocketAddr, TcpStream},
     sync::{
         Arc, Mutex,
         mpsc::{self, Receiver, Sender},
@@ -54,83 +55,45 @@ enum Reply {
     },
 }
 
-/// A loopback upstream answering each connection with the next scripted reply, and `200 {}`
-/// past its script. It keeps the body bytes of every request it read, in order.
+/// A loopback upstream answering each call of its test with the next scripted reply, and
+/// `200 {}` past its script. It keeps the body bytes of every request it read, in order, and
+/// answers only its own test's calls (`crate::upstream`).
 struct Upstream {
-    authority: String,
-    bodies: Arc<Mutex<Vec<Vec<u8>>>>,
+    shared: Shared,
 }
 
 impl Upstream {
     fn start(script: Vec<Reply>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let bodies = Arc::new(Mutex::new(Vec::new()));
-        let kept = Arc::clone(&bodies);
-        let script = Mutex::new(VecDeque::from(script));
-        thread::spawn(move || {
-            for connection in listener.incoming() {
-                let Ok(mut connection) = connection else {
-                    return;
-                };
-                let Some(body) = read_request(&mut connection) else {
-                    continue;
-                };
-                kept.lock().unwrap().push(body);
-                let reply = script.lock().unwrap().pop_front();
-                thread::spawn(move || answer(&mut connection, reply));
-            }
-        });
-        Self { authority, bodies }
+        Self {
+            shared: Shared::scripted_then(
+                script
+                    .into_iter()
+                    .map(|reply| -> upstream::Reply {
+                        Box::new(move |connection| answer(connection, reply))
+                    })
+                    .collect(),
+                |connection| drop(connection.write_all(json_answer("{}").as_bytes())),
+            ),
+        }
     }
 
     fn bodies(&self) -> Vec<Vec<u8>> {
-        self.bodies.lock().unwrap().clone()
+        self.shared
+            .seen()
+            .iter()
+            .map(|raw| upstream::body_of(raw).to_vec())
+            .collect()
     }
 }
 
-/// The body of one request, read by its `content-length`.
-fn read_request(connection: &mut TcpStream) -> Option<Vec<u8>> {
-    connection.set_read_timeout(Some(WAIT)).ok()?;
-    let mut buffer = Vec::new();
-    let mut chunk = [0_u8; 8192];
-    let end = loop {
-        if let Some(end) = buffer.windows(4).position(|window| window == b"\r\n\r\n") {
-            break end;
-        }
-        match connection.read(&mut chunk) {
-            Ok(0) | Err(_) => return None,
-            Ok(read) => buffer.extend_from_slice(&chunk[..read]),
-        }
-    };
-    let head = String::from_utf8_lossy(&buffer[..end]).into_owned();
-    let wanted: usize = head
-        .split("\r\n")
-        .find_map(|line| {
-            let (name, value) = line.split_once(':')?;
-            name.eq_ignore_ascii_case("content-length")
-                .then(|| value.trim().parse().ok())?
-        })
-        .unwrap_or(0);
-    let mut body = buffer[end + 4..].to_vec();
-    while body.len() < wanted {
-        match connection.read(&mut chunk) {
-            Ok(0) | Err(_) => break,
-            Ok(read) => body.extend_from_slice(&chunk[..read]),
-        }
-    }
-    Some(body)
-}
-
-fn answer(connection: &mut TcpStream, reply: Option<Reply>) {
+fn answer(connection: &mut TcpStream, reply: Reply) {
     match reply {
-        None => drop(connection.write_all(&json_answer("{}").into_bytes())),
-        Some(Reply::Whole(raw)) => drop(connection.write_all(raw.as_bytes())),
-        Some(Reply::Held {
+        Reply::Whole(raw) => drop(connection.write_all(raw.as_bytes())),
+        Reply::Held {
             first,
             rest,
             release,
-        }) => {
+        } => {
             drop(connection.write_all(first.as_bytes()));
             drop(connection.flush());
             let _released = release.recv_timeout(WAIT);
@@ -155,26 +118,18 @@ fn chunk(text: &str) -> String {
 /// The head of a `200` event stream, chunked.
 const STREAM_HEAD: &str = "HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\nconnection: close\r\n\r\n";
 
-struct Target(String);
+/// Hands out the upstream for every alias.
+struct Targets(upstream::Target);
 
-impl RelayTarget for Target {
-    fn authority(&self) -> &str {
-        &self.0
-    }
-
-    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
-        let stream = TcpStream::connect(&self.0)?;
-        stream.set_read_timeout(Some(WAIT))?;
-        Ok(Box::new(stream))
+impl Targets {
+    fn of(upstream: &Upstream) -> Self {
+        Self(upstream.shared.target(WAIT))
     }
 }
 
-/// Hands out the upstream for every alias.
-struct Targets(String);
-
 impl RelayTargets for Targets {
     fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
-        Ok(Box::new(Target(self.0.clone())))
+        Ok(Box::new(self.0.clone()))
     }
 
     fn invalidate(&self, _alias: &str, _authority: &str) {}
@@ -203,8 +158,20 @@ impl Translation for LoopbackRun {
     ) -> Result<(), TranslationFailure> {
         let failed = |_| TranslationFailure::UpstreamFailed;
         let mut stream = target.connect().map_err(failed)?;
+        let mut lines = String::new();
+        for header in target.headers() {
+            lines.push_str(header.name());
+            lines.push_str(": ");
+            lines.push_str(header.value());
+            lines.push_str("\r\n");
+        }
         stream
-            .write_all(b"POST /v1/chat/completions HTTP/1.1\r\ncontent-length: 2\r\n\r\n{}")
+            .write_all(
+                format!(
+                    "POST /v1/chat/completions HTTP/1.1\r\n{lines}content-length: 2\r\n\r\n{{}}"
+                )
+                .as_bytes(),
+            )
             .map_err(failed)?;
         let mut raw = Vec::new();
         drop(stream.read_to_end(&mut raw));
@@ -283,7 +250,7 @@ fn gateway(
     configure: impl FnOnce(&mut GatewayConfig),
 ) -> Fixture {
     let kept = Arc::new(Kept::default());
-    let relay = Relay::new(models, Arc::new(Targets(upstream.authority.clone())))
+    let relay = Relay::new(models, Arc::new(Targets::of(upstream)))
         .unwrap()
         .with_translator(Arc::new(Loopback))
         .with_caller_review(Arc::new(Reviews))
@@ -1342,7 +1309,7 @@ mod adversary_w03_cost_conditions {
         let model = RelayModel::new(label("priced"), label("priced"), vec![Wire::Chat])
             .unwrap()
             .with_pricing(Arc::new(Half));
-        let relay = Relay::new(vec![model], Arc::new(Targets(upstream.authority.clone())))
+        let relay = Relay::new(vec![model], Arc::new(Targets::of(upstream)))
             .unwrap()
             .with_translator(Arc::new(Scripted(then)))
             .with_records(Arc::clone(&kept) as Arc<dyn UsageRecords>);
@@ -1603,7 +1570,7 @@ mod correction_w03 {
         let kept = Arc::new(Kept::default());
         let relay = Relay::new(
             vec![priced(Wire::Chat, Arc::new(Half))],
-            Arc::new(Targets(upstream.authority.clone())),
+            Arc::new(Targets::of(&upstream)),
         )
         .unwrap()
         .with_translator(Arc::new(Untold))

@@ -2,109 +2,73 @@
 //! (`RelayTarget::streamed`, every Runpod pod) on a relay that holds an assembler
 //! (`Relay::with_assembler`) is sent every call with `stream: true`, and a call the client did not
 //! stream is answered as the one body the assembler makes of the events. Every upstream is a fake
-//! on loopback, port 0; the assembler is this file's, which writes the events it was handed as
-//! one JSON array, so what the relay hands it is visible.
+//! on loopback, port 0, that answers only its own test's calls (`crate::upstream`); the
+//! assembler is this file's, which writes the events it was handed as one JSON array, so what
+//! the relay hands it is visible.
 
+use crate::upstream::{self, Upstream as Shared};
 use llm_gateway::{
     Assembly, CallBytes, CallEnding, EventReader, FinishedCall, FinishedCalls, Gateway,
     GatewayConfig, GatewayHandle, IngressAuth, Label, NoOwnerVerifier, Relay, RelayModel,
-    RelayStream, RelayTarget, RelayTargets, RouteInventory, StreamAssembler, TargetRefusal, Wire,
+    RelayStream, RelayTarget, RelayTargets, RouteInventory, StaticHeader, StreamAssembler,
+    TargetRefusal, Wire,
 };
 use std::{
     io::{self, Read, Write},
-    net::{Shutdown, TcpListener, TcpStream},
+    net::TcpStream,
     sync::{Arc, Mutex},
-    thread::{self, JoinHandle},
+    thread,
     time::{Duration, Instant},
 };
 
 const WAIT: Duration = Duration::from_secs(10);
 
-/// An upstream that reads one request, keeps its body, writes `pieces` and closes.
+/// An upstream that reads one request of its test's calls, keeps it, writes `pieces` and closes.
 struct Upstream {
     authority: String,
-    body: Arc<Mutex<Option<String>>>,
-    path: Arc<Mutex<Option<String>>>,
-    thread: Option<JoinHandle<()>>,
+    shared: Shared,
 }
 
 impl Upstream {
     fn start(pieces: Vec<Vec<u8>>) -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let body = Arc::new(Mutex::new(None));
-        let path = Arc::new(Mutex::new(None));
-        let (kept, line) = (Arc::clone(&body), Arc::clone(&path));
-        let thread = thread::spawn(move || {
-            let Ok((mut connection, _)) = listener.accept() else {
-                return;
-            };
-            connection.set_read_timeout(Some(WAIT)).unwrap();
-            let mut buffer = Vec::new();
-            let mut chunk = [0_u8; 16_384];
-            let end = loop {
-                if let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
-                    break end;
-                }
-                match connection.read(&mut chunk) {
-                    Ok(0) | Err(_) => return,
-                    Ok(read) => buffer.extend_from_slice(&chunk[..read]),
-                }
-            };
-            let head = String::from_utf8_lossy(&buffer[..end]).to_string();
-            let wanted: usize = head
-                .to_ascii_lowercase()
-                .split("\r\n")
-                .find_map(|line| line.strip_prefix("content-length:"))
-                .and_then(|value| value.trim().parse().ok())
-                .unwrap_or(0);
-            while buffer.len() < end + 4 + wanted {
-                match connection.read(&mut chunk) {
-                    Ok(0) | Err(_) => break,
-                    Ok(read) => buffer.extend_from_slice(&chunk[..read]),
-                }
-            }
-            *line.lock().unwrap() = head.split(' ').nth(1).map(str::to_owned);
-            *kept.lock().unwrap() =
-                Some(String::from_utf8_lossy(&buffer[end + 4..end + 4 + wanted]).into_owned());
+        let shared = Shared::scripted(vec![Box::new(move |connection: &mut TcpStream| {
             for piece in pieces {
                 if connection.write_all(&piece).is_err() {
                     break;
                 }
                 thread::sleep(Duration::from_millis(5));
             }
-            drop(connection.shutdown(Shutdown::Both));
-        });
+        })]);
         Self {
-            authority,
-            body,
-            path,
-            thread: Some(thread),
+            authority: shared.authority().to_owned(),
+            shared,
         }
+    }
+
+    /// The request the upstream read.
+    fn request(&self) -> Vec<u8> {
+        let seen = self.shared.seen();
+        assert!(seen.len() <= 1, "the upstream read {} requests", seen.len());
+        seen.into_iter()
+            .next()
+            .expect("the upstream read a request")
     }
 
     fn body(&self) -> String {
-        self.body
-            .lock()
-            .unwrap()
-            .clone()
-            .expect("the upstream read a request")
+        String::from_utf8_lossy(upstream::body_of(&self.request())).into_owned()
     }
-}
 
-impl Drop for Upstream {
-    fn drop(&mut self) {
-        if let Some(thread) = self.thread.take() {
-            if !thread.is_finished() {
-                drop(TcpStream::connect(&self.authority));
-            }
-            drop(thread.join());
-        }
+    fn path(&self) -> Option<String> {
+        upstream::head_of(&self.request())
+            .split(' ')
+            .nth(1)
+            .map(str::to_owned)
     }
 }
 
 struct Source {
     authority: String,
+    headers: Vec<StaticHeader>,
     streamed: bool,
 }
 
@@ -112,6 +76,7 @@ impl RelayTargets for Source {
     fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
         Ok(Box::new(Target {
             authority: self.authority.clone(),
+            headers: self.headers.clone(),
             streamed: self.streamed,
         }))
     }
@@ -121,12 +86,17 @@ impl RelayTargets for Source {
 
 struct Target {
     authority: String,
+    headers: Vec<StaticHeader>,
     streamed: bool,
 }
 
 impl RelayTarget for Target {
     fn authority(&self) -> &str {
         &self.authority
+    }
+
+    fn headers(&self) -> &[StaticHeader] {
+        &self.headers
     }
 
     fn streamed(&self) -> bool {
@@ -228,6 +198,7 @@ fn gateway(
     ];
     let source = Source {
         authority: upstream.authority.clone(),
+        headers: upstream.shared.headers(),
         streamed,
     };
     let mut relay = Relay::new(models, Arc::new(source))
@@ -296,7 +267,7 @@ fn run(pieces: Vec<Vec<u8>>, streamed: bool, assembles: bool, path: &str, body: 
     let finished = port.one();
     handle.shutdown();
     let sent = upstream.body();
-    assert!(upstream.path.lock().unwrap().is_some());
+    assert!(upstream.path().is_some());
     Run {
         answer,
         sent,

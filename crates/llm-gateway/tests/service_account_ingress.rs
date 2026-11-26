@@ -3,21 +3,20 @@
 //! alone, and `IngressAuth::Bearer` unchanged with a review composed. The review is a fake that
 //! answers from a table and counts what it was asked; every target is a loopback pod.
 
+use crate::upstream::{self, Upstream};
 use llm_gateway::{
     CallerReview, CallerToken, Gateway, GatewayConfig, GatewayHandle, IngressAuth, Label,
-    OwnerToken, OwnerVerifier, Principal, Relay, RelayModel, RelayStream, RelayTarget,
-    RelayTargets, Review, RouteInventory, SharedSecretVerifier, TargetRefusal, UsageRecord,
-    UsageRecords, Wire,
+    OwnerToken, OwnerVerifier, Principal, Relay, RelayModel, RelayTarget, RelayTargets, Review,
+    RouteInventory, SharedSecretVerifier, TargetRefusal, UsageRecord, UsageRecords, Wire,
 };
 use std::{
     fmt::Write as _,
-    io::{self, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
+    io::{Read, Write},
+    net::{SocketAddr, TcpStream},
     sync::{
         Arc, Mutex,
         atomic::{AtomicUsize, Ordering},
     },
-    thread,
     time::Duration,
 };
 
@@ -29,85 +28,35 @@ const AGENT: &str = "system:serviceaccount:agents:coding-agent";
 const WAIT: Duration = Duration::from_secs(10);
 const BODY: &str = r#"{"model":"open","messages":[]}"#;
 
-/// A loopback pod answering every request with `200 {}`, keeping every head it read.
+/// A loopback pod answering every call of its test with `200 {}`, keeping every head it read. It
+/// answers only its own test's calls (`crate::upstream`).
 struct Pod {
-    authority: String,
-    heads: Arc<Mutex<Vec<String>>>,
+    upstream: Upstream,
 }
 
 impl Pod {
     fn start() -> Self {
-        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-        let authority = listener.local_addr().unwrap().to_string();
-        let heads = Arc::new(Mutex::new(Vec::new()));
-        let seen = Arc::clone(&heads);
-        thread::spawn(move || {
-            for connection in listener.incoming() {
-                let Ok(mut connection) = connection else {
-                    return;
-                };
-                connection.set_read_timeout(Some(WAIT)).unwrap();
-                let mut buffer = Vec::new();
-                let mut chunk = [0_u8; 8192];
-                let end = loop {
-                    if let Some(end) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
-                        break end;
-                    }
-                    match connection.read(&mut chunk) {
-                        Ok(0) | Err(_) => break 0,
-                        Ok(read) => buffer.extend_from_slice(&chunk[..read]),
-                    }
-                };
-                let head = String::from_utf8_lossy(&buffer[..end]).into_owned();
-                let wanted: usize = head
-                    .split("\r\n")
-                    .find_map(|line| {
-                        let (name, value) = line.split_once(':')?;
-                        name.eq_ignore_ascii_case("content-length")
-                            .then(|| value.trim().parse().ok())?
-                    })
-                    .unwrap_or(0);
-                let mut body = buffer.len().saturating_sub(end + 4);
-                while body < wanted {
-                    match connection.read(&mut chunk) {
-                        Ok(0) | Err(_) => break,
-                        Ok(read) => body += read,
-                    }
-                }
-                seen.lock().unwrap().push(head);
-                drop(connection.write_all(
-                    b"HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}",
-                ));
-            }
-        });
-        Self { authority, heads }
+        Self {
+            upstream: Upstream::answering(|connection| {
+                drop(connection.write_all(upstream::OK));
+            }),
+        }
     }
 
     fn heads(&self) -> Vec<String> {
-        self.heads.lock().unwrap().clone()
+        self.upstream
+            .seen()
+            .iter()
+            .map(|raw| upstream::head_of(raw))
+            .collect()
     }
 }
 
-struct Source(String);
-
-struct Target(String);
-
-impl RelayTarget for Target {
-    fn authority(&self) -> &str {
-        &self.0
-    }
-
-    fn connect(&self) -> io::Result<Box<dyn RelayStream>> {
-        let stream = TcpStream::connect(&self.0)?;
-        stream.set_read_timeout(Some(WAIT))?;
-        stream.set_write_timeout(Some(WAIT))?;
-        Ok(Box::new(stream))
-    }
-}
+struct Source(upstream::Target);
 
 impl RelayTargets for Source {
     fn acquire(&self, _alias: &str) -> Result<Box<dyn RelayTarget>, TargetRefusal> {
-        Ok(Box::new(Target(self.0.clone())))
+        Ok(Box::new(self.0.clone()))
     }
 
     fn invalidate(&self, _alias: &str, _authority: &str) {}
@@ -190,7 +139,7 @@ impl Served {
             vec![Wire::Chat, Wire::Responses, Wire::Messages],
         )
         .unwrap();
-        let mut relay = Relay::new(vec![model], Arc::new(Source(pod.authority.clone())))
+        let mut relay = Relay::new(vec![model], Arc::new(Source(pod.upstream.target(WAIT))))
             .unwrap()
             .with_records(Arc::clone(&records) as Arc<dyn UsageRecords>);
         if reviewed {

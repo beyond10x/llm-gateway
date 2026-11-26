@@ -249,7 +249,8 @@ types:
   # `owner_secret_file:`, and every `endpoint-credential:<rule>` message
   # `hosted.<alias>.credential_file:`, naming the model and never the file or the credential's
   # bytes; a routes document's endpoint credential (RoutesDeclaration) is an
-  # `endpoint-credential` file too, its messages starting `routes.<endpoint>.auth.secret:`.
+  # `endpoint-credential` file too, its messages starting `routes.<endpoint>.auth.secret:`, and
+  # so is a provider's `api_key_file`, its messages starting `providers.<name>.api_key_file:`.
   # The routes document a deployment names is a `config` file in every rule but its bound: its
   # messages start `routes:`, it is refused group- or world-writable (mode & 0o022) and
   # `config:too-large` over 2097152 bytes (2 MiB, llm's `MAX_CONFIG_BYTES`, the bound
@@ -388,6 +389,20 @@ types:
   # `credential` (`endpoint-credential`; refused beside `credential_file` and on a Bedrock model)
   # and a routes document endpoint's `auth.secret` take one too. No message names the reference or
   # the value.
+  # DECIDED 2026-11-26 (story:runpod-key-file): `api_key_file`, optional, is the path of a file
+  # the owner fills with the account's Runpod API key, in place of the `api_key` keychain
+  # reference. It is read once at start under the trusted-file rules a model's
+  # `vllm_api_key_file` follows (opened without following a final symlink, mode & 0o077 refused,
+  # the 4098-byte file bound, one non-empty printable ASCII token of at most 4096 bytes once
+  # trailing ASCII whitespace is trimmed); a broken rule refuses the start as
+  # `endpoint-credential:<rule>`, its message starting `providers.<name>.api_key_file:` and
+  # naming neither the path nor the value, before any request reaches Runpod. It is refused
+  # beside `api_key` and beside `connectors` (`config:value` naming
+  # `providers.<name>.api_key_file`), and counts as `api_key` everywhere else: at most one
+  # provider declares `connectors`, `api_key` or `api_key_file`, `management_url` stands beside
+  # it, and the binary then manages the provider's pods through Runpod's REST API itself and
+  # reads the account with the key. Proved by `runpod_key_file_*` in
+  # crates/llm-gateway-cli/tests/runpod_key_file.rs.
   # DECIDED 2026-11-26 (story:runpod-rest-host): two hosts, two keys. `management_url`, optional,
   # is the base of Runpod's management API (REST API v2: pod list, create and terminate, the
   # balance and the pod billing), default `https://api.runpod.io/v2`; it is an `https://` URL,
@@ -420,6 +435,7 @@ types:
       - {name: cloud_type, type: llm-gateway.deployment.CloudType}
       - {name: connectors, type: 'Optional<llm-gateway.deployment.ConnectorsDeclaration>'}
       - {name: api_key, type: 'Optional<String>'}
+      - {name: api_key_file, type: 'Optional<String>'}
       - {name: management_url, type: 'Optional<String>'}
       - {name: proxy_url, type: 'Optional<String>'}
       - {name: daily_cap_usd, type: 'Optional<Decimal>'}

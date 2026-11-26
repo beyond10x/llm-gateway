@@ -59,10 +59,10 @@ enum Management {
 
 /// One request the fake received.
 #[derive(Debug, Clone)]
-struct Seen {
-    host: String,
-    line: String,
-    head: String,
+pub(crate) struct Seen {
+    pub(crate) host: String,
+    pub(crate) line: String,
+    pub(crate) head: String,
     body: Vec<u8>,
 }
 
@@ -82,13 +82,13 @@ struct State {
 }
 
 /// The fake Runpod: both hosts on one loopback listener.
-struct Fake {
-    address: SocketAddr,
+pub(crate) struct Fake {
+    pub(crate) address: SocketAddr,
     state: Arc<Mutex<State>>,
 }
 
 impl Fake {
-    fn start() -> Self {
+    pub(crate) fn start() -> Self {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let state = Arc::new(Mutex::new(State {
@@ -113,7 +113,7 @@ impl Fake {
         self.state.lock().unwrap().management = mode;
     }
 
-    fn seen(&self) -> Vec<Seen> {
+    pub(crate) fn seen(&self) -> Vec<Seen> {
         self.state.lock().unwrap().seen.clone()
     }
 
@@ -125,7 +125,7 @@ impl Fake {
         self.state.lock().unwrap().written.clone()
     }
 
-    fn management_url(&self) -> String {
+    pub(crate) fn management_url(&self) -> String {
         format!("http://{}/v2", self.address)
     }
 }
@@ -370,14 +370,14 @@ fn messages_answer() -> Value {
 
 /// The test's pod connector: every host it maps reaches the fake over plain TCP; every other host
 /// fails as an unresolvable name does. It records each host it was asked for.
-struct Pods {
+pub(crate) struct Pods {
     fake: SocketAddr,
     known: Vec<&'static str>,
     asked: Mutex<Vec<String>>,
 }
 
 impl Pods {
-    fn new(fake: &Fake, known: Vec<&'static str>) -> Arc<Self> {
+    pub(crate) fn new(fake: &Fake, known: Vec<&'static str>) -> Arc<Self> {
         Arc::new(Self {
             fake: fake.address,
             known,
@@ -433,7 +433,7 @@ fn document(lines: &str) -> String {
 
 /// The provider lines that point both hosts at the fake: the management API by its loopback
 /// address, the proxy by a pod host the test connector maps to it.
-fn both_at(fake: &Fake) -> String {
+pub(crate) fn both_at(fake: &Fake) -> String {
     format!(
         "management_url = \"{}\"\nproxy_url = \"https://{{pod_id}}-{{port}}.pods.fake.test\"\n",
         fake.management_url()

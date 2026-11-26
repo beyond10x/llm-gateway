@@ -962,6 +962,10 @@ pub struct Provider {
     /// pods are then managed through Runpod's REST API by this process, never beside a
     /// `connectors` connection (story:keychain-references).
     pub api_key: Option<KeychainRef>,
+    /// The file holding the account's Runpod API key, in place of `api_key`: only the path is
+    /// loaded here; the key is read once at start through the trusted-file reader
+    /// (story:runpod-key-file).
+    pub api_key_file: Option<PathBuf>,
     /// The base of the Runpod REST API v2 the provider's pods are managed through with
     /// `api_key`, without a trailing `/`: [`DEFAULT_MANAGEMENT_URL`] unless declared
     /// (story:runpod-rest-host).
@@ -1488,6 +1492,7 @@ fn providers(
                 cloud_type,
                 connectors,
                 api_key,
+                api_key_file: None,
                 management_url,
                 proxy_url,
                 daily_cap_micro_usd,

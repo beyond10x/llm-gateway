@@ -10,7 +10,7 @@ relations:
 - depends_on: story:finished-call-facts
 - depends_on: story:test-step-within-budget
 - depends_on: story:cli-test-port-race
-revision: 2
+revision: 3
 ---
 ## Outcome
 
@@ -46,7 +46,9 @@ story:finished-call-facts.
 3. Without the table: the relay is composed without `with_call_bytes` and without the adapter, no
    writer thread runs, and no file is created; a test holds all three.
 4. With the writer held stopped, the test sends twice `queue` calls: every answer completes, and
-   the drop count equals the calls beyond `queue`.
+   the drop count equals the calls beyond `queue`. With `call_bytes = 1024`, one call whose
+   answer is larger: its answer completes unchanged, the store holds no turn for it, and
+   `llmgw_interaction_records_skipped_total` on `/metrics` rises by 1.
 5. With `sessions_held = 2`, three sessions in turn and then the first again: the first's next
    call starts a new agent in the store.
 6. A two-agent session (a spawn tool call and the child's first message) and one refused call run

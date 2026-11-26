@@ -8,7 +8,7 @@ relations:
 - decomposes: epic:interaction-records
 - serves: vision:portable-model-inference
 - depends_on: story:test-step-within-budget
-revision: 3
+revision: 4
 ---
 ## Outcome
 
@@ -71,5 +71,6 @@ keeps none of it; the usage scanner reads the usage object only (`crates/llm-gat
 8. Tests: one new module `finished_calls` of `crates/llm-gateway/tests/main.rs`, per wire and per
    ending, against a fake upstream on loopback; each test under 5 s, and the step's time before and
    after is in the pull request.
-9. `CHANGELOG.md` names the new public items, and the change that breaks a caller (a new required
-   relay declaration is none; a changed public struct is one) with the minor version step.
+9. `CHANGELOG.md` names the new public items under `### Added`, and under `### Changed` each public
+   struct that gained a field, as a break for a caller that builds it by literal; the release
+   that carries the story takes a minor version step.

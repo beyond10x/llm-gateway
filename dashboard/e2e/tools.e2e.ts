@@ -3,7 +3,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
 import { openReplay, themeToggleProblems } from './harness.ts';
-import { canvasPixels, flowProbe, focusStep } from './probe.ts';
+import { reducedMotionReplay } from './measure.ts';
+import { flowProblems } from './metrics.ts';
+import { canvasPixels, flowProbe, focusStep, headerProbe } from './probe.ts';
 
 const scenario = (name: string) => SCENARIOS.find((s) => s.name === name)!;
 
@@ -76,6 +78,29 @@ test.describe('token-flow canvas metric', () => {
     expect(flow.visible_ratio).toBeGreaterThanOrEqual(0.95);
   });
 
+  test('break: a token-flow canvas that draws nothing under reduced motion fails the flow gate', async ({ browser }) => {
+    const run = async (blank: boolean) => {
+      const context = await browser.newContext({ viewport: { width: 1366, height: 768 }, reducedMotion: 'reduce' });
+      try {
+        const page = await context.newPage();
+        if (blank) {
+          await page.addInitScript(() => {
+            for (const k of ['stroke', 'fill', 'fillText'] as const) CanvasRenderingContext2D.prototype[k] = () => undefined;
+          });
+        }
+        return await reducedMotionReplay(page, scenario('token-flow'), 'light');
+      } finally {
+        await context.close();
+      }
+    };
+    const [drawn, blank] = await Promise.all([run(false), run(true)]);
+    expect(drawn.flow.drawn, 'the page draws a static canvas under reduced motion').toBe(true);
+    expect(drawn.violations).toEqual([]);
+    expect(blank.flow).toMatchObject({ present: true, drawn: false });
+    const shown = { present: true, at: 'canvas', visible_ratio: 1, drawn: true, drawn_share: 0.05 };
+    expect(flowProblems({ flow: shown, reduced_flow: blank.flow })).toEqual(['the canvas is blank under reduced motion (share drawn 0)']);
+  });
+
   test('break: without reduced motion the canvas check sees a canvas that moves', async ({ page }) => {
     const replay = await openReplay(page, scenario('token-flow'), 'dark');
     test.skip((await page.locator('canvas').count()) === 0, 'the page has no canvas');
@@ -83,6 +108,32 @@ test.describe('token-flow canvas metric', () => {
     const before = await page.evaluate(canvasPixels);
     await page.waitForTimeout(500);
     expect(await page.evaluate(canvasPixels)).not.toEqual(before);
+  });
+});
+
+// A header with one always-visible control: a segmented control with rounded ends that clips its
+// segments (as the page's theme toggle does), placed at `left` px, optionally under an overlay.
+const headerHtml = (left: number, overlay: boolean) => `<!doctype html><html><body style="margin:0;background:#fff">
+  <header style="position:relative;height:60px;background:#fff">
+    <div data-ux-always="toggle" style="position:absolute;left:${left}px;top:12.5px;display:inline-flex;border:1px solid #80868f;border-radius:12px;overflow:hidden">
+      <label style="display:block;padding:4px 12px;background:#2456c7;color:#fff">Light</label><label style="display:block;padding:4px 12px">Dark</label><label style="display:block;padding:4px 12px">System</label>
+    </div>
+    ${overlay ? '<div style="position:absolute;left:0;top:0;width:100%;height:60px;background:rgba(0,0,0,0.6)"></div>' : ''}
+  </header></body></html>`;
+
+test.describe('always-visible elements', () => {
+  test('break: a rounded control fully in view and uncovered reads 1; one past the right edge or under an overlay reads less', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    const ratio = async (left: number, overlay = false) => {
+      await page.setContent(headerHtml(left, overlay));
+      return (await page.evaluate(headerProbe))[0]!.visible_ratio;
+    };
+    expect(await ratio(16)).toBe(1);
+    expect(await ratio(16.4)).toBe(1);
+    const past = await ratio(260);
+    expect(past).toBeGreaterThan(0);
+    expect(past).toBeLessThanOrEqual(0.8);
+    expect(await ratio(16, true)).toBe(0);
   });
 });
 

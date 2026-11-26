@@ -1,15 +1,29 @@
 // One measurement of one scenario at one viewport in one theme: replays every state, probes the
-// layout and runs axe-core after each, measures the token-flow canvas, walks the page by keyboard
-// and replays again with reduced motion.
+// layout, the always-visible elements and the key data and runs axe-core after each, measures the
+// token-flow canvas, walks the page by keyboard and replays again with reduced motion. And the
+// lighter pass of the measured-only viewports: the always-visible elements at every state.
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import AxeBuilder from '@axe-core/playwright';
 import type { Browser, Page } from '@playwright/test';
 import type { Scenario } from '../ux/scenarios/index.ts';
+import { runAxe } from './axe.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
-import { axeRules, keyFontDeficit, mergeAxe, type AxeFinding, type Metrics } from './metrics.ts';
+import { axeRules, keyFontDeficit, mergeAxe, secondaryFontDeficit, type AxeFinding, type Metrics } from './metrics.ts';
 import { runId } from './metrics-dir.ts';
-import { ALWAYS_ATTR, canvasPixels, flowProbe, focusStep, layoutProbe, markCandidates, motionProbe, type FlowProbe, type HeaderItem } from './probe.ts';
+import {
+  ALWAYS_ATTR,
+  canvasPixels,
+  flowProbe,
+  focusStep,
+  headerProbeSource,
+  markCandidates,
+  motionProbe,
+  stateProbeSource,
+  type FlowProbe,
+  type FontItem,
+  type HeaderItem,
+  type StateProbe,
+} from './probe.ts';
 import { AXE_TAGS, type Theme, type Viewport } from './profiles.ts';
 
 export { METRIC_KEYS, type AxeFinding, type Metrics } from './metrics.ts';
@@ -33,9 +47,11 @@ export interface Measurement {
   // Distinct nodes per axe rule over every scan.
   axe_rules: Record<string, number>;
   axe_scans: number;
-  // null when the page shows no key data.
+  // null when the page shows no key data (no secondary text).
   key_font_min_px: number | null;
   key_font_at: string;
+  secondary_font_min_px: number | null;
+  secondary_font_at: string;
   header_min_visible_ratio: number;
   shifts: number[];
   // The connection status text at every state.
@@ -43,8 +59,10 @@ export interface Measurement {
   snapshot_fetches: number;
   blocked_requests: number;
   blocked: string[];
-  // The token-flow canvas at the last state, scrolled to the top.
+  // The token-flow canvas at the last state, scrolled to the top, and at the last state of the
+  // reduced-motion replay.
   flow: FlowProbe;
+  reduced_flow: FlowProbe;
   tools: { chromium: string; axe_core: string };
   details: {
     axe: AxeFinding[];
@@ -56,10 +74,23 @@ export interface Measurement {
     unreachable: string[];
     focus_invisible: string[];
     reduced_motion: string[];
+    key_font_below: string[];
+    secondary_font_below: string[];
   };
 }
 
+// The always-visible elements of one scenario in one theme at the measured-only viewports, at
+// every state.
+export interface HeaderMeasurement {
+  run: string;
+  scenario: string;
+  theme: Theme;
+  viewports: Record<string, HeaderItem[]>;
+}
+
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
+const STATE_PROBE = stateProbeSource();
+const HEADER_PROBE = headerProbeSource();
 
 async function markAlways(page: Page, replay: Replay): Promise<void> {
   const h1 = page.locator('h1').first();
@@ -70,15 +101,22 @@ async function markAlways(page: Page, replay: Replay): Promise<void> {
 }
 
 async function axe(page: Page): Promise<{ findings: AxeFinding[]; version: string }> {
-  const result = await new AxeBuilder({ page }).withTags(AXE_TAGS).analyze();
+  const result = await runAxe(page, { tags: AXE_TAGS });
   const findings = result.violations
     .filter((v) => v.impact === 'serious' || v.impact === 'critical')
     .map((v) => {
       const targets = [...new Set(v.nodes.map((n) => n.target.join(' ')))].sort();
       return { id: v.id, impact: v.impact ?? '', help: v.help, nodes: targets.length, targets };
     });
-  return { findings, version: result.testEngine.version };
+  return { findings, version: result.version };
 }
+
+// Keeps the smallest visible share of each always-visible element.
+function keepHeader(into: Map<string, number>, items: HeaderItem[]): void {
+  for (const h of items) into.set(h.name, Math.min(into.get(h.name) ?? 1, h.visible_ratio));
+}
+
+const headerList = (m: Map<string, number>): HeaderItem[] => [...m.entries()].map(([name, visible_ratio]) => ({ name, visible_ratio: round3(visible_ratio) }));
 
 async function keyboardWalk(page: Page): Promise<{ unreachable: string[]; invisible: string[]; scrollersUnreachable: string[] }> {
   const candidates = await page.evaluate(markCandidates);
@@ -132,6 +170,9 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
   const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, timezoneId: 'UTC', locale: 'en-GB' });
   const page = await context.newPage();
   try {
+    // The reduced-motion replay runs in a context of its own beside this one; it mostly waits.
+    const reducedMotionRun = reducedMotion(browser, scenario, viewport, theme);
+    reducedMotionRun.catch(() => undefined);
     const replay = await openReplay(page, scenario, theme);
     await markAlways(page, replay);
 
@@ -145,8 +186,10 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     };
     const header = new Map<string, number>();
     let overflowPx = 0;
-    let keyFont = Infinity;
-    let keyFontAt = '';
+    let keyFont: FontItem | null = null;
+    let secondaryFont: FontItem | null = null;
+    const keyBelow = new Set<string>();
+    const secondaryBelow = new Set<string>();
     const shifts: number[] = [];
     const status: string[] = [];
     const axeFindings = new Map<string, AxeFinding>();
@@ -154,21 +197,19 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
     let axeVersion = '';
 
     const probe = async () => {
-      for (const scrollTo of ['top', 'bottom'] as const) {
-        await page.evaluate((where) => window.scrollTo(0, where === 'top' ? 0 : document.documentElement.scrollHeight), scrollTo);
-        await settle(page);
-        const p = await page.evaluate(layoutProbe);
+      const state = await page.evaluate<StateProbe>(STATE_PROBE);
+      for (const { layout: p, header: h } of state.views) {
         overflowPx = Math.max(overflowPx, p.overflow_x_px);
         p.overflowing.forEach(keep(overflowing));
         p.scrollers.forEach(keep(scrollers));
         p.truncated.forEach(keep(truncated));
-        for (const h of p.header) header.set(h.name, Math.min(header.get(h.name) ?? 1, h.visible_ratio));
-        if (p.key_font_min_px > 0 && p.key_font_min_px < keyFont) {
-          keyFont = p.key_font_min_px;
-          keyFontAt = p.key_font_at;
-        }
+        keepHeader(header, h);
       }
-      await page.evaluate(() => window.scrollTo(0, 0));
+      const k = state.key_data;
+      if (k.key && (!keyFont || k.key.px < keyFont.px)) keyFont = k.key;
+      if (k.secondary && (!secondaryFont || k.secondary.px < secondaryFont.px)) secondaryFont = k.secondary;
+      k.key_below.forEach((x) => keyBelow.add(x));
+      k.secondary_below.forEach((x) => secondaryBelow.add(x));
     };
     // axe-core after every state and every action; the union of nodes per rule.
     const scan = async () => {
@@ -204,24 +245,28 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       await scan();
     }
     const walk = await keyboardWalk(page);
-    const motion = await reducedMotion(browser, scenario, viewport, theme);
+    const motion = await reducedMotionRun;
 
-    const headerItems = [...header.entries()].map(([name, visible_ratio]) => ({ name, visible_ratio: round3(visible_ratio) }));
+    const headerItems = headerList(header);
     const headerMin = headerItems.length ? Math.min(...headerItems.map((h) => h.visible_ratio)) : 0;
     const axeList = [...axeFindings.values()].sort((a, b) => a.id.localeCompare(b.id));
-    const keyFontMin = Number.isFinite(keyFont) ? round3(keyFont) : null;
-    const items = (m: Map<string, string>): Item[] => [...m.entries()].map(([key, label]) => ({ key, label }));
+    const fontOf = (f: FontItem | null) => (f ? round3(f.px) : null);
+    const key = keyFont as FontItem | null;
+    const secondary = secondaryFont as FontItem | null;
+    const items = (m: Map<string, string>): Item[] => [...m.entries()].map(([k, label]) => ({ key: k, label }));
     const metrics: Metrics = {
       'axe.serious_critical': axeList.reduce((a, f) => a + f.nodes, 0),
       'overflow.x_px': Math.round(overflowPx),
       'overflow.elements': overflowing.size,
+      'overflow.scrollers': scrollers.size,
       'overflow.scrollers_unreachable': walk.scrollersUnreachable.length,
       'header.hidden_ratio': round3(1 - headerMin),
       'keyboard.unreachable': walk.unreachable.length,
       'keyboard.focus_invisible': walk.invisible.length,
-      'key_font.deficit_px': keyFontDeficit(keyFontMin),
+      'key_font.deficit_px': keyFontDeficit(fontOf(key)),
+      'secondary_font.deficit_px': secondaryFontDeficit(fontOf(secondary)),
       'layout_shift.per_state_max': shifts.length ? Math.max(...shifts) : 0,
-      'reduced_motion.violations': motion.length,
+      'reduced_motion.violations': motion.violations.length,
       'truncation.without_full_value': truncated.size,
     };
     return {
@@ -235,8 +280,10 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       metrics,
       axe_rules: axeRules(axeList),
       axe_scans: axeScans,
-      key_font_min_px: keyFontMin,
-      key_font_at: keyFontAt,
+      key_font_min_px: fontOf(key),
+      key_font_at: key?.at ?? '',
+      secondary_font_min_px: fontOf(secondary),
+      secondary_font_at: secondary?.at ?? '',
       header_min_visible_ratio: headerMin,
       shifts,
       status,
@@ -244,6 +291,7 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
       blocked_requests: replay.blocked.length,
       blocked: [...replay.blocked],
       flow,
+      reduced_flow: motion.flow,
       tools: { chromium: browser.version(), axe_core: axeVersion },
       details: {
         axe: axeList,
@@ -254,7 +302,9 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
         header: headerItems,
         unreachable: walk.unreachable,
         focus_invisible: walk.invisible,
-        reduced_motion: motion,
+        reduced_motion: motion.violations,
+        key_font_below: [...keyBelow].sort(),
+        secondary_font_below: [...secondaryBelow].sort(),
       },
     };
   } finally {
@@ -262,29 +312,74 @@ export async function measure(browser: Browser, scenario: Scenario, viewport: Vi
   }
 }
 
+export interface ReducedMotion {
+  violations: string[];
+  // The token-flow canvas at the last state.
+  flow: FlowProbe;
+}
+
 // With prefers-reduced-motion: reduce, no CSS animation or transition runs while the replay steps,
-// and every canvas keeps the same pixels over 500 ms.
-async function reducedMotion(browser: Browser, scenario: Scenario, viewport: Viewport, theme: Theme): Promise<string[]> {
+// every canvas keeps the same pixels over 500 ms, and the token-flow canvas at the last state is
+// measured as in the main replay: a static drawing, not a blank one.
+export async function reducedMotionReplay(page: Page, scenario: Scenario, theme: Theme): Promise<ReducedMotion> {
+  const replay = await openReplay(page, scenario, theme, { reducedMotion: true });
+  const violations = new Set<string>();
+  const sample = async () => (await page.evaluate(motionProbe)).running.forEach((r) => violations.add(r));
+  await sample();
+  while (replay.index + 1 < replay.states.length) {
+    await replay.advance();
+    await sample();
+  }
+  const before = await page.evaluate(canvasPixels);
+  if (before.length > 0) {
+    await page.waitForTimeout(500);
+    const after = await page.evaluate(canvasPixels);
+    before.forEach((b, i) => {
+      if (b !== after[i]) violations.add(`canvas ${i} drew new pixels within 500 ms`);
+    });
+  }
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await settle(page);
+  return { violations: [...violations], flow: await page.evaluate(flowProbe) };
+}
+
+async function reducedMotion(browser: Browser, scenario: Scenario, viewport: Viewport, theme: Theme): Promise<ReducedMotion> {
   const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height }, timezoneId: 'UTC', locale: 'en-GB', reducedMotion: 'reduce' });
+  try {
+    return await reducedMotionReplay(await context.newPage(), scenario, theme);
+  } finally {
+    await context.close();
+  }
+}
+
+// The always-visible elements at each of `viewports`, at every state of one replay: the page is
+// resized to each viewport in turn after a state arrives, scrolled to the top and to the bottom.
+export async function measureHeaders(browser: Browser, scenario: Scenario, theme: Theme, viewports: Viewport[]): Promise<HeaderMeasurement> {
+  const first = viewports[0]!;
+  const context = await browser.newContext({ viewport: { width: first.width, height: first.height }, timezoneId: 'UTC', locale: 'en-GB' });
   const page = await context.newPage();
   try {
-    const replay = await openReplay(page, scenario, theme, { reducedMotion: true });
-    const violations = new Set<string>();
-    const sample = async () => (await page.evaluate(motionProbe)).running.forEach((r) => violations.add(r));
-    await sample();
+    const replay = await openReplay(page, scenario, theme);
+    await markAlways(page, replay);
+    const seen = new Map<string, Map<string, number>>(viewports.map((v) => [v.name, new Map()]));
+    const probe = async () => {
+      for (const v of viewports) {
+        await page.setViewportSize({ width: v.width, height: v.height });
+        await settle(page);
+        keepHeader(seen.get(v.name)!, await page.evaluate<HeaderItem[]>(HEADER_PROBE));
+      }
+    };
+    await probe();
     while (replay.index + 1 < replay.states.length) {
       await replay.advance();
-      await sample();
+      await probe();
     }
-    const before = await page.evaluate(canvasPixels);
-    if (before.length > 0) {
-      await page.waitForTimeout(500);
-      const after = await page.evaluate(canvasPixels);
-      before.forEach((b, i) => {
-        if (b !== after[i]) violations.add(`canvas ${i} drew new pixels within 500 ms`);
-      });
+    for (const action of scenario.actions ?? []) {
+      await replay.act(action);
+      await page.mouse.move(0, 0);
+      await probe();
     }
-    return [...violations];
+    return { run: runId(), scenario: scenario.name, theme, viewports: Object.fromEntries([...seen.entries()].map(([k, m]) => [k, headerList(m)])) };
   } finally {
     await context.close();
   }
@@ -293,6 +388,19 @@ async function reducedMotion(browser: Browser, scenario: Scenario, viewport: Vie
 export function writeMeasurement(dir: string, m: Measurement): string {
   mkdirSync(dir, { recursive: true });
   const file = join(dir, `${m.scenario}__${m.viewport.name}__${m.theme}.json`);
+  writeFileSync(file, `${JSON.stringify(m, null, 2)}\n`);
+  return file;
+}
+
+// Header measurements go to a directory of their own, so readMeasurements never reads them.
+export function headersDir(dir: string): string {
+  return join(dir, 'headers');
+}
+
+export function writeHeaderMeasurement(dir: string, m: HeaderMeasurement): string {
+  const into = headersDir(dir);
+  mkdirSync(into, { recursive: true });
+  const file = join(into, `${m.scenario}__${m.theme}.json`);
   writeFileSync(file, `${JSON.stringify(m, null, 2)}\n`);
   return file;
 }

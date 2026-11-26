@@ -75,10 +75,13 @@ body { margin: 0; background: var(--bg); color: var(--fg); }
 }
 .skip:focus { top: 0.5rem; }
 
-.flow-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.2rem 1rem; margin: 0 0 0.4rem; }
-.flow-head h2 { margin: 0; }
-.flow-caption { margin: 0; color: var(--muted); }
-.flow-key { white-space: nowrap; margin-left: 0.6rem; }
+/* The panel keeps one height whatever the sessions: the counts change on the heading's line and
+   never wrap, and the caption below them does not change with the state. */
+.flow-head { display: flex; align-items: baseline; gap: 1rem; margin: 0 0 0.2rem; }
+.flow-head h2 { margin: 0; white-space: nowrap; }
+.flow-count { margin: 0; color: var(--muted); white-space: nowrap; }
+.flow-caption { margin: 0 0 0.4rem; color: var(--muted); }
+.flow-key { white-space: nowrap; }
 .swatch { display: inline-block; width: 0.6rem; height: 0.6rem; border-radius: 50%; margin-right: 0.3rem; }
 .swatch.in { background: var(--flow-in); }
 .swatch.out { background: var(--flow-out); }
@@ -128,6 +131,7 @@ h2 { margin: 0 0 0.6rem; font-size: 0.95rem; }
 .stats dt { color: var(--muted); font-size: 0.875rem; }
 .stats dd { margin: 0; font-size: 1.15rem; font-variant-numeric: tabular-nums; font-weight: 600; }
 .stats .alarm dd, .stats .alarm dt { color: var(--bad); }
+.stats .stale { font-weight: normal; }
 
 .scroll { overflow-x: auto; }
 table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
@@ -161,7 +165,8 @@ abbr { text-decoration: underline dotted; cursor: help; }
 @media (max-width: 600px) { .tile.wide { grid-column: 1 / -1; } }
 .tile table.mini th, .tile table.mini td { white-space: normal; overflow-wrap: anywhere; }
 .tile .label { color: var(--muted); font-size: 0.875rem; }
-.tile .value { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+/* A value wraps only between words or after an underscore (a <wbr> in the markup), never inside a word. */
+.tile .value { font-size: 1.4rem; font-weight: 600; font-variant-numeric: tabular-nums; overflow-wrap: normal; word-break: normal; hyphens: none; }
 .tile .sub { font-size: 1rem; font-variant-numeric: tabular-nums; }
 .tile.ok { border-left-color: var(--ok); }
 .tile.warn { border-left-color: var(--warn); background: var(--warn-bg); }

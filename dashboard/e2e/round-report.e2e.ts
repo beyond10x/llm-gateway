@@ -10,18 +10,21 @@ import { fileURLToPath } from 'node:url';
 import { test } from '@playwright/test';
 import { SCENARIOS } from '../ux/scenarios/index.ts';
 import { aggregate, baselineFrom, compare, describeProblem, type Aggregate, type Baseline } from '../ux/ratchet.ts';
-import { baselineRefusal, missingGateReplays, roundDirRefusal, toolsOf } from '../ux/round-guard.ts';
+import { baselineRefusal, missingGateReplays, roundDirRefusal, shortCommit, toolsOf } from '../ux/round-guard.ts';
 import { REPLAY_METHOD } from './harness.ts';
 import type { Measurement } from './measure.ts';
-import { AXE_RULE_PREFIX, fmtKeyFont, METRIC_KEYS } from './metrics.ts';
+import { activeSessions } from '../src/flow.ts';
+import { AXE_RULE_PREFIX, flowProblems, fmtKeyFont, FLOW_VISIBLE_MIN, METRIC_KEYS } from './metrics.ts';
 import { metricsDir, readMeasurements } from './metrics-dir.ts';
-import { GATING, KEY_FONT_PX, THEMES, VIEWPORTS, type Theme } from './profiles.ts';
+import { GATING, KEY_FONT_PX, SECONDARY_FONT_PX, THEMES, VIEWPORTS, type Theme } from './profiles.ts';
+
+// The scenarios whose last state shows an active session: their token-flow canvas is gated.
+const WITH_SESSIONS = new Set(SCENARIOS.filter((s) => { const st = s.states(Date.now()); return activeSessions(st[st.length - 1]!).size > 0; }).map((s) => s.name));
 
 const DASHBOARD = fileURLToPath(new URL('../', import.meta.url));
 const UX = join(DASHBOARD, 'ux');
 const REPO = join(DASHBOARD, '..');
 const BUILT = join(REPO, 'crates', 'llm-gateway', 'src', 'dashboard.html');
-const FLOW_VISIBLE_MIN = 0.95;
 
 test.skip(!process.env.UX_ROUND, 'a round runs through `pnpm ux:round <id>`');
 
@@ -37,6 +40,7 @@ function hardGates(ms: Measurement[]): GateResult[] {
   const out: GateResult[] = [];
   for (const theme of THEMES) {
     const mine = ms.filter((m) => m.theme === theme && m.viewport.gating);
+    const every = ms.filter((m) => m.theme === theme);
     const g = (gate: string, of: Measurement[], ok: (m: Measurement) => boolean, headline: string) =>
       out.push({ gate, theme, passed: of.filter(ok).length, of: of.length, headline });
     const sum = (k: keyof Measurement['metrics']) => mine.reduce((a, m) => a + m.metrics[k], 0);
@@ -49,11 +53,13 @@ function hardGates(ms: Measurement[]): GateResult[] {
     );
     g('gate 1 truncation', mine, (m) => m.metrics['truncation.without_full_value'] === 0, `${max('truncation.without_full_value')} truncated without full value max`);
     g('gate 2 always visible', mine, (m) => m.header_min_visible_ratio === 1, `header visible ratio ${Math.min(1, ...mine.map((m) => m.header_min_visible_ratio))} min; toggle ${mine.some((m) => m.toggle === 'present') ? 'present' : 'absent'}`);
+    g('gate 2 always visible, every viewport', every, (m) => m.header_min_visible_ratio === 1, `hidden: ${[...new Set(every.flatMap((m) => m.details.header.filter((h) => h.visible_ratio < 1).map((h) => `${h.name} ${h.visible_ratio} at ${m.scenario} ${m.viewport.name}`)))].slice(0, 3).join('; ') || 'none'}`);
     g('gate 5 axe', mine, (m) => m.metrics['axe.serious_critical'] === 0, `${sum('axe.serious_critical')} serious/critical nodes over ${mine.length} replays (${[...new Set(mine.flatMap((m) => m.details.axe.map((a) => a.id)))].join(', ') || 'none'})`);
     g('gate 5 keyboard', mine, (m) => m.metrics['keyboard.unreachable'] === 0 && m.metrics['keyboard.focus_invisible'] === 0, `${max('keyboard.unreachable')} unreachable, ${max('keyboard.focus_invisible')} focus-invisible max`);
     g('gate 5 reduced motion', mine, (m) => m.metrics['reduced_motion.violations'] === 0, `${max('reduced_motion.violations')} violations max`);
-    const flow = mine.filter((m) => m.scenario === 'token-flow');
-    g('flow (token-flow)', flow, (m) => m.flow.drawn && m.flow.visible_ratio >= FLOW_VISIBLE_MIN, `visible ratio ${Math.min(1, ...flow.map((m) => m.flow.visible_ratio))} min (bar ${FLOW_VISIBLE_MIN}), drawn ${flow.filter((m) => m.flow.drawn).length} of ${flow.length}`);
+    g('key data', mine, (m) => m.details.key_font_below.length === 0 && m.details.secondary_font_below.length === 0, `key ${max('key_font.deficit_px')} px short max (floor ${KEY_FONT_PX}), secondary ${max('secondary_font.deficit_px')} px short max (floor ${SECONDARY_FONT_PX})`);
+    const flow = mine.filter((m) => WITH_SESSIONS.has(m.scenario));
+    g(`flow (${[...WITH_SESSIONS].join(', ')})`, flow, (m) => flowProblems(m).length === 0, `visible ratio ${Math.min(1, ...flow.map((m) => m.flow.visible_ratio))} min (bar ${FLOW_VISIBLE_MIN}), drawn ${flow.filter((m) => m.flow.drawn).length} of ${flow.length}, drawn under reduced motion ${flow.filter((m) => m.reduced_flow.drawn).length} of ${flow.length}`);
     g('replay hermetic and live', mine, (m) => m.blocked_requests === 0 && m.snapshot_fetches === 1 && m.status.every((s) => s === 'live'), `${mine.reduce((a, m) => a + m.blocked_requests, 0)} requests aborted`);
   }
   return out;
@@ -66,7 +72,7 @@ function git(args: string[]): string {
 // The commit of the page and of the harness, each marked `+changes` when the tree differs from it.
 function commits(): { page: string; harness: string } {
   try {
-    const head = git(['rev-parse', '--short=12', 'HEAD']);
+    const head = git(['rev-parse', '--short=8', 'HEAD']);
     const page = git(['status', '--porcelain', '--', 'dashboard/src', 'crates/llm-gateway/src/dashboard.html']);
     const harness = git(['status', '--porcelain', '--', 'dashboard/e2e', 'dashboard/ux', 'dashboard/playwright.config.ts', 'dashboard/package.json', 'dashboard/pnpm-lock.yaml', ':(exclude)dashboard/ux/rounds']);
     return { page: page ? `${head}+changes` : head, harness: harness ? `${head}+changes` : head };
@@ -156,8 +162,11 @@ test('write the round directory', async ({ page }) => {
       axe_rules: m.axe_rules,
       axe_scans: m.axe_scans,
       flow: m.flow,
+      reduced_flow: m.reduced_flow,
       key_font_min_px: m.key_font_min_px,
       key_font_at: m.key_font_at,
+      secondary_font_min_px: m.secondary_font_min_px,
+      secondary_font_at: m.secondary_font_at,
       shifts: m.shifts,
       status: m.status,
       snapshot_fetches: m.snapshot_fetches,
@@ -193,14 +202,14 @@ test('write the round directory', async ({ page }) => {
   const keyFont = (ms: Measurement[]) => fmtKeyFont(minOf(ms, (m) => m.key_font_min_px));
   md.push(`| key font px, smallest (n/a: no key data) | ${SCENARIOS.map((s) => `${keyFont(forScenario(s.name, true))} | ${keyFont(forScenario(s.name, false))}`).join(' | ')} |`);
   md.push(`| flow.visible_ratio, smallest (higher is better) | ${SCENARIOS.map((s) => `${fmt(minOf(forScenario(s.name, true), (m) => m.flow.visible_ratio) ?? undefined)} | ${fmt(minOf(forScenario(s.name, false), (m) => m.flow.visible_ratio) ?? undefined)}`).join(' | ')} |`);
-  md.push(`| flow.drawn, replays drawn | ${SCENARIOS.map((s) => { const g = forScenario(s.name, true); const a = forScenario(s.name, false); return `${g.filter((m) => m.flow.drawn).length}/${g.length} | ${a.filter((m) => m.flow.drawn).length}/${a.length}`; }).join(' | ')} |`);
-  md.push('', `\`key_font.deficit_px\` is ${KEY_FONT_PX} px less the smallest key-data font, 0 where a page shows no key data; \`header.hidden_ratio\` is 1 less the smallest visible share of a header element; \`axe.rule.<id>\` counts the distinct nodes of one rule over every scan.`);
+  md.push(`| flow.drawn, replays drawn in both the replay and its reduced-motion replay | ${SCENARIOS.map((s) => { const g = forScenario(s.name, true); const a = forScenario(s.name, false); return `${g.filter((m) => m.flow.drawn && m.reduced_flow.drawn).length}/${g.length} | ${a.filter((m) => m.flow.drawn && m.reduced_flow.drawn).length}/${a.length}`; }).join(' | ')} |`);
+  md.push('', `\`key_font.deficit_px\` is ${KEY_FONT_PX} px less the smallest key-data font, 0 where a page shows no key data, and \`secondary_font.deficit_px\` the same for secondary text against ${SECONDARY_FONT_PX} px (one definition of both: \`keyDataProbe\` in e2e/probe.ts); \`overflow.scrollers\` counts the elements that scroll sideways; \`header.hidden_ratio\` is 1 less the smallest visible share of a header element; \`axe.rule.<id>\` counts the distinct nodes of one rule over every scan.`);
 
-  md.push('', '## Every replay', '', '| scenario | viewport | theme | axe | overflow px | past box | header visible | unreachable | focus invisible | key font px | layout shift max | reduced motion | truncated | flow visible | flow drawn | status |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+  md.push('', '## Every replay', '', '| scenario | viewport | theme | axe | overflow px | past box | scrollers | header visible | unreachable | focus invisible | key font px | layout shift max | reduced motion | truncated | flow visible | flow drawn (reduced motion) | status |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
   for (const m of all) {
     const x = m.metrics;
     const status = [...new Set(m.status)].join(', ');
-    md.push(`| ${m.scenario} | ${m.viewport.name}${m.viewport.gating ? '' : ' (measured)'} | ${m.theme} | ${x['axe.serious_critical']} | ${x['overflow.x_px']} | ${x['overflow.elements']} | ${m.header_min_visible_ratio} | ${x['keyboard.unreachable'] + x['overflow.scrollers_unreachable']} | ${x['keyboard.focus_invisible']} | ${fmtKeyFont(m.key_font_min_px)} | ${fmt(x['layout_shift.per_state_max'])} | ${x['reduced_motion.violations']} | ${x['truncation.without_full_value']} | ${fmt(m.flow.visible_ratio)} | ${m.flow.drawn ? 'yes' : 'no'} | ${status} |`);
+    md.push(`| ${m.scenario} | ${m.viewport.name}${m.viewport.gating ? '' : ' (measured)'} | ${m.theme} | ${x['axe.serious_critical']} | ${x['overflow.x_px']} | ${x['overflow.elements']} | ${x['overflow.scrollers']} | ${m.header_min_visible_ratio} | ${x['keyboard.unreachable'] + x['overflow.scrollers_unreachable']} | ${x['keyboard.focus_invisible']} | ${fmtKeyFont(m.key_font_min_px)} | ${fmt(x['layout_shift.per_state_max'])} | ${x['reduced_motion.violations']} | ${x['truncation.without_full_value']} | ${fmt(m.flow.visible_ratio)} | ${m.flow.drawn ? 'yes' : 'no'} (${m.reduced_flow.drawn ? 'yes' : 'no'}) | ${status} |`);
   }
 
   const worstMoments = (ms: Measurement[]) => {
@@ -212,12 +221,15 @@ test('write the round directory', async ({ page }) => {
       const sample =
         k === 'axe.serious_critical' ? d.axe.map((a) => `${a.id}: ${a.targets.join('; ')}`)
         : k === 'overflow.elements' ? d.overflowing.map((o) => o.label)
+        : k === 'overflow.scrollers' ? d.scrollers.map((x) => x.label)
         : k === 'overflow.scrollers_unreachable' ? d.scrollers_unreachable
+        : k === 'header.hidden_ratio' ? d.header.filter((h) => h.visible_ratio < 1).map((h) => `${h.name} visible ${h.visible_ratio}`)
         : k === 'keyboard.unreachable' ? d.unreachable
         : k === 'keyboard.focus_invisible' ? d.focus_invisible
         : k === 'reduced_motion.violations' ? d.reduced_motion
         : k === 'truncation.without_full_value' ? d.truncated.map((t) => t.label)
         : k === 'key_font.deficit_px' ? [`${fmtKeyFont(worst.key_font_min_px)} px at ${worst.key_font_at}`]
+        : k === 'secondary_font.deficit_px' ? [`${fmtKeyFont(worst.secondary_font_min_px)} px at ${worst.secondary_font_at}`]
         : k === 'layout_shift.per_state_max' ? [`per state: ${worst.shifts.join(', ')}`]
         : [];
       out.push(`- \`${k}\` = ${fmt(worst.metrics[k])} at ${worst.scenario} ${worst.viewport.name} ${worst.theme}: ${sample.slice(0, 3).join(' / ') || '–'}`);
@@ -235,7 +247,7 @@ test('write the round directory', async ({ page }) => {
 
   const trendFile = join(UX, 'rounds', 'trend.md');
   const header = ['# Trend', '', 'One row per round: hard-gate replays passing at the gating viewports (light / dark), and the worst values over every scenario at the gating viewports only (the ratchet\'s basis). "key font px" is the smallest key-data font there, n/a when no replay shows key data.', '', '| round | date | commit | toggle | gate 1 | gate 2 | gate 5 axe | gate 5 keyboard | gate 5 motion | axe nodes | past box | key font px | layout shift |', '|---|---|---|---|---|---|---|---|---|---|---|---|---|'];
-  const trendRows = existsSync(trendFile) ? readFileSync(trendFile, 'utf8').split('\n').filter((l) => /^\| R-/.test(l) && !l.startsWith(`| ${id} |`)) : [];
+  const trendRows = existsSync(trendFile) ? readFileSync(trendFile, 'utf8').split('\n').filter((l) => /^\| R-/.test(l) && !l.startsWith(`| ${id} |`)).map(shortCommit) : [];
   const pass = (gate: string) => THEMES.map((t) => { const g = gates.find((x) => x.gate === gate && x.theme === t)!; return `${g.passed}/${g.of}`; }).join(' / ');
   const worst = (k: keyof Measurement['metrics']) => fmt(Math.max(...Object.values(gatingAgg).map((r) => r[k] ?? 0)));
   trendRows.push(`| ${id} | ${date} | ${round.commit} | ${round.toggle} | ${pass('gate 1 layout')} | ${pass('gate 2 always visible')} | ${pass('gate 5 axe')} | ${pass('gate 5 keyboard')} | ${pass('gate 5 reduced motion')} | ${worst('axe.serious_critical')} | ${worst('overflow.elements')} | ${keyFont(all.filter((m) => m.viewport.gating))} | ${worst('layout_shift.per_state_max')} |`);
@@ -247,7 +259,9 @@ test('write the round directory', async ({ page }) => {
     const missing = missingGateReplays(all, { scenarios: SCENARIOS.map((s) => s.name), viewports: GATING.map((v) => v.name), themes: THEMES });
     const refused = baselineRefusal(missing, problems, decision);
     if (refused) throw new Error(refused);
-    const baseline = baselineFrom(gatingAgg, `Worst value per scenario over the gating viewports (${GATING.map((v) => v.name).join(', ')}) and both themes, from round ${id}. Lower is better. Written by \`pnpm ux:round ${id} --baseline\`.`, previous ?? undefined, decision);
+    // The round directory may be a scratch one that is not kept: the text names the page it measured
+    // (the sha256 a committed round.json carries as page_sha256), not the round.
+    const baseline = baselineFrom(gatingAgg, `Worst value per scenario over the gating viewports (${GATING.map((v) => v.name).join(', ')}) and both themes, measured on the built page with sha256 ${pageDigest.slice(0, 12)} (page commit ${stamp.page}). Lower is better, except flow.visible_ratio and flow.drawn, where higher is better. Written by \`pnpm ux:round R-nn --baseline\`.`, previous ?? undefined, decision);
     writeFileSync(baselineFile, `${JSON.stringify(baseline, null, 2)}\n`);
   }
 });

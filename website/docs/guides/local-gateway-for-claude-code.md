@@ -117,8 +117,9 @@ in the gateway contract defines every figure.
 
 A Light, Dark and System switch in the page header picks the colour theme; the browser keeps
 the choice. The Token flow panel at the top of the page draws a line from each active session to
-the routes it calls and moves each new call's input and output tokens along it; its caption counts
-the active sessions and routes. With reduced motion set in the system, it shows one still picture.
+the routes it calls and moves each new call's input and output tokens along it; its heading counts
+the active sessions and routes, and its caption says what the lines and dots mean. With reduced
+motion set in the system, it shows one still picture and its caption says that motion is off.
 
 ## Without the launcher
 

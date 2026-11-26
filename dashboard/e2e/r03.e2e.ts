@@ -1,13 +1,15 @@
-// The regression assertions of change set R-03 (UXF-002, 003, 004, 007, 008), each run against the
-// built page through the hermetic replay.
+// The regression assertions of change set R-03 (UXF-002, 003, 007, 008), each run against the built
+// page through the hermetic replay. UXF-004 (key data at 14 px) is a gate on every replay since
+// R-04: `key data: …` in gates.e2e.ts, on the one definition of key data in probe.ts.
 import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Browser, type Page, type Route } from '@playwright/test';
 import type { Snapshot } from '../src/extra.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
+import { runAxe } from './axe.ts';
 import { PAGE_URL, openReplay, settle } from './harness.ts';
+import { flowProbe } from './probe.ts';
 import { VIEWPORTS, type Theme } from './profiles.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
@@ -70,7 +72,7 @@ test.describe('UXF-002', () => {
         const page = await freshPage(browser, vp);
         const replay = await openReplay(page, scenario(name), 'light');
         while (replay.index + 1 < replay.states.length) await replay.advance();
-        const result = await new AxeBuilder({ page }).withRules(['scrollable-region-focusable']).analyze();
+        const result = await runAxe(page, { rules: ['scrollable-region-focusable'] });
         expect(result.violations.flatMap((v) => v.nodes.map((n) => `${name}: ${n.target.join(' ')}`))).toEqual([]);
         await page.context().close();
       }
@@ -209,7 +211,7 @@ test.describe('UXF-008', () => {
           first: flow !== null && sections[0] === flow,
           above: !!flow && !!overview && flow.getBoundingClientRect().bottom <= overview.getBoundingClientRect().top,
           fixedCanvas: [...document.querySelectorAll('canvas')].filter((c) => getComputedStyle(c).position === 'fixed').length,
-          caption: (flow?.querySelector('.flow-caption')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
+          caption: (flow?.querySelector('.flow-count')?.textContent ?? '').replace(/\s+/g, ' ').trim(),
         };
       });
       expect(order.flow, 'a section headed "Token flow"').toBe(true);
@@ -226,21 +228,8 @@ test.describe('UXF-008', () => {
           const canvas = document.querySelector('main section canvas') as HTMLCanvasElement | null;
           if (!canvas) return null;
           const cs = getComputedStyle(canvas);
-          const attrs = { hidden: canvas.getAttribute('aria-hidden'), tabindex: canvas.getAttribute('tabindex'), events: cs.pointerEvents };
           const r = canvas.getBoundingClientRect();
-          const before = canvas.style.pointerEvents;
-          canvas.style.pointerEvents = 'auto';
-          const covered: string[] = [];
-          for (let i = 0; i < 5; i++) {
-            for (let j = 0; j < 5; j++) {
-              const x = r.left + ((i + 0.5) * r.width) / 5;
-              const y = r.top + ((j + 0.5) * r.height) / 5;
-              const hit = document.elementFromPoint(x, y);
-              if (hit !== canvas) covered.push(`${Math.round(x)},${Math.round(y)}: ${hit ? hit.tagName.toLowerCase() : 'nothing'}`);
-            }
-          }
-          canvas.style.pointerEvents = before;
-          return { attrs, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, height: r.height }, vw: innerWidth, vh: innerHeight, covered };
+          return { attrs: { hidden: canvas.getAttribute('aria-hidden'), tabindex: canvas.getAttribute('tabindex'), events: cs.pointerEvents }, box: { left: r.left, top: r.top, right: r.right, bottom: r.bottom, height: r.height }, vw: innerWidth, vh: innerHeight };
         });
         expect(probe, `${vp}: a canvas in a section of main`).not.toBeNull();
         const p = probe!;
@@ -250,7 +239,8 @@ test.describe('UXF-008', () => {
         expect(p.box.right, vp).toBeLessThanOrEqual(p.vw);
         expect(p.box.bottom, vp).toBeLessThanOrEqual(p.vh);
         expect(p.box.height, vp).toBeGreaterThanOrEqual(120);
-        expect(p.covered, vp).toEqual([]);
+        // The same 32 x 16 hit test as the flow.visible_ratio metric: every point is the canvas.
+        expect((await page.evaluate(flowProbe)).visible_ratio, vp).toBe(1);
       }
 
       const counts = await page.evaluate(() => (window as unknown as { __flow?: () => FlowCountsSeen }).__flow?.() ?? null);
@@ -277,44 +267,3 @@ test.describe('UXF-008', () => {
     await expect(panel.getByText('No active sessions')).toBeVisible();
   });
 });
-
-// Key values (token counts, rates, statuses, money) at 14 px or more; secondary text (second lines,
-// badges, column heads, captions, tile labels) at 12 px or more.
-function fontDeficits(): string[] {
-  const out: string[] = [];
-  const SECONDARY = '.small, .badge, caption, thead th, .tile .label, .stats dt';
-  const describe = (el: Element) => `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? `.${el.className.split(' ').join('.')}` : ''} "${(el.textContent ?? '').trim().slice(0, 30)}"`;
-  for (const el of document.querySelectorAll('main *, header [role="status"]')) {
-    const cs = getComputedStyle(el);
-    if (cs.display === 'none' || el.closest('.flow-panel, .skip')) continue;
-    const r = el.getBoundingClientRect();
-    if (r.width === 0 && r.height === 0) continue;
-    if (![...el.childNodes].some((n) => n.nodeType === Node.TEXT_NODE && (n.textContent ?? '').trim())) continue;
-    const px = parseFloat(cs.fontSize);
-    const key = el.closest('tbody td, tbody th, dd, .tile .value, .tile .sub, [role="status"]') !== null && el.closest(SECONDARY) === null;
-    const secondary = el.closest(SECONDARY) !== null;
-    if (key && px < 14 - 1e-6) out.push(`key ${px}px ${describe(el)}`);
-    else if (secondary && px < 12 - 1e-6) out.push(`secondary ${px}px ${describe(el)}`);
-  }
-  return [...new Set(out)];
-}
-
-test.describe('UXF-004', () => {
-  test('key values are 14 px or more and secondary text 12 px or more', async ({ browser }) => {
-    const found = new Set<string>();
-    for (const name of ['busy', 'errors']) {
-      const page = await freshPage(browser, '1280x720');
-      const replay = await openReplay(page, scenario(name), 'light');
-      await eachState(replay, async () => {
-        for (const f of await page.evaluate(fontDeficits)) found.add(`${name}: ${f}`);
-      });
-      for (const action of scenario(name).actions ?? []) {
-        await replay.act(action);
-        for (const f of await page.evaluate(fontDeficits)) found.add(`${name}: ${f}`);
-      }
-      await page.context().close();
-    }
-    expect([...found]).toEqual([]);
-  });
-});
-

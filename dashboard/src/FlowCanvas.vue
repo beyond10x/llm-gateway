@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
-import { FlowModel, FONT_PX, NODE_R, activeSessions, type FlowCounts, type Scene } from './flow.ts';
+import { FLIGHT_PULSE, FlowModel, FONT_PX, INK, NODE_R, activeSessions, type FlowCounts, type Mark, type Scene } from './flow.ts';
 import type { Snapshot } from './extra.ts';
 
 // The token flow panel: a canvas the width of the page that draws each active session's strings to
@@ -13,7 +13,7 @@ const MAX_DPR = 2;
 const REDUCED_QUERY = '(prefers-reduced-motion: reduce)';
 const DARK_QUERY = '(prefers-color-scheme: dark)';
 
-interface Colours { line: string; label: string; node: string; in: string; out: string }
+type Colours = Record<Mark, string>;
 
 const canvas = ref<HTMLCanvasElement | null>(null);
 const box = ref<HTMLDivElement | null>(null);
@@ -21,6 +21,7 @@ const media = (q: string) => (typeof matchMedia === 'function' ? matchMedia(q) :
 const reducedQuery = media(REDUCED_QUERY);
 const darkQuery = media(DARK_QUERY);
 const model = new FlowModel({ reduced: reducedQuery?.matches ?? false, seed: 0x5eed });
+const reduced = ref(model.reduced);
 
 const summary = computed(() => {
   if (!props.snap) return { sessions: 0, routes: 0 };
@@ -41,14 +42,16 @@ let raf = 0;
 let lastFrame = 0;
 let frames = 0;
 let drawn = 0;
-let colours: Colours = { line: '#5b616b', label: '#1b1d21', node: '#5b616b', in: '#2456c7', out: '#c2410c' };
+let colours: Colours = { label: '#1b1d21', note: '#1b1d21', idleString: '#5b616b', flightString: '#2456c7', node: '#5b616b', inDot: '#2456c7', outDot: '#c2410c' };
 let observer: MutationObserver | null = null;
 let sizer: ResizeObserver | null = null;
 
 function readColours() {
   const css = getComputedStyle(document.documentElement);
   const v = (name: string, fallback: string) => css.getPropertyValue(name).trim() || fallback;
-  colours = { line: v('--muted', colours.line), label: v('--fg', colours.label), node: v('--muted', colours.node), in: v('--flow-in', colours.in), out: v('--flow-out', colours.out) };
+  const next = { ...colours };
+  for (const mark of Object.keys(INK) as Mark[]) next[mark] = v(INK[mark].colour, colours[mark]);
+  colours = next;
 }
 
 function resize() {
@@ -71,8 +74,8 @@ function paint(c: CanvasRenderingContext2D, scene: Scene) {
   c.lineCap = 'round';
   for (const s of scene.strings) {
     const dx = (s.to.x - s.from.x) * 0.45;
-    c.globalAlpha = s.alpha * (0.3 + (s.inFlight ? 0.12 + 0.25 * s.pulse : 0));
-    c.strokeStyle = s.inFlight ? colours.in : colours.line;
+    c.globalAlpha = s.alpha * (s.inFlight ? INK.flightString.alpha + FLIGHT_PULSE * s.pulse : INK.idleString.alpha);
+    c.strokeStyle = s.inFlight ? colours.flightString : colours.idleString;
     c.lineWidth = s.inFlight ? 1.5 + s.pulse : 1.25;
     c.beginPath();
     c.moveTo(s.from.x, s.from.y);
@@ -83,14 +86,14 @@ function paint(c: CanvasRenderingContext2D, scene: Scene) {
   c.textBaseline = 'middle';
   const node = (x: number, y: number, r: number, alpha: number) => {
     c.fillStyle = colours.node;
-    c.globalAlpha = alpha * 0.7;
+    c.globalAlpha = alpha * INK.node.alpha;
     c.beginPath();
     c.arc(x, y, r, 0, 2 * Math.PI);
     c.fill();
   };
-  const label = (text: string, x: number, y: number, alpha: number) => {
-    c.fillStyle = colours.label;
-    c.globalAlpha = alpha * 0.9;
+  const label = (text: string, x: number, y: number, alpha: number, mark: 'label' | 'note' = 'label') => {
+    c.fillStyle = colours[mark];
+    c.globalAlpha = alpha * INK[mark].alpha;
     c.fillText(text, x, y);
   };
   for (const a of scene.sessions) {
@@ -101,10 +104,11 @@ function paint(c: CanvasRenderingContext2D, scene: Scene) {
     node(r.x, r.y, NODE_R, 1);
     label(r.text, r.box.x, r.y, 1);
   }
-  for (const n of scene.notes) label(n.text, n.box.x, n.box.y + n.box.h / 2, 0.8);
+  for (const n of scene.notes) label(n.text, n.box.x, n.box.y + n.box.h / 2, 1, 'note');
   for (const p of scene.particles) {
-    c.globalAlpha = 0.75;
-    c.fillStyle = p.dir === 'in' ? colours.in : colours.out;
+    const mark = p.dir === 'in' ? 'inDot' : 'outDot';
+    c.globalAlpha = INK[mark].alpha;
+    c.fillStyle = colours[mark];
     c.beginPath();
     c.arc(p.x, p.y, p.r, 0, 2 * Math.PI);
     c.fill();
@@ -151,6 +155,7 @@ function onTheme() {
 
 function onReduced() {
   model.reduced = reducedQuery?.matches ?? false;
+  reduced.value = model.reduced;
   if (model.reduced) {
     stop();
     model.particles = [];
@@ -205,12 +210,18 @@ onUnmounted(() => {
   <section class="flow-panel" aria-labelledby="h-flow">
     <div class="flow-head">
       <h2 id="h-flow">Token flow</h2>
-      <p class="flow-caption">
-        <span v-if="summary.sessions > 0">{{ plural(summary.sessions, 'active session') }} → {{ plural(summary.routes, 'route') }};</span>
-        <span class="flow-key"><span class="swatch in" aria-hidden="true"></span>input tokens</span>
-        <span class="flow-key"><span class="swatch out" aria-hidden="true"></span>output tokens</span>
-      </p>
+      <p class="flow-count">{{ summary.sessions > 0 ? `${plural(summary.sessions, 'active session')} → ${plural(summary.routes, 'route')}` : 'no active session' }}</p>
     </div>
+    <p class="flow-caption">
+      Each line joins a session (left) to a route it called in the last 5 minutes, blue and thicker
+      while a call is in flight.
+      <template v-if="reduced">Motion is off (reduced motion), so no tokens move; Recent calls lists each call's tokens.</template>
+      <template v-else>
+        Each call sends dots:
+        <span class="flow-key"><span class="swatch in" aria-hidden="true"></span>input tokens</span> left to right,
+        <span class="flow-key"><span class="swatch out" aria-hidden="true"></span>output tokens</span> right to left.
+      </template>
+    </p>
     <div ref="box" class="flow-box">
       <canvas ref="canvas" aria-hidden="true"></canvas>
       <p v-if="summary.sessions === 0" class="flow-empty">No active sessions.</p>

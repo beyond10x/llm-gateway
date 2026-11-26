@@ -1,9 +1,17 @@
 {
-  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, from a scratch round on the page with change set R-03 (its round directory is not kept). Lower is better. Written by `pnpm ux:round <round> --baseline`.",
+  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, measured on the built page with sha256 a6fad6d3d81b (page commit b79bb225+changes). Lower is better, except flow.visible_ratio and flow.drawn, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
   "scenarios": {
     "busy": {
       "axe.serious_critical": {
         "value": 0,
+        "tolerance": 0
+      },
+      "flow.drawn": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
         "tolerance": 0
       },
       "header.hidden_ratio": {
@@ -11,7 +19,7 @@
         "tolerance": 0
       },
       "key_font.deficit_px": {
-        "value": 1.75,
+        "value": 0,
         "tolerance": 0
       },
       "keyboard.focus_invisible": {
@@ -24,10 +32,14 @@
       },
       "layout_shift.per_state_max": {
         "value": 0,
-        "tolerance": 0.01
+        "tolerance": 0.002
       },
       "overflow.elements": {
         "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
+        "value": 1,
         "tolerance": 0
       },
       "overflow.scrollers_unreachable": {
@@ -39,6 +51,10 @@
         "tolerance": 0
       },
       "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
         "value": 0,
         "tolerance": 0
       },
@@ -52,12 +68,20 @@
         "value": 0,
         "tolerance": 0
       },
+      "flow.drawn": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
       "header.hidden_ratio": {
         "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
-        "value": 1.75,
+        "value": 0,
         "tolerance": 0
       },
       "keyboard.focus_invisible": {
@@ -70,9 +94,13 @@
       },
       "layout_shift.per_state_max": {
         "value": 0.007,
-        "tolerance": 0.01
+        "tolerance": 0.002
       },
       "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
         "value": 0,
         "tolerance": 0
       },
@@ -85,6 +113,10 @@
         "tolerance": 0
       },
       "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
         "value": 0,
         "tolerance": 0
       },
@@ -98,6 +130,14 @@
         "value": 0,
         "tolerance": 0
       },
+      "flow.drawn": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
       "header.hidden_ratio": {
         "value": 0,
         "tolerance": 0
@@ -116,9 +156,13 @@
       },
       "layout_shift.per_state_max": {
         "value": 0,
-        "tolerance": 0.01
+        "tolerance": 0.002
       },
       "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
         "value": 0,
         "tolerance": 0
       },
@@ -131,6 +175,10 @@
         "tolerance": 0
       },
       "reduced_motion.violations": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "secondary_font.deficit_px": {
         "value": 0,
         "tolerance": 0
       },
@@ -144,12 +192,20 @@
         "value": 0,
         "tolerance": 0
       },
+      "flow.drawn": {
+        "value": 1,
+        "tolerance": 0
+      },
+      "flow.visible_ratio": {
+        "value": 1,
+        "tolerance": 0
+      },
       "header.hidden_ratio": {
         "value": 0,
         "tolerance": 0
       },
       "key_font.deficit_px": {
-        "value": 1.75,
+        "value": 0,
         "tolerance": 0
       },
       "keyboard.focus_invisible": {
@@ -161,10 +217,14 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.059,
-        "tolerance": 0.01
+        "value": 0.043,
+        "tolerance": 0.0043
       },
       "overflow.elements": {
+        "value": 0,
+        "tolerance": 0
+      },
+      "overflow.scrollers": {
         "value": 0,
         "tolerance": 0
       },
@@ -180,6 +240,10 @@
         "value": 0,
         "tolerance": 0
       },
+      "secondary_font.deficit_px": {
+        "value": 0,
+        "tolerance": 0
+      },
       "truncation.without_full_value": {
         "value": 0,
         "tolerance": 0
@@ -188,8 +252,7 @@
   },
   "tolerances": {
     "counts": 0,
-    "layout_shift.per_state_max": 0.01,
-    "header.hidden_ratio": 0,
-    "key_font.deficit_px": 0
+    "layout_shift.per_state_max.floor": 0.002,
+    "layout_shift.per_state_max.relative": 0.1
   }
 }

@@ -1,19 +1,24 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const ROUND = !!process.env.UX_ROUND;
+const IN_ROUND = !!process.env.UX_ROUND;
 
 // One id per Playwright run, inherited by its workers: the measurements of this run go to
 // ux/.metrics/<id>/ (e2e/metrics-dir.ts). `pnpm ux:round` sets its own.
 process.env.UX_RUN_ID ||= `run-${new Date().toISOString().replace(/\D/g, '').slice(0, 14)}-${process.pid}`;
 
-// The measuring projects; every other spec file belongs to the gate.
-const MEASURING = ['measure-gate.e2e.ts', 'tools.e2e.ts', 'measure-round.e2e.ts', 'round-report.e2e.ts'];
+// The gate runs in two steps. `measure-gate` holds every spec that drives a browser: the measured
+// replays and every assertion that replays a page itself (the tools' break tests and the change
+// sets' regression tests), so they share the workers with the measurements instead of waiting for
+// them. `gate` then reads what the measured replays wrote and asserts the hard gates and the
+// ratchet on it. The round's projects run only through `pnpm ux:round`.
+const READS_MEASUREMENTS = ['gates.e2e.ts'];
+const ROUND = ['measure-round.e2e.ts', 'round-report.e2e.ts'];
 
 export default defineConfig({
   testDir: './e2e',
   testMatch: '**/*.e2e.ts',
   timeout: 60_000,
-  globalTimeout: ROUND ? 300_000 : 120_000,
+  globalTimeout: IN_ROUND ? 300_000 : 120_000,
   globalSetup: './e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: true,
@@ -26,8 +31,8 @@ export default defineConfig({
     screenshot: 'off',
   },
   projects: [
-    { name: 'measure-gate', testMatch: ['measure-gate.e2e.ts', 'tools.e2e.ts'] },
-    { name: 'gate', testIgnore: MEASURING, dependencies: ['measure-gate'] },
+    { name: 'measure-gate', testIgnore: [...READS_MEASUREMENTS, ...ROUND] },
+    { name: 'gate', testMatch: READS_MEASUREMENTS, dependencies: ['measure-gate'] },
     { name: 'measure-round', testMatch: 'measure-round.e2e.ts' },
     { name: 'round', testMatch: 'round-report.e2e.ts', dependencies: ['measure-round'] },
   ],

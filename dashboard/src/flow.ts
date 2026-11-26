@@ -136,18 +136,18 @@ export const ROW_PX = FONT_PX + 2;
 export const LABEL_SHARE = 0.34;
 
 // How each mark of the panel is drawn: the custom property that gives its colour, and its opacity
-// over the panel (`--panel`) at full presence; a session that fades multiplies them by its own
+// over the panel (`--surface`) at full presence; a session that fades multiplies them by its own
 // alpha. An in-flight string adds `flightPulse` times its pulse (0 to 1). Labels and notes are
 // text; the others are marks.
-export const INK_GROUND = '--panel';
+export const INK_GROUND = '--surface';
 export const INK = {
-  label: { colour: '--fg', alpha: 0.9, text: true },
-  note: { colour: '--fg', alpha: 0.72, text: true },
+  label: { colour: '--text', alpha: 0.9, text: true },
+  note: { colour: '--text', alpha: 0.72, text: true },
   idleString: { colour: '--muted', alpha: 0.75, text: false },
-  flightString: { colour: '--flow-in', alpha: 0.8, text: false },
+  flightString: { colour: '--flow_in', alpha: 0.8, text: false },
   node: { colour: '--muted', alpha: 0.85, text: false },
-  inDot: { colour: '--flow-in', alpha: 0.9, text: false },
-  outDot: { colour: '--flow-out', alpha: 0.9, text: false },
+  inDot: { colour: '--flow_in', alpha: 0.9, text: false },
+  outDot: { colour: '--flow_out', alpha: 0.9, text: false },
 } as const;
 export const FLIGHT_PULSE = 0.2;
 export type Mark = keyof typeof INK;

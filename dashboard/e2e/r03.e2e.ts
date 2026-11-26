@@ -101,7 +101,7 @@ function boxedOverflow(): string[] {
       }
     }
   };
-  for (const box of document.querySelectorAll('.tile, dl.headers, .limit h3')) within(box);
+  for (const box of document.querySelectorAll('.tile, dl.headers, .card h3')) within(box);
   return [...new Set(out)];
 }
 

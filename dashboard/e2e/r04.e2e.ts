@@ -98,7 +98,7 @@ test.describe('UXF-013', () => {
 // ends at white space or at an underscore, so a value may wrap at "_" but never inside a word.
 function brokenWords(): string[] {
   const out: string[] = [];
-  for (const el of document.querySelectorAll('.limit .tile .value, .limit .tile .sub')) {
+  for (const el of document.querySelectorAll('.card .tile .value, .card .tile .sub')) {
     const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       const text = n.textContent ?? '';
@@ -132,7 +132,7 @@ test.describe('UXF-006', () => {
         const h = Object.fromEntries(Object.entries(l.headers).map(([k, v]) => [k.toLowerCase(), v]));
         return h['anthropic-ratelimit-unified-status'] ?? null;
       });
-      const titles = await page.evaluate(() => [...document.querySelectorAll('.limit')].map((l) => l.querySelector('.tile .value')?.getAttribute('title') ?? null));
+      const titles = await page.evaluate(() => [...document.querySelectorAll('.card')].map((l) => l.querySelector('.tile .value')?.getAttribute('title') ?? null));
       expect(titles).toEqual(raw);
     });
   }

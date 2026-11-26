@@ -74,7 +74,8 @@ enum Entry {
         model: Option<String>,
         principal: Option<String>,
     },
-    Ended(UsageRecord),
+    /// Boxed: a record is several times the size of an in-flight entry.
+    Ended(Box<UsageRecord>),
 }
 
 #[derive(Default)]
@@ -232,7 +233,7 @@ impl Ticket {
         self.ended = true;
         let mut held = self.calls.held();
         held.entries
-            .insert(self.id.clone(), Entry::Ended(record.clone()));
+            .insert(self.id.clone(), Entry::Ended(Box::new(record.clone())));
         held.ended.push_back(self.id.clone());
         while held.ended.len() > MAX_ENDED_CALLS {
             if let Some(oldest) = held.ended.pop_front() {

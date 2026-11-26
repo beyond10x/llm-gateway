@@ -7,6 +7,8 @@ Nothing in any release is deployed or qualified against a live client.
 
 ## Unreleased
 
+## 0.25.0 (2026-11-26)
+
 ### Changed
 
 - Breaking: a model call no longer starts a Runpod pod. A call to a model whose pod is stopped or stopping is refused at once with the new `model-stopped` (503, no `retry-after`, outcome `refused`): no pod is created and no spend is read. Only the owner's wake (`POST /v1/models/{alias}/wake`) starts the pod; a call after the wake is held on the starting pod and relayed once it serves, or `model-cold-start` when its hold passes, as before, and a pod that fails while a call is held starts no replacement. To restore the old behaviour for a model, set `start_on_request = true` in its `[models.<alias>]` table, `daily_cap_usd` on its provider, and `price_per_hour_usd` on every model the document declares under `[models]` (a declared cap requires it of each).

@@ -12,6 +12,7 @@ mod adversary_w12_profiles;
 mod adversary_w12_spend;
 mod adversary_w12_spend_pass2;
 mod profiles_fallback;
+mod refusing;
 mod rest;
 mod round2;
 mod runpod;

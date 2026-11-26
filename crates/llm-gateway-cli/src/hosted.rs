@@ -1635,6 +1635,22 @@ mod tests {
         }
     }
 
+    /// A loopback port where nothing answers, held while the returned socket lives: bound to
+    /// `127.0.0.1:0` and never listening, so a connection is refused and no other test can
+    /// bind the port. A port taken by binding a listener and dropping it is free for another
+    /// test to take before it is probed.
+    fn refusing_port() -> (rustix::fd::OwnedFd, SocketAddr) {
+        use rustix::net::{AddressFamily, SocketType, bind, getsockname, socket};
+        let socket = socket(AddressFamily::INET, SocketType::STREAM, None).unwrap();
+        bind(
+            &socket,
+            &SocketAddr::from((std::net::Ipv4Addr::LOCALHOST, 0)),
+        )
+        .unwrap();
+        let address = SocketAddr::try_from(getsockname(&socket).unwrap()).unwrap();
+        (socket, address)
+    }
+
     /// A loopback endpoint that reads one request head, waits `delay`, then writes `answer` (or
     /// closes without one) and hands back the head it read.
     fn endpoint_once(
@@ -1773,10 +1789,9 @@ mod tests {
             assert_eq!(targets.status("m"), Some(expected), "{client} {answer:?}");
             drop(server.join());
         }
-        // Nothing listens: no connection is no answer.
-        let closed = TcpListener::bind("127.0.0.1:0").unwrap();
-        let address = closed.local_addr().unwrap();
-        drop(closed);
+        // Nothing listens: no connection is no answer. The port is a socket this test holds,
+        // bound and never listening, so a connection is refused and no other test can bind it.
+        let (_held, address) = refusing_port();
         let endpoint = HostedEndpoint::new(&format!("http://{address}"), bearer()).unwrap();
         let targets = targets("m", endpoint, fresh(Duration::from_secs(5)));
         assert_eq!(targets.status("m"), Some(unreachable("no-answer")));

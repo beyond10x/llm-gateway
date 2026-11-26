@@ -39,13 +39,11 @@
       },
       "overage": {
         "text": "rejected",
-        "title": "rejected",
-        "sub": [
-          {
-            "text": "org_level_disabled",
-            "title": "org_level_disabled"
-          }
-        ]
+        "title": "rejected"
+      },
+      "overage_reason": {
+        "text": "org_level_disabled",
+        "title": "org_level_disabled"
       },
       "claim": {
         "text": "five_hour",

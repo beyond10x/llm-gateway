@@ -10,10 +10,9 @@
       },
       "wire": "messages",
       "state": {
-        "text": "waiting for retry, 24 s left",
-        "key": "waiting-retry",
+        "text": "waiting-retry",
         "note": {
-          "text": "attempt 2"
+          "text": "24 s left · attempt 2"
         }
       },
       "elapsed": "6.00 s",

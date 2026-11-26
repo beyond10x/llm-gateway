@@ -54,6 +54,13 @@ export function wordsOf(v: Value | undefined, as: Field['as'] | undefined, label
   return DASH;
 }
 
+// The raw value a label map gives words to, shown on hover beside those words.
+export function rawOf(v: Value | undefined, labels: Record<string, string> | undefined): string | undefined {
+  if (!labels || v === null || v === undefined) return undefined;
+  const key = isRich(v) ? v.text : typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' ? String(v) : undefined;
+  return key !== undefined && Object.hasOwn(labels, key) ? key : undefined;
+}
+
 export function labelsOf(ctx: Ctx, labels: Field['labels']): Record<string, string> | undefined {
   if (labels === undefined) return undefined;
   return typeof labels === 'string' ? ctx.doc.label_maps?.[labels] : labels;

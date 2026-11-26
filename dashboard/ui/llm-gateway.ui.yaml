@@ -70,7 +70,7 @@ theme: {default: system, chosen_by: shell.theme}
 
 tone_maps:
   pod_state: {RUNNING: success}
-  ready: {"yes": success, "no": warning}
+  ready: {"true": success, "false": warning}
   shutdown: {soon: warning}
   heartbeat: {stale: danger, none: danger}
   flight: {streaming: success}
@@ -80,7 +80,30 @@ tone_maps:
   limit_status: {allowed: success, allowed_warning: warning, rejected: danger}
 
 label_maps:
-  limit_status: {allowed_warning: allowed (warning)}
+  state:
+    streaming: streaming
+    waiting-upstream: waiting for upstream
+    waiting-retry: waiting for retry
+    CREATED: created
+    STARTING: starting
+    RUNNING: running
+    EXITED: exited
+    PAUSED: paused
+    TERMINATED: terminated
+    ok: ok
+    refused: refused
+    failed: failed
+    allowed: allowed
+    allowed_warning: allowed (warning)
+    rejected: rejected
+    five_hour: 5-hour window
+    seven_day: 7-day window
+    seven_day_opus: 7-day Opus window
+    seven_day_sonnet: 7-day Sonnet window
+    out_of_credits: out of credits
+    org_level_disabled: turned off for the organisation
+    "true": "yes"
+    "false": "no"
 
 shells:
   app:
@@ -188,11 +211,12 @@ pages:
         live: {channel: events, effect: replace}
         columns:
           - {field: limits, label: Subscription limits}
-          - {field: status, label: Status, tone_by: limit_status, labels: limit_status}
+          - {field: status, label: Status, tone_by: limit_status, labels: state, visible: row.status}
           - {field: window_5h, label: 5h utilization, tone_by: limit_status, visible: row.window_5h}
           - {field: window_7d, label: 7d utilization, tone_by: limit_status, visible: row.window_7d}
-          - {field: overage, label: Overage, tone_by: limit_status, labels: limit_status, visible: row.overage}
-          - {field: claim, label: Representative claim, visible: row.claim, help: {text: the window that currently decides the status}}
+          - {field: overage, label: Overage, tone_by: limit_status, labels: state, visible: row.overage}
+          - {field: overage_reason, label: Overage reason, labels: state, visible: row.overage_reason}
+          - {field: claim, label: Representative claim, labels: state, visible: row.claim, help: {text: the window that currently decides the status}}
           - {field: headers, label: Other headers, as: map, visible: row.headers}
 
       - name: provider
@@ -215,11 +239,11 @@ pages:
         columns:
           - {field: id, label: Pod}
           - {field: model, label: Model}
-          - {field: state, label: State, as: badge, tone_by: pod_state, tone: warning}
+          - {field: state, label: State, as: badge, tone_by: pod_state, tone: warning, labels: state}
           - {field: gpu, label: GPU}
           - {field: cost_per_hour, label: $/h, as: number}
           - {field: uptime, label: Uptime, as: duration}
-          - {field: vllm_ready, label: vLLM ready, tone_by: ready}
+          - {field: vllm_ready, label: vLLM ready, tone_by: ready, labels: state}
           - {field: last_call, label: Last call, as: duration}
           - {field: in_flight, label: In flight, as: number}
           - {field: shutdown, label: Automatic shutdown, tone_by: shutdown}
@@ -234,7 +258,7 @@ pages:
           - {field: route, label: Route}
           - {field: model, label: Model}
           - {field: wire, label: Wire}
-          - {field: state, label: State, as: badge, tone_by: flight, tone: warning}
+          - {field: state, label: State, as: badge, tone_by: flight, tone: warning, labels: state}
           - {field: elapsed, label: Elapsed, as: duration}
           - {field: session, label: Session}
         children:
@@ -293,7 +317,7 @@ pages:
           - {field: time, label: Time}
           - {field: route, label: Route}
           - {field: wire, label: Wire}
-          - {field: status, label: Status, as: badge, tone_by: call_result}
+          - {field: status, label: Status, as: badge, tone_by: call_result, labels: state}
           - {field: ttft, label: TTFT, as: duration, help: {text: time to first token}}
           - {field: duration, label: Duration, as: duration}
           - {field: queue, label: Queue, as: duration}
@@ -309,7 +333,7 @@ pages:
           reads: {placeholder: dashboard.Attempts, fixture: attempts.json, key: attempt, params: {call: row.id}}
           columns:
             - {field: attempt, label: Attempt, as: number}
-            - {field: status, label: Status, as: badge, tone_by: call_result}
+            - {field: status, label: Status, as: badge, tone_by: call_result, labels: state}
             - {field: duration, label: Duration, as: duration}
             - {field: wait, label: Wait before, as: duration}
             - {field: retry_after, label: Retry-After}

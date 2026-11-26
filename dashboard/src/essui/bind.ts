@@ -20,7 +20,6 @@ const UNIFIED = 'anthropic-ratelimit-unified-';
 const IN_TILES = ['status', 'reset', 'representative-claim', 'overage-status', 'overage-disabled-reason', '5h-status', '5h-utilization', '5h-reset', '7d-status', '7d-utilization', '7d-reset'].map((k) => UNIFIED + k);
 
 const pair = (a: number | null, b: number | null) => `${count(a)} / ${count(b)}`;
-const yesNo = (v: boolean | null) => (v === null ? DASH : v ? 'yes' : 'no');
 const parts = (...lines: (string | null | undefined | false)[]): Part[] => lines.filter((l): l is string => !!l).map((text) => ({ text }));
 
 function unixMs(v: string | undefined): number | null {
@@ -52,12 +51,12 @@ export function flags(c: CallRecord): string[] {
   return out;
 }
 
-function inflightState(f: InFlight, now: number): string {
-  if (f.state === 'waiting-retry' && f.retry_at_ms !== null && f.retry_at_ms !== undefined) {
-    const left = Math.ceil((f.retry_at_ms - now) / 1000);
-    return left > 0 ? `waiting for retry, ${left} s left` : 'retrying now';
-  }
-  return f.state;
+// The state is the raw value, which the document's table of state words names; the countdown to a
+// retry and the attempt are its note.
+function inflightState(f: InFlight, now: number): Rich {
+  const left = f.state === 'waiting-retry' && f.retry_at_ms != null ? Math.ceil((f.retry_at_ms - now) / 1000) : null;
+  const note = [left === null ? null : left > 0 ? `${left} s left` : 'retrying now', f.attempt > 1 ? `attempt ${f.attempt}` : null].filter((x) => x !== null).join(' · ');
+  return { text: f.state, note: note ? { text: note } : undefined };
 }
 
 function shutdown(p: PodRow, now: number): Rich {
@@ -110,10 +109,11 @@ function limitRow(row: LimitRow, now: number): Row {
   return {
     credential: row.credential,
     limits: { text: limited(Object.keys(h)), title: `credential ${row.credential}`, note: { text: `seen ${ago(now, row.seen_ms)}` } },
-    status: { text: status ?? DASH, title: status, sub: reset !== null ? parts(`resets ${countdown(now, reset)}`) : [] },
+    status: status === undefined ? null : { text: status, title: status, sub: reset !== null ? parts(`resets ${countdown(now, reset)}`) : [] },
     window_5h: window('5h'),
     window_7d: window('7d'),
-    overage: overage === undefined ? null : { text: overage, title: overage, sub: reason ? [{ text: reason, title: reason }] : [] },
+    overage: overage === undefined ? null : { text: overage, title: overage },
+    overage_reason: reason === undefined ? null : { text: reason, title: reason },
     claim: claim === undefined ? null : { text: claim, title: claim },
     headers: rest.length > 0 ? { text: '', table: rest.map(([k, v]) => [{ text: headerLabel(k), title: k }, { text: v }]) } : null,
   };
@@ -125,7 +125,7 @@ function callRow(c: CallRecord, now: number): Row {
     time: { text: clock(c.started_ms), mono: true, title: ago(now, c.started_ms) },
     route: { text: c.route ?? DASH, sub: parts(c.upstream_model !== c.route && c.upstream_model, c.upstream) },
     wire: c.wire,
-    status: { text: String(c.status), key: callResult(c), title: c.outcome },
+    status: { text: callResult(c), note: { text: String(c.status) }, title: c.outcome },
     ttft: ms(c.ttft_ms),
     duration: ms(c.duration_ms),
     queue: ms(c.queue_wait_ms),
@@ -180,7 +180,7 @@ export const BINDINGS: Record<string, Answer> = {
       gpu: p.gpu ?? DASH,
       cost_per_hour: usd(p.cost_per_hour_usd),
       uptime: p.uptime_s === null ? DASH : span(p.uptime_s * 1000),
-      vllm_ready: yesNo(p.vllm_ready),
+      vllm_ready: p.vllm_ready,
       last_call: ago(now, p.last_call_ms),
       in_flight: p.in_flight,
       shutdown: shutdown(p, now),
@@ -192,7 +192,7 @@ export const BINDINGS: Record<string, Answer> = {
       route: f.route ?? DASH,
       model: { text: f.upstream_model ?? DASH, mono: true },
       wire: f.wire,
-      state: { text: inflightState(f, now), key: f.state, note: f.attempt > 1 ? { text: `attempt ${f.attempt}` } : undefined },
+      state: inflightState(f, now),
       elapsed: ms(f.elapsed_ms),
       session: { text: f.session, mono: true },
     })),
@@ -236,7 +236,7 @@ export const BINDINGS: Record<string, Answer> = {
     (s.calls.find((c) => c.id === params.call)?.attempts ?? []).map((a) => ({
       call: params.call as number,
       attempt: a.attempt,
-      status: { text: a.status === null ? 'no answer' : String(a.status), key: a.status !== null && a.status < 400 ? 'ok' : 'failed' },
+      status: { text: a.status !== null && a.status < 400 ? 'ok' : 'failed', note: { text: a.status === null ? 'no answer' : String(a.status) } },
       duration: ms(a.duration_ms),
       wait: ms(a.wait_ms),
       retry_after: a.retry_after ?? DASH,

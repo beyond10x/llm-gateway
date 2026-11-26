@@ -117,8 +117,11 @@ export function baselineAbout(gating: string[], round: string, commit: string, p
 }
 
 // The round, the commit and the page digest a baseline's `about` names; null when it names none,
-// or a commit with changes.
+// or a commit with changes. A baseline re-taken by new harness tools on an unchanged page, in a
+// round directory that is not kept, names the committed round whose page it measured.
 export function aboutRound(about: string): { round: string; commit: string; page: string } | null {
   const m = about.match(/Taken by round (R-[0-9A-Za-z-]+) at commit ([0-9a-f]{8}) on the built page with sha256 ([0-9a-f]{12})\./);
-  return m ? { round: m[1]!, commit: m[2]!, page: m[3]! } : null;
+  if (m) return { round: m[1]!, commit: m[2]!, page: m[3]! };
+  const r = about.match(/Re-taken by the harness at commit ([0-9a-f]{8}) on the built page of round (R-[0-9A-Za-z-]+) with sha256 ([0-9a-f]{12})\./);
+  return r ? { round: r[2]!, commit: r[1]!, page: r[3]! } : null;
 }

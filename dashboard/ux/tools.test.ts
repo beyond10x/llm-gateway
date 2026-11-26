@@ -300,5 +300,6 @@ test('the baseline names the round and the commit it was taken on, and a kept ro
   const round = new URL(`./rounds/${named!.round}/round.json`, import.meta.url);
   if (existsSync(round)) expect((JSON.parse(readFileSync(round, 'utf8')) as { page_sha256: string }).page_sha256.startsWith(named!.page)).toBe(true);
   expect(aboutRound(baselineAbout(['1366x768'], 'R-07', 'abcdef12', 'f'.repeat(64)))).toEqual({ round: 'R-07', commit: 'abcdef12', page: 'f'.repeat(12) });
+  expect(aboutRound('Re-taken by the harness at commit abcdef12 on the built page of round R-05 with sha256 ffffffffffff.')).toEqual({ round: 'R-05', commit: 'abcdef12', page: 'f'.repeat(12) });
   expect(aboutRound('measured on the built page with sha256 951512ba2fae (page commit 076c9fb9+changes)')).toBeNull();
 });

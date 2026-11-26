@@ -2,8 +2,9 @@
 // built page through the hermetic replay.
 import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Browser, type Page } from '@playwright/test';
+import type { Snapshot } from '../src/extra.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
-import { openReplay } from './harness.ts';
+import { openReplay, settle } from './harness.ts';
 import { VIEWPORTS } from './profiles.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
@@ -15,6 +16,14 @@ const viewport = (name: string) => {
 async function freshPage(browser: Browser, vp: string): Promise<Page> {
   const context = await browser.newContext({ viewport: viewport(vp), timezoneId: 'UTC', locale: 'en-GB' });
   return context.newPage();
+}
+
+async function eachState(replay: { index: number; states: Snapshot[]; advance(): Promise<void> }, check: () => Promise<void>): Promise<void> {
+  await check();
+  while (replay.index + 1 < replay.states.length) {
+    await replay.advance();
+    await check();
+  }
 }
 
 test.describe('UXF-002', () => {
@@ -61,6 +70,48 @@ test.describe('UXF-002', () => {
         expect(result.violations.flatMap((v) => v.nodes.map((n) => `${name}: ${n.target.join(' ')}`))).toEqual([]);
         await page.context().close();
       }
+    });
+  }
+});
+
+// Every element in a tile, a limit list and a limit heading lies inside that box.
+function boxedOverflow(): string[] {
+  const out: string[] = [];
+  const name = (el: Element) => `${el.tagName.toLowerCase()}${el.className && typeof el.className === 'string' ? `.${el.className.split(' ').join('.')}` : ''} "${(el.textContent ?? '').trim().slice(0, 30)}"`;
+  const within = (box: Element) => {
+    const b = box.getBoundingClientRect();
+    for (const el of box.querySelectorAll('*')) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      if (r.right > b.right + 1 || r.left < b.left - 1) out.push(`${name(el)} past ${name(box)}`);
+    }
+    for (const el of [box, ...box.querySelectorAll('*')]) {
+      for (const n of el.childNodes) {
+        if (n.nodeType !== Node.TEXT_NODE || !(n.textContent ?? '').trim()) continue;
+        const range = document.createRange();
+        range.selectNodeContents(n);
+        const r = range.getBoundingClientRect();
+        if (r.right > b.right + 1 || r.left < b.left - 1) out.push(`text "${(n.textContent ?? '').trim().slice(0, 30)}" past ${name(box)}`);
+      }
+    }
+  };
+  for (const box of document.querySelectorAll('.tile, dl.headers, .limit h3')) within(box);
+  return [...new Set(out)];
+}
+
+test.describe('UXF-003', () => {
+  for (const name of ['busy', 'token-flow', 'errors']) {
+    test(`tiles, limit headings and limit headers keep their contents inside at every viewport — ${name}`, async ({ page }) => {
+      const replay = await openReplay(page, scenario(name), 'light');
+      const found = new Set<string>();
+      await eachState(replay, async () => {
+        for (const v of VIEWPORTS) {
+          await page.setViewportSize({ width: v.width, height: v.height });
+          await settle(page);
+          for (const o of await page.evaluate(boxedOverflow)) found.add(`${v.name}: ${o}`);
+        }
+      });
+      expect([...found]).toEqual([]);
     });
   }
 });

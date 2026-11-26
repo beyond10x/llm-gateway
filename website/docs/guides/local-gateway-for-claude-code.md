@@ -115,6 +115,11 @@ Anthropic reports them, and the Runpod panel. `http://127.0.0.1:8091/` in a brow
 launcher commands. [The dashboard](https://github.com/beyond10x/llm-gateway/blob/main/docs/gateway.md#the-dashboard)
 in the gateway contract defines every figure.
 
+A Light, Dark and System switch in the page header picks the colour theme; the browser keeps
+the choice. Behind the panels, a quiet animation draws a line from each active session to the
+routes it calls and moves each new call's input and output tokens along it; with reduced motion
+set in the system, it shows one still picture.
+
 ## Without the launcher
 
 Point Claude Code at the gateway yourself:

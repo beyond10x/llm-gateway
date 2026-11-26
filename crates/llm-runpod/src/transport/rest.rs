@@ -20,8 +20,9 @@
 //! * `list_pods`: `GET /pods`, `{"pods": [...], "pagination": {...}}`, followed page by page
 //!   through `?cursor=<pagination.nextCursor>` while `pagination.hasNextPage`, at most
 //!   [`MAX_PAGES`] pages. A first page that fails is a listing that failed outright (`Err`); a
-//!   later one leaves the listing partial. Each entry is read as [`ConnectorsRunpod`](super::ConnectorsRunpod)
-//!   reads a `pods.list` entry. The listing ignores query filters, so none is sent.
+//!   later one leaves the listing partial. Each entry is a v2 `Pod`: `id`, `name`, `status`,
+//!   `env` and `gpu.id`. The listing applies only its `filters` parameter, which matches tags,
+//!   so none is sent.
 //! * `create_pod`: `POST /pods` with v2's body: v1's keys, but `image` for `imageName` and one
 //!   GPU type as `gpu: {id, count}`. A 2xx is `Created`; a 4xx whose answer says Runpod has no
 //!   instance available is `NoCapacity`, any other 4xx `Refused`. No answer, a 5xx or a timeout
@@ -29,9 +30,9 @@
 //!   connectors' `unknown` is resolved; otherwise it is `Lost`. A create is never sent twice.
 //! * `terminate_pod`: `DELETE /pods/<id>`. A 2xx is `Terminated`, a 4xx `Refused`, anything
 //!   else `Lost`.
-//! * `container_started_at` and `pod_placement`: the pod's `lastStartedAt`, and its
-//!   `machine.secureCloud` and `interruptible`, from the listing (v2 documents no read of one
-//!   pod).
+//! * `container_started_at` and `pod_placement`: the pod's `startedAt`, and its `cloud`, from
+//!   the listing. v2 declares no `interruptible` and no way to ask for one, so a placement never
+//!   reports it.
 //! * `account_spend`: `GET /billing/pods?bucketSize=day`, an object whose `records` are one
 //!   pod's one day each: `totalAmount` (USD) and the bucket's `startTime`. It covers Runpod's
 //!   default window, the 30 days up to now, so the total is those 30 days' spend.
@@ -55,13 +56,13 @@ use std::{
 use serde_json::{Map, Value, json};
 
 use super::{
-    connectors::{create_body, placement_of, pod_of, started_at_ms},
+    connectors::{create_body, started_at_ms},
     probe::{self, BearerKey, PodTls, Request},
 };
 use crate::{
     AccountSnapshot, AccountSpend, CreateAnswer, Pod, PodListing, PodPlacement, PodRequest,
-    PodSummary, Probe, ProbeTarget, RunpodAccount, RunpodTransport, TAG_OWNER, TAG_REQUEST,
-    TerminateAnswer, spend::reported_micro_usd,
+    PodStatus, PodSummary, Probe, ProbeTarget, RunpodAccount, RunpodTransport, TAG_OWNER,
+    TAG_REQUEST, TerminateAnswer, spend::reported_micro_usd,
 };
 
 /// The most of one answer, head included, that is read before it is treated as unreadable.
@@ -538,7 +539,60 @@ fn number(value: &Value) -> Option<f64> {
     (number.is_finite() && number >= 0.0).then_some(number)
 }
 
+/// One v2 `Pod`, or `None` when any field this adapter relies on is missing or of another
+/// shape. Its `status` is read as: `PROVISIONING` and `STARTING` created and not running yet,
+/// `RUNNING`, `EXITED` and `ERROR` exited (the pod still exists and is billed), `TERMINATED`.
+fn pod_of(value: &Value) -> Option<Pod> {
+    let status = match value.get("status")?.as_str()? {
+        "PROVISIONING" | "STARTING" => PodStatus::Created,
+        "RUNNING" => PodStatus::Running,
+        "EXITED" | "ERROR" => PodStatus::Exited,
+        "TERMINATED" => PodStatus::Terminated,
+        _ => return None,
+    };
+    let env = match value.get("env") {
+        None | Some(Value::Null) => BTreeMap::new(),
+        Some(Value::Object(env)) => env
+            .iter()
+            .map(|(key, value)| Some((key.clone(), value.as_str()?.to_owned())))
+            .collect::<Option<_>>()?,
+        Some(_) => return None,
+    };
+    Some(Pod {
+        id: value.get("id")?.as_str()?.to_owned(),
+        name: value.get("name")?.as_str()?.to_owned(),
+        status,
+        env,
+        gpu_type: value
+            .pointer("/gpu/id")
+            .and_then(Value::as_str)
+            .map(str::to_owned),
+    })
+}
+
+/// A v2 pod's placement: `cloud` (`SECURE` or `COMMUNITY`). v2 declares no `interruptible` and
+/// no way to create an interruptible pod, so it is never reported.
+fn placement_of(value: &Value) -> PodPlacement {
+    PodPlacement {
+        secure_cloud: match value.get("cloud").and_then(Value::as_str) {
+            Some("SECURE") => Some(true),
+            Some("COMMUNITY") => Some(false),
+            _ => None,
+        },
+        interruptible: None,
+    }
+}
+
+/// A v2 pod's `startedAt`, `None` while it is null.
+fn pod_started_at_ms(value: &Value) -> Option<u64> {
+    value
+        .get("startedAt")
+        .and_then(Value::as_str)
+        .and_then(rest_started_at_ms)
+}
+
 /// One pod of a `GET /pods` answer for the account view, or `None` without an id and a name.
+/// The uptime is `runtime.uptime`, which the listing leaves null.
 fn summary(value: &Value) -> Option<PodSummary> {
     let text = |pointer: &str| {
         value
@@ -549,14 +603,11 @@ fn summary(value: &Value) -> Option<PodSummary> {
     Some(PodSummary {
         id: text("/id")?,
         name: text("/name")?,
-        desired_status: text("/desiredStatus").unwrap_or_default(),
-        cost_per_hour_usd: value.get("costPerHr").and_then(number),
-        gpu: text("/gpu/id").or_else(|| text("/machine/gpuTypeId")),
-        uptime_seconds: value.get("uptimeSeconds").and_then(Value::as_u64),
-        last_started_at_ms: value
-            .get("lastStartedAt")
-            .and_then(Value::as_str)
-            .and_then(rest_started_at_ms),
+        desired_status: text("/status").unwrap_or_default(),
+        cost_per_hour_usd: value.get("cost").and_then(number),
+        gpu: text("/gpu/id"),
+        uptime_seconds: value.pointer("/runtime/uptime").and_then(Value::as_u64),
+        last_started_at_ms: pod_started_at_ms(value),
         env_owner: value
             .pointer(&format!("/env/{TAG_OWNER}"))
             .and_then(Value::as_str)
@@ -564,8 +615,9 @@ fn summary(value: &Value) -> Option<PodSummary> {
     })
 }
 
-/// Runpod REST's `lastStartedAt`, `2026-11-04 13:43:01.245 +0000 UTC` (UTC only), or the RFC 3339
-/// form GraphQL writes, in milliseconds since the Unix epoch.
+/// A v2 `date-time` in UTC (`2026-11-04T13:43:01Z`, a fraction allowed), or the
+/// `2026-11-04 13:43:01.245 +0000 UTC` form Runpod's v1 REST API wrote, in milliseconds since
+/// the Unix epoch.
 fn rest_started_at_ms(stamp: &str) -> Option<u64> {
     match stamp.strip_suffix(" +0000 UTC") {
         Some(utc) => started_at_ms(&format!("{}Z", utc.replacen(' ', "T", 1))),
@@ -672,10 +724,7 @@ impl RunpodTransport for RestRunpod {
     }
 
     fn container_started_at(&mut self, pod_id: &str) -> Option<u64> {
-        self.listed(pod_id)?
-            .get("lastStartedAt")
-            .and_then(Value::as_str)
-            .and_then(rest_started_at_ms)
+        pod_started_at_ms(&self.listed(pod_id)?)
     }
 
     fn pod_placement(&mut self, pod_id: &str) -> Option<PodPlacement> {

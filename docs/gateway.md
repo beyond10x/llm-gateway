@@ -1243,7 +1243,7 @@ which takes no dependency for it.
 | `llmgw_cold_start_wait_seconds_total` | | seconds `acquire` took for a request held for a starting target |
 | `llmgw_pod_start_spend_refusals_total` | | pod starts the embedding refused for a spend ceiling, each answered `spend-ceiling` (`Metrics::count_pod_start_spend_refusal`) |
 | `llmgw_interaction_records_dropped_total` | | finished calls the embedding could not queue for its interaction record (`Metrics::count_interaction_record_dropped`, [finished calls](#finished-calls)) |
-| `llmgw_interaction_records_skipped_total` | | finished calls whose bytes were over the bound (`CallBytes::OverBound`), whose record the embedding left out (`Metrics::count_interaction_record_skipped`) |
+| `llmgw_interaction_records_skipped_total` | | finished calls whose bytes were over the bound (`CallBytes::OverBound`) or not decoded (`CallBytes::Undecodable`), whose record the embedding left out (`Metrics::count_interaction_record_skipped`) |
 | `llmgw_route_requests_total` | `model`, `wire` | records naming a relayed model on a wire it declares |
 | `llmgw_route_refusals_total` | `model`, `wire` | the same, refused or no target answered |
 | `llmgw_route_upstream_status_failures_total` | `model`, `wire` | the same, the target answered outside 2xx: a 4xx or 500 relayed, or a 502, 503 or 504 answered `upstream-failed` |
@@ -1503,7 +1503,10 @@ the embedding makes: `attempts` to an `i64`, `declared_cost_usd` (a decimal stri
 `declared_cost_microdollars`, and `ending` to `incomplete` (`Complete` is none). `wire` and the
 copy fill `WireCall`'s `wire`, `request` and `answer`. An embedding that cannot queue a value
 counts `Metrics::count_interaction_record_dropped`, and one that leaves out a call over the bound
-counts `Metrics::count_interaction_record_skipped`.
+or not decoded counts `Metrics::count_interaction_record_skipped`. The binary is one such
+embedding: with `[interaction_records]` in its document it lifts each value with sessionspec's
+`wire::lift_call` and appends the steps to a SQLite file on one writer thread
+(`spec/domains/deployment.yaml` `InteractionRecordsDeclaration`).
 
 ### Scraping the counters
 

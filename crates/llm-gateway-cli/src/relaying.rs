@@ -1419,6 +1419,9 @@ fn compose(
         .with_metrics(Arc::clone(&metrics))
         .with_decoder(Arc::new(crate::decode::Decoder))
         .with_records(Arc::new(crate::logging::TracingRecords));
+    // Every finished call into the session store, when the document declares one
+    // (story:interaction-record-store).
+    let relay = crate::records::compose(relay, deployment.interaction_records.as_ref(), &metrics)?;
     let relay = match reviewer {
         Some(reviewer) => relay.with_caller_review(Arc::new(reviewer)),
         None => relay,

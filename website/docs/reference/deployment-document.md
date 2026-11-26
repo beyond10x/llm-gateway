@@ -3,7 +3,7 @@ title: The deployment document
 sidebar_position: 2
 description: Every key of the closed TOML document b10x-llm-gateway reads, with its default and its rule, and how each file it names is read.
 lede: One closed TOML document configures the binary; an unknown key at any level refuses the start, naming its line and the keys allowed there.
-source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/src/routes.rs, crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/hosted.rs and crates/llm-gateway-cli/tests/routes.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
+source: "Written by hand, checked against crates/llm-gateway-cli/src/config.rs, crates/llm-gateway-cli/src/trusted.rs, crates/llm-gateway-cli/src/hosted.rs, crates/llm-gateway-cli/src/routes.rs, crates/llm-gateway-cli/tests/config.rs, crates/llm-gateway-cli/tests/binary.rs, crates/llm-gateway-cli/tests/hosted.rs, crates/llm-gateway-cli/tests/routes.rs, crates/llm-gateway-cli/src/records.rs and crates/llm-gateway-cli/tests/interaction_records.rs; the specification is spec/domains/deployment.yaml. The refusals below are pasted from runs of the binary."
 ---
 
 # The deployment document
@@ -37,6 +37,7 @@ why `runpod_api_key_file` above is refused ([keychain references](#keychain-refe
 | `[models.<alias>]` | at least one model, here, in `hosted` or in `routes` | The models Runpod pods serve, under the same naming rule. |
 | `[hosted.<alias>]` | at least one model, here, in `models` or in `routes` | The models hosted endpoints serve, under the same naming rule; no alias may be in both tables. |
 | `[watchdog]` | no | The heartbeat `serve` writes and the limits `b10x-llm-gateway watchdog` enforces ([`[watchdog]`](#watchdog)). Absent: no heartbeat, and `watchdog` refuses to start. |
+| `[interaction_records]` | no | The SQLite file every finished model call is appended to as session records ([`[interaction_records]`](#interaction-records)). Absent: no byte of a call is copied, no writer thread runs and no file is created. |
 
 ## `[providers.<name>]`
 
@@ -412,6 +413,24 @@ pod of the account is ever touched. For each such pod it terminates on the first
 under `min_balance_usd`, a stale heartbeat, the runtime past `max_runtime_hours`, the pod not
 ready for `not_ready_minutes`, or the heartbeat showing its model with no call in flight and
 its last call older than its `idle_timeout_minutes` (never less than `stale_minutes`).
+
+## `[interaction_records]` {#interaction-records}
+
+With this table the binary lifts every finished model call into sessionspec's session records
+(sessions, agents, prompts, model turns with the gateway's facts, tool calls; no message text)
+and appends them to one SQLite file, which `sessionspec serve` reads
+([Record agent sessions](../guides/record-agent-sessions.md)).
+
+| Key | Default | Rule |
+| --- | --- | --- |
+| `path` | required | The SQLite file, not empty. A relative path is read from the working directory. Its directory must exist at start, and the file must open as a session store; either failure is `config:value` naming `interaction_records.path`, never the path. |
+| `queue` | 1024 | 1 to 65536: finished calls waiting for the writer thread. A call that finds it full is not recorded and is counted in `llmgw_interaction_records_dropped_total`. |
+| `call_bytes` | 8388608 (8 MiB) | 1 to 33554432: the most bytes of request body and answer body together copied of one call. A call over it, or whose answer was not decoded, is not recorded and is counted in `llmgw_interaction_records_skipped_total`; its answer is unchanged. |
+| `sessions_held` | 4096 | 1 to 65536: sessions whose agents the binary remembers, the least recently used forgotten first. A forgotten session's next call opens it again and starts a new agent. |
+
+A value outside its range is `config:value` naming `interaction_records.<key>`; any other key
+is `config:schema`. A refused call is recorded as an incomplete turn; a token count is not
+recorded.
 
 ## `routes` {#routes}
 

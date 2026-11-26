@@ -197,6 +197,14 @@ resolved against `HOME`), and its `base_url` must name the API path, such as
 [deployment document](https://beyond10x.github.io/llm-gateway/docs/reference/deployment-document/#routes)
 page.
 
+An `[interaction_records]` table names a SQLite file (`path`; its directory must exist) that the
+binary appends every finished model call to as
+[sessionspec](https://github.com/beyond10x/sessionspec)'s session records, with no message text,
+on one writer thread behind a queue of `queue` calls (default 1024); `sessionspec serve` reads it.
+A call over `call_bytes` (default 8 MiB) is counted skipped and a call that finds the queue full
+dropped, never stored. Without the table nothing is copied and no file is created
+([record agent sessions](https://beyond10x.github.io/llm-gateway/docs/guides/record-agent-sessions/)).
+
 The gateway answers `GET /health`, `GET /ready`, `GET /v1/models` (each model with its
 `max_model_len` and wires) and `GET /` (the Codex, Claude Code or Loom settings for each model,
 chosen by `User-Agent`) without a credential; the owner can read

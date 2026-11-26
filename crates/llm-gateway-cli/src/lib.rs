@@ -22,6 +22,7 @@ mod keys;
 mod launch;
 mod logging;
 mod pricing;
+mod records;
 mod refusal;
 mod relaying;
 mod routes;
@@ -35,9 +36,9 @@ mod vllm_stats;
 mod watchdog;
 
 pub use config::{
-    Bedrock, Deployment, Hosted, HostedKind, LaunchClaude, LaunchCodex, Model,
-    OLLAMA_DEFAULT_BASE_URL, Provider, ProviderKind, TokenReviewConfig, WatchdogConfig, Wire, load,
-    parse,
+    Bedrock, Deployment, Hosted, HostedKind, InteractionRecordsConfig, LaunchClaude, LaunchCodex,
+    Model, OLLAMA_DEFAULT_BASE_URL, Provider, ProviderKind, TokenReviewConfig, WatchdogConfig,
+    Wire, load, parse,
 };
 pub use credential::{
     CredentialFailure, CredentialTarget, MAX_KEY_BYTES, Probe, TargetKind, check_key,

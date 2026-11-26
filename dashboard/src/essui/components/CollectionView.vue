@@ -44,7 +44,7 @@ function cellClass(f: Field, r: Row): unknown[] {
   const rich = isRich(v) ? v : null;
   return [
     `col-${f.name}`,
-    { n: NUMERIC.includes(f.as), wrap: rich?.wrap || f.as === 'json', mono: f.as === 'json', muted: rich?.muted },
+    { n: NUMERIC.includes(f.as), wrap: rich?.wrap || f.as === 'json', mono: f.as === 'json' || rich?.mono, muted: rich?.muted },
     ...(f.as === 'badge' ? [] : toneClass(toneOf(ctx, f, v))),
   ];
 }

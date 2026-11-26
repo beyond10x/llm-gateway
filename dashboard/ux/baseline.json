@@ -1,5 +1,5 @@
 {
-  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, measured on the built page with sha256 951512ba2fae (page commit 076c9fb9+changes). Lower is better, except flow.visible_ratio and flow.drawn, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
+  "about": "Worst value per scenario over the gating viewports (1366x768, 1280x720) and both themes, measured on the built page with sha256 81567a008bee (page commit e1c6bc1a+changes). Lower is better, except flow.visible_ratio and flow.drawn, where higher is better. Written by `pnpm ux:round R-nn --baseline`.",
   "scenarios": {
     "busy": {
       "axe.serious_critical": {
@@ -93,7 +93,7 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.007,
+        "value": 0.003,
         "tolerance": 0.002
       },
       "overflow.elements": {
@@ -217,8 +217,8 @@
         "tolerance": 0
       },
       "layout_shift.per_state_max": {
-        "value": 0.043,
-        "tolerance": 0.0043
+        "value": 0.039,
+        "tolerance": 0.0039
       },
       "overflow.elements": {
         "value": 0,

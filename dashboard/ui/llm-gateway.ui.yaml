@@ -78,6 +78,7 @@ tone_maps:
   errors:
     bands: [{from: 1, tone: danger}]
   limit_status: {allowed: success, allowed_warning: warning, rejected: danger}
+  problem: {error: danger, warning: warning}
 
 label_maps:
   state:
@@ -104,6 +105,8 @@ label_maps:
     org_level_disabled: turned off for the organisation
     "true": "yes"
     "false": "no"
+    error: error
+    warning: warning
 
 shells:
   app:
@@ -174,8 +177,9 @@ pages:
           label: up
     layout:
       areas:
-        grid: [[flow], [kpi], [provider], [inflight], [routes], [sessions], [calls]]
+        grid: [[problems], [flow], [kpi], [provider], [inflight], [routes], [sessions], [calls]]
         place:
+          problems: [problems]
           flow: [flow]
           kpi: {sections: [kpi, limits], frame: shared, title: Overview}
           provider: {sections: [provider, pods], frame: shared, title: Provider}
@@ -341,3 +345,16 @@ pages:
         children:
           - {name: total, component: metric, reads: {placeholder: dashboard.Calls, fixture: calls.json}, aggregate: count}
         states: {empty: {message: No calls yet.}}
+
+      - name: problems
+        title: Problems
+        component: collection
+        style: list
+        reads: {placeholder: dashboard.Problems, fixture: problems.json, key: kind, params: {connection: channel.events.lifecycle}}
+        live: {channel: events, effect: replace}
+        visible: section.problems.row
+        columns:
+          - {field: level, label: Severity, as: badge, tone_by: problem, labels: state}
+        item:
+          - {name: go, primitive: link, text: row.text, href: row.href, visible: row.href}
+          - {name: say, primitive: text, text: row.text, visible: not row.href}

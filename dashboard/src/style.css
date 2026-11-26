@@ -145,3 +145,12 @@ table.mini th, table.mini td { padding: 0.15rem 0.5rem; border-bottom: none; }
 .action.emphasis-primary { background: var(--accent); border-color: var(--accent); color: var(--on_accent); }
 .action.emphasis-danger { background: var(--danger); border-color: var(--danger); color: var(--on_accent); }
 .action.emphasis-ghost { background: none; border-color: transparent; }
+
+/* A list collection: one line per row. The Problems strip is drawn with a danger edge, and a
+   heading a link opens stops below the sticky header. */
+ul.list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+ul.list .pill { margin-right: 0.2rem; }
+ul.list a { color: var(--accent); }
+section:has(> ul.problems) { border-left: 4px solid var(--danger); }
+section:has(> ul.problems) h2 { margin-bottom: 0.4rem; }
+h2[id] { scroll-margin-top: 4rem; }

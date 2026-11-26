@@ -31,7 +31,7 @@ export function scopeOf(ctx: Ctx, row?: unknown): Scope {
     channel: (name) => ({ lifecycle: ctx.source.lifecycle(name) }),
     section: (name) => {
       const s = ctx.page.sections.find((x) => x.name === name);
-      return s ? readRows(ctx, (s as { reads?: Reads }).reads, { shell: ctx.shell.values }) : null;
+      return s ? readRows(ctx, (s as { reads?: Reads }).reads, { shell: ctx.shell.values, channel: (c) => ({ lifecycle: ctx.source.lifecycle(c) }) }) : null;
     },
   };
 }

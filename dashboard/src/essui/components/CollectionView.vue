@@ -1,7 +1,8 @@
 <script setup lang="ts">
 // A collection: a table in a keyboard-reachable scrolling region named after its title, a mini
 // table when it is another collection's expanded detail, or cards (`style: cards`), one per row,
-// headed by the row's key and holding a tile per field and a definition list per map. In a table
+// headed by the row's key and holding a tile per field and a definition list per map, or a list
+// (`style: list`), one item per row: its columns, then its `item` nodes reading the row. In a table
 // the column that shows the read's key is each row's header. A column named like the collection's
 // `expand` node holds the button that opens that detail under the row. A client pager draws the
 // first page and a button that shows every row.
@@ -90,6 +91,13 @@ const entries = (v: unknown): [Part, Part][] => (isRich(v) ? (v.table ?? []).map
       </template>
     </div>
   </template>
+
+  <ul v-else-if="node.style === 'list'" class="list" :class="node.name">
+    <li v-for="(r, i) in shown" :key="keyOf(r, i)">
+      <template v-for="c in columns" :key="c.name"><CellValue v-if="cellShown(c, r)" :value="r[c.field]" :field="c" />{{ ' ' }}</template>
+      <NodeView v-for="n in node.item ?? []" :key="(n as { name?: string }).name" :node="n" :row="r" />
+    </li>
+  </ul>
 
   <template v-else>
     <div class="scroll" tabindex="0" role="region" :aria-label="`${title ?? node.name} table`">

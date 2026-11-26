@@ -138,6 +138,54 @@ function callRow(c: CallRecord, now: number): Row {
   };
 }
 
+// What is wrong now, one row per kind of problem in a fixed order, each worded and linked to the
+// section that shows it; none when nothing is wrong. `connection` is the lifecycle of the page's
+// channel, which the snapshot cannot say.
+export const PROBLEM_WINDOW_MS = 5 * 60_000;
+const LIFECYCLE_PROBLEM: Record<string, Row> = {
+  reconnecting: { kind: 'connection', level: 'warning', text: 'Connection: live updates stopped; the page polls the gateway', href: null },
+  stale: { kind: 'connection', level: 'error', text: 'Connection: the gateway does not answer; the page shows the last snapshot', href: null },
+};
+
+function problems(s: Snapshot, now: number, connection: unknown): Row[] {
+  const out: Row[] = [];
+  const lost = LIFECYCLE_PROBLEM[String(connection)];
+  if (lost) out.push(lost);
+
+  const recent = s.calls.filter((c) => c.route !== null && now - c.started_ms <= PROBLEM_WINDOW_MS);
+  const failing = [...new Set(recent.filter((c) => callResult(c) !== 'ok').map((c) => c.route!))];
+  if (failing.length > 0) {
+    const tally = failing.map((r) => `${r} ${recent.filter((c) => c.route === r && callResult(c) !== 'ok').length} of ${recent.filter((c) => c.route === r).length}`);
+    out.push({ kind: 'routes', level: 'error', text: `Failed calls in the last ${PROBLEM_WINDOW_MS / 60_000} min: ${tally.join(', ')}`, href: '#h-routes' });
+  }
+
+  const p = s.provider;
+  if (p) {
+    const age = p.watchdog_heartbeat_age_ms;
+    const mins = WATCHDOG_STALE_MS / 60_000;
+    if (age === null || age === undefined) out.push({ kind: 'watchdog', level: 'error', text: 'Watchdog heartbeat missing: pods may not be stopped on schedule', href: '#h-provider' });
+    else if (age > WATCHDOG_STALE_MS) out.push({ kind: 'watchdog', level: 'error', text: `Watchdog heartbeat stale: last ${span(age)} ago, over ${mins} min; pods may not be stopped on schedule`, href: '#h-provider' });
+  }
+
+  const limits = (s.limits ?? []).flatMap((l) => {
+    const h: Record<string, string> = {};
+    for (const [k, v] of Object.entries(l.headers)) h[k.toLowerCase()] = v;
+    const states = ['status', '5h-status', '7d-status'].map((k) => h[UNIFIED + k]);
+    const worst = states.includes('rejected') ? 'rejected' : states.includes('allowed_warning') ? 'allowed_warning' : null;
+    if (!worst) return [];
+    const reset = unixMs(h[UNIFIED + 'reset']);
+    return [{ worst, text: `Subscription limits · ${limited(Object.keys(h))}: ${worst === 'rejected' ? 'rejected' : 'allowed (warning)'}${reset !== null ? `, resets ${countdown(now, reset)}` : ''}` }];
+  });
+  if (limits.length > 0) out.push({ kind: 'limits', level: limits.some((l) => l.worst === 'rejected') ? 'error' : 'warning', text: limits.map((l) => l.text).join('; '), href: '#h-kpi' });
+
+  const ending = (p?.pods ?? []).filter((d) => !d.external && d.shutdown && d.shutdown.at_ms - now < SHUTDOWN_SOON_MS);
+  if (ending.length > 0) {
+    const text = ending.map((d) => `Pod ${d.name} shuts down ${countdown(now, d.shutdown!.at_ms)} (${SHUTDOWN_LIMIT[d.shutdown!.limit] ?? d.shutdown!.limit})`).join('; ');
+    out.push({ kind: 'pods', level: 'warning', text, href: '#h-provider' });
+  }
+  return out;
+}
+
 // Every placeholder the document reads, by name.
 export const BINDINGS: Record<string, Answer> = {
   'dashboard.Gateway': (s, now) => [{ uptime_ms: now - s.started_ms }],
@@ -242,6 +290,8 @@ export const BINDINGS: Record<string, Answer> = {
       retry_after: a.retry_after ?? DASH,
       error_body: a.error_body ?? DASH,
     })),
+
+  'dashboard.Problems': (s, now, params) => problems(s, now, params.connection),
 };
 
 export function answer(placeholder: string, snap: Snapshot, now: number, params: Params = {}): Row[] {

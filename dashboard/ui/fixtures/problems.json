@@ -1,0 +1,29 @@
+{
+  "view": "dashboard.Problems",
+  "rows": [
+    {
+      "kind": "routes",
+      "level": "error",
+      "text": "Failed calls in the last 5 min: claude-sonnet 4 of 4, qwen-coder 1 of 1",
+      "href": "#h-routes"
+    },
+    {
+      "kind": "watchdog",
+      "level": "error",
+      "text": "Watchdog heartbeat stale: last 11m 0s ago, over 5 min; pods may not be stopped on schedule",
+      "href": "#h-provider"
+    },
+    {
+      "kind": "limits",
+      "level": "error",
+      "text": "Subscription limits · unified: rejected, resets in 47m 0s",
+      "href": "#h-kpi"
+    },
+    {
+      "kind": "pods",
+      "level": "warning",
+      "text": "Pod b10x-llm-qwen-coder shuts down in 55s (balance floor)",
+      "href": "#h-provider"
+    }
+  ]
+}

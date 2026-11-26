@@ -152,9 +152,11 @@ export interface CollectionNode {
   reads?: Reads;
   live?: Live;
   visible?: string;
-  style?: 'table' | 'cards';
+  style?: 'table' | 'cards' | 'list';
   columns: Field[];
   expand?: Node;
+  // Nodes drawn in each row of a list, after its columns, reading the row as row.
+  item?: Node[];
 }
 
 export interface RecordNode {

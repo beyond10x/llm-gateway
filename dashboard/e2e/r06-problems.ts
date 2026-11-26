@@ -35,9 +35,17 @@ export function kindsOf(s: Snapshot): Kind[] {
   return out;
 }
 
-// The event stream fails: the page polls, and its connection is no longer live.
-export async function dropConnection(page: Page): Promise<void> {
+// The event stream fails. Until the page's first poll it is a reconnect the browser makes on its own.
+export async function failStream(page: Page): Promise<void> {
   await page.evaluate(() => (window as unknown as { __uxStream: { fail(): void } }).__uxStream.fail());
+  await settle(page);
+}
+
+// The event stream fails and stays down through one poll interval (5 s): the header reads polling,
+// and the connection is no longer live.
+export async function dropConnection(page: Page): Promise<void> {
+  await failStream(page);
+  await page.locator('header.top [role="status"]', { hasText: /^polling every / }).waitFor({ timeout: 8_000 });
   await settle(page);
 }
 

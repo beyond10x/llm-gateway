@@ -8,7 +8,7 @@ import { FONT_PX, FlowModel } from '../src/flow.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
 import { openReplay, settle, type Replay } from './harness.ts';
 import { KEY_FONT_PX, THEMES, VIEWPORTS, type Theme, type Viewport } from './profiles.ts';
-import { KINDS, dropConnection, kindsOf, stripLines, type Kind } from './r06-problems.ts';
+import { KINDS, dropConnection, failStream, kindsOf, stripLines, type Kind } from './r06-problems.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
 const viewport = (name: string): Viewport => VIEWPORTS.find((v) => v.name === name)!;
@@ -253,20 +253,17 @@ test.describe('UXF-019', () => {
   for (const theme of THEMES) {
     test(`a connection that is not live is a line of the strip, beside every other problem, on the first screen at 1280x720 — ${theme}`, async ({ browser }) => {
       const page = await pageAt(browser, v);
-      try {
-        const idle = await openReplay(page, scenario('idle'), theme);
-        await stripProblems(page, [], v, `idle ${theme} live`);
-        await dropConnection(idle.page);
-        await stripProblems(page, ['connection'], v, `idle ${theme} not live`);
-      } finally {
-        await page.context().close();
-      }
       const all = await pageAt(browser, v);
       try {
-        const errors = await openReplay(all, scenario('errors'), theme);
-        await dropConnection(errors.page);
+        const [idle, errors] = await Promise.all([openReplay(page, scenario('idle'), theme), openReplay(all, scenario('errors'), theme)]);
+        await stripProblems(page, [], v, `idle ${theme} live`);
+        await failStream(idle.page);
+        await stripProblems(page, [], v, `idle ${theme} reconnecting before the first poll`);
+        await Promise.all([dropConnection(idle.page), dropConnection(errors.page)]);
+        await stripProblems(page, ['connection'], v, `idle ${theme} not live`);
         await stripProblems(all, ['connection', ...kindsOf(errors.states[errors.index]!)], v, `errors ${theme} not live`);
       } finally {
+        await page.context().close();
         await all.context().close();
       }
     });

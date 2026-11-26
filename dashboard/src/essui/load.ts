@@ -20,7 +20,7 @@ const HEADER_KEYS = ['title', 'live', 'actions', 'metrics'];
 const ACTION_KEYS = ['name', 'label', 'as', 'navigate', 'sets', 'choice'];
 const SECTION_KEYS = ['name', 'title', 'visible', 'live', 'states', 'children'];
 const COMPOSITE_KEYS: Record<(typeof COMPOSITES)[number], string[]> = {
-  collection: ['component', 'name', 'reads', 'live', 'visible', 'style', 'columns', 'expand'],
+  collection: ['component', 'name', 'reads', 'live', 'visible', 'style', 'columns', 'expand', 'item'],
   record: ['component', 'name', 'reads', 'live', 'visible', 'fields', 'item'],
   metric: ['component', 'name', 'reads', 'live', 'visible', 'from', 'aggregate', 'field', 'format', 'unit', 'window', 'label'],
   choice: ['component', 'name', 'binds', 'style', 'options', 'visible'],
@@ -160,10 +160,11 @@ function checkNode(p: Problems, path: string, node: unknown, doc: Obj, sectionKe
   if (node.live !== undefined) checkLive(p, `${path}/live`, node.live, doc);
   switch (kind) {
     case 'collection':
-      if (node.style !== undefined && node.style !== 'table' && node.style !== 'cards') p.add(path, `style '${String(node.style)}' is not drawn`);
+      if (node.style !== undefined && !['table', 'cards', 'list'].includes(String(node.style))) p.add(path, `style '${String(node.style)}' is not drawn`);
       if (!Array.isArray(node.columns)) p.add(path, 'a collection lists its columns');
       else node.columns.forEach((f, i) => checkField(p, `${path}/columns/${isObj(f) ? String(f.name) : i}`, f, doc));
       if (node.expand !== undefined) checkNode(p, `${path}/expand`, node.expand, doc);
+      (Array.isArray(node.item) ? node.item : []).forEach((n, i) => checkNode(p, `${path}/item/${isObj(n) ? String(n.name) : i}`, n, doc));
       break;
     case 'record':
       (Array.isArray(node.fields) ? node.fields : []).forEach((f, i) => checkField(p, `${path}/fields/${isObj(f) ? String(f.name) : i}`, f, doc));

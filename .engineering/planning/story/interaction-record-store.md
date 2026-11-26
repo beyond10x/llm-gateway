@@ -2,7 +2,7 @@
 format: aep.planning-md/3
 id: story:interaction-record-store
 kind: story
-status: proposed
+status: active
 title: The binary lifts each finished call into session records in a SQLite file
 relations:
 - decomposes: epic:interaction-records
@@ -10,9 +10,10 @@ relations:
 - depends_on: story:finished-call-facts
 - depends_on: story:test-step-within-budget
 - depends_on: story:cli-test-port-race
-revision: 4
+revision: 5
 transitions:
 - {from: "draft", to: "proposed", at: "2026-11-26T02:21:06Z", actor: "human:operator", revision: 4, decided_on: {"recorded":{"review_outcome":1}}}
+- {from: "proposed", to: "active", at: "2026-11-26T04:20:23Z", actor: "human:operator", revision: 5, decided_on: {"recorded":{"review_outcome":1}}}
 ---
 ## Outcome
 

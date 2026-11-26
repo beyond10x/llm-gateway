@@ -2,11 +2,13 @@
 format: aep.planning-md/3
 id: dependency-blocker:sessionspec-records-release
 kind: dependency-blocker
-status: open
+status: cleared
 title: sessionspec-records has no published tag to link
 relations:
 - blocks: story:interaction-record-store
-revision: 1
+revision: 2
+transitions:
+- {from: "open", to: "cleared", at: "2026-11-26T04:20:22Z", actor: "human:operator", revision: 2, decided_on: {"recorded":{"verification":1}}}
 ---
 ## What is missing
 

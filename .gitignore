@@ -3,3 +3,4 @@
 .engineering/.aep-planning-writer*.lock
 .engineering/migrations/
 /.engineering/drafts/
+/dashboard/ux/.metrics/

@@ -13,8 +13,8 @@ test.skip(!process.env.UX_ROUND, 'a round runs through `pnpm ux:round <id>`');
 for (const scenario of SCENARIOS) {
   for (const viewport of VIEWPORTS) {
     for (const theme of THEMES) {
-      test(`round ${scenario.name} ${viewport.name} ${theme}`, async ({ browser }, info) => {
-        const dir = metricsDir(info, 'round');
+      test(`round ${scenario.name} ${viewport.name} ${theme}`, async ({ browser }) => {
+        const dir = metricsDir('round');
         const shot = viewport.gating ? join(dir, 'shots', `${scenario.name}__${viewport.name}__${theme}.png`) : undefined;
         writeMeasurement(dir, await measure(browser, scenario, viewport, theme, shot));
       });

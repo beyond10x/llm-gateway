@@ -525,7 +525,7 @@ fn pass_answer(
                 break;
             }
             Err(_) => {
-                call.cut_short = true;
+                call.unfinished = Some(super::Unfinished::CutShort);
                 break;
             }
         }
@@ -553,6 +553,7 @@ fn pass_answer(
         }
     }
     call.usage = scanner.usage();
+    call.note_terminal_error(&scanner);
     if error && encoded.is_some() && !kept.is_empty() {
         return Some(redact(&String::from_utf8_lossy(&kept)));
     }

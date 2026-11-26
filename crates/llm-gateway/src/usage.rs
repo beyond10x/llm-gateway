@@ -21,6 +21,10 @@
 //! is a whole number of at most 19 digits; a value the answer reported as zero is zero, and a
 //! counter it never sent stays `None`. Each counter keeps the largest value reported.
 //!
+//! It also notes whether the answer carried its wire's terminal error
+//! ([`UsageScanner::terminal_error`]): a top-level object whose `type` is `error` or
+//! `response.failed`, or whose `error` is an object.
+//!
 //! The scanner keeps no bytes of the answer between pieces: its state is the path to the
 //! innermost object it reads (at most five levels; what lies deeper is only counted) and the
 //! name or number it is reading, so a key or value split across two pieces is read whole.
@@ -134,8 +138,8 @@ enum Token {
     Between,
     /// A member name of an object the scanner reads.
     Name { name: Name, escaped: bool },
-    /// Any other string: its bytes are passed over.
-    Text { escaped: bool },
+    /// Any other string, passed over; a top-level object's `type` is kept in `value`.
+    Text { escaped: bool, value: Option<Name> },
     /// A number, the value of `field` when it feeds a counter; `None` once it is no count.
     Number {
         field: Option<Field>,
@@ -158,6 +162,8 @@ pub struct UsageScanner {
     /// The member name read last in the innermost open object, until its value is read.
     member: Option<Name>,
     token: Token,
+    /// A top-level object was its wire's terminal error.
+    terminal_error: bool,
 }
 
 impl UsageScanner {
@@ -171,6 +177,15 @@ impl UsageScanner {
     /// What the answer reported so far.
     pub fn usage(&self) -> Usage {
         self.usage
+    }
+
+    /// Whether the answer so far carried its wire's terminal error: a top-level object whose
+    /// `type` is `error` (the messages wire's `error` event, the responses wire's `error`
+    /// event) or `response.failed`, or one whose `error` is an object (the chat wire's error
+    /// chunk, `data: {"error":{…}}`). An `error` of `null`, and a `type` or `error` below the
+    /// top level (a tool call's arguments, a response's own `error`), is none.
+    pub fn terminal_error(&self) -> bool {
+        self.terminal_error
     }
 
     /// The innermost open container's place, [`Place::Other`] when none is open.
@@ -202,15 +217,24 @@ impl UsageScanner {
                     name.push(byte);
                 }
             }
-            Token::Text { escaped } => {
+            Token::Text { escaped, value } => {
                 if byte == b'\n' {
                     self.broken();
                 } else if *escaped {
                     *escaped = false;
                 } else if byte == b'\\' {
                     *escaped = true;
+                    if let Some(value) = value {
+                        value.unread = true;
+                    }
                 } else if byte == b'"' {
+                    if let Some(b"error" | b"response.failed") = value.as_ref().and_then(Name::get)
+                    {
+                        self.terminal_error = true;
+                    }
                     self.token = Token::Between;
+                } else if let Some(value) = value {
+                    value.push(byte);
                 }
             }
             Token::Number {
@@ -262,12 +286,26 @@ impl UsageScanner {
                         escaped: false,
                     }
                 } else {
-                    self.member = None;
-                    Token::Text { escaped: false }
+                    let member = self.member.take();
+                    let typed = self.innermost() == Place::Root
+                        && self.reading()
+                        && member.as_ref().and_then(Name::get) == Some(b"type");
+                    Token::Text {
+                        escaped: false,
+                        value: typed.then_some(Name::EMPTY),
+                    }
                 };
             }
             b'{' | b'[' => {
                 let member = self.member.take();
+                if byte == b'{'
+                    && self.innermost() == Place::Root
+                    && self.reading()
+                    && member.as_ref().and_then(Name::get) == Some(b"error")
+                {
+                    // The chat wire's error chunk, `{"error":{…}}`.
+                    self.terminal_error = true;
+                }
                 if self.reading() {
                     let place = if byte == b'{' {
                         self.innermost().child(member.as_ref().and_then(Name::get))
@@ -514,6 +552,79 @@ mod tests {
         ];
         for (case, bytes, usage) in cases {
             assert_eq!(read(&[bytes]), usage, "{case}");
+        }
+    }
+
+    /// Whether `bytes`, fed in two pieces cut at `cut`, carried a terminal error.
+    fn ended_in_error(bytes: &[u8], cut: usize) -> bool {
+        let mut scanner = UsageScanner::default();
+        let (left, right) = bytes.split_at(cut);
+        scanner.feed(left);
+        scanner.feed(right);
+        scanner.terminal_error()
+    }
+
+    /// Each wire's terminal error after output, as docs/gateway.md "The answer" names them and
+    /// llm's encoders write them, and answers that name an error without being one.
+    #[test]
+    fn each_wires_terminal_error_is_noted_and_an_error_named_elsewhere_is_not() {
+        let ended: [(&str, &[u8]); 5] = [
+            (
+                "messages, error event",
+                b"event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":1}}}\n\nevent: error\ndata: {\"type\":\"error\",\"error\":{\"type\":\"overloaded_error\",\"message\":\"Overloaded\"}}\n\n",
+            ),
+            (
+                "responses, response.failed",
+                b"event: response.failed\ndata: {\"type\":\"response.failed\",\"sequence_number\":3,\"response\":{\"status\":\"failed\",\"error\":{\"code\":\"server_error\",\"message\":\"x\"}}}\n\n",
+            ),
+            (
+                "responses, error event",
+                b"event: error\ndata: {\"type\":\"error\",\"code\":\"server_error\",\"message\":\"x\",\"param\":null}\n\n",
+            ),
+            (
+                "chat, error chunk",
+                b"data: {\"choices\":[{\"delta\":{\"content\":\"Hel\"}}]}\n\ndata: {\"error\":{\"code\":\"upstream-failed\",\"message\":\"x\"}}\n\n",
+            ),
+            (
+                "responses, a whole response that failed",
+                br#"{"id":"r","object":"response","status":"failed","error":{"code":"server_error","message":"x"},"output":[]}"#,
+            ),
+        ];
+        let not_ended: [(&str, &[u8]); 6] = [
+            (
+                "responses, completed with error null",
+                b"event: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"error\":null,\"usage\":{\"input_tokens\":1}}}\n\n",
+            ),
+            (
+                "responses, a whole response with error null",
+                br#"{"id":"r","object":"response","status":"completed","error":null,"output":[]}"#,
+            ),
+            (
+                "messages, a tool's input naming an error",
+                br#"{"type":"message","content":[{"type":"tool_use","input":{"type":"error","error":{"type":"x"}}}],"usage":{"input_tokens":1}}"#,
+            ),
+            (
+                "chat, a tool's arguments naming an error",
+                br#"{"choices":[{"message":{"tool_calls":[{"function":{"arguments":{"error":{"code":"x"}}}}]}}]}"#,
+            ),
+            (
+                "messages, text that says it",
+                b"data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"{\\\"type\\\":\\\"error\\\"}\"}}\n\n",
+            ),
+            (
+                "a type that only starts with error",
+                br#"{"type":"error_count","errors":{"error":{}}}"#,
+            ),
+        ];
+        for (answer, bytes) in ended {
+            for cut in 0..=bytes.len() {
+                assert!(ended_in_error(bytes, cut), "{answer}, cut at {cut}");
+            }
+        }
+        for (answer, bytes) in not_ended {
+            for cut in 0..=bytes.len() {
+                assert!(!ended_in_error(bytes, cut), "{answer}, cut at {cut}");
+            }
         }
     }
 }

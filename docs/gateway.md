@@ -1294,6 +1294,17 @@ estimate:
   nothing;
 - the counters agree with each other (no more cache tokens than prompt tokens).
 
+A terminal error after the head leaves the call without a cost on every relay path: the byte
+relay, a client-credential route and a translated answer. The gateway reads it from the answer's
+bytes as they pass, as it reads the usage, whether a translator told it
+(`TranslatedAnswer::failed`) or not: a top-level object whose `type` is `error` (the messages
+wire's `error` event, the responses wire's `error` event) or `response.failed` (responses), or
+whose `error` is an object (the chat wire's error chunk, `data: {"error":{…}}`). An `error` of
+`null`, as a completed response carries, and a `type` or `error` below the top level, such as
+inside a tool call's arguments, is none. Such a call's outcome is what [call
+outcomes](#call-outcomes) gives it: `upstream_error` for a translated answer that told it,
+`ok` for a relayed one.
+
 The binary writes it as the `cost_usd` field of its `usage` event, and the record `GET /v1/calls/{id}`
 answers carries it as its key `cost_usd`, after the token keys ([call ids and call
 records](#call-ids-and-call-records)).

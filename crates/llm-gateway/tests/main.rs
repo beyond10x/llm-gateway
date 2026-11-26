@@ -10,6 +10,7 @@ mod adversary_public_listing;
 mod adversary_relay;
 mod adversary_w02_translation_p2;
 mod adversary_w03_relay_read_interrupted;
+mod adversary_w05_finished_calls;
 mod adversary_w05_tool_calling;
 mod adversary_w06_pass_2;
 mod adversary_w06_profiles;

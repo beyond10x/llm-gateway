@@ -4,7 +4,7 @@ import { expect, test, type Browser, type Page } from '@playwright/test';
 import type { Snapshot } from '../src/extra.ts';
 import { Ledger, type SessionDef } from '../ux/scenarios/build.ts';
 import { SCENARIOS, type Scenario } from '../ux/scenarios/index.ts';
-import { openReplay, type Replay } from './harness.ts';
+import { openReplay, settle, type Replay } from './harness.ts';
 import { VIEWPORTS, type Viewport } from './profiles.ts';
 
 const scenario = (name: string): Scenario => SCENARIOS.find((s) => s.name === name)!;
@@ -89,6 +89,50 @@ test.describe('UXF-013', () => {
       } finally {
         await page.context().close();
       }
+    });
+  }
+});
+
+// Every word of a limit tile's value or second line that the browser broke over two lines; a word
+// ends at white space or at an underscore, so a value may wrap at "_" but never inside a word.
+function brokenWords(): string[] {
+  const out: string[] = [];
+  for (const el of document.querySelectorAll('.limit .tile .value, .limit .tile .sub')) {
+    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = n.textContent ?? '';
+      for (const m of text.matchAll(/[^\s_]+/g)) {
+        const range = document.createRange();
+        range.setStart(n, m.index);
+        range.setEnd(n, m.index + m[0].length);
+        const lines = new Set([...range.getClientRects()].filter((r) => r.width > 0).map((r) => Math.round(r.top)));
+        if (lines.size > 1) out.push(`"${m[0]}" in "${(el.textContent ?? '').trim()}"`);
+      }
+    }
+  }
+  return out;
+}
+
+test.describe('UXF-006', () => {
+  for (const name of ['busy', 'errors']) {
+    test(`limit status values never break inside a word, at every viewport and state, and keep the raw value in their title — ${name}`, async ({ page }) => {
+      const replay = await openReplay(page, scenario(name), 'light');
+      const found = new Set<string>();
+      await eachState(replay, async () => {
+        for (const v of VIEWPORTS) {
+          await page.setViewportSize({ width: v.width, height: v.height });
+          await settle(page);
+          for (const w of await page.evaluate(brokenWords)) found.add(`${v.name}: ${w}`);
+        }
+      });
+      expect([...found]).toEqual([]);
+      // The Status tile of every limit names the raw header value in its title.
+      const raw = replay.states[replay.states.length - 1]!.limits!.map((l) => {
+        const h = Object.fromEntries(Object.entries(l.headers).map(([k, v]) => [k.toLowerCase(), v]));
+        return h['anthropic-ratelimit-unified-status'];
+      });
+      const titles = await page.evaluate(() => [...document.querySelectorAll('.limit')].map((l) => l.querySelector('.tile .value')?.getAttribute('title') ?? null));
+      expect(titles).toEqual(raw);
     });
   }
 });

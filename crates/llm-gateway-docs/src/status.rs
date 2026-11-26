@@ -503,6 +503,13 @@ pub const CAPABILITIES: &[Capability] = &[
     ),
     shipped(
         "Observability",
+        "Finished calls",
+        "Every call with an id hands an embedding one finished-call value: its id, session hash, harness, path, wire, route, upstream, attempts, times, cost and how it ended, the facts sessionspec's GatewayFacts names. With a declared bound it also hands a copy of the request and the answer the client received, or both sizes when they pass the bound; without one no byte is copied. The library carries the port; the binary composes none yet.",
+        "crates/llm-gateway/tests/finished_calls.rs::each_copy_is_the_request_and_the_answer_as_the_client_received_it",
+        None,
+    ),
+    shipped(
+        "Observability",
         "Dashboard",
         "GET /dashboard shows calls with every attempt, sessions, routes, tokens per second, cache hit rates, subscription limits, the Runpod account and a vLLM server's prefix cache.",
         "crates/llm-gateway/tests/adversary_local_open.rs::adv_dashboard_counts_tokens_per_session_and_keeps_no_header_value",

@@ -59,3 +59,66 @@ jobs:
           name: serving-conformance
           path: target/conformance
           if-no-files-found: error
+  dashboard:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: dashboard
+    env:
+      COREPACK_ENABLE_DOWNLOAD_PROMPT: "0"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Decide whether the change reaches the dashboard
+        id: changes
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            git diff --name-only "origin/$BASE_REF...HEAD" > "$RUNNER_TEMP/changed-paths"
+            run="$(sh ci/changed.sh < "$RUNNER_TEMP/changed-paths")"
+          else
+            run=yes
+          fi
+          echo "dashboard checks: $run"
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6.5.0
+        if: steps.changes.outputs.run == 'yes'
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        if: steps.changes.outputs.run == 'yes'
+        run: |
+          corepack enable
+          pnpm install --frozen-lockfile
+      - name: Type check
+        if: steps.changes.outputs.run == 'yes'
+        run: pnpm typecheck
+      - name: Unit tests
+        if: steps.changes.outputs.run == 'yes'
+        run: pnpm test
+      - name: Build the page and compare it with the committed one
+        if: steps.changes.outputs.run == 'yes'
+        run: |
+          pnpm build
+          git diff --exit-code ../crates/llm-gateway/src/dashboard.html
+      - name: Install Chromium for Playwright
+        if: steps.changes.outputs.run == 'yes'
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Layout contract, hard gates and ratchet
+        if: steps.changes.outputs.run == 'yes'
+        run: timeout 120 pnpm e2e --workers=2
+      - name: Playwright report
+        if: failure() && steps.changes.outputs.run == 'yes'
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: dashboard-playwright
+          path: |
+            dashboard/playwright-report
+            dashboard/test-results
+            dashboard/ux/.metrics
+          include-hidden-files: true
+          if-no-files-found: ignore

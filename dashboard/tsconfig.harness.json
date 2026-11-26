@@ -15,5 +15,5 @@
     "skipLibCheck": true,
     "noEmit": true
   },
-  "include": ["e2e/**/*.ts", "ux/**/*.ts", "playwright.config.ts", "src/extra.ts", "src/fixture.ts", "src/generated/snapshot.ts"]
+  "include": ["ci/**/*.ts", "e2e/**/*.ts", "ux/**/*.ts", "playwright.config.ts", "src/extra.ts", "src/fixture.ts", "src/generated/snapshot.ts"]
 }

@@ -7,31 +7,29 @@ title: 'R-07 change set: heading size, failing-route line, Provider labels, bala
 summary: Findings UXF-021, UXF-026, UXF-018, UXF-020 and UXF-017, each failing-first; beside them tool defects T18 to T24 and the gate step back under 70 s wall.
 relations:
 - decomposes: story:dashboard-ux-loop
-revision: 1
+revision: 2
 ---
-<!-- Starting point for a `task` artifact, seeded by `aep artifact new task <name>`.
-     No frontmatter here on purpose: the `---` block is written by the CLI from the id, kind, status
-     and relations you gave it, and a second copy in this file would be the one that went stale.
-     Delete the italic guidance as you fill each section. -->
-
-# Task: <name>
+# Task: R-07 change set
 
 ## What
 
-*The concrete unit of work, in the active voice. One task, one thing — if this needs an "and", it is
-two tasks or it is a story.*
+Fix UXF-021, UXF-026, UXF-018, UXF-020 and UXF-017 failing-first, and beside them fix tool defects
+T18 to T24 of the R-06 report review and bring the gate step back under 70 s wall.
 
 ## Why
 
-*Which story or specification this serves. The `decomposes` or `implements` relation carries the
-edge; this says what would be lost by dropping the task.*
+story:dashboard-ux-loop takes each round's change set as one task; dashboard/ux/rounds/R-06/triage.md
+ranked these five highest. UXF-026 carries the half of UXF-019 that R-06 did not move.
 
 ## Done When
 
-*The observable condition that ends it. A task whose completion is a matter of opinion is one that
-gets marked done twice and finished never.*
+Each finding has a red test before its fix, a closed record with its asset, and round R-07 shows
+heading_font.deficit_px 0, the screen-only failing-route task at glance 1 with 0 actions in busy and
+errors, assertions on the Provider heading, the balance tile row and each scroll cue, and the e2e
+step under 70 s wall.
 
 ## Notes
 
-*Anything the next person needs and cannot derive: the file to start in, the command to run, the
-trap somebody already fell into.*
+Outcome (R-07 reviews): all five targets moved, judged with the R-06 page under the R-07 harness.
+The e2e step ran 68 s wall on a quiet host and 115 s on a loaded one; T25 takes the margin. The
+scroll cue added layout shift at 390x844, filed as UXF-030 and taken into R-08.

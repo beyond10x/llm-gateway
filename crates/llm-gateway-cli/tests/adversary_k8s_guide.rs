@@ -225,9 +225,11 @@ fn serve(dir: &Path) -> Gateway {
     let mut line = String::new();
     while !line.starts_with(LISTENING) {
         line.clear();
-        if stderr.read_line(&mut line).unwrap() == 0 {
-            panic!("did not start: {line:?}");
-        }
+        assert_ne!(
+            stderr.read_line(&mut line).unwrap(),
+            0,
+            "did not start: {line:?}"
+        );
     }
     let address = line
         .trim_end()

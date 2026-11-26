@@ -92,7 +92,7 @@ const limits = computed<Limit[]>(() =>
         <div class="value">{{ count(kpi.output_tokens) }}</div>
         <div class="sub">{{ tps(kpi.output_rate) }} <span class="muted">last 60 s</span></div>
       </div>
-      <div v-if="kpi" class="tile">
+      <div v-if="kpi" class="tile wide">
         <div class="label"><abbr title="cache read / every prompt token, over every route: Anthropic's reported cache, and a vLLM server's prefix-cache hits over its queries">Cache hit rate</abbr></div>
         <div class="value">{{ pct(kpi.cache_hit_rate) }}</div>
         <div class="sub">

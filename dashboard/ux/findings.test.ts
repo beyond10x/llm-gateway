@@ -52,20 +52,60 @@ function assetProblem(asset: string, closed: boolean, root: string): string | nu
   return null;
 }
 
-// Every `path:line` and `path:from-to` of the evidence lines, path from the repository root; a bare
-// number after a path belongs to that path. Text in parentheses is a comment.
-export function evidenceRefs(value: string): { path: string; line: number }[] {
-  const out: { path: string; line: number }[] = [];
-  const bare = value.replace(/\([^)]*\)/g, ' ').replace(/`[^`]*`/g, ' ');
+// One cited place: a file from the repository root, the lines it cites (none: the whole file), and
+// the tokens the record names for it (the backticked text of its comment).
+export interface EvidenceRef {
+  path: string;
+  from: number | null;
+  to: number | null;
+  tokens: string[];
+}
+
+// Reads `path:line`, `path:from-to` and a bare `path`; a bare number after a path belongs to that
+// path. A comment in parentheses belongs to every reference since the previous comment, and its
+// backticked text is the tokens the cited lines must hold.
+export function evidenceRefs(value: string): EvidenceRef[] {
+  const out: EvidenceRef[] = [];
+  let pending: EvidenceRef[] = [];
   let path: string | null = null;
-  for (const token of bare.split(/[\s,;]+/).filter(Boolean)) {
-    const withPath = token.match(/^([\w./-]+\.\w+):(\d+)(?:-(\d+))?$/);
-    const bareLine = token.match(/^(\d+)(?:-(\d+))?$/);
-    if (withPath) {
+  let i = 0;
+  while (i < value.length) {
+    const ch = value[i]!;
+    if (ch === '(') {
+      let depth = 0;
+      let j = i;
+      let inTick = false;
+      for (; j < value.length; j++) {
+        const c = value[j]!;
+        if (c === '`') inTick = !inTick;
+        else if (!inTick && c === '(') depth += 1;
+        else if (!inTick && c === ')' && --depth === 0) break;
+      }
+      const comment = value.slice(i + 1, j);
+      const tokens = [...comment.matchAll(/`([^`]+)`/g)].map((m) => m[1]!);
+      for (const r of pending) r.tokens = tokens;
+      pending = [];
+      i = j + 1;
+      continue;
+    }
+    const atStart = i === 0 || /[\s,;]/.test(value[i - 1]!);
+    const rest = atStart ? value.slice(i) : '';
+    const withPath = rest.match(/^([\w./-]+\.\w+)(?::(\d+)(?:-(\d+))?)?(?![\w.])/);
+    const bare = path ? rest.match(/^(\d+)(?:-(\d+))?(?![\w.])/) : null;
+    if (withPath && /[/]/.test(withPath[1]!)) {
       path = withPath[1]!;
-      out.push({ path, line: Number(withPath[3] ?? withPath[2]) });
-    } else if (bareLine && path) {
-      out.push({ path, line: Number(bareLine[2] ?? bareLine[1]) });
+      const from = withPath[2] ? Number(withPath[2]) : null;
+      const ref = { path, from, to: from === null ? null : Number(withPath[3] ?? withPath[2]), tokens: [] };
+      out.push(ref);
+      pending.push(ref);
+      i += withPath[0].length;
+    } else if (bare && path) {
+      const ref = { path, from: Number(bare[1]), to: Number(bare[2] ?? bare[1]), tokens: [] };
+      out.push(ref);
+      pending.push(ref);
+      i += bare[0].length;
+    } else {
+      i += 1;
     }
   }
   return out;
@@ -74,13 +114,23 @@ export function evidenceRefs(value: string): { path: string; line: number }[] {
 function evidenceProblems(value: string, repo: string): string[] {
   const out: string[] = [];
   for (const ref of evidenceRefs(value)) {
+    const where = ref.from === null ? ref.path : `${ref.path}:${ref.from}${ref.to !== ref.from ? `-${ref.to}` : ''}`;
     const file = join(repo, ref.path);
     if (!existsSync(file)) {
       out.push(`evidence ${ref.path} does not exist`);
       continue;
     }
-    const lines = readFileSync(file, 'utf8').split('\n').length;
-    if (ref.line > lines) out.push(`evidence ${ref.path}:${ref.line} is past the end (${lines} lines)`);
+    const lines = readFileSync(file, 'utf8').split('\n');
+    if (ref.to !== null && ref.to > lines.length) {
+      out.push(`evidence ${ref.path}:${ref.to} is past the end (${lines.length} lines)`);
+      continue;
+    }
+    if (ref.tokens.length === 0) {
+      out.push(`evidence ${where} names no token in backticks to find there`);
+      continue;
+    }
+    const cited = ref.from === null ? lines.join('\n') : lines.slice(ref.from - 1, ref.to!).join('\n');
+    if (!ref.tokens.some((t) => cited.includes(t))) out.push(`evidence ${where} holds none of ${ref.tokens.map((t) => `\`${t}\``).join(', ')}`);
   }
   return out;
 }
@@ -108,7 +158,7 @@ const records = readdirSync(DIR)
   .map((f) => parse(f, readFileSync(join(DIR, f), 'utf8')));
 
 const record = (fields: Record<string, string>) =>
-  parse('UXF-999.md', `---\n${Object.entries({ id: 'UXF-999', title: 't', class: 'layout', severity: 'S2', metric: 'm', status: 'closed', found_by: 'f', evidence_recording: 'none', evidence_screenshot: 's', evidence_lines: 'dashboard/src/App.vue:1', regression_asset: 'none', ...fields }).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n`);
+  parse('UXF-999.md', `---\n${Object.entries({ id: 'UXF-999', title: 't', class: 'layout', severity: 'S2', metric: 'm', status: 'closed', found_by: 'f', evidence_recording: 'none', evidence_screenshot: 's', evidence_lines: 'dashboard/src/App.vue:1 (`<script setup`)', regression_asset: 'none', ...fields }).map(([k, v]) => `${k}: ${v}`).join('\n')}\n---\n`);
 
 test('every finding record is complete, and no closed S1 or S2 finding lacks a regression asset', () => {
   expect(records.length).toBeGreaterThan(0);
@@ -133,23 +183,37 @@ test('break: a closed record whose asset names no declared e2e test is refused',
 
 test('break: evidence lines past the end of their file, or in a file that does not exist, are refused', () => {
   const lines = readFileSync(join(REPO, 'dashboard/src/App.vue'), 'utf8').split('\n').length;
-  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${lines + 1} (a line past the end), 3`, regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
+  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${lines + 1} (a line past the end, \`x\`)`, regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
     `UXF-999.md: evidence dashboard/src/App.vue:${lines + 1} is past the end (${lines} lines)`,
   ]);
-  expect(problems(record({ evidence_lines: 'dashboard/src/App.vue:2, 99999-99999; dashboard/src/Gone.vue:1', regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
+  expect(problems(record({ evidence_lines: 'dashboard/src/App.vue:99999-99999 (\`x\`); dashboard/src/Gone.vue:1 (\`y\`)', regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' }))).toEqual([
     `UXF-999.md: evidence dashboard/src/App.vue:99999 is past the end (${lines} lines)`,
     'UXF-999.md: evidence dashboard/src/Gone.vue does not exist',
   ]);
 });
 
-test('evidence references are read with their ranges and bare line numbers', () => {
-  expect(evidenceRefs('dashboard/src/App.vue:75-78, 125-128 (`watchdogStale` sets class `alarm`, 9); dashboard/src/style.css:122')).toEqual([
-    { path: 'dashboard/src/App.vue', line: 78 },
-    { path: 'dashboard/src/App.vue', line: 128 },
-    { path: 'dashboard/src/style.css', line: 122 },
+test('break: a cited line that does not hold a token the record names is refused, as is a citation without a token', () => {
+  const source = readFileSync(join(REPO, 'dashboard/src/App.vue'), 'utf8').split('\n');
+  const at = source.findIndex((l) => l.includes('WATCHDOG_STALE_MS =')) + 1;
+  const asset = { regression_asset: 'e2e/gates.e2e.ts "affordance: a theme toggle"' };
+  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${at} (\`WATCHDOG_STALE_MS\`)`, ...asset }))).toEqual([]);
+  expect(problems(record({ evidence_lines: 'dashboard/src/App.vue (\`WATCHDOG_STALE_MS\`)', ...asset }))).toEqual([]);
+  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${at + 1} (\`WATCHDOG_STALE_MS\`)`, ...asset }))).toEqual([
+    `UXF-999.md: evidence dashboard/src/App.vue:${at + 1} holds none of \`WATCHDOG_STALE_MS\``,
+  ]);
+  expect(problems(record({ evidence_lines: `dashboard/src/App.vue:${at} (the stale limit)`, ...asset }))).toEqual([
+    `UXF-999.md: evidence dashboard/src/App.vue:${at} names no token in backticks to find there`,
   ]);
 });
 
+test('evidence references are read with their ranges, bare line numbers, whole files and the tokens of their comment', () => {
+  expect(evidenceRefs('dashboard/src/App.vue:75-78, 125-128 (`watchdogStale` sets class `alarm`, 9); dashboard/src/style.css:122 (`.x` (a) b), dashboard/src/flow.ts (`FONT_PX`)')).toEqual([
+    { path: 'dashboard/src/App.vue', from: 75, to: 78, tokens: ['watchdogStale', 'alarm'] },
+    { path: 'dashboard/src/App.vue', from: 125, to: 128, tokens: ['watchdogStale', 'alarm'] },
+    { path: 'dashboard/src/style.css', from: 122, to: 122, tokens: ['.x'] },
+    { path: 'dashboard/src/flow.ts', from: null, to: null, tokens: ['FONT_PX'] },
+  ]);
+});
 test('every known hard-gate failure names an open finding', () => {
   const open = new Set(records.filter((r) => r.status === 'open').map((r) => r.id));
   for (const k of KNOWN_FAILURES) expect(open.has(k.finding), k.finding).toBe(true);

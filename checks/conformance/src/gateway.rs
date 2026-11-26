@@ -1102,6 +1102,22 @@ mod relay {
         secret_upstream: AtomicBool,
         progress: Mutex<Arc<Progress>>,
         stopping: AtomicBool,
+        /// TLS handshakes a pod began and has not recorded yet. A pod whose certificate the
+        /// gateway refuses records `tls-refused` after the gateway already gave up on it, so the
+        /// run waits for that record before its next step ([`Shared::settle`]).
+        handshaking: AtomicUsize,
+    }
+
+    impl Shared {
+        /// Waits, at most [`WAIT`], until no pod is in a TLS handshake it has not recorded, so
+        /// the `connections` fact lists each pod's connection in the order the gateway opened
+        /// them, whichever thread ran first.
+        fn settle(&self) {
+            let deadline = Instant::now() + WAIT;
+            while self.handshaking.load(Ordering::SeqCst) > 0 && Instant::now() < deadline {
+                thread::sleep(Duration::from_millis(1));
+            }
+        }
     }
 
     struct Pod {
@@ -1231,9 +1247,23 @@ mod relay {
         }
     }
 
+    /// The TLS handshake on `socket`, counted in [`Shared::handshaking`] from before the pod's
+    /// certificate is sent until a refusal is recorded or the handshake succeeded.
+    fn handshake(
+        socket: TcpStream,
+        config: &Arc<ServerConfig>,
+        pod: &str,
+        shared: &Shared,
+    ) -> Option<Connection> {
+        shared.handshaking.fetch_add(1, Ordering::SeqCst);
+        let connection = handshake_recorded(socket, config, pod, shared);
+        shared.handshaking.fetch_sub(1, Ordering::SeqCst);
+        connection
+    }
+
     /// The TLS handshake on `socket`; on failure the connection is recorded `tls-refused` with
     /// whatever request bytes were decrypted (none are expected) and `None` returned.
-    fn handshake(
+    fn handshake_recorded(
         socket: TcpStream,
         config: &Arc<ServerConfig>,
         pod: &str,
@@ -3101,6 +3131,7 @@ mod relay {
             // A record is made before the gateway closes the connection, so every record of
             // this request is kept by the time its answer has been read to the end.
             let elapsed = started.elapsed();
+            shared.settle();
             let (made, handed) = records.take_facts(elapsed, run_started.elapsed());
             recorded.extend(made);
             finished.extend(handed);

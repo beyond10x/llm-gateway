@@ -480,12 +480,9 @@ fn sa_an_unreachable_api_is_unavailable() {
     let api = FakeApi::start();
     let fixture = Fixture::new("sa-unreachable");
     let (ca, own) = mounted(&fixture, &api);
-    // A port nothing listens on.
-    let closed = TcpListener::bind("127.0.0.1:0")
-        .unwrap()
-        .local_addr()
-        .unwrap()
-        .port();
+    // A port nothing listens on, held by the test so no other test can bind it.
+    let held = support::Refusing::new();
+    let closed = held.address.port();
     let text = document(
         "127.0.0.1:0",
         None,

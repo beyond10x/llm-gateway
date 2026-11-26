@@ -42,10 +42,20 @@ const SMALL_CHAT: &str =
 struct Pod {
     address: SocketAddr,
     thread: Option<JoinHandle<usize>>,
+    /// A pod of no answers refuses every connection, on a port it holds for its whole life.
+    _refusing: Option<support::Refusing>,
 }
 
 impl Pod {
     fn start(answers: usize, body: &'static str) -> Self {
+        if answers == 0 {
+            let refusing = support::Refusing::new();
+            return Self {
+                address: refusing.address,
+                thread: None,
+                _refusing: Some(refusing),
+            };
+        }
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let address = listener.local_addr().unwrap();
         let thread = thread::spawn(move || {
@@ -75,6 +85,7 @@ impl Pod {
         Self {
             address,
             thread: Some(thread),
+            _refusing: None,
         }
     }
 
@@ -1488,12 +1499,10 @@ fn ollama_status_is_read_from_tags_then_ps_and_sends_nothing_else() {
         }
         assert!(ollama.storing().is_empty());
     }
-    // No server: nothing listens at the address.
-    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = closed.local_addr().unwrap();
-    drop(closed);
+    // No server: nothing listens at the address, a port the test holds.
+    let closed = support::Refusing::new();
     let targets = ollama_targets(
-        &format!("http://{address}"),
+        &format!("http://{}", closed.address),
         "qwen2.5:1.5b",
         every_read(WAIT),
     );
@@ -1634,11 +1643,9 @@ fn ollama_acquire_refuses_only_a_model_the_server_answered_without() {
         assert_eq!(target.authority(), pulled.address.to_string());
         assert_eq!(pulled.lines(), ["GET /api/tags", "GET /api/ps"]);
     }
-    let closed = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = closed.local_addr().unwrap();
-    drop(closed);
+    let closed = support::Refusing::new();
     let targets = ollama_targets(
-        &format!("http://{address}"),
+        &format!("http://{}", closed.address),
         "qwen2.5:1.5b",
         every_read(WAIT),
     );

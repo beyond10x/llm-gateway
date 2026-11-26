@@ -94,12 +94,9 @@ impl Endpoint {
     }
 }
 
-/// A loopback address nothing listens on.
-fn closed_port() -> SocketAddr {
-    let listener = TcpListener::bind("127.0.0.1:0").unwrap();
-    let address = listener.local_addr().unwrap();
-    drop(listener);
-    address
+/// A loopback address nothing listens on, held for as long as the value lives.
+fn closed_port() -> support::Refusing {
+    support::Refusing::new()
 }
 
 /// The header `name`'s value in a recorded request head, its name matched without case.
@@ -393,7 +390,8 @@ fn credential_set_any_other_status_stores_and_names_its_code() {
 #[test]
 fn credential_set_a_transport_failure_refuses_and_writes_nothing() {
     let setup = Setup::new("transport");
-    let config = setup.bearer(&format!("http://{}/v1", closed_port()));
+    let closed = closed_port();
+    let config = setup.bearer(&format!("http://{}/v1", closed.address));
     let finished = run(&setup.fixture, &config, &["--model", "remote"], &line(KEY));
     assert_refused(&finished, "credential:probe-unreachable");
     assert!(names(&setup.keys).is_empty());

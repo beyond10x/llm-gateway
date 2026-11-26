@@ -194,6 +194,7 @@ root change the mode of a file it no longer owns.
 The same file at `0400` starts:
 
 ```text
+b10x-llm-gateway: metrics listening on 0.0.0.0:9090
 b10x-llm-gateway: listening on 0.0.0.0:8080
 ```
 

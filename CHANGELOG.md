@@ -35,6 +35,10 @@ Nothing in any release is deployed or qualified against a live client.
 - `GET /v1/calls/{id}` (the credential `GET /v1/launch` takes; `HEAD` too): the call's record, format `llm-gateway.call/1`, `in-flight` while its answer is written and `ended` with the usage record's values after its last byte. A value the usage record does not carry is an absent key. The gateway holds every call in flight and the last 1024 ended calls (bound `ended-calls-held`).
 - The refusal code `call-unknown` (404): the gateway holds no call with that id, whether it is of another form, never given out or no longer held.
 
+### Fixed
+
+- The token counters no longer read a tool call's arguments. Before, a member named `input_tokens`, `output_tokens`, `prompt_tokens`, `completion_tokens`, `cached_tokens`, `cache_read_input_tokens` or `cache_creation_input_tokens` anywhere in an answer counted, so a Messages `tool_use` whose `input` object carried such a name set the usage record's counters and the dashboard's token figures (in 0.24.0). They are now read from the answer's usage object only: the `usage` of the answer, of its `message` or of its `response`, and its `prompt_tokens_details` or `input_tokens_details`.
+
 ## 0.24.0 (2026-11-21)
 
 ### Added

@@ -1205,6 +1205,16 @@ the counters, then leaves the crate through the `UsageRecords` port the embeddin
 the call record's names (`input_tokens`, `output_tokens`, `cache_read_tokens`,
 `cache_creation_tokens`); a counter the record does not carry is no field.
 
+The counters are read from the answer's usage object only, never from a member of the same name
+elsewhere in the body (a tool call's arguments, a text block, a metadata object). The usage
+object is the member `usage` of a top-level JSON object, or of its `message` or `response`:
+on the messages wire the message's `usage`, on a stream `message_start`'s `message.usage` and
+`message_delta`'s `usage`; on chat the `usage` of the answer or of the stream's last chunk, with
+`cached_tokens` and `cache_creation_input_tokens` in its `prompt_tokens_details`; on responses
+the response's `usage`, on a stream `response.usage`, with the same two in its
+`input_tokens_details`. A counter is a whole number; each keeps the largest value the answer
+reported (`message_delta` repeats the output count, cumulative).
+
 A streamed chat answer reports its usage only when the client asked for it: a chat client sends
 `"stream_options":{"include_usage":true}` in its request body, and the target then ends the stream
 with one event that carries `usage`. The gateway relays the body as the client sent it and adds

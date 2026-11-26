@@ -1,20 +1,29 @@
 //! Token counts read from a relayed answer as it streams (story:live-dashboard,
 //! story:token-and-cache-metrics).
 //!
-//! The scanner looks at the answer's decoded body bytes, a JSON body or server-sent events, for
-//! the usage keys of the three wires and keeps the largest value each one reported:
+//! The scanner reads the answer's decoded body bytes, a JSON body or server-sent events, as a
+//! stream of JSON objects, and takes the counters from the answer's usage object only:
 //!
-//! - messages: `input_tokens`, `output_tokens`, `cache_read_input_tokens`,
-//!   `cache_creation_input_tokens` (in `message_start` and again, cumulative, in `message_delta`);
-//! - chat: `prompt_tokens`, `completion_tokens`, `cached_tokens` (in `prompt_tokens_details`);
-//! - responses: `input_tokens`, `output_tokens`, `cached_tokens` (in `input_tokens_details`).
+//! - messages: `usage` of the message (`input_tokens`, `output_tokens`,
+//!   `cache_read_input_tokens`, `cache_creation_input_tokens`), on a stream in `message_start`'s
+//!   `message.usage` and again, cumulative, in `message_delta`'s `usage`;
+//! - chat: the `usage` of the answer or of the stream's last chunk (`prompt_tokens`,
+//!   `completion_tokens`, and `cached_tokens` and `cache_creation_input_tokens` in its
+//!   `prompt_tokens_details`);
+//! - responses: `usage` of the response, which a stream carries as `response.usage`
+//!   (`input_tokens`, `output_tokens`, and `cached_tokens` and `cache_creation_input_tokens` in
+//!   its `input_tokens_details`).
 //!
-//! It parses nothing else and holds at most [`TAIL`] bytes between pieces, so a key split
-//! across two pieces is still read. A key is read only where it stands as a JSON member name: a
-//! quote not escaped by a backslash, the name, a closing quote, optional space, a colon, optional
-//! space and digits. A key that appears inside a string value is written there with escaped
-//! quotes and is not read. A value the answer reported as zero is zero; a key it never sent
-//! stays `None`.
+//! So a usage object is the member `usage` of a top-level object, or of that object's `message`
+//! or `response`, and nothing else: a member of the same name anywhere else in the body (a tool
+//! call's arguments, a text block, a metadata object, an array's element) is not read. Bytes
+//! outside a top-level object (an event's name, `data: `, `[DONE]`) are passed over. A counter
+//! is a whole number of at most 19 digits; a value the answer reported as zero is zero, and a
+//! counter it never sent stays `None`. Each counter keeps the largest value reported.
+//!
+//! The scanner keeps no bytes of the answer between pieces: its state is the path to the
+//! innermost object it reads (at most five levels; what lies deeper is only counted) and the
+//! name or number it is reading, so a key or value split across two pieces is read whole.
 
 /// The token counts of one answer, each `None` when the answer never reported it.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -29,22 +38,13 @@ pub struct Usage {
     pub cache_creation_tokens: Option<u64>,
 }
 
-/// The keys read, each with the field it feeds.
-const KEYS: [(&[u8], Field); 7] = [
-    (b"input_tokens", Field::Input),
-    (b"prompt_tokens", Field::Input),
-    (b"output_tokens", Field::Output),
-    (b"completion_tokens", Field::Output),
-    (b"cache_read_input_tokens", Field::CacheRead),
-    (b"cached_tokens", Field::CacheRead),
-    (b"cache_creation_input_tokens", Field::CacheCreation),
-];
+/// The longest member name compared: longer names are none the scanner reads.
+const NAME_BYTES: usize = 32;
 
-/// The bytes kept from one piece to the next: the longest key with its quotes, space, colon
-/// and a 20-digit value.
-const TAIL: usize = 64;
+/// The most digits a counter has.
+const DIGITS: u8 = 19;
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Field {
     Input,
     Output,
@@ -52,101 +52,279 @@ enum Field {
     CacheCreation,
 }
 
+/// Where a container stands in the answer, as far as the counters care.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Place {
+    /// A top-level object: one JSON body, or one event's data.
+    Root,
+    /// The `message` or `response` member of a top-level object.
+    Holder,
+    /// A usage object.
+    Usage,
+    /// `prompt_tokens_details` or `input_tokens_details` of a usage object.
+    Details,
+    /// Anything else: nothing in it, at any depth, is read.
+    Other,
+}
+
+impl Place {
+    /// The place of an object that is the value of the member `name` of an object here.
+    fn child(self, name: Option<&[u8]>) -> Self {
+        match (self, name) {
+            (Self::Root | Self::Holder, Some(b"usage")) => Self::Usage,
+            (Self::Root, Some(b"message" | b"response")) => Self::Holder,
+            (Self::Usage, Some(b"prompt_tokens_details" | b"input_tokens_details")) => {
+                Self::Details
+            }
+            _ => Self::Other,
+        }
+    }
+
+    /// The counter the member `name` of an object here feeds, if any.
+    fn counter(self, name: &[u8]) -> Option<Field> {
+        match (self, name) {
+            (Self::Usage, b"input_tokens" | b"prompt_tokens") => Some(Field::Input),
+            (Self::Usage, b"output_tokens" | b"completion_tokens") => Some(Field::Output),
+            (Self::Usage, b"cache_read_input_tokens") | (Self::Details, b"cached_tokens") => {
+                Some(Field::CacheRead)
+            }
+            (Self::Usage | Self::Details, b"cache_creation_input_tokens") => {
+                Some(Field::CacheCreation)
+            }
+            _ => None,
+        }
+    }
+}
+
+/// A member name, kept up to [`NAME_BYTES`] bytes; one longer or with an escape in it is no name
+/// the scanner compares.
+#[derive(Debug, Clone, Copy)]
+struct Name {
+    bytes: [u8; NAME_BYTES],
+    len: usize,
+    unread: bool,
+}
+
+impl Name {
+    const EMPTY: Self = Self {
+        bytes: [0; NAME_BYTES],
+        len: 0,
+        unread: false,
+    };
+
+    fn push(&mut self, byte: u8) {
+        if self.len < NAME_BYTES {
+            self.bytes[self.len] = byte;
+            self.len += 1;
+        } else {
+            self.unread = true;
+        }
+    }
+
+    fn get(&self) -> Option<&[u8]> {
+        (!self.unread).then(|| &self.bytes[..self.len])
+    }
+}
+
+/// What the scanner is reading.
+#[derive(Debug, Clone, Copy, Default)]
+enum Token {
+    /// Between tokens.
+    #[default]
+    Between,
+    /// A member name of an object the scanner reads.
+    Name { name: Name, escaped: bool },
+    /// Any other string: its bytes are passed over.
+    Text { escaped: bool },
+    /// A number, the value of `field` when it feeds a counter; `None` once it is no count.
+    Number {
+        field: Option<Field>,
+        value: Option<u64>,
+        digits: u8,
+    },
+    /// `true`, `false`, `null`, or bytes that are no JSON, passed over.
+    Bare,
+}
+
 /// Reads [`Usage`] from an answer fed to it piece by piece.
 #[derive(Debug, Default)]
 pub struct UsageScanner {
     usage: Usage,
-    carry: Vec<u8>,
+    /// The open containers the scanner reads, outermost first: a top-level object and the
+    /// objects on a usage object's path, and at most one [`Place::Other`] last.
+    open: Vec<Place>,
+    /// Containers open inside the last [`Place::Other`].
+    deeper: usize,
+    /// The member name read last in the innermost open object, until its value is read.
+    member: Option<Name>,
+    token: Token,
 }
 
 impl UsageScanner {
     /// Reads `piece`, the next decoded body bytes of the answer.
     pub fn feed(&mut self, piece: &[u8]) {
-        let mut window = std::mem::take(&mut self.carry);
-        window.extend_from_slice(piece);
-        // A value cut off at the end of the window is read again, whole, with the next piece.
-        let complete = complete_prefix(&window);
-        scan(&window[..complete], &mut self.usage);
-        // The last TAIL bytes before the trailing digits, and the digits: a key cut off at the
-        // end, or a value still being written, is read whole with the next piece. A value in
-        // them already read is read again, which keeps the same maximum. A run of digits longer
-        // than any value is no value, and only its end is kept.
-        let keep = complete
-            .saturating_sub(TAIL)
-            .max(window.len().saturating_sub(4 * TAIL));
-        self.carry = window[keep..].to_vec();
+        for &byte in piece {
+            self.byte(byte);
+        }
     }
 
     /// What the answer reported so far.
     pub fn usage(&self) -> Usage {
-        let mut usage = self.usage;
-        scan(&self.carry, &mut usage);
-        usage
+        self.usage
     }
-}
 
-/// The length of `window` up to its last byte that cannot be the start of a value still being
-/// written: a window ending in digits may continue them.
-fn complete_prefix(window: &[u8]) -> usize {
-    let trailing = window
-        .iter()
-        .rev()
-        .take_while(|byte| byte.is_ascii_digit())
-        .count();
-    window.len() - trailing
-}
+    /// The innermost open container's place, [`Place::Other`] when none is open.
+    fn innermost(&self) -> Place {
+        self.open.last().copied().unwrap_or(Place::Other)
+    }
 
-fn scan(window: &[u8], usage: &mut Usage) {
-    let mut at = 0;
-    while let Some(offset) = window[at..].iter().position(|&byte| byte == b'"') {
-        let quote = at + offset;
-        at = quote + 1;
-        if quote > 0 && window[quote - 1] == b'\\' {
-            continue;
-        }
-        for (key, field) in KEYS {
-            let rest = &window[quote + 1..];
-            let Some(after) = rest.strip_prefix(key) else {
-                continue;
-            };
-            let Some(after) = after.strip_prefix(b"\"") else {
-                continue;
-            };
-            let after = skip_space(after);
-            let Some(after) = after.strip_prefix(b":") else {
-                continue;
-            };
-            let after = skip_space(after);
-            let digits = after
-                .iter()
-                .take_while(|byte| byte.is_ascii_digit())
-                .count();
-            if digits == 0 || digits > 19 {
-                continue;
+    /// Whether the innermost open container is one whose members are read.
+    fn reading(&self) -> bool {
+        self.deeper == 0 && self.open.last().is_some_and(|place| *place != Place::Other)
+    }
+
+    fn byte(&mut self, byte: u8) {
+        match &mut self.token {
+            Token::Between => self.between(byte),
+            Token::Name { name, escaped } => {
+                if byte == b'\n' {
+                    self.broken();
+                } else if *escaped {
+                    *escaped = false;
+                    name.unread = true;
+                } else if byte == b'\\' {
+                    *escaped = true;
+                    name.unread = true;
+                } else if byte == b'"' {
+                    self.member = Some(*name);
+                    self.token = Token::Between;
+                } else {
+                    name.push(byte);
+                }
             }
-            let Some(value) = std::str::from_utf8(&after[..digits])
-                .ok()
-                .and_then(|text| text.parse::<u64>().ok())
-            else {
-                continue;
-            };
-            let slot = match field {
-                Field::Input => &mut usage.input_tokens,
-                Field::Output => &mut usage.output_tokens,
-                Field::CacheRead => &mut usage.cache_read_tokens,
-                Field::CacheCreation => &mut usage.cache_creation_tokens,
-            };
-            *slot = Some(slot.map_or(value, |seen| seen.max(value)));
+            Token::Text { escaped } => {
+                if byte == b'\n' {
+                    self.broken();
+                } else if *escaped {
+                    *escaped = false;
+                } else if byte == b'\\' {
+                    *escaped = true;
+                } else if byte == b'"' {
+                    self.token = Token::Between;
+                }
+            }
+            Token::Number {
+                field,
+                value,
+                digits,
+            } => {
+                if byte.is_ascii_digit() {
+                    *digits = digits.saturating_add(1);
+                    *value = value
+                        .filter(|_| *digits <= DIGITS)
+                        .and_then(|value| value.checked_mul(10))
+                        .and_then(|value| value.checked_add(u64::from(byte - b'0')));
+                } else if matches!(byte, b'-' | b'+' | b'.' | b'e' | b'E') {
+                    *value = None;
+                } else {
+                    if let (Some(field), Some(value)) = (*field, *value) {
+                        self.count(field, value);
+                    }
+                    self.token = Token::Between;
+                    self.between(byte);
+                }
+            }
+            Token::Bare => {
+                if !byte.is_ascii_alphanumeric() {
+                    self.token = Token::Between;
+                    self.between(byte);
+                }
+            }
         }
     }
-}
 
-fn skip_space(bytes: &[u8]) -> &[u8] {
-    let spaces = bytes
-        .iter()
-        .take_while(|byte| matches!(byte, b' ' | b'\t' | b'\r' | b'\n'))
-        .count();
-    &bytes[spaces..]
+    fn between(&mut self, byte: u8) {
+        if self.open.is_empty() {
+            // Outside a top-level object only its start is read.
+            if byte == b'{' {
+                self.open.push(Place::Root);
+                self.member = None;
+            }
+            return;
+        }
+        match byte {
+            b' ' | b'\t' | b'\r' | b'\n' | b':' => {}
+            b',' => self.member = None,
+            b'"' => {
+                self.token = if self.reading() && self.member.is_none() {
+                    Token::Name {
+                        name: Name::EMPTY,
+                        escaped: false,
+                    }
+                } else {
+                    self.member = None;
+                    Token::Text { escaped: false }
+                };
+            }
+            b'{' | b'[' => {
+                let member = self.member.take();
+                if self.reading() {
+                    let place = if byte == b'{' {
+                        self.innermost().child(member.as_ref().and_then(Name::get))
+                    } else {
+                        Place::Other
+                    };
+                    self.open.push(place);
+                } else {
+                    self.deeper += 1;
+                }
+            }
+            b'}' | b']' => {
+                self.member = None;
+                if self.deeper > 0 {
+                    self.deeper -= 1;
+                } else {
+                    self.open.pop();
+                }
+            }
+            b'0'..=b'9' | b'-' => {
+                let member = self.member.take();
+                let field = match (self.reading(), member.as_ref().and_then(Name::get)) {
+                    (true, Some(name)) => self.innermost().counter(name),
+                    _ => None,
+                };
+                self.token = Token::Number {
+                    field,
+                    value: (byte != b'-').then_some(0),
+                    digits: 0,
+                };
+                self.byte(byte);
+            }
+            _ => {
+                self.member = None;
+                self.token = Token::Bare;
+            }
+        }
+    }
+
+    /// A raw line end inside a string is no JSON: what was open is dropped, and the next
+    /// top-level object is read afresh.
+    fn broken(&mut self) {
+        self.open.clear();
+        self.deeper = 0;
+        self.member = None;
+        self.token = Token::Between;
+    }
+
+    fn count(&mut self, field: Field, value: u64) {
+        let slot = match field {
+            Field::Input => &mut self.usage.input_tokens,
+            Field::Output => &mut self.usage.output_tokens,
+            Field::CacheRead => &mut self.usage.cache_read_tokens,
+            Field::CacheCreation => &mut self.usage.cache_creation_tokens,
+        };
+        *slot = Some(slot.map_or(value, |seen| seen.max(value)));
+    }
 }
 
 #[cfg(test)]
